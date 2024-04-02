@@ -37,7 +37,7 @@ fn (state &BFState) show() {
 			break
 		}
 	}
-	println('Memory: ${state.memory#[0..max_non_zero_address + 1]}')
+	println('Memory: ${state.memory#[..max_non_zero_address + 1]}')
 	println('Memory[Address]: ${state.memory#[state.address..state.address + 1]}')
 }
 
@@ -55,7 +55,7 @@ fn (mut state BFState) find_matching_pairs() {
 				if stack.len == 0 {
 					eprintln('> unmatched `]` found in the program, at position: ${i}')
 					eprintln('program so far:')
-					eprintln(state.program#[0..i + 1])
+					eprintln(state.program#[..i + 1])
 					exit(1)
 				}
 				pc := stack.pop()
@@ -69,7 +69,7 @@ fn (mut state BFState) find_matching_pairs() {
 	if stack.len > 0 {
 		eprintln('> found ${stack.len} unmatched `[`:')
 		for i in stack {
-			eprintln('  `[` at position: ${i}, program so far: `${state.program#[0..i + 1]}`')
+			eprintln('  `[` at position: ${i}, program so far: `${state.program#[..i + 1]}`')
 		}
 		exit(1)
 	}

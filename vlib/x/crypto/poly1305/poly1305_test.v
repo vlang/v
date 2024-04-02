@@ -72,7 +72,7 @@ fn test_incremental_update_ported_from_poly1305donna() ! {
 	// lets reset and reinit poly1305 instance and performs test for incremental update
 	// Note: as security notes, you should use same key twice for authenticated same messages
 	po.reinit(nacl_key)
-	po.update(nacl_msg[0..32])
+	po.update(nacl_msg[..32])
 	po.update(nacl_msg[32..96])
 	po.update(nacl_msg[96..112])
 	po.update(nacl_msg[112..120])
@@ -194,7 +194,7 @@ fn test_poly1305_smoked_data_vectors() ! {
 
 			s.lo = binary.big_endian_u64(buf[16..24])
 			s.mi = binary.big_endian_u64(buf[8..16])
-			s.hi = binary.big_endian_u64(buf[0..8])
+			s.hi = binary.big_endian_u64(buf[..8])
 			// set with accumulator s
 			poly.h = s
 		}

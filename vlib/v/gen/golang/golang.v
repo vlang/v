@@ -261,7 +261,7 @@ pub fn (mut f Gen) mark_import_as_used(name string) {
 	if parts.len == 1 {
 		return
 	}
-	mod := parts[0..parts.len - 1].join('.')
+	mod := parts[..parts.len - 1].join('.')
 	if mod in f.used_imports {
 		return
 	}

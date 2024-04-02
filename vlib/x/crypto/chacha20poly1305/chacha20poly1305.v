@@ -180,7 +180,7 @@ fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![
 	s.xor_key_stream(mut polykey, polykey)
 
 	// Remember, ciphertext is concatenation of associated cipher output plus tag (mac) bytes
-	encrypted := ciphertext[0..ciphertext.len - c.overhead()]
+	encrypted := ciphertext[..ciphertext.len - c.overhead()]
 	mac := ciphertext[ciphertext.len - c.overhead()..]
 
 	mut plaintext := []u8{len: encrypted.len}

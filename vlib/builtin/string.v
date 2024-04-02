@@ -2258,7 +2258,7 @@ pub fn (s string) limit(max int) string {
 	if u.len <= max {
 		return s.clone()
 	}
-	return u[0..max].string()
+	return u[..max].string()
 }
 
 // hash returns an integer hash of the string.

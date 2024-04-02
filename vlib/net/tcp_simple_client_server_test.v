@@ -52,7 +52,7 @@ fn test_socket() {
 		assert false
 		return
 	}
-	received := buf[0..nbytes].bytestr()
+	received := buf[..nbytes].bytestr()
 	$if debug {
 		println('message received: ${received}')
 	}

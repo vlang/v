@@ -494,7 +494,7 @@ fn main() {
 	// just to make sure whenever user wants to
 	// interact directly with the executable
 	// instead of the usual `v ls` command
-	if fp.args.len >= 2 && fp.args[0..2] == [os.executable(), 'ls'] {
+	if fp.args.len >= 2 && fp.args[..2] == [os.executable(), 'ls'] {
 		// skip the executable here, the next skip_executable
 		// outside the if statement will skip the `ls` part
 		fp.skip_executable()

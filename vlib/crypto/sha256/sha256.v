@@ -204,7 +204,7 @@ pub fn (mut d Digest) checksum() []u8 {
 	out := d.checksum_internal()
 	// if this digest has `size224` length, return the correct `size224` checksum
 	if d.is224 {
-		return out[0..sha256.size224]
+		return out[..sha256.size224]
 	}
 	// otherwise, returns a normal size
 	return out

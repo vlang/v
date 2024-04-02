@@ -128,7 +128,7 @@ fn test_sort_reverse() {
 
 fn test_ranges() {
 	s := 'test'
-	s1 := s[0..20] or { 'both' }
+	s1 := s[..20] or { 'both' }
 	s2 := s[..20] or { 'last' }
 	s3 := s[10..] or { 'first' }
 	s4 := ranges_propagate_both(s) or { 'both' }

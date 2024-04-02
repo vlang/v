@@ -9,7 +9,7 @@ fn check_cache_entry_fpath_invariants(x string, extension string) {
 	assert a[0].len == 2
 	assert a[1].len > 32
 	assert os.file_ext(a[1]) == extension
-	assert a[1][0..2] == a[0]
+	assert a[1][..2] == a[0]
 }
 
 fn testsuite_begin() {

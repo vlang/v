@@ -58,7 +58,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.run('git checkout --quiet master')
 	//
 	mut vccommit := ''
-	mut partial_hash := v_commithash[0..7]
+	mut partial_hash := v_commithash[..7]
 	if '5b7a1e8'.starts_with(partial_hash) {
 		// we need the following, otherwise --grep= below would find a93ef6e, which does include 5b7a1e8 in the commit message ... 🤦‍♂️
 		partial_hash = '5b7a1e84a4d283071d12cb86dc17aeda9b5306a8'

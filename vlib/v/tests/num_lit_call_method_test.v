@@ -31,7 +31,7 @@ fn test_float_lit_call_method() {
 	assert x9 == '5.725e+06'
 
 	a := f32(12.3).str()
-	assert a[0..4] == '12.3' // there is still trailing garbage
+	assert a[..4] == '12.3' // there is still trailing garbage
 	assert f32(7.345e-7).str() == '7.345e-07'
 	assert f32(5.725e6).str() == '5.725e+06'
 }

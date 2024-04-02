@@ -17,7 +17,7 @@ fn main() {
 				}
 			}
 			if sb.len > size {
-				println(sb.str()[0..size])
+				println(sb.str()[..size])
 				break
 			}
 		}

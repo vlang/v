@@ -374,7 +374,7 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.month))
 			}
 			'MMM' {
-				sb.write_string(long_months[t.month - 1][0..3])
+				sb.write_string(long_months[t.month - 1][..3])
 			}
 			'MMMM' {
 				sb.write_string(long_months[t.month - 1])
@@ -402,10 +402,10 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(t.day_of_week().str())
 			}
 			'dd' {
-				sb.write_string(long_days[t.day_of_week() - 1][0..2])
+				sb.write_string(long_days[t.day_of_week() - 1][..2])
 			}
 			'ddd' {
-				sb.write_string(long_days[t.day_of_week() - 1][0..3])
+				sb.write_string(long_days[t.day_of_week() - 1][..3])
 			}
 			'dddd' {
 				sb.write_string(long_days[t.day_of_week() - 1])

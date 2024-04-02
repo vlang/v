@@ -21,6 +21,6 @@ fn test_big_int_array() {
 	}
 	assert data[0] == 0
 	assert data[maxn - 1] == maxn - 1
-	dump(data#[0..10])
+	dump(data#[..10])
 	dump(data#[-10..])
 }

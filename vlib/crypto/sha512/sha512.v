@@ -277,13 +277,13 @@ pub fn (mut d Digest) checksum() []u8 {
 	out := d.checksum_internal()
 	match d.function {
 		.sha384 {
-			return out[0..sha512.size384]
+			return out[..sha512.size384]
 		}
 		.sha512_224 {
-			return out[0..sha512.size224]
+			return out[..sha512.size224]
 		}
 		.sha512_256 {
-			return out[0..sha512.size256]
+			return out[..sha512.size256]
 		}
 		else {
 			return out

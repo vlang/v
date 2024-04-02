@@ -16,7 +16,7 @@ fn read_and_decode_file(fpath string) !([]u8, string) {
 
 fn test_reading_and_decoding_a_known_gziped_file() {
 	compressed, content := read_and_decode_file(s('known.gz'))!
-	assert compressed#[0..3] == [u8(31), 139, 8]
+	assert compressed#[..3] == [u8(31), 139, 8]
 	assert compressed#[-5..] == [u8(127), 115, 1, 0, 0]
 	assert content.contains('## Description')
 	assert content.contains('## Examples:')

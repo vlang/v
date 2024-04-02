@@ -11,8 +11,8 @@ fn test_rand_bytes() {
 	}
 	mut differences := 0
 	for idx in 1 .. randoms.len {
-		start := randoms[idx]#[0..8]
-		prev_start := randoms[idx - 1]#[0..8]
+		start := randoms[idx]#[..8]
+		prev_start := randoms[idx - 1]#[..8]
 		if start != prev_start {
 			differences++
 		}
@@ -33,8 +33,8 @@ fn test_prng_rand_bytes() {
 	}
 	mut differences := 0
 	for idx in 1 .. randoms.len {
-		start := randoms[idx]#[0..8]
-		prev_start := randoms[idx - 1]#[0..8]
+		start := randoms[idx]#[..8]
+		prev_start := randoms[idx - 1]#[..8]
 		if start != prev_start {
 			differences++
 		}
@@ -60,7 +60,7 @@ fn test_rand_read() {
 			for i in 0 .. 10 {
 				rand.read(mut a[j..k])
 				// dump(a.hex())
-				assert a[0..j].hex() == start
+				assert a[..j].hex() == start
 				assert a[k..].hex() == end
 				if a[j..k].hex() != middle {
 					differences++
@@ -90,7 +90,7 @@ fn test_prng_rand_read() {
 			for i in 0 .. 10 {
 				rng.read(mut a[j..k])
 				// dump(a.hex())
-				assert a[0..j].hex() == start
+				assert a[..j].hex() == start
 				assert a[k..].hex() == end
 				if a[j..k].hex() != middle {
 					differences++

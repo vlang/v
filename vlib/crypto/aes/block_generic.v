@@ -79,7 +79,7 @@ fn encrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 	s2 ^= xk[k + 2]
 	s3 ^= xk[k + 3]
 	_ := dst[15] // early bounds check
-	binary.big_endian_put_u32(mut (*dst)[0..4], s0)
+	binary.big_endian_put_u32(mut (*dst)[..4], s0)
 	binary.big_endian_put_u32(mut (*dst)[4..8], s1)
 	binary.big_endian_put_u32(mut (*dst)[8..12], s2)
 	binary.big_endian_put_u32(mut (*dst)[12..16], s3)
@@ -89,7 +89,7 @@ fn encrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 @[direct_array_access]
 fn decrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 	_ = src[15] // early bounds check
-	mut s0 := binary.big_endian_u32(src[0..4])
+	mut s0 := binary.big_endian_u32(src[..4])
 	mut s1 := binary.big_endian_u32(src[4..8])
 	mut s2 := binary.big_endian_u32(src[8..12])
 	mut s3 := binary.big_endian_u32(src[12..16])

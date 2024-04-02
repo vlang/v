@@ -28,7 +28,7 @@ fn main() {
 	println('   Private key (Full key in Hex): ${hex.encode(priv)}')
 
 	println('=== signature (R,s) ===')
-	println('signature: R=${sig[0..32].hex()} s=${sig[32..64].hex()}')
+	println('signature: R=${sig[..32].hex()} s=${sig[32..64].hex()}')
 	println('   signature (Base64)=${base64.encode(sig)}')
 
 	rtn := ed25519.verify(publ, m, sig)!

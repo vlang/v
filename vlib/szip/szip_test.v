@@ -110,7 +110,7 @@ fn test_reading_zipping_files() {
 			buf[data_len] = 0
 			tmp_str := tos(buf, data_len)
 
-			assert tmp_str[0..4] == 'file'
+			assert tmp_str[..4] == 'file'
 			assert tmp_str[5..7] == name[5..7]
 
 			zp.close_entry()

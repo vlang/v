@@ -439,7 +439,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		}
 
 		match typ {
-			0...31 {
+			...31 {
 				last := buf[buf.len - 1]
 				button := if lo < 3 { unsafe { MouseButton(lo + 1) } } else { MouseButton.unknown }
 				event := if last == `m` || lo == 3 {

@@ -271,7 +271,7 @@ fn get_host_ip_from_dtp_message(msg string) (string, int) {
 		}
 	}
 	data := msg[par_start_idx..par_end_idx].split(',')
-	ip := data[0..4].join('.')
+	ip := data[..4].join('.')
 	port := data[4].int() * 256 + data[5].int()
 	return ip, port
 }

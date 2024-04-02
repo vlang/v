@@ -33,7 +33,7 @@ fn main() {
 	ids := json.decode([]int, resp.body) or {
 		println('failed to decode topstories.json')
 		return
-	}#[0..10]
+	}#[..10]
 	mut fetcher_pool := pool.new_pool_processor(
 		callback: worker_fetch
 	)

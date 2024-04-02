@@ -122,7 +122,7 @@ fn works_check_on_sign_input_string(item string) bool {
 	}
 
 	seed2 := priv2.seed()
-	if priv[0..32] != seed2 {
+	if priv[..32] != seed2 {
 		return false
 	}
 

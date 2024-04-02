@@ -17,7 +17,7 @@ fn test_struct_fn_field_can_be_used_directly() {
 	buf := [u8(1), 2, 3]
 	mut res := []u8{}
 	res << 0x88
-	async_cb(buf[0..2], mut res)
+	async_cb(buf[..2], mut res)
 	data := Ep_arg{
 		sfd: 1234
 		cb: async_cb

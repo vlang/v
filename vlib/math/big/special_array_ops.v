@@ -114,12 +114,12 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 
 	// thanks to the base cases we can pass zero-length arrays to the mult func
 	half := imax(operand_a.len, operand_b.len) / 2
-	a_l := operand_a[0..half]
+	a_l := operand_a[..half]
 	a_h := operand_a[half..]
 	mut b_l := []u32{}
 	mut b_h := []u32{}
 	if half <= operand_b.len {
-		b_l = unsafe { operand_b[0..half] }
+		b_l = unsafe { operand_b[..half] }
 		b_h = unsafe { operand_b[half..] }
 	} else {
 		b_l = unsafe { operand_b }
@@ -169,7 +169,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 
 	// Slices of a and b
 	a0 := Integer{
-		digits: operand_a[0..k]
+		digits: operand_a[..k]
 		signum: 1
 	}
 	a1 := Integer{
@@ -193,7 +193,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 		}
 	} else if operand_b.len < k2 {
 		b0 = Integer{
-			digits: operand_b[0..k]
+			digits: operand_b[..k]
 			signum: 1
 		}
 		b1 = Integer{
@@ -202,7 +202,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 		}
 	} else {
 		b0 = Integer{
-			digits: operand_b[0..k]
+			digits: operand_b[..k]
 			signum: 1
 		}
 		b1 = Integer{

@@ -324,7 +324,7 @@ pub fn (mut f Fmt) mark_import_as_used(name string) {
 	if parts.len == 1 {
 		return
 	}
-	mod := parts[0..parts.len - 1].join('.')
+	mod := parts[..parts.len - 1].join('.')
 	if mod in f.used_imports {
 		return
 	}
@@ -1942,7 +1942,7 @@ fn (mut f Fmt) write_static_method(name string, short_name string) {
 	f.mark_import_as_used(name.split('__static__')[0])
 	if short_name.contains('.') {
 		indx := short_name.index('.') or { -1 } + 1
-		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
+		f.write(short_name[..indx] + short_name[indx..].replace('__static__', '.').capitalize())
 	} else {
 		f.write(short_name.replace('__static__', '.').capitalize())
 	}

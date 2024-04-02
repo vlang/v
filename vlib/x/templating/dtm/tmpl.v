@@ -47,7 +47,7 @@ fn is_html_open_tag(name string, s string) bool {
 		return false
 	}
 
-	mut sub := trimmed_line[0..1]
+	mut sub := trimmed_line[..1]
 	if sub != '<' { // not start with '<'
 		return false
 	}
@@ -142,7 +142,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string, data
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
 	}
 	if rline.ends_with('\\') {
-		rline = rline[0..rline.len - 2] + trailing_bs
+		rline = rline[..rline.len - 2] + trailing_bs
 	}
 	if rline.contains('$') {
 		rline = replace_placeholders_with_data(rline, data, state)

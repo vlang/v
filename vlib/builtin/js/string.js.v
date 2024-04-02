@@ -854,7 +854,7 @@ pub fn (s string) limit(max int) string {
 	if u.len <= max {
 		return s.clone()
 	}
-	return u[0..max].string()
+	return u[..max].string()
 }
 
 // is_title returns true if all words of the string is capitalized.

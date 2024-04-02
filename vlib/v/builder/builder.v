@@ -406,7 +406,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		parts := fpath.split(os.path_separator)
 		for i := parts.len - 2; i >= 0; i-- {
 			if parts[i] == 'modules' {
-				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
+				module_lookup_paths << parts[..i + 1].join(os.path_separator)
 				break
 			}
 		}
@@ -426,7 +426,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	// look up through parents
 	path_parts := fpath.split(os.path_separator)
 	for i := path_parts.len - 2; i > 0; i-- {
-		p1 := path_parts[0..i].join(os.path_separator)
+		p1 := path_parts[..i].join(os.path_separator)
 		try_path := os.join_path(p1, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')

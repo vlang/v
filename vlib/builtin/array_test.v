@@ -309,7 +309,7 @@ fn test_right() {
 
 fn test_left() {
 	a := [1, 2, 3]
-	c := a[0..2]
+	c := a[..2]
 	d := a[..2]
 	assert c[0] == 1
 	assert c[1] == 2
@@ -674,7 +674,7 @@ fn test_map() {
 	assert strs.map(it.len + strs.map(it.len)[0]) == [2, 3, 8]
 	// nested (different it types)
 	assert strs.map(it[nums.map(it - it)[0]]) == [u8(`v`), `i`, `a`]
-	assert nums[0..3].map('${it}' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
+	assert nums[..3].map('${it}' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
 	assert nums.map(map_test_helper_1) == [1, 4, 9, 16, 25, 36]
 	assert [1, 5, 10].map(map_test_helper_1) == [1, 25, 100]
 	assert nums == [1, 2, 3, 4, 5, 6]

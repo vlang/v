@@ -191,7 +191,7 @@ fn (mut h Hashed) decode_version(sbytes []u8) !int {
 
 // decode_cost extracts the value of cost and returns the next index in the array.
 fn (mut h Hashed) decode_cost(sbytes []u8) !int {
-	cost := sbytes[0..2].bytestr().int()
+	cost := sbytes[..2].bytestr().int()
 	check_cost(cost) or { return err }
 	h.cost = cost
 	return 3

@@ -9,7 +9,7 @@ pub fn test_u64toa_small_values() {
 		assert len == expected_len(v)
 
 		// Check the actual string for accuracy
-		assert buf[0..len] == v.str().bytes()
+		assert buf[..len] == v.str().bytes()
 	}
 }
 
@@ -25,7 +25,7 @@ pub fn test_u64toa_large_values() {
 		if v < 100_000_000 {
 			assert len == expected_len(v)
 
-			assert buf[0..len] == v.str().bytes()
+			assert buf[..len] == v.str().bytes()
 		} else {
 			assert len == 0
 		}

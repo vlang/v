@@ -680,7 +680,7 @@ fn (mut f MDFile) autofix_example(e VCodeExample, vfile string) ! {
 	}
 	formatted_content_lines := os.read_lines(vfile) or { return }
 	mut new_lines := []string{}
-	new_lines << f.lines#[0..e.sline + 1]
+	new_lines << f.lines#[..e.sline + 1]
 	new_lines << formatted_content_lines
 	new_lines << f.lines#[e.eline..]
 	f.update_examples(new_lines)!

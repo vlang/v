@@ -1,7 +1,7 @@
 type Ints = []int
 
 fn (i Ints) slice(to int) Ints {
-	return i[0..to]
+	return i[..to]
 }
 
 fn test_array_of_alias_slice() {

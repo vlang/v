@@ -193,7 +193,7 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	// if nonce's length is 24 bytes, we derive a new key and nonce with xchacha20 function
 	// and supplied to setup process.
 	if nonces.len == chacha20.x_nonce_size {
-		keys = xchacha20(keys, nonces[0..16])!
+		keys = xchacha20(keys, nonces[..16])!
 		mut cnonce := []u8{len: chacha20.nonce_size}
 		_ := copy(mut cnonce[4..12], nonces[16..24])
 		nonces = cnonce.clone()
@@ -206,7 +206,7 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	_ = nonces[chacha20.nonce_size - 1]
 
 	// setup ChaCha20 cipher key
-	c.key[0] = binary.little_endian_u32(keys[0..4])
+	c.key[0] = binary.little_endian_u32(keys[..4])
 	c.key[1] = binary.little_endian_u32(keys[4..8])
 	c.key[2] = binary.little_endian_u32(keys[8..12])
 	c.key[3] = binary.little_endian_u32(keys[12..16])
@@ -216,7 +216,7 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	c.key[7] = binary.little_endian_u32(keys[28..32])
 
 	// setup ChaCha20 cipher nonce
-	c.nonce[0] = binary.little_endian_u32(nonces[0..4])
+	c.nonce[0] = binary.little_endian_u32(nonces[..4])
 	c.nonce[1] = binary.little_endian_u32(nonces[4..8])
 	c.nonce[2] = binary.little_endian_u32(nonces[8..12])
 }
@@ -298,7 +298,7 @@ fn (mut c Cipher) chacha20_block() {
 	x14 += c14
 	x15 += c15
 
-	binary.little_endian_put_u32(mut c.block[0..4], x0)
+	binary.little_endian_put_u32(mut c.block[..4], x0)
 	binary.little_endian_put_u32(mut c.block[4..8], x1)
 	binary.little_endian_put_u32(mut c.block[8..12], x2)
 	binary.little_endian_put_u32(mut c.block[12..16], x3)

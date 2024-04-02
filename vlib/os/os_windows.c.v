@@ -483,7 +483,7 @@ pub fn uname() Uname {
 		sysname: 'Windows_NT' // as of 2022-12, WinOS has only two possible kernels ~ 'Windows_NT' or 'Windows_9x'
 		nodename: nodename
 		machine: machine.trim_space()
-		release: (version_n.split('.'))[0..2].join('.').trim_space() // Major.minor-only == "primary"/release version
+		release: (version_n.split('.'))[..2].join('.').trim_space() // Major.minor-only == "primary"/release version
 		version: (version_n.split('.'))[2].trim_space()
 	}
 }

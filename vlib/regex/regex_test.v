@@ -734,9 +734,9 @@ fn test_regex_func_replace1() {
 }
 
 fn my_repl(re regex.RE, in_txt string, start int, end int) string {
-	s0 := re.get_group_by_id(in_txt, 0)[0..1] + 'X'
-	s1 := re.get_group_by_id(in_txt, 1)[0..1] + 'X'
-	s2 := re.get_group_by_id(in_txt, 2)[0..1] + 'X'
+	s0 := re.get_group_by_id(in_txt, 0)[..1] + 'X'
+	s1 := re.get_group_by_id(in_txt, 1)[..1] + 'X'
+	s2 := re.get_group_by_id(in_txt, 2)[..1] + 'X'
 	return '${s0}${s1}${s2}'
 }
 
@@ -752,8 +752,8 @@ fn test_regex_func_replace() {
 
 	for _ in 0 .. 3 {
 		rnd := int(10 + rand.u32() % 20)
-		txt1 += txt + filler[0..rnd] + '\n'
-		txt2 += 'cXTX,X' + filler[0..rnd] + '\n'
+		txt1 += txt + filler[..rnd] + '\n'
+		txt2 += 'cXTX,X' + filler[..rnd] + '\n'
 	}
 
 	result := re.replace_by_fn(txt1, my_repl)

@@ -562,7 +562,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			err_details += unhandled.join(', ')
 		} else {
 			remaining := unhandled.len - c.match_exhaustive_cutoff_limit
-			err_details += unhandled[0..c.match_exhaustive_cutoff_limit].join(', ')
+			err_details += unhandled[..c.match_exhaustive_cutoff_limit].join(', ')
 			if remaining > 0 {
 				err_details += ', and ${remaining} others ...'
 			}

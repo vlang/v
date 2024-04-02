@@ -14,7 +14,7 @@ fn name[T](mut buf4 T) {
 			buf4 << idx
 		}
 	}
-	mut bp := buf4[0..5]
+	mut bp := buf4[..5]
 	assert bp.len == 5
 	println(bp)
 

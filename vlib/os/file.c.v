@@ -447,7 +447,7 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []u8 {
 		// return err
 		return []
 	}
-	return arr[0..nreadbytes]
+	return arr[..nreadbytes]
 }
 
 // read_bytes_into_newline reads from the beginning of the file into the provided buffer.

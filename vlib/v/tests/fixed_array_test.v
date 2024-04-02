@@ -11,7 +11,7 @@ fn test_fixed_array_can_be_assigned() {
 	v = [8]f64{}
 	assert v[1] == 0
 	// test slicing
-	for e in v[0..v.len] {
+	for e in v[..v.len] {
 		assert e == 0
 	}
 	v = [8]f64{init: 3.0}

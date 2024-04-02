@@ -563,13 +563,13 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			// request is incomplete wait until the socket becomes ready to read again
 			params.idx[fd] += n
 			// TODO: change this to a memcpy function?
-			req.data += buf[0..n].bytestr()
+			req.data += buf[..n].bytestr()
 			params.incomplete_requests[fd] = req
 			return
 		} else {
 			// request is complete: n = bytes_to_read
 			params.idx[fd] += n
-			req.data += buf[0..n].bytestr()
+			req.data += buf[..n].bytestr()
 		}
 	}
 

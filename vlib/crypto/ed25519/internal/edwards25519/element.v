@@ -628,7 +628,7 @@ pub fn (mut v Element) set_bytes(x []u8) !Element {
 	}
 
 	// Bits 0:51 (bytes 0:8, bits 0:64, shift 0, mask 51).
-	v.l0 = binary.little_endian_u64(x[0..8])
+	v.l0 = binary.little_endian_u64(x[..8])
 	v.l0 &= edwards25519.mask_low_51_bits
 	// Bits 51:102 (bytes 6:14, bits 48:112, shift 3, mask 51).
 	v.l1 = binary.little_endian_u64(x[6..14]) >> 3

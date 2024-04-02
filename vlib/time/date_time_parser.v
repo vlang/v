@@ -104,7 +104,7 @@ fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
 fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
 	val := p.next(letters)!
 	for v in long_days {
-		if v[0..letters] == val {
+		if v[..letters] == val {
 			return v
 		}
 	}

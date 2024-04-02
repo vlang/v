@@ -44,7 +44,7 @@ fn write_page_crumbs(mut sb strings.Builder, uri_path string) {
 	crumbs := uri_path.split('/')
 	mut crlinks := []string{cap: crumbs.len}
 	for cridx, crumb in crumbs {
-		cr_so_far := crumbs#[0..cridx + 1].join('/')
+		cr_so_far := crumbs#[..cridx + 1].join('/')
 		// eprintln('> cr_so_far: ${cr_so_far:20} | crumb: ${crumb:20}')
 		crlinks << '<a href="/${cr_so_far}">${crumb}</a>'
 	}

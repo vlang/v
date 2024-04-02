@@ -760,7 +760,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			}
 		}
 		c := os.read_file(fnormalised) or { panic(err) }
-		start := c#[0..testing.header_bytes_to_search_for_module_main]
+		start := c#[..testing.header_bytes_to_search_for_module_main]
 		if start.contains('module ') && !start.contains('module main') {
 			skipped << fnormalised.replace(nparent_dir + '/', '')
 		}

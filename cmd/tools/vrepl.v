@@ -105,7 +105,7 @@ fn repl_help() {
 }
 
 fn run_shell(command string) {
-	if command.len >= 2 && command[0..2] == 'cd' {
+	if command.len >= 2 && command[..2] == 'cd' {
 		command_splited := command.split(' ')
 		assert command_splited.len >= 2
 		dir := command_splited[command_splited.len - 1]
@@ -375,7 +375,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			continue
 		}
 
-		if r.line.len > 4 && r.line[0..3] == '!sh' {
+		if r.line.len > 4 && r.line[..3] == '!sh' {
 			run_shell(r.line[4..r.line.len])
 			continue
 		}

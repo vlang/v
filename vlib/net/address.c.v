@@ -255,7 +255,7 @@ pub fn (a Addr) str() string {
 		}
 		.unix {
 			unsafe {
-				return tos_clone(a.addr.Unix.path[0..max_unix_path].data)
+				return tos_clone(a.addr.Unix.path[..max_unix_path].data)
 			}
 		}
 		.unspec {

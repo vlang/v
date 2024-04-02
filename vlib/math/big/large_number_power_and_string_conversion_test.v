@@ -48,7 +48,7 @@ fn calculate_and_measure(calc_label string, cb fn () big.Integer) string {
 	s := a.str()
 	timed_println_extended(sw, 'after  a.str()')
 	dump(s.len)
-	dump(s#[0..10])
+	dump(s#[..10])
 	dump(s#[-10..])
 	timed_println_extended(sw, 'finish')
 	return s

@@ -459,7 +459,7 @@ pub fn user_names() ![]string {
 		mut users := []string{cap: lines.len}
 		for line in lines {
 			end_name := line.index(':') or { line.len }
-			users << line[0..end_name]
+			users << line[..end_name]
 		}
 		return users
 	}

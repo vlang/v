@@ -61,7 +61,7 @@ fn fuzz3() {
 		if (i % 10000) == 0 {
 			keys := m.keys()
 			assert keys.len == i
-			assert keys == arr[0..i]
+			assert keys == arr[..i]
 		}
 		m[x] = i
 	}

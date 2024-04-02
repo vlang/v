@@ -1553,7 +1553,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 pub fn (mut t Table) resolve_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) string {
 	if index := fn_name.index('__static__') {
 		if index > 0 {
-			generic_name := fn_name[0..index]
+			generic_name := fn_name[..index]
 			valid_generic := util.is_generic_type_name(generic_name)
 				&& generic_name in generic_names
 			if valid_generic {

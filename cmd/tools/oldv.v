@@ -169,7 +169,7 @@ fn main() {
 	}
 	context.compile_oldv_if_needed()
 	scripting.chdir(context.path_v)
-	shorter_hash := context.commit_v_hash[0..10]
+	shorter_hash := context.commit_v_hash[..10]
 	scripting.cprintln('#     v commit hash: ${shorter_hash} | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')

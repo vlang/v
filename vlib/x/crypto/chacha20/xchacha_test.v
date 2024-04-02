@@ -13,7 +13,7 @@ fn test_xchacha20_function() ! {
 
 	subkey := xchacha20(key_bytes, nonce_bytes)!
 
-	assert subkey[0..4].hex() == '82413b42'
+	assert subkey[..4].hex() == '82413b42'
 	assert subkey[4..8].hex() == '27b27bfe'
 	assert subkey[8..12].hex() == 'd30e4250'
 	assert subkey[12..16].hex() == '8a877d73'

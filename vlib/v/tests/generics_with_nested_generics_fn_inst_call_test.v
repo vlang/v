@@ -10,7 +10,7 @@ fn test_generics_with_nested_generic_fn_inst_call() {
 }
 
 fn decode_arr[T](buf []u8) []T {
-	arr_size := decode[u32](buf[0..4])
+	arr_size := decode[u32](buf[..4])
 	mut ret := []T{cap: int(arr_size)}
 
 	for _ in 0 .. arr_size {

@@ -48,9 +48,9 @@ fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
 	ulid1 = rand.ulid_at_millisecond(t)
 	ulid2 = rand.ulid_at_millisecond(t)
 	ulid3 = rand.ulid_at_millisecond(t)
-	ulid1_prefix := ulid1[0..10]
-	ulid2_prefix := ulid2[0..10]
-	ulid3_prefix := ulid3[0..10]
+	ulid1_prefix := ulid1[..10]
+	ulid2_prefix := ulid2[..10]
+	ulid3_prefix := ulid3[..10]
 	assert ulid1_prefix == ulid2_prefix
 	assert ulid1_prefix == ulid3_prefix
 }

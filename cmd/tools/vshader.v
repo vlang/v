@@ -49,7 +49,7 @@ const default_slangs = [
 	'wgsl',
 ]
 
-const shdc_version = shdc_full_hash[0..8]
+const shdc_version = shdc_full_hash[..8]
 const shdc_urls = {
 	'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
 	'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'

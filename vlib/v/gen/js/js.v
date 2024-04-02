@@ -3416,7 +3416,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.sym(it.typ)
 	mut name := type_sym.name
 	if name.contains('<') {
-		name = name[0..name.index('<') or { name.len }]
+		name = name[..name.index('<') or { name.len }]
 	}
 	if it.init_fields.len == 0 && type_sym.kind != .interface_ {
 		if type_sym.kind == .struct_ && type_sym.language == .js {

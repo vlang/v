@@ -70,7 +70,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 			}
 			desired_hash_length := 7
 			if current_branch_hash.len > desired_hash_length {
-				return current_branch_hash[0..desired_hash_length]
+				return current_branch_hash[..desired_hash_length]
 			}
 		}
 		break

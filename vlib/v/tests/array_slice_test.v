@@ -30,21 +30,21 @@ fn test_access_slice_attribute() {
 }
 
 fn fixed_array_slice(a [3]int) {
-	assert a[0..] == [1, 2, 3]
+	assert a[..] == [1, 2, 3]
 	assert a[..a.len] == [1, 2, 3]
 }
 
 fn mut_fixed_array_slice(mut a [3]int) {
-	assert a[0..] == [1, 2, 3]
+	assert a[..] == [1, 2, 3]
 	assert a[..a.len] == [1, 2, 3]
 }
 
 fn test_fixed_array_slice() {
 	fixed_array1 := [1, 2, 3]!
-	arr1 := fixed_array1[0..]
+	arr1 := fixed_array1[..]
 	assert arr1 == [1, 2, 3]
 	fixed_array2 := [[1, 2], [2, 3], [3, 4], [4, 5]]!
-	arr2 := fixed_array2[0..]
+	arr2 := fixed_array2[..]
 	assert arr2 == [[1, 2], [2, 3], [3, 4], [4, 5]]
 	mut arr := [1, 2, 3]!
 	fixed_array_slice(arr)
@@ -52,7 +52,7 @@ fn test_fixed_array_slice() {
 }
 
 fn pointer_array_slice(mut a []int) {
-	assert a[0..] == [1, 2, 3]
+	assert a[..] == [1, 2, 3]
 	assert a[..a.len] == [1, 2, 3]
 }
 

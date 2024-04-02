@@ -99,7 +99,7 @@ pub fn new(key []u8) !&Poly1305 {
 	// mask value is 0x0ffffffc0ffffffc0ffffffc0fffffff.
 	// See the rmask0 and rmask1 constants above.
 	r := unsigned.Uint128{
-		lo: binary.little_endian_u64(key[0..8]) & poly1305.rmask0
+		lo: binary.little_endian_u64(key[..8]) & poly1305.rmask0
 		hi: binary.little_endian_u64(key[8..16]) & poly1305.rmask1
 	}
 
@@ -159,7 +159,7 @@ pub fn (mut po Poly1305) reinit(key []u8) {
 	// first, we reset the instance and than setup its again
 	po.reset()
 	po.r = unsigned.Uint128{
-		lo: binary.little_endian_u64(key[0..8]) & poly1305.rmask0
+		lo: binary.little_endian_u64(key[..8]) & poly1305.rmask0
 		hi: binary.little_endian_u64(key[8..16]) & poly1305.rmask1
 	}
 	po.s = unsigned.Uint128{
@@ -264,7 +264,7 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 			// and stored into the 128 bits of Uint128
 			block := msg[idx..idx + poly1305.block_size]
 			m := unsigned.Uint128{
-				lo: binary.little_endian_u64(block[0..8])
+				lo: binary.little_endian_u64(block[..8])
 				hi: binary.little_endian_u64(block[8..16])
 			}
 			// add msg block to accumulator, h += m
@@ -288,7 +288,7 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 			buf[msglen] = u8(0x01)
 			// loads 16 bytes of message block
 			m := unsigned.Uint128{
-				lo: binary.little_endian_u64(buf[0..8])
+				lo: binary.little_endian_u64(buf[..8])
 				hi: binary.little_endian_u64(buf[8..16])
 			}
 
@@ -326,7 +326,7 @@ fn finalize(mut out []u8, mut ac Uint192, s unsigned.Uint128) {
 	tag, _ := h.add_128_checked(s, 0)
 
 	// take only low 128 bit of x
-	binary.little_endian_put_u64(mut out[0..8], tag.lo)
+	binary.little_endian_put_u64(mut out[..8], tag.lo)
 	binary.little_endian_put_u64(mut out[8..16], tag.mi)
 }
 

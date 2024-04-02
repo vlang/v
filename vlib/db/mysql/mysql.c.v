@@ -443,7 +443,7 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 		if code == mysql_no_data {
 			break
 		}
-		lengths := length[0..num_cols].clone()
+		lengths := length[..num_cols].clone()
 		mut row := Row{}
 		for i in 0 .. num_cols {
 			l := lengths[i]

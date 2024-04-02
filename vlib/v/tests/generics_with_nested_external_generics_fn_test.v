@@ -6,7 +6,7 @@ pub fn sample[T](arr []T, k int) ![]T {
 	rand.seed([u32(1), 2]) // set seed to produce same results in order
 	rand.shuffle[T](mut result)!
 
-	return result[0..k]
+	return result[..k]
 }
 
 fn test_generics_with_nested_external_generics_fn() {

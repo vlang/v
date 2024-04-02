@@ -2585,7 +2585,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& ast.nil_type !in [got_type, expected_type]
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
 		&& !expected_type.has_flag(.option) && !expected_type.has_flag(.result) {
-		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
+		shared_styp := exp_styp[..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
 		if got_type_raw.is_ptr() {
 			g.error('cannot convert reference to `shared`', expr.pos())
 		}

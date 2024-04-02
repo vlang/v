@@ -27,7 +27,7 @@ fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	mut x2 := cc2
 	mut x3 := cc3
 
-	mut x4 := binary.little_endian_u32(key[0..4])
+	mut x4 := binary.little_endian_u32(key[..4])
 	mut x5 := binary.little_endian_u32(key[4..8])
 	mut x6 := binary.little_endian_u32(key[8..12])
 	mut x7 := binary.little_endian_u32(key[12..16])
@@ -38,7 +38,7 @@ fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	mut x11 := binary.little_endian_u32(key[28..32])
 
 	// we have no counter
-	mut x12 := binary.little_endian_u32(nonce[0..4])
+	mut x12 := binary.little_endian_u32(nonce[..4])
 	mut x13 := binary.little_endian_u32(nonce[4..8])
 	mut x14 := binary.little_endian_u32(nonce[8..12])
 	mut x15 := binary.little_endian_u32(nonce[12..16])
@@ -62,7 +62,7 @@ fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	// last 128 bits (16 bytes) of the ChaCha state (both little-endian) are
 	// concatenated, and this 256-bit (32 bytes) subkey is returned.
 	mut out := []u8{len: 32}
-	binary.little_endian_put_u32(mut out[0..4], x0)
+	binary.little_endian_put_u32(mut out[..4], x0)
 	binary.little_endian_put_u32(mut out[4..8], x1)
 	binary.little_endian_put_u32(mut out[8..12], x2)
 	binary.little_endian_put_u32(mut out[12..16], x3)
@@ -84,7 +84,7 @@ fn xchacha20_encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 fn xchacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
 	// bound check elimination
 	_ = nonce[x_nonce_size - 1]
-	subkey := xchacha20(key, nonce[0..16])!
+	subkey := xchacha20(key, nonce[..16])!
 	mut cnonce := nonce[16..24].clone()
 
 	cnonce.prepend([u8(0x00), 0x00, 0x00, 0x00])

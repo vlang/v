@@ -132,7 +132,7 @@ pub fn h_divider(divider string) string {
 	} else {
 		result = ' '.repeat(1 + cols)
 	}
-	return result[0..cols]
+	return result[..cols]
 }
 
 // header_left returns a horizontal divider line with a title text on the left.
@@ -143,9 +143,9 @@ pub fn header_left(text string, divider string) string {
 	xcols, _ := get_terminal_size() // can get 0 in lldb/gdb
 	cols := imax(1, xcols)
 	relement := if divider.len > 0 { divider } else { ' ' }
-	hstart := relement.repeat(4)[0..4]
+	hstart := relement.repeat(4)[..4]
 	remaining_cols := imax(0, (cols - (hstart.len + 1 + plain_text.len + 1)))
-	hend := relement.repeat((remaining_cols + 1) / relement.len)[0..remaining_cols]
+	hend := relement.repeat((remaining_cols + 1) / relement.len)[..remaining_cols]
 	return '${hstart} ${text} ${hend}'
 }
 
@@ -167,14 +167,14 @@ pub fn header(text string, divider string) string {
 	tstart := imax(0, (cols - tlimit_aligned) / 2)
 	mut ln := ''
 	if divider.len > 0 {
-		ln = divider.repeat(1 + cols / divider.len)[0..cols]
+		ln = divider.repeat(1 + cols / divider.len)[..cols]
 	} else {
 		ln = ' '.repeat(1 + cols)
 	}
 	if ln.len == 1 {
-		return ln + ' ' + text[0..tlimit] + ' ' + ln
+		return ln + ' ' + text[..tlimit] + ' ' + ln
 	}
-	return ln[0..tstart] + ' ' + text[0..tlimit] + ' ' + ln[tstart + tlimit + 2..cols]
+	return ln[..tstart] + ' ' + text[..tlimit] + ' ' + ln[tstart + tlimit + 2..cols]
 }
 
 fn imax(x int, y int) int {

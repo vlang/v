@@ -73,7 +73,7 @@ fn (ctx Context) watch_for_changes(file string) {
 		if timestamp != new_timestamp {
 			ctx.write_file_or_print(file)
 			if ctx.is_compile {
-				file_name := file[0..(file.len - os.file_ext(file).len)]
+				file_name := file[..(file.len - os.file_ext(file).len)]
 				os.system('v -o ${file_name}.c ${file}')
 			}
 		}
@@ -109,7 +109,7 @@ fn check_file(file string) {
 fn json_file(file string) string {
 	ast_json := json(file)
 	// support .v and .vsh file
-	file_name := file[0..(file.len - os.file_ext(file).len)]
+	file_name := file[..(file.len - os.file_ext(file).len)]
 	json_file := file_name + '.json'
 	os.write_file(json_file, ast_json) or { panic(err) }
 	return json_file

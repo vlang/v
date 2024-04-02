@@ -33,11 +33,11 @@ fn exec(cmd string) (string, int, string) {
 
 	for p.is_alive() {
 		if data := p.pipe_read(.stderr) {
-			eprintln('p.pipe_read .stderr, len: ${data.len:4} | data: `${data#[0..10]}`...')
+			eprintln('p.pipe_read .stderr, len: ${data.len:4} | data: `${data#[..10]}`...')
 			er << data
 		}
 		if data := p.pipe_read(.stdout) {
-			eprintln('p.pipe_read .stdout, len: ${data.len:4} | data: `${data#[0..10]}`...')
+			eprintln('p.pipe_read .stdout, len: ${data.len:4} | data: `${data#[..10]}`...')
 			out << data
 		}
 		// avoid a busy loop, by sleeping a bit between each iteration

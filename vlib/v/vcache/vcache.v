@@ -85,7 +85,7 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 		a := hash.sum64_string(hk, 5).hex_full()
 		b := hash.sum64_string(hk, 7).hex_full()
 		khash := a + b
-		prefix := khash[0..2]
+		prefix := khash[..2]
 		cprefix_folder := os.join_path(cm.basepath, prefix)
 		cpath = os.join_path(cprefix_folder, khash)
 		if !os.is_dir(cprefix_folder) {

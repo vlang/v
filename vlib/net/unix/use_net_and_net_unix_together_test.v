@@ -31,8 +31,8 @@ fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() {
 	c.write_string(data)!
 	mut buf := []u8{len: 100}
 	assert c.read(mut buf)! == data.len
-	eprintln('< client read back buf: |${buf[0..data.len].bytestr()}|')
-	assert buf[0..data.len] == data.bytes()
+	eprintln('< client read back buf: |${buf[..data.len].bytestr()}|')
+	assert buf[..data.len] == data.bytes()
 }
 
 fn perror(s string) ! {
