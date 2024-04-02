@@ -74,7 +74,8 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
-	f.imports(f.file.imports) // now that we have all autoimports, handle them
+	// Format after file import symbols are processed.
+	f.imports()
 	res := f.out.str().trim_space() + '\n'
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
@@ -326,42 +327,33 @@ pub fn (mut f Fmt) mark_import_as_used(name string) {
 	f.used_imports[mod] = true
 }
 
-pub fn (mut f Fmt) imports(imports []ast.Import) {
-	if f.did_imports || imports.len == 0 {
+pub fn (mut f Fmt) imports() {
+	if f.did_imports || f.file.imports.len == 0 {
 		return
 	}
 	f.did_imports = true
-	mut num_imports := 0
 	mut already_imported := map[string]bool{}
-
-	for imp in imports {
-		if imp.mod !in f.used_imports {
-			// TODO: bring back once only unused imports are removed
-			// continue
-		}
-		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
-			continue
-		}
-		import_text := 'import ${f.imp_stmt_str(imp)}'
-		if already_imported[import_text] {
-			continue
-		}
-		already_imported[import_text] = true
-
+	for imp in f.file.imports {
 		if !f.format_state.is_vfmt_on {
-			import_original_source_lines := f.get_source_lines()#[imp.pos.line_nr..
-				imp.pos.last_line + 1].join('\n')
-			f.out_imports.writeln(import_original_source_lines)
-			// NOTE: imp.comments are on the *same line*, so they are already included in import_original_source_lines
+			unformatted_imp_src := f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
+			// Same line comments(`imp.comments`) are included in the `unformatted_imp_src`.
+			f.out_imports.writeln(unformatted_imp_src)
 			f.import_comments(imp.next_comments)
-		} else {
-			f.out_imports.writeln(import_text)
-			f.import_comments(imp.comments, same_line: true)
-			f.import_comments(imp.next_comments)
+			continue
 		}
-		num_imports++
+		// Remove unused import, keep its comments.
+		if (already_imported[imp.mod] || !f.used_imports[imp.mod]
+			|| imp.alias.starts_with('v.preludes')) && imp.alias != '_' {
+			f.import_comments(imp.comments)
+			f.import_comments(imp.next_comments)
+			continue
+		}
+		already_imported[imp.mod] = true
+		f.out_imports.writeln('import ${f.imp_stmt_str(imp)}')
+		f.import_comments(imp.comments, same_line: true)
+		f.import_comments(imp.next_comments)
 	}
-	if num_imports > 0 {
+	if already_imported.len > 0 {
 		f.out_imports.writeln('')
 	}
 }
