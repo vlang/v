@@ -55,7 +55,7 @@ fn process_files(files []string) ! {
 		}
 		total_files++
 		// do not measure the scanning, but only the parsing:
-		mut p := new_parser(f, .skip_comments, table, pref_)
+		mut p := new_parser(f, comments_mode, table, pref_)
 		///
 		sw.restart()
 		ast_file := p.parse()
