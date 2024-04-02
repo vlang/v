@@ -329,24 +329,28 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		return
 	}
 	f.did_imports = true
-	// Check for duplicates.
 	mut processed_imports := map[string]bool{}
 	for imp in imports {
-		if processed_imports[imp.mod] || (!f.used_imports[imp.mod] && f.auto_imports[imp.mod]) {
-			// Skip duplicates and inherit imports, e.g., `sync` when when using channels.
+		if !f.used_imports[imp.mod] && f.auto_imports[imp.mod] {
+			// Skip hidden imports like preludes.
 			continue
 		}
-		processed_imports[imp.mod] = true
+		imp_stmt := f.imp_stmt_str(imp)
+		if processed_imports[imp_stmt] {
+			// Skip duplicates.
+			continue
+		}
+		processed_imports[imp_stmt] = true
 		if !f.format_state.is_vfmt_on {
 			original_imp_line := f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
 			// Same line comments(`imp.comments`) are included in the `original_imp_line`.
 			f.out_imports.writeln(original_imp_line)
 			f.import_comments(imp.next_comments)
-			continue
+		} else {
+			f.out_imports.writeln('import ${imp_stmt}')
+			f.import_comments(imp.comments, same_line: true)
+			f.import_comments(imp.next_comments)
 		}
-		f.out_imports.writeln('import ${f.imp_stmt_str(imp)}')
-		f.import_comments(imp.comments, same_line: true)
-		f.import_comments(imp.next_comments)
 	}
 	if processed_imports.len > 0 {
 		f.out_imports.writeln('')
