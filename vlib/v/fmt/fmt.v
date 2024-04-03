@@ -317,11 +317,16 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 }
 
 pub fn (mut f Fmt) mark_import_as_used(name string) {
-	mod, sym := name.rsplit_once('.') or { '', name }
-	f.import_syms_used[sym] = true
-	if mod != '' {
-		f.used_imports[mod] = true
+	parts := name.split('.')
+	sym := parts.last()
+	if sym in f.import_syms_used {
+		f.import_syms_used[sym] = true
 	}
+	if parts.len == 1 {
+		return
+	}
+	mod := parts[..parts.len - 1].join('.')
+	f.used_imports[mod] = true
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
