@@ -2,6 +2,10 @@ import v.util.version
 import os
 
 fn test_githash() {
+	if !os.exists(os.join_path(@VMODROOT, '.git')) {
+		eprintln('> skipping test due to missing V .git directory')
+		return
+	}
 	sha := version.githash(@VMODROOT)!
 	assert sha == @VCURRENTHASH
 
@@ -10,14 +14,25 @@ fn test_githash() {
 		os.rmdir_all(git_proj_path) or {}
 	}
 	os.execute_opt('git init ${git_proj_path}')!
+	os.chdir(git_proj_path)!
+	if sha_ := version.githash(git_proj_path) {
+		assert false, 'Should not have found an unknown revision'
+	} else {
+		assert err.msg().contains('failed to find revision file'), err.msg()
+	}
 	os.execute_opt('git config user.name') or {
 		os.execute_opt('git config user.email "ci@vlang.io"')!
 		os.execute_opt('git config user.name "V CI"')!
 	}
-	os.chdir(git_proj_path)!
 	os.write_file('v.mod', '')!
 	os.execute_opt('git add .')!
-	os.execute_opt('git commit -m "test"')!
+	os.execute_opt('git commit -m "test1"')!
 	test_rev := os.execute_opt('git rev-parse HEAD')!.output[..7]
-	assert version.githash(git_proj_path)! == test_rev
+	assert test_rev == version.githash(git_proj_path)!
+	os.write_file('README.md', '')!
+	os.execute_opt('git add .')!
+	os.execute_opt('git commit -m "test2"')!
+	test_rev2 := os.execute_opt('git rev-parse HEAD')!.output[..7]
+	assert test_rev2 != test_rev
+	assert test_rev2 == version.githash(git_proj_path)!
 }
