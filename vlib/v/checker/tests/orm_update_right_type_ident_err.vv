@@ -1,0 +1,18 @@
+module main
+
+import db.sqlite
+
+pub struct SeoBlock {
+    pub:
+    seo_f1 string
+    seo_is_f1_capitalize bool
+    seo_params string
+}
+
+fn main() {
+	db := sqlite.connect('test.db') or { panic(err) }
+
+    sql db {
+        update SeoBlock set seo_f1 = seo_f1 where seo_f1 == ""
+    } or { panic(err) }
+}
