@@ -228,6 +228,7 @@ pub fn (mut b Builder) str() string {
 	b << u8(0)
 	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
 	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
+	unsafe { free(bcopy) }
 	b.trim(0)
 	return s
 }
