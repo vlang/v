@@ -10,6 +10,10 @@ fn test_githash() {
 		os.rmdir_all(git_proj_path) or {}
 	}
 	os.execute_opt('git init ${git_proj_path}')!
+	os.execute_opt('git config user.name') or {
+		os.execute_opt('git config user.email "ci@vlang.io"')!
+		os.execute_opt('git config user.name "V CI"')!
+	}
 	os.chdir(git_proj_path)!
 	os.write_file('v.mod', '')!
 	os.execute_opt('git add .')!
