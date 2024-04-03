@@ -38,26 +38,26 @@ pub fn githash(path string) !string {
 	// .git/HEAD
 	git_head_file := os.join_path(path, '.git', 'HEAD')
 	if !os.exists(git_head_file) {
-		return error('failed to find HEAD in: ${path}')
+		return error('failed to find `${git_head_file}`')
 	}
 	// 'ref: refs/heads/master' ... the current branch name
 	head_content := os.read_file(git_head_file) or {
-		return error('failed to read HEAD in: ${path}')
+		return error('failed to read `${git_head_file}`')
 	}
 	current_branch_hash := if head_content.starts_with('ref: ') {
-		gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
-		gcbranch_file := os.join_path(path, '.git', gcbranch_rel_path)
+		rev_rel_path := head_content.replace('ref: ', '').trim_space()
+		rev_file := os.join_path(path, '.git', rev_rel_path)
 		// .git/refs/heads/master
-		if !os.exists(gcbranch_file) {
-			return error('failed to find branch in: ${path}')
+		if !os.exists(rev_file) {
+			return error('failed to find revision file `${rev_file}`')
 		}
 		// get the full commit hash contained in the ref heads file
-		os.read_file(gcbranch_file) or { return error('failed to read branch in: ${path}') }
+		os.read_file(rev_file) or { return error('failed to read revision file `${rev_file}`') }
 	} else {
 		head_content
 	}
 	desired_hash_length := 7
 	return current_branch_hash[0..desired_hash_length] or {
-		error('failed to trim hash: ${current_branch_hash}')
+		error('failed to limit hash `${current_branch_hash}` to ${desired_hash_length} characters')
 	}
 }
