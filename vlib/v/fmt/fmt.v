@@ -343,6 +343,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		imp_stmt := f.imp_stmt_str(imp)
 		if imp_stmt in processed_imports {
 			// Skip duplicates.
+			f.import_comments(imp.next_comments)
 			continue
 		}
 		processed_imports[imp_stmt] = true
