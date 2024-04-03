@@ -31,7 +31,7 @@ pub mut:
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
-	import_pos         int // position of the imports in the resulting string for later autoimports insertion
+	import_pos         int // position of the imports in the resulting string
 	auto_imports       map[string]bool   // potentially hidden imports(`sync` when using channels) and preludes(when embedding files)
 	used_imports       map[string]bool   // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols
@@ -331,12 +331,12 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	f.did_imports = true
 	mut processed_imports := map[string]bool{}
 	for imp in imports {
-		if !f.used_imports[imp.mod] && f.auto_imports[imp.mod] {
+		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
 			// Skip hidden imports like preludes.
 			continue
 		}
 		imp_stmt := f.imp_stmt_str(imp)
-		if processed_imports[imp_stmt] {
+		if imp_stmt in processed_imports {
 			// Skip duplicates.
 			continue
 		}
