@@ -6,7 +6,7 @@ import net.http
 
 const vexe = os.getenv('VEXE')
 const vroot = os.dir(vexe)
-const port = 28872
+const port = 48872
 const welcome_text = 'Welcome to our simple vweb server'
 
 // Use a known good http client like `curl` (if it exists):
