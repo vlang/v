@@ -1980,8 +1980,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			if node.name.contains('__static__') {
 				f.write_static_method(node.name, name)
 			} else {
-				f.write(name)
 				f.mark_import_as_used(name)
+				f.write(name)
 			}
 		}
 	}
