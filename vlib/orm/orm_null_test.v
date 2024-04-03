@@ -227,10 +227,10 @@ struct Bar {
 	age  int
 }
 
-fn update_bar1(db MockDB, id u64, name ?string) ! {
+fn update_bar1(db MockDB, id u64, name_ ?string) ! {
 	foo := 66
 	sql db {
-		update Bar set name = name, age = age + 3 + foo where id == id
+		update Bar set name = name_, age = age + 3 + foo where id == id
 	}!
 }
 
