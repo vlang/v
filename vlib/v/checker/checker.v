@@ -3525,9 +3525,9 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 				c.error('@VMODHASH can only be used in projects that have a v.mod file',
 					node.pos)
 			}
-			hash := version.githash(os.dir(vmod_file_location.vmod_file), false)
-			if hash == '' {
-				c.error('failed to find commit hash', node.pos)
+			hash := version.githash(os.dir(vmod_file_location.vmod_file)) or {
+				c.error(err.msg(), node.pos)
+				''
 			}
 			node.val = hash
 		}
