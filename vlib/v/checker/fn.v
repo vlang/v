@@ -794,7 +794,20 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		c.expected_type = ast.string_type
 		node.args[1].typ = c.expr(mut node.args[1].expr)
-		if node.args[1].typ != ast.string_type {
+		if node.args[1].typ == ast.string_type {
+			if node.args[1].expr is ast.StringLiteral {
+				str_arg := node.args[1].expr
+				if str_arg.val.len > 2 && str_arg.val[0] != `{` && str_arg.val[0] != `[` {
+					c.error('json.decode: invalid json string', str_arg.pos)
+				}
+			} else if node.args[1].expr is ast.Ident && node.args[1].expr.obj is ast.Var {
+				str_var := (node.args[1].expr.obj as ast.Var).expr
+				str_var_val := str_var.str()
+				if str_var_val.len > 2 && str_var_val[0] != `{` && str_var_val[0] != `[` {
+					c.error('json.decode: invalid json string', str_var.pos())
+				}
+			}
+		} else {
 			c.error('json.decode: second argument needs to be a string', node.pos)
 		}
 		typ := expr as ast.TypeNode
