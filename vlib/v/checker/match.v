@@ -536,7 +536,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 	}
 	if node.branches.len == 0 {
-		c.error('`match` must have at least two branches including `else`, or an exhaustive set of branches', node.pos)
+		c.error('`match` must have at least two branches including `else`, or an exhaustive set of branches',
+			node.pos)
 		return
 	}
 	mut else_branch := node.branches.last()
