@@ -1,0 +1,10 @@
+import json
+
+struct TestStruct {
+	host string
+}
+
+txt := '"{"host": "localhost"}'
+json.decode(TestStruct, txt)!
+json.decode(TestStruct, txt.trim_string_right('"'))!
+json.decode(TestStruct, 'h{ost: "localhost"}')!
