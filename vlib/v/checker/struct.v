@@ -740,11 +740,24 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 			for i, mut field in fields {
 				if field.name in inited_fields {
-					if c.mod != type_sym.mod && field.is_deprecated {
-						for init_field in node.init_fields {
-							if field.name == init_field.name {
-								c.deprecate('field', field.name, field.attrs, init_field.pos)
-								break
+					if c.mod != type_sym.mod {
+						// TODO: fix marking fields as pub on interop structs.
+						if !field.is_pub && type_sym.language == .v {
+							parts := type_sym.name.split('.')
+							mod_type := if parts.len > 1 {
+								parts#[-2..].join('.')
+							} else {
+								parts.last()
+							}
+							c.error('cannot access private field `${field.name}` on `${mod_type}`',
+								node.pos)
+						}
+						if field.is_deprecated {
+							for init_field in node.init_fields {
+								if field.name == init_field.name {
+									c.deprecate('field', field.name, field.attrs, init_field.pos)
+									break
+								}
 							}
 						}
 					}
