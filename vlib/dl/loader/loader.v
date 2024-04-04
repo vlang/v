@@ -68,7 +68,7 @@ pub:
 fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	mut paths := []string{}
 
-	if conf.env_path.len > 0 {
+	if conf.env_path != '' {
 		if env_path := os.getenv_opt(conf.env_path) {
 			paths << env_path.split(os.path_delimiter)
 		}

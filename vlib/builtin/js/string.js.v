@@ -287,7 +287,7 @@ pub fn (s string) u8() u64 {
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
 @[direct_array_access]
 pub fn (s string) trim_right(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 
@@ -317,7 +317,7 @@ pub fn (s string) trim_right(cutset string) string {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 @[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos := 0
@@ -924,7 +924,7 @@ pub fn (s string) reverse() string {
 }
 
 pub fn (s string) trim(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos_left := 0

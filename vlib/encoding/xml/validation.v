@@ -75,7 +75,7 @@ pub fn (doc XMLDocument) validate() !XMLDocument {
 			new_root := doc.root.validate(elements, entities)!
 
 			// Check the DOCTYPE name matches the root name
-			if doc.doctype.name.len > 0 && doc.doctype.name != new_root.name {
+			if doc.doctype.name != '' && doc.doctype.name != new_root.name {
 				return error('Root element ${new_root.name} does not match DOCTYPE ${doc.doctype.name}')
 			}
 

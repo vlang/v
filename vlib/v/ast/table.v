@@ -138,7 +138,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 			sig += 'mut '
 		}
 		// Note: arg name is only added for fmt, else it would causes errors with generics
-		if t.is_fmt && arg.name.len > 0 {
+		if t.is_fmt && arg.name != '' {
 			sig += '${arg.name} '
 		}
 		arg_type_sym := t.sym(arg.typ)
@@ -1196,13 +1196,13 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 }
 
 pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool) int {
-	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
-	cname := if f.name.len == 0 {
+	name := if f.name == '' { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
+	cname := if f.name == '' {
 		'anon_fn_${t.fn_type_signature(f)}'
 	} else {
 		util.no_dots(f.name.clone()).replace_each(ast.fn_type_escape_seq)
 	}
-	anon := f.name.len == 0 || is_anon
+	anon := f.name == '' || is_anon
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx

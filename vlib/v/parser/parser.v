@@ -2790,9 +2790,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
 		if (is_option || p.peek_tok.kind in [.lsbr, .lt, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
-			|| (language == .v && name.len > 0 && (name[0].is_capital()
-			|| (!known_var && (name in p.table.type_idxs
-			|| name_w_mod in p.table.type_idxs))
+			|| (language == .v && name != '' && (name[0].is_capital() || (!known_var
+			&& (name in p.table.type_idxs || name_w_mod in p.table.type_idxs))
 			|| name.all_after_last('.')[0].is_capital()))) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO: handle C.stat()
@@ -3393,7 +3392,7 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 			p.check(.comma)
 		}
 		name := p.tok.lit
-		if name.len > 0 && !name[0].is_capital() {
+		if name != '' && !name[0].is_capital() {
 			p.error('generic parameter needs to be uppercase')
 		}
 		if name.len > 1 {

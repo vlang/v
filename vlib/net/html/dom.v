@@ -36,7 +36,7 @@ fn (mut dom DocumentObjectModel) print_debug(data string) {
 
 @[inline]
 fn is_close_tag(tag &Tag) bool {
-	return tag.name.len > 0 && tag.name[0] == `/`
+	return tag.name != '' && tag.name[0] == `/`
 }
 
 fn (mut dom DocumentObjectModel) where_is(item_name string, attribute_name string) int {
@@ -138,7 +138,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				stack.push(root_index)
 			}
 			dom.print_debug('Removed ' + temp_string + ' -- ' + tag_list[temp_int].name)
-		} else if tag.name.len > 0 {
+		} else if tag.name != '' {
 			dom.add_tag_attribute(tag) // error here
 			dom.add_tag_by_attribute(tag)
 			dom.add_tag_by_type(tag)

@@ -299,7 +299,7 @@ fn (upd VlsUpdater) find_ls_path() !string {
 	if 'server_path' in manifest {
 		server_path := manifest['server_path'] or { return error('none') }
 		if server_path is string {
-			if server_path.len == 0 {
+			if server_path == '' {
 				return error('none')
 			}
 
@@ -361,7 +361,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 	}
 
 	if upd.pass_to_ls {
-		if upd.ls_path.len == 0 {
+		if upd.ls_path == '' {
 			if ls_path := upd.find_ls_path() {
 				if !upd.is_force && upd.setup_kind == .install {
 					return error_with_code('VLS was already installed.', 102)
@@ -445,7 +445,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 }
 
 fn (upd VlsUpdater) check_installation() {
-	if upd.ls_path.len == 0 {
+	if upd.ls_path == '' {
 		upd.log('Language server is not installed')
 	} else {
 		upd.log('Language server is installed at: ${upd.ls_path}'.split(r'\').join(r'\\'))

@@ -162,7 +162,7 @@ pub fn utime(path string, actime int, modtime int) ! {
 }
 
 pub fn ls(path string) ![]string {
-	if path.len == 0 {
+	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut find_file_data := Win32finddata{}

@@ -1359,7 +1359,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else {
 				if res.starts_with('fn (') {
 					// fn foo ()
-					has_names := info.func.params.any(it.name.len > 0)
+					has_names := info.func.params.any(it.name != '')
 					res = t.fn_signature_using_aliases(info.func, import_aliases,
 						type_only: !has_names
 					)

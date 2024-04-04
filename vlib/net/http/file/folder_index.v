@@ -60,7 +60,7 @@ fn write_page_table(mut sb strings.Builder, uri_path string, requested_file_path
 	sb.writeln('<th align="left" style="width: 200px">Last modified</th>')
 	sb.writeln('<th align="left">Name</th>')
 	sb.writeln('</tr>')
-	if uri_path.len == 0 {
+	if uri_path == '' {
 		sb.writeln('<tr>')
 		sb.writeln('<td>---</td>')
 		sb.writeln('<td>---</td>')

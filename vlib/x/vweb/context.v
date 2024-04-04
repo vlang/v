@@ -100,7 +100,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
 	ctx.res.header.set(.content_type, custom_mimetype)
-	if ctx.res.body.len > 0 {
+	if ctx.res.body != '' {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send vweb's closing headers

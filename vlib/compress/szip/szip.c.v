@@ -95,7 +95,7 @@ fn (om OpenMode) to_u8() u8 {
 // level: can be any value of the CompressionLevel enum.
 // mode: can be any value of the OpenMode enum.
 pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
-	if name.len == 0 {
+	if name == '' {
 		return error('szip: name of file empty')
 	}
 	p_zip := unsafe { &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_u8()))) }

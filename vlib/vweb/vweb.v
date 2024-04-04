@@ -1059,7 +1059,7 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://localhost/assets/main.css .
 pub fn (mut ctx Context) host_mount_static_folder_at(host string, directory_path string, mount_path string) bool {
-	if ctx.done || mount_path.len < 1 || mount_path[0] != `/` || !os.exists(directory_path) {
+	if ctx.done || mount_path == '' || mount_path[0] != `/` || !os.exists(directory_path) {
 		return false
 	}
 	dir_path := directory_path.trim_right('/')

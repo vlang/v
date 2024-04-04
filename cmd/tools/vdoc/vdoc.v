@@ -260,7 +260,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		path: cfg.output_path
 		typ: cfg.output_type
 	}
-	if out.path.len == 0 {
+	if out.path == '' {
 		if cfg.output_type == .unset {
 			out.typ = .ansi
 		} else {
@@ -348,7 +348,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	vd.vprintln('Rendering docs...')
-	if out.path.len == 0 || out.path == 'stdout' || out.path == '-' {
+	if out.path == '' || out.path == 'stdout' || out.path == '-' {
 		if out.typ == .html {
 			vd.render_static_html(out)
 		}
