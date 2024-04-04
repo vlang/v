@@ -1,0 +1,33 @@
+vlib/v/checker/tests/match_missing.vv:1:1: error: `match` must have at least two branches including `else`, or an exhaustive set of branches
+    1 | match true {
+      | ~~~~~
+    2 | }
+    3 |
+vlib/v/checker/tests/match_missing.vv:5:2: error: `match` can have only one `else` branch
+    3 | 
+    4 | match true {
+    5 |     else {}
+      |     ~~~~
+    6 |     else {}
+    7 | }
+vlib/v/checker/tests/match_missing.vv:5:2: error: `else` must be the last branch of `match`
+    3 | 
+    4 | match true {
+    5 |     else {}
+      |     ~~~~
+    6 |     else {}
+    7 | }
+vlib/v/checker/tests/match_missing.vv:5:2: error: `match` must have at least one non `else` branch
+    3 | 
+    4 | match true {
+    5 |     else {}
+      |     ~~~~
+    6 |     else {}
+    7 | }
+vlib/v/checker/tests/match_missing.vv:9:1: error: match must be exhaustive (add match branches for: `true`, `false` or `else {}` at the end)
+    7 | }
+    8 | 
+    9 | match true {
+      | ~~~~~~~~~~~~
+   10 |     'foo' == 'bar' {}
+   11 | }

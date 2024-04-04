@@ -535,16 +535,27 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	}
+	if node.branches.len == 0 {
+		c.error('`match` must have at least two branches including `else`, or an exhaustive set of branches',
+			node.pos)
+		return
+	}
 	mut else_branch := node.branches.last()
-	mut has_else := else_branch.is_else
-	if !has_else {
-		for i, branch in node.branches {
-			if branch.is_else && i != node.branches.len - 1 {
-				c.error('`else` must be the last branch of `match`', branch.pos)
-				else_branch = branch
-				has_else = true
+	mut has_else, mut has_non_else := else_branch.is_else, !else_branch.is_else
+	for branch in node.branches[..node.branches.len - 1] {
+		if branch.is_else {
+			if has_else {
+				c.error('`match` can have only one `else` branch', branch.pos)
 			}
+			c.error('`else` must be the last branch of `match`', branch.pos)
+			else_branch = branch
+			has_else = true
+		} else {
+			has_non_else = true
 		}
+	}
+	if !has_non_else {
+		c.error('`match` must have at least one non `else` branch', else_branch.pos)
 	}
 	if is_exhaustive {
 		if has_else && !c.pref.translated && !c.file.is_translated {
