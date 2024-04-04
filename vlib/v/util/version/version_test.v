@@ -27,12 +27,12 @@ fn test_githash() {
 	os.write_file('v.mod', '')!
 	os.execute_opt('git add .')!
 	os.execute_opt('git commit -m "test1"')!
-	test_rev := os.execute_opt('git rev-parse HEAD')!.output[..7]
+	test_rev := os.execute_opt('git rev-parse --short HEAD')!.output.trim_space()
 	assert test_rev == version.githash(git_proj_path)!
 	os.write_file('README.md', '')!
 	os.execute_opt('git add .')!
 	os.execute_opt('git commit -m "test2"')!
-	test_rev2 := os.execute_opt('git rev-parse HEAD')!.output[..7]
+	test_rev2 := os.execute_opt('git rev-parse --short HEAD')!.output.trim_space()
 	assert test_rev2 != test_rev
 	assert test_rev2 == version.githash(git_proj_path)!
 }
