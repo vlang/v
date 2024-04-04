@@ -100,9 +100,9 @@ fn (mut zftp FTP) read() !(int, string) {
 	return code, data
 }
 
-// connect establishes an FTP connection to the host at `ip` port 21.
-pub fn (mut zftp FTP) connect(ip string) !bool {
-	zftp.conn = net.dial_tcp('${ip}:21')!
+// connect establishes an FTP connection to the host at `oaddress` (ip:port).
+pub fn (mut zftp FTP) connect(oaddress string) !bool {
+	zftp.conn = net.dial_tcp(oaddress)!
 	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
 	code, _ := zftp.read()!
 	if code == ftp.connected {
