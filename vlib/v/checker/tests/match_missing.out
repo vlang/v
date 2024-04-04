@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_missing.vv:1:1: error: `match` must have at least two branches
+vlib/v/checker/tests/match_missing.vv:1:1: error: `match` must have at least two branches including `else`, or an exhaustive set of branches
     1 | match true {
       | ~~~~~
     2 | }
