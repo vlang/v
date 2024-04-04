@@ -803,7 +803,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			} else if node.args[1].expr is ast.Ident && node.args[1].expr.obj is ast.Var {
 				str_var := (node.args[1].expr.obj as ast.Var).expr
 				str_var_val := str_var.str()
-				if str_var_val.len > 2 && str_var_val[0] != `{` && str_var_val[0] != `[` {
+				if str_var_val.len > 2 && str_var_val[1] != `{` && str_var_val[1] != `[` {
 					c.error('json.decode: invalid json string', str_var.pos())
 				}
 			}
