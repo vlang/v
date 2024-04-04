@@ -1,0 +1,12 @@
+vlib/v/checker/tests/struct_field_private_err.vv:7:11: error: cannot access private field `x` on `amod.Bcg`
+    5 | }
+    6 | 
+    7 | _ := amod.Bcg{
+      |           ~~~~
+    8 |     x: 0
+    9 | }
+vlib/v/checker/tests/struct_field_private_err.vv:11:10: error: cannot access private field `bar` on `amod.FooParams`
+    9 | }
+   10 | 
+   11 | amod.foo(bar: 'bar')
+      |          ~~~~~~~~~~~
