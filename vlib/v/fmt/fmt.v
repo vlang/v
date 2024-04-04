@@ -14,6 +14,7 @@ const bs = '\\'
 
 @[minify]
 pub struct Fmt {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	file               ast.File
@@ -56,6 +57,7 @@ pub mut:
 
 @[params]
 pub struct FmtOptions {
+pub:
 	source_text string
 }
 
@@ -167,6 +169,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 
 @[params]
 pub struct RemoveNewLineConfig {
+pub:
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
 

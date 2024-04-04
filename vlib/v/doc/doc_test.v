@@ -41,6 +41,7 @@ pub enum MouseButtons {
 	end_options := mod_doc.contents['EndOptions']
 	assert end_options.content == '@[params]
 pub struct EndOptions {
+pub:
 	how EndEnum
 }'
 	assert end_options.attrs == {

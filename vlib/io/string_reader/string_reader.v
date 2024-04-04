@@ -5,6 +5,7 @@ import strings
 
 @[params]
 pub struct StringReaderParams {
+pub:
 	// the reader interface
 	reader ?io.Reader
 	// initialize the builder with this source string

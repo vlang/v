@@ -11,6 +11,7 @@ pub const default_gravity = 4.9
 
 @[params]
 pub struct SimParams {
+pub:
 	rope_length     f64 = sim.default_rope_length
 	bearing_mass    f64 = sim.default_bearing_mass
 	magnet_spacing  f64 = sim.default_magnet_spacing

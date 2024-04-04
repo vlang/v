@@ -14,6 +14,7 @@ const utf8_max = 0x10FFFF
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {
+pub:
 	scanner &scanner.Scanner = unsafe { nil }
 }
 

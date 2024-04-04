@@ -741,8 +741,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			for i, mut field in fields {
 				if field.name in inited_fields {
 					if c.mod != type_sym.mod {
-						// TODO: fix marking fields as pub on interop structs.
-						if !field.is_pub && type_sym.language == .v {
+						if !field.is_pub {
 							parts := type_sym.name.split('.')
 							mod_type := if parts.len > 1 {
 								parts#[-2..].join('.')

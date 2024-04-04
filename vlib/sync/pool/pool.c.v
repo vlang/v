@@ -29,6 +29,7 @@ fn empty_cb(mut p PoolProcessor, idx int, task_id int) voidptr {
 }
 
 pub struct PoolProcessorConfig {
+pub:
 	maxjobs  int
 	callback ThreadCB = empty_cb
 }

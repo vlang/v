@@ -227,6 +227,7 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 
 @[params]
 pub struct RedirectParams {
+pub:
 	typ RedirectType
 }
 

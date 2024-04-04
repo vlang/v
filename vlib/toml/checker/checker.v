@@ -19,6 +19,7 @@ const utf8_max = 0x10FFFF
 
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
+pub:
 	scanner &scanner.Scanner = unsafe { nil }
 }
 

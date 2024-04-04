@@ -545,6 +545,7 @@ pub enum EndEnum {
 
 @[params]
 pub struct EndOptions {
+pub:
 	how EndEnum
 }
 

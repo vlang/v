@@ -5,6 +5,7 @@ module time
 
 @[params]
 pub struct StopWatchOptions {
+pub:
 	auto_start bool = true
 }
 

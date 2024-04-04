@@ -84,6 +84,7 @@ pub enum OPCode {
 
 @[params]
 pub struct ClientOpt {
+pub:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 	logger        &log.Logger = &log.Logger(&log.Log{

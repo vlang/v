@@ -36,7 +36,7 @@ pub const read_all_grow_len = 1024
 // of read_all.
 pub struct ReadAllConfig {
 	read_to_end_of_stream bool
-mut:
+pub:
 	reader Reader
 }
 

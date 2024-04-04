@@ -352,6 +352,7 @@ pub fn (mut h Header) free() {
 }
 
 pub struct HeaderConfig {
+pub:
 	key   CommonHeader
 	value string
 }
@@ -490,6 +491,7 @@ pub fn (mut h Header) delete_custom(key string) {
 
 @[params]
 pub struct HeaderCoerceConfig {
+pub:
 	canonicalize bool
 }
 
@@ -553,6 +555,7 @@ pub fn (h Header) contains(key CommonHeader) bool {
 
 @[params]
 pub struct HeaderQueryConfig {
+pub:
 	exact bool
 }
 
@@ -666,6 +669,7 @@ pub fn (h Header) keys() []string {
 
 @[params]
 pub struct HeaderRenderConfig {
+pub:
 	version      Version
 	coerce       bool
 	canonicalize bool

@@ -117,6 +117,7 @@ pub fn (mut r Response) set_version(v Version) {
 }
 
 pub struct ResponseConfig {
+pub:
 	version Version = .v1_1
 	status  Status  = .ok
 	header  Header

@@ -83,6 +83,7 @@ pub mut:
 // | num_packets   | 64       | for push model only, number of packets in the backend ringbuffer |
 @[typedef]
 pub struct C.saudio_desc {
+pub:
 	sample_rate        int
 	num_channels       int
 	buffer_frames      int
