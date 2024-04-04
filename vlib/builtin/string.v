@@ -578,18 +578,6 @@ pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO: t for pg, remove
 }
 
-// int returns the value of the string as an integer `'1'.int() == 1`.
-@[inline]
-pub fn (s string) int() int {
-	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
-}
-
-// i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
-@[inline]
-pub fn (s string) i64() i64 {
-	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
-}
-
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
 @[inline]
 pub fn (s string) i8() i8 {
@@ -602,6 +590,24 @@ pub fn (s string) i16() i16 {
 	return i16(strconv.common_parse_int(s, 0, 16, false, false) or { 0 })
 }
 
+// i32 returns the value of the string as i32 `'1'.i32() == i32(1)`.
+@[inline]
+pub fn (s string) i32() i32 {
+	return i32(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+}
+
+// int returns the value of the string as an integer `'1'.int() == 1`.
+@[inline]
+pub fn (s string) int() int {
+	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+}
+
+// i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
+@[inline]
+pub fn (s string) i64() i64 {
+	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
+}
+
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 @[inline]
 pub fn (s string) f32() f32 {
@@ -612,12 +618,6 @@ pub fn (s string) f32() f32 {
 @[inline]
 pub fn (s string) f64() f64 {
 	return strconv.atof64(s) or { 0 }
-}
-
-// u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
-@[inline]
-pub fn (s string) u8() u8 {
-	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
 // u8_array returns the value of the hex/bin string as u8 array.
@@ -671,6 +671,12 @@ pub fn (s string) u8_array() []u8 {
 		return ret
 	}
 	return []u8{}
+}
+
+// u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
+@[inline]
+pub fn (s string) u8() u8 {
+	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
