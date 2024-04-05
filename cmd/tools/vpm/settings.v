@@ -33,9 +33,11 @@ fn init_settings() VpmSettings {
 	dbg_env := os.getenv('VPM_DEBUG')
 
 	mut logger := &log.Log{}
-	logger.set_level(.debug)
-	if dbg_env == '' || dbg_env == '0' {
-		logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
+	if dbg_env != '0' {
+		logger.set_level(.debug)
+		if dbg_env == '' {
+			logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
+		}
 	}
 
 	return VpmSettings{
