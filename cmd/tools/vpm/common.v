@@ -241,7 +241,8 @@ fn verbose_println(msg string) {
 }
 
 fn vpm_log_header(txt string) {
-	settings.logger.debug('\n${'='.repeat(40 - txt.len / 2)} ${txt} ${'='.repeat(40 - txt.len / 2)}\n')
+	divider := '='.repeat(40 - txt.len / 2)
+	settings.logger.debug('\n${divider} ${txt} ${divider}\n')
 }
 
 fn vpm_log(line string, func string, msg string) {
