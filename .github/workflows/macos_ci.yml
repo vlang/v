@@ -29,8 +29,6 @@ jobs:
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
       - name: Test symlink
         run: ./v symlink
-      - name: Build vpm
-        run: .github/workflows/retry.sh ./v install markdown && .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       # - name: Set up pg database
       #   run: |
       #     pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
