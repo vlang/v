@@ -35,6 +35,7 @@ mut:
 	is_tty                 bool
 	last_prefix_completion []rune
 	last_completion_offset int
-	completion_list        []string
-	completion_callback    fn (string) []string = unsafe { nil }
+pub mut:
+	completion_list     []string
+	completion_callback fn (string) []string = unsafe { nil }
 }
