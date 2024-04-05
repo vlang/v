@@ -93,7 +93,7 @@ pub fn (input BitField) str() string {
 	return output
 }
 
-// new creates an empty bit array of capable of storing 'size' bits.
+// new creates an empty bit array capable of storing 'size' bits.
 pub fn new(size int) BitField {
 	output := BitField{
 		size: size
@@ -365,7 +365,7 @@ pub fn bf_xor(input1 BitField, input2 BitField) BitField {
 	return output
 }
 
-// join concatenates two bit arrays and return the result as a new array.
+// join concatenates two bit arrays and returns the result as a new array.
 pub fn join(input1 BitField, input2 BitField) BitField {
 	output_size := input1.size + input2.size
 	mut output := new(output_size)
