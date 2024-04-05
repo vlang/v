@@ -256,6 +256,28 @@ fn vweb_tmpl_${fn_name}() string {
 			source.writeln(tmpl_str_start)
 			continue
 		}
+		// @foo => ${foo}
+		/*
+		if line.contains('@') {
+			mut pos := line.index('@') or { 0 }
+			if line.len > pos + 1 && line[pos + 1].is_letter() {
+				if line.contains('img') {
+					start := pos + 1
+					for pos < line.len && line[pos] != `)` {
+						pos++
+					}
+					source.write_string('\${')
+					source.write_string(line[start..pos + 1])
+					source.write_string('}')
+					println(source.str())
+					continue
+
+					// println('@@@ ${line}')
+					// println('${line}')
+				}
+			}
+		}
+		*/
 		if state == .simple {
 			// by default, just copy 1:1
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))

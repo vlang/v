@@ -17,7 +17,8 @@ pub:
 	font_mono   int
 	font_italic int
 pub mut:
-	scale f32 = 1.0
+	fonts_map map[string]int // for storing custom fonts, provided via cfg.family in draw_text()
+	scale     f32 = 1.0
 }
 
 fn new_ft(c FTConfig) ?&FT {
@@ -124,7 +125,22 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
-	if cfg.bold {
+	if cfg.family != '' {
+		// println('set text cfg family=${cfg.family}')
+		mut f := ctx.ft.fonts_map[cfg.family]
+		if f == 0 {
+			// No such font in the cache yet, create it
+			bytes := os.read_bytes(cfg.family) or {
+				debug_font_println('failed to load font "${cfg.family}"')
+				return
+			}
+			f = ctx.ft.fons.add_font_mem(cfg.family, bytes, false)
+			unsafe {
+				ctx.ft.fonts_map[cfg.family] = f
+			}
+		}
+		ctx.ft.fons.set_font(f)
+	} else if cfg.bold {
 		ctx.ft.fons.set_font(ctx.ft.font_bold)
 	} else if cfg.mono {
 		ctx.ft.fons.set_font(ctx.ft.font_mono)
