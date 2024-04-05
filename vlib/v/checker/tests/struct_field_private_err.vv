@@ -1,4 +1,4 @@
-import amod
+import v.checker.tests.amod
 
 _ := amod.Xyz{
 	x: 0
