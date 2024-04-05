@@ -5732,6 +5732,8 @@ that are substituted at compile time:
   recompiled on a different commit (after local modifications, or after
   using git bisect etc).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
+- `@VMODHASH` => is replaced by the shortened commit hash, derived from the .git directory
+  next to the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
   where the nearest v.mod file is (as a string).
 
