@@ -312,8 +312,7 @@ pub fn (c TcpConn) str() string {
 
 pub struct TcpListener {
 pub mut:
-	sock TcpSocket
-mut:
+	sock            TcpSocket
 	accept_timeout  time.Duration
 	accept_deadline time.Time
 	is_blocking     bool = true
