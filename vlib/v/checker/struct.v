@@ -748,8 +748,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							} else {
 								parts.last()
 							}
-							c.error('cannot access private field `${field.name}` on `${mod_type}`',
-								node.pos)
+							for init_field in node.init_fields {
+								if field.name == init_field.name {
+									c.error('cannot access private field `${field.name}` on `${mod_type}`',
+										init_field.pos)
+									break
+								}
+							}
 						}
 						if field.is_deprecated {
 							for init_field in node.init_fields {
