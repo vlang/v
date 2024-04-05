@@ -7,10 +7,12 @@ import rand
 import sokol.sgl
 
 pub struct SystemConfig {
+pub:
 	pool int
 }
 
 pub struct System {
+pub:
 	width  int
 	height int
 mut:

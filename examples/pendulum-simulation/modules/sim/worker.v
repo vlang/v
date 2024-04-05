@@ -7,10 +7,10 @@ const max_iterations = 1000
 const simulation_delta_t = 0.0005
 
 pub struct SimRequest {
+pub:
 	params SimParams
 	state  SimState
-pub:
-	id int
+	id     int
 }
 
 pub struct SimResult {
