@@ -254,10 +254,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: vlang
       - name: Build V
-        run: cd vlang && make -j4 && ./v doctor
+        run: make -j4 && ./v doctor
       - name: Build vpm
         run: |
           .github/workflows/retry.sh ./v install markdown
