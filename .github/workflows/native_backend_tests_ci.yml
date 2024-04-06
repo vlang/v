@@ -78,5 +78,5 @@ jobs:
 
       - name: Run the native backend tests serially with more details
         run: |
-          v -stats vlib/v/gen/native/macho_test.v
-          v -stats vlib/v/gen/native/tests/native_test.v
+          v vlib/v/gen/native/macho_test.v
+          v vlib/v/gen/native/tests/native_test.v
