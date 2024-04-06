@@ -824,6 +824,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 				// Skip if the host does not match or is empty
 				if route.host == '' || route.host == host {
+					can_have_data_args := user_context.Context.req.method == .post
+						|| user_context.Context.req.method == .get
 					// Route immediate matches first
 					// For example URL `/register` matches route `/:user`, but `fn register()`
 					// should be called first.
@@ -836,12 +838,20 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 						}
 
-						if user_context.Context.req.method == .post && method.args.len > 1 {
-							// Populate method args with form values
+						if method.args.len > 1 && can_have_data_args {
+							// Populate method args with form or query values
 							mut args := []string{cap: method.args.len + 1}
-							for param in method.args[1..] {
-								args << user_context.Context.form[param.name]
+							data := if user_context.Context.req.method == .get {
+								user_context.Context.query
+							} else {
+								user_context.Context.form
 							}
+
+							for param in method.args[1..] {
+								val := data[param.name] or { continue }
+								args << val
+							}
+
 							app.$method(mut user_context, args)
 						} else {
 							app.$method(mut user_context)
@@ -857,7 +867,24 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 						}
 
-						app.$method(mut user_context)
+						if method.args.len > 1 && can_have_data_args {
+							// Populate method args with form or query values
+							mut args := []string{cap: method.args.len + 1}
+
+							data := if user_context.Context.req.method == .get {
+								user_context.Context.query
+							} else {
+								user_context.Context.form
+							}
+
+							for param in method.args[1..] {
+								args << data[param.name]
+							}
+
+							app.$method(mut user_context, args)
+						} else {
+							app.$method(mut user_context)
+						}
 						return
 					}
 
