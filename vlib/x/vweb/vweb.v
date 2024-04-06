@@ -848,8 +848,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 
 							for param in method.args[1..] {
-								val := data[param.name] or { continue }
-								args << val
+								args << data[param.name]
 							}
 
 							app.$method(mut user_context, args)
