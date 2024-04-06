@@ -29,7 +29,6 @@ mut:
 	file_display_path string       // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
 	unique_prefix     string       // a hash of p.file_name, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
-	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
 	tok                       token.Token
 	prev_tok                  token.Token
@@ -164,7 +163,6 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref_)
-		comments_mode: comments_mode
 		table: table
 		pref: pref_
 		scope: &ast.Scope{
@@ -246,7 +244,6 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		comments_mode: comments_mode
 		table: table
 		pref: pref_
 		scope: &ast.Scope{
@@ -271,7 +268,6 @@ pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, .parse_comments, pref_) or { panic(err) }
-		comments_mode: .parse_comments
 		table: table_
 		pref: pref_
 		scope: &ast.Scope{
@@ -371,7 +367,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
-		codegen_files << parse_text(ptext, p.file_name, mut p.table, p.comments_mode,
+		codegen_files << parse_text(ptext, p.file_name, mut p.table, p.scanner.comments_mode,
 			p.pref)
 	}
 
@@ -4515,7 +4511,7 @@ fn verror(s string) {
 }
 
 fn (mut p Parser) top_level_statement_start() {
-	if p.comments_mode == .toplevel_comments {
+	if p.scanner.comments_mode == .toplevel_comments {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if trace_scanner ? {
@@ -4525,7 +4521,7 @@ fn (mut p Parser) top_level_statement_start() {
 }
 
 fn (mut p Parser) top_level_statement_end() {
-	if p.comments_mode == .toplevel_comments {
+	if p.scanner.comments_mode == .toplevel_comments {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if trace_scanner ? {
