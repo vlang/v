@@ -539,7 +539,7 @@ pub fn get_raw_line() string {
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		str := unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
 		ret := str.clone()
-		$if !autofree ? {
+		$if !autofree {
 			unsafe {
 				if nr_chars > 0 && buf != 0 {
 					C.free(buf)
