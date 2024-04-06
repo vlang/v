@@ -743,13 +743,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					if c.mod != type_sym.mod {
 						if !field.is_pub {
 							parts := type_sym.name.split('.')
-							mod_type := if parts.len > 1 {
-								parts#[-2..].join('.')
-							} else {
-								parts.last()
-							}
 							for init_field in node.init_fields {
 								if field.name == init_field.name {
+									mod_type := if parts.len > 1 {
+										parts#[-2..].join('.')
+									} else {
+										parts.last()
+									}
 									c.error('cannot access private field `${field.name}` on `${mod_type}`',
 										init_field.pos)
 									break

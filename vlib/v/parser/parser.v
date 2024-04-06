@@ -105,10 +105,9 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner        &scanner.Scanner     = unsafe { nil }
-	comments_mode  scanner.CommentsMode = .skip_comments
-	table          &ast.Table = unsafe { nil }
-	scope          &ast.Scope = unsafe { nil }
+	scanner        &scanner.Scanner = unsafe { nil }
+	table          &ast.Table       = unsafe { nil }
+	scope          &ast.Scope       = unsafe { nil }
 	errors         []errors.Error
 	warnings       []errors.Warning
 	notices        []errors.Notice
