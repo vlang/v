@@ -72,6 +72,9 @@ fn run_fmt(mut input_files []string) {
 fn test_fmt() {
 	mut input_files := os.walk_ext(os.join_path(tdir, 'tests'), '_input.vv')
 	run_fmt(mut input_files)
+
+	input_files = os.walk_ext(os.join_path(tdir, 'testdata', 'vmodules'), '_input.vv')
+	run_fmt(mut input_files)
 }
 
 fn test_fmt_vmodules() {
