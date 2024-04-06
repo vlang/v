@@ -102,6 +102,7 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
+		f.mod2alias[imp.mod.all_after('${file.mod.name}.')] = imp.alias
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.${sym.name}'] = sym.name
 			f.mod2alias['${imp.mod.all_after_last('.')}.${sym.name}'] = sym.name
