@@ -20,6 +20,10 @@ fn main() {
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
+	vpm_log_header('vpm start')
+	defer {
+		vpm_log_header('vpm exit')
+	}
 	params := cmdline.only_non_options(os.args[1..])
 	vpm_log(@FILE_LINE, @FN, 'params: ${params}')
 	if params.len < 1 {
