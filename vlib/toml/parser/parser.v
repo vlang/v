@@ -10,12 +10,10 @@ import toml.util
 import toml.token
 import toml.scanner
 
-pub const (
-	all_formatting            = [token.Kind.whitespace, .tab, .cr, .nl]
-	space_formatting          = [token.Kind.whitespace, .tab]
-	keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
-		.number, .underscore]
-)
+pub const all_formatting = [token.Kind.whitespace, .tab, .cr, .nl]
+pub const space_formatting = [token.Kind.whitespace, .tab]
+pub const keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
+	.number, .underscore]
 
 type DottedKey = []string
 
@@ -273,7 +271,7 @@ fn (p Parser) build_abs_dotted_key(key DottedKey) DottedKey {
 }
 
 // todo_msvc_astring2dkey worksaround a MSVC compile error.
-// TODO remove.
+// TODO: remove.
 fn todo_msvc_astring2dkey(s []string) DottedKey {
 	return s
 }
@@ -819,7 +817,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 }
 
 // array_of_tables parses next tokens into an array of `ast.Value`s.
-[autofree_bug; manualfree]
+@[autofree_bug; manualfree]
 pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables "${p.tok.kind}" "${p.tok.lit}"')
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
@@ -890,7 +888,7 @@ pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
-[autofree_bug; manualfree]
+@[autofree_bug; manualfree]
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested array of tables "${p.tok.kind}" "${p.tok.lit}"')
 
@@ -1491,7 +1489,7 @@ pub fn (mut p Parser) time() !ast.Time {
 	lit += p.tok.lit
 	p.check(.number)!
 	lit += p.tok.lit
-	// TODO does TOML even have optional seconds?
+	// TODO: does TOML even have optional seconds?
 	// if p.peek_tok.kind == .colon {
 	p.check(.colon)!
 	lit += p.tok.lit

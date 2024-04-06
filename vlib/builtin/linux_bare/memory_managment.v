@@ -2,7 +2,7 @@ module builtin
 
 import dlmalloc
 
-fn mm_alloc(size u64) (&byte, Errno) {
+fn mm_alloc(size u64) (&u8, Errno) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
 	// which happen before these ones would, require malloc

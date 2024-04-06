@@ -2,10 +2,8 @@ module unsigned
 
 import math.bits
 
-pub const (
-	uint256_zero = Uint256{Uint128{}, Uint128{}}
-	uint256_max  = Uint256{uint128_max, uint128_max}
-)
+pub const uint256_zero = Uint256{Uint128{}, Uint128{}}
+pub const uint256_max = Uint256{uint128_max, uint128_max}
 
 // Uint256 is an unsigned 256-bit number
 pub struct Uint256 {
@@ -382,7 +380,7 @@ pub fn (u_ Uint256) str() string {
 }
 
 // uint256_from_dec_str creates a new `unsigned.Uint256` from the given string if possible
-pub fn uint256_from_dec_str(value string) ?Uint256 {
+pub fn uint256_from_dec_str(value string) !Uint256 {
 	mut res := unsigned.uint256_zero
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]
@@ -398,22 +396,27 @@ pub fn uint256_from_dec_str(value string) ?Uint256 {
 	return res
 }
 
+// / -> returns u / v
 pub fn (u Uint256) / (v Uint256) Uint256 {
 	return u.div(v)
 }
 
+// % -> returns u % v
 pub fn (u Uint256) % (v Uint256) Uint256 {
 	return u.mod(v)
 }
 
+// + -> returns u + v
 pub fn (u Uint256) + (v Uint256) Uint256 {
 	return u.add(v)
 }
 
+// - -> returns u - v
 pub fn (u Uint256) - (v Uint256) Uint256 {
 	return u.sub(v)
 }
 
+// * -> returns u * v
 pub fn (u Uint256) * (v Uint256) Uint256 {
 	return u.mul(v)
 }

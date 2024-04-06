@@ -1,9 +1,9 @@
-[if debug]
+@[if debug]
 fn foo(x int) {
 	println('foo, x: $x')
 }
 
-[if bar ?]
+@[if bar ?]
 fn bar(x int) {
 	println('bar, x: $x')
 }

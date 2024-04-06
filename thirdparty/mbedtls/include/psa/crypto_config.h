@@ -65,6 +65,7 @@
 #define PSA_WANT_ALG_ECB_NO_PADDING             1
 #define PSA_WANT_ALG_ECDH                       1
 #define PSA_WANT_ALG_ECDSA                      1
+#define PSA_WANT_ALG_JPAKE                      1
 #define PSA_WANT_ALG_GCM                        1
 #define PSA_WANT_ALG_HKDF                       1
 #define PSA_WANT_ALG_HKDF_EXTRACT               1
@@ -88,6 +89,8 @@
 #define PSA_WANT_ALG_STREAM_CIPHER              1
 #define PSA_WANT_ALG_TLS12_PRF                  1
 #define PSA_WANT_ALG_TLS12_PSK_TO_MS            1
+#define PSA_WANT_ALG_TLS12_ECJPAKE_TO_PMS       1
+
 /* PBKDF2-HMAC is not yet supported via the PSA API in Mbed TLS.
  * Note: when adding support, also adjust include/mbedtls/config_psa.h */
 //#define PSA_WANT_ALG_XTS                        1

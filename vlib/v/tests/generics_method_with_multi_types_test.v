@@ -50,3 +50,20 @@ fn test_generic_method_with_multi_types() {
 	assert app.next2(1) == 0
 	assert app.next3(1) == 0
 }
+
+// for issues 20330
+// phenomenon: Calling from one generic method to another loses the generic information of the receiver
+struct Foo[T] {}
+
+fn (f Foo[T]) method[U]() {
+	f.another_method[U]()
+}
+
+fn (f Foo[T]) another_method[U]() {}
+
+fn test_passes_multiple_types() {
+	f := Foo[string]{}
+	f.method[f32]()
+	f.method[u32]()
+	assert true
+}

@@ -1,11 +1,11 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module builtin
 
 // isnil returns true if an object is nil (only for C objects).
-[inline]
+@[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
 }
@@ -60,7 +60,7 @@ pub:
 
 // free frees the memory occupied by the assertion meta data. It is called automatically by
 // the code, that V's test framework generates, after all other callbacks have been called.
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn (ami &VAssertMetaInfo) free() {
 	unsafe {
 		ami.fpath.free()
@@ -84,9 +84,9 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 		} else {
 			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
 		}
-		if i.has_msg {
-			eprintln('      message: ${i.message}')
-		}
+	}
+	if i.has_msg {
+		eprintln('      message: ${i.message}')
 	}
 }
 
@@ -107,10 +107,16 @@ pub:
 	typ         int
 }
 
+pub struct VariantData {
+pub:
+	typ int
+}
+
 pub struct EnumData {
 pub:
 	name  string
 	value i64
+	attrs []string
 }
 
 // FieldData holds information about a field. Fields reside on structs.
@@ -145,7 +151,7 @@ pub enum AttributeKind {
 	comptime_define // [if name]
 }
 
-pub struct StructAttribute {
+pub struct VAttribute {
 pub:
 	name    string
 	has_arg bool

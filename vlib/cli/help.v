@@ -3,11 +3,9 @@ module cli
 import term
 import strings
 
-const (
-	base_indent_len            = 2
-	min_description_indent_len = 20
-	spacing                    = 2
-)
+const base_indent_len = 2
+const min_description_indent_len = 20
+const spacing = 2
 
 fn help_flag(with_abbrev bool) Flag {
 	sabbrev := if with_abbrev { 'h' } else { '' }
@@ -153,8 +151,8 @@ fn pretty_description(s string, indent_len int) string {
 		mut i := chars_per_line - 2
 		mut j := 0
 		for ; i < line.len; i += chars_per_line - 2 {
-			for line[i] != ` ` {
-				i--
+			for j > 0 && line[j] != ` ` {
+				j--
 			}
 			// indent was already done the first iteration
 			if j != 0 {

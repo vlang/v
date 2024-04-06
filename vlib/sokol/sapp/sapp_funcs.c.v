@@ -65,7 +65,7 @@ fn C.sapp_request_quit()
 // cancel a pending quit (when SAPP_EVENTTYPE_QUIT_REQUESTED has been received)
 fn C.sapp_cancel_quit()
 
-// intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUSTED)
+// intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUESTED)
 fn C.sapp_quit()
 
 // call from inside event callback to consume the current event (don't forward to platform)
@@ -86,38 +86,38 @@ fn C.sapp_get_clipboard_string() &u8
 // set the window title (only on desktop platforms)
 fn C.sapp_set_window_title(&char)
 
-// /* set the window icon (only on Windows and Linux) */
+// set the window icon (only on Windows and Linux)
 // SOKOL_APP_API_DECL void sapp_set_icon(const sapp_icon_desc* icon_desc);
 
-// Get number of droped files
+// Get number of dropped files
 fn C.sapp_get_num_dropped_files() int
 
-// Get the file path of the droped file
+// Get the file path of the dropped file
 fn C.sapp_get_dropped_file_path(int) &u8
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 fn C.sapp_run(desc &Desc) int
 
-// GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
-fn C.sapp_gles2() bool
-
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box
 fn C.sapp_html5_ask_leave_site(ask bool)
 
-// /* HTML5: get byte size of a dropped file */
+// HTML5: get byte size of a dropped file
 // SOKOL_APP_API_DECL uint32_t sapp_html5_get_dropped_file_size(int index);
 
-// /* HTML5: asynchronously load the content of a dropped file */
+// HTML5: asynchronously load the content of a dropped file
 // SOKOL_APP_API_DECL void sapp_html5_fetch_dropped_file(const sapp_html5_fetch_request* request);
 
 // Metal: get ARC-bridged pointer to Metal device object
 fn C.sapp_metal_get_device() voidptr
 
-// Metal: get ARC-bridged pointer to this frame's renderpass descriptor
-fn C.sapp_metal_get_renderpass_descriptor() voidptr
-
 // Metal: get ARC-bridged pointer to current drawable
-fn C.sapp_metal_get_drawable() voidptr
+fn C.sapp_metal_get_current_drawable() voidptr
+
+// Metal: get bridged pointer to MTKView's depth-stencil texture of type MTLTexture
+fn C.sapp_metal_get_depth_stencil_texture() voidptr
+
+// Metal: get bridged pointer to MTKView's msaa-color-texture of type MTLTexture (may be null)
+fn C.sapp_metal_get_msaa_color_texture() voidptr
 
 // macOS: get ARC-bridged pointer to macOS NSWindow
 fn C.sapp_macos_get_window() voidptr
@@ -134,8 +134,11 @@ fn C.sapp_d3d11_get_device_context() voidptr
 // D3D11: get pointer to IDXGISwapChain object
 fn C.sapp_d3d11_get_swap_chain() voidptr
 
-// D3D11: get pointer to ID3D11RenderTargetView object
-fn C.sapp_d3d11_get_render_target_view() voidptr
+// D3D11: get pointer to ID3D11RenderView object
+fn C.sapp_d3d11_get_render_view() voidptr
+
+// D3D11: get pointer ID3D11RenderTargetView object for msaa-resolve (may return null)
+fn C.sapp_d3d11_get_resolve_view() voidptr
 
 // D3D11: get pointer to ID3D11DepthStencilView
 fn C.sapp_d3d11_get_depth_stencil_view() voidptr
@@ -154,6 +157,9 @@ fn C.sapp_wgpu_get_resolve_view() voidptr
 
 // WebGPU: get swapchain's WGPUTextureView for the depth-stencil surface
 fn C.sapp_wgpu_get_depth_stencil_view() voidptr
+
+// GL: get framebuffer object
+fn C.sapp_gl_get_framebuffer() u32
 
 // Android: get native activity handle
 fn C.sapp_android_get_native_activity() voidptr

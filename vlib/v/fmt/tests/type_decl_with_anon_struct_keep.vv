@@ -1,0 +1,15 @@
+pub type Unit1 = struct {}
+
+pub type Unit2 = struct {
+	name string
+	age  int
+}
+
+pub const unit1 = Unit1{}
+
+pub const unit2 = Unit2{'bob', 22}
+
+fn main() {
+	println(unit1)
+	println(unit2)
+}

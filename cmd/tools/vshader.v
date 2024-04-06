@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Lars Pontoppidan. All rights reserved.
+// Copyright (c) 2024 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -13,54 +13,51 @@
 // The shader language used is, as described on the overview page linked above, an 'annotated GLSL'
 // and 'modern GLSL' (v450) shader language format.
 import os
+import time
 import io.util
 import flag
 import net.http
 
-const (
-	shdc_full_hash   = '33d2e4cc26088c6c28eaef5467990f8940d15aab'
-	tool_version     = '0.0.1'
-	tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
-	tool_name        = os.file_name(os.executable())
-	cache_dir        = os.join_path(os.cache_dir(), 'v', tool_name)
-	runtime_os       = os.user_os()
-)
+const shdc_full_hash = '6b84ea387a323db9e8e17f5abed2b254a6e409fe'
+const tool_version = '0.0.3'
+const tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
+const tool_name = os.file_name(os.executable())
+const cache_dir = os.join_path(os.cache_dir(), 'v', tool_name)
+const runtime_os = os.user_os()
 
-const (
-	supported_hosts  = ['linux', 'macos', 'windows']
-	supported_slangs = [
-		'glsl330', // desktop GL
-		'glsl100', // GLES2 / WebGL
-		'glsl300es', // GLES3 / WebGL2
-		'hlsl4', // D3D11
-		'hlsl5', // D3D11
-		'metal_macos', // Metal on macOS
-		'metal_ios', // Metal on iOS device
-		'metal_sim', // Metal on iOS simulator
-		'wgpu', // WebGPU
-	]
-	default_slangs   = [
-		'glsl330',
-		'glsl100',
-		'glsl300es',
-		// 'hlsl4', and hlsl5 can't be used at the same time
-		'hlsl5',
-		'metal_macos',
-		'metal_ios',
-		'metal_sim',
-		'wgpu',
-	]
+const supported_hosts = ['linux', 'macos', 'windows']
+const supported_slangs = [
+	'glsl330', // desktop OpenGL backend (SOKOL_GLCORE33)
+	'glsl100', // OpenGLES2 and WebGL (SOKOL_GLES3)
+	'glsl300es', // OpenGLES3 and WebGL2 (SOKOL_GLES3)
+	'hlsl4', // Direct3D11 with HLSL4 (SOKOL_D3D11)
+	'hlsl5', // Direct3D11 with HLSL5 (SOKOL_D3D11)
+	'metal_macos', // Metal on macOS (SOKOL_METAL)
+	'metal_ios', // Metal on iOS devices (SOKOL_METAL)
+	'metal_sim', // Metal on iOS simulator (SOKOL_METAL)
+	'wgsl', // WebGPU (SOKOL_WGPU)
+]
+const default_slangs = [
+	'glsl330',
+	'glsl100',
+	'glsl300es',
+	// 'hlsl4', and hlsl5 can't be used at the same time
+	'hlsl5',
+	'metal_macos',
+	'metal_ios',
+	'metal_sim',
+	'wgsl',
+]
 
-	shdc_version     = shdc_full_hash[0..8]
-	shdc_urls        = {
-		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
-		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
-		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/linux/sokol-shdc'
-	}
-	shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
-	shdc              = shdc_exe()
-	shdc_exe_name     = 'sokol-shdc.exe'
-)
+const shdc_version = shdc_full_hash[0..8]
+const shdc_urls = {
+	'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
+	'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
+	'linux':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/linux/sokol-shdc'
+	'osx_a64': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx_arm64/sokol-shdc'
+}
+const shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
+const shdc_exe = os.join_path(cache_dir, 'sokol-shdc.exe')
 
 struct Options {
 	show_help    bool
@@ -179,7 +176,7 @@ fn compile_shaders(opt Options, input_path string) ! {
 // compile_shader compiles `shader_file` to a C header file.
 fn compile_shader(opt CompileOptions, shader_file string) ! {
 	path := opt.invoke_path
-	// The output convetion, for now, is to use the name of the .glsl file
+	// The output convention, for now, is to use the name of the .glsl file
 	mut out_file := os.file_name(shader_file).all_before_last('.') + '.h'
 	out_file = os.join_path(path, out_file)
 
@@ -194,7 +191,7 @@ fn compile_shader(opt CompileOptions, shader_file string) ! {
 	}
 
 	cmd :=
-		'${os.quoted_path(shdc)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
+		'${os.quoted_path(shdc_exe)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
 		os.quoted_path(slangs.join(':'))
 	if opt.verbose {
 		eprintln('${tool_name} executing:\n${cmd}')
@@ -240,47 +237,57 @@ fn ensure_external_tools(opt Options) ! {
 		return
 	}
 
-	is_shdc_available := os.is_file(shdc)
-	is_shdc_executable := os.is_executable(shdc)
-	if is_shdc_available && is_shdc_executable {
-		if opt.verbose {
-			version := os.read_file(shdc_version_file) or { 'unknown' }
-			eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc}"')
+	is_shdc_available := os.is_file(shdc_exe)
+	is_shdc_executable := os.is_executable(shdc_exe)
+	if opt.verbose {
+		eprintln('reading version from ${shdc_version_file} ...')
+		version := os.read_file(shdc_version_file) or { 'unknown' }
+		eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc_exe}"')
+		eprintln('executable: ${is_shdc_executable}')
+		eprintln(' available: ${is_shdc_available}')
+		if is_shdc_available {
+			eprintln(' file path: ${shdc_exe}')
+			eprintln(' file size: ${os.file_size(shdc_exe)}')
+			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc_exe),
+				0)}')
 		}
+	}
+	if is_shdc_available && is_shdc_executable {
 		return
 	}
 
 	download_shdc(opt)!
 }
 
-// shdc_exe returns an absolute path to the `sokol-shdc` tool.
-// Please note that the tool isn't guaranteed to actually be present, nor is
-// it guaranteed that it can be invoked.
-fn shdc_exe() string {
-	return os.join_path(cache_dir, shdc_exe_name)
-}
-
 // download_shdc downloads the `sokol-shdc` tool to an OS specific cache directory.
 fn download_shdc(opt Options) ! {
 	// We want to use the same, runtime, OS type as this tool is invoked on.
-	download_url := shdc_urls[runtime_os] or { '' }
+	mut download_url := shdc_urls[runtime_os] or { '' }
+	$if arm64 && macos {
+		download_url = shdc_urls['osx_a64']
+	}
 	if download_url == '' {
 		return error('${tool_name} failed to download an external dependency "sokol-shdc" for ${runtime_os}.\nThe supported host platforms for shader compilation is ${supported_hosts}')
 	}
-	update_to_shdc_version := os.read_file(shdc_version_file) or { shdc_version }
-	file := shdc_exe()
 	if opt.verbose {
-		if shdc_version != update_to_shdc_version && os.exists(file) {
-			eprintln('${tool_name} updating sokol-shdc to version ${update_to_shdc_version} ...')
+		eprintln('> reading version from ${shdc_version_file} ...')
+	}
+	update_to_shdc_version := os.read_file(shdc_version_file) or { shdc_version }
+	if opt.verbose {
+		eprintln('> update_to_shdc_version: ${update_to_shdc_version} | shdc_version: ${shdc_version}')
+	}
+	if opt.verbose {
+		if shdc_version != update_to_shdc_version && os.exists(shdc_exe) {
+			eprintln('${tool_name} updating sokol-shdc to version ${shdc_version} ...')
 		} else {
 			eprintln('${tool_name} installing sokol-shdc version ${update_to_shdc_version} ...')
 		}
 	}
-	if os.exists(file) {
-		os.rm(file)!
+	if os.exists(shdc_exe) {
+		os.rm(shdc_exe)!
 	}
 
-	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) })!
+	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(shdc_exe) })!
 	dtmp_file.close()
 	if opt.verbose {
 		eprintln('${tool_name} downloading sokol-shdc from ${download_url}')
@@ -292,11 +299,7 @@ fn download_shdc(opt Options) ! {
 	// Make it executable
 	os.chmod(dtmp_path, 0o775)!
 	// Move downloaded file in place
-	os.mv(dtmp_path, file)!
-	if runtime_os in ['linux', 'macos'] {
-		// Use the .exe file ending to minimize platform friction.
-		os.mv(file, shdc)!
-	}
+	os.mv(dtmp_path, shdc_exe)!
 	// Update internal version file
-	os.write_file(shdc_version_file, update_to_shdc_version)!
+	os.write_file(shdc_version_file, shdc_version)!
 }

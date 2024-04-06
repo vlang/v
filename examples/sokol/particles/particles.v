@@ -3,21 +3,16 @@
 module main
 
 import time
-import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
 import particle
 
-const (
-	used_import = sokol.used_import
-)
-
 fn main() {
 	mut app := &App{
 		width: 800
 		height: 400
-		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
+		pass_action: gfx.create_clear_pass_action(0.1, 0.1, 0.1, 1.0)
 	}
 	app.init()
 	app.run()
@@ -83,7 +78,7 @@ fn init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -107,7 +102,8 @@ fn frame(mut app App) {
 	dt := f64(t - app.last) / 1000.0
 	app.ps.update(dt)
 	draw(app)
-	gfx.begin_default_pass(&app.pass_action, app.width, app.height)
+	pass := sapp.create_default_pass(app.pass_action)
+	gfx.begin_pass(&pass)
 	sgl.default_pipeline()
 	sgl.draw()
 	gfx.end_pass()

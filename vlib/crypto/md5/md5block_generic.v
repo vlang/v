@@ -1,22 +1,22 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
 // This is the generic version with no architecture optimizations.
 // In its own file so that an architecture
-// optimized verision can be substituted
+// optimized version can be substituted
 
 module md5
 
 import math.bits
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn get_le_u32(b []u8, start int) u32 {
 	return u32(b[start]) | (u32(b[1 + start]) << u32(8)) | (u32(b[2 + start]) << u32(16)) | (u32(b[
 		3 + start]) << u32(24))
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn block_generic(mut dig Digest, p []u8) {
 	// load state
 	mut a := dig.s[0]

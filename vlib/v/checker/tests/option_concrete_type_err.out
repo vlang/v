@@ -1,0 +1,5 @@
+vlib/v/checker/tests/option_concrete_type_err.vv:5:8: error: cannot use Option type name as concrete type
+    3 | }
+    4 | 
+    5 | r := f[?int]()
+      |        ^

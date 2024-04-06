@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 
 module gg
@@ -8,6 +8,8 @@ import gx
 pub type FNCb = fn (data voidptr)
 
 pub type FNEvent = fn (e &Event, data voidptr)
+
+pub type FNEvent2 = fn (data voidptr, e &Event)
 
 pub type FNFail = fn (msg string, data voidptr)
 

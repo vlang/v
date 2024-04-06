@@ -11,6 +11,8 @@ type Sumtype = int | string
 
 struct Foo {}
 
+fn dummy_fn() {}
+
 struct Test {
 	a Abc
 	b map[string]string
@@ -20,7 +22,7 @@ struct Test {
 	f f64
 	g Alias
 	h Foo
-	i fn ()
+	i fn () = dummy_fn
 	j Sumtype
 	k ?int
 }
@@ -37,11 +39,14 @@ fn test_comptime_types() {
 	mut c_fn := 0
 	mut c_sum := 0
 	mut c_option := 0
+	mut fixeda := 0
 	$for f in Test.fields {
 		$if f.typ is $alias {
 			c_alias++
 		} $else $if f.typ is $interface {
 			i++
+		} $else $if f.typ is $array_fixed {
+			fixeda++
 		} $else $if f.typ is $array {
 			a++
 		} $else $if f.typ is $map {
@@ -66,6 +71,7 @@ fn test_comptime_types() {
 	assert a == 1
 	assert m == 1
 	assert e == 1
+	assert fixeda == 0
 	assert c_int == 1
 	assert c_float == 1
 	assert c_alias == 1

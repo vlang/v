@@ -5,17 +5,16 @@ import net
 import net.http
 import io
 
-const (
-	sport           = 12381
-	localserver     = '127.0.0.1:${sport}'
-	exit_after_time = 12000 // milliseconds
-	vexe            = os.getenv('VEXE')
-	vweb_logfile    = os.getenv('VWEB_LOGFILE')
-	vroot           = os.dir(vexe)
-	serverexe       = os.join_path(os.cache_dir(), 'middleware_test_server.exe')
-	tcp_r_timeout   = 30 * time.second
-	tcp_w_timeout   = 30 * time.second
-)
+const sport = 12381
+const localserver = '127.0.0.1:${sport}'
+const exit_after_time = 12000 // milliseconds
+
+const vexe = os.getenv('VEXE')
+const vweb_logfile = os.getenv('VWEB_LOGFILE')
+const vroot = os.dir(vexe)
+const serverexe = os.join_path(os.cache_dir(), 'middleware_test_server.exe')
+const tcp_r_timeout = 30 * time.second
+const tcp_w_timeout = 30 * time.second
 
 // setup of vweb webserver
 fn testsuite_begin() {
@@ -239,6 +238,13 @@ fn test_redirect_middleware() {
 	assert received.ends_with('302 Found')
 }
 
+// Context's
+
+fn test_middleware_with_context() {
+	x := http.get('http://${localserver}/with-context') or { panic(err) }
+	assert x.body == 'b'
+}
+
 fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
@@ -282,7 +288,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('coult not create a tcp client connection to ${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to ${localserver} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)
@@ -323,7 +329,7 @@ fn simple_tcp_client_post_json(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('coult not create a tcp client connection to ${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to ${localserver} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)

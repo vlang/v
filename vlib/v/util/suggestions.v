@@ -71,9 +71,9 @@ pub fn (s Suggestion) say(msg string) string {
 	mut res := msg
 	mut found := false
 	if s.known.len > 0 {
-		top_posibility := s.known.last()
-		if top_posibility.similarity > 0.5 {
-			val := top_posibility.value
+		top_possibility := s.known.last()
+		if top_possibility.similarity > 0.5 {
+			val := top_possibility.value
 			if !val.starts_with('[]') {
 				res += '.\nDid you mean `${highlight_suggestion(val)}`?'
 				found = true
@@ -111,7 +111,7 @@ pub fn short_module_name(name string) string {
 }
 
 // highlight_suggestion returns a colorfull/highlighted version of `message`,
-// but only if the standart error output allows for color messages, otherwise
+// but only if the standard error output allows for color messages, otherwise
 // the plain message will be returned.
 pub fn highlight_suggestion(message string) string {
 	return term.ecolorize(term.bright_blue, message)

@@ -2,18 +2,17 @@ import os
 import time
 import net.http
 
-const (
-	sport           = 12382
-	sport2          = 12383
-	localserver     = '127.0.0.1:${sport}'
-	exit_after_time = 12000 // milliseconds
-	vexe            = os.getenv('VEXE')
-	vweb_logfile    = os.getenv('VWEB_LOGFILE')
-	vroot           = os.dir(vexe)
-	serverexe       = os.join_path(os.cache_dir(), 'controller_test_server.exe')
-	tcp_r_timeout   = 30 * time.second
-	tcp_w_timeout   = 30 * time.second
-)
+const sport = 12382
+const sport2 = 12383
+const localserver = '127.0.0.1:${sport}'
+const exit_after_time = 12000 // milliseconds
+
+const vexe = os.getenv('VEXE')
+const vweb_logfile = os.getenv('VWEB_LOGFILE')
+const vroot = os.dir(vexe)
+const serverexe = os.join_path(os.cache_dir(), 'controller_test_server.exe')
+const tcp_r_timeout = 30 * time.second
+const tcp_w_timeout = 30 * time.second
 
 // setup of vweb webserver
 fn testsuite_begin() {
@@ -88,6 +87,16 @@ fn test_other_path() {
 	assert x.body == 'Other path'
 }
 
+fn test_other_hided_home() {
+	x := http.get('http://${localserver}/other/hide') or { panic(err) }
+	assert x.body == 'Other'
+}
+
+fn test_other_hided_path() {
+	x := http.get('http://${localserver}/other/hide/path') or { panic(err) }
+	assert x.body == 'Other path'
+}
+
 fn test_different_404() {
 	res_app := http.get('http://${localserver}/zxcnbnm') or { panic(err) }
 	assert res_app.status() == .not_found
@@ -137,9 +146,9 @@ fn test_duplicate_route() {
 	$if windows {
 		task := spawn os.execute(server_exec_cmd)
 		res := task.wait()
-		assert res.output.contains('V panic: method "duplicate" with route "/admin/duplicate" should be handled by the Controller of "/admin"')
+		assert res.output.contains('V panic: conflicting paths')
 	} $else {
 		res := os.execute(server_exec_cmd)
-		assert res.output.contains('V panic: method "duplicate" with route "/admin/duplicate" should be handled by the Controller of "/admin"')
+		assert res.output.contains('V panic: conflicting paths')
 	}
 }

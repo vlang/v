@@ -4,7 +4,7 @@ module os
 // fn C.IsDebuggerPresent() bool
 
 // debugger_present returns a bool indicating if the process is being debugged
-[inline]
+@[inline]
 pub fn debugger_present() bool {
 	$if windows {
 		return C.IsDebuggerPresent()

@@ -8,7 +8,7 @@ pub union C.Event {
 	FocusEvent            C.FOCUS_EVENT_RECORD
 }
 
-[typedef]
+@[typedef]
 pub struct C.INPUT_RECORD {
 	EventType u16
 	Event     C.Event
@@ -20,7 +20,7 @@ mut:
 	AsciiChar   u8
 }
 
-[typedef]
+@[typedef]
 pub struct C.KEY_EVENT_RECORD {
 	bKeyDown          int
 	wRepeatCount      u16
@@ -30,7 +30,7 @@ pub struct C.KEY_EVENT_RECORD {
 	dwControlKeyState u32
 }
 
-[typedef]
+@[typedef]
 pub struct C.MOUSE_EVENT_RECORD {
 	dwMousePosition   C.COORD
 	dwButtonState     u32
@@ -38,29 +38,29 @@ pub struct C.MOUSE_EVENT_RECORD {
 	dwEventFlags      u32
 }
 
-[typedef]
+@[typedef]
 pub struct C.WINDOW_BUFFER_SIZE_RECORD {
 	dwSize C.COORD
 }
 
-[typedef]
+@[typedef]
 pub struct C.MENU_EVENT_RECORD {
 	dwCommandId u32
 }
 
-[typedef]
+@[typedef]
 pub struct C.FOCUS_EVENT_RECORD {
 	bSetFocus int
 }
 
-[typedef]
+@[typedef]
 pub struct C.COORD {
 mut:
 	X i16
 	Y i16
 }
 
-[typedef]
+@[typedef]
 pub struct C.SMALL_RECT {
 mut:
 	Left   u16
@@ -69,7 +69,7 @@ mut:
 	Bottom u16
 }
 
-[typedef]
+@[typedef]
 pub struct C.CONSOLE_SCREEN_BUFFER_INFO {
 mut:
 	dwSize              C.COORD

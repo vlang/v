@@ -25,6 +25,12 @@ pub fn find_working_diff_command() !string {
 			}
 			continue
 		}
+		$if freebsd || openbsd {
+			if diffcmd == 'diff' { // FreeBSD/OpenBSD diff have no `--version` option
+				return diffcmd
+			}
+		}
+
 		p := os.execute('${diffcmd} --version')
 		if p.exit_code < 0 {
 			continue
@@ -61,7 +67,13 @@ fn opendiff_exists() bool {
 
 pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
-		full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		mut full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		$if freebsd {
+			full_cmd = '${diff_cmd} --minimal --text --unified=2  ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		}
+		$if openbsd {
+			full_cmd = '${diff_cmd} -d -a -U 2 ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		}
 		x := os.execute(full_cmd)
 		if x.exit_code < 0 {
 			return 'comparison command: `${full_cmd}` not found'
@@ -72,14 +84,16 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 }
 
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
-	cdir := os.join_path_single(os.cache_dir(), unique_prefix)
-	os.mkdir(cdir) or {}
+	tmp_dir := os.join_path_single(os.vtmp_dir(), unique_prefix)
+	os.mkdir(tmp_dir) or {}
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
 	ctime := time.sys_mono_now()
-	e_file := os.join_path_single(cdir, '${ctime}.expected.txt')
-	f_file := os.join_path_single(cdir, '${ctime}.found.txt')
+	e_file := os.join_path_single(tmp_dir, '${ctime}.expected.txt')
+	f_file := os.join_path_single(tmp_dir, '${ctime}.found.txt')
 	os.write_file(e_file, expected) or { panic(err) }
 	os.write_file(f_file, found) or { panic(err) }
 	res := color_compare_files(diff_cmd, e_file, f_file)
-	os.rmdir_all(cdir) or {}
 	return res
 }

@@ -31,7 +31,7 @@ fn test_formatted_string_interpolation() {
 	assert si__left == '23        '
 }
 
-fn test_excape_dollar_in_string() {
+fn test_escape_dollar_in_string() {
 	i := 42
 	assert '(${i})' == '(42)'
 	assert '(\$i)'.contains('i') && !'(\$i)'.contains('42')
@@ -200,4 +200,36 @@ fn f(i int) int {
 fn test_call() {
 	s := '${f(4)}'
 	assert s == '4'
+}
+
+// for issue: 19048
+struct Foo {
+}
+
+fn (mut f Foo) intp_pointer() string {
+	return '${f:p}'
+}
+
+fn test_intp_pointer_specifier_p() {
+	mut foo := Foo{}
+	str1 := foo.intp_pointer()
+
+	str2 := '${&foo:p}'
+	assert str1 == str2
+}
+
+// for issue: 20199
+// string contains the zero character: `\0`
+fn test_contains_zero_characters() {
+	mut str := 'abc'
+	str = '${str}\x00${str}'
+	assert str.len == 7
+	assert str == 'abc\0abc'
+}
+
+// for issue: 20432
+// non-ascii escape was lost
+fn test_interpo_non_ascii_characters() {
+	hello := '你好'
+	assert '${hello},世界！' == '你好,世界！'
 }

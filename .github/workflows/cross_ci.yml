@@ -11,19 +11,19 @@ on:
 jobs:
 
   macos-cross:
-    runs-on: macOS-latest
+    runs-on: macos-latest
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     env:
       VFLAGS: -cc clang
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 10
 
       - name: Install dependencies
         run: |
-          brew install mingw-w64
+          .github/workflows/retry.sh brew install mingw-w64
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
 
       - name: Build V
@@ -49,16 +49,16 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 10
       - name: Install dependencies
         run: |
           ## sudo dpkg --add-architecture i386
-          sudo apt update
-          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-          sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
-          ## sudo apt-get install --quiet -y wine32
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+          .github/workflows/retry.sh sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
+          ## .github/workflows/retry.sh sudo apt-get install --quiet -y wine32
 
       - name: Turn off the wine crash dialog
         run: winetricks nocrashdialog
@@ -76,7 +76,7 @@ jobs:
       - name: v_win.c can be compiled and run with -os windows
         run: |
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32
           ls -lart v_from_vc.exe
           wine64 ./v_from_vc.exe version
 
@@ -96,7 +96,7 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build
         run: |
           echo %VFLAGS%

@@ -3,6 +3,11 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:1:12: error: unknown type `int_lit
       |            ~~~~~~~~~~~
     2 | type Fo2 = int_literal
     3 |
+vlib/v/checker/tests/any_int_float_ban_err.vv:1:26: error: unknown type `float_literal`
+    1 | type Foo = int_literal | float_literal
+      |                          ~~~~~~~~~~~~~
+    2 | type Fo2 = int_literal
+    3 |
 vlib/v/checker/tests/any_int_float_ban_err.vv:2:12: error: unknown type `int_literal`
     1 | type Foo = int_literal | float_literal
     2 | type Fo2 = int_literal
@@ -36,10 +41,4 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:13:11: error: unknown type `int_li
    13 | fn foo2() int_literal {
       |           ~~~~~~~~~~~
    14 |     return 1
-   15 | }
-vlib/v/checker/tests/any_int_float_ban_err.vv:14:12: error: cannot use `int literal` as type `int_literal` in return argument
-   12 | 
-   13 | fn foo2() int_literal {
-   14 |     return 1
-      |            ^
    15 | }

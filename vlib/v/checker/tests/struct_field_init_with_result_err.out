@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_field_init_with_result_err.vv:10:18: error: example() returns `!int`, so it should have either an `or {}` block, or `!` at the end
+    8 | 
+    9 | fn main() {
+   10 |     println(Example{example()})
+      |                     ~~~~~~~~~
+   11 | }

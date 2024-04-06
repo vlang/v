@@ -154,6 +154,28 @@ ${contents[1]}\r
 	}
 }
 
+fn test_parse_multipart_form2() {
+	boundary := '---------------------------27472781931927549291906391339'
+	data := '--${boundary}\r
+Content-Disposition: form-data; name="username"\r
+\r
+admin\r
+--${boundary}\r
+Content-Disposition: form-data; name="password"\r
+\r	
+admin123\r
+--${boundary}--\r
+'
+	form, files := parse_multipart_form(data, boundary)
+	for k, v in form {
+		eprintln('> k: ${k} | v: ${v}')
+		eprintln('>> k.bytes(): ${k.bytes()}')
+		eprintln('>> v.bytes(): ${v.bytes()}')
+	}
+	assert form['username'] == 'admin'
+	assert form['password'] == 'admin123'
+}
+
 fn test_multipart_form_body() {
 	files := {
 		'foo': [
@@ -175,7 +197,7 @@ fn test_multipart_form_body() {
 }
 
 fn test_parse_large_body() {
-	body := 'A'.repeat(101) // greater than max_bytes
+	body := 'A'.repeat(10_001) // greater than max_bytes
 	req := 'GET / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
 	mut reader_ := reader(req)
 	result := parse_request(mut reader_)!

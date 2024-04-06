@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -6,7 +6,7 @@ module builtin
 
 fn (a any) toString()
 
-[noreturn]
+@[noreturn]
 pub fn panic(s string) {
 	eprintln('V panic: ${s}\n${js_stacktrace()}')
 	exit(1)
@@ -16,7 +16,7 @@ pub fn panic(s string) {
 pub interface IError {
 	// >> Hack to allow old style custom error implementations
 	// TODO: remove once deprecation period for `IError` methods has ended
-	msg string
+	msg  string
 	code int // <<
 	msg() string
 	code() int
@@ -37,7 +37,7 @@ pub fn (err IError) str() string {
 		else {
 			// >> Hack to allow old style custom error implementations
 			// TODO: remove once deprecation period for `IError` methods has ended
-			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between them
+			old_error_style := unsafe { voidptr(&err.msg.str) != voidptr(&err.code.str) } // if fields are not defined (new style) they don't have an offset between them
 			if old_error_style {
 				'${err.type_name()}: ${err.msg}'
 			} else {
@@ -127,7 +127,7 @@ fn trace_error(x string) {
 
 // error returns a default error instance containing the error given in `message`.
 // Example: if ouch { return error('an error occurred') }
-[inline]
+@[inline]
 pub fn error(message string) IError {
 	// trace_error(message)
 	return &MessageError{
@@ -137,7 +137,7 @@ pub fn error(message string) IError {
 
 // error_with_code returns a default error instance containing the given `message` and error `code`.
 // Example: if ouch { return error_with_code('an error occurred', 1) }
-[inline]
+@[inline]
 pub fn error_with_code(message string, code int) IError {
 	// trace_error('$message | code: $code')
 	return &MessageError{
@@ -148,7 +148,7 @@ pub fn error_with_code(message string, code int) IError {
 
 // free allows for manually freeing memory allocated at the address `ptr`.
 // However, this is a no-op on JS backend
-[unsafe]
+@[unsafe]
 pub fn free(ptr voidptr) {
 	_ := ptr
 }

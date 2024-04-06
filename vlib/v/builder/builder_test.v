@@ -2,9 +2,8 @@ module main
 
 import os
 
-const test_path = os.join_path(os.vtmp_dir(), 'v', 'run_check')
-
 const vexe = @VEXE
+const test_path = os.join_path(os.vtmp_dir(), 'run_check')
 
 fn testsuite_begin() {
 	os.mkdir_all(test_path) or {}
@@ -16,7 +15,8 @@ fn testsuite_end() {
 
 fn test_conditional_executable_removal() {
 	os.chdir(test_path)!
-	os.execute_or_exit('${os.quoted_path(vexe)} init')
+	os.mkdir_all('src')!
+	os.write_file('src/main.v', 'fn main(){\n\tprintln("Hello World!")\n}\n')!
 
 	mut executable := 'run_check'
 	$if windows {
@@ -28,7 +28,7 @@ fn test_conditional_executable_removal() {
 	assert executable !in original_file_list_
 
 	assert os.execute('${os.quoted_path(vexe)} run .').output.trim_space() == 'Hello World!'
-	after_run_file_list := os.ls(test_path)!
+	after_run_file_list := os.ls(test_path)!.filter(os.exists(it))
 	dump(after_run_file_list)
 	assert executable !in after_run_file_list
 

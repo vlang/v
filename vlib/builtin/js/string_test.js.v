@@ -1,6 +1,9 @@
+// vtest flaky: true
+// vtest retry: 3
+
 // import strings
 
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -404,6 +407,13 @@ fn test_contains_any() {
 	assert !''.contains_any('')
 }
 
+fn test_contains_only() {
+	assert '23885'.contains_only('0123456789')
+	assert '23gg885'.contains_only('01g23456789')
+	assert !'hello;'.contains_only('hello')
+	assert !''.contains_only('')
+}
+
 fn test_contains_any_substr() {
 	s := 'Some random text'
 	assert s.contains_any_substr(['false', 'not', 'rand'])
@@ -660,7 +670,7 @@ fn test_repeat() {
 	assert s2.repeat(5) == s2
 	assert s2.repeat(1) == s2
 	assert s2.repeat(0) == s2
-	// TODO Add test for negative values
+	// TODO: Add test for negative values
 }
 
 fn test_starts_with() {

@@ -6,7 +6,7 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
-// TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
+// TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_golang() {
 	// this was failing on ubuntu-docker-musl, skip it for now
 	if github_job == 'ubuntu-docker-musl' {
@@ -19,7 +19,7 @@ fn test_golang() {
 	dir := os.join_path(vroot, 'vlib/v/gen/golang/tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'golang')
+	wrkdir := os.join_path(os.vtmp_dir(), 'golang_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {
 		os.rmdir_all(wrkdir) or {}

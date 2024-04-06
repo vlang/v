@@ -22,60 +22,50 @@ import net.urllib
 // --force     force update even if already up to date
 
 // git credentials
-const (
-	git_username = os.getenv('GITUSER')
-	git_password = os.getenv('GITPASS')
-)
+const git_username = os.getenv('GITUSER')
+const git_password = os.getenv('GITPASS')
 
 // repository
-const (
-	// git repo
-	git_repo_v      = 'github.com/vlang/v'
-	git_repo_vc     = 'github.com/vlang/vc'
-	// local repo directories
-	git_repo_dir_v  = 'v'
-	git_repo_dir_vc = 'vc'
-)
+// git repo
+const git_repo_v = 'github.com/vlang/v'
+const git_repo_vc = 'github.com/vlang/vc'
+// local repo directories
+const git_repo_dir_v = 'v'
+const git_repo_dir_vc = 'vc'
 
 // gen_vc
-const (
-	// name
-	app_name             = 'gen_vc'
-	// version
-	app_version          = '0.1.2'
-	// description
-	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
-	// assume something went wrong if file size less than this
-	too_short_file_limit = 5000
-	// create a .c file for these os's
-	vc_build_oses        = [
-		'nix',
-		// all nix based os
-		'windows',
-	]
-)
+// name
+const app_name = 'gen_vc'
+// version
+const app_version = '0.1.3'
+// description
+const app_description = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
+// assume something went wrong if file size less than this
+const too_short_file_limit = 5000
+// create a .c file for these os's
+const vc_build_oses = [
+	'nix',
+	// all nix based os
+	'windows',
+]
 
 // default options (overridden by flags)
-const (
-	// gen_vc working directory
-	work_dir    = '/tmp/gen_vc'
-	// dont push anything to remote repo
-	dry_run     = false
-	// server port
-	server_port = 7171
-	// log file
-	log_file    = '${work_dir}/log.txt'
-	// log_to is either 'file' or 'terminal'
-	log_to      = 'terminal'
-)
+// gen_vc working directory
+const work_dir = '/tmp/gen_vc'
+// dont push anything to remote repo
+const dry_run = false
+// server port
+const server_port = 7171
+// log file
+const log_file = '${work_dir}/log.txt'
+// log_to is either 'file' or 'terminal'
+const log_to = 'terminal'
 
 // errors
-const (
-	err_msg_build = 'error building'
-	err_msg_make  = 'make failed'
-	err_msg_gen_c = 'failed to generate .c file'
-	err_msg_cmd_x = 'error running cmd'
-)
+const err_msg_build = 'error building'
+const err_msg_make = 'make failed'
+const err_msg_gen_c = 'failed to generate .c file'
+const err_msg_cmd_x = 'error running cmd'
 
 struct GenVC {
 	// logger
@@ -207,7 +197,7 @@ fn (mut gen_vc GenVC) generate() {
 	if !os.is_dir(gen_vc.options.work_dir) {
 		// try create
 		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
-		// still dosen't exist... we have a problem
+		// still doesn't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: ${gen_vc.options.work_dir}')
 			gen_vc.gen_error = true
@@ -219,7 +209,7 @@ fn (mut gen_vc GenVC) generate() {
 	// if we are not running with the --serve flag (webhook server)
 	// rather than deleting and re-downloading the repo each time
 	// first check to see if the local v repo is behind master
-	// if it isn't behind theres no point continuing further
+	// if it isn't behind there's no point continuing further
 	if !gen_vc.options.serve && os.is_dir(git_repo_dir_v) {
 		gen_vc.cmd_exec('git -C ${git_repo_dir_v} checkout master')
 		// fetch the remote repo just in case there are newer commits there
@@ -233,8 +223,8 @@ fn (mut gen_vc GenVC) generate() {
 	// delete repos
 	gen_vc.purge_repos()
 	// clone repos
-	gen_vc.cmd_exec('git clone --depth 1 https://${git_repo_v} ${git_repo_dir_v}')
-	gen_vc.cmd_exec('git clone --depth 1 https://${git_repo_vc} ${git_repo_dir_vc}')
+	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_v} ${git_repo_dir_v}')
+	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_vc} ${git_repo_dir_vc}')
 	// get output of git log -1 (last commit)
 	git_log_v := gen_vc.cmd_exec('git -C ${git_repo_dir_v} log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
 	git_log_vc := gen_vc.cmd_exec('git -C ${git_repo_dir_vc} log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')

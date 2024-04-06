@@ -6,6 +6,14 @@ import log
 import time
 import rand
 
+pub struct ServerState {
+mut:
+	ping_interval int   = 30 // interval for sending ping to clients (seconds)
+	state         State = .closed // current state of connection
+pub mut:
+	clients map[string]&ServerClient // clients connected to this server
+}
+
 // Server represents a websocket server connection
 pub struct Server {
 mut:
@@ -21,9 +29,7 @@ pub:
 	port   int  // port used as listen to incoming connections
 	is_ssl bool // true if secure connection (not supported yet on server)
 pub mut:
-	clients       map[string]&ServerClient // clients connected to this server
-	ping_interval int = 30 // interval for sending ping to clients (seconds)
-	state         State // current state of connection
+	server_state shared ServerState
 }
 
 // ServerClient represents a connected client
@@ -36,7 +42,7 @@ pub mut:
 	client &Client = unsafe { nil }
 }
 
-[params]
+@[params]
 pub struct ServerOpt {
 	logger &log.Logger = &log.Logger(&log.Log{
 	level: .info
@@ -46,17 +52,25 @@ pub struct ServerOpt {
 // new_server instance a new websocket server on provided port and route
 pub fn new_server(family net.AddrFamily, port int, route string, opt ServerOpt) &Server {
 	return &Server{
-		ls: 0
+		ls: unsafe { nil }
 		family: family
 		port: port
 		logger: opt.logger
-		state: .closed
 	}
 }
 
 // set_ping_interval sets the interval that the server will send ping messages to clients
 pub fn (mut s Server) set_ping_interval(seconds int) {
-	s.ping_interval = seconds
+	lock s.server_state {
+		s.server_state.ping_interval = seconds
+	}
+}
+
+// get_ping_interval return the interval that the server will send ping messages to clients
+pub fn (mut s Server) get_ping_interval() int {
+	return rlock s.server_state {
+		s.server_state.ping_interval
+	}
 }
 
 // listen start listen and process to incoming connections from websocket clients
@@ -80,11 +94,15 @@ fn (mut s Server) close() {
 // handle_ping sends ping to all clients every set interval
 fn (mut s Server) handle_ping() {
 	mut clients_to_remove := []string{}
-	for s.state == .open {
-		time.sleep(s.ping_interval * time.second)
-		for i, _ in s.clients {
-			mut c := s.clients[i] or { continue }
-			if c.client.state == .open {
+	for s.get_state() == .open {
+		time.sleep(s.get_ping_interval() * time.second)
+		for i, _ in rlock s.server_state {
+			s.server_state.clients
+		} {
+			mut c := rlock s.server_state {
+				s.server_state.clients[i] or { continue }
+			}
+			if c.client.get_state() == .open {
 				c.client.ping() or {
 					s.logger.debug('server-> error sending ping to client')
 					c.client.close(1002, 'Closing connection: ping send error') or {
@@ -93,7 +111,7 @@ fn (mut s Server) handle_ping() {
 					}
 					clients_to_remove << c.client.id
 				}
-				if (time.now().unix - c.client.last_pong_ut) > s.ping_interval * 2 {
+				if (time.now().unix - c.client.last_pong_ut) > s.get_ping_interval() * 2 {
 					clients_to_remove << c.client.id
 					c.client.close(1000, 'no pong received') or { continue }
 				}
@@ -101,8 +119,8 @@ fn (mut s Server) handle_ping() {
 		}
 		// TODO: replace for with s.clients.delete_all(clients_to_remove) if (https://github.com/vlang/v/pull/6020) merges
 		for client in clients_to_remove {
-			lock {
-				s.clients.delete(client)
+			lock s.server_state {
+				s.server_state.clients.delete(client)
 			}
 		}
 		clients_to_remove.clear()
@@ -116,24 +134,58 @@ fn (mut s Server) serve_client(mut c Client) ! {
 		c.logger.debug('server-> End serve client (${c.id})')
 	}
 	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)!
-	accept := s.send_connect_event(mut server_client)!
-	if !accept {
-		s.logger.debug('server-> client not accepted')
-		c.shutdown_socket()!
-		return
-	}
-	// the client is accepted
-	c.socket_write(handshake_response.bytes())!
-	lock {
-		unsafe {
-			s.clients[server_client.client.id] = server_client
-		}
-	}
-	s.setup_callbacks(mut server_client)
+	s.attach_client(mut server_client, handshake_response)!
 	c.listen() or {
 		s.logger.error(err.msg())
 		return err
 	}
+}
+
+// handle_handshake use an existing connection to respond to the handshake for a given key
+pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&ServerClient {
+	mut c := &Client{
+		is_server: true
+		conn: conn
+		is_ssl: false
+		logger: &log.Log{
+			level: .debug
+		}
+		client_state: ClientState{
+			state: .open
+		}
+		last_pong_ut: time.now().unix
+		id: rand.uuid_v4()
+	}
+	mut server_client := &ServerClient{
+		resource_name: 'GET'
+		client_key: key
+		client: unsafe { c }
+		server: unsafe { &s }
+	}
+	digest := create_key_challenge_response(key)!
+	handshake_response := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${digest}\r\n\r\n'
+	s.attach_client(mut server_client, handshake_response)!
+	spawn s.handle_ping()
+	c.listen() or {
+		s.logger.error(err.msg())
+		return err
+	}
+	return server_client
+}
+
+fn (mut s Server) attach_client(mut server_client ServerClient, handshake_response string) ! {
+	accept := s.send_connect_event(mut server_client)!
+	if !accept {
+		s.logger.debug('server-> client not accepted')
+		server_client.client.shutdown_socket()!
+		return
+	}
+	// the client is accepted
+	server_client.client.socket_write(handshake_response.bytes())!
+	lock s.server_state {
+		s.server_state.clients[server_client.client.id] = unsafe { server_client }
+	}
+	s.setup_callbacks(mut server_client)
 }
 
 // setup_callbacks initialize all callback functions
@@ -159,8 +211,8 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	// set standard close so we can remove client if closed
 	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ! {
 		c.logger.debug('server-> Delete client')
-		lock {
-			sc.server.clients.delete(sc.client.id)
+		lock sc.server.server_state {
+			sc.server.server_state.clients.delete(sc.client.id)
 		}
 	}, sc)
 }
@@ -173,7 +225,9 @@ fn (mut s Server) accept_new_client() !&Client {
 		conn: new_conn
 		ssl_conn: ssl.new_ssl_conn()!
 		logger: s.logger
-		state: .open
+		client_state: ClientState{
+			state: .open
+		}
 		last_pong_ut: time.now().unix
 		id: rand.uuid_v4()
 	}
@@ -181,16 +235,28 @@ fn (mut s Server) accept_new_client() !&Client {
 }
 
 // set_state sets current state in a thread safe way
-fn (mut s Server) set_state(state State) {
-	lock {
-		s.state = state
+pub fn (mut s Server) set_state(state State) {
+	lock s.server_state {
+		s.server_state.state = state
+	}
+}
+
+// get_state return current state in a thread safe way
+pub fn (s Server) get_state() State {
+	return rlock s.server_state {
+		s.server_state.state
 	}
 }
 
 // free manages manual free of memory for Server instance
 pub fn (mut s Server) free() {
+	lock s.server_state {
+		unsafe {
+			s.server_state.clients.free()
+		}
+	}
+
 	unsafe {
-		s.clients.free()
 		s.accept_client_callbacks.free()
 		s.message_callbacks.free()
 		s.close_callbacks.free()

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/result_alias_type_err.vv:1:12: error: cannot make an alias of Result type
+    1 | type Abc = !int
+      |            ~~~~
+    2 |
+    3 | dump(Abc(5))
+Details: Result types cannot be stored and have to be unwrapped immediately

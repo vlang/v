@@ -70,7 +70,7 @@ typedef enum {
  */
 typedef struct mbedtls_ecjpake_context
 {
-    const mbedtls_md_info_t *MBEDTLS_PRIVATE(md_info);   /**< Hash to use                    */
+    mbedtls_md_type_t MBEDTLS_PRIVATE(md_type);          /**< Hash to use                    */
     mbedtls_ecp_group MBEDTLS_PRIVATE(grp);              /**< Elliptic curve                 */
     mbedtls_ecjpake_role MBEDTLS_PRIVATE(role);          /**< Are we client or server?       */
     int MBEDTLS_PRIVATE(point_format);                   /**< Format for point export        */
@@ -113,7 +113,7 @@ void mbedtls_ecjpake_init( mbedtls_ecjpake_context *ctx );
  * \param curve     The identifier of the elliptic curve to use,
  *                  for example #MBEDTLS_ECP_DP_SECP256R1.
  * \param secret    The pre-shared secret (passphrase). This must be
- *                  a readable buffer of length \p len Bytes. It need
+ *                  a readable not empty buffer of length \p len Bytes. It need
  *                  only be valid for the duration of this call.
  * \param len       The length of the pre-shared secret \p secret.
  *
@@ -254,6 +254,29 @@ int mbedtls_ecjpake_read_round_two( mbedtls_ecjpake_context *ctx,
  * \return          A negative error code on failure.
  */
 int mbedtls_ecjpake_derive_secret( mbedtls_ecjpake_context *ctx,
+                            unsigned char *buf, size_t len, size_t *olen,
+                            int (*f_rng)(void *, unsigned char *, size_t),
+                            void *p_rng );
+
+/**
+ * \brief           Write the shared key material to be passed to a Key
+ *                  Derivation Function as described in RFC8236.
+ *
+ * \param ctx       The ECJPAKE context to use. This must be initialized,
+ *                  set up and have performed both round one and two.
+ * \param buf       The buffer to write the derived secret to. This must
+ *                  be a writable buffer of length \p len Bytes.
+ * \param len       The length of \p buf in Bytes.
+ * \param olen      The address at which to store the total number of bytes
+ *                  written to \p buf. This must not be \c NULL.
+ * \param f_rng     The RNG function to use. This must not be \c NULL.
+ * \param p_rng     The RNG parameter to be passed to \p f_rng. This
+ *                  may be \c NULL if \p f_rng doesn't use a context.
+ *
+ * \return          \c 0 if successful.
+ * \return          A negative error code on failure.
+ */
+int mbedtls_ecjpake_write_shared_key( mbedtls_ecjpake_context *ctx,
                             unsigned char *buf, size_t len, size_t *olen,
                             int (*f_rng)(void *, unsigned char *, size_t),
                             void *p_rng );

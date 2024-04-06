@@ -12,9 +12,9 @@ mut:
 	ctx        context.Context
 	ctxs       []context.Context
 	done       chan int
-	err        IError = none
-	err_mutex  sync.Mutex
-	cancel_fn  context.CancelFn
+	err        IError           = none
+	err_mutex  &sync.Mutex      = sync.new_mutex()
+	cancel_fn  context.CancelFn = unsafe { nil }
 	cancel_ctx context.Context
 }
 
@@ -92,7 +92,7 @@ pub fn (mut octx OneContext) run() {
 
 	octx.run_multiple_contexts(mut wrapped_ctx)
 	for mut ctx in octx.ctxs {
-		octx.run_multiple_contexts(mut &ctx)
+		octx.run_multiple_contexts(mut ctx)
 	}
 }
 

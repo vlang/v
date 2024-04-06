@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Package {
 	str string
 }

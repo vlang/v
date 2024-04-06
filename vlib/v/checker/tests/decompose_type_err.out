@@ -1,6 +1,12 @@
 vlib/v/checker/tests/decompose_type_err.vv:4:13: error: decomposition can only be used on arrays
-    2 |
+    2 | 
     3 | fn main() {
     4 |     varargs(...123)
       |                ~~~
+    5 | }
+vlib/v/checker/tests/decompose_type_err.vv:4:10: error: `ast.ArrayDecompose` (no value) used as value in argument 1 to `varargs`
+    2 | 
+    3 | fn main() {
+    4 |     varargs(...123)
+      |             ~~~~~~
     5 | }

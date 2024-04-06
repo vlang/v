@@ -1,8 +1,8 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// TODO Windows version needs to be implemented.
+// TODO: Windows version needs to be implemented.
 // Will serve as more advanced input method
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //
@@ -36,6 +36,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
 		r.previous_lines[0] = []rune{}
 	}
 	print(r.prompt)
+	flush_stdout()
 	r.current = os.get_raw_line().runes()
 	r.previous_lines[0] = []rune{}
 	r.search_index = 0

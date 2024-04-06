@@ -1,0 +1,7 @@
+fn a__static__b() (int,int) {
+	return 1,2
+}
+
+fn main() {
+	a := a__static__b()
+}

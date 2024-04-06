@@ -1,11 +1,5 @@
 module embed_file
 
-import os
-
-pub const (
-	is_used = 1
-)
-
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
 	apath            string
@@ -24,7 +18,7 @@ pub fn (ed EmbedFileData) str() string {
 	return 'embed_file.EmbedFileData{ len: ${ed.len}, path: "${ed.path}", apath: "${ed.apath}", uncompressed: ${ptr_str(ed.uncompressed)} }'
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut ed EmbedFileData) free() {
 	unsafe {
 		ed.path.free()
@@ -73,18 +67,9 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 			ed.uncompressed = &u8(memdup(decompressed.data, ed.len))
 		}
 	} else {
-		mut path := os.resource_abs_path(ed.path)
-		if !os.is_file(path) {
-			path = ed.apath
-			if !os.is_file(path) {
-				panic('EmbedFileData error: files "${ed.path}" and "${ed.apath}" do not exist')
-			}
+		$if !freestanding {
+			reload_from_file_at_runtime(mut ed)
 		}
-		bytes := os.read_bytes(path) or {
-			panic('EmbedFileData error: "${path}" could not be read: ${err}')
-		}
-		ed.uncompressed = bytes.data
-		ed.free_uncompressed = true
 	}
 	return ed.uncompressed
 }

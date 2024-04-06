@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generic_sumtype_decl_err_d.vv:5:15: error: generic fntype `Fn` must specify generic type names, e.g. Fn[T]
+    3 | type Fnn = fn (string) string
+    4 | 
+    5 | type Parser = Fn | Fnn
+      |               ~~
+    6 | 
+    7 | fn main() {
+vlib/v/checker/tests/generic_sumtype_decl_err_d.vv:5:6: error: generic sumtype `Parser` must specify generic type names, e.g. Parser[T]
+    3 | type Fnn = fn (string) string
+    4 | 
+    5 | type Parser = Fn | Fnn
+      |      ~~~~~~
+    6 | 
+    7 | fn main() {

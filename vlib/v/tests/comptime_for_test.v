@@ -12,11 +12,11 @@ pub mut:
 	h u8
 }
 
-['foo/bar/three']
+@['foo/bar/three']
 fn (mut app App) run() {
 }
 
-['attr2']
+@['attr2']
 fn (mut app App) method2() {
 }
 

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/import_mod_sub_duplicate_as_mod.vv:1:1: error: project must include a `main` module or be a shared library (compile with `v -shared`)
+    1 | module json2
+      | ^
+    2 | 
+    3 | import x.json2 as json

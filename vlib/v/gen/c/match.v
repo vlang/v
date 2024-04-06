@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -8,7 +8,7 @@ import v.ast
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
 		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
-			|| node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+			|| node.return_type.has_option_or_result() {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
@@ -28,6 +28,8 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 						return true
 					}
 				} else if branch.stmts[0] is ast.Return {
+					return true
+				} else if branch.stmts[0] is ast.BranchStmt {
 					return true
 				}
 			}
@@ -67,16 +69,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
 		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
-		&& (node.cond as ast.Ident).or_expr.kind == .absent)))
-		|| (node.cond is ast.SelectorExpr
-		&& (node.cond as ast.SelectorExpr).or_block.kind == .absent
-		&& ((node.cond as ast.SelectorExpr).expr !is ast.CallExpr
-		|| ((node.cond as ast.SelectorExpr).expr as ast.CallExpr).or_block.kind == .absent)) {
+		&& node.cond.or_expr.kind == .absent))) || (node.cond is ast.SelectorExpr
+		&& node.cond.or_block.kind == .absent && (node.cond.expr !is ast.CallExpr
+		|| (node.cond.expr as ast.CallExpr).or_block.kind == .absent)) {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
 			g.empty_line = true
-			g.go_before_stmt(0)
+			g.go_before_last_stmt()
 		} else {
 			''
 		}
@@ -89,7 +89,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if need_tmp_var {
 		g.empty_line = true
-		cur_line = g.go_before_stmt(0).trim_left(' \t')
+		cur_line = g.go_before_last_stmt().trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		mut func_decl := ''
 		if g.table.final_sym(node.return_type).kind == .function {
@@ -179,7 +179,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
@@ -230,7 +230,23 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
 				g.expected_cast_type = node.return_type
 			}
+			inside_interface_deref_old := g.inside_interface_deref
+			if is_expr && branch.stmts.len > 0 {
+				mut stmt := branch.stmts.last()
+				if mut stmt is ast.ExprStmt {
+					if mut stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+						&& g.table.is_interface_var(stmt.expr.obj) {
+						g.inside_interface_deref = true
+					} else if mut stmt.expr is ast.PrefixExpr && stmt.expr.right is ast.Ident {
+						ident := stmt.expr.right as ast.Ident
+						if ident.obj is ast.Var && g.table.is_interface_var(ident.obj) {
+							g.inside_interface_deref = true
+						}
+					}
+				}
+			}
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			g.inside_interface_deref = inside_interface_deref_old
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
 				g.writeln('}')
@@ -252,7 +268,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 
 	mut covered_enum_cap := 0
 	if cond_fsym.info is ast.Enum {
-		covered_enum_cap = (cond_fsym.info as ast.Enum).vals.len
+		covered_enum_cap = cond_fsym.info.vals.len
 	}
 	mut covered_enum := []string{cap: covered_enum_cap} // collects missing enum variant branches to avoid cstrict errors
 
@@ -267,7 +283,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	for branch in node.branches {
 		if branch.is_else {
 			if cond_fsym.info is ast.Enum {
-				for val in (cond_fsym.info as ast.Enum).vals {
+				for val in cond_fsym.info.vals {
 					if val !in covered_enum {
 						g.writeln('case ${cname}${val}:')
 					}
@@ -401,14 +417,14 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-	type_sym := g.table.sym(node.cond_type)
+	type_sym := g.table.final_sym(node.cond_type)
 	use_ternary := is_expr && tmp_var.len == 0
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
 		if branch.is_else || (use_ternary && is_last) {
 			if node.branches.len > 1 {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')

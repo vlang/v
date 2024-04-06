@@ -1,8 +1,10 @@
+// vtest flaky: true
+// vtest retry: 3
 import db.sqlite
 
-[table: 'bad_table']
+@[table: 'bad_table']
 struct Bad {
-	id   int    [primary; sql: serial]
+	id   int    @[primary; sql: serial]
 	link string
 }
 

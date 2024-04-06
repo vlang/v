@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -12,7 +12,7 @@ mut:
 	sb strings.Builder
 }
 
-[params]
+@[params]
 pub struct WriterConfig {
 	use_crlf  bool
 	delimiter u8 = `,`

@@ -144,7 +144,7 @@ static int ccm_calculate_first_block_if_ready(mbedtls_ccm_context *ctx)
     unsigned char i;
     size_t len_left, olen;
 
-    /* length calulcation can be done only after both
+    /* length calculation can be done only after both
      * mbedtls_ccm_starts() and mbedtls_ccm_set_lengths() have been executed
      */
     if( !(ctx->state & CCM_STATE__STARTED) || !(ctx->state & CCM_STATE__LENGTHS_SET) )

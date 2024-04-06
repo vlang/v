@@ -1,0 +1,5 @@
+#!/usr/bin/env -S v
+
+import os
+
+os.join_path('a', 'b', 'c')

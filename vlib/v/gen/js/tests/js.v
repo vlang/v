@@ -1,10 +1,8 @@
 import v.gen.js.tests.hello as hl
 import v.gen.js.tests.hello.hello1 as hl1
 
-const (
-	i_am_a_const = 21214
-	super        = 'amazing keyword'
-)
+const i_am_a_const = 21214
+const super = 'amazing keyword'
 
 struct Foo {
 mut:
@@ -109,7 +107,7 @@ fn anon_consumer(greeting string, anon fn (string)) {
 fn async(num int, def string) {
 }
 
-[deprecated; inline]
+@[deprecated; inline]
 fn hello(game_on int, dummy ...string) (int, int) {
 	defer {
 		do := 'not'
@@ -139,14 +137,14 @@ fn (it Companies) method() int {
 	return 0
 }
 
-fn error_if_even(num int) ?int {
+fn error_if_even(num int) !int {
 	if num % 2 == 0 {
 		return error('number is even')
 	}
 	return num
 }
 
-fn propagation() ? {
+fn propagation() ! {
 	println('Propagation test:')
 	return error('"Task failed successfully" - Windows XP')
 }

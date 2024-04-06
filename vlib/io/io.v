@@ -1,8 +1,6 @@
 module io
 
-const (
-	buf_max_len = 1024
-)
+const buf_max_len = 1024
 
 // cp copies from `src` to `dst` by allocating
 // a maximum of 1024 bytes buffer for reading

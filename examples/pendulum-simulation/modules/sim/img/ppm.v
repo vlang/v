@@ -4,7 +4,7 @@ import gx
 import os
 import sim
 
-[params]
+@[params]
 pub struct ImageSettings {
 pub:
 	width      int = sim.default_width

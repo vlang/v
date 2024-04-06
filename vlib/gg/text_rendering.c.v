@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
@@ -16,7 +16,8 @@ pub:
 	font_bold   int
 	font_mono   int
 	font_italic int
-	scale       f32 = 1.0
+pub mut:
+	scale f32 = 1.0
 }
 
 fn new_ft(c FTConfig) ?&FT {
@@ -147,10 +148,35 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
 }
 
-// set_cfg sets the current text configuration
-[deprecated: 'use set_text_cfg() instead']
-pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
-	ctx.set_text_cfg(cfg)
+@[params]
+pub struct DrawTextParams {
+	x    int
+	y    int
+	text string
+
+	color          Color = gx.black
+	size           int   = 16
+	align          gx.HorizontalAlign = .left
+	vertical_align gx.VerticalAlign   = .top
+	max_width      int
+	family         string
+	bold           bool
+	mono           bool
+	italic         bool
+}
+
+pub fn (ctx &Context) draw_text2(p DrawTextParams) {
+	ctx.draw_text(p.x, p.y, p.text, gx.TextCfg{
+		color: p.color
+		size: p.size
+		align: p.align
+		vertical_align: p.vertical_align
+		max_width: p.max_width
+		family: p.family
+		bold: p.bold
+		mono: p.mono
+		italic: p.italic
+	}) // TODO: perf once it's the only function to draw text
 }
 
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
@@ -160,6 +186,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 		if ctx.native_rendering {
 			if cfg.align == gx.align_right {
 				width := ctx.text_width(text_)
+				// println('draw text ctx.height = ${ctx.height}')
 				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
 				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
@@ -171,7 +198,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 		eprintln('gg: draw_text(): font not initialized')
 		return
 	}
-	// text := text_.trim_space() // TODO remove/optimize
+	// text := text_.trim_space() // TODO: remove/optimize
 	// mut text := text_
 	// if text.contains('\t') {
 	// text = text.replace('\t', '    ')
@@ -207,7 +234,7 @@ pub fn (ctx &Context) text_width(s string) int {
 	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
-			ctx.text_width('i') // TODO fix this in fontstash?
+			ctx.text_width('i') // TODO: fix this in fontstash?
 	}
 	res := int((buf[2] - buf[0]) / ctx.scale)
 	// println('TW "$s" = $res')

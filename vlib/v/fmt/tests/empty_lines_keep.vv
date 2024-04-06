@@ -5,27 +5,25 @@ type Node2 = Expr | string
 type MyInt = int
 
 // Keep empty lines in const blocks
-const (
-	_ = SomeStruct{
-		val: 'Multiline field exprs should cause no problems'
-	}
-	_ = 1
+const _ = SomeStruct{
+	val: 'Multiline field exprs should cause no problems'
+}
+const _ = 1
 
-	_ = 'Keep this empty line before'
-	// Comment before a field
-	_ = 2
+const _ = 'Keep this empty line before'
+// Comment before a field
+const _ = 2
 
-	// The empty line above should stay too
-	_ = 3
+// The empty line above should stay too
+const _ = 3
 
-	// This comment doesn't really belong anywhere
+// This comment doesn't really belong anywhere
 
-	_ = 'A multiline string with a StringInterLiteral...
+const _ = 'A multiline string with a StringInterLiteral...
 	${foo}
 	...and the ending brace on a newline had a wrong pos.last_line.
 	'
-	_ = 4
-)
+const _ = 4
 
 fn keep_single_empty_line() {
 	println('a')
@@ -33,12 +31,15 @@ fn keep_single_empty_line() {
 
 	println('c')
 
+	dump('d')
+
 	d := 0
 
 	if true {
 		println('e')
 	}
 
+	dump('f')
 	f := 0
 	arr << MyStruct{}
 

@@ -1,7 +1,5 @@
-const (
-	str = 'abcdefghijklmnopqrstuvwxyz'
-	num = 1234567890
-)
+const str = 'abcdefghijklmnopqrstuvwxyz'
+const num = 1234567890
 
 struct S1 {
 	s1 string = str

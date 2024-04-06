@@ -74,7 +74,7 @@ fn test_inline_asm() {
 	// assert loops == 1
 	// assert k == 5
 
-	// not marked as mut because we derefernce m to change l
+	// not marked as mut because we dereference m to change l
 	l := 5
 	m := &l
 	asm amd64 {
@@ -110,7 +110,7 @@ fn test_inline_asm() {
 	o.str()
 }
 
-[packed]
+@[packed]
 struct Manu {
 mut:
 	ebx  u32
@@ -131,7 +131,7 @@ fn (m Manu) str() string {
 
 // this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
 // doesn't actually work
-[if !macos]
+@[if !macos]
 fn test_rip_relative_label() {
 	$if !macos {
 		mut a := i64(4)
@@ -153,7 +153,7 @@ $if !macos {
 
 // this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
 // doesn't actually work
-[if !macos]
+@[if !macos]
 fn test_rip_relative_label_u8() {
 	$if !macos {
 		mut a := int(4)
@@ -234,4 +234,22 @@ fn generic_asm[T](var &T) T {
 		}
 	}
 	return ret
+}
+
+fn test_lock_prefix() {
+	mut rv := u64(123)
+	mut atom := u64(0)
+	cmp := u64(1)
+	xchg := u64(1)
+
+	asm amd64 {
+		lock cmpxchgq '%1', '%2'
+		; =a (rv)
+		  +m (atom)
+		; q (xchg)
+		  0 (cmp)
+		; memory
+	}
+	assert rv == 0
+	assert atom == 0
 }

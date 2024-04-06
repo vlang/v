@@ -34,9 +34,9 @@ struct Mapping {
 
 struct Mappings {
 mut:
-	sorted bool
-	last   Mapping
-	values []Mapping
+	is_sorted bool
+	last      Mapping
+	values    []Mapping
 }
 
 fn new_mappings() Mappings {
@@ -47,7 +47,7 @@ fn new_mappings() Mappings {
 				gen_line: 0
 			}
 		}
-		sorted: true
+		is_sorted: true
 	}
 }
 
@@ -55,7 +55,7 @@ fn new_mappings() Mappings {
 fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, source_position SourcePositionType, names_ind NameIndexType) {
 	if !(gen_line > m.last.gen_line
 		|| (gen_line == m.last.gen_line && gen_column >= m.last.gen_column)) {
-		m.sorted = false
+		m.is_sorted = false
 	}
 	m.values << Mapping{
 		GenPosition: GenPosition{
@@ -71,7 +71,7 @@ fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, s
 // Returns the flat, sorted array of mappings. The mappings are sorted by generated position.
 
 fn (mut m Mappings) get_sorted_array() []Mapping {
-	if !m.sorted {
+	if !m.is_sorted {
 		panic('not implemented')
 	}
 	return m.values

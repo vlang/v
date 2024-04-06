@@ -52,7 +52,7 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 					}
 				}
 				else {
-					e.error('unknown assign statment: ${stmt.op}')
+					e.error('unknown assign statement: ${stmt.op}')
 				}
 			}
 		}

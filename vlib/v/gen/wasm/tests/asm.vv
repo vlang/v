@@ -1,0 +1,150 @@
+fn add_int(init f64, val int) f64 {
+	mut ret := 0.0
+	asm wasm {
+		local.get init
+		local.get val
+		f64.convert_i32_s
+		f64.add
+		local.set ret
+		; =r (ret)
+		; r (init)
+		  r (val)
+	}
+	return ret
+}
+
+fn add_f64(init int, val f64) int {
+	mut ret := 0
+	asm wasm {
+		local.get init
+		local.get val
+		i32.trunc_sat_f64_s
+		i32.add
+		local.set ret
+		; =r (ret)
+		; r (init)
+		  r (val)
+	}
+	return ret
+}
+
+fn memory_size() int {
+	mut ret := 0
+	asm wasm {
+		memory.size
+		local.set ret
+		; =r (ret)
+	}
+	return ret
+}
+
+fn memset() {
+	mut memory := [16]u8{}
+
+	asm wasm {
+		local.get memory
+		i32.const 0x33
+		i32.const 16
+		memory.fill
+		; =r (memory)
+	}
+
+	for i := 0; i < 16; i++ {
+		print(memory[i])
+		if i + 1 < 16 {
+			print(' ')
+		}
+	}
+	println('')
+}
+
+fn literals() (int, i64, f32, f64) {
+	mut l1 := 0
+	mut l2 := i64(0)
+	mut l3 := f32(0.0)
+	mut l4 := 0.0
+
+	asm wasm {
+		i32.const 999
+		i64.const 999
+		f32.const 999
+		f64.const 999
+		local.set l4
+		local.set l3
+		local.set l2
+		local.set l1
+		; =r (l1)
+		  =r (l2)
+		  =r (l3)
+		  =r (l4)
+	}
+
+	return l1, l2, l3, l4
+}
+
+fn reinterpret_asm() string {
+	mut reinterp := 0
+
+	// reinterpret int value into f32, convert back
+	asm wasm {
+		i32.const 0x44424000 // 777.0
+		f32.reinterpret_i32
+		i32.trunc_sat_f32_s
+		local.set reinterp
+		; =r (reinterp)
+	}
+
+	mut lit := ''
+
+	// call "int.str" to convert int to string
+	asm wasm {
+		local.get lit
+		local.get reinterp
+		call 'int.str'
+		; =r (lit)
+		; r (reinterp)
+	}
+
+	return lit
+}
+
+fn malloc_ptr() {
+	mut v := unsafe { &int(malloc(sizeof(int))) }
+
+	asm wasm {
+		local.get v
+		i32.const 42
+		i32.store 2, 0 // log2(sizeof(int)) == 2
+		; =r (v)
+	}
+
+	println(*v)
+
+	mut readp := 0
+	asm wasm {
+		local.get v
+		i32.load 2, 0 // log2(sizeof(int)) == 2
+		local.set readp
+		; =r (readp)
+		; r (v)
+	}
+
+	println(readp)
+}
+
+fn main() {
+	println(int(add_int(1.0, 2))) // no f64.str()
+	println(add_f64(1, 2.0))
+	println(memory_size())
+	memset()
+
+	a, b, c, d := literals()
+	println(a)
+	println(b)
+	println(int(c)) // no f32.str()
+	println(int(d)) // no f64.str()
+
+	seven_seven_seven := reinterpret_asm()
+	println(seven_seven_seven)
+	malloc_ptr()
+}

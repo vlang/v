@@ -10,3 +10,10 @@ vlib/v/checker/tests/fn_init_sig.vv:4:1: error: fn `init` must not be public
       | ~~~~~~~~~~~~~~~~~
     5 |     return 1
     6 | }
+vlib/v/checker/tests/fn_init_sig.vv:4:1: error: fn `init` cannot have a return type
+    2 |     return 1
+    3 | }
+    4 | pub fn init() int {
+      | ~~~~~~~~~~~~~~~~~
+    5 |     return 1
+    6 | }

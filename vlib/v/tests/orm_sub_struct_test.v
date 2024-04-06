@@ -1,12 +1,12 @@
 import db.sqlite
 
 struct Upper {
-	id  int       [primary; sql: serial]
+	id  int       @[primary; sql: serial]
 	sub SubStruct
 }
 
 struct SubStruct {
-	id   int    [primary; sql: serial]
+	id   int    @[primary; sql: serial]
 	name string
 }
 

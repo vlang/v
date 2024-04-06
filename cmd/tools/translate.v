@@ -19,7 +19,7 @@ fn main() {
 		os.mkdir_all(vmodules)!
 		println('C2V is not installed. Cloning C2V to ${c2v_dir} ...')
 		os.chdir(vmodules)!
-		res := os.execute('git clone https://github.com/vlang/c2v')
+		res := os.execute('git clone --filter=blob:none https://github.com/vlang/c2v')
 		if res.exit_code != 0 {
 			eprintln('Failed to download C2V.')
 			exit(1)

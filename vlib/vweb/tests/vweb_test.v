@@ -1,61 +1,19 @@
-import os
-import time
+import io
 import json
+import time
 import net
 import net.http
-import io
+import vweb.tests.vweb_test_server
 
-const (
-	sport           = 12380
-	localserver     = '127.0.0.1:${sport}'
-	exit_after_time = 12000 // milliseconds
-	vexe            = os.getenv('VEXE')
-	vweb_logfile    = os.getenv('VWEB_LOGFILE')
-	vroot           = os.dir(vexe)
-	serverexe       = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
-	tcp_r_timeout   = 30 * time.second
-	tcp_w_timeout   = 30 * time.second
-)
+const sport = 12380
+const localserver = '127.0.0.1:${sport}'
+const exit_after_time = 12 * time.second
 
-// setup of vweb webserver
-fn testsuite_begin() {
-	os.chdir(vroot) or {}
-	if os.exists(serverexe) {
-		os.rm(serverexe) or {}
-	}
-}
-
-fn test_a_simple_vweb_app_can_be_compiled() {
-	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
-	// TODO: find out why it does not compile with -usecache and -g
-	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
-	assert did_server_compile == 0
-	assert os.exists(serverexe)
-}
+const tcp_r_timeout = 30 * time.second
+const tcp_w_timeout = 30 * time.second
 
 fn test_a_simple_vweb_app_runs_in_the_background() {
-	mut suffix := ''
-	$if !windows {
-		suffix = ' > /dev/null &'
-	}
-	if vweb_logfile != '' {
-		suffix = ' 2>> ${os.quoted_path(vweb_logfile)} >> ${os.quoted_path(vweb_logfile)} &'
-	}
-	server_exec_cmd := '${os.quoted_path(serverexe)} ${sport} ${exit_after_time} ${suffix}'
-	$if debug_net_socket_client ? {
-		eprintln('running:\n${server_exec_cmd}')
-	}
-	$if windows {
-		spawn os.system(server_exec_cmd)
-	} $else {
-		res := os.system(server_exec_cmd)
-		assert res == 0
-	}
-	$if macos {
-		time.sleep(1000 * time.millisecond)
-	} $else {
-		time.sleep(100 * time.millisecond)
-	}
+	vweb_test_server.start_in_background(sport, exit_after_time)!
 }
 
 // web client tests follow
@@ -238,6 +196,33 @@ fn test_http_client_multipart_form_data() {
 	assert x.body == files[0].data
 }
 
+fn test_login_with_multipart_form_data_send_by_fetch() {
+	mut form_config := http.PostMultipartFormConfig{
+		form: {
+			'username': 'myusername'
+			'password': 'mypassword123'
+		}
+	}
+	x := http.post_multipart_form('http://${localserver}/login', form_config)!
+	assert x.status_code == 200
+	assert x.status_msg == 'OK'
+	assert x.body == 'username: xmyusernamex | password: xmypassword123x'
+}
+
+fn test_host() {
+	mut req := http.Request{
+		url: 'http://${localserver}/with_host'
+		method: .get
+	}
+
+	mut x := req.do()!
+	assert x.status() == .not_found
+
+	req.add_header(.host, 'example.com')
+	x = req.do()!
+	assert x.status() == .ok
+}
+
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://${localserver}/shutdown') or {
 		assert err.msg() == ''
@@ -289,7 +274,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('coult not create a tcp client connection to ${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to ${localserver} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)
@@ -312,4 +297,17 @@ ${config.content}'
 		eprintln('received:\n${read}')
 	}
 	return read.bytestr()
+}
+
+// for issue 20476
+// phenomenon: parsing url error when querypath is `//`
+fn test_empty_querypath() {
+	mut x := http.get('http://${localserver}') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+	x = http.get('http://${localserver}/') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+	x = http.get('http://${localserver}//') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+	x = http.get('http://${localserver}///') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
 }

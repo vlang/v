@@ -1,4 +1,4 @@
 fn x() {
 	// SqlExpr
-	x := sql :=
+	x := sql_ :=
 }

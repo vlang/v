@@ -3,7 +3,7 @@ module main
 import vweb
 import json
 
-['/auth/login'; post]
+@['/auth/login'; post]
 pub fn (mut app App) controller_auth() vweb.Result {
 	body := json.decode(AuthRequestDto, app.req.data) or {
 		app.set_status(400, '')

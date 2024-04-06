@@ -1,15 +1,13 @@
 import term.ui as tui
 
-const (
-	colors = [
-		tui.Color{33, 150, 243},
-		tui.Color{0, 150, 136},
-		tui.Color{205, 220, 57},
-		tui.Color{255, 152, 0},
-		tui.Color{244, 67, 54},
-		tui.Color{156, 39, 176},
-	]
-)
+const colors = [
+	tui.Color{33, 150, 243},
+	tui.Color{0, 150, 136},
+	tui.Color{205, 220, 57},
+	tui.Color{255, 152, 0},
+	tui.Color{244, 67, 54},
+	tui.Color{156, 39, 176},
+]
 
 struct Point {
 	x int
@@ -84,13 +82,17 @@ fn event(e &tui.Event, mut app App) {
 	}
 }
 
+type EventFn = fn (&tui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
 		user_data: app
-		frame_fn: frame
-		event_fn: event
+		frame_fn: FrameFn(frame)
+		event_fn: EventFn(event)
 		hide_cursor: true
 	)
-	app.tui.run()?
+	app.tui.run()!
 }

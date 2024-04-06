@@ -16,6 +16,6 @@ fn other(mut ns []Node) {
 
 pub struct Node {
 pub:
-	id u32 [required]
+	id u32 @[required]
 	a  int
 }

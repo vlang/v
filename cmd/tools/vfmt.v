@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -31,11 +31,9 @@ mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
 
-const (
-	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
-	vtmp_folder          = os.vtmp_dir()
-	term_colors          = term.can_show_color_on_stderr()
-)
+const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
+const vtmp_folder = os.vtmp_dir()
+const term_colors = term.can_show_color_on_stderr()
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -89,7 +87,6 @@ fn main() {
 	}
 	if files.len == 0 || '-help' in args || '--help' in args {
 		help.print_and_exit('fmt')
-		exit(0)
 	}
 	mut cli_args_no_files := []string{}
 	for idx, a in os.args {
@@ -102,6 +99,7 @@ fn main() {
 		}
 	}
 	mut errors := 0
+	mut has_internal_error := false
 	for file in files {
 		fpath := os.real_path(file)
 		mut worker_command_array := cli_args_no_files.clone()
@@ -114,6 +112,8 @@ fn main() {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
 				eprintln('Internal vfmt error while formatting file: ${file}.')
+				has_internal_error = true
+				continue
 			}
 			errors++
 			continue
@@ -132,19 +132,17 @@ fn main() {
 		}
 		errors++
 	}
+	ecode := if has_internal_error { 5 } else { 0 }
 	if errors > 0 {
-		eprintln('Encountered a total of: ${errors} errors.')
-		if foptions.is_noerror {
-			exit(0)
+		eprintln('Encountered a total of: ${errors} formatting errors.')
+		match true {
+			foptions.is_noerror { exit(0 + ecode) }
+			foptions.is_verify { exit(1 + ecode) }
+			foptions.is_c { exit(2 + ecode) }
+			else { exit(1 + ecode) }
 		}
-		if foptions.is_verify {
-			exit(1)
-		}
-		if foptions.is_c {
-			exit(2)
-		}
-		exit(1)
 	}
+	exit(ecode)
 }
 
 fn setup_preferences_and_table() (&pref.Preferences, &ast.Table) {
@@ -163,10 +161,10 @@ fn (foptions &FormatOptions) vlog(msg string) {
 
 fn (foptions &FormatOptions) format_file(file string) {
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
-	prefs, table := setup_preferences_and_table()
-	file_ast := parser.parse_file(file, table, .parse_comments, prefs)
+	prefs, mut table := setup_preferences_and_table()
+	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_${file_name}')
@@ -177,11 +175,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 
 fn (foptions &FormatOptions) format_pipe() {
 	foptions.vlog('vfmt2 running fmt.fmt over stdin')
-	prefs, table := setup_preferences_and_table()
+	prefs, mut table := setup_preferences_and_table()
 	input_text := os.get_raw_lines_joined()
-	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs)
+	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug, source_text: input_text)
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		source_text: input_text
+	)
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
@@ -283,76 +283,19 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 	flush_stdout()
 }
 
-fn (f FormatOptions) str() string {
-	return
-		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
-		' is_all: ${f.is_all}, is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
-		' is_verify: ${f.is_verify}" }'
-}
-
-fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
-	mut mod_name := 'main'
-	mut is_module_file := false
-	flines := read_source_lines(file) or { return mod_name, is_module_file }
-	for fline in flines {
-		line := fline.trim_space()
-		if line.starts_with('module ') {
-			if !line.starts_with('module main') {
-				is_module_file = true
-				mod_name = line.replace('module ', ' ').trim_space()
-			}
-			break
-		}
-	}
-	return mod_name, is_module_file
-}
-
 fn read_source_lines(file string) ![]string {
 	source_lines := os.read_lines(file) or { return error('can not read ${file}') }
 	return source_lines
 }
 
-fn get_compile_name_of_potential_v_project(file string) string {
-	// This function get_compile_name_of_potential_v_project returns:
-	// a) the file's folder, if file is part of a v project
-	// b) the file itself, if the file is a standalone v program
-	pfolder := os.real_path(os.dir(file))
-	// a .v project has many 'module main' files in one folder
-	// if there is only one .v file, then it must be a standalone
-	all_files_in_pfolder := os.ls(pfolder) or { panic(err) }
-	mut vfiles := []string{}
-	for f in all_files_in_pfolder {
-		vf := os.join_path(pfolder, f)
-		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
-			continue
-		}
-		vfiles << vf
-	}
-	if vfiles.len == 1 {
-		return file
-	}
-	// /////////////////////////////////////////////////////////////
-	// At this point, we know there are many .v files in the folder
-	// We will have to read them all, and if there are more than one
-	// containing `fn main` then the folder contains multiple standalone
-	// v programs. If only one contains `fn main` then the folder is
-	// a project folder, that should be compiled with `v pfolder`.
-	mut main_fns := 0
-	for f in vfiles {
-		slines := read_source_lines(f) or { panic(err) }
-		for line in slines {
-			if line.contains('fn main()') {
-				main_fns++
-				if main_fns > 1 {
-					return file
-				}
-			}
-		}
-	}
-	return pfolder
-}
-
-[noreturn]
+@[noreturn]
 fn verror(s string) {
 	util.verror('vfmt error', s)
+}
+
+fn (f FormatOptions) str() string {
+	return
+		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
+		' is_all: ${f.is_all}, is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
+		' is_verify: ${f.is_verify}" }'
 }

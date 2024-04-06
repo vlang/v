@@ -4,7 +4,7 @@ fn JS.__panic_abort(&u8, int)
 fn JS.__writeln(&u8, int)
 
 // panic calls the `__panic_abort` JS panic handler.
-[noreturn]
+@[noreturn]
 pub fn panic(s string) {
 	JS.__panic_abort(s.str, s.len)
 	for {}

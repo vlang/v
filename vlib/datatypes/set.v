@@ -46,12 +46,6 @@ pub fn (mut set Set[T]) clear() {
 	set.elements = map[T]u8{}
 }
 
-// equal checks whether the two given sets are equal (i.e. contain all and only the same elements).
-[deprecated: 'use set1[T] == set2[T] instead']
-pub fn (l Set[T]) equal(r Set[T]) bool {
-	return l == r
-}
-
 // == checks whether the two given sets are equal (i.e. contain all and only the same elements).
 pub fn (l Set[T]) == (r Set[T]) bool {
 	if l.elements.len != r.elements.len {
@@ -112,12 +106,6 @@ pub fn (l Set[T]) intersection(r Set[T]) Set[T] {
 		}
 	}
 	return set
-}
-
-// difference returns the difference of sets.
-[deprecated: 'use set1[T] - set2[T] instead']
-pub fn (l Set[T]) difference(r Set[T]) Set[T] {
-	return l - r
 }
 
 // - returns the difference of sets.

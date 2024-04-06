@@ -1,13 +1,10 @@
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'v', 'tests', 'os_file_test')
-
+const tfolder = os.join_path(os.vtmp_dir(), 'os_file_tests')
 const tfile = os.join_path_single(tfolder, 'test_file')
 
 fn testsuite_begin() {
-	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)!
+	os.mkdir_all(tfolder) or {}
 	os.chdir(tfolder)!
 	assert os.is_dir(tfolder)
 }
@@ -40,21 +37,19 @@ enum Color {
 	blue
 }
 
-[flag]
+@[flag]
 enum Permissions {
 	read
 	write
 	execute
 }
 
-const (
-	unit_point         = Point{1.0, 1.0, 1.0}
-	another_point      = Point{0.25, 2.25, 6.25}
-	extended_point     = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
-	another_byte       = u8(123)
-	another_color      = Color.red
-	another_permission = Permissions.read | .write
-)
+const unit_point = Point{1.0, 1.0, 1.0}
+const another_point = Point{0.25, 2.25, 6.25}
+const extended_point = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
+const another_byte = u8(123)
+const another_color = Color.red
+const another_permission = Permissions.read | .write
 
 // test_read_bytes_into_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and
@@ -87,14 +82,14 @@ fn test_read_bytes_into_newline_text() {
 // This test simulates the scenario when a byte stream is read and a newline byte
 // appears in that stream and an EOF occurs before the buffer is full.
 fn test_read_bytes_into_newline_binary() {
-	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	mut bw := []u8{len: 15}
 	bw[9] = 0xff
 	bw[12] = 10 // newline
 
-	n0_bytes := bw[0..10]
-	n1_bytes := bw[10..13]
-	n2_bytes := bw[13..]
+	n0_bytes := unsafe { bw[0..10] }
+	n1_bytes := unsafe { bw[10..13] }
+	n2_bytes := unsafe { bw[13..] }
 
 	mut f := os.open_file(tfile, 'w')!
 	f.write(bw)!
@@ -151,7 +146,7 @@ fn test_read_eof_last_read_partial_buffer_fill() {
 
 // test_read_eof_last_read_full_buffer_fill tests that when reading a file the
 // end-of-file is detected and results in a none error being returned. This test
-// simulates file reading where the end-of-file is reached at the beinning of an
+// simulates file reading where the end-of-file is reached at the beginning of an
 // fread that returns no data.
 fn test_read_eof_last_read_full_buffer_fill() {
 	mut f := os.open_file(tfile, 'w')!
@@ -182,7 +177,7 @@ fn test_read_eof_last_read_full_buffer_fill() {
 }
 
 fn test_write_struct() {
-	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w')!
 	f.write_struct(another_point)!
@@ -237,7 +232,7 @@ fn test_read_struct_at() {
 }
 
 fn test_write_raw() {
-	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w')!
 	f.write_raw(another_point)!
@@ -403,7 +398,9 @@ fn test_eof() {
 	mut f := os.open(tfile)!
 	f.read_bytes(10)
 	assert !f.eof()
-	f.read_bytes(100)
+	x := f.read_bytes(100)
+	dump(x)
+	dump(x.len)
 	assert f.eof()
 	f.close()
 }
@@ -418,7 +415,7 @@ fn test_open_file_wb_ab() {
 	mut afile := os.open_file('text.txt', 'ab', 0o666)!
 	afile.write_string('hello')!
 	afile.close()
-	assert os.read_file('text.txt')? == 'hellohello'
+	assert os.read_file('text.txt')! == 'hellohello'
 }
 
 fn test_open_append() {
@@ -437,4 +434,61 @@ fn test_open_append() {
 	f3.write_string('def\n')!
 	f3.close()
 	assert os.read_lines(tfile)! == ['abc', 'abc', 'def']
+}
+
+fn test_open_file_on_chinese_windows() {
+	$if windows {
+		os.rm('中文.txt') or {}
+		mut f1 := os.open_file('中文.txt', 'w+', 0x666) or { panic(err) }
+		f1.write_string('test')!
+		f1.close()
+
+		assert os.read_file('中文.txt')! == 'test'
+		assert os.file_size('中文.txt') == 4
+
+		os.truncate('中文.txt', 2)!
+		assert os.file_size('中文.txt') == 2
+	}
+}
+
+fn test_open_file_crlf_binary_mode() {
+	teststr := 'hello\r\n'
+	fname := 'text.txt'
+
+	mut wfile := os.open_file(fname, 'w', 0o666)!
+	wfile.write_string(teststr)!
+	wfile.close()
+
+	mut fcont_w := os.read_file(fname)!
+
+	os.rm(fname) or {}
+
+	mut wbfile := os.open_file(fname, 'wb', 0o666)!
+	wbfile.write_string(teststr)!
+	wbfile.close()
+
+	mut fcont_wb := os.read_file(fname)!
+
+	os.rm(fname) or {}
+
+	$if windows {
+		assert fcont_w != teststr
+	}
+
+	assert fcont_wb == teststr
+}
+
+fn test_path_devnull() {
+	dump(os.path_devnull)
+	content := os.read_file(os.path_devnull)!
+	// dump(content)
+	// dump(content.len)
+
+	os.write_file(os.path_devnull, 'something')!
+
+	content_after := os.read_file(os.path_devnull)!
+	// dump(content_after)
+	// dump(content_after.len)
+	assert content.len == 0
+	assert content_after.len == 0
 }

@@ -1,0 +1,16 @@
+@[flag]
+enum Permission {
+	read
+	write
+	execute
+}
+
+perm := Permission.read | Permission.write | Permission.execute
+dump(perm)
+
+match perm {
+	.read { println('r') }
+	.write { println('w') }
+	.execute { println('x') }
+	// must require an `else` here
+}

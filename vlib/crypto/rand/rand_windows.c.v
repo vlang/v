@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -8,10 +8,8 @@ module rand
 #flag windows -lbcrypt
 #include <bcrypt.h>
 
-const (
-	status_success                  = 0x00000000
-	bcrypt_use_system_preferred_rng = 0x00000002
-)
+const status_success = 0x00000000
+const bcrypt_use_system_preferred_rng = 0x00000002
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ![]u8 {

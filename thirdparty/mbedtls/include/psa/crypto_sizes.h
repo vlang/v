@@ -239,6 +239,15 @@
  */
 #define PSA_TLS12_PSK_TO_MS_PSK_MAX_SIZE 128
 
+/* The expected size of input passed to psa_tls12_ecjpake_to_pms_input,
+ * which is expected to work with P-256 curve only. */
+#define PSA_TLS12_ECJPAKE_TO_PMS_INPUT_SIZE 65
+
+/* The size of a serialized K.X coordinate to be used in
+ * psa_tls12_ecjpake_to_pms_input. This function only accepts the P-256
+ * curve. */
+#define PSA_TLS12_ECJPAKE_TO_PMS_DATA_SIZE 32
+
 /** The maximum size of a block cipher. */
 #define PSA_BLOCK_CIPHER_BLOCK_MAX_SIZE 16
 
@@ -708,7 +717,7 @@
     (PSA_KEY_EXPORT_ASN1_INTEGER_MAX_SIZE(key_bits) + 11)
 
 /* Maximum size of the export encoding of an RSA key pair.
- * Assumes thatthe public exponent is less than 2^32 and that the size
+ * Assumes that the public exponent is less than 2^32 and that the size
  * difference between the two primes is at most 1 bit.
  *
  * RSAPrivateKey ::= SEQUENCE {

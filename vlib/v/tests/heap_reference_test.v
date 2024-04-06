@@ -1,19 +1,19 @@
-[heap]
+@[heap]
 struct GitStructure {
 pub mut:
 	root  string
 	repos []&GitRepo
 }
 
-[heap]
+@[heap]
 struct GitRepo {
-	id int [skip]
+	id int @[skip]
 pub:
 	path string // path on filesystem
 	name string
 }
 
-pub fn (mut gitstructure GitStructure) repo_get(name string) ?&GitRepo {
+pub fn (mut gitstructure GitStructure) repo_get(name string) !&GitRepo {
 	for r in gitstructure.repos {
 		if r.name == name {
 			if name != '' {
@@ -53,14 +53,14 @@ fn test_opt_ref_return() {
 	assert err_msg == "Could not find repo for account name: 'wrong_name'"
 }
 
-[heap]
+@[heap]
 struct GitStructureNoRef {
 pub mut:
 	root  string
 	repos []GitRepo
 }
 
-pub fn (mut gitstructure GitStructureNoRef) repo_get(name string) ?&GitRepo {
+pub fn (mut gitstructure GitStructureNoRef) repo_get(name string) !&GitRepo {
 	for r in gitstructure.repos {
 		if r.name == name {
 			if name != '' {

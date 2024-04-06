@@ -20,45 +20,41 @@ import db.pg
 //   * Child
 // in the passed databases, so it is better to use empty DBs for it.
 
-const (
-	mysql_host = os.getenv_opt('MHOST') or { 'localhost' }
-	mysql_port = os.getenv_opt('MPORT') or { '3306' }.u32()
-	mysql_user = os.getenv_opt('MUSER') or { 'myuser' }
-	mysql_pass = os.getenv_opt('MPASS') or { 'abc' }
-	mysql_db   = os.getenv_opt('MDATABASE') or { 'test' }
-)
+const mysql_host = os.getenv_opt('MHOST') or { 'localhost' }
+const mysql_port = os.getenv_opt('MPORT') or { '3306' }.u32()
+const mysql_user = os.getenv_opt('MUSER') or { 'myuser' }
+const mysql_pass = os.getenv_opt('MPASS') or { 'abc' }
+const mysql_db = os.getenv_opt('MDATABASE') or { 'test' }
 
-const (
-	pg_host = os.getenv_opt('PGHOST') or { 'localhost' }
-	pg_user = os.getenv_opt('PGUSER') or { 'test' }
-	pg_pass = os.getenv_opt('PGPASS') or { 'abc' }
-	pg_db   = os.getenv_opt('PGDATABASE') or { 'test' }
-)
+const pg_host = os.getenv_opt('PGHOST') or { 'localhost' }
+const pg_user = os.getenv_opt('PGUSER') or { 'test' }
+const pg_pass = os.getenv_opt('PGPASS') or { 'abc' }
+const pg_db = os.getenv_opt('PGDATABASE') or { 'test' }
 
-[table: 'modules']
+@[table: 'modules']
 struct Module {
-	id           int    [primary; sql: serial]
+	id           int    @[primary; sql: serial]
 	name         string
-	nr_downloads int    [sql: u64]
+	nr_downloads int    @[sql: u64]
 	creator      User
 }
 
 struct User {
-	id             int    [primary; sql: serial]
-	age            u32    [unique: 'user']
-	name           string [sql: 'username'; sql_type: 'VARCHAR(200)'; unique]
-	is_customer    bool   [sql: 'abc'; unique: 'user']
-	skipped_string string [skip]
+	id             int    @[primary; sql: serial]
+	age            u32    @[unique: 'user']
+	name           string @[sql: 'username'; sql_type: 'VARCHAR(200)'; unique]
+	is_customer    bool   @[sql: 'abc'; unique: 'user']
+	skipped_string string @[skip]
 }
 
 struct Parent {
-	id       int     [primary; sql: serial]
+	id       int     @[primary; sql: serial]
 	name     string
-	children []Child [fkey: 'parent_id']
+	children []Child @[fkey: 'parent_id']
 }
 
 struct Child {
-	id        int    [primary; sql: serial]
+	id        int    @[primary; sql: serial]
 	parent_id int
 	name      string
 }
@@ -102,14 +98,13 @@ fn sqlite3_array() ! {
 
 fn msql_array() ! {
 	eprintln('------------ ${@METHOD} -----------------')
-	mut db := mysql.Connection{
+	mut db := mysql.connect(
 		host: mysql_host
 		port: mysql_port
 		username: mysql_user
 		password: mysql_pass
 		dbname: mysql_db
-	}
-	db.connect()!
+	)!
 	defer {
 		sql db {
 			drop table Parent
@@ -213,14 +208,13 @@ fn sqlite3() ! {
 
 fn msql() ! {
 	eprintln('------------ ${@METHOD} -----------------')
-	mut conn := mysql.Connection{
+	mut conn := mysql.connect(
 		host: mysql_host
 		port: mysql_port
 		username: mysql_user
 		password: mysql_pass
 		dbname: mysql_db
-	}
-	conn.connect()!
+	)!
 	defer {
 		conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
 		conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }

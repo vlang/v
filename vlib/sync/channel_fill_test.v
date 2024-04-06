@@ -1,9 +1,7 @@
 import sync
 
-const (
-	queue_len  = 1000
-	queue_fill = 763
-)
+const queue_len = 1000
+const queue_fill = 763
 
 fn do_send(ch chan int, mut fin sync.Semaphore) {
 	for i in 0 .. queue_fill {

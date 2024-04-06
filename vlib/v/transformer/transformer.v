@@ -9,8 +9,16 @@ pub struct Transformer {
 pub mut:
 	index &IndexState
 	table &ast.Table = unsafe { nil }
+	file  &ast.File  = unsafe { nil }
 mut:
-	is_assert bool
+	is_assert   bool
+	inside_dump bool
+}
+
+fn (mut t Transformer) trace[T](fbase string, x &T) {
+	if t.file.path_base == fbase {
+		println('> t.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
+	}
 }
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
@@ -37,6 +45,7 @@ pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
 }
 
 pub fn (mut t Transformer) transform(mut ast_file ast.File) {
+	t.file = ast_file
 	for mut stmt in ast_file.stmts {
 		stmt = t.stmt(mut stmt)
 	}
@@ -169,6 +178,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		ast.EmptyStmt {}
 		ast.NodeError {}
 		ast.AsmStmt {}
+		ast.DebuggerStmt {}
 		ast.AssertStmt {
 			return t.assert_stmt(mut node)
 		}
@@ -226,7 +236,9 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			}
 		}
 		ast.FnDecl {
-			t.fn_decl(mut node)
+			if t.pref.trace_calls {
+				t.fn_decl_trace_calls(mut node)
+			}
 			t.index.indent(true)
 			for mut stmt in node.stmts {
 				stmt = t.stmt(mut stmt)
@@ -272,6 +284,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				expr = t.expr(mut expr)
 			}
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			for mut field in node.fields {
@@ -457,7 +470,7 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 }
 
 pub fn (mut t Transformer) for_c_stmt(mut node ast.ForCStmt) ast.Stmt {
-	// TODO we do not optimise array access for multi init
+	// TODO: we do not optimise array access for multi init
 	// for a,b := 0,1; a < 10; a,b = a+b, a {...}
 
 	if node.has_init && !node.is_multi {
@@ -484,7 +497,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	node.cond = t.expr(mut node.cond)
 	match node.cond {
 		ast.BoolLiteral {
-			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
+			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eliminated
 				return ast.empty_stmt
 			}
 		}
@@ -513,6 +526,9 @@ pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
 }
 
 pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
+	if t.inside_dump {
+		return node
+	}
 	match mut node {
 		ast.AnonFn {
 			node.decl = t.stmt(mut node.decl) as ast.FnDecl
@@ -526,7 +542,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 			node.len_expr = t.expr(mut node.len_expr)
 			node.cap_expr = t.expr(mut node.cap_expr)
-			node.default_expr = t.expr(mut node.default_expr)
+			node.init_expr = t.expr(mut node.init_expr)
 		}
 		ast.AsCast {
 			node.expr = t.expr(mut node.expr)
@@ -563,7 +579,10 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.DumpExpr {
+			old_inside_dump := t.inside_dump
+			t.inside_dump = true
 			node.expr = t.expr(mut node.expr)
+			t.inside_dump = old_inside_dump
 		}
 		ast.GoExpr {
 			node.call_expr = t.expr(mut node.call_expr) as ast.CallExpr
@@ -659,16 +678,28 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.StructInit {
 			node.update_expr = t.expr(mut node.update_expr)
-			for mut field in node.fields {
-				field.expr = t.expr(mut field.expr)
-			}
-			for mut embed in node.embeds {
-				embed.expr = t.expr(mut embed.expr)
+			for mut init_field in node.init_fields {
+				init_field.expr = t.expr(mut init_field.expr)
 			}
 		}
 		ast.UnsafeExpr {
 			node.expr = t.expr(mut node.expr)
 		}
+		// segfaults with vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
+		/*
+		ast.Ident {
+			mut obj := node.obj
+			if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
+				obj = node.scope.find(node.name) or { return node }
+			}
+
+			match mut obj {
+				ast.ConstField {
+					obj.expr = t.expr(mut obj.expr)
+				}
+				else {}
+			}
+		}*/
 		else {}
 	}
 	return node
@@ -681,9 +712,45 @@ pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
 	return node
 }
 
+fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
+	mut expr_ := expr
+	if mut expr_ is ast.Ident {
+		// if there is a local variable or a fn parameter, that has the same name as the constant, do not do the substitution:
+		if _ := expr_.scope.find_var(expr_.name) {
+			return
+		}
+		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
+			if mut obj.expr is ast.BoolLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.IntegerLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.FloatLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.StringLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.InfixExpr {
+				folded_expr := t.infix_expr(mut obj.expr)
+				if folded_expr is ast.BoolLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.IntegerLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.FloatLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.StringLiteral {
+					expr = folded_expr
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
+	if !t.pref.translated {
+		t.trans_const_value_to_literal(mut node.left)
+		t.trans_const_value_to_literal(mut node.right)
+	}
 
 	mut pos := node.left.pos()
 	pos.extend(node.pos)
@@ -1036,43 +1103,42 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 	return node
 }
 
-// fn_decl mutates `node`.
-// if `pref.trace_calls` is true ast Nodes for `eprintln(...)` is prepended to the `FnDecl`'s
-// stmts list to let the gen backend generate the target specific code for the print.
-pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
-	if t.pref.trace_calls {
-		if node.no_body {
-			// Skip `C.fn()` calls
-			return
-		}
-		if node.name.starts_with('v.trace_calls.') {
-			// do not instrument the tracing functions, to avoid infinite regress
-			return
-		}
-		fname := if node.is_method {
-			receiver_name := global_table.type_to_str(node.receiver.typ)
-			'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
-		} else {
-			'${node.mod} ${node.name}/${node.params.len}'
-		}
-
-		expr_stmt := ast.ExprStmt{
-			expr: ast.CallExpr{
-				mod: node.mod
-				pos: node.pos
-				language: .v
-				scope: node.scope
-				name: 'v.trace_calls.on_call'
-				args: [
-					ast.CallArg{
-						expr: ast.StringLiteral{
-							val: fname
-						}
-						typ: ast.string_type_idx
-					},
-				]
-			}
-		}
-		node.stmts.prepend(expr_stmt)
+pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
+	// Prepend ast Nodes for `eprintln(...)` to the `FnDecl`'s stmts list,
+	// to let the gen backend generate the target specific code for the print.
+	if node.no_body {
+		// Skip `C.fn()` calls
+		return
 	}
+	if node.name.starts_with('v.trace_calls.') {
+		// do not instrument the tracing functions, to avoid infinite regress
+		return
+	}
+	fname := if node.is_method {
+		receiver_name := global_table.type_to_str(node.receiver.typ)
+		'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
+	} else {
+		'${node.mod} ${node.name}/${node.params.len}'
+	}
+	if !t.pref.trace_fns.any(fname.match_glob(it)) {
+		return
+	}
+	expr_stmt := ast.ExprStmt{
+		expr: ast.CallExpr{
+			mod: node.mod
+			pos: node.pos
+			language: .v
+			scope: node.scope
+			name: 'v.trace_calls.on_call'
+			args: [
+				ast.CallArg{
+					expr: ast.StringLiteral{
+						val: fname
+					}
+					typ: ast.string_type_idx
+				},
+			]
+		}
+	}
+	node.stmts.prepend(expr_stmt)
 }

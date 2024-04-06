@@ -1,14 +1,11 @@
 /**********************************************************************
-*
 * Sokol 3d cube demo
-*
 * Copyright (c) 2021 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
 * that can be found in the LICENSE file.
-*
 * TODO:
 * - add instancing
-* - add an exampel with shaders
+* - add an example with shaders
 **********************************************************************/
 import gg
 import gx
@@ -17,50 +14,49 @@ import sokol.sapp
 import sokol.gfx
 import sokol.sgl
 
-const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.white
-)
+const win_width = 800
+const win_height = 800
+const bg_color = gx.white
 
 struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
 	mouse_y     int = -1
 }
 
-/******************************************************************************
-*
-* Texture functions
-*
-******************************************************************************/
-fn create_texture(w int, h int, buf &u8) gfx.Image {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
-	// commen if .dynamic is enabled
+	// comment, if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -78,11 +74,6 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	gfx.update_image(sg_img, &tmp_sbc)
 }
 
-/******************************************************************************
-*
-* Draw functions
-*
-******************************************************************************/
 fn draw_triangle() {
 	sgl.defaults()
 	sgl.begin_triangles()
@@ -133,7 +124,6 @@ fn cube() {
 
 fn draw_cubes(app App) {
 	rot := [f32(1.0) * (app.frame_count % 360), 0.5 * f32(app.frame_count % 360)]
-	// rot := [f32(app.mouse_x), f32(app.mouse_y)]
 
 	sgl.defaults()
 	sgl.load_pipeline(app.pip_3d)
@@ -206,7 +196,7 @@ fn draw_texture_cubes(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 100.0)
@@ -243,7 +233,7 @@ fn cube_field(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 200.0)
@@ -303,11 +293,6 @@ fn frame(mut app App) {
 	app.gg.end()
 }
 
-/******************************************************************************
-*
-* Init / Cleanup
-*
-******************************************************************************/
 fn my_init(mut app App) {
 	app.init_flag = true
 
@@ -324,7 +309,7 @@ fn my_init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -374,16 +359,11 @@ fn my_init(mut app App) {
 		}
 	}
 	unsafe {
-		app.texture = create_texture(w, h, tmp_txt)
+		app.texture, app.sampler = create_texture(w, h, tmp_txt)
 		free(tmp_txt)
 	}
 }
 
-/******************************************************************************
-*
-* event
-*
-******************************************************************************/
 fn my_event_manager(mut ev gg.Event, mut app App) {
 	if ev.typ == .mouse_move {
 		app.mouse_x = int(ev.mouse_x)
@@ -398,17 +378,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-*
-* Main
-*
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
@@ -420,6 +391,5 @@ fn main() {
 		init_fn: my_init
 		event_fn: my_event_manager
 	)
-
 	app.gg.run()
 }

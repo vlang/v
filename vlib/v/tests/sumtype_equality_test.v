@@ -21,7 +21,7 @@ fn test_sumtype_equality() {
 	assert u1 != u2
 	assert u1 != s1
 
-	// Same value, defferent type
+	// Same value, different type
 	foo := FooBar(Foo{
 		v: 0
 	})

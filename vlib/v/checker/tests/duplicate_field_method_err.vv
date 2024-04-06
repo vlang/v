@@ -1,5 +1,5 @@
-struct St{
-	attr fn()
+struct St {
+	attr fn () = unsafe { nil }
 }
 
 fn (s St) attr() {}

@@ -8,12 +8,12 @@ module clipboard
 // Clipboard represents a system clipboard.
 //
 // System "copy" and "paste" actions utilize the clipboard for temporary storage.
-[heap]
+@[heap]
 pub struct Clipboard {
 	pb             voidptr
 	last_cb_serial i64
 mut:
-	foo int // TODO remove, for mut hack
+	foo int // TODO: remove, for mut hack
 }
 
 fn C.darwin_new_pasteboard() voidptr

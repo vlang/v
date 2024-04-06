@@ -15,7 +15,7 @@ pub interface Modifier {
 pub type InspectorFn = fn (value &ast.Value, data voidptr) !
 
 struct Inspector {
-	inspector_callback InspectorFn
+	inspector_callback InspectorFn = unsafe { nil }
 mut:
 	data voidptr
 }

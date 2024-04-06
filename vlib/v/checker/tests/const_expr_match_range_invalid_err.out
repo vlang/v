@@ -18,3 +18,20 @@ vlib/v/checker/tests/const_expr_match_range_invalid_err.vv:9:2: error: the low a
 Details: 
  low part type: string
 high part type: int literal
+vlib/v/checker/tests/const_expr_match_range_invalid_err.vv:9:2: error: the range type and the match condition type should match
+    7 |         println(start)
+    8 |     }
+    9 |     'str'...end {
+      |     ~~~~~~~~~~~
+   10 |         println(end)
+   11 |     }
+Details: 
+match condition type: int
+          range type: string
+vlib/v/checker/tests/const_expr_match_range_invalid_err.vv:9:2: error: match branch range expressions need the start value to be known at compile time (only enums, const or literals are supported)
+    7 |         println(start)
+    8 |     }
+    9 |     'str'...end {
+      |     ~~~~~
+   10 |         println(end)
+   11 |     }

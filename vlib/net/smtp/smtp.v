@@ -11,16 +11,15 @@ import encoding.base64
 import strings
 import time
 import io
+import rand
 
-const (
-	recv_size = 128
-)
+const recv_size = 128
 
 enum ReplyCode {
-	ready = 220
-	close = 221
-	auth_ok = 235
-	action_ok = 250
+	ready      = 220
+	close      = 221
+	auth_ok    = 235
+	action_ok  = 250
 	mail_start = 354
 }
 
@@ -33,7 +32,7 @@ pub struct Client {
 mut:
 	conn     net.TcpConn
 	ssl_conn &ssl.SSLConn = unsafe { nil }
-	reader   io.BufferedReader
+	reader   ?&io.BufferedReader
 pub:
 	server   string
 	port     int = 25
@@ -48,14 +47,22 @@ pub mut:
 }
 
 pub struct Mail {
-	from      string
-	to        string
-	cc        string
-	bcc       string
-	date      time.Time = time.now()
-	subject   string
-	body_type BodyType
-	body      string
+	from        string
+	to          string
+	cc          string
+	bcc         string
+	date        time.Time = time.now()
+	subject     string
+	body_type   BodyType
+	body        string
+	attachments []Attachment
+	boundary    string
+}
+
+pub struct Attachment {
+	filename string
+	bytes    []u8
+	cid      string
 }
 
 // new_client returns a new SMTP client and connects to it
@@ -109,6 +116,7 @@ pub fn (mut c Client) send(config Mail) ! {
 	c.send_body(Mail{
 		...config
 		from: from
+		boundary: rand.uuid_v4()
 	}) or { return error('Sending mail body failed') }
 }
 
@@ -139,7 +147,7 @@ fn (mut c Client) connect_ssl() ! {
 fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	mut str := ''
 	for {
-		str = c.reader.read_line()!
+		str = c.reader or { return error('the Client.reader field is not set') }.read_line()!
 		if str.len < 4 {
 			return error('Invalid SMTP response: ${str}')
 		}
@@ -162,11 +170,11 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 			return error('Received unexpected status code ${status}, expecting ${expected}')
 		}
 	} else {
-		return error('Recieved unexpected SMTP data: ${str}')
+		return error('Received unexpected SMTP data: ${str}')
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_str(s string) ! {
 	$if smtp_debug ? {
 		eprintln('\n\n[SEND START]')
@@ -181,20 +189,20 @@ fn (mut c Client) send_str(s string) ! {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_ehlo() ! {
 	c.send_str('EHLO ${c.server}\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_starttls() ! {
 	c.send_str('STARTTLS\r\n')!
 	c.expect_reply(.ready)!
 	c.connect_ssl()!
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_auth() ! {
 	if c.username.len == 0 {
 		return
@@ -243,16 +251,41 @@ fn (mut c Client) send_body(cfg Mail) ! {
 	} else {
 		sb.write_string('Subject: ${cfg.subject}\r\n')
 	}
-
+	if cfg.attachments.len > 0 {
+		sb.write_string('MIME-Version: 1.0\r\n')
+		sb.write_string('Content-Type: multipart/mixed; boundary="${cfg.boundary}"\r\n--${cfg.boundary}\r\n')
+	}
 	if is_html {
 		sb.write_string('Content-Type: text/html; charset=UTF-8\r\n')
 	} else {
 		sb.write_string('Content-Type: text/plain; charset=UTF-8\r\n')
 	}
-	sb.write_string('Content-Transfer-Encoding: base64')
-	sb.write_string('\r\n\r\n')
+	sb.write_string('Content-Transfer-Encoding: base64\r\n\r\n')
 	sb.write_string(base64.encode_str(cfg.body))
+	sb.write_string('\r\n')
+	if cfg.attachments.len > 0 {
+		sb.write_string('\r\n--${cfg.boundary}\r\n')
+		sb.write_string(cfg.attachments_to_string())
+	}
 	sb.write_string('\r\n.\r\n')
 	c.send_str(sb.str())!
 	c.expect_reply(.action_ok)!
+}
+
+fn (a &Attachment) to_string(boundary string) string {
+	crlf := '\r\n'
+	cid := if a.cid != '' {
+		'Content-ID: <${a.cid}>${crlf}'
+	} else {
+		''
+	}
+	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${a.filename}"${crlf}${crlf}${base64.encode(a.bytes)}${crlf}--${boundary}${crlf}'
+}
+
+fn (m &Mail) attachments_to_string() string {
+	mut res := ''
+	for a in m.attachments {
+		res += a.to_string(m.boundary)
+	}
+	return if res.len > 0 { res[..res.len - 2] } else { '' } + '\r\n'
 }

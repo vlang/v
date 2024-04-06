@@ -8,12 +8,10 @@ mut:
 	raw_ints []string
 }
 
-const (
-	ver_major = 0
-	ver_minor = 1
-	ver_patch = 2
-	versions  = [ver_major, ver_minor, ver_patch]
-)
+const ver_major = 0
+const ver_minor = 1
+const ver_patch = 2
+const versions = [ver_major, ver_minor, ver_patch]
 
 // TODO: Rewrite using regexps?
 // /(\d+)\.(\d+)\.(\d+)(?:\-([0-9A-Za-z-.]+))?(?:\+([0-9A-Za-z-]+))?/
@@ -21,7 +19,7 @@ fn parse(input string) RawVersion {
 	mut raw_version := input
 	mut prerelease := ''
 	mut metadata := ''
-	plus_idx := raw_version.last_index('+') or { -1 }
+	plus_idx := raw_version.index_u8_last(`+`)
 	if plus_idx > 0 {
 		metadata = raw_version[(plus_idx + 1)..]
 		raw_version = raw_version[0..plus_idx]

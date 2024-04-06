@@ -4,7 +4,7 @@ enum Color {
 	green
 }
 
-fn enum_option_helper(b bool) ?Color {
+fn enum_option_helper(b bool) !Color {
 	if b {
 		return .red
 	}
@@ -34,8 +34,8 @@ fn test_enum() {
 
 enum PowerDuration {
 	invulntics = 30 * 35
-	invistics = 60 * 35
-	infratics = 120 * 35
+	invistics  = 60 * 35
+	infratics  = 120 * 35
 }
 
 fn test_custom_values() {
@@ -86,6 +86,20 @@ fn test_nums() {
 	assert Foo.c == unsafe { Foo(3) }
 	d := Foo.d
 	assert d == unsafe { Foo(-10) }
+}
+
+enum Number as i32 {
+	a = 100
+	b = 200
+	c = 300
+	d = 400
+}
+
+fn test_enum_as_i32() {
+	assert int(Number.a) == 100
+	assert int(Number.b) == 200
+	assert int(Number.c) == 300
+	assert int(Number.d) == 400
 }
 
 /*

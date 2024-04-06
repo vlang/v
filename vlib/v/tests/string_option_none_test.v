@@ -11,7 +11,7 @@ fn (err MyError) code() int {
 	return err.code
 }
 
-fn foo() int|none|IError {
+fn foo() IError {
 	return MyError{}
 }
 

@@ -82,8 +82,8 @@ fn test_self_slice_push() {
 
 fn test_slice_push_child() {
 	mut a := [1.0, 2.0625, 3.5, -7.75, 7.125, 8.4375, 0.5]
-	mut b := a[2..6] // `b` is initially created as reference
-	mut c := b[1..3] // `c` is initiall reference to `a` and `b`
+	mut b := unsafe { a[2..6] } // `b` is initially created as reference
+	mut c := unsafe { b[1..3] } // `c` is initially created as references to `a` and `b`
 	b << -2.25 // `b` should be reallocated, so `a` doesn't change
 	c[1] = -13.5 // this should change `c` and `a` but not `b`
 	assert c == [-7.75, -13.5]
@@ -93,7 +93,7 @@ fn test_slice_push_child() {
 
 fn test_predictable_reallocation_parent() {
 	mut a := []i64{len: 4, cap: 6, init: -25}
-	mut b := a[1..3]
+	mut b := unsafe { a[1..3] }
 	b[1] = -5238543910438573201
 	assert a == [i64(-25), -25, -5238543910438573201, -25]
 	a << 5

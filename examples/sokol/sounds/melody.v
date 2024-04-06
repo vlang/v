@@ -33,9 +33,7 @@ fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut a
 
 fn main() {
 	println(credits)
-	mut state := &AppState{
-		gg: 0
-	}
+	mut state := &AppState{}
 	audio.setup(
 		stream_userdata_cb: my_audio_stream_callback
 		user_data: state
@@ -60,7 +58,7 @@ fn graphics_frame(mut state AppState) {
 	state.gg.end()
 }
 
-[inline]
+@[inline]
 fn (mut state AppState) bsample(idx int) u8 {
 	return u8(127 + state.frames[(state.gframe + idx) & 2047] * 128)
 }

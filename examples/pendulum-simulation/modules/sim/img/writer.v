@@ -9,7 +9,7 @@ pub mut:
 	valid bool
 }
 
-pub struct ImageWritter {
+pub struct ImageWriter {
 	settings ImageSettings
 pub mut:
 	writer        PPMWriter
@@ -17,19 +17,19 @@ pub mut:
 	buffer        []ValidColor
 }
 
-pub fn new_image_writer(mut writer PPMWriter, settings ImageSettings) &ImageWritter {
+pub fn new_image_writer(mut writer PPMWriter, settings ImageSettings) &ImageWriter {
 	total_pixels := settings.width * settings.height
 	mut buffer := []ValidColor{len: total_pixels, init: ValidColor{
 		valid: false
 	}}
-	return &ImageWritter{
+	return &ImageWriter{
 		writer: writer
 		settings: settings
 		buffer: buffer
 	}
 }
 
-pub fn (mut iw ImageWritter) handle(result sim.SimResult) !int {
+pub fn (mut iw ImageWriter) handle(result sim.SimResult) !int {
 	total_pixels := iw.settings.width * iw.settings.height
 
 	// find the closest magnet

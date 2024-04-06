@@ -27,7 +27,7 @@ fn myprintln(s string) {
 	os.flush()
 }
 
-[live]
+@[live]
 fn pmessage() string {
 	_ := mymodule.some_constant * math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
 	return 'ORIGINAL'

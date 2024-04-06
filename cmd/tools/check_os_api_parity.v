@@ -10,26 +10,22 @@ import v.ast
 import rand
 import term
 
-const (
-	base_os      = 'linux'
-	os_names     = ['linux', 'macos', 'windows']
-	skip_modules = [
-		'builtin.bare',
-		'builtin.linux_bare.old',
-		'builtin.js',
-		'strconv',
-		'strconv.ftoa',
-		'hash',
-		'strings',
-		'crypto.rand',
-		'os.bare',
-		'os2',
-		'picohttpparser',
-		'picoev',
-		'szip',
-		'v.eval',
-	]
-)
+const base_os = 'linux'
+const os_names = ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'solaris', 'termux']
+const skip_modules = [
+	'builtin.bare',
+	'builtin.linux_bare.old',
+	'builtin.js',
+	'strconv',
+	'strconv.ftoa',
+	'hash',
+	'strings',
+	'crypto.rand',
+	'os.bare',
+	'os2',
+	'szip',
+	'v.eval',
+]
 
 struct App {
 	diff_cmd   string
@@ -105,7 +101,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 		for s in f.stmts {
 			if s is ast.FnDecl {
 				if s.is_pub {
-					fn_signature := s.stringify(b.table, mod_name, map[string]string{})
+					fn_signature := b.table.stringify_fn_decl(&s, mod_name, map[string]string{})
 					fn_mod := s.modname()
 					if fn_mod == mod_name {
 						fline := '${fn_mod}: ${fn_signature}'

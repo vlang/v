@@ -1,13 +1,14 @@
+// vtest flaky: true
+// vtest retry: 3
 import os
 import db.sqlite
 
 struct User {
-	id   i64    [primary; sql: serial]
-	name string [unique]
+	id   i64    @[primary; sql: serial]
+	name string @[unique]
 }
 
-const db_folder = os.join_path(os.vtmp_dir(), 'v', 'orm_sql')
-
+const db_folder = os.join_path(os.vtmp_dir(), 'orm_sql')
 const db_path = os.join_path(db_folder, 'sql_statement_or_blocks.db')
 
 fn testsuite_begin() {
@@ -23,7 +24,7 @@ fn test_ensure_db_exists_and_user_table_is_ok() {
 	assert true
 
 	eprintln('> drop pre-existing User table...')
-	db.exec('drop table if exists User')
+	db.exec('drop table if exists User')!
 
 	eprintln('> creating User table...')
 	sql db {

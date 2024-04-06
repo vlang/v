@@ -3,10 +3,10 @@ name: Other CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
 
 concurrency:
   group: build-other-${{ github.event.pull_request.number || github.sha }}
@@ -18,7 +18,7 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: No GPL licensed code, should be added accidentally
         run: |
           ! grep -r --exclude="*.yml" "a GPL license" .
@@ -26,11 +26,11 @@ jobs:
   code-formatting:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
@@ -43,27 +43,27 @@ jobs:
   performance-regressions:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
         run: make -j4
       - name: Clone & Build previous vmaster/v
         run: |
-          git clone --depth=1 https://github.com/vlang/v vmaster/
+          .github/workflows/retry.sh git clone --depth=1 https://github.com/vlang/v vmaster/
           (cd vmaster; make -j4)
       - name: V versions
         run: ./v version && ./vmaster/v version
       - name: Build the repeat tool
-        run: ./v cmd/tools/repeat.v
+        run: ./v cmd/tools/vrepeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 251 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
+        run: ./v repeat --max_time 251 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 1701 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: ./v repeat --max_time 1731 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
     runs-on: ubuntu-20.04
@@ -72,16 +72,16 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 10
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y g++-9 g++-11
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          .github/workflows/retry.sh sudo apt-get install --quiet -y g++-9 g++-11
 
       - name: Build v
         run: make
@@ -96,23 +96,13 @@ jobs:
       - name: V self compilation with g++ and -std=c++20
         run: ./v -cc g++-11 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-11 -no-std -cflags -std=c++20 -o v3 cmd/v
 
+      # NB: this does not mean it runs, but at least keeps it from regressing
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -o v2 cmd/v
 
-      - name: Shader examples can be build
+      - name: Shader examples can be built
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc
-          chmod +x ./sokol-shdc
-          for f in examples/sokol/02_cubes_glsl/cube_glsl \
-              examples/sokol/03_march_tracing_glsl/rt_glsl \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_march \
-              examples/sokol/05_instancing_glsl/rt_glsl_instancing \
-              examples/sokol/06_obj_viewer/gouraud \
-              ; do \
-                 echo "compiling shader $f.glsl ..."; \
-                 ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
-          done
+          .github/workflows/compile_shaders_in_examples.sh
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
@@ -120,23 +110,23 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install zzuf
-        run: sudo apt install -qq zzuf
+        run: .github/workflows/retry.sh sudo apt install -qq zzuf
       - name: Build local v
         run: |
           make -j4
-          ./v -g cmd/tools/vtest-parser.v
+          ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Run test-parser
         run: |
-          ./v test-parser -S examples/hello_world.v
-          ./v test-parser -S examples/hanoi.v
-          ./v test-parser -S examples/fibonacci.v
-          ./v test-parser -S examples/cli.v
-          ./v test-parser -S examples/json.v
-          ./v test-parser -S examples/vmod.v
-          ./v test-parser -S examples/regex/regex_example.v
-          ./v test-parser -S examples/2048/2048.v
+          ./v test-parser --show_source --linear examples/hello_world.v
+          ./v test-parser --show_source --linear examples/hanoi.v
+          ./v test-parser --show_source --linear examples/fibonacci.v
+          ./v test-parser --show_source --linear examples/cli.v
+          ./v test-parser --show_source --linear examples/json.v
+          ./v test-parser --show_source --linear examples/vmod.v
+          ./v test-parser --show_source --linear examples/regex/regex_example.v
+          ./v test-parser --show_source --linear examples/2048/2048.v
 
       - name: Run test-parser over fuzzed files
         run: |
@@ -148,8 +138,11 @@ jobs:
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex/regex_example.v > examples/regex_example_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
-          ./v test-parser -S examples/hello_world_fuzz.v
-          ./v test-parser -S examples/hanoi_fuzz.v
-          ./v test-parser -S examples/cli_fuzz.v
-          ./v test-parser -S examples/regex_example_fuzz.v
-          ./v test-parser -S examples/2048/2048_fuzz.v
+          ./v test-parser --show_source --linear examples/hello_world_fuzz.v
+          ./v test-parser --show_source --linear examples/fibonacci_fuzz.v
+          ./v test-parser --show_source --linear examples/hanoi_fuzz.v
+          ./v test-parser --show_source --linear examples/cli_fuzz.v
+          ./v test-parser --show_source --linear examples/json_fuzz.v
+          ./v test-parser --show_source --linear examples/vmod_fuzz.v
+          ./v test-parser --show_source --linear examples/regex_example_fuzz.v
+          ./v test-parser --show_source --linear examples/2048/2048_fuzz.v

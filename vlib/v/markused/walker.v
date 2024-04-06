@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -60,7 +60,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 			$if trace_skip_unused_roots ? {
 				println('>>>> ${fn_name} uses: ')
 			}
-			w.fn_decl(mut w.all_fns[fn_name])
+			unsafe { w.fn_decl(mut w.all_fns[fn_name]) }
 		}
 	}
 }
@@ -91,7 +91,7 @@ pub fn (mut w Walker) mark_markused_consts() {
 
 pub fn (mut w Walker) mark_markused_globals() {
 	for gkey, mut globalfield in w.all_globals {
-		if globalfield.is_markused {
+		if globalfield.is_markused || globalfield.is_exported {
 			w.mark_global_as_used(gkey)
 		}
 	}
@@ -101,6 +101,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
@@ -192,6 +193,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {}
+		ast.SemicolonStmt {}
 		ast.Module {}
 		ast.TypeDecl {}
 		ast.NodeError {}
@@ -226,7 +228,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyExpr {
-			// TODO make sure this doesn't happen
+			// TODO: make sure this doesn't happen
 			// panic('Walker: EmptyExpr')
 		}
 		ast.ComptimeType {}
@@ -236,7 +238,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ArrayInit {
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
-			w.expr(node.default_expr)
+			w.expr(node.init_expr)
 			w.exprs(node.exprs)
 		}
 		ast.Assoc {
@@ -273,7 +275,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_by_name('eprint')
 			w.fn_by_name('eprintln')
 		}
-		ast.GoExpr {
+		ast.SpawnExpr {
 			w.expr(node.call_expr)
 			if w.pref.os == .windows {
 				w.fn_by_name('panic_lasterr')
@@ -282,6 +284,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.fn_by_name('c_error_number_str')
 				w.fn_by_name('panic_error_number')
 			}
+		}
+		ast.GoExpr {
+			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
 			w.expr(node.left)
@@ -344,6 +349,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
+		}
+		ast.LambdaExpr {
+			w.expr(node.func)
 		}
 		ast.Likely {
 			w.expr(node.expr)
@@ -412,11 +420,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
-			for sif in node.fields {
+			for sif in node.init_fields {
 				w.expr(sif.expr)
-			}
-			for sie in node.embeds {
-				w.expr(sie.expr)
 			}
 		}
 		ast.TypeOf {
@@ -512,6 +517,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		return
 	}
 	w.mark_fn_as_used(fn_name)
+	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
+		&& !node.receiver_concrete_type.has_flag(.generic) {
+		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
+		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
+		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
+		w.used_fns[fkey] = true
+	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
 		if !node.is_method || node.receiver_type == stmt.receiver.typ {

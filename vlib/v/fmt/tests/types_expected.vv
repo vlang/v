@@ -5,6 +5,20 @@ pub type PublicBar = Bar | Foo | FooBar
 type Uint = u16 | u32 | u64 | u8 // This should stay on the same line
 type Float = f32 | f64
 
+// Callback represents all the possible callbacks
+pub type Callback = ConnectedCallback // connected callback
+	| DisconnectedCallback // disconnected callback
+	| LoggedOffCallback // logged off callback
+	| LoggedOnCallback // logged on callback
+
+struct ConnectedCallback {}
+
+struct DisconnectedCallback {}
+
+struct LoggedOnCallback {}
+
+struct LoggedOffCallback {}
+
 // Alias type
 type MyInt = int
 

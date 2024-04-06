@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -15,9 +15,8 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		// This should have already happened in the checker, since it also calls
 		// `resolve_generic_to_concrete`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
-		mut mut_table := unsafe { &ast.Table(g.table) }
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := mut_table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
+			if t_typ := g.table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 			{
 				return t_typ
@@ -28,11 +27,30 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := mut_table.resolve_generic_to_concrete(typ, generic_names,
+						if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
 							sym.info.concrete_types)
 						{
 							return t_typ
 						}
+					}
+				}
+			}
+		} else if typ.has_flag(.generic) && g.table.sym(typ).kind == .struct_ {
+			// resolve selector `a.foo` where `a` is struct[T] on non generic function	
+			sym := g.table.sym(typ)
+			if sym.info is ast.Struct {
+				if sym.info.generic_types.len > 0 {
+					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
+					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
+						sym.info.concrete_types)
+					{
+						return t_typ
+					}
+
+					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
+						g.cur_concrete_types)
+					{
+						return t_typ
 					}
 				}
 			}
@@ -43,12 +61,12 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 
 struct Type {
 	// typ is the original type
-	typ ast.Type        [required]
-	sym &ast.TypeSymbol [required]
+	typ ast.Type        @[required]
+	sym &ast.TypeSymbol @[required]
 	// unaliased is `typ` once aliased have been resolved
-	// it may not contain informations such as flags and nr_muls
-	unaliased     ast.Type        [required]
-	unaliased_sym &ast.TypeSymbol [required]
+	// it may not contain information such as flags and nr_muls
+	unaliased     ast.Type        @[required]
+	unaliased_sym &ast.TypeSymbol @[required]
 }
 
 // unwrap returns the following variants of a type:
@@ -95,6 +113,24 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 	return sig
 }
 
+// generate anon fn cname, e.g. `anon_fn_void_int_string`, `anon_fn_void_int_ptr_string`
+fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string {
+	ret_styp := g.typ(return_type).replace('*', '_ptr')
+	mut sig := 'anon_fn_${ret_styp}_'
+	for j, arg_typ in arg_types {
+		arg_sym := g.table.sym(arg_typ)
+		if arg_sym.info is ast.FnType {
+			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
+		} else {
+			sig += g.typ(arg_typ).replace('*', '_ptr')
+		}
+		if j < arg_types.len - 1 {
+			sig += '_'
+		}
+	}
+	return sig
+}
+
 // escape quotes for string
 fn escape_quotes(val string) string {
 	bs := '\\'
@@ -107,7 +143,7 @@ fn escape_quotes(val string) string {
 	return unescaped_val.replace_each(['\x01', '${bs}${bs}', "'", "${bs}'", '"', '${bs}"'])
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) dot_or_ptr(val_type ast.Type) string {
 	return if val_type.has_flag(.shared_f) {
 		'->val.'

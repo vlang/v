@@ -1,0 +1,2 @@
+// Calling fn init() for module main
+main__init();

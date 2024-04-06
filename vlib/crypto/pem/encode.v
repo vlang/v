@@ -3,7 +3,7 @@ module pem
 import encoding.base64
 import arrays
 
-// `encode_config` encodes the given block into a
+// encode encodes the given block into a
 // string using the EncodeConfig. It returns an error if `block_type` is undefined
 // or if a value in `headers` contains an invalid character ':'
 //
@@ -53,7 +53,7 @@ pub fn (block Block) encode(config EncodeConfig) !string {
 		'${pem_end}${block.block_type}${pem_eol}'
 }
 
-[inline]
+@[inline]
 fn wrap_lines(str string, newline string, length int) string {
 	return arrays.chunk(str.bytes(), length).map(it.bytestr()).join(newline)
 }

@@ -1,4 +1,0 @@
-fn main() {
-	println(*[]&int{len: 1}[0])
-	println([1]&int{})
-}

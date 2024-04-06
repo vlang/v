@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -6,11 +6,9 @@ module rand
 
 #include <sys/random.h>
 
-fn C.getrandom(p &byte, n usize, flags u32) int
+fn C.getrandom(p &u8, n usize, flags u32) int
 
-const (
-	read_batch_size = 256
-)
+const read_batch_size = 256
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ![]u8 {

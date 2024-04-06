@@ -1,7 +1,7 @@
 // hello
 //
-// empty line
-// newline using a full stop.
+// line after empty line,
+// newline after comment line.
 // ```v
 // code
 // ```
@@ -12,7 +12,7 @@
 // - bar
 // # test
 // ########### deep test
-// #a shouldnt have a newline
+// #a shouldn't have a newline
 // test
 //
 // | foo bar   |  yes   |

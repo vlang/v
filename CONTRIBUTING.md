@@ -28,11 +28,11 @@ The main files are:
 
 1. `cmd/v/v.v` The entry point.
 
-    - V figures out the build mode.
-    - Constructs the compiler object (`struct V`).
-    - Creates a list of .v files that need to be parsed.
-    - Creates a parser object for each file and runs `parse()` on them.
-    - The correct backend is called (C, JS, native), and a binary is compiled.
+   - V figures out the build mode.
+   - Constructs the compiler object (`struct V`).
+   - Creates a list of .v files that need to be parsed.
+   - Creates a parser object for each file and runs `parse()` on them.
+   - The correct backend is called (C, JS, native), and a binary is compiled.
 
 2. `vlib/v/scanner` The scanner's job is to parse a list of characters and convert
    them to tokens.
@@ -85,6 +85,12 @@ accordingly in the steps below.)
 2. Clone the main v repository https://github.com/vlang/v to a local folder on
    your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
 3. `cd nv`
+   3.1 (optional) Run these commands, which ensure that all your code will be
+   automatically formatted, before committing:
+   ```
+   cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
+   chmod 755 .git/hooks/pre-commit
+   ```
 4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`
 
    Note: The remote named `pullrequest` should point to YOUR own forked repo, not the
@@ -93,8 +99,11 @@ accordingly in the steps below.)
    `git pull` `git status` and so on.
 
 5. When finished with a feature/bugfix/change, you can:
-`git checkout -b fix_alabala`
-   - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES` before committing
+   `git checkout -b fix_alabala`
+   - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES`
+     before committing (if you have not run the commands from 3.1)
+   - If you changed Markdown (`.md`) files, check them `v check-md YOUR_MODIFIED_FILES`
+     before committing.
 6. `git push pullrequest` Note: The `pullrequest` remote was setup on step 4
 
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
@@ -110,10 +119,10 @@ accordingly in the steps below.)
 9. If there are merge conflicts, or a branch lags too much behind V's master,
    you can do the following:
 
-    1. `git pull --rebase origin master` # solve conflicts and do
-       `git rebase --continue`
-    2. `git push pullrequest -f` # this will overwrite your current remote branch
-       with the updated version of your changes.
+   1. `git pull --rebase origin master` # solve conflicts and do
+      `git rebase --continue`
+   2. `git push pullrequest -f` # this will overwrite your current remote branch
+      with the updated version of your changes.
 
 The point of doing the above steps, is to never directly push to the main V
 repository, *only to your own fork*. Since your local `master` branch tracks the
@@ -125,6 +134,66 @@ Git is very flexible, so there are other ways to accomplish the same thing.
 See the [GitHub flow](https://guides.github.com/introduction/git-handbook/#github), for more
 information.
 
+## Finding issues to contribute to
+
+If you're willing to contribute to V but don't know which issue to resolve
+
+- you can go to [Issues](https://github.com/vlang/v/issues) tab
+  in this repository. There you can see things logged by both users and developers
+  that need to be discussed and/or resolved.
+
+It's recommended to filter issues by likes and labels to find an issue
+you are interested in.
+
+### Filtering by likes (recommended)
+
+Filtering by likes helps you identify high-impact issues.
+More likes mean more community interest.
+
+To quickly use this filter, click [there](https://github.com/vlang/v/issues?q=is%3Aopen+is%3Aissue+sort%3Areactions-%2B1-desc).
+
+To manually apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
+tab, then paste the following in the "Filter" field:
+
+```
+is:open is:issue sort:reactions-+1-desc
+```
+
+This filter will return all open issues sorted by likes in descending order.
+
+### Filtering by labels
+
+The V repo has various labels to help navigate the extensive list of issues
+and help you find issues you're both interested in and capable of resolving.
+You can examine the list of labels [here](https://github.com/vlang/v/labels).
+
+The most common labels are:
+
+By issue type:
+
+- `Bug`
+- `Feature Request`
+
+By OS:
+
+- `OS: Linux`
+- `OS: Windows`
+- `OS: Mac`
+
+By status:
+
+- `Status: Confirmed`
+
+To apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
+tab, then paste the following in the "Filter" field:
+
+```
+is:open is:issue label:Bug label:"OS: Windows" label:"Status: Confirmed"
+```
+
+This filter will return all open issues with the labels `Bug`, `OS: Windows`,
+and `Status: Confirmed`.
+
 ## Using Github's hub CLI tool
 
 You can download the `hub` tool from https://hub.github.com/ . Using
@@ -132,7 +201,7 @@ You can download the `hub` tool from https://hub.github.com/ . Using
 to make PRs. Most remote operations can be done through the `hub` CLI
 command.
 
-> **Note**
+> [!NOTE]
 > You still need to have a GitHub account.
 
 ### Preparation:
@@ -141,6 +210,12 @@ command.
 
 1. `hub clone vlang/v my_v`
 2. `cd my_v`
+   2.1 (optional) Run these commands, which ensure that all your code will be
+   automatically formatted, before committing:
+   ```
+   cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
+   chmod 755 .git/hooks/pre-commit
+   ```
 3. `hub fork --remote-name pullrequest`
 
 4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new
@@ -178,37 +253,52 @@ which tests have failed and then fix them by making more changes. Just use
 run with your updated code. Use `hub ci-status --verbose` to monitor
 their status.
 
-## Flags
+## Compiler flags, useful while debugging the compiler itself:
 
 V allows you to pass custom flags using `-d my_flag` that can then be checked
 at compile time (see the documentation about
 [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
-There are numerous flags that can be passed when building the compiler
-with `v self` or when creating a copy of the compiler, that will help
-you when debugging.
 
-Beware that the flags must be passed when building the compiler,
-not the program, so do for example: `v -d time_parsing cmd/v` or
-`v -d trace_checker self`.
-Some flags can make the compiler very verbose, so it is recommended
-to create a copy of the compiler rather than replacing it with `v self`.
+Since the compiler is *also* an ordinary V program, there are numerous flags that can be
+passed when building the compiler itself with `v self`, or when creating a copy of the
+compiler, that will help you when debugging the compiler.
+
+Note: beware that the flags below must be passed, when building the compiler, *not the program*,
+so do for example:
+`./v -o w -d time_parsing cmd/v`
+or
+`./v -o w -d trace_checker self`
+... then use `./w file.v`, instead of `./v file.v`, to compile your program.
+
+Note: some of the flags can make the compiler *very verbose*, so it is recommended to create
+a copy of the compiler rather than replacing it with `v self`.
 
 | Flag                              | Usage                                                                                                               |
 |-----------------------------------|---------------------------------------------------------------------------------------------------------------------|
-| `debugscanner`                    | Prints debug information during the scanning phase                                                                  |
 | `debug_codegen`                   | Prints automatically generated V code during the scanning phase                                                     |
 | `debug_interface_table`           | Prints generated interfaces during C generation                                                                     |
 | `debug_interface_type_implements` | Prints debug information when checking that a type implements in interface                                          |
 | `print_vweb_template_expansions`  | Prints vweb compiled HTML files                                                                                     |
 | `time_checking`                   | Prints the time spent checking files and other related information                                                  |
 | `time_parsing`                    | Prints the time spent parsing files and other related information                                                   |
+|                                   |                                                                                                                     |
+| `trace_scanner`                   | Prints details about the recognized tokens. *Very* verbose. Use `./vnew -no-builtin -check-syntax file.v` later.    |
+| `trace_parser`                    | Prints details about parsed statements and expressions. Very verbose. Use it for panics in the parser.              |
+| `trace_checker`                   | Prints details about the statements being checked. Very verbose. Use it for panics in the checker.                  |
+|                                   |                                                                                                                     |
+| `trace_gen`                       | Prints all the strings written to the generated C file. Very verbose.                                               |
+| `trace_cgen_stmt`                 | Prints details about the statements that are being processed by cgen.                                               |
+|                                   |        Use it for panics in cgen, to see the closest input V source line, that caused the panic.                    |
+|                                   |        Note: you need `v -no-parallel -d trace_cgen_stmt -o w cmd/v` to make sense of the output of that,           |
+|                                   |        otherwise by default cgen uses several threads, and the lines that are printed are out of order.             |
+|                                   |                                                                                                                     |
 | `trace_autofree`                  | Prints details about how/when -autofree puts free() calls                                                           |
 | `trace_autostr`                   | Prints details about `.str()` method auto-generated by the compiler during C generation                             |
+|                                   |                                                                                                                     |
 | `trace_ccoptions`                 | Prints options passed down to the C compiler                                                                        |
-| `trace_checker`                   | Prints details about the statements being checked                                                                   |
-| `trace_gen`                       | Prints strings written to the generated C file. Beware, this flag is very verbose                                   |
-| `trace_parser`                    | Prints details about parsed statements and expressions                                                              |
+|                                   |                                                                                                                     |
 | `trace_thirdparty_obj_files`      | Prints details about built thirdparty obj files                                                                     |
 | `trace_usecache`                  | Prints details when -usecache is used                                                                               |
 | `trace_embed_file`                | Prints details when $embed_file is used                                                                             |
 | `embed_only_metadata`             | Embed only the metadata for the file(s) with `$embed_file('somefile')`; faster; for development, *not* distribution |
+|-----------------------------------|---------------------------------------------------------------------------------------------------------------------|

@@ -9,10 +9,8 @@ import toml.token
 import toml.scanner
 import strconv
 
-const (
-	// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
-	utf8_max = 0x10FFFF
-)
+// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
+const utf8_max = 0x10FFFF
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {
@@ -76,7 +74,7 @@ fn (d Decoder) decode_number(mut n ast.Number) ! {
 pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	// Setup a scanner in stack memory for easier navigation.
 	mut eat_whitespace := false
-	// TODO use string builder
+	// TODO: use string builder
 	mut decoded_s := ''
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`

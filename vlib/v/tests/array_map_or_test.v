@@ -14,7 +14,7 @@ fn test_array_or() {
 	assert good == 4
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_array_or_direct() {
 	m := [3, 4, 5]
 	mut testvar := 17
@@ -67,7 +67,7 @@ fn get_arr_el(i int) !int {
 	return r
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn get_arr_el_direct(i int) !int {
 	m := [3, 4, 5]
 	r := m[i]!

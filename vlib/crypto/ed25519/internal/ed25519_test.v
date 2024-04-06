@@ -95,7 +95,7 @@ fn works_check_on_sign_input_string(item string) bool {
 	}
 	// assert pubkey.len == public_key_size
 
-	sig = sig[..ed25519.signature_size]
+	sig = unsafe { sig[..ed25519.signature_size] }
 	mut priv := []u8{len: ed25519.private_key_size}
 	copy(mut priv[..], privbytes)
 	copy(mut priv[32..], pubkey)

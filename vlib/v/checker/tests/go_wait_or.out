@@ -1,4 +1,4 @@
-vlib/v/checker/tests/go_wait_or.vv:11:16: error: unexpected `?`, the function `wait` does not return an Option or a Result
+vlib/v/checker/tests/go_wait_or.vv:11:16: error: unexpected `?`, the function `wait` does not return an Option
     9 |         spawn d(1)
    10 |     ]
    11 |     r := tg.wait()?
@@ -19,7 +19,7 @@ vlib/v/checker/tests/go_wait_or.vv:19:13: error: unexpected `or` block, the func
       |                ~~~~~~~~~~~~~~~~~~~~~~~
    20 |     tg2[0].wait()?
    21 |     tg3 := [
-vlib/v/checker/tests/go_wait_or.vv:20:15: error: unexpected `?`, the function `wait` does not return an Option or a Result
+vlib/v/checker/tests/go_wait_or.vv:20:15: error: unexpected `?`, the function `wait` does not return an Option
    18 |     ]
    19 |     tg2.wait() or { panic('problem') }
    20 |     tg2[0].wait()?
@@ -31,6 +31,13 @@ vlib/v/checker/tests/go_wait_or.vv:25:6: error: `.wait()` cannot be called for a
    24 |     ]
    25 |     tg3.wait() or { panic('problem') }
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   26 |     for t in tg3 {
+   27 |         a := t.wait()
+vlib/v/checker/tests/go_wait_or.vv:25:13: error: unexpected `or` block, the function `wait` does not return an Option or a Result
+   23 |         spawn f(1)
+   24 |     ]
+   25 |     tg3.wait() or { panic('problem') }
+      |                ~~~~~~~~~~~~~~~~~~~~~~~
    26 |     for t in tg3 {
    27 |         a := t.wait()
 vlib/v/checker/tests/go_wait_or.vv:38:6: error: `.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.

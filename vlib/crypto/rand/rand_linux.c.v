@@ -1,13 +1,11 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module rand
 
 #include <sys/syscall.h>
 
-const (
-	read_batch_size = 256
-)
+const read_batch_size = 256
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ![]u8 {

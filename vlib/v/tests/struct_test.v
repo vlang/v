@@ -18,8 +18,8 @@ mut:
 }
 
 struct Lol {
-	b []string [json: lol]
-	c string   [json: cc]
+	b []string @[json: lol]
+	c string   @[json: cc]
 	d int
 }
 
@@ -186,11 +186,9 @@ fn test_assoc_with_vars() {
 	assert merged2.b == 200
 }
 
-const (
-	const_def = Def{
-		a: 100
-	}
-)
+const const_def = Def{
+	a: 100
+}
 
 fn test_assoc_with_constants() {
 	println(1)
@@ -223,13 +221,13 @@ fn fooo() {
 }
 
 /*
-[typedef]
-struct C.fixed {
+@[typedef]
+pub struct C.fixed {
 	points [10]C.point
 }
 
-[typedef]
-struct C.point {
+@[typedef]
+pub struct C.point {
 	x int
 	y int
 }
@@ -244,7 +242,7 @@ fn test_fixed_field() {
 	//}
 }
 */
-[params]
+@[params]
 struct Config {
 mut:
 	n   int
@@ -312,19 +310,19 @@ fn test_levels() {
 	}
 }
 
-// Struct where an inizialized field is after a non-initilized field.
+// Struct where an initialized field is after a non-initialized field.
 struct StructWithDefaultValues1 {
 	field_uninitialized int
 	field_initialized   int = 5
 }
 
-// Struct where an inizialized field is before a non-initilized field.
+// Struct where an initialized field is before a non-initialized field.
 struct StructWithDefaultValues2 {
 	field_initialized   int = 3
 	field_uninitialized int
 }
 
-// Struct where an inizialized field is before several non-initilized fields.
+// Struct where an initialized field is before several non-initialized fields.
 struct StructWithDefaultValues3 {
 	field_initialized       int = 2
 	field_uninitialized     int
@@ -360,13 +358,13 @@ fn test_struct_with_default_values_no_init() {
 }
 
 struct FieldsWithOptionVoidReturnType {
-	f fn () ?
-	g fn () ?
+	f fn () ! @[required]
+	g fn () ? @[required]
 }
 
 fn test_fields_anon_fn_with_option_void_return_type() {
 	foo := FieldsWithOptionVoidReturnType{
-		f: fn () ? {
+		f: fn () ! {
 			return error('oops')
 		}
 		g: fn () ? {

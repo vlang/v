@@ -9,14 +9,16 @@ import v.pref
 import v.parser
 import v.token
 import v.ast
+import v.help
 import term
 
 struct Vet {
 	opt Options
 mut:
-	errors []vet.Error
-	warns  []vet.Error
-	file   string
+	errors  []vet.Error
+	warns   []vet.Error
+	notices []vet.Error
+	file    string
 }
 
 struct Options {
@@ -29,12 +31,13 @@ struct Options {
 }
 
 const term_colors = term.can_show_color_on_stderr()
+const clean_seq = ['[', '', ']', '', ' ', '']
+const exclude_dirs = ['test', 'slow_test', 'testdata']
 
 fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
-			is_force: '-force' in vet_options
 			is_werror: '-W' in vet_options
 			is_verbose: '-verbose' in vet_options || '-v' in vet_options
 			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
@@ -48,6 +51,9 @@ fn main() {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
 		paths = paths.filter(!it.starts_with(vtmp))
 	}
+	if paths.len == 0 || '-help' in vet_options || '--help' in vet_options {
+		help.print_and_exit('vet')
+	}
 	for path in paths {
 		if !os.exists(path) {
 			eprintln('File/folder ${path} does not exist')
@@ -58,17 +64,25 @@ fn main() {
 		}
 		if os.is_dir(path) {
 			vt.vprintln("vetting folder: '${path}' ...")
-			vfiles := os.walk_ext(path, '.v')
-			vvfiles := os.walk_ext(path, '.vv')
-			mut files := []string{}
-			files << vfiles
-			files << vvfiles
-			for file in files {
-				vt.vet_file(file)
-			}
+			overwrite_exclude := exclude_dirs.any(path.contains(it))
+			os.walk(path, fn [mut vt, overwrite_exclude] (p string) {
+				if p.ends_with('.v') || p.ends_with('.vv') {
+					if !overwrite_exclude {
+						for d in exclude_dirs {
+							if p.contains(d) {
+								return
+							}
+						}
+					}
+					vt.vet_file(p)
+				}
+			})
 		}
 	}
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
+	for n in vt.notices {
+		eprintln(vt.e2string(n))
+	}
 	if vt.opt.show_warnings {
 		for w in vt.warns {
 			eprintln(vt.e2string(w))
@@ -87,22 +101,16 @@ fn main() {
 
 // vet_file vets the file read from `path`.
 fn (mut vt Vet) vet_file(path string) {
-	if !vt.opt.is_force && (path.contains('/tests/') || path.contains('/slow_tests/')) {
-		// skip all /tests/ files, since usually their content is not
-		// important enough to be documented/vetted, and they may even
-		// contain intentionally invalid code.
-		vt.vprintln("skipping test file: '${path}' ...")
-		return
-	}
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	prefs.is_vsh = path.ends_with('.vsh')
-	table := ast.new_table()
+	mut table := ast.new_table()
 	vt.vprintln("vetting file '${path}'...")
-	_, errors := parser.parse_vet_file(path, table, prefs)
+	_, errors, notices := parser.parse_vet_file(path, mut table, prefs)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
+	vt.notices << notices
 	// Scan each line in file for things to improve
 	source_lines := os.read_lines(vt.file) or { []string{} }
 	for lnumber, line in source_lines {
@@ -135,7 +143,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 	if lnumber > 0 {
 		collect_tags := fn (line string) []string {
 			mut cleaned := line.all_before('/')
-			cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+			cleaned = cleaned.replace_each(clean_seq)
 			return cleaned.split(',')
 		}
 		ident_fn_name := fn (line string) string {
@@ -153,7 +161,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 				}
 			}
 			if tokens.len > 0 {
-				return tokens[0].all_before('(')
+				function_name_with_generic_parameters := tokens[0].all_before('(')
+				return function_name_with_generic_parameters.all_before('[')
 			}
 			return ''
 		}
@@ -234,6 +243,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
 			.error { term.red(kind) }
+			.notice { term.yellow(kind) }
 		}
 		kind = term.bold(kind)
 		location = term.bold(location)
@@ -272,5 +282,19 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 		vt.errors << w
 	} else {
 		vt.warns << w
+	}
+}
+
+fn (mut vt Vet) notice(msg string, line int, fix vet.FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	vt.notices << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: .default
 	}
 }

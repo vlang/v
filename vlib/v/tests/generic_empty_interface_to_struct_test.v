@@ -8,7 +8,7 @@ struct Container {
 	concrete Any
 }
 
-fn (container &Container) get_first_struct[T]() ?&T {
+fn (container &Container) get_first_struct[T]() !&T {
 	concrete := container.concrete
 	if concrete is T {
 		println(concrete.a)

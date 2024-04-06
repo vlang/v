@@ -33,52 +33,50 @@ fn generate_field_element() Element {
 
 // weirdLimbs can be combined to generate a range of edge-case edwards25519 elements.
 // 0 and -1 are intentionally more weighted, as they combine well.
-const (
-	two_to_51      = u64(1) << 51
-	two_to_52      = u64(1) << 52
-	weird_limbs_51 = [
-		u64(0),
-		0,
-		0,
-		0,
-		1,
-		19 - 1,
-		19,
-		0x2aaaaaaaaaaaa,
-		0x5555555555555,
-		two_to_51 - 20,
-		two_to_51 - 19,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-	]
-	weird_limbs_52 = [
-		u64(0),
-		0,
-		0,
-		0,
-		0,
-		0,
-		1,
-		19 - 1,
-		19,
-		0x2aaaaaaaaaaaa,
-		0x5555555555555,
-		two_to_51 - 20,
-		two_to_51 - 19,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51 - 1,
-		two_to_51,
-		two_to_51 + 1,
-		two_to_52 - 19,
-		two_to_52 - 1,
-	]
-)
+const two_to_51 = u64(1) << 51
+const two_to_52 = u64(1) << 52
+const weird_limbs_51 = [
+	u64(0),
+	0,
+	0,
+	0,
+	1,
+	19 - 1,
+	19,
+	0x2aaaaaaaaaaaa,
+	0x5555555555555,
+	two_to_51 - 20,
+	two_to_51 - 19,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+]
+const weird_limbs_52 = [
+	u64(0),
+	0,
+	0,
+	0,
+	0,
+	0,
+	1,
+	19 - 1,
+	19,
+	0x2aaaaaaaaaaaa,
+	0x5555555555555,
+	two_to_51 - 20,
+	two_to_51 - 19,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51 - 1,
+	two_to_51,
+	two_to_51 + 1,
+	two_to_52 - 19,
+	two_to_52 - 1,
+]
 
 fn generate_weird_field_element() Element {
 	return Element{
@@ -364,7 +362,7 @@ fn (mut v Element) to_big_integer() big.Integer {
 
 // from_big_integer sets v = n, and returns v. The bit length of n must not exceed 256.
 fn (mut v Element) from_big_integer(n big.Integer) !Element {
-	if n.binary_str().len > 32 * 8 {
+	if n.bin_str().len > 32 * 8 {
 		return error('invalid edwards25519 element input size')
 	}
 	mut bytes, _ := n.bytes()

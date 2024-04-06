@@ -1,0 +1,5 @@
+module json2
+
+import json as json2
+
+_ := json2.encode('foo')

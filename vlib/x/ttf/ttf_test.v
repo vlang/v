@@ -179,7 +179,7 @@ fn test_main() {
 
 	font_size := 20
 	device_dpi := 72
-	scale := f32(font_size * device_dpi) / f32(72 * tf.units_per_em)
+	scale := f32(font_size * device_dpi) / f32(72 * int(tf.units_per_em))
 
 	mut bmp := ttf.BitMap{
 		tf: &tf

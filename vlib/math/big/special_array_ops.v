@@ -3,7 +3,7 @@ module big
 import math.bits
 import strings
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn shrink_tail_zeros(mut a []u32) {
 	mut alen := a.len
 	for alen > 0 && a[alen - 1] == 0 {
@@ -27,11 +27,11 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 		digits: operand_b
 	}
 
-	k := bit_length(a) + bit_length(b) // a*b < 2**k
+	k := a.bit_len() + b.bit_len() // a*b < 2**k
 	mut x := integer_from_int(2) //  0 < x < 2**(k+1)/b  // initial guess for convergence
 	// https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division
 	// use 48/17 - 32/17.D (divisor)
-	initial_guess := (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).rshift(64)).neg() // / 17 == 0x11
+	initial_guess := (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).right_shift(64)).neg() // / 17 == 0x11
 	if initial_guess > zero_int {
 		x = initial_guess
 	}
@@ -39,12 +39,12 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	pow2_k_plus_1 := pow2(k + 1) // outside of the loop to optimize allocatio
 	for lastx != x { // main loop
 		lastx = x
-		x = (x * (pow2_k_plus_1 - (x * b))).rshift(u32(k))
+		x = (x * (pow2_k_plus_1 - (x * b))).right_shift(u32(k))
 	}
 	if x * b < pow2(k) {
 		x.inc()
 	}
-	mut q := (a * x).rshift(u32(k))
+	mut q := (a * x).right_shift(u32(k))
 	// possible adjustments. see literature
 	if q * b > a {
 		q.dec()
@@ -61,12 +61,13 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 }
 
 // bit_length returns the number of bits needed to represent the absolute value of the integer a.
-[inline]
+@[deprecated: 'use a.bit_len() instead']
+@[inline]
 pub fn bit_length(a Integer) int {
 	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn debug_u32_str(a []u32) string {
 	mut sb := strings.new_builder(30)
 	sb.write_string('[')
@@ -82,7 +83,7 @@ fn debug_u32_str(a []u32) string {
 	return sb.str()
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn found_multiplication_base_case(operand_a []u32, operand_b []u32, mut storage []u32) bool {
 	// base case necessary to end recursion
 	if operand_a.len == 0 || operand_b.len == 0 {
@@ -105,7 +106,7 @@ fn found_multiplication_base_case(operand_a []u32, operand_b []u32, mut storage 
 // karatsuba algorithm for multiplication
 // possible optimisations:
 // - transform one or all the recurrences in loops
-[direct_array_access]
+@[direct_array_access]
 fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	if found_multiplication_base_case(operand_a, operand_b, mut storage) {
 		return
@@ -118,8 +119,8 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	mut b_l := []u32{}
 	mut b_h := []u32{}
 	if half <= operand_b.len {
-		b_l = operand_b[0..half]
-		b_h = operand_b[half..]
+		b_l = unsafe { operand_b[0..half] }
+		b_h = unsafe { operand_b[half..] }
 	} else {
 		b_l = unsafe { operand_b }
 		// b_h = []u32{}
@@ -141,16 +142,16 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	subtract_in_place(mut p_2, storage) // p_1
 	subtract_in_place(mut p_2, p_3)
 
-	// return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
-	lshift_digits_in_place(mut storage, 2 * half)
-	lshift_digits_in_place(mut p_2, half)
+	// return p_1.left_shift(2 * u32(half * 32)) + p_2.left_shift(u32(half * 32)) + p_3
+	left_shift_digits_in_place(mut storage, 2 * half)
+	left_shift_digits_in_place(mut p_2, half)
 	add_in_place(mut storage, p_2)
 	add_in_place(mut storage, p_3)
 
 	shrink_tail_zeros(mut storage)
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	if found_multiplication_base_case(operand_a, operand_b, mut storage) {
 		return
@@ -224,26 +225,27 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 	ptemp += a1
 	qtemp += b1
 	p1 := ptemp * qtemp
-	p2 := ((ptemp + a2).lshift(1) - a0) * ((qtemp + b2).lshift(1) - b0)
+	p2 := ((ptemp + a2).left_shift(1) - a0) * ((qtemp + b2).left_shift(1) - b0)
 	pinf := a2 * b2
 
-	mut t2 := (p2 - vm1) / three_int
-	mut tm1 := (p1 - vm1).rshift(1)
+	mut t2, _ := (p2 - vm1).div_mod_internal(three_int)
+	mut tm1 := (p1 - vm1).right_shift(1)
 	mut t1 := p1 - p0
-	t2 = (t2 - t1).rshift(1)
+	t2 = (t2 - t1).right_shift(1)
 	t1 = (t1 - tm1 - pinf)
-	t2 = t2 - pinf.lshift(1)
+	t2 = t2 - pinf.left_shift(1)
 	tm1 = tm1 - t2
 
 	// shift amount
 	s := u32(k) << 5
 
-	result := (((pinf.lshift(s) + t2).lshift(s) + t1).lshift(s) + tm1).lshift(s) + p0
+	result := (((pinf.left_shift(s) + t2).left_shift(s) + t1).left_shift(s) + tm1).left_shift(s) +
+		p0
 
 	storage = result.digits.clone()
 }
 
-[inline]
+@[inline]
 fn pow2(k int) Integer {
 	mut ret := []u32{len: (k >> 5) + 1}
 	bit_set(mut ret, k)
@@ -254,8 +256,8 @@ fn pow2(k int) Integer {
 }
 
 // optimized left shift in place. amount must be positive
-[direct_array_access]
-fn lshift_digits_in_place(mut a []u32, amount int) {
+@[direct_array_access]
+fn left_shift_digits_in_place(mut a []u32, amount int) {
 	a_len := a.len
 	// control or allocate capacity
 	for _ in a_len .. a_len + amount {
@@ -270,8 +272,8 @@ fn lshift_digits_in_place(mut a []u32, amount int) {
 }
 
 // optimized right shift in place. amount must be positive
-[direct_array_access]
-fn rshift_digits_in_place(mut a []u32, amount int) {
+@[direct_array_access]
+fn right_shift_digits_in_place(mut a []u32, amount int) {
 	for index := 0; index < a.len - amount; index++ {
 		a[index] = a[index + amount]
 	}
@@ -283,7 +285,7 @@ fn rshift_digits_in_place(mut a []u32, amount int) {
 
 // operand b can be greater than operand a
 // the capacity of both array is supposed to be sufficient
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn add_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
@@ -311,7 +313,7 @@ fn add_in_place(mut a []u32, b []u32) {
 }
 
 // a := a - b supposed a >= b
-[direct_array_access]
+@[direct_array_access]
 fn subtract_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len

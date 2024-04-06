@@ -1,117 +1,115 @@
 module gx
 
-pub const (
-	black = Color{
-		r: 0
-		g: 0
-		b: 0
-	}
-	gray = Color{
-		r: 128
-		g: 128
-		b: 128
-	}
-	white = Color{
-		r: 255
-		g: 255
-		b: 255
-	}
-	red = Color{
-		r: 255
-		g: 0
-		b: 0
-	}
-	green = Color{
-		r: 0
-		g: 255
-		b: 0
-	}
-	blue = Color{
-		r: 0
-		g: 0
-		b: 255
-	}
-	yellow = Color{
-		r: 255
-		g: 255
-		b: 0
-	}
-	magenta = Color{
-		r: 255
-		g: 0
-		b: 255
-	}
-	cyan = Color{
-		r: 0
-		g: 255
-		b: 255
-	}
-	orange = Color{
-		r: 255
-		g: 165
-		b: 0
-	}
-	purple = Color{
-		r: 128
-		g: 0
-		b: 128
-	}
-	indigo = Color{
-		r: 75
-		g: 0
-		b: 130
-	}
-	pink = Color{
-		r: 255
-		g: 192
-		b: 203
-	}
-	violet = Color{
-		r: 238
-		g: 130
-		b: 238
-	}
-	dark_blue = Color{
-		r: 0
-		g: 0
-		b: 139
-	}
-	dark_gray = Color{
-		r: 169
-		g: 169
-		b: 169
-	}
-	dark_green = Color{
-		r: 0
-		g: 100
-		b: 0
-	}
-	dark_red = Color{
-		r: 139
-		g: 0
-		b: 0
-	}
-	light_blue = Color{
-		r: 173
-		g: 216
-		b: 230
-	}
-	light_gray = Color{
-		r: 211
-		g: 211
-		b: 211
-	}
-	light_green = Color{
-		r: 144
-		g: 238
-		b: 144
-	}
-	light_red = Color{
-		r: 255
-		g: 204
-		b: 203
-	}
-)
+pub const black = Color{
+	r: 0
+	g: 0
+	b: 0
+}
+pub const gray = Color{
+	r: 128
+	g: 128
+	b: 128
+}
+pub const white = Color{
+	r: 255
+	g: 255
+	b: 255
+}
+pub const red = Color{
+	r: 255
+	g: 0
+	b: 0
+}
+pub const green = Color{
+	r: 0
+	g: 255
+	b: 0
+}
+pub const blue = Color{
+	r: 0
+	g: 0
+	b: 255
+}
+pub const yellow = Color{
+	r: 255
+	g: 255
+	b: 0
+}
+pub const magenta = Color{
+	r: 255
+	g: 0
+	b: 255
+}
+pub const cyan = Color{
+	r: 0
+	g: 255
+	b: 255
+}
+pub const orange = Color{
+	r: 255
+	g: 165
+	b: 0
+}
+pub const purple = Color{
+	r: 128
+	g: 0
+	b: 128
+}
+pub const indigo = Color{
+	r: 75
+	g: 0
+	b: 130
+}
+pub const pink = Color{
+	r: 255
+	g: 192
+	b: 203
+}
+pub const violet = Color{
+	r: 238
+	g: 130
+	b: 238
+}
+pub const dark_blue = Color{
+	r: 0
+	g: 0
+	b: 139
+}
+pub const dark_gray = Color{
+	r: 169
+	g: 169
+	b: 169
+}
+pub const dark_green = Color{
+	r: 0
+	g: 100
+	b: 0
+}
+pub const dark_red = Color{
+	r: 139
+	g: 0
+	b: 0
+}
+pub const light_blue = Color{
+	r: 173
+	g: 216
+	b: 230
+}
+pub const light_gray = Color{
+	r: 211
+	g: 211
+	b: 211
+}
+pub const light_green = Color{
+	r: 144
+	g: 238
+	b: 144
+}
+pub const light_red = Color{
+	r: 255
+	g: 204
+	b: 203
+}
 
 // Color represents a 32 bit color value in sRGB format
 pub struct Color {
@@ -123,12 +121,21 @@ pub mut:
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
+/*
 pub fn hex(color int) Color {
 	return Color{
 		r: u8((color >> 24) & 0xFF)
 		g: u8((color >> 16) & 0xFF)
 		b: u8((color >> 8) & 0xFF)
 		a: u8(color & 0xFF)
+	}
+}
+*/
+pub fn hex(color int) Color {
+	return Color{
+		r: u8((color >> 16) & 0xFF)
+		g: u8((color >> 8) & 0xFF)
+		b: u8((color >> 0) & 0xFF)
 	}
 }
 
@@ -253,54 +260,57 @@ pub fn (c Color) str() string {
 
 // rgba8 converts a color value to an int in the RGBA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
-[inline]
+@[inline]
 pub fn (c Color) rgba8() int {
 	return int(u32(c.r) << 24 | u32(c.g) << 16 | u32(c.b) << 8 | u32(c.a))
 }
 
 // bgra8 converts a color value to an int in the BGRA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
-[inline]
+@[inline]
 pub fn (c Color) bgra8() int {
 	return int(u32(c.b) << 24 | u32(c.g) << 16 | u32(c.r) << 8 | u32(c.a))
 }
 
 // abgr8 converts a color value to an int in the ABGR8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
-[inline]
+@[inline]
 pub fn (c Color) abgr8() int {
 	return int(u32(c.a) << 24 | u32(c.b) << 16 | u32(c.g) << 8 | u32(c.r))
 }
 
-const (
-	string_colors = {
-		'blue':        blue
-		'red':         red
-		'green':       green
-		'yellow':      yellow
-		'orange':      orange
-		'purple':      purple
-		'black':       black
-		'gray':        gray
-		'indigo':      indigo
-		'pink':        pink
-		'violet':      violet
-		'white':       white
-		'dark_blue':   dark_blue
-		'dark_gray':   dark_gray
-		'dark_green':  dark_green
-		'dark_red':    dark_red
-		'light_blue':  light_blue
-		'light_gray':  light_gray
-		'light_green': light_green
-		'light_red':   light_red
-	}
-)
+const string_colors = {
+	'blue':        blue
+	'red':         red
+	'green':       green
+	'yellow':      yellow
+	'orange':      orange
+	'purple':      purple
+	'black':       black
+	'gray':        gray
+	'indigo':      indigo
+	'pink':        pink
+	'violet':      violet
+	'white':       white
+	'dark_blue':   dark_blue
+	'dark_gray':   dark_gray
+	'dark_green':  dark_green
+	'dark_red':    dark_red
+	'light_blue':  light_blue
+	'light_gray':  light_gray
+	'light_green': light_green
+	'light_red':   light_red
+}
 
 // color_from_string returns a Color, corresponding to the given string
-// or black Color if string is not found in lookup table
+// or black Color if string is not found in lookup table, or a hex color if starting with #
 pub fn color_from_string(s string) Color {
-	return gx.string_colors[s]
+	if s.starts_with('#') {
+		mut hex_str := '0x' + s[1..]
+		return hex(hex_str.int())
+	} else {
+		return gx.string_colors[s]
+	}
 }
 
 // to_css_string returns a CSS compatible string e.g. `rgba(10,11,12,13)` of the color `c`.

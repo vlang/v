@@ -106,10 +106,13 @@ pub fn (s string) clone() string {
 	return string(s.str)
 }
 
+// contains returns `true` if the string contains `substr`.
+// See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	return bool(s.str.includes(substr.str))
 }
 
+// contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	sep := ''
 	res := chars.str.split(sep.str)
@@ -119,6 +122,26 @@ pub fn (s string) contains_any(chars string) bool {
 		}
 	}
 	return false
+}
+
+// contains_only returns `true`, if the string contains only the characters in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for ch in s {
+		mut res := 0
+		for c in chars {
+			if ch == c {
+				res++
+				break
+			}
+		}
+		if res == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) contains_any_substr(chars []string) bool {
@@ -262,6 +285,7 @@ pub fn (s string) u8() u64 {
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
+@[direct_array_access]
 pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -291,7 +315,7 @@ pub fn (s string) trim_right(cutset string) string {
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -329,22 +353,6 @@ pub fn (s string) trim_string_right(str string) string {
 		return s[..s.len - str.len]
 	}
 	return s.clone()
-}
-
-// trim_prefix strips `str` from the start of the string.
-// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
-[deprecated: 'use s.trim_string_left(x) instead']
-[deprecated_after: '2022-01-19']
-pub fn (s string) trim_prefix(str string) string {
-	return s.trim_string_left(str)
-}
-
-// trim_suffix strips `str` from the end of the string.
-// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
-[deprecated: 'use s.trim_string_right(x) instead']
-[deprecated_after: '2022-01-19']
-pub fn (s string) trim_suffix(str string) string {
-	return s.trim_string_right(str)
 }
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
@@ -425,12 +433,12 @@ pub fn (mut s []string) sort() {
 	s.sort_with_compare(compare_strings)
 }
 
-// sort_ignore_case sorts the string array using case insesitive comparing.
+// sort_ignore_case sorts the string array using case insensitive comparing.
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-// sort_by_len sorts the the string array by each string's `.len` length.
+// sort_by_len sorts the string array by each string's `.len` length.
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
@@ -477,7 +485,7 @@ pub fn (s string) repeat(count int) string {
 
 // TODO: Make these functions actually work.
 // strip_margin allows multi-line strings to be formatted in a way that removes white-space
-// before a delimeter. by default `|` is used.
+// before a delimiter. By default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //
@@ -494,7 +502,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
@@ -550,7 +558,7 @@ pub fn (s string) strip_margin_custom(del u8) string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
@@ -595,7 +603,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		}
 		else {
 			mut start := 0
-			// Take the left part for each delimiter occurence
+			// Take the left part for each delimiter occurrence
 			for i <= s.len {
 				is_delim := i + delim.len <= s.len && s[i..i + delim.len] == delim
 				if is_delim {
@@ -625,9 +633,9 @@ struct RepIndex {
 	val_idx int
 }
 
-// replace_each replaces all occurences of the string pairs given in `vals`.
+// replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s.clone()
@@ -722,8 +730,8 @@ pub fn (s string) replace_each(vals []string) string {
 	return b
 }
 
-// last_index returns the position of the last occurence of the input string.
-fn (s string) last_index_(p string) int {
+// last_index returns the position of the last occurrence of the input string.
+fn (s string) index_last_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -741,9 +749,16 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
+// index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[deprecated: 'use `.last_index(needle string)` instead']
+pub fn (s string) index_last(needle string) ?int {
+	return s.last_index(needle)
+}
+
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
+	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
@@ -800,7 +815,7 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
-// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+// replace_once replaces the first occurrence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with_ string) string {
 	s2 := ''
 	#s2.val = s.str.replace(rep.str,with_.str)
@@ -858,7 +873,7 @@ pub fn (s string) is_title() bool {
 // is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true
 // Example: assert 'HelloWorld'.is_capital() == false
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -875,7 +890,7 @@ pub fn (s string) is_capital() bool {
 // is a capital letter, even if the rest are not.
 // Example: assert 'Hello'.starts_with_capital() == true
 // Example: assert 'Hello. World.'.starts_with_capital() == true
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -960,6 +975,27 @@ pub fn (s string) index(search string) ?int {
 		return none
 	}
 	return res
+}
+
+// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
+// It returns -1, if `c` is not found.
+@[direct_array_access]
+pub fn (s string) index_u8_last(c u8) int {
+	for i := s.len - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if found in the string.
+// It returns -1, if the byte `c` is not found.
+@[deprecated: 'use `.index_u8_last(c u8)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
+	return s.index_u8_last(c)
 }
 
 pub fn (_rune string) utf32_code() int {

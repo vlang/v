@@ -5,14 +5,14 @@ struct Poss2 {}
 type Possibilities = Poss1 | Poss2
 
 // comment out this attribute to make error go away BUT now you need to remember to use &PossOwner everytime you create new instance :(
-[heap]
+@[heap]
 pub struct PossOwner {
 pub:
 	name    string
 	details Possibilities
 }
 
-fn (t PossOwner) get_file(path string) ?(PossOwner, Poss1) {
+fn (t PossOwner) get_file(path string) !(PossOwner, Poss1) {
 	match t.details {
 		Poss1 { return t, t.details }
 		else { return error('not a file') }

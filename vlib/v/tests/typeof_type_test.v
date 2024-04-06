@@ -5,17 +5,17 @@ fn test_typeof_fn() {
 }
 
 fn test_typeof_int() {
-	assert typeof[int]().idx == 7
+	assert typeof[int]().idx == 8
 	assert typeof[int]().name == 'int'
 }
 
 fn test_typeof_u32() {
-	assert typeof[u32]().idx == 12
+	assert typeof[u32]().idx == 13
 	assert typeof[u32]().name == 'u32'
 }
 
 fn test_typeof_string() {
-	assert typeof[string]().idx == 20
+	assert typeof[string]().idx == 21
 	assert typeof[string]().name == 'string'
 }
 

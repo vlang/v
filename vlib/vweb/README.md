@@ -6,16 +6,24 @@ The [gitly](https://gitly.org/) site is based on vweb.
 
 **_Some features may not be complete, and have some bugs._**
 
-## Getting start
-Just run **`v new <name> web`** in your terminal
+## Quick Start
+Just run **`v new --web <name>`** in your terminal.
+
+Run your vweb app with a live reload via `v -d vweb_livereload watch run .`
+
+Now modifying any file in your web app (whether it's a .v file with the backend logic
+or a compiled .html template file) will result in an instant refresh of your app
+in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
+
 
 ## Features
 
 - **Very fast** performance of C on the web.
 - **Small binary** hello world website is <100 KB.
+- **Templates are precompiled** all errors are visible at compilation time, not at runtime.
+- **Multithreaded** by default
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
   dependencies.
-- **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 
 ### Examples
 
@@ -59,9 +67,9 @@ fn new_app() &App {
 	return app
 }
 
-['/']
+@['/']
 pub fn (mut app App) page_home() vweb.Result {
-	// all this constants can be accessed by src/templates/page/home.html file.
+	// all these constants can be accessed by src/templates/page/home.html file.
 	page_title := 'V is the new V'
 	v_url := 'https://github.com/vlang/v'
 
@@ -91,10 +99,10 @@ That means that the template automatically has access to that action's entire en
 
 ```html
 <html>
-  <header>
+  <head>
     <title>${page_title}</title>
     @css 'src/templates/page/home.css'
-  </header>
+  </head>
   <body>
     <h1 class="title">Hello, Vs.</h1>
     @for var in list_of_object
@@ -174,7 +182,7 @@ fn (mut app App) hello() vweb.Result {
 }
 
 // This endpoint can be accessed via http://localhost:port/foo
-["/foo"]
+@["/foo"]
 fn (mut app App) world() vweb.Result {
 	return app.text('World')
 }
@@ -189,12 +197,12 @@ you can simply add the attribute before the function definition.
 **Example:**
 
 ```v ignore
-[post]
+@[post]
 fn (mut app App) world() vweb.Result {
 	return app.text('World')
 }
 
-['/product/create'; post]
+@['/product/create'; post]
 fn (mut app App) create_product() vweb.Result {
 	return app.text('product')
 }
@@ -202,8 +210,8 @@ fn (mut app App) create_product() vweb.Result {
 
 #### - Parameters
 
-Parameters are passed directly in endpoint route using colon sign `:` and received using the same
-name at function
+Parameters are passed directly in the endpoint route using a colon sign `:` and received
+using the same name in the function.
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
@@ -212,7 +220,7 @@ After it is defined in the attribute, you have to add it as a function parameter
 
 ```v ignore
           vvvv
-['/hello/:user']            vvvv
+@['/hello/:user']            vvvv
 fn (mut app App) hello_user(user string) vweb.Result {
 	return app.text('Hello $user')
 }
@@ -222,9 +230,26 @@ You have access to the raw request data such as headers
 or the request body by accessing `app` (which is `vweb.Context`).
 If you want to read the request body, you can do that by calling `app.req.data`.
 To read the request headers, you just call `app.req.header` and access the
-header you want example. `app.req.header.get(.content_type)`. See `struct Header`
+header you want, for example `app.req.header.get(.content_type)`. See `struct Header`
 for all available methods (`v doc net.http Header`).
-It has, too, fields for the `query`, `form`, `files`.
+It also has fields for the `query`, `form`, and `files`.
+
+#### - Parameter Arrays
+
+If you want multiple parameters in your route and if you want to parse the parameters 
+yourself, or you want a wildcard route, you can add `...`  after the `:` and name,
+e.g. `['/:path...']`.
+
+This will match all routes after `'/'`. For example the url `/path/to/test` would give
+`path = '/path/to/test'`.
+
+```v ignore
+        vvv
+@['/:path...']             vvvv
+fn (mut app App) wildcard(path string) vweb.Result {
+	return app.text('URL path = "${path}"')
+}
+```
 
 #### - Query
 To handle the query context, you just need use the  `query` field
@@ -244,12 +269,40 @@ fn main() {
 	vweb.run(&App{}, 8081)
 }
 
-['/user'; get]
+@['/user'; get]
 pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 	// http://localhost:3000/user?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
 	return app.text(app.query.str())
 }
 ```
+#### - Host
+To restrict an endpoint to a specific host, you can use the `host` attribute
+followed by a colon `:` and the host name. You can test the Host feature locally
+by adding a host to the "hosts" file of your device.
+
+**Example:**
+
+```v ignore
+@['/'; host: 'example.com']
+pub fn (mut app App) hello_web() vweb.Result {
+	return app.text('Hello World')
+}
+
+@['/'; host: 'api.example.org']
+pub fn (mut app App) hello_api() vweb.Result {
+	return app.text('Hello API')
+}
+
+// define the handler without a host attribute last if you have conflicting paths.
+@['/']
+pub fn (mut app App) hello_others() vweb.Result {
+	return app.text('Hello Others')
+}
+```
+
+You can also [create a controller](#hosts) to handle all requests from a specific
+host in one app.
+
 ### Middleware
 
 Vweb has different kinds of middleware.
@@ -264,13 +317,13 @@ pub fn (mut app App) before_request() {
 }
 ```
 
-Middleware functions can be passed directly when creating an App instance and is 
-executed when the url starts with the defined key. 
+Middleware functions can be passed directly when creating an App instance and is
+executed when the url starts with the defined key.
 
-In the following example, if a user navigates to `/path/to/test` the middleware 
+In the following example, if a user navigates to `/path/to/test` the middleware
 is executed in the following order: `middleware_func`, `other_func`, `global_middleware`.
 The middleware is executed in the same order as they are defined and if any function in
-the chain returns `false` the propogation is stopped.
+the chain returns `false` the propagation is stopped.
 
 **Example:**
 ```v
@@ -313,7 +366,7 @@ fn global_middleware(mut ctx vweb.Context) bool {
 }
 ```
 
-Middleware functions will be of type `vweb.Middleware` and are not methods of App, 
+Middleware functions will be of type `vweb.Middleware` and are not methods of App,
 so they could also be imported from other modules.
 ```v ignore
 pub type Middleware = fn (mut Context) bool
@@ -323,8 +376,8 @@ Middleware can also be added to route specific functions via attributes.
 
 **Example:**
 ```v ignore
-[middleware: check_auth]
-['/admin/data']
+@[middleware: check_auth]
+@['/admin/data']
 pub fn (mut app App) admin() vweb.Result {
 	// ...
 }
@@ -335,11 +388,97 @@ pub fn (mut app App) check_auth () bool {
 	return true
 }
 ```
-For now you can only add 1 middleware to a route specific function via attributes.
+You can only add 1 middleware to a route specific function via attributes.
+
+#### Middleware evaluation order
+The middleware is executed in the following order:
+
+1. `before_request`
+2. The middleware in `app.middlewares`
+3. The middleware in the `[middleware]` attribute
+
+If any function of step 2 or 3 returns `false` the middleware functions that would
+come after it are not executed and the app handler will also not be executed. You
+can think of it as a chain.
+
+### Context values
+
+You can store a value pair in vweb's context. It is especially useful for passing variables
+from a middleware function to the route handler.
+
+**Example**:
+```v oksyntax
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	middlewares map[string][]vweb.Middleware
+}
+
+pub fn (mut app App) index() vweb.Result {
+	// get the user or return HTTP 401
+	user := app.get_value[User]('user') or {
+		app.set_status(401, '')
+		return app.text('HTTP 401: Unauthorized')
+	}
+
+	return app.text('welcome ${user.name}')
+}
+
+fn main() {
+	vweb.run(&App{
+		middlewares: {
+			'/': [get_session]
+		}
+	}, 8080)
+}
+
+struct User {
+	session_id string
+	name       string
+}
+
+fn get_session(mut ctx vweb.Context) bool {
+	// implement your own logic to get the user
+	user := User{
+		session_id: '123456'
+		name: 'Vweb'
+	}
+
+	// set the user
+	ctx.set_value('user', user)
+	return true
+}
+```
+
+When you visit the index page the middleware function `get_session` will run first
+This function sets a `User` value to a key `'user'`.
+We get this key in `index` and display it to the user if the `'user'` key exists.
+
+#### Changing Context values
+
+By default context values are immutable when retrieved with `get_value`. If you want to
+change the value later you have to set it again with `set_value`.
+
+**Example:**
+```v ignore
+fn change_user(mut ctx vweb.Context) bool {
+	user := User{
+		session_id: '654321'
+		name: 'tester'
+	}
+
+	// set the user
+	ctx.set_value('user', user)
+	return true
+}
+```
 
 ### Redirect
 
-Used when you want be redirected to an url
+Used when you want to be redirected to an url
 
 **Examples:**
 
@@ -350,7 +489,7 @@ pub fn (mut app App) before_request() {
 ```
 
 ```v ignore
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	if !app.token {
 		app.redirect('/login')
@@ -364,23 +503,23 @@ You can also combine middleware and redirect.
 **Example:**
 
 ```v ignore
-[middleware: with_auth]
-['/admin/secret']
+@[middleware: with_auth]
+@['/admin/secret']
 pub fn (mut app App) admin_secret() vweb.Result {
 	// this code should never be reached
 	return app.text('secret')
 }
 
-['/redirect']
+@['/redirect']
 pub fn (mut app App) with_auth() bool {
 	app.redirect('/auth/login')
 	return false
 }
 ```
 
-### Fallback route
-You can implement a fallback `not_found` route that is called when a request is made and no 
-matching route is found.
+### Custom not found page
+You can implement a `not_found` route that is called when a request is made and no
+matching route is found to replace the default HTTP 404 not found page.
 
 **Example:**
 
@@ -391,8 +530,201 @@ pub fn (mut app App) not_found() vweb.Result {
 }
 ```
 
+### Databases
+The `db` field in a vweb app is reserved for database connections. The connection is
+copied to each new request.
+
+**Example:**
+
+```v
+module main
+
+import vweb
+import db.sqlite
+
+struct App {
+	vweb.Context
+mut:
+	db sqlite.DB
+}
+
+fn main() {
+	// create the database connection
+	mut db := sqlite.connect('db')!
+
+	vweb.run(&App{
+		db: db
+	}, 8080)
+}
+```
+
+### Multithreading
+By default, a vweb app is multithreaded, that means that multiple requests can
+be handled in parallel by using multiple CPU's: a worker pool. You can
+change the number of workers (maximum allowed threads) by altering the `nr_workers`
+option. The default behaviour is to use the maximum number of jobs (cores in most cases).
+
+**Example:**
+```v ignore
+fn main() {
+	// assign a maximum of 4 workers
+	vweb.run_at(&App{}, nr_workers: 4)
+}
+```
+
+#### Database Pool
+A single connection database works fine if you run your app with 1 worker, of if
+you access a file-based database like a sqlite file.
+
+This approach will fail when using a non-file based database connection like a mysql
+connection to another server somewhere on the internet. Multiple threads would need to access
+the same connection at the same time.
+
+To resolve this issue, you can use the vweb's built-in database pool. The database pool
+will keep a number of connections open when the app is started and each worker is
+assigned its own connection.
+
+Let's look how we can improve our previous example with database pooling and using a
+postgresql server instead.
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.pg
+
+struct App {
+	vweb.Context
+	db_handle vweb.DatabasePool[pg.DB]
+mut:
+	db pg.DB
+}
+
+fn get_database_connection() pg.DB {
+	// insert your own credentials
+	return pg.connect(user: 'user', password: 'password', dbname: 'database') or { panic(err) }
+}
+
+fn main() {
+	// create the database pool and pass our `get_database_connection` function as handler
+	pool := vweb.database_pool(handler: get_database_connection)
+
+	// no need to set the `db` field
+	vweb.run(&App{
+		db_handle: pool
+	}, 8080)
+}
+```
+
+If you don't use the default number of workers (`nr_workers`) you have to change
+it to the same number in `vweb.run_at` as in `vweb.database_pool`
+
+### Extending the App struct with `[vweb_global]`
+You can change your `App` struct however you like, but there are some things you
+have to keep in mind. Under the hood at each request a new instance of `App` is
+constructed, and all fields are re-initialized with their default type values,
+except for the `db` field.
+
+This behaviour ensures that each request is treated equally and in the same context, but
+problems arise when we want to provide more context than just the default `vweb.Context`.
+
+Let's view the following example where we want to provide a secret token to our app:
+
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	secret string
+}
+
+fn main() {
+	vweb.run(&App{
+		secret: 'my secret'
+	}, 8080)
+}
+
+fn (mut app App) index() vweb.Result {
+	return app.text('My secret is: ${app.secret}')
+}
+```
+
+When you visit `localhost:8080/` you would expect to see the text
+`"My secret is: my secret"`, but instead there is only the text
+`"My secret is: "`. This is because of the way vweb works. We can override the default
+behaviour by adding the attribute `[vweb_global]` to the `secret` field.
+
+**Example:**
+```v ignore
+struct App {
+	vweb.Context
+	secret string [vweb_global]
+}
+```
+
+Now if you visit `localhost:8080/` you see the text `"My secret is: my secret"`.
+> **Note**: the value of `secret` gets initialized with the provided value when creating
+> `App`. If you would modify `secret` in one request the value won't be changed in the
+> next request. You can use shared fields for this.
+
+### Shared Objects across requests
+We saw in the previous section that we can persist data across multiple requests,
+but what if we want to be able to mutate the data? Since vweb works with threads,
+we have to use `shared` fields.
+
+Let's see how we can add a visitor counter to our `App`.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct Counter {
+pub mut:
+	count int
+}
+
+struct App {
+	vweb.Context
+mut:
+	counter shared Counter // shared fields can only be structs, arrays or maps.
+}
+
+fn main() {
+	// initialize the shared object
+	shared counter := Counter{
+		count: 0
+	}
+
+	vweb.run(&App{
+		counter: counter
+	}, 8080)
+}
+
+fn (mut app App) index() vweb.Result {
+	mut count := 0
+	// lock the counter so we can modify it
+	lock app.counter {
+		app.counter.count += 1
+		count = app.counter.count
+	}
+	return app.text('Total visitors: ${count}')
+}
+```
+
+#### Drawback of Shared Objects
+The drawback of using shared objects is that it affects performance. In the previous example
+`App.counter` needs to be locked each time the page is loaded if there are simultaneous
+requests the next requests will have to wait for the lock to be released.
+
+It is best practice to limit the use of shared objects as much as possible.
+
 ### Controllers
-Controllers can be used to split up app logic so you are able to have one struct 
+Controllers can be used to split up app logic so you are able to have one struct
 per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`
 for urls starting with `"/foo"`
 
@@ -426,29 +758,29 @@ fn main() {
 }
 ```
 
-You can do everything with a controller struct as with a regular `App` struct. 
+You can do everything with a controller struct as with a regular `App` struct.
 The only difference being is that only the main app that is being passed to `vweb.run`
-is able to have controllers. If you add `vweb.Controller` on a controller struct it 
+is able to have controllers. If you add `vweb.Controller` on a controller struct it
 will simply be ignored.
 
 #### Routing
 Any route inside a controller struct is treated as a relative route to its controller namespace.
 
 ```v ignore
-['/path']
+@['/path']
 pub fn (mut app Admin) path vweb.Result {
     return app.text('Admin')
 }
 ```
 When we created the controller with `vweb.controller('/admin', &Admin{})` we told
-vweb that the namespace of that controller is `"/admin"` so in this example we would 
+vweb that the namespace of that controller is `"/admin"` so in this example we would
 see the text `"Admin"` if we navigate to the url `"/admin/path"`.
 
-Vweb doesn't support fallback routes or duplicate routes, so if we add the following 
+Vweb doesn't support fallback routes or duplicate routes, so if we add the following
 route to the example the code will produce an error.
 
 ```v ignore
-['/admin/path']
+@['/admin/path']
 pub fn (mut app App) admin_path vweb.Result {
     return app.text('Admin overwrite')
 }
@@ -456,9 +788,47 @@ pub fn (mut app App) admin_path vweb.Result {
 There will be an error, because the controller `Admin` handles all routes starting with
 `"/admin"`; the method `admin_path` is unreachable.
 
+#### Hosts
+You can also set a host for a controller. All requests coming from that host will be handled
+by the controller.
+
+**Example:**
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+	vweb.Controller
+}
+
+pub fn (mut app App) index() vweb.Result {
+	return app.text('App')
+}
+
+struct Example {
+	vweb.Context
+}
+
+// You can only access this route at example.com: http://example.com/
+pub fn (mut app Example) index() vweb.Result {
+	return app.text('Example')
+}
+
+fn main() {
+	vweb.run(&App{
+		controllers: [
+			vweb.controller_host('example.com', '/', &Example{}),
+		]
+	}, 8080)
+}
+```
+
 #### Databases and `[vweb_global]` in controllers
 
-Fields with `[vweb_global]` like a database have to passed to each controller individually.
+Fields with `[vweb_global]` have to passed to each controller individually.
+The `db` field is unique and will be treated as a `vweb_global` field at all times.
 
 **Example:**
 ```v
@@ -470,14 +840,14 @@ import db.sqlite
 struct App {
 	vweb.Context
 	vweb.Controller
-pub mut:
-	db sqlite.DB [vweb_global]
+mut:
+	db sqlite.DB
 }
 
 struct Admin {
 	vweb.Context
-pub mut:
-	db sqlite.DB [vweb_global]
+mut:
+	db sqlite.DB
 }
 
 fn main() {
@@ -494,6 +864,50 @@ fn main() {
 }
 ```
 
+#### Using a database pool
+
+**Example:**
+```v
+module main
+
+import vweb
+import db.pg
+
+struct App {
+	vweb.Context
+	vweb.Controller
+	db_handle vweb.DatabasePool[pg.DB]
+mut:
+	db pg.DB
+}
+
+struct Admin {
+	vweb.Context
+	db_handle vweb.DatabasePool[pg.DB]
+mut:
+	db pg.DB
+}
+
+fn get_database_connection() pg.DB {
+	// insert your own credentials
+	return pg.connect(user: 'user', password: 'password', dbname: 'database') or { panic(err) }
+}
+
+fn main() {
+	// create the database pool and pass our `get_database_connection` function as handler
+	pool := vweb.database_pool(handler: get_database_connection)
+
+	mut app := &App{
+		db_handle: pool
+		controllers: [
+			vweb.controller('/admin', &Admin{
+				db_handle: pool
+			}),
+		]
+	}
+}
+```
+
 ### Responses
 
 #### - set_status
@@ -502,7 +916,7 @@ Sets the response status
 **Example:**
 
 ```v ignore
-['/user/get_all'; get]
+@['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
     token := app.get_header('token')
 
@@ -547,7 +961,7 @@ Response HTTP_OK with payload with content-type `application/json`
 **Examples:**
 
 ```v ignore
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
     articles := app.find_all_articles()
     json_result := json.encode(articles)
@@ -556,7 +970,7 @@ pub fn (mut app App) articles() vweb.Result {
 ```
 
 ```v ignore
-['/user/create'; post]
+@['/user/create'; post]
 pub fn (mut app App) controller_create_user() vweb.Result {
     body := json.decode(User, app.req.data) or {
         app.set_status(400, '')
@@ -595,7 +1009,7 @@ Response HTTP_OK with payload
 **Example:**
 
 ```v ignore
-['/form_echo'; post]
+@['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
     app.set_content_type(app.req.header.get(.content_type) or { '' })
     return app.ok(app.form['foo'])
@@ -619,7 +1033,7 @@ Response HTTP_NOT_FOUND with payload
 **Example:**
 
 ```v ignore
-['/:user/:repo/settings']
+@['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
     if username !in known_users {
         return app.not_found()
@@ -636,7 +1050,7 @@ Returns the header data from the key
 **Example:**
 
 ```v ignore
-['/user/get_all'; get]
+@['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
     token := app.get_header('token')
     return app.text(token)
@@ -660,7 +1074,7 @@ Adds an header to the response with key and val
 **Example:**
 
 ```v ignore
-['/upload'; post]
+@['/upload'; post]
 pub fn (mut app App) upload() vweb.Result {
     fdata := app.files['upfile']
 
@@ -718,7 +1132,7 @@ Sets the response content type
 **Example:**
 
 ```v ignore
-['/form_echo'; post]
+@['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
     app.set_content_type(app.req.header.get(.content_type) or { '' })
     return app.ok(app.form['foo'])
@@ -730,7 +1144,8 @@ pub fn (mut app App) form_echo() vweb.Result {
 #### -handle_static
 
 handle_static is used to mark a folder (relative to the current working folder) as one that
-contains only static resources (css files, images etc).
+contains only static resources (css files, images etc).\
+host_handle_static can be used to limit the static resources to a specific host.
 
 If `root` is set the mount path for the dir will be in '/'
 
@@ -740,6 +1155,7 @@ If `root` is set the mount path for the dir will be in '/'
 fn main() {
     mut app := &App{}
     app.serve_static('/favicon.ico', 'favicon.ico')
+    // app.host_serve_static('localhost', '/favicon.ico', 'favicon.ico')
     // Automatically make available known static mime types found in given directory.
     os.chdir(os.dir(os.executable()))?
     app.handle_static('assets', true)
@@ -755,11 +1171,15 @@ For example: suppose you have called .mount_static_folder_at('/var/share/myasset
 and you have a file /var/share/myassets/main.css .
 => That file will be available at URL: http://server/assets/main.css .
 
+mount_static_folder_at can be used to limit the static resources to a specific host.
+
 #### -serve_static
 
 Serves a file static.
 `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the
 file type
+
+host_serve_static can be used to limit the static resources to a specific host.
 
 **Example:**
 
@@ -767,12 +1187,26 @@ file type
 fn main() {
     mut app := &App{}
     app.serve_static('/favicon.ico', 'favicon.ico')
+    // app.host_serve_static('localhost', /favicon.ico', 'favicon.ico')
     app.mount_static_folder_at(os.resource_abs_path('.'), '/')
     vweb.run(app, 8081)
 }
 ```
 
 ### Others
+
+#### -user_agent
+
+Returns the user-agent from the current user
+
+**Example:**
+
+```v ignore
+pub fn (mut app App) user_agent() vweb.Result {
+    ua := app.user_agent()
+    return app.text('User-Agent: $ua')
+}
+```
 
 #### -ip
 
@@ -800,68 +1234,6 @@ pub fn (mut app App) error() vweb.Result {
 }
 ```
 # Cross-Site Request Forgery (CSRF) protection
-## Provides protection against Cross-Site Request Forgery 
 
-## Usage
-
-When building a csrf-protected service, first of all create a `struct`that implements `csrf.App`
-
-```v ignore
-module main
-
-import vweb
-import vweb.csrf
-
-// embeds the csrf.App struct in order to empower the struct to protect against CSRF
-struct App {
-	csrf.App
-}
-```
-
-Start a server e.g. in the main function.
-
-```v ignore
-fn main() {
-	vweb.run_at(&App{}, vweb.RunParams{
-        port: 8080
-    }) or { panic(err) }
-}
-```
-
-### Enable CSRF-protection
-
-Then add a handler-function to define on which route or on which site the CSRF-Token shall be set.
-
-```v ignore
-fn (mut app App) index() vweb.Result {
-
-    // Set a Csrf-Cookie (Token will be generated automatically)
-	app.set_csrf_cookie()
-
-	// Get the token-value from the csrf-cookie that was just set
-	token := app.get_csrf_token() or { panic(err) }
-
-	return app.text("Csrf-Token set! It's value is: $token")
-}
-```
-
-If you want to set the cookies's HttpOnly-status to false in order to make it  
- accessible to scripts on your site, you can do it like this:
-`app.set_csrf_cookie(csrf.HttpOnly{false})`
-If no argument is passed the value will be set to true by default.
-
-
-### Protect against CSRF
-
-If you want to protect a route or a site against CSRF just add  
-`app.csrf_protect()` at the beginning of the handler-function.
-
-```v ignore
-fn (mut app App) foo() vweb.Result {
-    // Protect this handler-function against CSRF
-	app.csrf_protect()
-	return app.text("Checked and passed csrf-guard")
-}
-```
-
-
+Vweb has built-in csrf protection. Go to the [csrf module](csrf/) to learn how
+you can protect your app against CSRF.

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -35,7 +35,7 @@ pub:
 	redirect_stdout bool
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut result Result) free() {
 	unsafe { result.output.free() }
 }
@@ -55,8 +55,8 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		other_seperator := if path_separator == '/' { '\\' } else { '/' }
-		rexepath := exepath.replace(other_seperator, path_separator)
+		other_separator := if path_separator == '/' { '\\' } else { '/' }
+		rexepath := exepath.replace(other_separator, path_separator)
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
@@ -119,20 +119,33 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 	}
 }
 
-// mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
-// may be used when you are not sure that the source and target are on the same mount/partition.
-pub fn mv_by_cp(source string, target string) ! {
-	cp(source, target)!
+@[params]
+pub struct MvParams {
+	overwrite bool = true
+}
+
+// mv_by_cp copies files or folders from `source` to `target`.
+// If copying is successful, `source` is deleted.
+// It may be used when the paths are not on the same mount/partition.
+pub fn mv_by_cp(source string, target string, opts MvParams) ! {
+	cp_all(source, target, opts.overwrite)!
+	if is_dir(source) {
+		rmdir_all(source)!
+		return
+	}
 	rm(source)!
 }
 
 // mv moves files or folders from `src` to `dst`.
-pub fn mv(source string, target string) ! {
-	rename(source, target) or { mv_by_cp(source, target)! }
+pub fn mv(source string, target string, opts MvParams) ! {
+	if !opts.overwrite && exists(target) {
+		return error('target path already exist')
+	}
+	rename(source, target) or { mv_by_cp(source, target, opts)! }
 }
 
 // read_lines reads the file in `path` into an array of lines.
-[manualfree]
+@[manualfree]
 pub fn read_lines(path string) ![]string {
 	buf := read_file(path)!
 	res := buf.split_into_lines()
@@ -160,19 +173,39 @@ pub fn sigint_to_signal_name(si int) string {
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
-			// TODO dependent on platform
+			// TODO: dependent on platform
 			// works only on x86/ARM/most others
-			10 /* , 30, 16 */ { return 'SIGUSR1' }
-			12 /* , 31, 17 */ { return 'SIGUSR2' }
-			17 /* , 20, 18 */ { return 'SIGCHLD' }
-			18 /* , 19, 25 */ { return 'SIGCONT' }
-			19 /* , 17, 23 */ { return 'SIGSTOP' }
-			20 /* , 18, 24 */ { return 'SIGTSTP' }
-			21 /* , 26 */ { return 'SIGTTIN' }
-			22 /* , 27 */ { return 'SIGTTOU' }
+			10 { // , 30, 16
+				return 'SIGUSR1'
+			}
+			12 { // , 31, 17
+				return 'SIGUSR2'
+			}
+			17 { // , 20, 18
+				return 'SIGCHLD'
+			}
+			18 { // , 19, 25
+				return 'SIGCONT'
+			}
+			19 { // , 17, 23
+				return 'SIGSTOP'
+			}
+			20 { // , 18, 24
+				return 'SIGTSTP'
+			}
+			21 { // , 26
+				return 'SIGTTIN'
+			}
+			22 { // , 27
+				return 'SIGTTOU'
+			}
 			// /////////////////////////////
-			5 { return 'SIGTRAP' }
-			7 { return 'SIGBUS' }
+			5 {
+				return 'SIGTRAP'
+			}
+			7 {
+				return 'SIGBUS'
+			}
 			else {}
 		}
 	}
@@ -199,7 +232,7 @@ pub fn rmdir_all(path string) ! {
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
 // Note that it will return `true` if `path` does not exist.
-[manualfree]
+@[manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
 	res := items.len == 0
@@ -207,7 +240,7 @@ pub fn is_dir_empty(path string) bool {
 	return res
 }
 
-// file_ext will return the part after the last occurence of `.` in `path`.
+// file_ext will return the part after the last occurrence of `.` in `path`.
 // The `.` is included.
 // Examples:
 // ```v
@@ -217,12 +250,15 @@ pub fn is_dir_empty(path string) bool {
 // ```
 pub fn file_ext(opath string) string {
 	if opath.len < 3 {
-		return empty_str
+		return ''
 	}
 	path := file_name(opath)
-	pos := path.last_index(dot_str) or { return empty_str }
+	pos := path.index_u8_last(`.`)
+	if pos == -1 {
+		return ''
+	}
 	if pos + 1 >= path.len || pos == 0 {
-		return empty_str
+		return ''
 	}
 	return path[pos..]
 }
@@ -236,8 +272,8 @@ pub fn dir(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
@@ -253,8 +289,8 @@ pub fn base(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	if path == path_separator {
 		return path_separator
 	}
@@ -267,16 +303,16 @@ pub fn base(opath string) string {
 	return path[pos + 1..]
 }
 
-// file_name will return all characters found after the last occurence of `path_separator`.
+// file_name will return all characters found after the last occurrence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	return path.all_after_last(path_separator)
 }
 
 // input_opt returns a one-line string from stdin, after printing a prompt.
-// In the event of error (end of input), it returns `none`.
+// Returns `none` in case of an error (end of input).
 pub fn input_opt(prompt string) ?string {
 	print(prompt)
 	flush()
@@ -288,7 +324,7 @@ pub fn input_opt(prompt string) ?string {
 }
 
 // input returns a one-line string from stdin, after printing a prompt.
-// In the event of error (end of input), it returns '<EOF>'.
+// Returns '<EOF>' in case of an error (end of input).
 pub fn input(prompt string) string {
 	res := input_opt(prompt) or { return '<EOF>' }
 	return res
@@ -303,7 +339,7 @@ pub fn get_line() string {
 	return str.trim_right('\n')
 }
 
-// get_lines returns an array of strings read from from stdin.
+// get_lines returns an array of strings read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines() []string {
 	mut line := ''
@@ -319,7 +355,7 @@ pub fn get_lines() []string {
 	return inputstr
 }
 
-// get_lines_joined returns a string of the values read from from stdin.
+// get_lines_joined returns a string of the values read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines_joined() string {
 	mut line := ''
@@ -395,6 +431,9 @@ pub fn user_os() string {
 	$if serenity {
 		return 'serenity'
 	}
+	//$if plan9 {
+	//	return 'plan9'
+	//}
 	$if vinix {
 		return 'vinix'
 	}
@@ -514,8 +553,9 @@ pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
 }
 
-// join_path returns a path as string from input string parameter(s).
-[manualfree]
+// join_path joins any number of path elements into a single path, separating
+// them with a platform-specific path_separator. Empty elements are ignored.
+@[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
 	// but do not free the arr, when `os.join_path(base, ...arr)` is called.
@@ -529,15 +569,25 @@ pub fn join_path(base string, dirs ...string) string {
 	}
 	sb.write_string(sbase)
 	for d in dirs {
-		sb.write_string(path_separator)
-		sb.write_string(d)
+		if d != '' {
+			sb.write_string(path_separator)
+			sb.write_string(d)
+		}
 	}
-	return sb.str()
+	mut res := sb.str()
+	if sbase == '' {
+		res = res.trim_left(path_separator)
+	}
+	if res.contains('/./') {
+		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
+		res = res.replace('/./', '/')
+	}
+	return res
 }
 
-// join_path_single appends the `elem` after `base`, using a platform specific
-// path_separator.
-[manualfree]
+// join_path_single appends the `elem` after `base`, separated with a
+// platform-specific path_separator. Empty elements are ignored.
+@[manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
 	// when freeing variadic args vs ...arr is solved in the compiler
@@ -549,13 +599,16 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	sb.write_string(sbase)
-	sb.write_string(path_separator)
+	if base != '' {
+		sb.write_string(sbase)
+		sb.write_string(path_separator)
+	}
 	sb.write_string(elem)
 	return sb.str()
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string) []string {
 	mut res := []string{}
 	impl_walk_ext(path, ext, mut res)
@@ -582,9 +635,10 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 }
 
 // walk traverses the given directory `path`.
-// When a file is encountred, it will call the callback `f` with current file as argument.
+// When a file is encountered, it will call the callback `f` with current file as argument.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
 	if path.len == 0 {
 		return
@@ -617,11 +671,12 @@ pub fn walk(path string, f fn (string)) {
 pub type FnWalkContextCB = fn (voidptr, string)
 
 // walk_with_context traverses the given directory `path`.
-// For each encountred file *and* directory, it will call your `fcb` callback,
+// For each encountered file *and* directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	if path.len == 0 {
 		return
@@ -660,15 +715,21 @@ pub fn log(s string) {
 	println('os.log: ' + s)
 }
 
-[params]
+@[params]
 pub struct MkdirParams {
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	if exists(opath) {
+		if is_dir(opath) {
+			return
+		}
+		return error('path `${opath}` already exists, and is not a folder')
+	}
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
 	for subdir in path_parts {
@@ -677,6 +738,21 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 			continue
 		}
 		mkdir(p, params) or { return error('folder: ${p}, error: ${err}') }
+	}
+}
+
+fn create_folder_when_it_does_not_exist(path string) {
+	if is_dir(path) || is_link(path) {
+		return
+	}
+	mkdir_all(path, mode: 0o700) or {
+		if is_dir(path) || is_link(path) {
+			// A race had been won, and the `path` folder had been created,
+			// by another concurrent V executable, since the folder now exists,
+			// but it did not right before ... we will just use it too.
+			return
+		}
+		panic(err)
 	}
 }
 
@@ -690,13 +766,12 @@ pub fn cache_dir() string {
 	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
 	// or empty, a default equal to $HOME/.cache should be used.
 	xdg_cache_home := getenv('XDG_CACHE_HOME')
-	if xdg_cache_home != '' {
-		return xdg_cache_home
+	cdir := if xdg_cache_home.len > 0 {
+		xdg_cache_home
+	} else {
+		join_path_single(home_dir(), '.cache')
 	}
-	cdir := join_path_single(home_dir(), '.cache')
-	if !is_dir(cdir) && !is_link(cdir) {
-		mkdir(cdir) or { panic(err) }
-	}
+	create_folder_when_it_does_not_exist(cdir)
 	return cdir
 }
 
@@ -705,7 +780,7 @@ pub fn temp_dir() string {
 	mut path := getenv('TMPDIR')
 	$if windows {
 		if path == '' {
-			// TODO see Qt's implementation?
+			// TODO: see Qt's implementation?
 			// https://doc.qt.io/qt-5/qdir.html#tempPath
 			// https://github.com/qt/qtbase/blob/e164d61ca8263fc4b46fdd916e1ea77c7dd2b735/src/corelib/io/qfilesystemengine_win.cpp#L1275
 			path = getenv('TEMP')
@@ -723,7 +798,7 @@ pub fn temp_dir() string {
 		return '/tmp'
 	}
 	$if android {
-		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
+		// TODO: test+use '/data/local/tmp' on Android before using cache_dir()
 		if path == '' {
 			path = cache_dir()
 		}
@@ -742,14 +817,12 @@ pub fn temp_dir() string {
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {
+		create_folder_when_it_does_not_exist(vtmp)
 		return vtmp
 	}
 	uid := getuid()
 	vtmp = join_path_single(temp_dir(), 'v_${uid}')
-	if !exists(vtmp) || !is_dir(vtmp) {
-		// create a new directory, that is private to the user:
-		mkdir_all(vtmp, mode: 0o700) or { panic(err) }
-	}
+	create_folder_when_it_does_not_exist(vtmp)
 	setenv('VTMP', vtmp, true)
 	return vtmp
 }
@@ -801,7 +874,7 @@ pub fn vmodules_paths() []string {
 // See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
-[manualfree]
+@[manualfree]
 pub fn resource_abs_path(path string) string {
 	exe := executable()
 	dexe := dir(exe)
@@ -853,6 +926,15 @@ pub fn execute_or_exit(cmd string) Result {
 	return res
 }
 
+// execute_opt returns the os.Result of executing `cmd`, or an error with its output on failure.
+pub fn execute_opt(cmd string) !Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		return error(res.output)
+	}
+	return res
+}
+
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {
@@ -896,8 +978,18 @@ pub fn config_dir() !string {
 	return error('Cannot find config directory')
 }
 
-[deprecated: 'use os.ensure_folder_is_writable instead']
-pub fn is_writable_folder(folder string) !bool {
-	ensure_folder_is_writable(folder)!
-	return true
+// Stat struct modeled on POSIX
+pub struct Stat {
+pub:
+	dev   u64 // ID of device containing file
+	inode u64 // Inode number
+	mode  u32 // File type and user/group/world permission bits
+	nlink u64 // Number of hard links to file
+	uid   u32 // Owner user ID
+	gid   u32 // Owner group ID
+	rdev  u64 // Device ID (if special file)
+	size  u64 // Total size in bytes
+	atime i64 // Last access (seconds since UNIX epoch)
+	mtime i64 // Last modified (seconds since UNIX epoch)
+	ctime i64 // Last status change (seconds since UNIX epoch)
 }

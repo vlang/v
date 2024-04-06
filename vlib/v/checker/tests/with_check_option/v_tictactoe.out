@@ -31,3 +31,10 @@ vlib/v/checker/tests/with_check_option/v_tictactoe.vv:6:14: error: unknown type 
       |              ~~~~~~~
     7 |     }
     8 |     return board
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:6:21: error: unknown type for expression `board[i / 3]`
+    4 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+    5 |     for i in 0..9 {
+    6 |         board[i / 3][i % 3] = (i + 1).str()
+      |                     ~~~~~~~
+    7 |     }
+    8 |     return board

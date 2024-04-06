@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -7,16 +7,12 @@
 module crc32
 
 // polynomials
-pub const (
-	ieee       = u32(0xedb88320)
-	castagnoli = u32(0x82f63b78)
-	koopman    = u32(0xeb31d82e)
-)
+pub const ieee = u32(0xedb88320)
+pub const castagnoli = u32(0x82f63b78)
+pub const koopman = u32(0xeb31d82e)
 
 // The size of a CRC-32 checksum in bytes.
-const (
-	size = 4
-)
+const size = 4
 
 struct Crc32 {
 mut:

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -6,7 +6,7 @@ module parser
 import v.ast
 
 // return true if file being parsed imports `mod`
-pub fn (p &Parser) known_import(mod string) bool {
+fn (p &Parser) known_import(mod string) bool {
 	return mod in p.imports
 }
 
@@ -31,11 +31,17 @@ fn (mut p Parser) register_used_import(alias string) {
 	}
 }
 
+fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
+	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	p.register_used_import(short_import_name)
+}
+
 fn (mut p Parser) register_auto_import(alias string) {
 	if alias !in p.imports {
 		p.imports[alias] = alias
 		p.table.imports << alias
 		node := ast.Import{
+			source_name: alias
 			pos: p.tok.pos()
 			mod: alias
 			alias: alias
@@ -58,7 +64,7 @@ fn (mut p Parser) check_unused_imports() {
 	for import_m in p.ast_imports {
 		alias := import_m.alias
 		mod := import_m.mod
-		if !p.is_used_import(alias) {
+		if !(alias.len == 1 && alias[0] == `_`) && !p.is_used_import(alias) {
 			mod_alias := if alias == mod { alias } else { '${alias} (${mod})' }
 			p.warn_with_pos("module '${mod_alias}' is imported but never used", import_m.mod_pos)
 		}

@@ -16,11 +16,11 @@ fn test_sorting_shared_arrays() {
 	alarms := Alarms{}
 	utc := time.utc()
 	alarms.add(utc)
-	alarms.add(time.parse_iso8601('2022-03-01')?)
-	alarms.add(time.parse_iso8601('3001-03-01')?)
-	alarms.add(time.parse_iso8601('2002-03-01')?)
-	alarms.add(time.parse_iso8601('3002-03-01')?)
-	alarms.add(time.parse_iso8601('2021-03-01')?)
+	alarms.add(time.parse_iso8601('2022-03-01')!)
+	alarms.add(time.parse_iso8601('3001-03-01')!)
+	alarms.add(time.parse_iso8601('2002-03-01')!)
+	alarms.add(time.parse_iso8601('3002-03-01')!)
+	alarms.add(time.parse_iso8601('2021-03-01')!)
 	println(alarms)
 	lock alarms.times {
 		assert alarms.times.len == 6

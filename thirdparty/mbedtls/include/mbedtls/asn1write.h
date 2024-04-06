@@ -86,7 +86,7 @@ int mbedtls_asn1_write_raw_buffer( unsigned char **p, const unsigned char *start
 
 #if defined(MBEDTLS_BIGNUM_C)
 /**
- * \brief           Write a arbitrary-precision number (#MBEDTLS_ASN1_INTEGER)
+ * \brief           Write an arbitrary-precision number (#MBEDTLS_ASN1_INTEGER)
  *                  in ASN.1 format.
  *
  * \note            This function works backwards in data buffer.
@@ -352,7 +352,7 @@ int mbedtls_asn1_write_octet_string( unsigned char **p, const unsigned char *sta
  *                  the existing buffer to fit \p val_len.
  *
  * \return          A pointer to the new / existing entry on success.
- * \return          \c NULL if if there was a memory allocation error.
+ * \return          \c NULL if there was a memory allocation error.
  */
 mbedtls_asn1_named_data *mbedtls_asn1_store_named_data( mbedtls_asn1_named_data **list,
                                         const char *oid, size_t oid_len,

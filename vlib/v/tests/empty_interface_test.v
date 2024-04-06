@@ -10,5 +10,5 @@ fn print_out(x Any) string {
 
 fn test_empty_interface() {
 	ret := print_out('12345')
-	assert ret == '&12345'
+	assert ret == '12345'
 }

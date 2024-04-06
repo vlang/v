@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:8:2: error: ORM: array fields must have an fkey attribute
+    6 | pub struct Example {
+    7 |     id      int  @[primary; sql: serial]
+    8 |     example []u8 @[sql_type: 'bytea'; unique]
+      |     ~~~~~~~~~~~~
+    9 | }
+   10 |

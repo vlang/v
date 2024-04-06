@@ -1,16 +1,16 @@
 import rand
 import os
 
-const (
-	help_text = ' Usage:\t./VCasino\n
+const help_text = ' Usage:\t./VCasino\n
  Description:\n  VCasino is a little game only made to learn V.\n'
-	g_desc = "  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
+
+const g_desc = "  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
    If your number is the good one, you'll get your bet x3.
    If your number is the same color as the ball one, you'll get your bet /2.
    Otherwise, you will lose your bet.\n"
-	odd  = 'red'
-	even = 'black'
-)
+
+const odd = 'red'
+const even = 'black'
 
 struct Options {
 	long_opt  string

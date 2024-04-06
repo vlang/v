@@ -98,7 +98,7 @@ fn (mut g Gen) gen_c_main_function_header() {
 	g.writeln('\tg_main_argc = ___argc;')
 	g.writeln('\tg_main_argv = ___argv;')
 	if g.nr_closures > 0 {
-		g.writeln('__closure_init();')
+		g.writeln('\t__closure_init(); // main()')
 	}
 }
 
@@ -110,7 +110,11 @@ fn (mut g Gen) gen_c_main_header() {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
 		g.writeln('\tGC_set_pages_executable(0);')
+		if g.pref.use_coroutines {
+			g.writeln('\tGC_allow_register_threads();')
+		}
 		g.writeln('\tGC_INIT();')
+
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
 		}
@@ -217,6 +221,8 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 pub fn (mut g Gen) gen_c_main_profile_hook() {
 	if g.pref.is_prof {
 		g.writeln('')
+		g.writeln('\tsignal(SIGINT, vprint_profile_stats_on_signal);')
+		g.writeln('\tsignal(SIGTERM, vprint_profile_stats_on_signal);')
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
 	}
@@ -242,6 +248,9 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
 		g.writeln('\tGC_set_pages_executable(0);')
+		if g.pref.use_coroutines {
+			g.writeln('\tGC_allow_register_threads();')
+		}
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
@@ -268,7 +277,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('')
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
-		testfn := g.table.fns[tname]
+		testfn := unsafe { g.table.fns[tname] }
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
 		g.writeln('\tstring tcname_${tnumber} = _SLIT("${tcname}");')
@@ -341,5 +350,6 @@ pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
 	if !g.pref.trace_calls {
 		return
 	}
-	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main();')
+	should_trace_c_main := g.pref.should_trace_fn_name('C.main')
+	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main(${should_trace_c_main});')
 }

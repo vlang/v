@@ -32,21 +32,19 @@ import obj
 
 // GLSL Include and functions
 
-#flag -I @VMODROOT/.
-#include "gouraud.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/gouraud.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
-const (
-	win_width  = 600
-	win_height = 600
-	bg_color   = gx.white
-)
+const win_width = 600
+const win_height = 600
+const bg_color = gx.white
 
 struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 
@@ -56,7 +54,7 @@ mut:
 	// time
 	ticks i64
 	// model
-	obj_part &obj.ObjPart
+	obj_part &obj.ObjPart = unsafe { nil }
 	n_vertex u32
 	// init parameters
 	file_name            string
@@ -66,7 +64,7 @@ mut:
 /******************************************************************************
 * Draw functions
 ******************************************************************************/
-[inline]
+@[inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	return m4.Vec4{
 		e: [x, y, z, w]!
@@ -133,7 +131,7 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	z_light := f32(math.sin(time_ticks) * radius_light)
 
 	mut tmp_fs_params := obj.Tmp_fs_param{}
-	tmp_fs_params.ligth = m4.vec3(x_light, radius_light, z_light)
+	tmp_fs_params.light = m4.vec3(x_light, radius_light, z_light)
 
 	sd := obj.Shader_data{
 		vs_data: unsafe { &tmp_vs_param }
@@ -146,12 +144,10 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -161,12 +157,13 @@ fn frame(mut app App) {
 
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := sapp.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	// render the data
 	draw_start_glsl(app)
 	draw_model(app, m4.Vec4{})
-	// uncoment if you want a raw benchmark mode
+	// uncomment if you want a raw benchmark mode
 	/*
 	mut n_vertex_drawn := u32(0)
 	n_x_obj := 20
@@ -224,11 +221,11 @@ fn my_init(mut app App) {
 		tmp_txt[1] = u8(0xFF)
 		tmp_txt[2] = u8(0xFF)
 		tmp_txt[3] = u8(0xFF)
-		app.texture = obj.create_texture(1, 1, tmp_txt)
+		app.texture, app.sampler = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl
-	app.obj_part.init_render_data(app.texture)
+	app.obj_part.init_render_data(app.texture, app.sampler)
 	app.init_flag = true
 }
 
@@ -262,22 +259,16 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
 	/*
 	obj.tst()
 	exit(0)
 	*/
-
 	// App init
-	mut app := &App{
-		gg: 0
-		obj_part: 0
-	}
+	mut app := &App{}
 
-	app.file_name = 'v.obj_' // default object is the v logo
+	// app.file_name = 'v.obj' // default object is the v logo
+	app.file_name = 'utahTeapot.obj' // default object is the v logo
 
 	app.single_material_flag = false
 	$if !android {

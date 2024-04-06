@@ -15,18 +15,16 @@ pub enum ProcessState {
 	closed
 }
 
-[heap]
+@[heap]
 pub struct Process {
 pub mut:
-	filename string // the process's command file path
-	pid      int    // the PID of the process
-	code     int = -1
-	// the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
-	status ProcessState = .not_started
-	// the current status of the process
-	err              string   // if the process fails, contains the reason why
-	args             []string // the arguments that the command takes
-	work_folder      string   // the initial working folder of the process. When '', reuse the same folder as the parent process.
+	filename         string       // the process's command file path
+	pid              int          // the PID of the process
+	code             int = -1 // the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
+	status           ProcessState = .not_started // the current status of the process
+	err              string       // if the process fails, contains the reason why
+	args             []string     // the arguments that the command takes
+	work_folder      string       // the initial working folder of the process. When '', reuse the same folder as the parent process.
 	env_is_custom    bool     // true, when the environment was customized with .set_environment
 	env              []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl    bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()

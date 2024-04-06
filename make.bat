@@ -41,29 +41,29 @@ if ["%~1"] == [""] goto :init
 
 REM Target options
 if !shift_counter! LSS 1 (
-    if "%~1" == "help" (
-        if not ["%~2"] == [""] set subcmd=%~2& shift& set /a shift_counter+=1
-    )
-    for %%z in (build clean cleanall check help rebuild) do (
-        if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
-    )
+	if "%~1" == "help" (
+		if not ["%~2"] == [""] set subcmd=%~2& shift& set /a shift_counter+=1
+	)
+	for %%z in (build clean cleanall check help rebuild) do (
+		if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
+	)
 )
 
 REM Compiler option
 for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
-    if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
+	if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
 )
 
 REM Standard options
 if "%~1" == "--local" (
-    if !flag_local! NEQ 0 (
-        echo The flag %~1 has already been specified. 1>&2
-        exit /b 2
-    )
-    set /a flag_local=1
-    set /a shift_counter+=1
-    shift
-    goto :verifyopt
+	if !flag_local! NEQ 0 (
+		echo The flag %~1 has already been specified. 1>&2
+		exit /b 2
+	)
+	set /a flag_local=1
+	set /a shift_counter+=1
+	shift
+	goto :verifyopt
 )
 
 echo Undefined option: %~1
@@ -104,26 +104,26 @@ goto :build
 
 :help
 if [!subcmd!] == [] (
-    call :usage
+	call :usage
 ) else (
-    call :help_!subcmd!
+	call :help_!subcmd!
 )
 if %ERRORLEVEL% NEQ 0 echo Invalid subcommand: !subcmd!
 exit /b %ERRORLEVEL%
 
 :build
 if !flag_local! NEQ 1 (
-    call :download_tcc
-    if %ERRORLEVEL% NEQ 0 goto :error
-    pushd "%vc_dir%" && (
-        echo Updating vc...
-        echo  ^> Sync with remote !vc_url!
-        cd %vc_dir%
-        git pull --quiet
-        cd ..
-        popd
-    ) || call :cloning_vc
-    echo.
+	call :download_tcc
+	if %ERRORLEVEL% NEQ 0 goto :error
+	pushd "%vc_dir%" && (
+		echo Updating vc...
+		echo  ^> Sync with remote !vc_url!
+		cd %vc_dir%
+		git pull --quiet
+		cd ..
+		popd
+	) || call :cloning_vc
+	echo.
 )
 
 echo Building V...
@@ -134,7 +134,7 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with "!tcc_exe!"
-"!tcc_exe!" -Bthirdparty/tcc -bt10 -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32
+"!tcc_exe!" -Bthirdparty/tcc -bt10 -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32 -lws2_32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
 "%V_BOOTSTRAP%" -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o "%V_UPDATED%" cmd/v
@@ -151,7 +151,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with Clang
-clang -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32
+clang -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32 -lws2_32
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version
@@ -173,7 +173,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with GCC
-gcc -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32
+gcc -std=c99 -municode -g -w -o "%V_BOOTSTRAP%" ./vc/v_win.c -ladvapi32 -lws2_32
 if %ERRORLEVEL% NEQ 0 (
 	echo In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version
@@ -214,11 +214,11 @@ if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from v_win.c) with MSVC
-cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP "vc/v_win.c" user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
+cl.exe /volatile:ms /Fo%ObjFile% /W0 /MD /D_VBOOTSTRAP "vc/v_win.c" user32.lib kernel32.lib advapi32.lib shell32.lib ws2_32.lib /link /nologo /out:"%V_BOOTSTRAP%" /incremental:no
 if %ERRORLEVEL% NEQ 0 (
-    echo In some cases, compile errors happen because of the MSVC compiler version
-    cl.exe
-    goto :compile_error
+	echo In some cases, compile errors happen because of the MSVC compiler version
+	cl.exe
+	goto :compile_error
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
@@ -230,10 +230,10 @@ goto :success
 
 :download_tcc
 pushd "%tcc_dir%" && (
-    echo Updating TCC
-    echo  ^> Syncing TCC from !tcc_url!
-    git pull --quiet
-    popd
+	echo Updating TCC
+	echo  ^> Syncing TCC from !tcc_url!
+	git pull --quiet
+	popd
 ) || call :bootstrap_tcc
 
 if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto :error

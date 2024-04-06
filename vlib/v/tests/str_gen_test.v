@@ -443,25 +443,18 @@ fn test_multi_return() {
 
 fn test_fixed_array_of_function() {
 	a := [println, println]!
-	println(a)
 	assert '${a}' == '[fn (string), fn (string)]'
 }
 
 struct CTypeDefStruct {
-	mutex &sync.Mutex
+	mutex &sync.Mutex = sync.new_mutex()
 }
 
 fn test_c_struct_typedef() {
-	$if macos || linux {
-		c := CTypeDefStruct{
-			mutex: sync.new_mutex()
-		}
-		assert c.str() == r'CTypeDefStruct{
-    mutex: &sync.Mutex{
-        mutex: C.pthread_mutex_t{}
-    }
-}'
-	}
+	c := CTypeDefStruct{}
+	cstr := c.str()
+	assert cstr.starts_with('CTypeDefStruct')
+	assert cstr.contains('mutex: &Mutex(')
 }
 
 struct CharptrToStr {

@@ -16,6 +16,10 @@ const vargs = args_string.all_before('test-all')
 
 const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
+const hw_native_no_builtin_size_limit = 300
+
+const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
+
 fn main() {
 	mut commands := get_all_commands()
 	// summary
@@ -57,6 +61,8 @@ const ends_with_nothing = '<nothing>'
 
 const contains_nothing = '<nothing>'
 
+type FnCheck = fn () !
+
 struct Command {
 mut:
 	line        string
@@ -71,6 +77,8 @@ mut:
 	ends_with   string = ends_with_nothing
 	contains    string = contains_nothing
 	output      string
+	before_cb   FnCheck = unsafe { nil }
+	after_cb    FnCheck = unsafe { nil }
 }
 
 fn get_all_commands() []Command {
@@ -79,6 +87,17 @@ fn get_all_commands() []Command {
 		line: '${vexe} examples/hello_world.v'
 		okmsg: 'V can compile hello world.'
 		rmfile: 'examples/hello_world'
+	}
+	$if linux {
+		if l2w_crosscc != '' {
+			res << Command{
+				line: '${vexe} -os windows examples/hello_world.v'
+				okmsg: 'V cross compiles hello_world.v on linux, to a windows .exe file'
+				rmfile: 'examples/hello_world.exe'
+			}
+		} else {
+			eprintln('Testing cross compilation from linux to windows needs x86_64-w64-mingw32-gcc-win32. Skipping hello_world.exe test.')
+		}
 	}
 	res << Command{
 		line: '${vexe} -o hhww.c examples/hello_world.v'
@@ -100,6 +119,18 @@ fn get_all_commands() []Command {
 		okmsg: 'V can run code given after `-e`'
 		runcmd: .execute
 		expect: '42'
+	}
+	res << Command{
+		line: '${vexe} -e "import os; import math; print(os.args#[1..]) print(math.sin(math.pi/2).str())" arg1 arg2'
+		okmsg: 'V can run code with `-e`, that use semicolons and several imports, and that accepts CLI parameters.'
+		runcmd: .execute
+		expect: "['arg1', 'arg2']1.0"
+	}
+	res << Command{
+		line: '${vexe} -o calling_c.exe run examples/call_c_from_v/main.c.v'
+		okmsg: 'V can run main.c.v files'
+		runcmd: .execute
+		contains: 'V can call C functions like `puts` too.'
 	}
 	$if linux || macos {
 		res << Command{
@@ -142,27 +173,46 @@ fn get_all_commands() []Command {
 			line: '${vexe} run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
+		// Note: -experimental is used here, just to suppress the warnings,
+		// that are otherwise printed by the native backend,
+		// until globals and hash statements *are implemented*:
 		$if linux {
 			res << Command{
-				line: '${vexe} -b native run examples/native/hello_world.v > /dev/null'
+				line: '${vexe} -experimental -b native run examples/native/hello_world.v > /dev/null'
 				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
+			}
+			res << Command{
+				line: '${vexe} -no-builtin -experimental -b native examples/hello_world.v > /dev/null'
+				okmsg: 'V compiles examples/hello_world.v on the native backend for linux with `-no-builtin` & the executable is <= ${hw_native_no_builtin_size_limit} bytes'
+				rmfile: 'examples/hello_world'
+				after_cb: fn () ! {
+					file := 'examples/hello_world'
+					if !os.exists(file) {
+						return error('>> file ${file} does not exist')
+					}
+					if os.file_size(file) > hw_native_no_builtin_size_limit {
+						return error('>> file ${file} bigger than ${hw_native_no_builtin_size_limit} bytes')
+					}
+				}
 			}
 		}
 		// only compilation:
 		res << Command{
-			line: '${vexe} -os linux -b native -o hw.linux examples/hello_world.v'
+			line: '${vexe} -os linux -experimental -b native -o hw.linux examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for linux'
 			rmfile: 'hw.linux'
 		}
 		res << Command{
-			line: '${vexe} -os macos -b native -o hw.macos examples/hello_world.v'
+			line: '${vexe} -os macos -experimental -b native -o hw.macos examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for macos'
 			rmfile: 'hw.macos'
 		}
-		res << Command{
-			line: '${vexe} -os windows -b native -o hw.exe examples/hello_world.v'
-			okmsg: 'V compiles hello_world.v on the native backend for windows'
-			rmfile: 'hw.exe'
+		$if windows {
+			res << Command{
+				line: '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
+				okmsg: 'V compiles hello_world.v on the native backend for windows'
+				rmfile: 'hw.exe'
+			}
 		}
 		//
 		res << Command{
@@ -179,6 +229,15 @@ fn get_all_commands() []Command {
 			line: '${vexe} -skip-unused examples/2048'
 			okmsg: 'V can compile 2048 with -skip-unused.'
 			rmfile: 'examples/2048/2048'
+		}
+		if _ := os.find_abs_path_of_executable('emcc') {
+			res << Command{
+				line: '${vexe} -os wasm32_emscripten examples/2048'
+				okmsg: 'V can compile 2048 with -os wasm32_emscripten, using emcc.'
+				rmfile: 'examples/2048/2048'
+			}
+		} else {
+			println('> emcc not found, skipping `v -os wasm32_emscripten examples/2048`.')
 		}
 		res << Command{
 			line: '${vexe} -skip-unused  -live examples/hot_reload/bounce.v'
@@ -224,6 +283,36 @@ fn get_all_commands() []Command {
 			rmfile: 'str_array'
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Test compilation of a shared library (.so, .dll. .dylib) with -shared:
+	common_shared_flags := '-shared -skip-unused -d no_backtrace -o library examples/dynamic_library_loader/modules/library/library.v'
+	$if macos {
+		res << Command{
+			line: '${vexe} ${common_shared_flags}'
+			okmsg: 'V compiles library.v with -shared on macos'
+			rmfile: 'library.dylib'
+		}
+	}
+	$if linux {
+		res << Command{
+			line: '${vexe} ${common_shared_flags}'
+			okmsg: 'V compiles library.v with -shared on linux'
+			rmfile: 'library.so'
+		}
+	}
+	// Test cross compilation to windows with -shared:
+	$if linux {
+		if l2w_crosscc != '' {
+			res << Command{
+				line: '${vexe} -os windows ${common_shared_flags}'
+				okmsg: 'V cross compiles library.v with -shared on linux, to a windows library.dll file'
+				rmfile: 'library.dll'
+			}
+		} else {
+			eprintln('Testing cross compilation from linux to windows needs x86_64-w64-mingw32-gcc-win32. Skipping library.dll test.')
+		}
+	}
+	////////////////////////////////////////////////////////////////////////
 	res << Command{
 		line: '${vexe} ${vargs} -progress test-cleancode'
 		okmsg: 'All .v files are invariant when processed with `v fmt`'
@@ -309,6 +398,14 @@ fn (mut cmd Command) run() {
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}
+	if cmd.before_cb != unsafe { nil } {
+		cmd.before_cb() or {
+			cmd.ecode = -1
+			cmd.errmsg = '> before_cb callback for "${cmd.line}" ${term.failed('FAILED')}\n${err}'
+			println(cmd.errmsg)
+			return
+		}
+	}
 	sw := time.new_stopwatch()
 	if cmd.runcmd == .system {
 		cmd.ecode = os.system(cmd.line)
@@ -320,6 +417,14 @@ fn (mut cmd Command) run() {
 		cmd.output = res.output
 	}
 	spent := sw.elapsed().milliseconds()
+	if cmd.after_cb != unsafe { nil } {
+		cmd.after_cb() or {
+			cmd.ecode = -1
+			cmd.errmsg = '> after_cb callback for "${cmd.line}" ${term.failed('FAILED')}\n${err}'
+			println(cmd.errmsg)
+			return
+		}
+	}
 	//
 	mut is_failed := false
 	mut is_failed_expected := false

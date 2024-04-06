@@ -1,5 +1,6 @@
-vlib/v/checker/tests/import_unused_warning.vv:1:8: warning: module 'time' is imported but never used 
-    1 | import time
+vlib/v/checker/tests/import_unused_warning.vv:2:8: warning: module 'time' is imported but never used
+    1 | import os as _
+    2 | import time
       |        ~~~~
-    2 | fn main() {
-    3 |     println('hello, world')
+    3 | 
+    4 | fn main() {

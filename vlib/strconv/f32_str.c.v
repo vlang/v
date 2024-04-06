@@ -4,7 +4,7 @@ module strconv
 
 f32 to string
 
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -21,36 +21,31 @@ https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 =============================================================================*/
 
 // pow of ten table used by n_digit reduction
-const (
-	ten_pow_table_32 = [
-		u32(1),
-		u32(10),
-		u32(100),
-		u32(1000),
-		u32(10000),
-		u32(100000),
-		u32(1000000),
-		u32(10000000),
-		u32(100000000),
-		u32(1000000000),
-		u32(10000000000),
-		u32(100000000000),
-	]
-)
+const ten_pow_table_32 = [
+	u32(1),
+	u32(10),
+	u32(100),
+	u32(1000),
+	u32(10000),
+	u32(100000),
+	u32(1000000),
+	u32(10000000),
+	u32(100000000),
+	u32(1000000000),
+]!
 
 //=============================================================================
 // Conversion Functions
 //=============================================================================
-const (
-	mantbits32 = u32(23)
-	expbits32  = u32(8)
-	bias32     = 127 // f32 exponent bias
-	maxexp32   = 255
-)
+const mantbits32 = u32(23)
+const expbits32 = u32(8)
+const bias32 = 127 // f32 exponent bias
+
+const maxexp32 = 255
 
 // max 46 char
 // -3.40282346638528859811704183484516925440e+38
-[direct_array_access]
+@[direct_array_access]
 pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
 	n_digit := i_n_digit + 1
 	pad_digit := i_pad_digit + 1

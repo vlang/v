@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -163,7 +163,7 @@ fn main() {
 		os.chdir('website')!
 		lexec('git checkout gh-pages')
 		os.mv('../index.html', 'index.html')!
-		lsystem('git commit -am "update benchmark"')
+		lsystem('git commit -am "update benchmark for commit ${commit}"')
 		lsystem('git push origin gh-pages')
 		elog('uploading done')
 	}

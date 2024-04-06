@@ -1,6 +1,6 @@
 module time
 
-// parse returns time from a date string.
+// parse returns the time from a date string.
 //
 // TODO(playX): JS Date expects iso8061 format of strings and other formats
 // are implementation dependent, we probably want to implement parsing in JS.

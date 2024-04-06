@@ -4,28 +4,28 @@ struct Abc {
 
 fn i_0(x int) ?int {
 	if x == 0 {
-		return error('my error 1')
+		return none
 	}
 	return x
 }
 
 fn struct_0(x int) ?Abc {
 	if x == 0 {
-		return error('my error 2')
+		return none
 	}
 	return Abc{x}
 }
 
 fn string_0(x int) ?string {
 	if x == 0 {
-		return error('my error 3')
+		return none
 	}
 	return '${x}'
 }
 
 fn b_0(b bool) ?bool {
 	if b == false {
-		return error('my error 4')
+		return none
 	}
 	return b
 }
@@ -110,7 +110,7 @@ fn test_nested_option_with_opt_fn_call_as_last_value() {
 	assert b == 1
 	c := i_0(0) or { i_0(0) or { 3 } }
 	assert c == 3
-	// TODO Enable once option in boolean expressions are working
+	// TODO: Enable once option in boolean expressions are working
 	// d := b_0(true) or {
 	// 	false && b_0(true) or {
 	// 		true

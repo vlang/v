@@ -2,12 +2,13 @@ module websocket
 
 import encoding.utf8
 
-const (
-	header_len_offset           = 2 // offset for lengthpart of websocket header
-	buffer_size                 = 256 // default buffer size
-	extended_payload16_end_byte = 4 // header length with 16-bit extended payload
-	extended_payload64_end_byte = 10 // header length with 64-bit extended payload
-)
+const header_len_offset = 2 // offset for lengthpart of websocket header
+
+const buffer_size = 256 // default buffer size
+
+const extended_payload16_end_byte = 4 // header length with 16-bit extended payload
+
+const extended_payload64_end_byte = 10
 
 // Fragment represents a websocket data fragment
 struct Fragment {
@@ -32,9 +33,7 @@ mut:
 	masking_key [4]u8  // all frames from client to server is masked with this key
 }
 
-const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
-)
+const invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
 
 // validate_client validates client frame rules from RFC6455
 pub fn (mut ws Client) validate_frame(frame &Frame) ! {
@@ -112,7 +111,7 @@ fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 fn (mut ws Client) validate_utf_8(opcode OPCode, payload []u8) ! {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
 		ws.logger.error('malformed utf8 payload, payload len: (${payload.len})')
-		ws.send_error_event('Recieved malformed utf8.')
+		ws.send_error_event('Received malformed utf8.')
 		ws.close(1007, 'malformed utf8 payload')!
 		return error('malformed utf8 payload')
 	}
@@ -180,7 +179,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 	return error('none')
 }
 
-// payload_from_fragments returs the whole paylaod from fragmented message
+// payload_from_fragments returns the whole paylaod from fragmented message
 fn (ws Client) payload_from_fragments(fin_payload []u8) ![]u8 {
 	mut total_size := 0
 	for f in ws.fragments {
@@ -214,7 +213,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 	mut frame := Frame{}
 	mut rbuff := [1]u8{}
 	mut mask_end_byte := 0
-	for ws.state == .open {
+	for ws.get_state() == .open {
 		read_bytes := ws.socket_read_ptr(&rbuff[0], 1)!
 		if read_bytes == 0 {
 			// this is probably a timeout or close
@@ -231,7 +230,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			frame.opcode = unsafe { OPCode(int(buffer[0] & 0x7F)) }
 			frame.has_mask = (buffer[1] & 0x80) == 0x80
 			frame.payload_len = buffer[1] & 0x7F
-			// if has mask set the byte postition where mask ends
+			// if the frame has a mask, set the byte position where the mask ends
 			if frame.has_mask {
 				mask_end_byte = if frame.payload_len < 126 {
 					websocket.header_len_offset + 4

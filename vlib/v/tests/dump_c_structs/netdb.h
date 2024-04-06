@@ -1,6 +1,6 @@
 
 /* Description of data base entry for a single host.  */
-struct hostent {
+struct zz_hostent {
      char *h_name;         /* Official name of host.  */
      char **h_aliases;     /* Alias list.  */
      int h_addrtype;       /* Host address type.  */

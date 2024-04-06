@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -58,7 +58,9 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		}
 		else {
 			println(g.table.type_str(typ))
-			verror("could not generate free method '${fn_name}' for type '${styp}'")
+			// print_backtrace()
+			println("could not generate free method '${fn_name}' for type '${styp}'")
+			// verror("could not generate free method '${fn_name}' for type '${styp}'")
 		}
 	}
 	return fn_name
@@ -134,7 +136,7 @@ fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
 	fn_builder.writeln('}')
 }
 
-[inline]
+@[inline]
 fn styp_to_free_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_free'
 }

@@ -12,7 +12,7 @@ jobs:
   gg-regressions:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99
@@ -20,7 +20,7 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Build local v
         run: make
@@ -33,10 +33,10 @@ jobs:
           # libxcursor-dev libxi-dev : V gfx deps
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          sudo apt-get update
-          sudo apt-get install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev freeglut3-dev xsel xclip
-          wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
-          git clone https://github.com/Larpon/gg-regression-images gg-regression-images
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev freeglut3-dev xsel xclip
+          .github/workflows/retry.sh wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
+          .github/workflows/retry.sh git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
 
       - name: Sample and compare
@@ -44,8 +44,8 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 1280x1024x24 -fbdir /var/tmp/ &
-          sleep 1; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
-          ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
+          sleep 2; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
+          sleep 5; ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'

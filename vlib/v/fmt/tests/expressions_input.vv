@@ -22,7 +22,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 					node.fmt_poss[i])
 			}
 			if node.pluss[i] && !typ.is_number() {
-				c.error('plus prefix only allowd for numbers', node.fmt_poss[i])
+				c.error('plus prefix only allowed for numbers', node.fmt_poss[i])
 			}
 			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) || (typ.is_signed() &&
 			   		fmt !in [`d`, `x`, `X`, `o`, `c`]) || (typ.is_int_literal()
@@ -60,7 +60,7 @@ fn main() {
 	s := []string{}
 	s << '	`$v_str`'
 	println(s)
-	println('this is quite a long string' + ' that is followd by an even longer part that should go to another line')
+	println('this is quite a long string' + ' that is followed by an even longer part that should go to another line')
 	if (a == b && b > r) || (d > r) || (a < b) || (b< d && a+b > r) || (a+b+d >= 0 && r < 0) || (a > b && d-r < b) {
 		println('ok')
 	}

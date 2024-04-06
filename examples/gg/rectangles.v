@@ -4,10 +4,8 @@ import gg
 import gx
 import os
 
-const (
-	win_width  = 600
-	win_height = 300
-)
+const win_width = 600
+const win_height = 300
 
 struct App {
 mut:
@@ -16,9 +14,7 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width

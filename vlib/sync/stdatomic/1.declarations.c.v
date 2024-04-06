@@ -23,6 +23,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/13
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/6
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/7
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/8
@@ -30,6 +31,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/10
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/11
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/12
+			#flag -L/usr/lib/gcc/x86_64-redhat-linux/13
 		} $else $if arm64 {
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/6
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/7
@@ -38,6 +40,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/10
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/11
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/12
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/13
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/6
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/7
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/8
@@ -45,6 +48,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/10
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/11
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/12
+			#flag -L/usr/lib/gcc/aarch64-redhat-linux/13
 		}
 		#flag -latomic
 	}
@@ -82,5 +86,3 @@ fn C.atomic_compare_exchange_strong_u64(voidptr, voidptr, u64) bool
 fn C.atomic_exchange_u64(voidptr, u64) u64
 fn C.atomic_fetch_add_u64(voidptr, u64) u64
 fn C.atomic_fetch_sub_u64(voidptr, u64) u64
-
-pub const used = 1

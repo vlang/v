@@ -21,22 +21,21 @@ import sokol.gfx
 // import sokol.sgl
 import time
 
-const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.white
-	num_inst   = 16384
-)
+const win_width = 800
+const win_height = 800
+const bg_color = gx.white
+const num_inst = 16384
 
 struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 
-	mouse_x    int = -1
-	mouse_y    int = -1
+	mouse_x    int = 903
+	mouse_y    int = 638
 	mouse_down bool
 	// glsl
 	cube_pip_glsl gfx.Pipeline
@@ -49,33 +48,32 @@ mut:
 	// instances
 	inst_pos [num_inst]m4.Vec4
 	// camera
-	camera_x f32
-	camera_z f32
+	camera_x f32 = -8
+	camera_z f32 = 47
 }
 
 /******************************************************************************
 * GLSL Include and functions
 ******************************************************************************/
-#flag -I @VMODROOT/.
-#include "rt_glsl_instancing.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/rt_glsl_instancing.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.instancing_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) gfx.Image {
+fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	// vfmt off
 	mut img_desc := gfx.ImageDesc{
 		width:         w
 		height:        h
 		num_mipmaps:   0
-		min_filter:    .linear
-		mag_filter:    .linear
+//		min_filter:    .linear
+//		mag_filter:    .linear
 		//usage: .dynamic
-		wrap_u:        .clamp_to_edge
-		wrap_v:        .clamp_to_edge
+//		wrap_u:        .clamp_to_edge
+//		wrap_v:        .clamp_to_edge
 		label:         &u8(0)
 		d3d11_texture: 0
 	}
@@ -87,7 +85,16 @@ fn create_texture(w int, h int, buf byteptr) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -257,7 +264,8 @@ fn init_cube_glsl_i(mut app App) {
 	bind.vertex_buffers[0] = vbuf // vertex buffer
 	bind.vertex_buffers[1] = inst_buf // instance buffer
 	bind.index_buffer = ibuf
-	bind.fs_images[C.SLOT_tex] = app.texture
+	bind.fs.images[C.SLOT_tex] = app.texture
+	bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.bind['inst'] = bind
 	app.pipe['inst'] = gfx.make_pipeline(&pipdesc)
 
@@ -380,12 +388,10 @@ fn draw_end_glsl(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -394,7 +400,8 @@ fn frame(mut app App) {
 	}
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := gg.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	draw_start_glsl(app)
 	draw_cube_glsl_i(mut app)
@@ -440,7 +447,7 @@ fn my_init(mut app App) {
 		}
 	}
 	unsafe {
-		app.texture = create_texture(w, h, tmp_txt)
+		app.texture, app.sampler = create_texture(w, h, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl
@@ -481,17 +488,11 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 			else {}
 		}
 	}
+	eprintln('>> app.camera_x: ${app.camera_x} , app.camera_z: ${app.camera_z}, app.mouse_x: ${app.mouse_x}, app.mouse_y: ${app.mouse_y}')
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	// vfmt off
 	app.gg = gg.new_context(
 		width:         win_width
@@ -505,7 +506,6 @@ fn main() {
 		event_fn:      my_event_manager
 	)
 	// vfmt on
-
 	app.ticks = time.ticks()
 	app.gg.run()
 }

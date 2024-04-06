@@ -71,6 +71,15 @@ fn test_merge() {
 	assert merge[int](d, b) == b
 }
 
+fn test_append() {
+	a := [1, 3, 5, 5, 7]
+	b := [2, 4, 4, 5, 6, 8]
+	assert append(a, b) == [1, 3, 5, 5, 7, 2, 4, 4, 5, 6, 8]
+	assert append(b, a) == [2, 4, 4, 5, 6, 8, 1, 3, 5, 5, 7]
+	assert append(a, []int{}) == a
+	assert append([]int{}, b) == b
+}
+
 fn test_fixed_array_assignment() {
 	mut a := [2]int{}
 	a[0] = 111
@@ -403,4 +412,132 @@ fn test_map_of_counts() {
 	assert map_of_counts(['abc', 'abc']) == {'abc': 2}
 	assert map_of_counts(['abc', 'def', 'abc']) == {'abc': 2, 'def': 1}
 	// vfmt on
+}
+
+struct FindTest {
+	name string
+	age  int
+}
+
+const test_structs = [FindTest{'one', 1}, FindTest{'two', 2},
+	FindTest{'three', 3}, FindTest{'one', 4}]
+
+fn test_find_first() {
+	// element in array
+	a := [1, 2, 3, 4, 5]
+	assert find_first[int](a, fn (arr int) bool {
+		return arr == 3
+	})? == 3, 'find element couldnt find the right element'
+
+	// find struct
+	find_by_name := find_first(arrays.test_structs, fn (arr FindTest) bool {
+		return arr.name == 'one'
+	})?
+	assert find_by_name == FindTest{'one', 1}
+
+	// not found
+	if _ := find_first(arrays.test_structs, fn (arr FindTest) bool {
+		return arr.name == 'nothing'
+	})
+	{
+		assert false
+	} else {
+		assert true
+	}
+}
+
+fn test_find_last() {
+	// // element in array
+	a := [1, 2, 3, 4, 5]
+	assert find_last[int](a, fn (arr int) bool {
+		return arr == 3
+	})? == 3, 'find element couldnt find the right element'
+
+	// find struct
+	find_by_name := find_last(arrays.test_structs, fn (arr FindTest) bool {
+		return arr.name == 'one'
+	})?
+	assert find_by_name == FindTest{'one', 4}
+
+	// not found
+	if _ := find_last(arrays.test_structs, fn (arr FindTest) bool {
+		return arr.name == 'nothing'
+	})
+	{
+		assert false
+	} else {
+		assert true
+	}
+}
+
+fn test_join_to_string() {
+	assert join_to_string[FindTest](arrays.test_structs, ':', fn (it FindTest) string {
+		return it.name
+	}) == 'one:two:three:one'
+	assert join_to_string[FindTest](arrays.test_structs, '', fn (it FindTest) string {
+		return it.name
+	}) == 'onetwothreeone'
+	assert join_to_string[int]([]int{}, ':', fn (it int) string {
+		return '1'
+	}) == ''
+}
+
+fn test_partition() {
+	a := [1, 2, 3, 4, 5, 6, 7, 8]
+	lower, upper := partition(a, fn (it int) bool {
+		return it < 5
+	})
+	assert lower.len == 4
+	assert upper.len == 4
+	assert lower == [1, 2, 3, 4]
+	assert upper == [5, 6, 7, 8]
+
+	lower2, upper2 := partition(a, fn (it int) bool {
+		return it < 1
+	})
+	assert lower2.len == 0
+	assert upper2.len == 8
+}
+
+fn test_each() {
+	a := [99, 1, 2, 3, 4, 5, 6, 7, 8, 1001]
+	mut control_sum := 0
+	for x in a {
+		control_sum += x
+	}
+	//
+	each(a, fn (x int) {
+		println(x)
+	})
+	mut sum := 0
+	mut psum := &sum
+	each(a, fn [mut psum] (x int) {
+		unsafe {
+			*psum += x
+		}
+	})
+	assert control_sum == sum
+}
+
+fn test_each_indexed() {
+	a := [99, 1, 2, 3, 4, 5, 6, 7, 8, 1001]
+	mut control_sum := 0
+	f := fn (idx int, x int) int {
+		return (idx + 1) * 1000_000 + x
+	}
+	for idx, x in a {
+		control_sum += f(idx, x)
+	}
+	//
+	each_indexed(a, fn (idx int, x int) {
+		println('idx: ${idx}, x: ${x}')
+	})
+	mut sum := 0
+	mut psum := &sum
+	each_indexed(a, fn [mut psum, f] (idx int, x int) {
+		unsafe {
+			*psum += f(idx, x)
+		}
+	})
+	assert control_sum == sum
 }

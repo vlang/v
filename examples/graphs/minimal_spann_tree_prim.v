@@ -1,5 +1,5 @@
 /*
-Exploring  PRIMS,
+Exploring PRIMS,
 The data example is from
 https://www.geeksforgeeks.org/prims-minimum-spanning-tree-mst-greedy-algo-5/
 
@@ -16,7 +16,7 @@ $ ./an_executable.EXE
 Code based from : Data Structures and Algorithms Made Easy: Data Structures and Algorithmic Puzzles, Fifth Edition (English Edition)
 pseudo code written in C
 This idea is quite different: it uses a priority queue to store the current
-shortest path evaluted
+shortest path evaluated
 The priority queue structure built using a list to simulate
 the queue. A heap is not used in this case.
 */
@@ -32,17 +32,17 @@ mut:
 // The "push" always sorted in pq
 fn push_pq[T](mut prior_queue []T, data int, priority int) {
 	mut temp := []T{}
-	lenght_pq := prior_queue.len
+	pg_len := prior_queue.len
 
 	mut i := 0
-	for i < lenght_pq && priority > prior_queue[i].priority {
+	for i < pg_len && priority > prior_queue[i].priority {
 		temp << prior_queue[i]
 		i++
 	}
 	// INSERTING SORTED in the queue
 	temp << NODE{data, priority} // do the copy in the right place
 	// copy the another part (tail) of original prior_queue
-	for i < lenght_pq {
+	for i < pg_len {
 		temp << prior_queue[i]
 		i++
 	}
@@ -52,17 +52,17 @@ fn push_pq[T](mut prior_queue []T, data int, priority int) {
 // Change the priority of a value/node ... exist a value, change its priority
 fn updating_priority[T](mut prior_queue []T, search_data int, new_priority int) {
 	mut i := 0
-	mut lenght_pq := prior_queue.len
+	mut pg_len := prior_queue.len
 
-	for i < lenght_pq {
+	for i < pg_len {
 		if search_data == prior_queue[i].data {
-			prior_queue[i] = NODE{search_data, new_priority} // do the copy in the right place	
+			prior_queue[i] = NODE{search_data, new_priority} // do the copy in the right place
 			break
 		}
 		i++
 		// all the list was examined
-		if i >= lenght_pq {
-			// print('\n Priority Queue:  ${prior_queue}')		
+		if i >= pg_len {
+			// print('\n Priority Queue:  ${prior_queue}')
 			// print('\n These data ${search_data} and ${new_priority} do not exist ... PRIORITY QUEUE problem\n')
 			// if it does not find ... then push it
 			push_pq(mut prior_queue, search_data, new_priority)
@@ -117,15 +117,15 @@ fn prim_mst(g [][]int, s int) {
 	push_pq(mut pq_queue, s, 0) // goes s with priority 0
 	mut n := g.len
 
-	mut dist := []int{len: n, init: -1} // dist with -1 instead of INIFINITY
-	mut path := []int{len: n, init: -1} // previous node of each shortest paht
+	mut dist := []int{len: n, init: -1} // dist with -1 instead of INFINITE
+	mut path := []int{len: n, init: -1} // previous node of each shortest path
 
 	// Distance of source vertex from itself is always 0
 	dist[s] = 0
 
 	for pq_queue.len != 0 {
 		mut v := departure_priority(mut pq_queue)
-		// for all W adjcents vertices of v
+		// for all W adjacents vertices of v
 		mut adjs_of_v := all_adjacents(g, v) // all_ADJ of v ....
 		// print('\n :${dist} :: ${pq_queue}')
 		// print('\n ADJ ${v} is ${adjs_of_v}')
@@ -209,14 +209,14 @@ fn main() {
 		[5, 15, 4, 0],
 	]
 
-	// To find number of coluns
+	// To find number of columns
 	// mut cols := an_array[0].len
 	mut graph := [][]int{} // the graph: adjacency matrix
 	// for index, g_value in [graph_01, graph_02, graph_03] {
 	for index, g_value in [graph_01, graph_02, graph_03] {
 		println('\n Minimal Spanning Tree of graph ${index + 1} using PRIM algorithm')
 		graph = g_value.clone() // graphs_sample[g].clone() // choice your SAMPLE
-		// starting by node x ... see the graphs dimmension
+		// starting by node x ... see the graphs dimensions
 		start_node := 0
 		prim_mst(graph, start_node)
 	}

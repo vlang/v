@@ -3,19 +3,19 @@ module sourcemap
 struct V3 {
 	SourceMap
 pub:
-	sections []Section [json: sections]
+	sections []Section @[json: sections]
 }
 
 struct Offset {
 pub mut:
-	line   int [json: line]
-	column int [json: column]
+	line   int @[json: line]
+	column int @[json: column]
 }
 
 struct Section {
 pub mut:
-	offset     Offset    [json: offset]
-	source_map SourceMap [json: map]
+	offset     Offset    @[json: offset]
+	source_map SourceMap @[json: map]
 }
 
 struct Generator {

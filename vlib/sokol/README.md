@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `sokol` is a thin wrapper around [sokol](https://github.com/floooh/sokol),
 which in turn is a library of "Simple STB-style cross-platform libraries
@@ -9,19 +9,17 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 [sokol_audio.h](https://github.com/floooh/sokol/blob/master/sokol_audio.h)
 
-## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`:
+## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`
 
 ```v cgen
 import time
 import math
 import sokol.audio
 
-const (
-	sw          = time.new_stopwatch()
-	sw_start_ms = sw.elapsed().milliseconds()
-)
+const sw = time.new_stopwatch()
+const sw_start_ms = sw.elapsed().milliseconds()
 
-[inline]
+@[inline]
 fn sintone(periods int, frame int, num_frames int) f32 {
 	return math.sinf(f32(periods) * (2 * math.pi) * f32(frame) / f32(num_frames))
 }

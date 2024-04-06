@@ -4,7 +4,7 @@ import vweb
 import json
 import databases
 
-['/user/:id/get'; get]
+@['/user/:id/get'; get]
 pub fn (mut app App) controller_get_user_by_id(id int) vweb.Result {
 	response := app.service_get_user_by_id(id) or {
 		app.set_status(400, '')
@@ -13,7 +13,7 @@ pub fn (mut app App) controller_get_user_by_id(id int) vweb.Result {
 	return app.json(response)
 }
 
-['/user/create'; post]
+@['/user/create'; post]
 pub fn (mut app App) controller_create_user() vweb.Result {
 	body := json.decode(User, app.req.data) or {
 		app.set_status(400, '')
@@ -28,7 +28,7 @@ pub fn (mut app App) controller_create_user() vweb.Result {
 	return app.json(response)
 }
 
-['/user/get_all'; get]
+@['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
 	token := app.get_header('token')
 
@@ -44,7 +44,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 	return app.json(response)
 }
 
-['/user/get_by_username/:username'; get]
+@['/user/get_by_username/:username'; get]
 pub fn (mut app App) controller_get_by_username(username string) vweb.Result {
 	response := app.service_get_by_username(username) or {
 		app.set_status(400, '')
@@ -53,7 +53,7 @@ pub fn (mut app App) controller_get_by_username(username string) vweb.Result {
 	return app.json(response)
 }
 
-['/user/drop'; delete]
+@['/user/drop'; delete]
 pub fn (mut app App) delete() vweb.Result {
 	mut db := databases.create_db_connection() or {
 		app.set_status(400, '')

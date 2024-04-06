@@ -1,0 +1,27 @@
+vlib/v/checker/tests/fixed_array_init_with_default.vv:6:27: error: expected `string`, not `[]string`
+    4 |
+    5 | fn main() {
+    6 |     _ := Foo{[2]string{init: ['a', 'b']}}
+      |                              ~~~~~~~~~~
+    7 |     _ := Foo{[2]string{init: 2.2}}
+    8 |     _ := Foo{[2]string{init: 22}}
+vlib/v/checker/tests/fixed_array_init_with_default.vv:7:27: error: expected `string`, not `float literal`
+    5 | fn main() {
+    6 |     _ := Foo{[2]string{init: ['a', 'b']}}
+    7 |     _ := Foo{[2]string{init: 2.2}}
+      |                              ~~~
+    8 |     _ := Foo{[2]string{init: 22}}
+    9 |     _ := Foo{[2]string{init: true}}
+vlib/v/checker/tests/fixed_array_init_with_default.vv:8:27: error: expected `string`, not `int literal`
+    6 |     _ := Foo{[2]string{init: ['a', 'b']}}
+    7 |     _ := Foo{[2]string{init: 2.2}}
+    8 |     _ := Foo{[2]string{init: 22}}
+      |                              ~~
+    9 |     _ := Foo{[2]string{init: true}}
+   10 | }
+vlib/v/checker/tests/fixed_array_init_with_default.vv:9:27: error: expected `string`, not `bool`
+    7 |     _ := Foo{[2]string{init: 2.2}}
+    8 |     _ := Foo{[2]string{init: 22}}
+    9 |     _ := Foo{[2]string{init: true}}
+      |                              ~~~~
+   10 | }

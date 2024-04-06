@@ -30,7 +30,7 @@ struct Foo {
 
 struct Bar {
 pub:
-	foo ?Foo = none
+	foo ?Foo
 }
 
 fn test_main() {

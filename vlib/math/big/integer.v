@@ -23,7 +23,7 @@ pub:
 	is_const bool
 }
 
-[unsafe]
+@[unsafe]
 fn (mut x Integer) free() {
 	if x.is_const {
 		return
@@ -115,7 +115,7 @@ pub fn integer_from_u64(value u64) Integer {
 	}
 }
 
-[params]
+@[params]
 pub struct IntegerConfig {
 	signum int = 1
 }
@@ -124,7 +124,7 @@ pub struct IntegerConfig {
 // By default, positive integers are assumed.
 // If you want a negative integer, use in the following manner:
 // `value := big.integer_from_bytes(bytes, signum: -1)`
-[direct_array_access]
+@[direct_array_access]
 pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
 	// Thank you to Miccah (@mcastorina) for this implementation and relevant unit tests.
 	if input.len == 0 {
@@ -158,7 +158,7 @@ pub fn integer_from_string(characters string) !Integer {
 // integer_from_radix creates a new `big.Integer` from the given string and radix.
 pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	if radix < 2 || radix > 36 {
-		return error('Radix must be between 2 and 36 (inclusive)')
+		return error('math.big: Radix must be between 2 and 36 (inclusive)')
 	}
 	characters := all_characters.to_lower()
 	validate_string(characters, radix)!
@@ -175,7 +175,7 @@ pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn validate_string(characters string, radix u32) ! {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
@@ -186,15 +186,15 @@ fn validate_string(characters string, radix u32) ! {
 		value := big.digit_array.index(digit)
 
 		if value == -1 {
-			return error('Invalid character ${digit}')
+			return error('math.big: Invalid character ${digit}')
 		}
 		if value >= radix {
-			return error('Invalid character ${digit} for base ${radix}')
+			return error('math.big: Invalid character ${digit} for base ${radix}')
 		}
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn integer_from_special_string(characters string, chunk_size int) Integer {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
@@ -236,7 +236,7 @@ fn integer_from_special_string(characters string, chunk_size int) Integer {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn integer_from_regular_string(characters string, radix u32) Integer {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
@@ -265,59 +265,61 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 	}
 }
 
-// abs returns the absolute value of the integer.
-pub fn (integer Integer) abs() Integer {
-	return if integer.signum == 0 {
+// abs returns the absolute value of the integer `a`.
+pub fn (a Integer) abs() Integer {
+	return if a.signum == 0 {
 		zero_int
 	} else {
 		Integer{
-			digits: integer.digits.clone()
+			digits: a.digits.clone()
 			signum: 1
 		}
 	}
 }
 
-// neg returns the result of negation of the integer.
-pub fn (integer Integer) neg() Integer {
-	return if integer.signum == 0 {
+// neg returns the result of negation of the integer `a`.
+pub fn (a Integer) neg() Integer {
+	return if a.signum == 0 {
 		zero_int
 	} else {
 		Integer{
-			digits: integer.digits.clone()
-			signum: -integer.signum
+			digits: a.digits.clone()
+			signum: -a.signum
 		}
 	}
 }
 
-pub fn (integer Integer) + (addend Integer) Integer {
+// + returns the sum of the integers `augend` and `addend`.
+pub fn (augend Integer) + (addend Integer) Integer {
 	// Quick exits
-	if integer.signum == 0 {
+	if augend.signum == 0 {
 		return addend.clone()
 	}
 	if addend.signum == 0 {
-		return integer.clone()
+		return augend.clone()
 	}
 	// Non-zero cases
-	return if integer.signum == addend.signum {
-		integer.add(addend)
+	return if augend.signum == addend.signum {
+		augend.add(addend)
 	} else { // Unequal signs
-		integer.subtract(addend)
+		augend.subtract(addend)
 	}
 }
 
-pub fn (integer Integer) - (subtrahend Integer) Integer {
+// - returns the difference of the integers `minuend` and `subtrahend`
+pub fn (minuend Integer) - (subtrahend Integer) Integer {
 	// Quick exits
-	if integer.signum == 0 {
+	if minuend.signum == 0 {
 		return subtrahend.neg()
 	}
 	if subtrahend.signum == 0 {
-		return integer.clone()
+		return minuend.clone()
 	}
 	// Non-zero cases
-	return if integer.signum == subtrahend.signum {
-		integer.subtract(subtrahend)
+	return if minuend.signum == subtrahend.signum {
+		minuend.subtract(subtrahend)
 	} else {
-		integer.add(subtrahend)
+		minuend.add(subtrahend)
 	}
 }
 
@@ -346,44 +348,49 @@ fn (integer Integer) subtract(subtrahend Integer) Integer {
 	}
 }
 
-pub fn (integer Integer) * (multiplicand Integer) Integer {
+// * returns the product of the integers `multiplicand` and `multiplier`.
+pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 	// Quick exits
-	if integer.signum == 0 || multiplicand.signum == 0 {
+	if multiplicand.signum == 0 || multiplier.signum == 0 {
 		return zero_int
 	}
-	if integer == one_int {
+	if multiplicand == one_int {
+		return multiplier.clone()
+	}
+	if multiplier == one_int {
 		return multiplicand.clone()
 	}
-	if multiplicand == one_int {
-		return integer.clone()
-	}
 	// The final sign is the product of the signs
-	mut storage := []u32{len: integer.digits.len + multiplicand.digits.len}
-	multiply_digit_array(integer.digits, multiplicand.digits, mut storage)
+	mut storage := []u32{len: multiplicand.digits.len + multiplier.digits.len}
+	multiply_digit_array(multiplicand.digits, multiplier.digits, mut storage)
 	return Integer{
-		signum: integer.signum * multiplicand.signum
+		signum: multiplicand.signum * multiplier.signum
 		digits: storage
 	}
 }
 
-// div_mod returns the quotient and remainder of the integer division.
-pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
-	// Quick exits
-	if divisor.signum == 0 {
-		panic('Cannot divide by zero')
+// div_mod_internal is an entirely unchecked (in terms of division by zero) method for division.
+// This should only be used for internal calculations involving a definitive non-zero
+// divisor.
+//
+// DO NOT use this method if the divisor has any chance of being 0.
+fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
+	$if debug {
+		assert divisor.signum != 0
 	}
-	if integer.signum == 0 {
+
+	if dividend.signum == 0 {
 		return zero_int, zero_int
 	}
 	if divisor == one_int {
-		return integer.clone(), zero_int
+		return dividend.clone(), zero_int
 	}
 	if divisor.signum == -1 {
-		q, r := integer.div_mod(divisor.neg())
+		q, r := dividend.div_mod_internal(divisor.neg())
 		return q.neg(), r
 	}
-	if integer.signum == -1 {
-		q, r := integer.neg().div_mod(divisor)
+	if dividend.signum == -1 {
+		q, r := dividend.neg().div_mod_internal(divisor)
 		if r.signum == 0 {
 			return q.neg(), zero_int
 		} else {
@@ -391,9 +398,9 @@ pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
 		}
 	}
 	// Division for positive integers
-	mut q := []u32{cap: integer.digits.len - divisor.digits.len + 1}
-	mut r := []u32{cap: integer.digits.len}
-	divide_digit_array(integer.digits, divisor.digits, mut q, mut r)
+	mut q := []u32{cap: dividend.digits.len - divisor.digits.len + 1}
+	mut r := []u32{cap: dividend.digits.len}
+	divide_digit_array(dividend.digits, divisor.digits, mut q, mut r)
 	quotient := Integer{
 		signum: if q.len == 0 { 0 } else { 1 }
 		digits: q
@@ -405,26 +412,117 @@ pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
 	return quotient, remainder
 }
 
-pub fn (a Integer) / (b Integer) Integer {
-	q, _ := a.div_mod(b)
+// div_mod returns the quotient and remainder from the division of the integers `dividend`
+// divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. Refer to div_mod_checked for a safer version.
+@[inline]
+pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
+	if _unlikely_(divisor.signum == 0) {
+		panic('math.big: Cannot divide by zero')
+	}
+	return dividend.div_mod_internal(divisor)
+}
+
+// div_mod_checked returns the quotient and remainder from the division of the integers `dividend`
+// divided by `divisor`. An error is returned if `divisor == 0`.
+@[inline]
+pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
+	if _unlikely_(divisor.signum == 0) {
+		return error('math.big: Cannot divide by zero')
+	}
+	return dividend.div_mod_internal(divisor)
+}
+
+// / returns the quotient of `dividend` divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. For a division method that returns a Result
+// refer to `div_checked`.
+@[inline]
+pub fn (dividend Integer) / (divisor Integer) Integer {
+	if dividend.signum == -1 {
+		q, _ := dividend.neg().div_mod(divisor)
+		return q.neg()
+	}
+	q, _ := dividend.div_mod(divisor)
 	return q
 }
 
-pub fn (a Integer) % (b Integer) Integer {
-	_, r := a.div_mod(b)
+// % returns the remainder of `dividend` divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. For a modular division method that
+// returns a Result refer to `mod_checked`.
+@[inline]
+pub fn (dividend Integer) % (divisor Integer) Integer {
+	_, r := dividend.div_mod(divisor)
 	return r
 }
 
-// pow returns the integer `a` raised to the power of the u32 `exponent`.
-pub fn (a Integer) pow(exponent u32) Integer {
+// div_checked returns the quotient of `dividend` divided by `divisor`
+// or an error if `divisor == 0`.
+@[inline]
+pub fn (dividend Integer) div_checked(divisor Integer) !Integer {
+	q, _ := dividend.div_mod_checked(divisor)!
+	return q
+}
+
+// mod_checked returns the remainder of `dividend` divided by `divisor`
+// or an error if `divisor == 0`.
+@[inline]
+pub fn (dividend Integer) mod_checked(divisor Integer) !Integer {
+	_, r := dividend.div_mod_checked(divisor)!
+	return r
+}
+
+// mask_bits is the equivalent of `a % 2^n` (only when `a >= 0`), however doing a full division
+// run for this would be a lot of work when we can simply "cut off" all bits to the left of
+// the `n`th bit.
+@[direct_array_access]
+fn (a Integer) mask_bits(n u32) Integer {
+	$if debug {
+		assert a.signum >= 0
+	}
+
+	if a.digits.len == 0 || n == 0 {
+		return zero_int
+	}
+
+	w := n / 32
+	b := n % 32
+
+	if w >= a.digits.len {
+		return a
+	}
+
+	return Integer{
+		digits: if b == 0 {
+			mut storage := []u32{len: int(w)}
+			for i := 0; i < storage.len; i++ {
+				storage[i] = a.digits[i]
+			}
+			storage
+		} else {
+			mut storage := []u32{len: int(w) + 1}
+			for i := 0; i < storage.len; i++ {
+				storage[i] = a.digits[i]
+			}
+			storage[w] &= ~(u32(-1) << b)
+			storage
+		}
+		signum: 1
+	}
+}
+
+// pow returns the integer `base` raised to the power of the u32 `exponent`.
+pub fn (base Integer) pow(exponent u32) Integer {
 	if exponent == 0 {
 		return one_int
 	}
 	if exponent == 1 {
-		return a.clone()
+		return base.clone()
 	}
 	mut n := exponent
-	mut x := a
+	mut x := base
 	mut y := one_int
 	for n > 1 {
 		if n & 1 == 1 {
@@ -436,75 +534,87 @@ pub fn (a Integer) pow(exponent u32) Integer {
 	return x * y
 }
 
-// mod_pow returns the integer `a` raised to the power of the u32 `exponent` modulo the integer `divisor`.
-pub fn (a Integer) mod_pow(exponent u32, divisor Integer) Integer {
+// mod_pow returns the integer `base` raised to the power of the u32 `exponent` modulo the integer `modulus`.
+pub fn (base Integer) mod_pow(exponent u32, modulus Integer) Integer {
 	if exponent == 0 {
 		return one_int
 	}
 	if exponent == 1 {
-		return a % divisor
+		return base % modulus
 	}
 	mut n := exponent
-	mut x := a % divisor
+	mut x := base % modulus
 	mut y := one_int
 	for n > 1 {
 		if n & 1 == 1 {
-			y *= x % divisor
+			y *= x % modulus
 		}
-		x *= x % divisor
+		x *= x % modulus
 		n >>= 1
 	}
-	return x * y % divisor
+	return x * y % modulus
 }
 
-// big_mod_power returns the integer `a` raised to the power of the integer `exponent` modulo the integer `divisor`.
-[direct_array_access]
-pub fn (a Integer) big_mod_pow(exponent Integer, divisor Integer) Integer {
+// big_mod_pow returns the integer `base` raised to the power of the integer `exponent` modulo the integer `modulus`.
+@[direct_array_access]
+pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 	if exponent.signum < 0 {
-		panic('Exponent needs to be non-negative.')
+		return error('math.big: Exponent needs to be non-negative.')
 	}
-	if exponent.signum == 0 {
+
+	// this goes first as otherwise 1 could be returned incorrectly if base == 1
+	if modulus.bit_len() <= 1 {
+		return zero_int
+	}
+
+	// x^0 == 1 || 1^x == 1
+	if exponent.signum == 0 || base.bit_len() == 1 {
 		return one_int
 	}
-	mut x := a % divisor
-	mut y := one_int
-	mut n := u32(0)
 
-	// For all but the last digit of the exponent
-	for index in 0 .. exponent.digits.len - 1 {
-		n = exponent.digits[index]
-		for _ in 0 .. 32 {
-			if n & 1 == 1 {
-				y *= x % divisor
-			}
-			x *= x % divisor
-			n >>= 1
-		}
+	// 0^x == 0 (x != 0 due to previous clause)
+	if base.signum == 0 {
+		return one_int
 	}
 
-	// Last digit of the exponent
-	n = exponent.digits.last()
-	for n > 1 {
-		if n & 1 == 1 {
-			y *= x % divisor
+	if exponent.bit_len() == 1 {
+		// x^1 without mod == x
+		if modulus.signum == 0 {
+			return base
 		}
-		x *= x % divisor
-		n >>= 1
+		// x^1 (mod m) === x % m
+		return base % modulus
 	}
 
-	return x * y % divisor
+	// the amount of precomputation in windowed exponentiation (done in the montgomery and binary
+	// windowed exponentiation algorithms) is far too costly for small sized exponents, so
+	// we redirect the call to mod_pow
+	return if exponent.digits.len > 1 {
+		if modulus.is_odd() {
+			// modulus is odd, therefore we use the normal
+			// montgomery modular exponentiation algorithm
+			base.mont_odd(exponent, modulus)
+		} else if modulus.is_power_of_2() {
+			base.exp_binary(exponent, modulus)
+		} else {
+			base.mont_even(exponent, modulus)
+		}
+	} else {
+		base.mod_pow(exponent.digits[0], modulus)
+	}
 }
 
-// inc returns the integer `a` incremented by 1.
+// inc increments `a` by 1 in place.
 pub fn (mut a Integer) inc() {
 	a = a + one_int
 }
 
-// dec returns the integer `a` decremented by 1.
+// dec decrements `a` by 1 in place.
 pub fn (mut a Integer) dec() {
 	a = a - one_int
 }
 
+// == returns `true` if the integers `a` and `b` are equal in value and sign.
 pub fn (a Integer) == (b Integer) bool {
 	return a.signum == b.signum && a.digits.len == b.digits.len && a.digits == b.digits
 }
@@ -515,6 +625,7 @@ pub fn (a Integer) abs_cmp(b Integer) int {
 	return compare_digit_array(a.digits, b.digits)
 }
 
+// < returns `true` if the integer `a` is less than `b`.
 pub fn (a Integer) < (b Integer) bool {
 	// Quick exits based on signum value:
 	if a.signum < b.signum {
@@ -533,16 +644,9 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
-fn check_sign(a Integer) {
-	if a.signum < 0 {
-		panic('Bitwise operations are only supported for nonnegative integers')
-	}
-}
-
 // get_bit checks whether the bit at the given index is set.
-[direct_array_access]
+@[direct_array_access]
 pub fn (a Integer) get_bit(i u32) bool {
-	check_sign(a)
 	target_index := i / 32
 	offset := i % 32
 	if target_index >= a.digits.len {
@@ -553,13 +657,12 @@ pub fn (a Integer) get_bit(i u32) bool {
 
 // set_bit sets the bit at the given index to the given value.
 pub fn (mut a Integer) set_bit(i u32, value bool) {
-	check_sign(a)
 	target_index := i / 32
 	offset := i % 32
 
 	if target_index >= a.digits.len {
 		if value {
-			a = one_int.lshift(i).bitwise_or(a)
+			a = one_int.left_shift(i).bitwise_or(a)
 		}
 		return
 	}
@@ -578,10 +681,10 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 	}
 }
 
-// bitwise_or returns the "bitwise or" of the integers `a` and `b`.
+// bitwise_or returns the "bitwise or" of the integers `|a|` and `|b|`.
+//
+// Note: both operands are treated as absolute values.
 pub fn (a Integer) bitwise_or(b Integer) Integer {
-	check_sign(a)
-	check_sign(b)
 	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_or_digit_array(a.digits, b.digits, mut result)
 	return Integer{
@@ -590,10 +693,10 @@ pub fn (a Integer) bitwise_or(b Integer) Integer {
 	}
 }
 
-// bitwise_and returns the "bitwise and" of the integers `a` and `b`.
+// bitwise_and returns the "bitwise and" of the integers `|a|` and `|b|`.
+//
+// Note: both operands are treated as absolute values.
 pub fn (a Integer) bitwise_and(b Integer) Integer {
-	check_sign(a)
-	check_sign(b)
 	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_and_digit_array(a.digits, b.digits, mut result)
 	return Integer{
@@ -602,9 +705,10 @@ pub fn (a Integer) bitwise_and(b Integer) Integer {
 	}
 }
 
-// bitwise_not returns the "bitwise not" of the integer `a`.
+// bitwise_not returns the "bitwise not" of the integer `|a|`.
+//
+// Note: the integer is treated as an absolute value.
 pub fn (a Integer) bitwise_not() Integer {
-	check_sign(a)
 	mut result := []u32{len: a.digits.len}
 	bitwise_not_digit_array(a.digits, mut result)
 	return Integer{
@@ -613,10 +717,10 @@ pub fn (a Integer) bitwise_not() Integer {
 	}
 }
 
-// bitwise_xor returns the "bitwise exclusive or" of the integers `a` and `b`.
+// bitwise_xor returns the "bitwise exclusive or" of the integers `|a|` and `|b|`.
+//
+// Note: both operands are treated as absolute values.
 pub fn (a Integer) bitwise_xor(b Integer) Integer {
-	check_sign(a)
-	check_sign(b)
 	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_xor_digit_array(a.digits, b.digits, mut result)
 	return Integer{
@@ -626,8 +730,14 @@ pub fn (a Integer) bitwise_xor(b Integer) Integer {
 }
 
 // lshift returns the integer `a` shifted left by `amount` bits.
-[direct_array_access]
+@[deprecated: 'use a.Integer.left_shift(amount) instead']
 pub fn (a Integer) lshift(amount u32) Integer {
+	return a.left_shift(amount)
+}
+
+// left_shift returns the integer `a` shifted left by `amount` bits.
+@[direct_array_access]
+pub fn (a Integer) left_shift(amount u32) Integer {
 	if a.signum == 0 {
 		return a
 	}
@@ -650,8 +760,14 @@ pub fn (a Integer) lshift(amount u32) Integer {
 }
 
 // rshift returns the integer `a` shifted right by `amount` bits.
-[direct_array_access]
+@[deprecated: 'use a.Integer.right_shift(amount) instead']
 pub fn (a Integer) rshift(amount u32) Integer {
+	return a.right_shift(amount)
+}
+
+// right_shift returns the integer `a` shifted right by `amount` bits.
+@[direct_array_access]
+pub fn (a Integer) right_shift(amount u32) Integer {
 	if a.signum == 0 {
 		return a
 	}
@@ -677,8 +793,14 @@ pub fn (a Integer) rshift(amount u32) Integer {
 }
 
 // binary_str returns the binary string representation of the integer `a`.
-[direct_array_access]
+@[deprecated: 'use integer.bin_str() instead']
 pub fn (integer Integer) binary_str() string {
+	return integer.bin_str()
+}
+
+// bin_str returns the binary string representation of the integer `a`.
+@[direct_array_access]
+pub fn (integer Integer) bin_str() string {
 	// We have the zero integer
 	if integer.signum == 0 {
 		return '0'
@@ -699,7 +821,7 @@ pub fn (integer Integer) binary_str() string {
 }
 
 // hex returns the hexadecimal string representation of the integer `a`.
-[direct_array_access]
+@[direct_array_access]
 pub fn (integer Integer) hex() string {
 	// We have the zero integer
 	if integer.signum == 0 {
@@ -723,12 +845,12 @@ pub fn (integer Integer) hex() string {
 
 // radix_str returns the string representation of the integer `a` in the specified radix.
 pub fn (integer Integer) radix_str(radix u32) string {
-	if integer.signum == 0 {
+	if integer.signum == 0 || radix == 0 {
 		return '0'
 	}
 	return match radix {
 		2 {
-			integer.binary_str()
+			integer.bin_str()
 		}
 		16 {
 			integer.hex()
@@ -740,6 +862,9 @@ pub fn (integer Integer) radix_str(radix u32) string {
 }
 
 fn (integer Integer) general_radix_str(radix u32) string {
+	$if debug {
+		assert radix != 0
+	}
 	divisor := integer_from_u32(radix)
 
 	mut current := integer.abs()
@@ -747,7 +872,7 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	mut digit := zero_int
 	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
-		new_current, digit = current.div_mod(divisor)
+		new_current, digit = current.div_mod_internal(divisor)
 		rune_array << big.digit_array[digit.int()]
 		unsafe { digit.free() }
 		unsafe { current.free() }
@@ -811,7 +936,7 @@ pub fn (a Integer) int() int {
 
 // bytes returns the a byte representation of the integer a, along with the signum int.
 // NOTE: The byte array returned is in big endian order.
-[direct_array_access]
+@[direct_array_access]
 pub fn (a Integer) bytes() ([]u8, int) {
 	if a.signum == 0 {
 		return []u8{len: 0}, 0
@@ -851,10 +976,19 @@ pub fn (a Integer) factorial() Integer {
 	return product
 }
 
-// isqrt returns the closest integer square root of the given integer.
+// isqrt returns the closest integer square root of the integer `a`.
+//
+// WARNING: this method will panic if `a < 0`. Refer to isqrt_checked for a safer version.
+@[inline]
 pub fn (a Integer) isqrt() Integer {
+	return a.isqrt_checked() or { panic(err) }
+}
+
+// isqrt returns the closest integer square root of the integer `a`.
+// An error is returned if `a < 0`.
+pub fn (a Integer) isqrt_checked() !Integer {
 	if a.signum < 0 {
-		panic('Cannot obtain square root of negative integer')
+		return error('math.big: Cannot calculate square root of negative integer')
 	}
 	if a.signum == 0 {
 		return a
@@ -869,9 +1003,9 @@ pub fn (a Integer) isqrt() Integer {
 	}
 	mut result := zero_int
 	for shift >= 0 {
-		result = result.lshift(1)
+		result = result.left_shift(1)
 		larger := result + one_int
-		if (larger * larger).abs_cmp(a.rshift(u32(shift))) <= 0 {
+		if (larger * larger).abs_cmp(a.right_shift(u32(shift))) <= 0 {
 			result = larger
 		}
 		shift -= 2
@@ -879,29 +1013,56 @@ pub fn (a Integer) isqrt() Integer {
 	return result
 }
 
-[inline]
+@[inline]
 fn bi_min(a Integer, b Integer) Integer {
 	return if a < b { a } else { b }
 }
 
-[inline]
+@[inline]
 fn bi_max(a Integer, b Integer) Integer {
 	return if a > b { a } else { b }
 }
 
-[direct_array_access]
-fn (bi Integer) msb() u32 {
-	for idx := 0; idx < bi.digits.len; idx += 1 {
-		word := bi.digits[idx]
-		if word > 0 {
-			return u32((idx * 32) + bits.trailing_zeros_32(word))
-		}
-	}
-	return u32(32)
-}
-
 // gcd returns the greatest common divisor of the two integers `a` and `b`.
 pub fn (a Integer) gcd(b Integer) Integer {
+	// The cutoff is determined empirically, using vlib/v/tests/bench/math_big_gcd/bench_euclid.v .
+	if b.digits.len < 8 {
+		return a.gcd_euclid(b)
+	}
+	return a.gcd_binary(b)
+}
+
+// gcd_binary returns the greatest common divisor of the two integers `a` and `b`.
+// Note that gcd_binary is faster than gcd_euclid, for large integers (over 8 bytes long).
+// Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
+// For more information, refer to the Wikipedia article: https://en.wikipedia.org/wiki/Binary_GCD_algorithm
+// Discussion and further information: https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
+pub fn (a Integer) gcd_binary(b Integer) Integer {
+	if a.signum == 0 {
+		return b.abs()
+	}
+	if b.signum == 0 {
+		return a.abs()
+	}
+	if a.abs_cmp(one_int) == 0 || b.abs_cmp(one_int) == 0 {
+		return one_int
+	}
+
+	mut aa, az := a.abs().rsh_to_set_bit()
+	mut bb, bz := b.abs().rsh_to_set_bit()
+	shift := umin(az, bz)
+
+	for aa.signum != 0 {
+		diff := bb - aa
+		bb = bi_min(aa, bb)
+		aa, _ = diff.abs().rsh_to_set_bit()
+	}
+	return bb.left_shift(shift)
+}
+
+// gcd_euclid returns the greatest common divisor of the two integers `a` and `b`.
+// Note that gcd_euclid is faster than gcd_binary, for very-small-integers up to 8-byte/u64.
+pub fn (a Integer) gcd_euclid(b Integer) Integer {
 	if a.signum == 0 {
 		return b.abs()
 	}
@@ -909,55 +1070,146 @@ pub fn (a Integer) gcd(b Integer) Integer {
 		return a.abs()
 	}
 	if a.signum < 0 {
-		return a.neg().gcd(b)
+		return a.neg().gcd_euclid(b)
 	}
 	if b.signum < 0 {
-		return a.gcd(b.neg())
+		return a.gcd_euclid(b.neg())
 	}
-
-	if a.digits.len + b.digits.len <= 2 {
-		return gcd_euclid(a, b)
-	} else {
-		return gcd_binary(a, b)
-	}
-}
-
-fn gcd_euclid(x Integer, y Integer) Integer {
-	mut a := x
-	mut b := y
-	mut r := a % b
+	mut x := a
+	mut y := b
+	mut r := x % y
 	for r.signum != 0 {
-		a = b
-		b = r
-		r = a % b
+		x = y
+		y = r
+		r = x % y
 	}
-	return b
+	return y
 }
 
-// Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
-// For more information, refer to the Wikipedia article: https://en.wikipedia.org/wiki/Binary_GCD_algorithm
-// Discussion and further information: https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
-fn gcd_binary(x Integer, y Integer) Integer {
-	mut a := x
-	mut b := y
-
-	mut az := a.msb()
-	bz := b.msb()
-	shift := umin(az, bz)
-	b = b.rshift(bz)
-
-	for a.signum != 0 {
-		a = a.rshift(az)
-		diff := b - a
-		az = diff.msb()
-		b = bi_min(a, b)
-		a = diff.abs()
+// mod_inverse calculates the multiplicative inverse of the integer `a` in the ring `ℤ/nℤ`.
+// Therefore, the return value `x` satisfies `a * x == 1 (mod m)`.
+// An error is returned if `a` and `n` are not relatively prime, i.e. `gcd(a, n) != 1` or
+// if n <= 1
+@[inline]
+pub fn (a Integer) mod_inverse(n Integer) !Integer {
+	return if n.bit_len() <= 1 {
+		error('math.big: Modulus `n` must be greater than 1')
+	} else if a.gcd(n) != one_int {
+		error('math.big: No multiplicative inverse')
+	} else {
+		a.mod_inv(n)
 	}
-	return b.lshift(shift)
+}
+
+// this is an internal function, therefore we assume valid inputs,
+// i.e. m > 1 and gcd(a, m) = 1
+// see pub fn mod_inverse for details on the result
+// -----
+// the algorithm is based on the Extended Euclidean algorithm which computes `ax + by = d`
+// in this case `b` is the input integer `a` and `a` is the input modulus `m`. The extended
+// Euclidean algorithm calculates the greatest common divisor `d` and two coefficients `x` and `y`
+// satisfying the above equality.
+//
+// For the sake of clarity, we refer to the input integer `a` as `b` and the integer `m` as `a`.
+// If `gcd(a, b) = d = 1` then the coefficient `y` is known to be the multiplicative inverse of
+// `b` in ring `Z/aZ`, since reducing `ax + by = 1` by `a` yields `by == 1 (mod a)`.
+@[direct_array_access]
+fn (a Integer) mod_inv(m Integer) Integer {
+	mut n := Integer{
+		digits: m.digits.clone()
+		signum: 1
+	}
+	mut b := a
+	mut x := one_int
+	mut y := zero_int
+	if b.signum < 0 || b.abs_cmp(n) >= 0 {
+		b = b % n
+	}
+	mut sign := -1
+
+	for b != zero_int {
+		q, r := if n.bit_len() == b.bit_len() {
+			one_int, n - b
+		} else {
+			// safe because the loop terminates if b == 0
+			n.div_mod_internal(b)
+		}
+
+		n = b
+		b = r
+
+		// tmp := q * x + y
+		tmp := if q == one_int {
+			x
+		} else if q.digits.len == 1 && q.digits[0] & (q.digits[0] - 1) == 0 {
+			x.left_shift(u32(bits.trailing_zeros_32(q.digits[0])))
+		} else {
+			q * x
+		} + y
+
+		y = x
+		x = tmp
+		sign = -sign
+	}
+
+	if sign < 0 {
+		y = m - y
+	}
+
+	$if debug {
+		assert n == one_int
+	}
+
+	return if y.signum > 0 && y.abs_cmp(m) < 0 {
+		y
+	} else {
+		y % m
+	}
+}
+
+// rsh_to_set_bit returns the integer `x` shifted right until it is odd and an exponent satisfying
+// `x = x1 * 2^n`
+// we don't return `2^n`, because the caller may be able to use `n` without allocating an Integer
+@[direct_array_access; inline]
+fn (x Integer) rsh_to_set_bit() (Integer, u32) {
+	if x.digits.len == 0 {
+		return zero_int, 0
+	}
+
+	mut n := u32(0)
+	for x.digits[n] == 0 {
+		n++
+	}
+	n = (n << 5) + u32(bits.trailing_zeros_32(x.digits[n]))
+	return x.right_shift(n), n
+}
+
+// is_odd returns true if the integer `x` is odd, therefore an integer of the form `2k + 1`.
+// An input of 0 returns false.
+@[direct_array_access; inline]
+pub fn (x Integer) is_odd() bool {
+	return x.digits.len != 0 && x.digits[0] & 1 == 1
+}
+
+// is_power_of_2 returns true when the integer `x` satisfies `2^n`, where `n >= 0`
+@[direct_array_access; inline]
+pub fn (x Integer) is_power_of_2() bool {
+	if x.signum == 0 {
+		return false
+	}
+
+	// check if all but the most significant digit are 0
+	for i := 0; i < x.digits.len - 1; i++ {
+		if x.digits[i] != 0 {
+			return false
+		}
+	}
+	n := u32(x.digits.last())
+	return n & (n - u32(1)) == 0
 }
 
 // bit_len returns the number of bits required to represent the integer `a`.
-[inline]
+@[inline]
 pub fn (x Integer) bit_len() int {
 	if x.signum == 0 {
 		return 0

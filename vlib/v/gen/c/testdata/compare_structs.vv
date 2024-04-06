@@ -1,5 +1,5 @@
 
-struct C.Something {
+pub struct C.Something {
 	fint int
 	ff32 f32
 	fchar char

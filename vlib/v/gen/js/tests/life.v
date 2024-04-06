@@ -2,10 +2,8 @@ fn clear() {
 	JS.console.clear()
 }
 
-const (
-	w = 30
-	h = 30
-)
+const w = 30
+const h = 30
 
 fn get(game [][]bool, x int, y int) bool {
 	if y < 0 || x < 0 {
@@ -79,7 +77,7 @@ fn show(game [][]bool) {
 	}
 }
 
-// TODO Remove `fn main` once vet supports scripts
+// TODO: Remove `fn main` once vet supports scripts
 fn main() {
 	mut game := [][]bool{len: h, init: []bool{len: w}}
 

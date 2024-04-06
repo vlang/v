@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.urllib
@@ -121,4 +121,10 @@ fn test_parse() {
 			return
 		}
 	}
+}
+
+fn test_parse_slashes() {
+	assert urllib.parse('/')!.str() == '/'
+	assert urllib.parse('//')!.str() == '//'
+	assert urllib.parse('///')!.str() == '///'
 }

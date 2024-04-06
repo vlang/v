@@ -1,6 +1,6 @@
 module builder
 
-// TODO move this to msvc_default.v
+// TODO: move this to msvc_default.v
 struct MsvcResult {
 	full_cl_exe_path    string
 	exe_path            string

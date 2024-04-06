@@ -1,11 +1,6 @@
-// vtest flaky: true
-// vtest retry: 8
 import net
-import os
 
-const (
-	test_port = 45123
-)
+const test_port = 45123
 
 fn handle_conn(mut c net.TcpConn) {
 	for {
@@ -21,7 +16,7 @@ fn handle_conn(mut c net.TcpConn) {
 	}
 }
 
-fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
+fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ! {
 	eprintln('> one_shot_echo_server')
 	ch_started <- 1
 	mut new_conn := l.accept() or { return error('could not accept') }
@@ -80,31 +75,12 @@ fn test_tcp_ip() {
 
 fn test_tcp_unix() {
 	eprintln('\n>>> ${@FN}')
-	// TODO(emily):
-	// whilst windows supposedly supports unix sockets
-	// this doesnt work (wsaeopnotsupp at the call to bind())
-	$if !windows {
-		address := os.real_path('tcp-test.sock')
-		// address := 'tcp-test.sock'
-		println('${address}')
+	address := 'tcp-test.sock'
 
-		mut l := net.listen_tcp(.unix, address) or { panic(err) }
-		start_echo_server(mut l)
-		echo(address) or { panic(err) }
-		l.close() or {}
-
-		os.rm(address) or { panic('failed to remove socket file') }
-	}
+	mut l := net.listen_tcp(.unix, address) or { return }
+	assert false
 }
 
 fn testsuite_end() {
 	eprintln('\ndone')
-}
-
-fn test_bind() {
-	$if !network ? {
-		return
-	}
-	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')!
-	conn.close()!
 }

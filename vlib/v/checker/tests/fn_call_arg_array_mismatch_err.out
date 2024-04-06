@@ -1,0 +1,14 @@
+vlib/v/checker/tests/fn_call_arg_array_mismatch_err.vv:7:36: error: cannot use `string` as `array` in argument 2 to `os.write_file_array`
+    5 | 
+    6 | fn main() {
+    7 |     os.write_file_array(service_path, service_file) or {
+      |                                       ~~~~~~~~~~~~
+    8 |         eprintln('Error: write file service')
+    9 |         exit(1)
+vlib/v/checker/tests/fn_call_arg_array_mismatch_err.vv:16:10: error: cannot use `&[]int` as `&[][]int` in argument 1 to `bar`
+   14 | // dimension checking error when mut array is passed multiple times as args
+   15 | fn foo(mut arr []int) {
+   16 |     bar(mut arr)
+      |             ~~~
+   17 | }
+   18 |

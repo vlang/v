@@ -1,0 +1,14 @@
+vlib/v/checker/tests/wrong_shift_left_option_err.vv:7:4: error: unwrapped Option cannot be used in an infix expression
+    5 | fn main() {
+    6 |     mut a := ?[]SomeStruct([SomeStruct{}, SomeStruct{}]) // struct type
+    7 |     a << []SomeStruct{len: 20}
+      |       ~~
+    8 |     mut b := ?[]int([2, 8]) // primitive type
+    9 |     b << [1, 3, 4]
+vlib/v/checker/tests/wrong_shift_left_option_err.vv:9:4: error: unwrapped Option cannot be used in an infix expression
+    7 |     a << []SomeStruct{len: 20}
+    8 |     mut b := ?[]int([2, 8]) // primitive type
+    9 |     b << [1, 3, 4]
+      |       ~~
+   10 |     dump(a?.len)
+   11 |     dump(b)

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -9,34 +9,31 @@ import v.fmt
 import v.parser
 import v.pref
 import v.util.diff
+import v.util.vtest
 
-const (
-	error_missing_vexe = 1
-	error_failed_tests = 2
-	fpref              = &pref.Preferences{
-		is_fmt: true
-	}
-)
+const vroot = @VEXEROOT
+const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt')
+const fpref = &pref.Preferences{
+	is_fmt: true
+}
 
-fn test_fmt() {
+fn run_fmt(mut input_files []string) {
 	fmt_message := 'vfmt tests'
 	eprintln(term.header(fmt_message, '-'))
-	vexe := os.getenv('VEXE')
-	if vexe.len == 0 || !os.exists(vexe) {
-		eprintln('VEXE must be set')
-		exit(error_missing_vexe)
-	}
-	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
+	assert input_files.len > 0
+	input_files = vtest.filter_vtest_only(input_files)
+	if input_files.len == 0 {
+		// No need to produce a failing test here.
+		eprintln('no tests found with VTEST_ONLY filter set to: ' + os.getenv('VTEST_ONLY'))
+		exit(0)
+	}
 	mut fmt_bench := benchmark.new_benchmark()
-	// Lookup the existing test _input.vv files:
-	input_files := os.walk_ext('${vroot}/vlib/v/fmt/tests', '_input.vv')
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := os.file_name(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()
@@ -48,9 +45,9 @@ fn test_fmt() {
 			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
 			continue
 		}
-		table := ast.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref)
-		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
+		mut table := ast.new_table()
+		file_ast := parser.parse_file(ipath, mut table, .parse_comments, fpref)
+		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
@@ -58,18 +55,36 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok('${ipath}'))
+		eprintln(fmt_bench.step_message_ok(ipath))
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
-	if fmt_bench.nfail > 0 {
-		exit(error_failed_tests)
-	}
+	assert fmt_bench.nfail == 0
+}
+
+fn test_fmt() {
+	mut input_files := os.walk_ext(os.join_path(tdir, 'tests'), '_input.vv')
+	run_fmt(mut input_files)
+
+	input_files = os.walk_ext(os.join_path(tdir, 'testdata', 'vmodules'), '_input.vv')
+	run_fmt(mut input_files)
+}
+
+fn test_fmt_vmodules() {
+	mut vmodules_tdir := os.join_path(tdir, 'tests')
+	os.setenv('VMODULES', vmodules_tdir, true)
+	mut input_files := os.walk_ext(vmodules_tdir, '_input.vv')
+	run_fmt(mut input_files)
+
+	vmodules_tdir = os.join_path(tdir, 'testdata', 'vmodules')
+	os.setenv('VMODULES', vmodules_tdir, true)
+	input_files = os.walk_ext(vmodules_tdir, '_input.vv')
+	run_fmt(mut input_files)
 }

@@ -5,11 +5,9 @@ import gg
 import gx
 import sokol.sapp
 
-const (
-	max_files = 12
-	text      = 'Drag&Drop here max ${max_files} files.'
-	text_size = 16
-)
+const max_files = 12
+const text = 'Drag&Drop here max ${max_files} files.'
+const text_size = 16
 
 struct App {
 mut:
@@ -19,9 +17,7 @@ mut:
 
 fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		bg_color: gx.rgb(174, 198, 255)
 		width: 600
@@ -41,7 +37,7 @@ fn main() {
 
 fn my_event_manager(mut ev gg.Event, mut app App) {
 	// drag&drop event
-	if ev.typ == .files_droped {
+	if ev.typ == .files_dropped {
 		num_dropped := sapp.get_num_dropped_files()
 		app.dropped_file_list.clear()
 		for i in 0 .. num_dropped {

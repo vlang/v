@@ -1,7 +1,7 @@
 /*
 regex 1.0 alpha
 
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 */
@@ -20,7 +20,7 @@ pub fn regex_base(pattern string) (RE, int, int) {
 	// init regex
 	mut re := RE{}
 	re.prog = []Token{len: pattern.len + 1} // max program length, can not be longer then the pattern
-	re.cc = []CharClass{len: pattern.len} // can not be more char class the the length of the pattern
+	re.cc = []CharClass{len: pattern.len} // can not be more char class the length of the pattern
 	re.group_csave_flag = false // enable continuos group saving
 	re.group_max_nested = pattern.len >> 1 // set max 128 group nested
 	re.group_max = pattern.len >> 1 // we can't have more groups than the half of the pattern legth
@@ -123,7 +123,7 @@ pub fn (re RE) get_group_list() []Re_group {
 *
 ******************************************************************************/
 // match_string Match the pattern with the in_txt string
-[direct_array_access]
+@[direct_array_access]
 pub fn (re &RE) match_string(in_txt string) (int, int) {
 	unsafe {
 		start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
@@ -160,7 +160,7 @@ pub fn (re &RE) matches_string(in_txt string) bool {
 ******************************************************************************/
 /*
 // find internal implementation HERE for reference do not remove!!
-[direct_array_access]
+@[direct_array_access]
 fn (mut re RE) find_imp(in_txt string) (int,int) {
 	old_flag := re.flag
 	re.flag |= f_src  // enable search mode
@@ -180,7 +180,7 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 */
 
 // find try to find the first match in the input string
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find(in_txt string) (int, int) {
 	// old_flag := re.flag
 	// re.flag |= f_src  // enable search mode
@@ -202,6 +202,14 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 					re.groups[gi] += i
 					gi++
 				}
+				// when ^ (f_ms) is used, it must match on beginning of string
+				if (re.flag & f_ms) != 0 && s > 0 {
+					break
+				}
+				// when $ (f_me) is used, it must match on ending of string
+				if (re.flag & f_me) != 0 && i + e < in_txt.len {
+					break
+				}
 				return i + s, i + e
 			}
 			i++
@@ -212,7 +220,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 }
 
 // find try to find the first match in the input string strarting from start index
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	old_flag := re.flag
 	// re.flag |= f_src // enable search mode
@@ -259,7 +267,7 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 // mut re := regex.regex_opt('f|t[eo]+')?
 // res := re.find_all(blurb) // [0, 3, 12, 15, 20, 23, 28, 31, 33, 39]
 // ```
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	// old_flag := re.flag
 	// re.flag |= f_src // enable search mode
@@ -328,7 +336,7 @@ pub fn (mut re RE) split(in_txt string) []string {
 }
 
 // find_all_str find all the non overlapping occurrences of the match pattern, return a string list
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find_all_str(in_txt string) []string {
 	// old_flag := re.flag
 	// re.flag |= f_src // enable search mode
@@ -518,9 +526,9 @@ pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string {
 	mut lst := re.find_all(in_txt)
 
 	if count < 0 { // start from the right of the string
-		lst = lst#[count * 2..] // limitate the number of substitions
+		lst = unsafe { lst#[count * 2..] } // limitate the number of substitions
 	} else if count > 0 { // start from the left of the string
-		lst = lst#[..count * 2] // limitate the number of substitions
+		lst = unsafe { lst#[..count * 2] } // limitate the number of substitions
 	} else if count == 0 { // no replace
 		return in_txt
 	}

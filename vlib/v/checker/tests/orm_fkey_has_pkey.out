@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_fkey_has_pkey.vv:5:2: error: ORM: a struct that has a field that holds an array must have a primary key
+    3 | struct Person {
+    4 |     id    int
+    5 |     child []Child @[fkey: 'person_id']
+      |     ~~~~~~~~~~~~~
+    6 | }
+    7 |

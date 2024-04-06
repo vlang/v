@@ -20,19 +20,17 @@ basic ftp module
 import net
 import io
 
-const (
-	connected             = 220
-	specify_password      = 331
-	logged_in             = 230
-	login_first           = 503
-	anonymous             = 530
-	open_data_connection  = 150
-	close_data_connection = 226
-	command_ok            = 200
-	denied                = 550
-	passive_mode          = 227
-	complete              = 226
-)
+const connected = 220
+const specify_password = 331
+const logged_in = 230
+const login_first = 503
+const anonymous = 530
+const open_data_connection = 150
+const close_data_connection = 226
+const command_ok = 200
+const denied = 550
+const passive_mode = 227
+const complete = 226
 
 struct DTP {
 mut:
@@ -201,7 +199,7 @@ fn (mut zftp FTP) pasv() !&DTP {
 		println('pass: ${data}')
 	}
 	if code != ftp.passive_mode {
-		return error('pasive mode not allowed')
+		return error('passive mode not allowed')
 	}
 	dtp := new_dtp(data)!
 	return dtp
@@ -227,8 +225,14 @@ pub fn (mut zftp FTP) dir() ![]string {
 	mut dir := []string{}
 	sdir := list_dir.bytestr()
 	for lfile in sdir.split('\n') {
+		if lfile.len > 56 {
+			dir << lfile#[56..lfile.len - 1]
+			continue
+		}
 		if lfile.len > 1 {
-			dir << lfile.after(' ').trim_space()
+			trimmed := lfile.after(':')
+			dir << trimmed#[3..trimmed.len - 1]
+			continue
 		}
 	}
 	return dir

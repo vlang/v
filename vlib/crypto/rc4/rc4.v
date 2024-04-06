@@ -1,6 +1,6 @@
 module rc4
 
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Package rc4 implements RC4 encryption, as defined in Bruce Schneier's
@@ -21,7 +21,7 @@ mut:
 }
 
 // free the resources taken by the Cipher `c`
-[unsafe]
+@[unsafe]
 pub fn (mut c Cipher) free() {
 	$if prealloc {
 		return

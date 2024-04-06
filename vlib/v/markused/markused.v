@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -7,125 +7,139 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File) {
+pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
 	// Functions that must be generated and can't be skipped
-	mut all_fn_root_names := [
-		'main.main',
-		'__new_array',
-		'str_intp',
-		'format_sb',
-		'__new_array_with_default',
-		'__new_array_with_multi_default',
-		'__new_array_with_array_default',
-		'init_global_allocator' /* needed for linux_bare and wasm_bare */,
-		'v_realloc' /* needed for _STR */,
-		'malloc',
-		'malloc_noscan',
-		'vcalloc',
-		'vcalloc_noscan',
-		'new_array_from_c_array',
-		'v_fixed_index',
-		'memdup',
-		'memdup_uncollectable',
-		'vstrlen',
-		'__as_cast',
-		'tos',
-		'tos2',
-		'tos3',
-		'isnil',
-		'_option_ok',
-		'_result_ok',
-		'error',
-		// utf8_str_visible_length is used by c/str.v
-		'utf8_str_visible_length',
-		'compare_ints',
-		'compare_u64s',
-		'compare_strings',
-		'compare_ints_reverse',
-		'compare_u64s_reverse',
-		'compare_strings_reverse',
-		'builtin_init',
-		// byteptr and charptr
-		'3.vstring',
-		'3.vstring_with_len',
-		'3.vstring_literal',
-		'4.vstring',
-		'4.vstring_with_len',
-		'4.vstring_literal',
-		// byte. methods
-		'10.str_escaped',
-		// string. methods
-		'20.add',
-		'20.trim_space',
-		'20.repeat',
-		'20.replace',
-		'20.clone',
-		'20.clone_static',
-		'20.trim',
-		'20.substr',
-		'20.substr_ni',
-		'20.at',
-		'20.at_with_check',
-		'20.index_kmp',
-		// string. ==, !=, etc...
-		'20.eq',
-		'20.ne',
-		'20.lt',
-		'20.gt',
-		'20.le',
-		'20.ge',
-		'fast_string_eq',
-		// other array methods
-		'22.get',
-		'22.set',
-		'22.get_unsafe',
-		'22.set_unsafe',
-		'22.get_with_check' /* used for `x := a[i] or {}` */,
-		'22.clone_static_to_depth',
-		'22.clone_to_depth',
-		'22.first',
-		'22.last',
-		'22.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
-		'22.reverse',
-		'22.repeat_to_depth',
-		'22.slice',
-		'22.slice_ni',
-		'22.slice2',
-		'61.get',
-		'61.set',
-		'65558.last',
-		'65558.pop',
-		'65558.push',
-		'65558.insert_many',
-		'65558.prepend_many',
-		'65558.reverse',
-		'65558.set',
-		'65558.set_unsafe',
-		// TODO: process the _vinit const initializations automatically too
-		'json.decode_string',
-		'json.decode_int',
-		'json.decode_bool',
-		'json.decode_u64',
-		'json.encode_int',
-		'json.encode_string',
-		'json.encode_bool',
-		'json.encode_u64',
-		'json.json_print',
-		'json.json_parse',
-		'main.nasserts',
-		'main.vtest_init',
-		'main.vtest_new_metainfo',
-		'main.vtest_new_filemetainfo',
-		'os.getwd',
-		'os.init_os_args',
-		'os.init_os_args_wide',
-		'v.embed_file.find_index_entry_by_path',
-	]
+	mut all_fn_root_names := if pref_.backend == .native {
+		// Note: this is temporary, until the native backend supports more features!
+		['main.main']
+	} else {
+		byteptr_idx_str := '${ast.byteptr_type_idx}'
+		charptr_idx_str := '${ast.charptr_type_idx}'
+		u8_idx_str := '${ast.u8_type_idx}'
+		string_idx_str := '${ast.string_type_idx}'
+		array_idx_str := '${ast.array_type_idx}'
+		map_idx_str := '${ast.map_type_idx}'
+		ref_array_idx_str := '${int(ast.array_type.ref())}'
+		[
+			'main.main',
+			'__new_array',
+			'str_intp',
+			'format_sb',
+			'__new_array_with_default',
+			'__new_array_with_multi_default',
+			'__new_array_with_array_default',
+			'init_global_allocator', // needed for linux_bare and wasm_bare
+			'v_realloc', // needed for _STR
+			'malloc',
+			'malloc_noscan',
+			'vcalloc',
+			'vcalloc_noscan',
+			'new_array_from_c_array',
+			'v_fixed_index',
+			'memdup',
+			'memdup_uncollectable',
+			'vstrlen',
+			'__as_cast',
+			'tos',
+			'tos2',
+			'tos3',
+			'isnil',
+			'_option_ok',
+			'_result_ok',
+			'error',
+			// utf8_str_visible_length is used by c/str.v
+			'utf8_str_visible_length',
+			'compare_ints',
+			'compare_u64s',
+			'compare_strings',
+			'compare_ints_reverse',
+			'compare_u64s_reverse',
+			'compare_strings_reverse',
+			'builtin_init',
+			// byteptr and charptr
+			byteptr_idx_str + '.vstring',
+			byteptr_idx_str + '.vstring_with_len',
+			byteptr_idx_str + '.vstring_literal',
+			charptr_idx_str + '.vstring',
+			charptr_idx_str + '.vstring_with_len',
+			charptr_idx_str + '.vstring_literal',
+			// byte. methods
+			u8_idx_str + '.str_escaped',
+			// string. methods
+			string_idx_str + '.add',
+			string_idx_str + '.trim_space',
+			string_idx_str + '.repeat',
+			string_idx_str + '.replace',
+			string_idx_str + '.clone',
+			string_idx_str + '.clone_static',
+			string_idx_str + '.trim',
+			string_idx_str + '.substr',
+			string_idx_str + '.substr_ni',
+			string_idx_str + '.substr_with_check',
+			string_idx_str + '.at',
+			string_idx_str + '.at_with_check',
+			string_idx_str + '.index_kmp',
+			// string. ==, !=, etc...
+			string_idx_str + '.eq',
+			string_idx_str + '.ne',
+			string_idx_str + '.lt',
+			string_idx_str + '.gt',
+			string_idx_str + '.le',
+			string_idx_str + '.ge',
+			'fast_string_eq',
+			// other array methods
+			array_idx_str + '.get',
+			array_idx_str + '.set',
+			array_idx_str + '.get_unsafe',
+			array_idx_str + '.set_unsafe',
+			array_idx_str + '.get_with_check', // used for `x := a[i] or {}`
+			array_idx_str + '.clone_static_to_depth',
+			array_idx_str + '.clone_to_depth',
+			array_idx_str + '.first',
+			array_idx_str + '.last',
+			array_idx_str + '.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
+			array_idx_str + '.reverse',
+			array_idx_str + '.repeat_to_depth',
+			array_idx_str + '.slice',
+			array_idx_str + '.slice_ni',
+			// map methods
+			map_idx_str + '.get',
+			map_idx_str + '.set',
+			// reference array methods
+			ref_array_idx_str + '.last',
+			ref_array_idx_str + '.pop',
+			ref_array_idx_str + '.push',
+			ref_array_idx_str + '.insert_many',
+			ref_array_idx_str + '.prepend_many',
+			ref_array_idx_str + '.reverse',
+			ref_array_idx_str + '.set',
+			ref_array_idx_str + '.set_unsafe',
+			// TODO: process the _vinit const initializations automatically too
+			'json.decode_string',
+			'json.decode_int',
+			'json.decode_bool',
+			'json.decode_u64',
+			'json.encode_int',
+			'json.encode_string',
+			'json.encode_bool',
+			'json.encode_u64',
+			'json.json_print',
+			'json.json_parse',
+			'main.nasserts',
+			'main.vtest_init',
+			'main.vtest_new_metainfo',
+			'main.vtest_new_filemetainfo',
+			'os.getwd',
+			'os.init_os_args',
+			'os.init_os_args_wide',
+			'v.embed_file.find_index_entry_by_path',
+		]
+	}
 
 	if pref_.is_bare {
 		all_fn_root_names << [
@@ -291,33 +305,8 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 		}
 	}
 
-	// handle vweb magic router methods:
-	typ_vweb_result := table.find_type_idx('vweb.Result')
-	if typ_vweb_result != 0 {
-		all_fn_root_names << 'vweb.filter'
-		typ_vweb_context := ast.Type(table.find_type_idx('vweb.Context')).set_nr_muls(1)
-		all_fn_root_names << '${int(typ_vweb_context)}.html'
-		for vgt in table.used_vweb_types {
-			sym_app := table.sym(vgt)
-			for m in sym_app.methods {
-				mut skip := true
-				if m.name == 'before_request' {
-					// TODO: handle expansion of method calls in generic functions in a more universal way
-					skip = false
-				}
-				if m.return_type == typ_vweb_result {
-					skip = false
-				}
-				//
-				if skip {
-					continue
-				}
-				pvgt := vgt.set_nr_muls(1)
-				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-				all_fn_root_names << '${int(pvgt)}.${m.name}'
-			}
-		}
-	}
+	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
+	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
 
 	// handle ORM drivers:
 	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
@@ -354,7 +343,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 	walker.mark_root_fns(all_fn_root_names)
 
 	if walker.n_asserts > 0 {
-		walker.fn_decl(mut all_fns['__print_assert_failure'])
+		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }
 	}
 	if table.used_maps > 0 {
 		for k, mut mfn in all_fns {
@@ -450,4 +439,33 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 		}
 	}
 	return all_fns, all_consts, all_globals
+}
+
+fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string, context_name string) {
+	// handle vweb magic router methods:
+	result_type_idx := table.find_type_idx(result_name)
+	if result_type_idx != 0 {
+		all_fn_root_names << filter_name
+		typ_vweb_context := ast.Type(table.find_type_idx(context_name)).set_nr_muls(1)
+		all_fn_root_names << '${int(typ_vweb_context)}.html'
+		for vgt in table.used_vweb_types {
+			sym_app := table.sym(vgt)
+			for m in sym_app.methods {
+				mut skip := true
+				if m.name == 'before_request' {
+					// TODO: handle expansion of method calls in generic functions in a more universal way
+					skip = false
+				}
+				if m.return_type == result_type_idx {
+					skip = false
+				}
+				if skip {
+					continue
+				}
+				pvgt := vgt.set_nr_muls(1)
+				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+				all_fn_root_names << '${int(pvgt)}.${m.name}'
+			}
+		}
+	}
 }

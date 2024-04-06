@@ -1,17 +1,17 @@
 /*
 A V program for Bellman-Ford's single source
 shortest path algorithm.
-literaly adapted from:
+literally adapted from:
 https://www.geeksforgeeks.org/bellman-ford-algorithm-dp-23/
 // Adapted from this site... from C++ and Python codes
 
-For Portugese reference
+For Portuguese reference
 http://rascunhointeligente.blogspot.com/2010/10/o-algoritmo-de-bellman-ford-um.html
 
 code by CCS
 */
 
-const large = 999999 // almost inifinity
+const large = 999999 // almost infinity
 
 // a structure to represent a weighted edge in graph
 struct EDGE {
@@ -24,7 +24,7 @@ mut:
 // building a map of with all edges etc of a graph, represented from a matrix adjacency
 // Input: matrix adjacency --> Output: edges list of src, dest and weight
 fn build_map_edges_from_graph[T](g [][]T) map[T]EDGE {
-	n := g.len // TOTAL OF NODES for this graph -- its dimmension
+	n := g.len // TOTAL OF NODES for this graph -- its dimensions
 	mut edges_map := map[int]EDGE{} // a graph represented by map of edges
 
 	mut edge := 0 // a counter of edges
@@ -53,7 +53,7 @@ fn print_sol(dist []int) {
 // to all other vertices using Bellman-Ford algorithm.  The
 // function also detects negative weight cycle
 fn bellman_ford[T](graph [][]T, src int) {
-	mut edges := build_map_edges_from_graph(graph)
+	mut edges := build_map_edges_from_graph[int](graph)
 	// this function was done to adapt a graph representation
 	// by a adjacency matrix, to list of adjacency (using a MAP)
 	n_edges := edges.len // number of EDGES
@@ -61,8 +61,8 @@ fn bellman_ford[T](graph [][]T, src int) {
 	// Step 1: Initialize distances from src to all other
 	// vertices as INFINITE
 	n_vertex := graph.len // adjc matrix ... n nodes or vertex
-	mut dist := []int{len: n_vertex, init: large} // dist with -1 instead of INIFINITY
-	// mut path := []int{len: n , init:-1} // previous node of each shortest paht
+	mut dist := []int{len: n_vertex, init: large} // dist with -1 instead of INFINITY
+	// mut path := []int{len: n , init:-1} // previous node of each shortest path
 	dist[src] = 0
 
 	// Step 2: Relax all edges |V| - 1 times. A simple
@@ -146,13 +146,13 @@ fn main() {
 		[5, 15, 4, 0],
 	]
 
-	// To find number of coluns
+	// To find number of columns
 	// mut cols := an_array[0].len
 	mut graph := [][]int{} // the graph: adjacency matrix
 	// for index, g_value in [graph_01, graph_02, graph_03] {
 	for index, g_value in [graph_01, graph_02, graph_03] {
 		graph = g_value.clone() // graphs_sample[g].clone() // choice your SAMPLE
-		// allways starting by node 0
+		// always starting by node 0
 		start_node := 0
 		println('\n\n Graph ${index + 1} using Bellman-Ford algorithm (source node: ${start_node})')
 		bellman_ford(graph, start_node)

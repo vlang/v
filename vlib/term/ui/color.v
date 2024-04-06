@@ -8,7 +8,7 @@ const value_range = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff]!
 
 pub const color_table = init_color_table()
 
-[direct_array_access]
+@[direct_array_access]
 fn init_color_table() []u32 {
 	mut color_table_ := []u32{len: 256}
 	// ansi colors
