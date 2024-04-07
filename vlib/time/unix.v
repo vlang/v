@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
-// unix returns a time struct from an Unix timestamp (number of seconds since 1970-01-01)
+// unix returns a Time struct calculated from a Unix timestamp (number of seconds since 1970-01-01)
 pub fn unix(epoch i64) Time {
 	// Split into day and time
 	mut day_offset := epoch / seconds_per_day
