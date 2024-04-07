@@ -433,6 +433,7 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: ${ts.language}'
 }
 
+// str returns the ast in string form
 pub fn (t Type) str() string {
 	return 'ast.Type(0x${t.hex()} = ${u32(t)})'
 }
@@ -717,7 +718,7 @@ pub fn mktyp(typ Type) Type {
 	}
 }
 
-// returns TypeSymbol kind only if there are no type modifiers
+// type_kind returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
 	if typ.nr_muls() > 0 || typ.has_option_or_result() {
 		return Kind.placeholder
@@ -1008,6 +1009,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin') // 30
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
 }
+
 
 @[inline]
 pub fn (t &TypeSymbol) is_pointer() bool {

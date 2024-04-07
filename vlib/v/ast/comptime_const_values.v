@@ -18,10 +18,12 @@ pub type ComptTimeConstValue = EmptyExpr
 
 //| int
 
+// empty_comptime_const_expr return a EmptyExpr 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr(0)
 }
 
+// i8 returns `i8` int if `val` in range else none
 pub fn (val ComptTimeConstValue) i8() ?i8 {
 	x := val.i64()?
 	if x > -129 && x < 128 {
@@ -30,6 +32,7 @@ pub fn (val ComptTimeConstValue) i8() ?i8 {
 	return none
 }
 
+// i16 returns `i16` int if `val` in range else none
 pub fn (val ComptTimeConstValue) i16() ?i16 {
 	x := val.i64()?
 	if x > -32769 && x < 32768 {
@@ -38,6 +41,7 @@ pub fn (val ComptTimeConstValue) i16() ?i16 {
 	return none
 }
 
+// int returns `int(i32)` if `val` in range else none
 pub fn (val ComptTimeConstValue) int() ?int {
 	x := val.i64()?
 	if x > -2147483649 && x < 2147483648 {
@@ -46,6 +50,7 @@ pub fn (val ComptTimeConstValue) int() ?int {
 	return none
 }
 
+// i32 returns `i32` int if `val` in range else none
 pub fn (val ComptTimeConstValue) i32() ?i32 {
 	x := val.i64()?
 	if x > -2147483649 && x < 2147483648 {
@@ -54,6 +59,7 @@ pub fn (val ComptTimeConstValue) i32() ?i32 {
 	return none
 }
 
+// voidptr returns a voidptr if is `val` a valid type else none
 pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 	match val {
 		i8, i16, i32, i64, int { return voidptr(i64(val)) }
@@ -65,6 +71,7 @@ pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 	return none
 }
 
+// i64 returns a i64 int if val is a int else none
 pub fn (val ComptTimeConstValue) i64() ?i64 {
 	match val {
 		i8 {
@@ -119,6 +126,7 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 	return none
 }
 
+// u8 returns `u8` int if val in range else none
 pub fn (val ComptTimeConstValue) u8() ?u8 {
 	x := val.u64()?
 	if x < 256 {
@@ -127,6 +135,7 @@ pub fn (val ComptTimeConstValue) u8() ?u8 {
 	return none
 }
 
+// u16 returns `u16` int if val in range else none
 pub fn (val ComptTimeConstValue) u16() ?u16 {
 	x := val.u64()?
 	if x < 65536 {
@@ -135,6 +144,7 @@ pub fn (val ComptTimeConstValue) u16() ?u16 {
 	return none
 }
 
+// u32 returns `u32` int if val in range else none
 pub fn (val ComptTimeConstValue) u32() ?u32 {
 	x := val.u64()?
 	if x < 4294967296 {
@@ -143,6 +153,7 @@ pub fn (val ComptTimeConstValue) u32() ?u32 {
 	return none
 }
 
+// u64 returns `u64` int if val is a number >= 0 else none
 pub fn (val ComptTimeConstValue) u64() ?u64 {
 	match val {
 		i8 {
@@ -204,11 +215,13 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 	return none
 }
 
+// f32 returns a `f32` number else none
 pub fn (val ComptTimeConstValue) f32() ?f32 {
 	x := val.f64()?
 	return f32(x)
 }
 
+// f64 returns a `f64` number else none
 pub fn (val ComptTimeConstValue) f64() ?f64 {
 	match val {
 		i8 {
