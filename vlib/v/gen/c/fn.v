@@ -2627,10 +2627,6 @@ fn (mut g Gen) is_gui_app() bool {
 	return false
 }
 
-fn (g &Gen) fileis(s string) bool {
-	return g.file.path.contains(s)
-}
-
 fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 	mut fn_attrs := ''
 	for attr in attrs {

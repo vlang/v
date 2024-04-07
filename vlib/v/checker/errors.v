@@ -166,11 +166,6 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	}
 }
 
-// for debugging only
-fn (c &Checker) fileis(s string) bool {
-	return c.file.path.contains(s)
-}
-
 fn (mut c Checker) trace[T](fbase string, x &T) {
 	if c.file.path_base == fbase {
 		println('> c.trace | ${fbase:-10s} | ${x}')
