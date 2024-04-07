@@ -64,7 +64,7 @@ jobs:
           sudo ln -s ~/.wasmer/bin/wasmer /usr/local/bin
 
       - name: Test the WASM backend
-        run: ./v -stats test vlib/v/gen/wasm/tests/
+        run: ./v test vlib/v/gen/wasm/tests/
 
 
   wasm-backend-macos:
@@ -86,7 +86,7 @@ jobs:
           sudo ln -s ~/.wasmer/bin/wasmer /usr/local/bin
 
       - name: Test the WASM backend
-        run: ./v -stats test vlib/v/gen/wasm/tests/
+        run: ./v test vlib/v/gen/wasm/tests/
 
 #  wasm-backend-windows:
 #    runs-on: windows-2022

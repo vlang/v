@@ -146,7 +146,7 @@ jobs:
           echo "Build Go2V"
           v /tmp/go2v/
           echo "Run Go2V tests"
-          VJOBS=1 v -stats test /tmp/go2v/
+          VJOBS=1 v test /tmp/go2v/
 
       - name: Install UI through VPM and make sure its examples compile
         run: |
@@ -171,7 +171,7 @@ jobs:
           echo "Build msgpack"
           v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
-          v -stats test ~/.vmodules/msgpack/
+          v test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
 
