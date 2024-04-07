@@ -15,6 +15,7 @@ LEGACYLIBS := $(VROOT)/thirdparty/legacy
 TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
+GITTCC := git --git-dir=$(TMPTCC)/.git --work-tree=$(TMPTCC)
 GITCLEANPULL := git clean -xf && git pull --quiet
 GITFASTCLONE := git clone --filter=blob:none --quiet
 
@@ -152,11 +153,13 @@ latest_tcc:
 endif
 
 fresh_tcc:
-	rm -rf $(TMPTCC)
 ifndef local
 # Check whether a TCC branch exists for the user's system configuration.
 ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
-	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
+	git init $(TMPTCC)
+	$(GITTCC) remote add origin $(TCCREPO)
+	$(GITTCC) fetch --depth=1 origin thirdparty-$(TCCOS)-$(TCCARCH)
+	$(GITTCC) checkout -B thirdparty-$(TCCOS)-$(TCCARCH) origin/thirdparty-$(TCCOS)-$(TCCARCH)
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 else
 	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
