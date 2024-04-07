@@ -11,15 +11,11 @@ pub struct C.timeval {
 	tv_usec u64
 }
 
-fn C.localtime(t &C.time_t) &C.tm
-fn C.localtime_r(t &C.time_t, tm &C.tm)
-
-// struct C.time_t {}
-
 type C.time_t = i64
 
 fn C.time(t &C.time_t) C.time_t
-
+fn C.localtime(t &C.time_t) &C.tm
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
@@ -28,14 +24,13 @@ fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usiz
 pub fn now() Time {
 	$if macos {
 		return darwin_now()
-	}
-	$if windows {
+	} $else $if windows {
 		return win_now()
-	}
-	$if solaris {
+	} $else $if solaris {
 		return solaris_now()
+	} $else {
+		return linux_now()
 	}
-	return linux_now()
 	/*
 	// defaults to most common feature, the microsecond precision is not available
 	// in this API call
@@ -49,14 +44,13 @@ pub fn now() Time {
 pub fn utc() Time {
 	$if macos {
 		return darwin_utc()
-	}
-	$if windows {
+	} $else $if windows {
 		return win_utc()
-	}
-	$if solaris {
+	} $else $if solaris {
 		return solaris_utc()
+	} $else {
+		return linux_utc()
 	}
-	return linux_utc()
 }
 
 // new_time returns a time struct with the calculated Unix time.
