@@ -3,18 +3,26 @@ name: V Apps and Modules
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/v_apps_and_modules_compile_ci.yml'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/v_apps_and_modules_compile_ci.yml'
+
+concurrency:
+  group: app-modules-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   v-apps-compile:
     runs-on: ubuntu-latest
     if: >
-        github.event_name != 'push'
-        || github.event.ref == 'refs/heads/master'
-        || github.event.repository.full_name != 'vlang/v'
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -138,7 +146,7 @@ jobs:
           echo "Build Go2V"
           v /tmp/go2v/
           echo "Run Go2V tests"
-          VJOBS=1 v -stats test /tmp/go2v/
+          VJOBS=1 v test /tmp/go2v/
 
       - name: Install UI through VPM and make sure its examples compile
         run: |
@@ -163,10 +171,9 @@ jobs:
           echo "Build msgpack"
           v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
-          v -stats test ~/.vmodules/msgpack/
+          v test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
-
 
 #      - name: Build VEX
 #        run: |
@@ -179,13 +186,12 @@ jobs:
 #          echo "Run Vex Tests"
 #          v test ~/.vmodules/nedpals/vex
 
-
   vsl-and-vtl-compile:
     runs-on: ubuntu-20.04
     if: >
-        github.event_name != 'push'
-        || github.event.ref == 'refs/heads/master'
-        || github.event.repository.full_name != 'vlang/v'
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -no-parallel
@@ -239,3 +245,19 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-gc boehm
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
+
+  vpm-site:
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-12]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v doctor
+      - name: Build vpm
+        run: |
+          .github/workflows/retry.sh ./v install markdown
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/vpm
+          cd vpm && ../v .

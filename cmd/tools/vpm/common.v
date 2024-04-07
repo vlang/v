@@ -6,7 +6,6 @@ import net.urllib
 import v.vmod
 import json
 import term
-import log
 
 struct ModuleVpmInfo {
 	// id           int
@@ -241,8 +240,13 @@ fn verbose_println(msg string) {
 	}
 }
 
+fn vpm_log_header(txt string) {
+	divider := '='.repeat(40 - txt.len / 2)
+	settings.logger.debug('\n${divider} ${txt} ${divider}\n')
+}
+
 fn vpm_log(line string, func string, msg string) {
-	log.debug('${line} | (${func}) ${msg}')
+	settings.logger.debug('${line} | (${func}) ${msg}')
 }
 
 fn vpm_error(msg string, opts ErrorOptions) {
