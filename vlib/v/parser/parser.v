@@ -25,7 +25,6 @@ pub struct Parser {
 mut:
 	file_base         string       // "hello.v"
 	file_path         string       // "/home/user/hello.v"
-	file_dir_path     string       // "/home/user"
 	file_display_path string       // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
 	unique_prefix     string       // a hash of p.file_path, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
@@ -199,10 +198,9 @@ const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator)
 pub fn (mut p Parser) set_path(path string) {
 	p.file_path = path
 	p.file_base = os.base(path)
-	p.file_dir_path = os.dir(path)
 	p.file_display_path = os.real_path(p.file_path).replace_once(parser.normalised_working_folder,
 		'').replace('\\', '/')
-	p.inside_vlib_file = p.file_dir_path.contains('vlib')
+	p.inside_vlib_file = os.dir(path).contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
 
