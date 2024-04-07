@@ -114,6 +114,11 @@ pub fn (mut app ServerApp) file_echo(mut ctx ServerContext) vweb.Result {
 	return ctx.text(ctx.files['file'][0].data)
 }
 
+@['/query_echo']
+pub fn (mut app ServerApp) query_echo(mut ctx ServerContext, a string, b int) vweb.Result {
+	return ctx.text('a: x${a}x | b: x${b}x')
+}
+
 // Make sure [post] works without the path
 @[post]
 pub fn (mut app ServerApp) json(mut ctx ServerContext) vweb.Result {
