@@ -4,15 +4,15 @@
 module time
 
 // unix returns a time struct from an Unix timestamp (number of seconds since 1970-01-01)
-pub fn unix(abs i64) Time {
+pub fn unix(epoch i64) Time {
 	// Split into day and time
-	mut day_offset := abs / seconds_per_day
-	if abs % seconds_per_day < 0 {
+	mut day_offset := epoch / seconds_per_day
+	if epoch % seconds_per_day < 0 {
 		// Compensate for round towards zero on integers as we want floored instead
 		day_offset--
 	}
 	year, month, day := calculate_date_from_day_offset(day_offset)
-	hr, min, sec := calculate_time_from_second_offset(abs % seconds_per_day)
+	hr, min, sec := calculate_time_from_second_offset(epoch % seconds_per_day)
 	return Time{
 		year: year
 		month: month
@@ -20,20 +20,20 @@ pub fn unix(abs i64) Time {
 		hour: hr
 		minute: min
 		second: sec
-		unix: abs
+		unix: epoch
 	}
 }
 
 // unix2 returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
 @[deprecated: 'use unix_microsecond(unix_ts, us) instead']
 @[deprecated_after: '2023-09-05']
-pub fn unix2(abs i64, microsecond int) Time {
-	return unix_nanosecond(abs, microsecond * 1000)
+pub fn unix2(epoch i64, microsecond int) Time {
+	return unix_nanosecond(epoch, microsecond * 1000)
 }
 
 // unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
-pub fn unix_microsecond(abs i64, microsecond int) Time {
-	return unix_nanosecond(abs, microsecond * 1000)
+pub fn unix_microsecond(epoch i64, microsecond int) Time {
+	return unix_nanosecond(epoch, microsecond * 1000)
 }
 
 // unix_nanosecond returns a Time struct given a Unix timestamp in seconds and a nanosecond value
