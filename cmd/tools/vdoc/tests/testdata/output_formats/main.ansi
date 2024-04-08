@@ -277,3 +277,21 @@ const html = '<!DOCTYPE html>
     instance_error does stuff too
 [94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_option[39m() ?
     instance_option does stuff too
+[94mstruct[39m [32mXampleDocComment[39m {}
+    XampleDocComment is here just to group example doc comment tests.
+[94mfn[39m (x [32mXampleDocComment[39m) [36msingle[39m()
+    
+    Example: [36msingle[39m()
+[94mfn[39m (x [32mXampleDocComment[39m) [36msingle_multi[39m[[32mT[39m](a [][32mT[39m, b ...[32mT[39m) [][32mT[39m
+    single_multi concatanates an array with an arbitrary number of additional values
+    
+    Note: if you have two arrays, you should simply use the `<<` operator directly
+    Example: [36msingle_multi[39m([[94m1[39m, [94m2[39m, [94m3[39m], [94m4[39m, [94m5[39m, [94m6[39m) == [[94m1[39m, [94m2[39m, [94m3[39m, [94m4[39m, [94m5[39m, [94m6[39m] [90m// => true[39m
+    Example: [36msingle_multi[39m([[94m1[39m, [94m2[39m, [94m3[39m], ...[[94m4[39m, [94m5[39m, [94m6[39m]) == [[94m1[39m, [94m2[39m, [94m3[39m, [94m4[39m, [94m5[39m, [94m6[39m] [90m// => true[39m
+    Example: arr << [[94m4[39m, [94m5[39m, [94m6[39m] [90m// does what you need if the arr is mutable[39m
+[94mfn[39m ([94mmut[39m x [32mXampleDocComment[39m) [36mmulti[39m[[32mT[39m](k [32mint[39m)
+    multi rotates the array in-place
+    Example: 
+    [94mmut[39m x := [[94m1[39m,[94m2[39m,[94m3[39m,[94m4[39m,[94m5[39m,[94m6[39m]
+    [94mx[39m.[36mmulti[39m([94m2[39m)
+    [36mprintln[39m(x) [90m// [5, 6, 1, 2, 3, 4][39m

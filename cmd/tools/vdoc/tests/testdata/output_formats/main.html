@@ -234,3 +234,53 @@ doc2 <span class="token operator">:=</span> toml<span class="token punctuation">
 <p>instance_option does stuff too</p>
 
 </section>
+
+		<section id="XampleDocComment" class="doc-node">
+			<div class="title"><h2>struct XampleDocComment <a href="#XampleDocComment">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">struct</span> <span class="token symbol">XampleDocComment</span> <span class="token punctuation">{</span><span class="token punctuation">}</span></code></pre>
+<p>XampleDocComment is here just to group example doc comment tests.</p>
+
+</section>
+
+		<section id="XampleDocComment.single" class="doc-node">
+			<div class="title"><h2>fn (XampleDocComment) single <a href="#XampleDocComment.single">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x XampleDocComment<span class="token punctuation">)</span> <span class="token function">single</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+
+
+<section class="doc-node examples"><h4>Example</h4>
+<pre>
+<code class="language-v"><span class="token function">single</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+</section>
+</section>
+
+		<section id="XampleDocComment.single_multi" class="doc-node">
+			<div class="title"><h2>fn (XampleDocComment) single_multi <a href="#XampleDocComment.single_multi">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x XampleDocComment<span class="token punctuation">)</span> single_multi<span class="token punctuation">[</span><span class="token builtin">T</span><span class="token punctuation">]</span><span class="token punctuation">(</span>a <span class="token punctuation">[</span><span class="token punctuation">]</span><span class="token builtin">T</span><span class="token punctuation">,</span> b <span class="token punctuation">...</span><span class="token builtin">T</span><span class="token punctuation">)</span> <span class="token punctuation">[</span><span class="token punctuation">]</span><span class="token builtin">T</span></code></pre>
+<p>single_multi concatanates an array with an arbitrary number of additional values</p><p>Note: if you have two arrays, you should simply use the <code>&lt;&lt;</code> operator directly</p>
+
+<section class="doc-node examples"><h4>Examples</h4>
+<pre>
+<code class="language-v"><span class="token function">single_multi</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">2</span><span class="token punctuation">,</span> <span class="token number">3</span><span class="token punctuation">]</span><span class="token punctuation">,</span> <span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">6</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">2</span><span class="token punctuation">,</span> <span class="token number">3</span><span class="token punctuation">,</span> <span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">6</span><span class="token punctuation">]</span> <span class="token comment">// => true</span></code></pre>
+<pre>
+<code class="language-v"><span class="token function">single_multi</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">2</span><span class="token punctuation">,</span> <span class="token number">3</span><span class="token punctuation">]</span><span class="token punctuation">,</span> <span class="token punctuation">...</span><span class="token punctuation">[</span><span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">6</span><span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">2</span><span class="token punctuation">,</span> <span class="token number">3</span><span class="token punctuation">,</span> <span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">6</span><span class="token punctuation">]</span> <span class="token comment">// => true</span></code></pre>
+<pre>
+<code class="language-v">arr <span class="token operator"><<</span> <span class="token punctuation">[</span><span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">5</span><span class="token punctuation">,</span> <span class="token number">6</span><span class="token punctuation">]</span> <span class="token comment">// does what you need if the arr is mutable</span></code></pre>
+</section>
+</section>
+
+		<section id="XampleDocComment.multi" class="doc-node">
+			<div class="title"><h2>fn (XampleDocComment) multi <a href="#XampleDocComment.multi">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span><span class="token keyword">mut</span> x XampleDocComment<span class="token punctuation">)</span> multi<span class="token punctuation">[</span><span class="token builtin">T</span><span class="token punctuation">]</span><span class="token punctuation">(</span>k <span class="token builtin">int</span><span class="token punctuation">)</span></code></pre>
+<p>multi rotates the array in-place</p>
+
+<section class="doc-node examples"><h4>Example</h4>
+<pre>
+<code class="language-v"><span class="token keyword">mut</span> x <span class="token operator">:=</span> <span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">,</span><span class="token number">2</span><span class="token punctuation">,</span><span class="token number">3</span><span class="token punctuation">,</span><span class="token number">4</span><span class="token punctuation">,</span><span class="token number">5</span><span class="token punctuation">,</span><span class="token number">6</span><span class="token punctuation">]</span>
+x<span class="token punctuation">.</span><span class="token function">multi</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">)</span>
+<span class="token function">println</span><span class="token punctuation">(</span>x<span class="token punctuation">)</span> <span class="token comment">// [5, 6, 1, 2, 3, 4]</span></code></pre>
+</section>
+</section>
