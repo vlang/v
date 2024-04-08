@@ -25,7 +25,7 @@ fn use_some_returned_variables() {
 		println(dd)
 	}
 	b := test(2)
-	if C._VAUTOFREE == 1 {
+	$if autofree {
 		assert frees.len == 2
 		assert frees[0] == 444
 		assert frees[1] == 333
@@ -35,7 +35,7 @@ fn use_some_returned_variables() {
 
 fn main() {
 	use_some_returned_variables()
-	if C._VAUTOFREE == 1 {
+	$if autofree {
 		assert frees.len == 4
 		assert frees[0] == 444
 		assert frees[1] == 333
