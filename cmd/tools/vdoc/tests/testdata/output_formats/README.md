@@ -7,7 +7,7 @@ This is a [link](https://vlang.io/) to the main V site.
 
 This is a <b>bold text</b>.
 
-This is a script <script>console.log('hi from README.md');</script> .
+This is a script `<script>console.log('hi from README.md');</script>` .
 
 ## Examples
 

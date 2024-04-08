@@ -7,7 +7,7 @@ module main
     
     This is a <b>bold text</b>.
     
-    This is a script <script>console.log('hi from README.md');</script> .
+    This is a script `<script>console.log('hi from README.md');</script>` .
     
     ## Examples
     
