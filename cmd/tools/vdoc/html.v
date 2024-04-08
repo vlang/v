@@ -503,9 +503,18 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	escaped_html := if head && is_module_readme(dn) {
 		readme_lines := dn.comments[0].text.split_into_lines()
 		mut merged_lines := []string{}
-		for i, l in readme_lines {
-			if i < readme_lines.len - 1 && l != '' && readme_lines[i + 1] != '' {
-				merged_lines << '${l} ${readme_lines[i + 1]}'
+		mut is_codeblock := false
+		for i := 0; i < readme_lines.len - 1; i++ {
+			l := readme_lines[i]
+			nl := readme_lines[i + 1]
+			is_codeblock_divider := l.trim_left('\x01').trim_space().starts_with('```')
+			if is_codeblock_divider {
+				is_codeblock = !is_codeblock
+			}
+			if !is_codeblock && !is_codeblock_divider && l != '' && nl != ''
+				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
+				merged_lines << '${l} ${nl}'
+				i++
 				continue
 			}
 			merged_lines << l
