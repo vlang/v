@@ -76,14 +76,22 @@ pub fn (d Duration) str() string {
 	t -= us * time.microsecond
 	ns := t
 
-	return match true {
-		hr > 0 { '${hr}:${min:02}:${sec:02}' }
-		min > 0 { '${min}:${sec:02}.${ms:03}' }
-		sec > 0 { '${sec}.${ms:03}s' }
-		ms > 0 { '${ms}.${us:03}ms' }
-		us > 0 { '${us}.${ns:03}us' }
-		else { '${ns}ns' }
+	if hr > 0 {
+		return '${hr}:${min:02}:${sec:02}'
 	}
+	if min > 0 {
+		return '${min}:${sec:02}.${ms:03}'
+	}
+	if sec > 0 {
+		return '${sec}.${ms:03}s'
+	}
+	if ms > 0 {
+		return '${ms}.${us:03}ms'
+	}
+	if us > 0 {
+		return '${us}.${ns:03}us'
+	}
+	return '${ns}ns'
 }
 
 // debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'
