@@ -501,10 +501,18 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	head_tag := if head { 'h1' } else { 'h2' }
 	// Allow README.md to go through unescaped except for script tags
 	escaped_html := if head && is_module_readme(dn) {
-		// Strip markdown [TOC] directives, since we generate our own.
-		dn.comments[0].text
+		readme_lines := dn.comments[0].text.split_into_lines()
+		mut merged_lines := []string{}
+		for i, mut l in readme_lines {
+			if i < readme_lines.len - 1 && l != '' && readme_lines[i + 1] != '' {
+				merged_lines << '${l} ${readme_lines[i + 1]}'
+				continue
+			}
+			merged_lines << l
+		}
+		merged_lines.join_lines()
 	} else {
-		dn.merge_comments()
+		dn.merge_comments_without_examples()
 	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
