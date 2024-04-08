@@ -24,13 +24,14 @@ fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usiz
 pub fn now() Time {
 	$if macos {
 		return darwin_now()
-	} $else $if windows {
-		return win_now()
-	} $else $if solaris {
-		return solaris_now()
-	} $else {
-		return linux_now()
 	}
+	$if windows {
+		return win_now()
+	}
+	$if solaris {
+		return solaris_now()
+	}
+	return linux_now()
 	/*
 	// defaults to most common feature, the microsecond precision is not available
 	// in this API call
@@ -44,13 +45,14 @@ pub fn now() Time {
 pub fn utc() Time {
 	$if macos {
 		return darwin_utc()
-	} $else $if windows {
-		return win_utc()
-	} $else $if solaris {
-		return solaris_utc()
-	} $else {
-		return linux_utc()
 	}
+	$if windows {
+		return win_utc()
+	}
+	$if solaris {
+		return solaris_utc()
+	}
+	return linux_utc()
 }
 
 // new_time returns a time struct with the calculated Unix time.
