@@ -1010,7 +1010,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
 }
 
-t
 @[inline]
 pub fn (t &TypeSymbol) is_pointer() bool {
 	return t.kind in [.byteptr, .charptr, .voidptr]
