@@ -503,7 +503,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	escaped_html := if head && is_module_readme(dn) {
 		readme_lines := dn.comments[0].text.split_into_lines()
 		mut merged_lines := []string{}
-		for i, mut l in readme_lines {
+		for i, l in readme_lines {
 			if i < readme_lines.len - 1 && l != '' && readme_lines[i + 1] != '' {
 				merged_lines << '${l} ${readme_lines[i + 1]}'
 				continue
