@@ -18,7 +18,6 @@ const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0
 const single_quote = "'"
 const double_quote = '"'
 const no_quotes_replacement = [single_quote, '', double_quote, '']
-const md_script_escape_seq = ['<script>', '`', '</script>', '`']
 
 enum HighlightTokenTyp {
 	unone
@@ -503,7 +502,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	// Allow README.md to go through unescaped except for script tags
 	escaped_html := if head && is_module_readme(dn) {
 		// Strip markdown [TOC] directives, since we generate our own.
-		dn.comments[0].text.replace('[TOC]', '').replace_each(md_script_escape_seq)
+		dn.comments[0].text
 	} else {
 		dn.merge_comments()
 	}
