@@ -160,6 +160,15 @@ shell/editor after that, so that it can pick up the new PATH variable.
 > `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
 
+### Exherbo Linux
+
+<details><summary>Expand Exherbo Linux instructions</summary>
+
+```bash
+# cave resolve -x repository/CleverCloud
+# cave resolve -x v
+```
+
 ### Void Linux
 
 <details><summary>Expand Void Linux instructions</summary>
