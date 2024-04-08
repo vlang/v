@@ -4,9 +4,13 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/websockets_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/websockets_ci.yml'
 
 jobs:
   websocket_tests:

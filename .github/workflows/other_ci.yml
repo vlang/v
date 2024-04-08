@@ -4,9 +4,13 @@ on:
   push:
     paths-ignore:
       - '**.md'
+      - '**.yml'
+      - '!**/other_ci.yml'
   pull_request:
     paths-ignore:
       - '**.md'
+      - '**.yml'
+      - '!**/other_ci.yml'
 
 concurrency:
   group: build-other-${{ github.event.pull_request.number || github.sha }}
