@@ -718,7 +718,7 @@ pub fn mktyp(typ Type) Type {
 	}
 }
 
-// type_kind returns TypeSymbol kind only if there are no type modifiers
+// type_kind returns the kind of the given type symbol.
 pub fn (t &Table) type_kind(typ Type) Kind {
 	if typ.nr_muls() > 0 || typ.has_option_or_result() {
 		return Kind.placeholder
