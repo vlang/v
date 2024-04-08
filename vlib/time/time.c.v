@@ -57,10 +57,7 @@ pub fn utc() Time {
 }
 
 // new_time returns a time struct with the calculated Unix time.
-pub fn new_time(t Time) Time {
-	if t.unix != 0 {
-		return t
-	}
+fn new_time(t Time) Time {
 	tt := C.tm{
 		tm_sec: t.second
 		tm_min: t.minute

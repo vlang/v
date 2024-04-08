@@ -36,6 +36,7 @@ pub const days_before = [
 
 // Time contains various time units for a point in time.
 pub struct Time {
+	unix i64
 pub:
 	year       int
 	month      int
@@ -44,7 +45,6 @@ pub:
 	minute     int
 	second     int
 	nanosecond int
-	unix       i64
 	is_local   bool // used to make time.now().local().local() == time.now().local()
 	//
 	microsecond int @[deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
@@ -86,7 +86,14 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
+// new returns a time struct with the calculated Unix time.
+@[deprecated: 'use the `new` function instead of the static type method']
 pub fn Time.new(t Time) Time {
+	return new_time(t)
+}
+
+// new returns a time struct with the calculated Unix time.
+pub fn new(t Time) Time {
 	return new_time(t)
 }
 
@@ -102,53 +109,54 @@ pub fn (t Time) smonth() string {
 // unix_time returns the UNIX time with second resolution.
 @[inline]
 pub fn (t Time) unix_time() i64 {
-	return t.unix
+	return if t.unix > 0 { *t } else { new_time(t) }.unix
 }
 
 // unix_time_milli returns the UNIX time with millisecond resolution.
 @[inline]
 pub fn (t Time) unix_time_milli() i64 {
-	return t.unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
+	return if t.unix > 0 { *t } else { new_time(t) }.unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
 // unix_time_micro returns the UNIX time with microsecond resolution.
 @[inline]
 pub fn (t Time) unix_time_micro() i64 {
-	return t.unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
+	return if t.unix > 0 { *t } else { new_time(t) }.unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
 // unix_time_nano returns the UNIX time with nanosecond resolution.
 @[inline]
 pub fn (t Time) unix_time_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
-	return t.unix * 1_000_000_000 + i64(t.nanosecond)
+	return if t.unix > 0 { *t } else { new_time(t) }.unix * 1_000_000_000 + i64(t.nanosecond)
 }
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
+	ut := if t.unix > 0 { *t } else { new_time(t) }
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 	// increased_time_second
-	mut increased_time_second := t.unix + (increased_time_nanosecond / second)
+	mut increased_time_second := ut.unix + (increased_time_nanosecond / second)
 	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
 		increased_time_nanosecond += second
 	}
 	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
-	return if t.is_local { res.as_local() } else { res }
+	return if ut.is_local { res.as_local() } else { res }
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return t.add(seconds * second)
+	return if t.unix > 0 { *t } else { new_time(t) }.add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return t.add(days * 24 * hour)
+	return if t.unix > 0 { *t } else { new_time(t) }.add(days * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.
