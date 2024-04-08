@@ -45,7 +45,7 @@ pub fn sleep(dur Duration) {
 }
 
 // new_time returns a time struct with the calculated Unix time.
-pub fn new_time(t Time) Time {
+fn new_time(t Time) Time {
 	if t.unix != 0 {
 		return t
 	}
