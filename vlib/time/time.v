@@ -133,12 +133,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 
 	// increased_time_second
-	mut increased_time_second := t.unix + (increased_time_nanosecond / time.second)
+	mut increased_time_second := t.unix + (increased_time_nanosecond / second)
 
-	increased_time_nanosecond = increased_time_nanosecond % time.second
+	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
-		increased_time_nanosecond += time.second
+		increased_time_nanosecond += second
 	}
 	if t.is_local {
 		return unix_nanosecond(increased_time_second, int(increased_time_nanosecond)).as_local()
@@ -148,12 +148,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return t.add(seconds * time.second)
+	return t.add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return t.add(days * 24 * time.hour)
+	return t.add(days * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.
@@ -354,7 +354,7 @@ pub fn (t Time) local_to_utc() Time {
 		return t
 	}
 	return Time{
-		...t.add(-offset() * time.second)
+		...t.add(-offset() * second)
 		is_local: false
 	}
 }
@@ -366,7 +366,7 @@ pub fn (u Time) utc_to_local() Time {
 		return u
 	}
 	return Time{
-		...u.add(offset() * time.second)
+		...u.add(offset() * second)
 		is_local: true
 	}
 }
