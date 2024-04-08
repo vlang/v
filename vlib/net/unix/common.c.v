@@ -5,9 +5,7 @@ import net
 
 // no_deadline should be given to functions when no deadline is wanted (i.e. all functions
 // return instantly)
-const no_deadline = time.Time{
-	unix: 0
-}
+const no_deadline = time.unix(0)
 // no_timeout should be given to functions when no timeout is wanted (i.e. all functions
 // return instantly)
 const no_timeout = time.Duration(0)
@@ -71,7 +69,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 @[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
-	infinite := deadline.unix_time() == 0
+	infinite := deadline.unix() == 0
 	for infinite || time.now() <= deadline {
 		timeout := if infinite { net.infinite_timeout } else { deadline - time.now() }
 		ready := @select(handle, test, timeout) or {

@@ -53,7 +53,7 @@ import time
 s := '2018-01-27 12:48:34'
 t := time.parse(s) or { panic('failing format: ${s} | err: ${err}') }
 println(t)
-println(t.unix_unix())
+println(t.unix())
 ```
 
 V's time module also has these parse methods:

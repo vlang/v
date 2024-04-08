@@ -1119,5 +1119,5 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 // This function is designed for handling timezone adjustments by converting the machine's local time at micro format to a universal micro format.
 //
 fn get_current_unix_micro_timestamp() i64 {
-	return time.now().unix_time_micro()
+	return time.now().unix_micro()
 }

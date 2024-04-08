@@ -152,7 +152,7 @@ pub fn (mut c StreamConn) read(mut buf []u8) !int {
 
 // read_deadline returns the read deadline
 pub fn (mut c StreamConn) read_deadline() !time.Time {
-	if c.read_deadline.unix == 0 {
+	if c.read_deadline.unix() == 0 {
 		return c.read_deadline
 	}
 	return error('none')
@@ -165,7 +165,7 @@ pub fn (mut c StreamConn) set_read_deadline(deadline time.Time) {
 
 // write_deadline returns the write deadline
 pub fn (mut c StreamConn) write_deadline() !time.Time {
-	if c.write_deadline.unix == 0 {
+	if c.write_deadline.unix() == 0 {
 		return c.write_deadline
 	}
 	return error('none')
@@ -297,7 +297,7 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 
 // accept_deadline returns the deadline until a new client is accepted
 pub fn (l &StreamListener) accept_deadline() !time.Time {
-	if l.accept_deadline.unix != 0 {
+	if l.accept_deadline.unix() != 0 {
 		return l.accept_deadline
 	}
 	return error('no deadline')

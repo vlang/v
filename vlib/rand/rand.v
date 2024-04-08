@@ -323,10 +323,10 @@ pub fn (mut rng PRNG) f64_in_range(min f64, max f64) !f64 {
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn (mut rng PRNG) ulid() string {
-	return internal_ulid_at_millisecond(mut rng, u64(time.utc().unix_time_milli()))
+	return internal_ulid_at_millisecond(mut rng, u64(time.utc().unix_milli()))
 }
 
-// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_milli`.
 pub fn (mut rng PRNG) ulid_at_millisecond(unix_time_milli u64) string {
 	return internal_ulid_at_millisecond(mut rng, unix_time_milli)
 }
@@ -671,7 +671,7 @@ pub fn ulid() string {
 	return default_rng.ulid()
 }
 
-// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	return default_rng.ulid_at_millisecond(unix_time_milli)
 }

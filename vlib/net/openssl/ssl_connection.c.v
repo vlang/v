@@ -120,7 +120,7 @@ fn (mut s SSLConn) init() ! {
 		mut cert := s.config.cert
 		mut cert_key := s.config.cert_key
 		if s.config.in_memory_verification {
-			now := time.now().unix.str()
+			now := time.now().unix().str()
 			verify = os.temp_dir() + '/v_verify' + now
 			cert = os.temp_dir() + '/v_cert' + now
 			cert_key = os.temp_dir() + '/v_cert_key' + now

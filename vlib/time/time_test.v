@@ -1,7 +1,7 @@
 import time
 import math
 
-const local_time_to_test = time.new_time(
+const local_time_to_test = time.new(
 	year: 1980
 	month: 7
 	day: 11
@@ -12,7 +12,7 @@ const local_time_to_test = time.new_time(
 	is_local: true
 )
 
-const utc_time_to_test = time.new_time(
+const utc_time_to_test = time.new(
 	year: 1980
 	month: 7
 	day: 11
@@ -90,8 +90,8 @@ fn test_unix() {
 	assert t6.hour == 6
 	assert t6.minute == 9
 	assert t6.second == 29
-	assert local_time_to_test.unix_time() == 332198622
-	assert utc_time_to_test.unix_time() == 332198622
+	assert local_time_to_test.unix() == 332198622
+	assert utc_time_to_test.unix() == 332198622
 }
 
 fn test_format_rfc3339() {
@@ -236,14 +236,14 @@ fn test_add() {
 	// dump(t2.debug())
 	assert t2.second == t1.second + d_seconds
 	assert t2.nanosecond == t1.nanosecond + d_nanoseconds
-	assert t2.unix_time() == t1.unix_time() + d_seconds
+	assert t2.unix() == t1.unix() + d_seconds
 	assert t2.is_local == t1.is_local
 	//
 	t3 := local_time_to_test.add(-duration)
 	// dump(t3.debug())
 	assert t3.second == t1.second - d_seconds
 	assert t3.nanosecond == t1.nanosecond - d_nanoseconds
-	assert t3.unix_time() == t1.unix_time() - d_seconds
+	assert t3.unix() == t1.unix() - d_seconds
 	assert t3.is_local == t1.is_local
 	//
 	t4 := local_time_to_test.as_local()
@@ -270,7 +270,7 @@ fn test_add_days() {
 	num_of_days := 3
 	t := local_time_to_test.add_days(num_of_days)
 	assert t.day == local_time_to_test.day + num_of_days
-	assert t.unix_time() == local_time_to_test.unix_time() + 86400 * num_of_days
+	assert t.unix() == local_time_to_test.unix() + 86400 * num_of_days
 }
 
 fn test_str() {
@@ -315,14 +315,14 @@ fn test_unix_time() {
 	t2 := time.utc()
 	eprintln('  t1: ${t1}')
 	eprintln('  t2: ${t2}')
-	ut1 := t1.unix_time()
-	ut2 := t2.unix_time()
+	ut1 := t1.unix()
+	ut2 := t2.unix()
 	eprintln(' ut1: ${ut1}')
 	eprintln(' ut2: ${ut2}')
 	assert ut2 - ut1 < 2
 	//
-	utm1 := t1.unix_time_milli()
-	utm2 := t2.unix_time_milli()
+	utm1 := t1.unix_milli()
+	utm2 := t2.unix_milli()
 	eprintln('utm1: ${utm1}')
 	eprintln('utm2: ${utm2}')
 	assert (utm1 - ut1 * 1000) < 1000
@@ -381,7 +381,7 @@ fn test_strftime() {
 fn test_add_seconds_to_time() {
 	now_tm := time.now()
 	future_tm := now_tm.add_seconds(60)
-	assert now_tm.unix_time() < future_tm.unix_time()
+	assert now_tm.unix() < future_tm.unix()
 }
 
 fn test_plus_equals_duration() {
@@ -407,6 +407,6 @@ fn test_tm_gmtoff() {
 		C.time(&rawtime) // C.tm{}
 
 		info := C.localtime(&rawtime)
-		assert info.tm_gmtoff == time.now().unix_time() - time.utc().unix_time()
+		assert info.tm_gmtoff == time.now().unix() - time.utc().unix()
 	}
 }
