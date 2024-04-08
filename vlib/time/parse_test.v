@@ -9,7 +9,7 @@ fn test_parse() {
 	}
 	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
 		&& t.second == 34
-	assert t.unix == 1517057314
+	assert t.unix_time() == 1517057314
 }
 
 fn test_parse_invalid() {
@@ -33,7 +33,7 @@ fn test_parse_rfc2822() {
 	}
 	assert t1.year == 2019 && t1.month == 12 && t1.day == 12 && t1.hour == 6 && t1.minute == 7
 		&& t1.second == 45
-	assert t1.unix == 1576130865
+	assert t1.unix_time() == 1576130865
 	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
 	t2 := time.parse_rfc2822(s2) or {
 		eprintln('> failing format: ${s2} | err: ${err}')
@@ -42,7 +42,7 @@ fn test_parse_rfc2822() {
 	}
 	assert t2.year == 2019 && t2.month == 12 && t2.day == 12 && t2.hour == 6 && t2.minute == 7
 		&& t2.second == 45
-	assert t2.unix == 1576130865
+	assert t2.unix_time() == 1576130865
 }
 
 fn test_parse_rfc2822_invalid() {
@@ -192,14 +192,14 @@ fn test_ad_second_to_parse_result_in_2001() {
 	now_tm := time.parse('2001-01-01 04:00:00')!
 	future_tm := now_tm.add_seconds(60)
 	assert future_tm.str() == '2001-01-01 04:01:00'
-	assert now_tm.unix < future_tm.unix
+	assert now_tm.unix_time() < future_tm.unix_time()
 }
 
 fn test_ad_second_to_parse_result_pre_2001() {
 	now_tm := time.parse('2000-01-01 04:00:00')!
 	future_tm := now_tm.add_seconds(60)
 	assert future_tm.str() == '2000-01-01 04:01:00'
-	assert now_tm.unix < future_tm.unix
+	assert now_tm.unix_time() < future_tm.unix_time()
 }
 
 fn test_parse_format() {

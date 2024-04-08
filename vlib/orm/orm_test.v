@@ -363,7 +363,7 @@ fn test_orm() {
 	}!
 
 	assert data.len == 1
-	assert tnow.unix == data[0].create.unix
+	assert tnow.unix_time() == data[0].create.unix_time()
 
 	mod := Module{}
 

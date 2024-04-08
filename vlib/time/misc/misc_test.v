@@ -8,10 +8,10 @@ fn test_random() {
 	t2 := tmisc.random()
 	t3 := tmisc.random()
 	t4 := tmisc.random()
-	assert t1.unix != t2.unix
-	assert t1.unix != t3.unix
-	assert t1.unix != t4.unix
-	assert t2.unix != t3.unix
-	assert t2.unix != t4.unix
-	assert t3.unix != t4.unix
+	assert t1.unix_time() != t2.unix_time()
+	assert t1.unix_time() != t3.unix_time()
+	assert t1.unix_time() != t4.unix_time()
+	assert t2.unix_time() != t3.unix_time()
+	assert t2.unix_time() != t4.unix_time()
+	assert t3.unix_time() != t4.unix_time()
 }

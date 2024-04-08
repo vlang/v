@@ -171,7 +171,7 @@ pub fn (mut ws Client) listen() ! {
 			}
 			.pong {
 				ws.debug_log('read: pong')
-				ws.last_pong_ut = time.now().unix
+				ws.last_pong_ut = time.now().unix_time()
 				ws.send_message_event(msg)
 				if msg.payload.len > 0 {
 					unsafe { msg.free() }
