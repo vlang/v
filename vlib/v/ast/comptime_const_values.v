@@ -18,12 +18,12 @@ pub type ComptTimeConstValue = EmptyExpr
 
 //| int
 
-// empty_comptime_const_expr return an EmptyExpr 
+// empty_comptime_const_expr return an EmptyExpr.
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr(0)
 }
 
-// i8 tries to return a `ComptTimeConstValue` as `i8` type
+// i8 tries to return a `ComptTimeConstValue` as `i8` type.
 pub fn (val ComptTimeConstValue) i8() ?i8 {
 	x := val.i64()?
 	if x > -129 && x < 128 {
@@ -32,7 +32,7 @@ pub fn (val ComptTimeConstValue) i8() ?i8 {
 	return none
 }
 
-// i16 tries to return a `CompTimeConstValue` as `i16` type 
+// i16 tries to return a `ComptTimeConstValue` as `i16` type.
 pub fn (val ComptTimeConstValue) i16() ?i16 {
 	x := val.i64()?
 	if x > -32769 && x < 32768 {
@@ -41,7 +41,7 @@ pub fn (val ComptTimeConstValue) i16() ?i16 {
 	return none
 }
 
-// int tries to return a `CompTimeConstValue` as `int` type
+// int tries to return a `ComptTimeConstValue` as `int` type.
 pub fn (val ComptTimeConstValue) int() ?int {
 	x := val.i64()?
 	if x > -2147483649 && x < 2147483648 {
@@ -50,7 +50,7 @@ pub fn (val ComptTimeConstValue) int() ?int {
 	return none
 }
 
-// i32 tries to return a `CompTimeConstValue` as `i32` type
+// i32 tries to return a `ComptTimeConstValue` as `i32` type.
 pub fn (val ComptTimeConstValue) i32() ?i32 {
 	x := val.i64()?
 	if x > -2147483649 && x < 2147483648 {
@@ -59,7 +59,7 @@ pub fn (val ComptTimeConstValue) i32() ?i32 {
 	return none
 }
 
-// voidptr tries to return a `CompTimeConstValue` as `voidptr` type
+// voidptr tries to return a `ComptTimeConstValue` as `voidptr` type.
 pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 	match val {
 		i8, i16, i32, i64, int { return voidptr(i64(val)) }
@@ -71,7 +71,7 @@ pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 	return none
 }
 
-// i64 tries to return a `CompTimeConstValue` as i64 type
+// i64 tries to return a `ComptTimeConstValue` as i64 type.
 pub fn (val ComptTimeConstValue) i64() ?i64 {
 	match val {
 		i8 {
@@ -126,7 +126,7 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 	return none
 }
 
-// u8 tries to return a `CompTimeConstValue` as `u8` type
+// u8 tries to return a `ComptTimeConstValue` as `u8` type.
 pub fn (val ComptTimeConstValue) u8() ?u8 {
 	x := val.u64()?
 	if x < 256 {
@@ -135,7 +135,7 @@ pub fn (val ComptTimeConstValue) u8() ?u8 {
 	return none
 }
 
-// u16 tries to return a `CompTimeConstValue` as `u16` type
+// u16 tries to return a `ComptTimeConstValue` as `u16` type.
 pub fn (val ComptTimeConstValue) u16() ?u16 {
 	x := val.u64()?
 	if x < 65536 {
@@ -144,7 +144,7 @@ pub fn (val ComptTimeConstValue) u16() ?u16 {
 	return none
 }
 
-// u32 tries to return a `CompTimeConstValue` as `u32` type
+// u32 tries to return a `ComptTimeConstValue` as `u32` type.
 pub fn (val ComptTimeConstValue) u32() ?u32 {
 	x := val.u64()?
 	if x < 4294967296 {
@@ -153,7 +153,7 @@ pub fn (val ComptTimeConstValue) u32() ?u32 {
 	return none
 }
 
-// u64 tries to return a `CompTimeConstValue` as `u64` type
+// u64 tries to return a `ComptTimeConstValue` as `u64` type.
 pub fn (val ComptTimeConstValue) u64() ?u64 {
 	match val {
 		i8 {
@@ -215,13 +215,13 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 	return none
 }
 
-// f32 tries to return a `CompTimeConstValue` as `f32` type
+// f32 tries to return a `ComptTimeConstValue` as `f32` type.
 pub fn (val ComptTimeConstValue) f32() ?f32 {
 	x := val.f64()?
 	return f32(x)
 }
 
-// f64 tries to return a `CompTimeConstValue` as `f64` type
+// f64 tries to return a `ComptTimeConstValue` as `f64` type.
 pub fn (val ComptTimeConstValue) f64() ?f64 {
 	match val {
 		i8 {
@@ -267,7 +267,7 @@ pub fn (val ComptTimeConstValue) f64() ?f64 {
 	return none
 }
 
-// string tries to return a `CompTimeConstValue` as `string` type
+// string tries to return a `ComptTimeConstValue` as `string` type.
 pub fn (val ComptTimeConstValue) string() ?string {
 	match val {
 		i8 {
