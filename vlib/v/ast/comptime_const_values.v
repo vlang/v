@@ -23,7 +23,7 @@ pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr(0)
 }
 
-// i8 tries to return a `ComptimeConstValue` as `i8` type
+// i8 tries to return a `CompTimeConstValue` as `i8` type
 pub fn (val ComptTimeConstValue) i8() ?i8 {
 	x := val.i64()?
 	if x > -129 && x < 128 {
