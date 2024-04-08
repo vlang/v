@@ -5,7 +5,15 @@
 <span class="token keyword">fn</span> <span class="token function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
     <span class="token keyword">dump</span><span class="token punctuation">(</span>os<span class="token punctuation">.</span>args<span class="token punctuation">)</span>
     <span class="token keyword">dump</span><span class="token punctuation">(</span>os<span class="token punctuation">.</span>args<span class="token punctuation">.</span>len<span class="token punctuation">)</span>
-    <span class="token keyword">assert</span> os<span class="token punctuation">.</span>args<span class="token punctuation">.</span>len <span class="token operator">&</span>gt<span class="token punctuation">;</span> <span class="token number">0</span>
+    <span class="token keyword">assert</span> os<span class="token punctuation">.</span>args<span class="token punctuation">.</span>len <span class="token operator">></span> <span class="token number">0</span>
+
+    <span class="token comment">// Test escape characters like for `&` and `<`</span>
+    <span class="token keyword">mut</span> arr <span class="token operator">:=</span> <span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">2</span><span class="token punctuation">,</span> <span class="token number">3</span><span class="token punctuation">]</span>
+    <span class="token keyword">mut</span> ref <span class="token operator">:=</span> <span class="token operator">&</span>arr
+    arr <span class="token operator"><<</span> <span class="token number">4</span>
+
+    ch <span class="token operator">:=</span> <span class="token builtin">chan</span> <span class="token builtin">bool</span><span class="token punctuation">{</span>cap<span class="token punctuation">:</span> <span class="token number">1</span><span class="token punctuation">}</span>
+    ch <span class="token operator"><-</span> <span class="token boolean">true</span>
 <span class="token punctuation">}</span></code></pre><h3>A JWT example (test syntax highlighting)</h3><pre><code class="language-v"><span class="token keyword">import</span> crypto<span class="token punctuation">.</span>hmac
 <span class="token keyword">import</span> crypto<span class="token punctuation">.</span>sha256
 <span class="token keyword">import</span> encoding<span class="token punctuation">.</span>base64

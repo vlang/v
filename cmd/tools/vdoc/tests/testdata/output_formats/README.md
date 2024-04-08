@@ -20,6 +20,14 @@ fn main() {
 	dump(os.args)
 	dump(os.args.len)
 	assert os.args.len > 0
+
+	// Test escape characters like for `&` and `<`
+	mut arr := [1, 2, 3]
+	mut ref := &arr
+	arr << 4
+
+	ch := chan bool{cap: 1}
+	ch <- true
 }
 ```
 
