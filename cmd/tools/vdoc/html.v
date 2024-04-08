@@ -17,7 +17,7 @@ const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0
 
 const single_quote = "'"
 const double_quote = '"'
-const no_quotes_replacement = [single_quote, '', double_quote, '']
+const quote_escape_seq = [single_quote, '', double_quote, '']
 
 enum HighlightTokenTyp {
 	unone
@@ -542,7 +542,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>\n').join('')
+		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
@@ -596,10 +596,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		toc.write_string('<li class="open"><a href="#${toc_slug}">${dn.name}</a>')
 	}
 	toc.writeln('</li>')
-}
-
-fn no_quotes(s string) string {
-	return s.replace_each(no_quotes_replacement)
 }
 
 struct MdHtmlCodeHighlighter {
