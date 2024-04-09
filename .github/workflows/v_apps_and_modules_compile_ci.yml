@@ -134,7 +134,7 @@ jobs:
           v fmt -c .
           exit_code=$?
           if [[ $exit_code -ne 0 && $exit_code -ne 5 ]]; then
-            # Don't fail on on internal errors
+            # Don't fail if there are only internal errors (exit code 5).
             v fmt -diff .
             exit 1
           fi
