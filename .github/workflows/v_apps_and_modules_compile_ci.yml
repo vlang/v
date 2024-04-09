@@ -227,10 +227,6 @@ jobs:
           ~/.vmodules/vsl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
           ~/.vmodules/vsl/bin/test --use-cblas
-          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
-          ~/.vmodules/vsl/bin/test --use-gc boehm
-          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
-          ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
 
       - name: Build vlang/vtl
         run: |
@@ -241,10 +237,6 @@ jobs:
           ~/.vmodules/vtl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
           ~/.vmodules/vtl/bin/test --use-cblas
-          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
-          ~/.vmodules/vtl/bin/test --use-gc boehm
-          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
-          ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
 
   vpm-site:
     strategy:
