@@ -1,12 +1,14 @@
-vlib/v/checker/tests/struct_field_private_err.vv:8:2: warning: cannot access private field `x` on `amod.Bcg`
+vlib/v/checker/tests/struct_field_private_err.vv:8:2: warning: initalizing private field `x` of `amod.Bcg`
     6 | 
     7 | _ := amod.Bcg{
     8 |     x: 0
       |     ~~~~
     9 | }
    10 |
-vlib/v/checker/tests/struct_field_private_err.vv:11:10: warning: cannot access private field `bar` on `amod.FooParams`
+Details: this will become an error after 2024-05-31
+vlib/v/checker/tests/struct_field_private_err.vv:11:10: warning: initalizing private field `bar` of `amod.FooParams`
     9 | }
    10 | 
    11 | amod.foo(bar: 'bar')
       |          ~~~~~~~~~~
+Details: this will become an error after 2024-05-31
