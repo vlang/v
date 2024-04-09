@@ -615,12 +615,14 @@ pub fn (mut a Integer) dec() {
 }
 
 // == returns `true` if the integers `a` and `b` are equal in value and sign.
+@[inline]
 pub fn (a Integer) == (b Integer) bool {
 	return a.signum == b.signum && a.digits.len == b.digits.len && a.digits == b.digits
 }
 
 // abs_cmp returns the result of comparing the magnitudes of the integers `a` and `b`.
 // It returns a negative int if `|a| < |b|`, 0 if `|a| == |b|`, and a positive int if `|a| > |b|`.
+@[inline]
 pub fn (a Integer) abs_cmp(b Integer) int {
 	return compare_digit_array(a.digits, b.digits)
 }
@@ -921,6 +923,7 @@ fn u32_to_hex_with_lz(value u32) string {
 
 // int returns the integer value of the integer `a`.
 // NOTE: This may cause loss of precision.
+@[direct_array_access]
 pub fn (a Integer) int() int {
 	if a.signum == 0 {
 		return 0
