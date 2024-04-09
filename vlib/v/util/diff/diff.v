@@ -9,15 +9,13 @@ pub fn find_working_diff_command() !string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
 	if env_difftool != '' {
+		os.find_abs_path_of_executable(env_difftool) or {
+			return error('could not find specified VDIFF_TOOL `${env_difftool}`')
+		}
 		return '${env_difftool} ${env_diffopts}'
 	}
-	mut known_diff_tools := []string{}
-	if env_difftool.len > 0 {
-		known_diff_tools << env_difftool
-	}
-	known_diff_tools << ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
-		'code', 'code.cmd']
-	// NOTE: code.cmd is the Windows variant of the `code` cli tool
+	known_diff_tools := ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
+		'code', 'code.cmd'] // NOTE: code.cmd is the Windows variant of the `code` cli tool
 	for diffcmd in known_diff_tools {
 		if diffcmd == 'opendiff' { // opendiff has no `--version` option
 			if opendiff_exists() {
@@ -30,14 +28,9 @@ pub fn find_working_diff_command() !string {
 				return diffcmd
 			}
 		}
-
 		p := os.execute('${diffcmd} --version')
 		if p.exit_code < 0 {
 			continue
-		}
-		if p.exit_code == 127 && diffcmd == env_difftool {
-			// user setup is wonky, fix it
-			return error('could not find specified VDIFF_TOOL ${diffcmd}')
 		}
 		if p.exit_code == 0 { // success
 			if diffcmd in ['code', 'code.cmd'] {
