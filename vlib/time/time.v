@@ -133,12 +133,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 
 	// increased_time_second
-	mut increased_time_second := t.unix + (increased_time_nanosecond / time.second)
+	mut increased_time_second := t.unix + (increased_time_nanosecond / second)
 
-	increased_time_nanosecond = increased_time_nanosecond % time.second
+	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
-		increased_time_nanosecond += time.second
+		increased_time_nanosecond += second
 	}
 	if t.is_local {
 		return unix_nanosecond(increased_time_second, int(increased_time_nanosecond)).as_local()
@@ -148,12 +148,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return t.add(seconds * time.second)
+	return t.add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return t.add(days * 24 * time.hour)
+	return t.add(days * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.
@@ -340,129 +340,6 @@ pub fn (t Time) debug() string {
 	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} nanosecond: ${t.nanosecond:09} unix: ${t.unix:07} }'
 }
 
-// A lot of these are taken from the Go library.
-pub type Duration = i64
-
-pub const nanosecond = Duration(1)
-pub const microsecond = Duration(1000 * nanosecond)
-pub const millisecond = Duration(1000 * microsecond)
-pub const second = Duration(1000 * millisecond)
-pub const minute = Duration(60 * second)
-pub const hour = Duration(60 * minute)
-//	day         = Duration(24 * hour)
-pub const infinite = Duration(i64(9223372036854775807))
-
-// nanoseconds returns the duration as an integer number of nanoseconds.
-pub fn (d Duration) nanoseconds() i64 {
-	return i64(d)
-}
-
-// microseconds returns the duration as an integer number of microseconds.
-pub fn (d Duration) microseconds() i64 {
-	return i64(d) / time.microsecond
-}
-
-// milliseconds returns the duration as an integer number of milliseconds.
-pub fn (d Duration) milliseconds() i64 {
-	return i64(d) / time.millisecond
-}
-
-// The following functions return floating point numbers because it's common to
-// consider all of them in sub-one intervals
-// seconds returns the duration as a floating point number of seconds.
-pub fn (d Duration) seconds() f64 {
-	return f64(d) / f64(time.second)
-}
-
-// minutes returns the duration as a floating point number of minutes.
-pub fn (d Duration) minutes() f64 {
-	return f64(d) / f64(time.minute)
-}
-
-// hours returns the duration as a floating point number of hours.
-pub fn (d Duration) hours() f64 {
-	return f64(d) / f64(time.hour)
-}
-
-// days returns the duration as a floating point number of days.
-pub fn (d Duration) days() f64 {
-	return f64(d) / f64(time.hour * 24)
-}
-
-// str pretty prints the duration
-//
-// ```
-// h:m:s      // 5:02:33
-// m:s.mi<s>  // 2:33.015
-// s.mi<s>    // 33.015s
-// mi.mc<ms>  // 15.007ms
-// mc.ns<ns>  // 7.234us
-// ns<ns>     // 234ns
-// ```
-pub fn (d Duration) str() string {
-	if d == time.infinite {
-		return 'inf'
-	}
-	mut t := i64(d)
-	hr := t / time.hour
-	t -= hr * time.hour
-	min := t / time.minute
-	t -= min * time.minute
-	sec := t / time.second
-	t -= sec * time.second
-	ms := t / time.millisecond
-	t -= ms * time.millisecond
-	us := t / time.microsecond
-	t -= us * time.microsecond
-	ns := t
-
-	if hr > 0 {
-		return '${hr}:${min:02}:${sec:02}'
-	}
-	if min > 0 {
-		return '${min}:${sec:02}.${ms:03}'
-	}
-	if sec > 0 {
-		return '${sec}.${ms:03}s'
-	}
-	if ms > 0 {
-		return '${ms}.${us:03}ms'
-	}
-	if us > 0 {
-		return '${us}.${ns:03}us'
-	}
-	return '${ns}ns'
-}
-
-// debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'
-pub fn (d Duration) debug() string {
-	mut res := []string{}
-	mut x := i64(d)
-	mut sign := ''
-	if x < 0 {
-		sign = '- '
-		x = -x
-	}
-	for label, v in {
-		'days': 24 * time.hour
-		'h':    time.hour
-		'm':    time.minute
-		's':    time.second
-		'ms':   time.millisecond
-		'us':   time.microsecond
-	} {
-		if x > v {
-			xx := x / v
-			x = x % v
-			res << xx.str() + label
-		}
-	}
-	if x > 0 {
-		res << '${x}ns'
-	}
-	return 'Duration: ${sign}${res.join(', ')}'
-}
-
 // offset returns time zone UTC offset in seconds.
 pub fn offset() int {
 	t := utc()
@@ -477,7 +354,7 @@ pub fn (t Time) local_to_utc() Time {
 		return t
 	}
 	return Time{
-		...t.add(-offset() * time.second)
+		...t.add(-offset() * second)
 		is_local: false
 	}
 }
@@ -489,7 +366,7 @@ pub fn (u Time) utc_to_local() Time {
 		return u
 	}
 	return Time{
-		...u.add(offset() * time.second)
+		...u.add(offset() * second)
 		is_local: true
 	}
 }
