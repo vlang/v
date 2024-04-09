@@ -6,7 +6,6 @@ fn test_for_mut_var_assign_add_string() {
 	assert arr == ['ad', 'bd', 'cd']
 }
 
-
 fn test_for_mut_var_assign_minus_int() {
 	mut arr := [12, 13, 14]
 	for mut c in arr {
