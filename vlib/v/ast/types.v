@@ -433,6 +433,7 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: ${ts.language}'
 }
 
+// str returns a string representation of the type.
 pub fn (t Type) str() string {
 	return 'ast.Type(0x${t.hex()} = ${u32(t)})'
 }
@@ -717,7 +718,7 @@ pub fn mktyp(typ Type) Type {
 	}
 }
 
-// returns TypeSymbol kind only if there are no type modifiers
+// type_kind returns the kind of the given type symbol.
 pub fn (t &Table) type_kind(typ Type) Kind {
 	if typ.nr_muls() > 0 || typ.has_option_or_result() {
 		return Kind.placeholder
