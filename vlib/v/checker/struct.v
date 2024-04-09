@@ -750,7 +750,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 									} else {
 										parts.last()
 									}
-									c.error('cannot access private field `${field.name}` on `${mod_type}`',
+									c.warn('cannot access private field `${field.name}` on `${mod_type}`',
 										init_field.pos)
 									break
 								}
