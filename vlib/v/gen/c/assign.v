@@ -475,6 +475,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write('string__plus(')
 					}
 				} else {
+					// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
+					if left.is_auto_deref_var() {
+						g.write('*')
+					}
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
 					g.write(' = string__plus(')
