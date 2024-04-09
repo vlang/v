@@ -638,7 +638,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		match node.op {
 			.assign {} // No need to do single side check for =. But here put it first for speed.
 			.plus_assign, .minus_assign {
-				if left_type == ast.string_type {
+				// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
+				left_deref := if left.is_auto_deref_var() {
+					left_type.deref()
+				} else {
+					left_type
+				}
+				if left_deref == ast.string_type {
 					if node.op != .plus_assign {
 						c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 							left.pos())
