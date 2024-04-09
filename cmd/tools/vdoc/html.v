@@ -2,6 +2,7 @@ module main
 
 import os
 import net.urllib
+import encoding.html
 import strings
 import markdown
 import v.scanner
@@ -631,7 +632,7 @@ fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text
 		text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(initial_transformed_text, f.table)
+			return html_highlight(html.unescape(initial_transformed_text), f.table)
 		}
 	}
 	return initial_transformed_text
