@@ -129,21 +129,16 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
-
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
-
 	// increased_time_second
 	mut increased_time_second := t.unix + (increased_time_nanosecond / second)
-
 	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
 		increased_time_nanosecond += second
 	}
-	if t.is_local {
-		return unix_nanosecond(increased_time_second, int(increased_time_nanosecond)).as_local()
-	}
-	return unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
+	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
+	return if t.is_local { res.as_local() } else { res }
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
