@@ -4,9 +4,13 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/toml_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/toml_ci.yml'
 
 jobs:
   toml-module-pass-external-test-suites:

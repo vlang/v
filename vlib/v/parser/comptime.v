@@ -91,7 +91,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 	return ast.HashStmt{
 		mod: p.mod
-		source_file: p.file_name
+		source_file: p.file_path
 		val: val
 		kind: kind
 		main: main_str

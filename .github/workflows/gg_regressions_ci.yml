@@ -4,9 +4,13 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/gg_regressions_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/gg_regressions_ci.yml'
 
 jobs:
   gg-regressions:

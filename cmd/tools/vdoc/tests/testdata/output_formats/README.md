@@ -7,7 +7,7 @@ This is a [link](https://vlang.io/) to the main V site.
 
 This is a <b>bold text</b>.
 
-This is a script <script>console.log('hi from README.md');</script> .
+This is a script `<script>console.log('hi from README.md');</script>` .
 
 ## Examples
 
@@ -20,6 +20,14 @@ fn main() {
 	dump(os.args)
 	dump(os.args.len)
 	assert os.args.len > 0
+
+	// Test escape characters like for `&` and `<`
+	mut arr := [1, 2, 3]
+	mut ref := &arr
+	arr << 4
+
+	ch := chan bool{cap: 1}
+	ch <- true
 }
 ```
 

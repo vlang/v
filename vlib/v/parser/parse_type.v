@@ -614,13 +614,13 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		if mod in p.imports {
 			p.register_used_import(mod)
 			mod = p.imports[mod]
+			if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
+				p.error('imported types must start with a capital letter')
+				return 0
+			}
 		}
 		// prefix with full module
 		name = '${mod}.${p.tok.lit}'
-		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
-			p.error('imported types must start with a capital letter')
-			return 0
-		}
 	} else if p.expr_mod != '' && !p.inside_generic_params {
 		// p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name

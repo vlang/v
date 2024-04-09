@@ -228,6 +228,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		if expected.has_flag(.option) {
 			got_is_ptr := got.is_ptr()
 				|| (arg.expr is ast.Ident && (arg.expr as ast.Ident).is_mut())
+				|| arg.expr is ast.None
 			if (expected.is_ptr() && !got_is_ptr) || (!expected.is_ptr() && got.is_ptr()) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')

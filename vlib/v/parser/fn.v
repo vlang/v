@@ -529,7 +529,7 @@ run them via `v file.v` instead',
 			//
 			no_body: no_body
 			mod: p.mod
-			file: p.file_name
+			file: p.file_path
 			pos: start_pos
 			language: language
 		})
@@ -580,7 +580,7 @@ run them via `v file.v` instead',
 			//
 			no_body: no_body
 			mod: p.mod
-			file: p.file_name
+			file: p.file_path
 			pos: start_pos
 			language: language
 		})
@@ -650,7 +650,7 @@ run them via `v file.v` instead',
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		name_pos: name_pos
 		body_pos: body_start_pos
-		file: p.file_name
+		file: p.file_path
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		scope: p.scope
 		label_names: p.label_names
@@ -863,7 +863,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_anon: true
 			no_body: no_body
 			pos: pos.extend(p.prev_tok.pos())
-			file: p.file_name
+			file: p.file_path
 			scope: p.scope
 			label_names: label_names
 		}

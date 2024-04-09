@@ -2,6 +2,7 @@ module main
 
 import os
 import net.urllib
+import encoding.html
 import strings
 import markdown
 import v.scanner
@@ -17,8 +18,7 @@ const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0
 
 const single_quote = "'"
 const double_quote = '"'
-const no_quotes_replacement = [single_quote, '', double_quote, '']
-const md_script_escape_seq = ['<script>', '`', '</script>', '`']
+const quote_escape_seq = [single_quote, '', double_quote, '']
 
 enum HighlightTokenTyp {
 	unone
@@ -500,13 +500,29 @@ fn html_highlight(code string, tb &ast.Table) string {
 fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	comments := dn.merge_comments_without_examples()
 	// Allow README.md to go through unescaped except for script tags
 	escaped_html := if head && is_module_readme(dn) {
-		// Strip markdown [TOC] directives, since we generate our own.
-		comments.replace('[TOC]', '').replace_each(md_script_escape_seq)
+		readme_lines := dn.comments[0].text.split_into_lines()
+		mut merged_lines := []string{}
+		mut is_codeblock := false
+		for i := 0; i < readme_lines.len - 1; i++ {
+			l := readme_lines[i]
+			nl := readme_lines[i + 1]
+			is_codeblock_divider := l.trim_left('\x01').trim_space().starts_with('```')
+			if is_codeblock_divider {
+				is_codeblock = !is_codeblock
+			}
+			if !is_codeblock && !is_codeblock_divider && l != '' && nl != ''
+				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
+				merged_lines << '${l} ${nl}'
+				i++
+				continue
+			}
+			merged_lines << l
+		}
+		merged_lines.join_lines()
 	} else {
-		comments
+		dn.merge_comments()
 	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
@@ -544,7 +560,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>\n').join('')
+		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
@@ -600,10 +616,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-fn no_quotes(s string) string {
-	return s.replace_each(no_quotes_replacement)
-}
-
 struct MdHtmlCodeHighlighter {
 mut:
 	language string
@@ -620,7 +632,7 @@ fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text
 		text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(initial_transformed_text, f.table)
+			return html_highlight(html.unescape(initial_transformed_text), f.table)
 		}
 	}
 	return initial_transformed_text

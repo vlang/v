@@ -23,7 +23,7 @@ const vcs_info = {
 	VCS.git: VCSInfo{
 		dir: '.git'
 		args: struct {
-			install: 'clone --depth=1 --recursive --shallow-submodules'
+			install: 'clone --depth=1 --recursive --shallow-submodules --filter=blob:none --also-filter-submodules'
 			version: '--single-branch -b'
 			update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
 			path: '-C'
