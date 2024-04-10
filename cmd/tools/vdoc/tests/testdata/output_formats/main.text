@@ -102,14 +102,43 @@ module main
     doc2 := toml.parse_file(<file path>) or { panic(err) }
     ```
     
+    ### Escape html in strings
+    
+    ```v
+    const html = '<!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <style>
+    body {
+    background: linear-gradient(to right, #274060, #1B2845);
+    color: GhostWhite;
+    font-family: sans-serif;
+    text-align: center;
+    }
+    </style>
+    </head>
+    <body>
+    <h1>Your App Content!</h1>
+    <button onclick="callV()">Call V!</button>
+    </body>
+    <script>
+    async function callV() {
+    // Call a V function that takes an argument and returns a value.
+    const res = await window.my_v_func(\'Hello from JS!\');
+    console.log(res);
+    }
+    </script>
+    </html>'
+    ```
+    
 
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle
 const beta = 2 // should be at the end
-fn abc()
-    abc - should be last
 fn def()
     def - should be first
+fn abc()
+    abc - should be last
 fn xyz()
     xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link [main v repo](https://github.com/vlang/v)
 fn MyXMLDocument.abc(text string) ?(string, int)

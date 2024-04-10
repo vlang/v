@@ -101,3 +101,32 @@ std::cout << "\n";
 doc1 := toml.parse_text(<string content>) or { panic(err) }
 doc2 := toml.parse_file(<file path>) or { panic(err) }
 ```
+
+### Escape html in strings
+
+```v
+const html = '<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <style>
+      body {
+        background: linear-gradient(to right, #274060, #1B2845);
+        color: GhostWhite;
+        font-family: sans-serif;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Your App Content!</h1>
+    <button onclick="callV()">Call V!</button>
+  </body>
+  <script>
+    async function callV() {
+      // Call a V function that takes an argument and returns a value.
+      const res = await window.my_v_func(\'Hello from JS!\');
+      console.log(res);
+    }
+  </script>
+</html>'
+```
