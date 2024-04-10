@@ -67,6 +67,23 @@ fn auth_verify(secret string, token string) bool {
     signature_from_token := base64.url_decode(token_split[2])
     return hmac.equal(signature_from_token, signature_mirror)
 }
+
+Other language specifiers
+#include <iostream>
+#include <map>
+
+std::map<std::string, int> my_map {
+    {"KEY_1", 0},
+    {"KEY_2", 10},
+};
+
+for (const auto &[key, value] : my_map) {
+    std::cout << key << ": " << value << ", ";
+}
+std::cout << "\n";
+
+doc1 := toml.parse_text(<string content>) or { panic(err) }
+doc2 := toml.parse_file(<file path>) or { panic(err) }
 [94mmodule[39m [32mmain[39m
     ## Description
     
@@ -147,6 +164,28 @@ fn auth_verify(secret string, token string) bool {
     signature_from_token := base64.url_decode(token_split[2])
     return hmac.equal(signature_from_token, signature_mirror)
     }
+    ```
+    
+    ### Other language specifiers
+    
+    ```cpp
+    #include <iostream>
+    #include <map>
+    
+    std::map<std::string, int> my_map {
+    {"KEY_1", 0},
+    {"KEY_2", 10},
+    };
+    
+    for (const auto &[key, value] : my_map) {
+    std::cout << key << ": " << value << ", ";
+    }
+    std::cout << "\n";
+    ```
+    
+    ```v ignore
+    doc1 := toml.parse_text(<string content>) or { panic(err) }
+    doc2 := toml.parse_file(<file path>) or { panic(err) }
     ```
     
 

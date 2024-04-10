@@ -79,3 +79,25 @@ fn auth_verify(secret string, token string) bool {
 	return hmac.equal(signature_from_token, signature_mirror)
 }
 ```
+
+### Other language specifiers
+
+```cpp
+#include <iostream>
+#include <map>
+
+std::map<std::string, int> my_map {
+	{"KEY_1", 0},
+	{"KEY_2", 10},
+};
+
+for (const auto &[key, value] : my_map) {
+	std::cout << key << ": " << value << ", ";
+}
+std::cout << "\n";
+```
+
+```v ignore
+doc1 := toml.parse_text(<string content>) or { panic(err) }
+doc2 := toml.parse_file(<file path>) or { panic(err) }
+```

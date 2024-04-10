@@ -80,6 +80,28 @@ module main
     }
     ```
     
+    ### Other language specifiers
+    
+    ```cpp
+    #include <iostream>
+    #include <map>
+    
+    std::map<std::string, int> my_map {
+    {"KEY_1", 0},
+    {"KEY_2", 10},
+    };
+    
+    for (const auto &[key, value] : my_map) {
+    std::cout << key << ": " << value << ", ";
+    }
+    std::cout << "\n";
+    ```
+    
+    ```v ignore
+    doc1 := toml.parse_text(<string content>) or { panic(err) }
+    doc2 := toml.parse_file(<file path>) or { panic(err) }
+    ```
+    
 
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle
