@@ -38,9 +38,12 @@ pub fn find_working_diff_command() !string {
 			return error('could not find specified VDIFF_TOOL ${diffcmd}')
 		}
 		if p.exit_code == 0 { // success
-			if diffcmd in ['gdiff', 'diff'] {
-				if p.output.contains('GNU diffutils') && env_diffopts == '' {
-					return '${diffcmd} --color=always'
+			// TODO: proper implemenation of --color flag
+			$if !macos {
+				if diffcmd in ['gdiff', 'diff'] {
+					if p.output.contains('GNU diffutils') && env_diffopts == '' {
+						return '${diffcmd} --color=always'
+					}
 				}
 			}
 			if diffcmd in ['code', 'code.cmd'] {
