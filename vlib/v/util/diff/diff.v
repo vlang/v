@@ -40,8 +40,8 @@ pub fn find_working_diff_command() !string {
 				}
 			}
 			if diffcmd in ['code', 'code.cmd'] {
-				cmd := '${diffcmd} ${if env_diffopts != '' { env_diffopts } else { '-d' }}'
-				return cmd
+				// Make sure the diff flag `-d` is included in any case.
+				return '${diffcmd} ${env_diffopts} -d'
 			}
 			// Don't add spaces to the cmd if there are no `env_diffopts`.
 			return if env_diffopts != '' { '${diffcmd} ${env_diffopts}' } else { diffcmd }
