@@ -15,7 +15,7 @@ fn test_compare_files() {
 }
 "
 	f2 := "Module{
-	name: 'Foo'
+	name: 'foo'
 	description: 'Awesome V module.'
 	version: '0.1.0'
 	license: 'MIT'
@@ -33,15 +33,18 @@ fn test_compare_files() {
 	os.write_file(p2, f2)!
 
 	mut res := diff.color_compare_files('diff', p1, p2)
+	assert res.contains("-\tname: 'Foo'"), res
+	assert res.contains("+\tname: 'foo'"), res
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
 
 	// Test adding a flag to the command.
-	res = diff.color_compare_files('diff --expand-tabs', p1, p2)
-	assert res.match_glob("-*version: '0.0.0'*"), res
-	assert res.contains("+ version: '0.1.0'"), res
-	assert res.contains("+ license: 'MIT'"), res
+	res = diff.color_compare_files('diff --ignore-case', p1, p2)
+	assert !res.contains("+\tname: 'foo'"), res
+	assert res.contains("-\tversion: '0.0.0'"), res
+	assert res.contains("+\tversion: '0.1.0'"), res
+	assert res.contains("+\tlicense: 'MIT'"), res
 
 	// Test again using `find_working_diff_command()`.
 	res = diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
@@ -50,9 +53,10 @@ fn test_compare_files() {
 	assert res.contains("+\tlicense: 'MIT'"), res
 
 	// Test adding a flag via env flag.
-	os.setenv('VDIFF_OPTIONS', '--expand-tabs', true)
+	os.setenv('VDIFF_OPTIONS', '--ignore-case', true)
 	res = diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
-	assert res.contains("- version: '0.0.0'"), res
-	assert res.contains("+ version: '0.1.0'"), res
-	assert res.contains("+ license: 'MIT'"), res
+	assert !res.contains("+\tname: 'foo'"), res
+	assert res.contains("-\tversion: '0.0.0'"), res
+	assert res.contains("+\tversion: '0.1.0'"), res
+	assert res.contains("+\tlicense: 'MIT'"), res
 }
