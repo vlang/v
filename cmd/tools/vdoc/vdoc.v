@@ -371,7 +371,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			out.path = os.real_path('.')
 		}
 		if cfg.is_multi {
-			out.path = if out.path == '.' { '_docs' } else { out.path }
+			out.path = if cfg.input_path == out.path {
+				os.join_path(out.path, '_docs')
+			} else {
+				out.path
+			}
 			if !os.exists(out.path) {
 				os.mkdir(out.path) or { panic(err) }
 			} else {
