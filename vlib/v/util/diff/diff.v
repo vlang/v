@@ -69,7 +69,22 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 		}
 		return x.output.trim_right('\r\n')
 	}
-	return ''
+	return false
+}
+
+pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
+	os.find_abs_path_of_executable(diff_cmd.all_before(' ')) or {
+		return 'comparison command: `${diff_cmd}` not found'
+	}
+	flags := $if openbsd {
+		['-d', '-a', '-U', '2']
+	} $else $if freebsd {
+		['--minimal', '--text', '--unified=2']
+	} $else {
+		['--minimal', '--text', '--unified=2', '--show-function-line="fn "']
+	}
+	full_cmd := '${diff_cmd} ${flags.join(' ')} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
+	return os.execute(full_cmd).output.trim_right('\r\n')
 }
 
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
