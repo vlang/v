@@ -19,11 +19,9 @@ pub fn find_working_diff_command() !string {
 		'code', 'code.cmd']
 	// NOTE: code.cmd is the Windows variant of the `code` cli tool
 	for diffcmd in known_diff_tools {
-		if diffcmd == 'opendiff' { // opendiff has no `--version` option
-			if opendiff_exists() {
-				return diffcmd
-			}
-			continue
+		if diffcmd == 'opendiff' {
+			os.find_abs_path_of_executable('opendiff') or { continue }
+			return diffcmd
 		}
 		$if freebsd || openbsd {
 			if diffcmd == 'diff' { // FreeBSD/OpenBSD diff have no `--version` option
@@ -49,20 +47,6 @@ pub fn find_working_diff_command() !string {
 		}
 	}
 	return error('No working "diff" command found')
-}
-
-// determine if the FileMerge opendiff tool is available
-fn opendiff_exists() bool {
-	o := os.execute('opendiff')
-	if o.exit_code < 0 {
-		return false
-	}
-	if o.exit_code == 1 { // failed (expected), but found (i.e. not 127)
-		if o.output.contains('too few arguments') { // got some expected output
-			return true
-		}
-	}
-	return false
 }
 
 pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
