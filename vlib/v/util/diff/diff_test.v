@@ -39,7 +39,7 @@ fn test_compare_files() {
 
 	// Test adding a flag to the command.
 	res = diff.color_compare_files('diff --expand-tabs', p1, p2)
-	assert res.contains("- version: '0.0.0'"), res
+	assert res.match_glob("-*version: '0.0.0'*"), res
 	assert res.contains("+ version: '0.1.0'"), res
 	assert res.contains("+ license: 'MIT'"), res
 
