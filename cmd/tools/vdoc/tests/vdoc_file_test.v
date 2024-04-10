@@ -48,6 +48,28 @@ fn test_run_examples_bad() {
 	assert res.output.contains('Example: assert 5 * 5 == 77'), res.output
 }
 
+fn test_out_path() {
+	test_path := os.join_path(os.vtmp_dir(), 'vdoc_test_${rand.ulid()}')
+	os.mkdir_all(test_path) or {}
+	defer {
+		os.rmdir_all(test_path) or {}
+	}
+	os.chdir(test_path)!
+
+	// Copy a *small* vlib module for the test.
+	mod := 'coroutines'
+	os.cp_all(os.join_path(vroot, 'vlib', mod), os.join_path(test_path, mod), true) or {}
+
+	// Relative input with default output path.
+	os.execute_opt('${vexe} doc -f html -m ${mod}')!
+	assert os.exists(os.join_path(test_path, mod, '_docs', '${mod}.html'))
+
+	// Custom out path (no `_docs` subdir).
+	out_dir := os.join_path(os.vtmp_dir(), 'docs_test')
+	os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${mod}')!
+	assert os.exists(os.join_path(out_dir, '${mod}.html'))
+}
+
 fn get_main_files_in_dir(dir string) []string {
 	mut mfiles := os.walk_ext(dir, '.v')
 	mfiles.sort()
