@@ -247,10 +247,10 @@ const html = '<!DOCTYPE html>
 [94mconst[39m omega = [94m3[39m [90m// should be first[39m
 [94mconst[39m alpha = [94m5[39m [90m// should be in the middle[39m
 [94mconst[39m beta = [94m2[39m [90m// should be at the end[39m
-[94mfn[39m [36mdef[39m()
-    def - should be first
 [94mfn[39m [36mabc[39m()
     abc - should be last
+[94mfn[39m [36mdef[39m()
+    def - should be first
 [94mfn[39m [36mxyz[39m()
     xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link [main v repo](https://github.com/vlang/v)
 [94mfn[39m [32mMyXMLDocument[39m.[36mabc[39m(text [32mstring[39m) ?([32mstring[39m, [32mint[39m)

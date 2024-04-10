@@ -135,10 +135,10 @@ module main
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle
 const beta = 2 // should be at the end
-fn def()
-    def - should be first
 fn abc()
     abc - should be last
+fn def()
+    def - should be first
 fn xyz()
     xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link [main v repo](https://github.com/vlang/v)
 fn MyXMLDocument.abc(text string) ?(string, int)
