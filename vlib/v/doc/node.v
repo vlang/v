@@ -24,15 +24,7 @@ pub fn (mut nodes []DocNode) arrange() {
 			kinds << v.kind
 		}
 	}
-	kinds.sort_with_compare(fn (a &SymbolKind, b &SymbolKind) int {
-		ak := int(*a)
-		bk := int(*b)
-		return match true {
-			ak < bk { -1 }
-			ak > bk { 1 }
-			else { 0 }
-		}
-	})
+	kinds.sort_with_compare(compare_sym_kinds)
 	mut res := []DocNode{}
 	for k in kinds {
 		mut kind_nodes := nodes.filter(it.kind == k)
@@ -40,6 +32,16 @@ pub fn (mut nodes []DocNode) arrange() {
 		res << kind_nodes
 	}
 	nodes = res.clone()
+}
+
+fn compare_sym_kinds(a &SymbolKind, b &SymbolKind) int {
+	ak := int(*a)
+	bk := int(*b)
+	return match true {
+		ak < bk { -1 }
+		ak > bk { 1 }
+		else { 0 }
+	}
 }
 
 // arr() converts the map into an array of `DocNode`.
