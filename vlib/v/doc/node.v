@@ -6,10 +6,9 @@ pub const should_sort = os.getenv_opt('VDOC_SORT') or { 'true' }.bool()
 
 pub fn (nodes []DocNode) find(symname string) !DocNode {
 	for node in nodes {
-		if node.name != symname {
-			continue
+		if node.name == symname {
+			return node
 		}
-		return node
 	}
 	return error('symbol not found')
 }
@@ -29,15 +28,13 @@ pub fn (mut nodes []DocNode) sort_by_kind() {
 }
 
 fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
-	ak := int((*a).kind)
-	bk := int((*b).kind)
-	if ak < bk {
-		return -1
+	ak := int(a.kind)
+	bk := int(b.kind)
+	return match true {
+		ak < bk { -1 }
+		ak > bk { 1 }
+		else { 0 }
 	}
-	if ak > bk {
-		return 1
-	}
-	return 0
 }
 
 fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
@@ -48,7 +45,7 @@ fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 
 // arr() converts the map into an array of `DocNode`.
 pub fn (cnts map[string]DocNode) arr() []DocNode {
-	mut contents := cnts.keys().map(cnts[it])
+	mut contents := cnts.values()
 	contents.sort_by_name()
 	contents.sort_by_kind()
 	return contents
