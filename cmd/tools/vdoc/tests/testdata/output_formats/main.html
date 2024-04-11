@@ -57,7 +57,40 @@
         sha256<span class="token punctuation">.</span>sum<span class="token punctuation">,</span> sha256<span class="token punctuation">.</span>block_size<span class="token punctuation">)</span>
     signature_from_token <span class="token operator">:=</span> base64<span class="token punctuation">.</span><span class="token function">url_decode</span><span class="token punctuation">(</span>token_split<span class="token punctuation">[</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
     <span class="token keyword">return</span> hmac<span class="token punctuation">.</span><span class="token function">equal</span><span class="token punctuation">(</span>signature_from_token<span class="token punctuation">,</span> signature_mirror<span class="token punctuation">)</span>
-<span class="token punctuation">}</span></code></pre>
+<span class="token punctuation">}</span></code></pre><h3>Other language specifiers</h3><pre><code class="language-cpp">##
+std<span class="token punctuation">:</span><span class="token punctuation">:</span><span class="token builtin">map</span><span class="token operator"><</span>std<span class="token punctuation">:</span><span class="token punctuation">:</span><span class="token builtin">string</span><span class="token punctuation">,</span> <span class="token builtin">int</span><span class="token operator">></span> <span class="token symbol">my_map</span> <span class="token punctuation">{</span>
+    <span class="token punctuation">{</span><span class="token string">'KEY_1'</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">}</span><span class="token punctuation">,</span>
+    <span class="token punctuation">{</span><span class="token string">'KEY_2'</span><span class="token punctuation">,</span> <span class="token number">10</span><span class="token punctuation">}</span><span class="token punctuation">,</span>
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+<span class="token keyword">for</span> <span class="token punctuation">(</span><span class="token keyword">const</span> auto <span class="token operator">&</span><span class="token punctuation">[</span>key<span class="token punctuation">,</span> value<span class="token punctuation">]</span> <span class="token punctuation">:</span> my_map<span class="token punctuation">)</span> <span class="token punctuation">{</span>
+    std<span class="token punctuation">:</span><span class="token punctuation">:</span>cout <span class="token operator"><<</span> key <span class="token operator"><<</span> <span class="token string">': '</span> <span class="token operator"><<</span> value <span class="token operator"><<</span> <span class="token string">', '</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span>
+std<span class="token punctuation">:</span><span class="token punctuation">:</span>cout <span class="token operator"><<</span> <span class="token string">'\n'</span><span class="token punctuation">;</span></code></pre><pre><code class="language-v">doc1 <span class="token operator">:=</span> toml<span class="token punctuation">.</span><span class="token function">parse_text</span><span class="token punctuation">(</span><span class="token operator"><</span><span class="token builtin">string</span> content<span class="token operator">></span><span class="token punctuation">)</span> <span class="token keyword">or</span> <span class="token punctuation">{</span> <span class="token function">panic</span><span class="token punctuation">(</span>err<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+doc2 <span class="token operator">:=</span> toml<span class="token punctuation">.</span><span class="token function">parse_file</span><span class="token punctuation">(</span><span class="token operator"><</span>file path<span class="token operator">></span><span class="token punctuation">)</span> <span class="token keyword">or</span> <span class="token punctuation">{</span> <span class="token function">panic</span><span class="token punctuation">(</span>err<span class="token punctuation">)</span> <span class="token punctuation">}</span></code></pre><h3>Escape html in strings</h3><pre><code class="language-v"><span class="token keyword">const</span> html <span class="token operator">=</span> <span class="token string">'&lt;!DOCTYPE html&gt;
+&lt;html lang=&#34;en&#34;&gt;
+  &lt;head&gt;
+    &lt;style&gt;
+      body {
+        background: linear-gradient(to right, #274060, #1B2845);
+        color: GhostWhite;
+        font-family: sans-serif;
+        text-align: center;
+      }
+    &lt;/style&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;h1&gt;Your App Content!&lt;/h1&gt;
+    &lt;button onclick=&#34;callV()&#34;&gt;Call V!&lt;/button&gt;
+  &lt;/body&gt;
+  &lt;script&gt;
+    async function callV() {
+      // Call a V function that takes an argument and returns a value.
+      const res = await window.my_v_func(\&#39;Hello from JS!\&#39;);
+      console.log(res);
+    }
+  &lt;/script&gt;
+&lt;/html&gt;'</span></code></pre>
 
 </section>
 

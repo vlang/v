@@ -475,7 +475,13 @@ fn html_highlight(code string, tb &ast.Table) string {
 			}
 
 			buf.write_string('<span class="token ${final_tok_typ}">')
-			write_token(tok, tok_typ, mut buf)
+			if tok_typ == .string {
+				// Make sure to escape html in strings. Otherwise it will rendered in the
+				// html documentation outputs / its style rules will affect the readme.
+				buf.write_string("'${html.escape(tok.lit.str())}'")
+			} else {
+				write_token(tok, tok_typ, mut buf)
+			}
 			buf.write_string('</span>')
 		}
 
@@ -627,15 +633,10 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
-	// NOTE: markdown.default_html_transformer uses html.escape internally.
-	initial_transformed_text := markdown.default_html_transformer.transform_content(parent,
-		text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(html.unescape(initial_transformed_text), f.table)
-		}
+		return html_highlight(text, f.table)
 	}
-	return initial_transformed_text
+	return text
 }
 
 fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
