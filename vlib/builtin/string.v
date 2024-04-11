@@ -1785,24 +1785,20 @@ pub fn (s string) trim_string_right(str string) string {
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
 pub fn compare_strings(a &string, b &string) int {
-	if a < b {
-		return -1
+	return match true {
+		a < b { -1 }
+		a > b { 1 }
+		else { 0 }
 	}
-	if a > b {
-		return 1
-	}
-	return 0
 }
 
 // compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
 fn compare_strings_by_len(a &string, b &string) int {
-	if a.len < b.len {
-		return -1
+	return match true {
+		a.len < b.len { -1 }
+		a.len > b.len { 1 }
+		else { 0 }
 	}
-	if a.len > b.len {
-		return 1
-	}
-	return 0
 }
 
 // compare_lower_strings returns the same as compare_strings but converts `a` and `b` to lower case before comparing.
