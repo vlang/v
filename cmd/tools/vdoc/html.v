@@ -514,10 +514,11 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		for i := 0; i < readme_lines.len - 1; i++ {
 			l := readme_lines[i]
 			nl := readme_lines[i + 1]
-			if l.trim_left('\x01').trim_space().starts_with('```') {
+			is_codeblock_divider := l.trim_left('\x01').trim_space().starts_with('```')
+			if is_codeblock_divider {
 				is_codeblock = !is_codeblock
 			}
-			if !is_codeblock && l != '' && nl != ''
+			if !is_codeblock && !is_codeblock_divider && l != '' && nl != ''
 				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
 				merged_lines << '${l} ${nl}'
 				i++
