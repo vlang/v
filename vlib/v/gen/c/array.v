@@ -463,14 +463,18 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	}
 }
 
+fn (mut g Gen) declare_closure_fn(mut expr ast.AnonFn, var_name string) {
+	decl_var := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+		var_name)
+	g.write('${decl_var} = ')
+	g.gen_anon_fn(mut expr)
+	g.writeln(';')
+}
+
 fn (mut g Gen) write_closure_fn(mut expr ast.AnonFn, var_name string, declared_var string) {
 	if declared_var == '' {
 		past := g.past_tmp_var_new()
-		fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-			past.tmp_var)
-		g.write('${fn_ptr_name} = ')
-		g.gen_anon_fn(mut expr)
-		g.writeln(';')
+		g.declare_closure_fn(mut expr, past.var_name)
 		g.past_tmp_var_done(past)
 		g.write('(${var_name})') // usually `it`
 	} else {
@@ -524,11 +528,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
-			fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-				closure_var)
-			g.write('${fn_ptr_name} = ')
-			g.gen_anon_fn(mut expr)
-			g.writeln(';')
+			g.declare_closure_fn(mut expr, closure_var)
 		}
 	}
 
@@ -794,11 +794,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
-			fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-				closure_var)
-			g.write('${fn_ptr_name} = ')
-			g.gen_anon_fn(mut expr)
-			g.writeln(';')
+			g.declare_closure_fn(mut expr, closure_var)
 		}
 	}
 
@@ -1202,11 +1198,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
-			fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-				closure_var)
-			g.write('${fn_ptr_name} = ')
-			g.gen_anon_fn(mut expr)
-			g.writeln(';')
+			g.declare_closure_fn(mut expr, closure_var)
 		}
 	}
 	i := g.new_tmp_var()
@@ -1297,11 +1289,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
-			fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-				closure_var)
-			g.write('${fn_ptr_name} = ')
-			g.gen_anon_fn(mut expr)
-			g.writeln(';')
+			g.declare_closure_fn(mut expr, closure_var)
 		}
 	}
 
