@@ -23,9 +23,6 @@ pub fn abc() {
 	println(3)
 }
 
-// XampleDocComment is here just to group example doc comment tests.
-pub struct XampleDocComment {}
-
 // MyXMLDocument is here just to test the different combinations of methods/output types
 pub struct MyXMLDocument {
 	path string
@@ -79,26 +76,4 @@ pub fn (x &MyXMLDocument) instance_result() ! {
 // instance_option does stuff too
 pub fn (x &MyXMLDocument) instance_option() ? {
 	return 123
-}
-
-// Example: single()
-pub fn (x XampleDocComment) single() {}
-
-// single_multi concatanates an array with an arbitrary number of additional values
-// NOTE: if you have two arrays, you should simply use the `<<` operator directly
-// Example: single_multi([1, 2, 3], 4, 5, 6) == [1, 2, 3, 4, 5, 6] // => true
-// Example: single_multi([1, 2, 3], ...[4, 5, 6]) == [1, 2, 3, 4, 5, 6] // => true
-// Example: arr << [4, 5, 6] // does what you need if the arr is mutable
-pub fn (x XampleDocComment) single_multi[T](a []T, b ...T) []T {
-	return [1, 2, 3]
-}
-
-// multi rotates the array in-place
-// Example:
-// ```v
-// mut x := [1,2,3,4,5,6]
-// x.multi(2)
-// println(x) // [5, 6, 1, 2, 3, 4]
-// ```
-pub fn (mut x XampleDocComment) multi[T](k int) {
 }
