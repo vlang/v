@@ -13,41 +13,39 @@ pub fn (nodes []DocNode) find(symname string) !DocNode {
 	return error('symbol not found')
 }
 
-// sort_by_name sorts the array based on the symbol names.
-pub fn (mut nodes []DocNode) sort_by_name() {
-	if doc.should_sort {
-		nodes.sort_with_compare(compare_nodes_by_name)
+// arrange sorts the DocNodes based on their symbols and names.
+pub fn (mut nodes []DocNode) arrange() {
+	if !doc.should_sort {
+		return
 	}
-}
-
-// sort_by_kind sorts the array based on the symbol kind.
-pub fn (mut nodes []DocNode) sort_by_kind() {
-	if doc.should_sort {
-		nodes.sort_with_compare(compare_nodes_by_kind)
+	mut kinds := []SymbolKind{}
+	for v in nodes {
+		if v.kind !in kinds {
+			kinds << v.kind
+		}
 	}
-}
-
-fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
-	ak := int(a.kind)
-	bk := int(b.kind)
-	return match true {
-		ak < bk { -1 }
-		ak > bk { 1 }
-		else { 0 }
+	kinds.sort_with_compare(fn (a &SymbolKind, b &SymbolKind) int {
+		ak := int(*a)
+		bk := int(*b)
+		return match true {
+			ak < bk { -1 }
+			ak > bk { 1 }
+			else { 0 }
+		}
+	})
+	mut res := []DocNode{}
+	for k in kinds {
+		mut kind_nodes := nodes.filter(it.kind == k)
+		kind_nodes.sort(a.name < b.name)
+		res << kind_nodes
 	}
-}
-
-fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
-	al := a.name.to_lower()
-	bl := b.name.to_lower()
-	return compare_strings(al, bl)
+	nodes = res.clone()
 }
 
 // arr() converts the map into an array of `DocNode`.
 pub fn (cnts map[string]DocNode) arr() []DocNode {
 	mut contents := cnts.values()
-	contents.sort_by_name()
-	contents.sort_by_kind()
+	contents.arrange()
 	return contents
 }
 
