@@ -32,18 +32,21 @@ pub fn exit(code int) {
 	C.exit(code)
 }
 
-// vatexit registers a fn callback, that will be called at normal process termination.
+// at_exit registers a fn callback, that will be called at normal process termination.
 // It returns an error, if the registration was not successful.
 // The registered callback functions, will be called either via exit/1,
 // or via return from the main program, in the reverse order of their registration.
 // The same fn may be registered multiple times.
 // Each callback fn will called once for each registration.
-pub fn vatexit(cb FnExitCb) ! {
-	res := C.atexit(cb)
-	if res == 0 {
-		return
+pub fn at_exit(cb FnExitCb) ! {
+	$if freestanding {
+		return error('at_exit not implemented with -freestanding')
+	} $else {
+		res := C.atexit(cb)
+		if res != 0 {
+			return error_with_code('at_exit failed', res)
+		}
 	}
-	return error_with_code('atexit failed', res)
 }
 
 // panic_debug private function that V uses for panics, -cg/-g is passed
