@@ -38,9 +38,12 @@ pub fn find_working_diff_command() !string {
 			return error('could not find specified VDIFF_TOOL ${diffcmd}')
 		}
 		if p.exit_code == 0 { // success
-			if diffcmd in ['gdiff', 'diff'] {
-				if p.output.contains('GNU diffutils') && env_diffopts == '' {
-					return '${diffcmd} --color=always'
+			// TODO: proper implemenation of --color flag
+			$if !macos {
+				if diffcmd in ['gdiff', 'diff'] {
+					if p.output.contains('GNU diffutils') && env_diffopts == '' {
+						return '${diffcmd} --color=always'
+					}
 				}
 			}
 			if diffcmd in ['code', 'code.cmd'] {
@@ -54,22 +57,19 @@ pub fn find_working_diff_command() !string {
 	return error('No working "diff" command found')
 }
 
-pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
-	if diff_cmd != '' {
-		mut full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
-		$if freebsd {
-			full_cmd = '${diff_cmd} --minimal --text --unified=2  ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
-		}
-		$if openbsd {
-			full_cmd = '${diff_cmd} -d -a -U 2 ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
-		}
-		x := os.execute(full_cmd)
-		if x.exit_code < 0 {
-			return 'comparison command: `${full_cmd}` not found'
-		}
-		return x.output.trim_right('\r\n')
+pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
+	os.find_abs_path_of_executable(diff_cmd.all_before(' ')) or {
+		return 'comparison command: `${diff_cmd}` not found'
 	}
-	return ''
+	flags := $if openbsd {
+		['-d', '-a', '-U', '2']
+	} $else $if freebsd {
+		['--minimal', '--text', '--unified=2']
+	} $else {
+		['--minimal', '--text', '--unified=2', '--show-function-line="fn "']
+	}
+	full_cmd := '${diff_cmd} ${flags.join(' ')} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
+	return os.execute(full_cmd).output.trim_right('\r\n')
 }
 
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
