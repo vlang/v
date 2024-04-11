@@ -1,7 +1,20 @@
 name: CI macOS
 
 on:
-  workflow_call:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/macos_ci.yml'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/macos_ci.yml'
+
+concurrency:
+  group: macos-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   clang:
