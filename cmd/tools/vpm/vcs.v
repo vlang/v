@@ -1,6 +1,7 @@
 module main
 
 import os
+import semver
 
 // Supported version control system commands.
 enum VCS {
@@ -19,25 +20,43 @@ struct VCSInfo {
 	}
 }
 
-const vcs_info = {
-	VCS.git: VCSInfo{
-		dir: '.git'
-		args: struct {
-			install: 'clone --depth=1 --recursive --shallow-submodules --filter=blob:none --also-filter-submodules'
-			version: '--single-branch -b'
-			update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
-			path: '-C'
-			outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
-		}
+const vcs_info = init_vcs_info() or {
+	vpm_error(err.msg())
+	exit(1)
+}
+
+fn init_vcs_info() !map[VCS]VCSInfo {
+	mut git_install_cmd := 'clone --depth=1 --recursive --shallow-submodules --filter=blob:none'
+	submod_filter_version := semver.from('2.36.0') or { panic(err) }
+	raw_installed_git_ver := os.execute_opt('git --version') or {
+		return error('failed to find git')
+	}.output.all_after_last(' ').trim_space()
+	installed_git_ver := semver.from(raw_installed_git_ver) or {
+		return error('failed to parse git version `${raw_installed_git_ver}`')
 	}
-	VCS.hg:  VCSInfo{
-		dir: '.hg'
-		args: struct {
-			install: 'clone'
-			version: '--rev'
-			update: 'pull --update'
-			path: '-R'
-			outdated: ['incoming']
+	if installed_git_ver >= submod_filter_version {
+		git_install_cmd += ' --also-filter-submodules'
+	}
+	return {
+		VCS.git: VCSInfo{
+			dir: '.git'
+			args: struct {
+				install: git_install_cmd
+				version: '--single-branch -b'
+				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
+				path: '-C'
+				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+			}
+		}
+		VCS.hg:  VCSInfo{
+			dir: '.hg'
+			args: struct {
+				install: 'clone'
+				version: '--rev'
+				update: 'pull --update'
+				path: '-R'
+				outdated: ['incoming']
+			}
 		}
 	}
 }
