@@ -7,12 +7,7 @@ import v.util.diff
 const vexe_path = @VEXE
 const vexe = os.quoted_path(vexe_path)
 const vroot = os.dir(vexe_path)
-const diff_cmd = find_diff_cmd()
 const should_autofix = os.getenv('VAUTOFIX') != ''
-
-fn find_diff_cmd() string {
-	return diff.find_working_diff_command() or { '' }
-}
 
 fn test_vet() {
 	os.setenv('VCOLORS', 'never', true)
@@ -125,6 +120,7 @@ fn check_path(dir string, tests []string) int {
 }
 
 fn print_compare(expected string, found string) {
+	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.red('FAIL'))
 	println('============')
 	println('expected:')
