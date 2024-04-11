@@ -1,12 +1,21 @@
 import v.util.diff
 import os
 
-fn test_compare_files() {
-	os.find_abs_path_of_executable('diff') or {
-		eprintln('> skipping test, since this test requires `diff` to be installed.')
-		return
-	}
+const tdir = os.join_path(os.vtmp_dir(), 'diff_test')
 
+fn testsuite_begin() {
+	os.find_abs_path_of_executable('diff') or {
+		eprintln('> skipping test, since this test requires `diff` to be installed')
+		exit(0)
+	}
+	os.mkdir_all(tdir)!
+}
+
+fn testsuite_end() {
+	os.rmdir_all(tdir) or {}
+}
+
+fn test_compare_files() {
 	f1 := "Module{
 	name: 'Foo'
 	description: 'Awesome V module.'
@@ -22,13 +31,8 @@ fn test_compare_files() {
 	dependencies: []
 }
 "
-	tdir := os.join_path(os.vtmp_dir(), 'diff_test')
-	os.mkdir_all(tdir)!
-	defer {
-		os.rmdir_all(tdir) or {}
-	}
-	p1 := os.join_path(tdir, 'f1.txt')
-	p2 := os.join_path(tdir, 'f2.txt')
+	p1 := os.join_path(tdir, '${@FN}_f1.txt')
+	p2 := os.join_path(tdir, '${@FN}_f2.txt')
 	os.write_file(p1, f1)!
 	os.write_file(p2, f2)!
 
@@ -59,4 +63,11 @@ fn test_compare_files() {
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
+
+	// Test coloring
+	if !os.execute('diff --color=always').output.contains('--color=always') {
+		// If the flag is unknown, it will be reprinted in the output.
+		assert res.contains("[31m-\tversion: '0.0.0'[m"), res
+		assert res.contains("[32m+\tversion: '0.1.0'[m"), res
+	}
 }
