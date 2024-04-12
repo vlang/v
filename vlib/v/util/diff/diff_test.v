@@ -66,10 +66,8 @@ fn test_compare_files() {
 }
 
 fn test_coloring() {
-	color_flag := '--color=always'
-	if os.execute('diff ${color_flag}').output.contains(color_flag) {
-		// If the flag is unknown, it will be reprinted in the output.
-		eprintln('> skipping test, since `diff` does not support `${color_flag}`')
+	if os.execute('diff --color=always').output.starts_with('diff: unrecognized option') {
+		eprintln('> skipping test, since `diff` does not support --color=always')
 		return
 	}
 	f1 := 'abc\n'
@@ -79,6 +77,7 @@ fn test_coloring() {
 	os.write_file(p1, f1)!
 	os.write_file(p2, f2)!
 	res := diff.color_compare_files('diff', p1, p2)
-	assert res.contains('[31m-abc[m'), res
-	assert res.contains('[32m+abcd[m'), res
+	esc := rune(27)
+	assert res.contains('${esc}[31m-abc${esc}[0m'), res
+	assert res.contains('${esc}[32m+abcd${esc}[0m'), res
 }

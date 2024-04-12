@@ -45,7 +45,7 @@ pub fn find_working_diff_command() !string {
 pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	cmd := diff_cmd.all_before(' ')
 	os.find_abs_path_of_executable(cmd) or { return 'comparison command: `${cmd}` not found' }
-	mut flags := $if openbsd {
+	flags := $if openbsd {
 		['-d', '-a', '-U', '2']
 	} $else $if freebsd {
 		['--minimal', '--text', '--unified=2']
@@ -53,10 +53,10 @@ pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 		['--minimal', '--text', '--unified=2', '--show-function-line="fn "']
 	}
 	if cmd == 'diff' {
-		color_flag := '--color=always'
-		if !os.execute('${cmd} ${color_flag}').output.contains(color_flag) {
-			// If the flag is unknown, it will be reprinted in the output.
-			flags << color_flag
+		color_diff_cmd := '${diff_cmd} --color=always ${flags.join(' ')} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
+		color_result := os.execute(color_diff_cmd)
+		if !color_result.output.starts_with('diff: unrecognized option') {
+			return color_result.output.trim_right('\r\n')
 		}
 	}
 	full_cmd := '${diff_cmd} ${flags.join(' ')} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
