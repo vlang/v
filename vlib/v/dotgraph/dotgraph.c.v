@@ -2,7 +2,7 @@ module dotgraph
 
 pub fn start_digraph() {
 	println('digraph G {')
-	C.atexit(fn () {
+	at_exit(fn () {
 		println('}')
-	})
+	}) or {}
 }

@@ -8,7 +8,7 @@ $if windows {
 }
 
 fn main() {
-	C.atexit(cleanup_vtmp_folder)
+	at_exit(cleanup_vtmp_folder) or {}
 
 	if os.args.len > 3 {
 		print('usage: v symlink [OPTIONS]')
