@@ -51,13 +51,14 @@ fn test_compare_files() {
 	assert res.contains("+\tlicense: 'MIT'"), res
 
 	// Test again using `find_working_diff_command()`.
+	os.setenv('VDIFF_TOOL', 'diff', true)
 	res = diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
 
 	// Test adding a flag via env flag.
-	os.setenv('VDIFF_OPTIONS', '--ignore-case', true)
+	os.setenv('VDIFF_OPTIONS', '--ignore-case', true) // ignored, when VDIFF_TOOL is not explicitly set
 	res = diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
 	assert !res.contains("+\tname: 'foo'"), res
 	assert res.contains("-\tversion: '0.0.0'"), res
