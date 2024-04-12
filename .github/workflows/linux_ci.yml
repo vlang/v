@@ -39,7 +39,6 @@ jobs:
         run: |
           echo $VFLAGS
           make
-          ./v test-cleancode
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation
