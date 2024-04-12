@@ -476,7 +476,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 
 			buf.write_string('<span class="token ${final_tok_typ}">')
 			if tok_typ == .string {
-				// Make sure to escape html in strings. Otherwise it will rendered in the
+				// Make sure to escape html in strings. Otherwise it will be rendered in the
 				// html documentation outputs / its style rules will affect the readme.
 				buf.write_string("'${html.escape(tok.lit.str())}'")
 			} else {
@@ -514,11 +514,10 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		for i := 0; i < readme_lines.len - 1; i++ {
 			l := readme_lines[i]
 			nl := readme_lines[i + 1]
-			is_codeblock_divider := l.trim_left('\x01').trim_space().starts_with('```')
-			if is_codeblock_divider {
+			if l.trim_left('\x01').trim_space().starts_with('```') {
 				is_codeblock = !is_codeblock
 			}
-			if !is_codeblock && !is_codeblock_divider && l != '' && nl != ''
+			if !is_codeblock && l != '' && nl != ''
 				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
 				merged_lines << '${l} ${nl}'
 				i++
