@@ -63,11 +63,22 @@ fn test_compare_files() {
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
+}
 
-	// Test coloring
-	if !os.execute('diff --color=always').output.contains('--color=always') {
+fn test_coloring() {
+	color_flag := '--color=always'
+	if os.execute('diff ${color_flag}').output.contains(color_flag) {
 		// If the flag is unknown, it will be reprinted in the output.
-		assert res.contains("[31m-\tversion: '0.0.0'[m"), res
-		assert res.contains("[32m+\tversion: '0.1.0'[m"), res
+		eprintln('> skipping test, since `diff` does not support `${color_flag}`')
+		return
 	}
+	f1 := 'abc\n'
+	f2 := 'abcd\n'
+	p1 := os.join_path(tdir, '${@FN}_f1.txt')
+	p2 := os.join_path(tdir, '${@FN}_f2.txt')
+	os.write_file(p1, f1)!
+	os.write_file(p2, f2)!
+	res := diff.color_compare_files('diff', p1, p2)
+	assert res.contains('[31m-abc[m'), res
+	assert res.contains('[32m+abcd[m'), res
 }
