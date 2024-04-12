@@ -357,8 +357,7 @@ fn main() {
 	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
 
 	if just_essential {
-		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
-		all_test_files = all_test_files.filter(rooted_essential_list.contains(it))
+		all_test_files = essential_list.map(os.join_path(vroot, it))
 	}
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
@@ -478,10 +477,11 @@ fn main() {
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
-	unavailable_skip_files := tsession.skip_files.filter(it != 'do_not_remove' && !os.exists(it))
-	if unavailable_skip_files.len > 0 {
-		for file in unavailable_skip_files {
-			eprintln('failed to find file: ${file}')
+	mut unavailable_files := tsession.files.filter(!os.exists(it))
+	unavailable_files << tsession.skip_files.filter(it != 'do_not_remove' && !os.exists(it))
+	if unavailable_files.len > 0 {
+		for f in unavailable_files {
+			eprintln('failed to find file: ${f}')
 		}
 		exit(1)
 	}
