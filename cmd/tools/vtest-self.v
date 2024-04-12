@@ -478,6 +478,13 @@ fn main() {
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
+	unavailable_skip_files := tsession.skip_files.filter(it != 'do_not_remove' && !os.exists(it))
+	if unavailable_skip_files.len > 0 {
+		for file in unavailable_skip_files {
+			eprintln('failed to find file: ${file}')
+		}
+		exit(1)
+	}
 	tsession.skip_files = tsession.skip_files.map(os.abs_path)
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
