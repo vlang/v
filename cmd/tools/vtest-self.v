@@ -278,7 +278,6 @@ const skip_on_linux = [
 ]
 const skip_on_non_linux = [
 	'do_not_remove',
-	'cmd/tools/vdoc/tests/vdoc_file_test.v', // order of output is not as expected
 ]
 const skip_on_windows_msvc = [
 	'do_not_remove',
