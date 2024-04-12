@@ -527,7 +527,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		}
 		merged_lines.join_lines()
 	} else {
-		dn.merge_comments()
+		dn.merge_comments_without_examples()
 	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
