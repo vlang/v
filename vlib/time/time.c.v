@@ -7,6 +7,7 @@ module time
 
 // C.timeval represents a C time value.
 pub struct C.timeval {
+pub:
 	tv_sec  u64
 	tv_usec u64
 }

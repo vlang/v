@@ -7,8 +7,9 @@ import os
 
 // SSLConn is the current connection
 pub struct SSLConn {
+pub:
 	config SSLConnectConfig
-mut:
+pub mut:
 	sslctx   &C.SSL_CTX = unsafe { nil }
 	ssl      &C.SSL     = unsafe { nil }
 	handle   int
@@ -19,6 +20,7 @@ mut:
 
 @[params]
 pub struct SSLConnectConfig {
+pub:
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key string // the path to a key.pem file, containing private keys for the client certificate(s)

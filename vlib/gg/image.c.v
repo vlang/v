@@ -270,6 +270,7 @@ pub fn (mut ctx Context) create_image_from_byte_array(b []u8) !Image {
 }
 
 pub struct StreamingImageConfig {
+pub:
 	pixel_format gfx.PixelFormat = .rgba8
 	wrap_u       gfx.Wrap        = .clamp_to_edge
 	wrap_v       gfx.Wrap        = .clamp_to_edge

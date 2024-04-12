@@ -23,6 +23,7 @@ mut:
 
 @[params]
 pub struct GetTagsOptions {
+pub:
 	name string
 }
 

@@ -21,6 +21,7 @@ const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpx
 
 @[minify]
 pub struct Parser {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 mut:
 	file_base         string       // "hello.v"
@@ -32,7 +33,6 @@ mut:
 	tok                       token.Token
 	prev_tok                  token.Token
 	peek_tok                  token.Token
-	table                     &ast.Table = unsafe { nil }
 	language                  ast.Language
 	fn_language               ast.Language // .c for `fn C.abcd()` declarations
 	expr_level                int  // prevent too deep recursions for pathological programs
@@ -70,17 +70,16 @@ mut:
 	inside_orm                bool
 	inside_chan_decl          bool
 	inside_attr_decl          bool
-	fixed_array_dim           int        // fixed array dim parsing level
-	or_is_handled             bool       // ignore `or` in this expression
-	builtin_mod               bool       // are we in the `builtin` module?
-	mod                       string     // current module name
-	is_manualfree             bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals               bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated              bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	is_translated             bool       // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
-	attrs                     []ast.Attr // attributes before next decl stmt
-	expr_mod                  string     // for constructing full type names in parse_type()
-	scope                     &ast.Scope = unsafe { nil }
+	fixed_array_dim           int               // fixed array dim parsing level
+	or_is_handled             bool              // ignore `or` in this expression
+	builtin_mod               bool              // are we in the `builtin` module?
+	mod                       string            // current module name
+	is_manualfree             bool              // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals               bool              // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated              bool              // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated             bool              // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
+	attrs                     []ast.Attr        // attributes before next decl stmt
+	expr_mod                  string            // for constructing full type names in parse_type()
 	imports                   map[string]string // alias => mod_name
 	ast_imports               []ast.Import      // mod_names
 	used_imports              []string // alias
@@ -107,6 +106,8 @@ mut:
 	script_mode_start_token   token.Token
 pub mut:
 	scanner        &scanner.Scanner = unsafe { nil }
+	table          &ast.Table       = unsafe { nil }
+	scope          &ast.Scope       = unsafe { nil }
 	errors         []errors.Error
 	warnings       []errors.Warning
 	notices        []errors.Notice
@@ -647,6 +648,7 @@ fn (mut p Parser) check(expected token.Kind) {
 
 @[params]
 struct ParamsForUnexpected {
+pub:
 	got            string
 	expecting      string
 	prepend_msg    string
@@ -929,6 +931,7 @@ fn (mut p Parser) comment_stmt() ast.ExprStmt {
 
 @[params]
 struct EatCommentsConfig {
+pub:
 	same_line bool // Only eat comments on the same line as the previous token
 	follow_up bool // Comments directly below the previous token as long as there is no empty line
 }
@@ -4647,6 +4650,7 @@ fn (mut p Parser) trace[T](fbase string, x &T) {
 
 @[params]
 struct ParserShowParams {
+pub:
 	msg   string
 	reach int = 3
 }

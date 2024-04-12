@@ -203,6 +203,7 @@ fn to_any[T](value T) Any {
 
 // DateTime is the representation of an RFC 3339 datetime string.
 pub struct DateTime {
+pub:
 	datetime string
 }
 
@@ -213,6 +214,7 @@ pub fn (dt DateTime) str() string {
 
 // Date is the representation of an RFC 3339 date-only string.
 pub struct Date {
+pub:
 	date string
 }
 
@@ -223,6 +225,7 @@ pub fn (d Date) str() string {
 
 // Time is the representation of an RFC 3339 time-only string.
 pub struct Time {
+pub:
 	time string
 }
 

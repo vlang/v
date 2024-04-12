@@ -1512,6 +1512,7 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 
 @[minify]
 pub struct FnSignatureOpts {
+pub:
 	skip_receiver bool
 	type_only     bool
 }

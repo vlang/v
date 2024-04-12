@@ -42,6 +42,7 @@ pub fn compress(data []u8) ![]u8 {
 
 @[params]
 pub struct DecompressParams {
+pub:
 	verify_header_checksum bool = true
 	verify_length          bool = true
 	verify_checksum        bool = true

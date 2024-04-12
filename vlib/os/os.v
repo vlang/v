@@ -121,6 +121,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 
 @[params]
 pub struct MvParams {
+pub:
 	overwrite bool = true
 }
 
@@ -717,6 +718,7 @@ pub fn log(s string) {
 
 @[params]
 pub struct MkdirParams {
+pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 

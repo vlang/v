@@ -41,7 +41,7 @@ jobs:
       - name: Test vsql compilation and examples
         run: |
           echo "Install vsql"
-          .github/workflows/retry.sh v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
+          .github/workflows/retry.sh v install https://github.com/ttytm/vsql@temp/vi-ci ; cd ~/.vmodules/vsql
           echo "Generate vsql/grammar.v"
           make vsql/grammar.v
           echo "Compile vsql"
@@ -53,10 +53,10 @@ jobs:
 
       - name: Test discord.v
         run: |
-          echo "Clone https://github.com/DarpHome/discord.v/"
-          .github/workflows/retry.sh git clone https://github.com/DarpHome/discord.v/ discord && cd discord
-          echo "Checkout last known good commit"
-          git checkout 533485c08f21df91ff62fea9477e7017d21f91c4
+          echo "Clone https://github.com/DarpHome/discord.v"
+          .github/workflows/retry.sh v install https://github.com/ttytm/discord.v@temp/v-ci && cd ~/.vmodules/discord
+          # echo "Checkout last known good commit"
+          # git checkout 789de8ad35ee2683fbcd950fc07936f052088d0c
           echo "Execute Tests"
           v test .
 

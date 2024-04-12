@@ -11,6 +11,7 @@ const max_parallel_workers = runtime.nr_jobs()
 
 @[params]
 pub struct ParserSettings {
+pub:
 	sequential    bool
 	img           bool
 	extra_workers int

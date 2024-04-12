@@ -117,6 +117,7 @@ pub fn integer_from_u64(value u64) Integer {
 
 @[params]
 pub struct IntegerConfig {
+pub:
 	signum int = 1
 }
 

@@ -53,6 +53,7 @@ mut:
 // DynamicLibLoaderConfig is a configuration for DynamicLibLoader.
 @[params]
 pub struct DynamicLibLoaderConfig {
+pub:
 	// flags is the flags for dlopen.
 	flags int = dl.rtld_lazy
 	// key is the key to register the DynamicLibLoader.

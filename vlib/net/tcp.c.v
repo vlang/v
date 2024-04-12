@@ -9,8 +9,7 @@ pub const tcp_default_write_timeout = 30 * time.second
 @[heap]
 pub struct TcpConn {
 pub mut:
-	sock TcpSocket
-mut:
+	sock           TcpSocket
 	handle         int
 	write_deadline time.Time
 	read_deadline  time.Time
@@ -312,8 +311,7 @@ pub fn (c TcpConn) str() string {
 
 pub struct TcpListener {
 pub mut:
-	sock TcpSocket
-mut:
+	sock            TcpSocket
 	accept_timeout  time.Duration
 	accept_deadline time.Time
 	is_blocking     bool = true

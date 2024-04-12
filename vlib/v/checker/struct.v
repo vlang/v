@@ -740,11 +740,30 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 			for i, mut field in fields {
 				if field.name in inited_fields {
-					if c.mod != type_sym.mod && field.is_deprecated {
-						for init_field in node.init_fields {
-							if field.name == init_field.name {
-								c.deprecate('field', field.name, field.attrs, init_field.pos)
-								break
+					if c.mod != type_sym.mod {
+						if !field.is_pub {
+							parts := type_sym.name.split('.')
+							for init_field in node.init_fields {
+								if field.name == init_field.name {
+									mod_type := if parts.len > 1 {
+										parts#[-2..].join('.')
+									} else {
+										parts.last()
+									}
+									c.add_error_detail('this will become an error after 2024-05-31')
+									c.warn('initalizing private field `${field.name}` of `${mod_type}`',
+										init_field.pos)
+									// c.error('cannot access private field `${field.name}` on `${mod_type}`', init_field.pos)
+									break
+								}
+							}
+						}
+						if field.is_deprecated {
+							for init_field in node.init_fields {
+								if field.name == init_field.name {
+									c.deprecate('field', field.name, field.attrs, init_field.pos)
+									break
+								}
 							}
 						}
 					}

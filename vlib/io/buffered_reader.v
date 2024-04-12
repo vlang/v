@@ -16,6 +16,7 @@ pub mut:
 
 // BufferedReaderConfig are options that can be given to a buffered reader.
 pub struct BufferedReaderConfig {
+pub:
 	reader  Reader
 	cap     int = 128 * 1024 // large for fast reading of big(ish) files
 	retries int = 2 // how many times to retry before assuming the stream ended

@@ -9,6 +9,7 @@ import os
 
 @[params]
 pub struct ZipFolderOptions {
+pub:
 	omit_empty_folders bool
 }
 

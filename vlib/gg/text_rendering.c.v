@@ -166,6 +166,7 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 
 @[params]
 pub struct DrawTextParams {
+pub:
 	x    int
 	y    int
 	text string

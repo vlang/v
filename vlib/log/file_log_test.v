@@ -49,9 +49,8 @@ fn test_set_always_flush() {
 		os.rmdir_all(lfolder) or {}
 	}
 	dump(lfolder)
-	mut l := log.Log{
-		level: .info
-	}
+	mut l := log.Log{}
+	l.set_level(.info)
 	l.set_full_logpath(lpath1)
 	l.set_always_flush(true)
 	l.warn('one warning')

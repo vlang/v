@@ -20,7 +20,7 @@ struct Winsize {
 // Readline is the key struct for reading and holding user input via a terminal.
 // Example: import readline { Readline }
 pub struct Readline {
-mut:
+pub mut:
 	is_raw                 bool
 	orig_termios           termios.Termios // Linux
 	current                []rune // Line being edited

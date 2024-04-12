@@ -32,8 +32,9 @@ struct SSLCerts {
 
 // SSLConn is the current connection
 pub struct SSLConn {
+pub:
 	config SSLConnectConfig
-mut:
+pub mut:
 	server_fd C.mbedtls_net_context
 	ssl       C.mbedtls_ssl_context
 	conf      C.mbedtls_ssl_config
@@ -215,6 +216,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 
 @[params]
 pub struct SSLConnectConfig {
+pub:
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key string // the path to a key.pem file, containing private keys for the client certificate(s)

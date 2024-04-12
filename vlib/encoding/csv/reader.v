@@ -52,6 +52,7 @@ mut:
 
 @[params]
 pub struct ReaderConfig {
+pub:
 	delimiter u8 = `,`
 	comment   u8 = `#`
 }

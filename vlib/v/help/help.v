@@ -21,6 +21,7 @@ fn help_dir() string {
 
 @[params]
 pub struct ExitOptions {
+pub:
 	exit_code int
 }
 

@@ -20,6 +20,7 @@ pub mut:
 
 @[params]
 pub struct TimerParams {
+pub:
 	should_print bool
 	label        string
 }

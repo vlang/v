@@ -4,6 +4,7 @@ import os
 
 @[params]
 pub struct FilterVTestConfig {
+pub:
 	basepath    string
 	fix_slashes bool = true
 }
