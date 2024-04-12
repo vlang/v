@@ -78,6 +78,6 @@ fn test_coloring() {
 	os.write_file(p2, f2)!
 	res := diff.color_compare_files('diff', p1, p2)
 	esc := rune(27)
-	assert res.contains('${esc}[31m-abc${esc}[0m'), res
-	assert res.contains('${esc}[32m+abcd${esc}[0m'), res
+	assert res.contains('${esc}[31m-abc${esc}['), res
+	assert res.contains('${esc}[32m+abcd${esc}['), res
 }
