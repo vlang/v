@@ -71,8 +71,12 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		styp := g.base_type(ret_typ)
 		decl_styp := g.typ(ret_typ).replace('*', '_ptr')
 		g.writeln('${decl_styp} ${past.tmp_var};')
-		g.write('_option_ok(&(${styp}[]) {')
-
+		is_none := expr is ast.CastExpr && expr.expr is ast.None
+		if is_none {
+			g.write('_option_none(&(${styp}[]) {')
+		} else {
+			g.write('_option_ok(&(${styp}[]) {')
+		}
 		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
 			g.write('*((${g.base_type(expr_typ)}*)')
 			g.expr(expr)
