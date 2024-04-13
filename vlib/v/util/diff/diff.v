@@ -17,7 +17,7 @@ pub fn find_working_diff_command() !string {
 		'code', 'code.cmd'] // NOTE: code.cmd is the Windows variant of the `code` cli tool
 	mut diff_cmd := ''
 	for cmd in known_diff_tools {
-		os.find_abs_path_of_executable('opendiff') or { continue }
+		os.find_abs_path_of_executable(cmd) or { continue }
 		diff_cmd = cmd
 		break
 	}
