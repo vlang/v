@@ -23,7 +23,7 @@ pub fn find_working_diff_command() !string {
 		}
 		$if freebsd || openbsd {
 			if diffcmd == 'diff' { // FreeBSD/OpenBSD diff have no `--version` option
-				return diffcmd
+				return if env_diffopts != '' { '${diffcmd} ${env_diffopts}' } else { diffcmd }
 			}
 		}
 		p := os.execute('${diffcmd} --version')
