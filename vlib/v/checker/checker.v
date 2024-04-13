@@ -3518,6 +3518,19 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			vmod_file_location := mcache.get_by_file(c.file.path)
 			node.val = os.dir(vmod_file_location.vmod_file)
 		}
+		.vmod_hash {
+			mut mcache := vmod.get_cache()
+			vmod_file_location := mcache.get_by_file(c.file.path)
+			if vmod_file_location.vmod_file.len == 0 {
+				c.error('@VMODHASH can only be used in projects that have a v.mod file',
+					node.pos)
+			}
+			hash := version.githash(os.dir(vmod_file_location.vmod_file)) or {
+				c.error(err.msg(), node.pos)
+				''
+			}
+			node.val = hash
+		}
 		.unknown {
 			c.error('unknown @ identifier: ${node.name}. Available identifiers: ${token.valid_at_tokens}',
 				node.pos)

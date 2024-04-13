@@ -670,7 +670,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				short_name: name
 				mod: p.mod
 				params: params
-				file: p.file_name
+				file: p.file_path
 				return_type: ast.void_type
 				is_variadic: is_variadic
 				is_pub: true

@@ -137,6 +137,25 @@ pub fn decode[T](src string) !T {
 	return decode_struct[T](T{}, res)
 }
 
+// decode_array is a generic function that decodes a JSON string into the array target type.
+pub fn decode_array[T](src string) ![]T {
+	res := raw_decode(src)!.as_map()
+	return decode_struct_array(T{}, res)
+}
+
+// decode_struct_array is a generic function that decodes a JSON map into array struct T.
+fn decode_struct_array[T](_ T, res map[string]Any) ![]T {
+	$if T is $struct {
+		mut arr := []T{}
+		for v in res.values() {
+			arr << decode_struct[T](T{}, v.as_map())!
+		}
+		return arr
+	} $else {
+		return error("The type `${T.name}` can't be decoded.")
+	}
+}
+
 // decode_struct is a generic function that decodes a JSON map into the struct T.
 fn decode_struct[T](_ T, res map[string]Any) !T {
 	mut typ := T{}

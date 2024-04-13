@@ -286,6 +286,9 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !str
 		'freestanding' {
 			return '_VFREESTANDING'
 		}
+		'autofree' {
+			return '_VAUTOFREE'
+		}
 		// architectures:
 		'amd64' {
 			return '(\$process.arch == "x64")'

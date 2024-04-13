@@ -919,6 +919,9 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					'no_bounds_checking' {
 						return if cname in c.pref.compile_defines_all { .eval } else { .skip }
 					}
+					'autofree' {
+						return if c.pref.autofree { .eval } else { .skip }
+					}
 					'freestanding' {
 						return if c.pref.is_bare && !c.pref.output_cross_c { .eval } else { .skip }
 					}
