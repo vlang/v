@@ -27,7 +27,6 @@ const essential_list = [
 	'vlib/builtin/string_test.v',
 	'vlib/builtin/sorting_test.v',
 	'vlib/builtin/gated_array_string_test.v',
-	'vlib/builtin/array_shrinkage_test.v',
 	'vlib/builtin/isnil_test.v',
 	'vlib/builtin/string_match_glob_test.v',
 	'vlib/builtin/string_strip_margin_test.v',
@@ -81,11 +80,10 @@ const essential_list = [
 	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/x/json2/json2_test.v',
+	'vlib/x/json2/tests/json2_test.v',
 ]
 const skip_test_files = [
 	'do_not_remove',
-	'cmd/tools/vdoc/html_tag_escape_test.v', // can't locate local module: markdown
 	'vlib/context/deadline_test.v', // sometimes blocks
 	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
 	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
@@ -165,12 +163,10 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
-	'vlib/vweb/request_test.v',
 	'vlib/net/http/request_test.v',
 	'vlib/net/http/response_test.v',
 	'vlib/vweb/route_test.v',
 	'vlib/net/websocket/websocket_test.v',
-	'vlib/crypto/rand/crypto_rand_read_test.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
@@ -224,7 +220,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
 	'vlib/net/http/status_test.v',
-	'vlib/net/websocket/ws_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -293,7 +288,6 @@ const skip_on_windows = [
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
-	'vlib/net/websocket/ws_test.v',
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/openssl/openssl_compiles_test.c.v',
 	'vlib/net/http/request_test.v',
