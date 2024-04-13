@@ -31,14 +31,6 @@ pub fn find_working_diff_command() !string {
 			continue
 		}
 		if p.exit_code == 0 { // success
-			// TODO: proper implemenation of --color flag
-			$if !macos {
-				if diffcmd in ['gdiff', 'diff'] {
-					if p.output.contains('GNU diffutils') && env_diffopts == '' {
-						return '${diffcmd} --color=always'
-					}
-				}
-			}
 			if diffcmd in ['code', 'code.cmd'] {
 				// Make sure the diff flag `-d` is included in any case.
 				return '${diffcmd} ${env_diffopts} -d'
@@ -51,15 +43,21 @@ pub fn find_working_diff_command() !string {
 }
 
 pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
-	os.find_abs_path_of_executable(diff_cmd.all_before(' ')) or {
-		return 'comparison command: `${diff_cmd}` not found'
-	}
+	cmd := diff_cmd.all_before(' ')
+	os.find_abs_path_of_executable(cmd) or { return 'comparison command: `${cmd}` not found' }
 	flags := $if openbsd {
 		['-d', '-a', '-U', '2']
 	} $else $if freebsd {
 		['--minimal', '--text', '--unified=2']
 	} $else {
 		['--minimal', '--text', '--unified=2', '--show-function-line="fn "']
+	}
+	if cmd == 'diff' {
+		color_diff_cmd := '${diff_cmd} --color=always ${flags.join(' ')} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
+		color_result := os.execute(color_diff_cmd)
+		if !color_result.output.starts_with('diff: unrecognized option') {
+			return color_result.output.trim_right('\r\n')
+		}
 	}
 	full_cmd := '${diff_cmd} ${flags.join(' ')} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
 	return os.execute(full_cmd).output.trim_right('\r\n')
