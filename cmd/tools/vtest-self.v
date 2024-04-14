@@ -251,7 +251,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/request_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/net/http/request_test.v',
 	'vlib/vweb/route_test.v',
@@ -295,7 +294,6 @@ const skip_on_windows = [
 	'vlib/net/ssl/ssl_compiles_test.v',
 	'vlib/net/mbedtls/mbedtls_compiles_test.v',
 	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/request_test.v',
 	'vlib/vweb/route_test.v',
 	'vlib/sync/many_times_test.v',
 	'vlib/sync/once_test.v',
@@ -357,8 +355,7 @@ fn main() {
 	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
 
 	if just_essential {
-		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
-		all_test_files = all_test_files.filter(rooted_essential_list.contains(it))
+		all_test_files = essential_list.map(os.join_path(vroot, it))
 	}
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
@@ -477,6 +474,14 @@ fn main() {
 	}
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
+	}
+	mut unavailable_files := tsession.files.filter(!os.exists(it))
+	unavailable_files << tsession.skip_files.filter(it != 'do_not_remove' && !os.exists(it))
+	if unavailable_files.len > 0 {
+		for f in unavailable_files {
+			eprintln('failed to find file: ${f}')
+		}
+		exit(1)
 	}
 	tsession.skip_files = tsession.skip_files.map(os.abs_path)
 	tsession.test()
