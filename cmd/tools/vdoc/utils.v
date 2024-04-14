@@ -33,7 +33,7 @@ fn is_module_readme(dn doc.DocNode) bool {
 	return dn.comments.len > 0 && (dn.content == 'module ${dn.name}' || dn.name == 'README')
 }
 
-// trim_doc_node_description returns the trimmed nodes description.
+// trim_doc_node_description returns the nodes trimmed description.
 // An example use are the descriptions of the search results in the sidebar.
 fn trim_doc_node_description(mod_name string, desc string) string {
 	mut dn_desc := desc.replace_each(['\r\n', '\n', '"', '\\"'])

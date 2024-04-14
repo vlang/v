@@ -14,5 +14,5 @@ It also assists with composing and testing baz.'
 `foo` is a module that provides tools and utility functions to assist in working with bar.
 It also assists with composing and testing baz.'
 	res2 := trim_doc_node_description(mod, readme).trim_space()
-	assert res == res2
+	assert res2 == res
 }
