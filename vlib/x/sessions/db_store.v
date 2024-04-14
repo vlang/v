@@ -38,7 +38,7 @@ pub fn (mut store DBStore[T]) all() ![]T {
 	}!
 
 	// decode should never fail
-	return rows.map(json.decode(T, it.data) or { T{} })
+	return rows.map(json.decode(T, it.data)!)
 }
 
 // get session for session id `sid`. The session can be `max_age` old.

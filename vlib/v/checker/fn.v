@@ -2745,9 +2745,6 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			if arg_expr.return_type.has_flag(.result) && arg_expr.or_block.kind != .block {
 				if arg_expr.return_type.clear_option_and_result() in [ast.void_type, 0] {
 					c.error('cannot use Result type in `${node.name}`', arg_expr.pos)
-				} else {
-					c.error('cannot use Result type in `${node.name}` calls without unwrapping or using an or block',
-						arg_expr.pos)
 				}
 			}
 		}
