@@ -3,8 +3,7 @@ module diff
 import os
 import time
 
-// iterates through a list of known diff cli commands
-// and returns it with basic options
+// find_working_diff_command returns the first available command from a list of known diff cli tools.
 pub fn find_working_diff_command() !string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
@@ -16,32 +15,24 @@ pub fn find_working_diff_command() !string {
 	}
 	known_diff_tools := ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
 		'code', 'code.cmd'] // NOTE: code.cmd is the Windows variant of the `code` cli tool
-	for diffcmd in known_diff_tools {
-		if diffcmd == 'opendiff' {
-			os.find_abs_path_of_executable('opendiff') or { continue }
-			return diffcmd
-		}
-		$if freebsd || openbsd {
-			if diffcmd == 'diff' { // FreeBSD/OpenBSD diff have no `--version` option
-				return if env_diffopts != '' { '${diffcmd} ${env_diffopts}' } else { diffcmd }
-			}
-		}
-		p := os.execute('${diffcmd} --version')
-		if p.exit_code < 0 {
-			continue
-		}
-		if p.exit_code == 0 { // success
-			if diffcmd in ['code', 'code.cmd'] {
-				// Make sure the diff flag `-d` is included in any case.
-				return '${diffcmd} ${env_diffopts} -d'
-			}
-			// Don't add spaces to the cmd if there are no `env_diffopts`.
-			return if env_diffopts != '' { '${diffcmd} ${env_diffopts}' } else { diffcmd }
-		}
+	mut diff_cmd := ''
+	for cmd in known_diff_tools {
+		os.find_abs_path_of_executable(cmd) or { continue }
+		diff_cmd = cmd
+		break
 	}
-	return error('No working "diff" command found')
+	if diff_cmd == '' {
+		return error('No working "diff" command found')
+	}
+	if diff_cmd in ['code', 'code.cmd'] {
+		// Make sure the diff flag `-d` is included in any case.
+		return '${diff_cmd} ${env_diffopts} -d'
+	}
+	// Don't add spaces to the cmd if there are no `env_diffopts`.
+	return if env_diffopts != '' { '${diff_cmd} ${env_diffopts}' } else { diff_cmd }
 }
 
+// color_compare_files returns a colored diff between two files.
 pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	cmd := diff_cmd.all_before(' ')
 	os.find_abs_path_of_executable(cmd) or { return 'comparison command: `${cmd}` not found' }
@@ -63,6 +54,7 @@ pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	return os.execute(full_cmd).output.trim_right('\r\n')
 }
 
+// color_compare_strings returns a colored diff between two strings.
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
 	tmp_dir := os.join_path_single(os.vtmp_dir(), unique_prefix)
 	os.mkdir(tmp_dir) or {}
