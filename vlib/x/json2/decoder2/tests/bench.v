@@ -49,16 +49,9 @@ fn main() {
 	json_data1 := '{"val": "2"}'
 	// json_data2 := '{"val": 2}'
 
-	println(decoder2.decode[Stru](json_data)!)
-
 	mut b := benchmark.start()
 
 	// Stru **********************************************************
-	for i := 0; i < max_iterations; i++ {
-		_ := decoder2.decode[Stru](json_data)!
-	}
-
-	b.measure('decoder2.decode[Stru](json_data)!')
 
 	for i := 0; i < max_iterations; i++ {
 		_ := old_json.decode(Stru, json_data)!
