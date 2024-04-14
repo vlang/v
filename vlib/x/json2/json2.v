@@ -5,13 +5,13 @@ module json2
 
 import time
 
-// i8 - TODO
+// i8 uses `Any` as a 16-bit integer.
 pub fn (f Any) i8() i8 {
 	match f {
 		i8 {
 			return f
 		}
-		i16, int, i64, u8, u16, u32, u64, f32, f64, bool {
+		i16, i32, int, i64, u8, u16, u32, u64, f32, f64, bool {
 			return i8(f)
 		}
 		string {
@@ -23,13 +23,13 @@ pub fn (f Any) i8() i8 {
 	}
 }
 
-// i16 - TODO
+// i16 uses `Any` as a 16-bit integer.
 pub fn (f Any) i16() i16 {
 	match f {
 		i16 {
 			return f
 		}
-		i8, int, i64, u8, u16, u32, u64, f32, f64, bool {
+		i8, i32, int, i64, u8, u16, u32, u64, f32, f64, bool {
 			return i16(f)
 		}
 		string {
@@ -47,11 +47,29 @@ pub fn (f Any) int() int {
 		int {
 			return f
 		}
-		i8, i16, i64, u8, u16, u32, u64, f32, f64, bool {
+		i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool {
 			return int(f)
 		}
 		string {
 			return f.int()
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+// i32 uses `Any` as a 32-bit integer.
+pub fn (f Any) i32() i32 {
+	match f {
+		i32 {
+			return f
+		}
+		i8, i16, int, i64, u8, u16, u32, u64, f32, f64, bool {
+			return i32(f)
+		}
+		string {
+			return f.i32()
 		}
 		else {
 			return 0
@@ -65,7 +83,7 @@ pub fn (f Any) i64() i64 {
 		i64 {
 			return f
 		}
-		i8, i16, int, u8, u16, u32, u64, f32, f64, bool {
+		i8, i16, i32, int, u8, u16, u32, u64, f32, f64, bool {
 			return i64(f)
 		}
 		string {
@@ -83,7 +101,7 @@ pub fn (f Any) u64() u64 {
 		u64 {
 			return f
 		}
-		u8, u16, u32, i8, i16, int, i64, f32, f64, bool {
+		u8, u16, u32, i8, i16, i32, int, i64, f32, f64, bool {
 			return u64(f)
 		}
 		string {
@@ -101,7 +119,7 @@ pub fn (f Any) f32() f32 {
 		f32 {
 			return f
 		}
-		bool, i8, i16, int, i64, u8, u16, u32, u64, f64 {
+		bool, i8, i16, i32, int, i64, u8, u16, u32, u64, f64 {
 			return f32(f)
 		}
 		string {
@@ -119,7 +137,7 @@ pub fn (f Any) f64() f64 {
 		f64 {
 			return f
 		}
-		i8, i16, int, i64, u8, u16, u32, u64, f32 {
+		i8, i16, i32, int, i64, u8, u16, u32, u64, f32 {
 			return f64(f)
 		}
 		string {
@@ -150,7 +168,7 @@ pub fn (f Any) bool() bool {
 				return false
 			}
 		}
-		i8, i16, int, i64 {
+		i8, i16, i32, int, i64 {
 			return i64(f) != 0
 		}
 		u8, u16, u32, u64 {
@@ -266,6 +284,8 @@ pub fn map_from[T](t T) map[string]Any {
 					m[field.name] = t.$(field.name).str().i8()
 				} $else $if field.typ is i16 {
 					m[field.name] = t.$(field.name).str().i16()
+				} $else $if field.typ is i32 {
+					m[field.name] = t.$(field.name).str().i32()
 				} $else $if field.typ is int {
 					m[field.name] = t.$(field.name).str().int()
 				} $else $if field.typ is i64 {

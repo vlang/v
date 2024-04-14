@@ -720,7 +720,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 }
 
 fn (p &Parser) fileis(s string) bool {
-	return p.file_name.contains(s)
+	return p.file_path.contains(s)
 }
 
 fn (mut p Parser) prefix_expr() ast.Expr {

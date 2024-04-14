@@ -212,6 +212,8 @@ fn (mut p Parser) is_only_array_type() bool {
 				next_kind := p.peek_token(i + 1).kind
 				if next_kind == .name {
 					return true
+				} else if next_kind == .question && p.peek_token(i + 2).kind == .name {
+					return true
 				} else if next_kind == .lsbr {
 					continue
 				} else {
@@ -237,7 +239,6 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
-	mut else_count := 0
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
@@ -258,7 +259,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		mut is_else := false
 		if p.tok.kind == .key_else {
 			is_else = true
-			else_count += 1
 			p.next()
 		} else if p.is_match_sumtype_type() || p.is_only_array_type()
 			|| p.tok.kind == .key_fn
@@ -289,6 +289,12 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			}
 			is_sum_type = true
 		} else {
+			if p.tok.kind == .rcbr {
+				p.next()
+				return ast.MatchExpr{
+					pos: match_first_pos
+				}
+			}
 			// Expression match
 			for {
 				p.inside_match_case = true
@@ -350,12 +356,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else: is_else
 			post_comments: post_comments
 			scope: branch_scope
-		}
-		if is_else && branches.len == 1 {
-			p.error_with_pos('`match` must have at least one non `else` branch', pos)
-		}
-		if else_count > 1 {
-			p.error_with_pos('`match` can have only one `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

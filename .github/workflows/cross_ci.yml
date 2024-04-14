@@ -4,9 +4,13 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/cross_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/cross_ci.yml'
 
 jobs:
 

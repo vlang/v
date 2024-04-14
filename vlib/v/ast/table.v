@@ -289,6 +289,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 
 @[params]
 pub struct GetEmbedsOptions {
+pub:
 	preceding []Type
 }
 

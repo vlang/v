@@ -5,9 +5,13 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/vab_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
+      - '**.yml'
+      - '!**/vab_ci.yml'
 
 jobs:
   vab-compiles-v-examples:

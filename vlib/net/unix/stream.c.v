@@ -224,6 +224,7 @@ mut:
 
 @[params]
 pub struct ListenOptions {
+pub:
 	backlog int = 128
 }
 

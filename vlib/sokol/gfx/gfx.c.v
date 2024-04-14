@@ -1,11 +1,9 @@
 module gfx
 
-import sokol.c
+import sokol.c as _
 import sokol.memory
 
 pub const version = 1
-
-pub const used_import = c.used_import
 
 // setup initialises the SOKOL's gfx library, based on the information passed in `desc`
 pub fn setup(desc &Desc) {

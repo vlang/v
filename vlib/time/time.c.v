@@ -7,19 +7,16 @@ module time
 
 // C.timeval represents a C time value.
 pub struct C.timeval {
+pub:
 	tv_sec  u64
 	tv_usec u64
 }
 
-fn C.localtime(t &C.time_t) &C.tm
-fn C.localtime_r(t &C.time_t, tm &C.tm)
-
-// struct C.time_t {}
-
 type C.time_t = i64
 
 fn C.time(t &C.time_t) C.time_t
-
+fn C.localtime(t &C.time_t) &C.tm
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize

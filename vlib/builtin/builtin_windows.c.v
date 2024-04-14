@@ -53,7 +53,7 @@ fn builtin_init() {
 	}
 	g_original_codepage = C.GetConsoleOutputCP()
 	C.SetConsoleOutputCP(cp_utf8)
-	C.atexit(restore_codepage)
+	at_exit(restore_codepage) or {}
 	if is_terminal(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(std_output_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
 		C.SetConsoleMode(C.GetStdHandle(std_error_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)

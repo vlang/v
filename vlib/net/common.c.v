@@ -26,6 +26,7 @@ pub enum ShutdownDirection {
 
 @[params]
 pub struct ShutdownConfig {
+pub:
 	how ShutdownDirection = .read_and_write
 }
 

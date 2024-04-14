@@ -5,7 +5,6 @@ module parser
 
 import os
 import v.ast
-import v.pref
 import v.token
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
@@ -92,7 +91,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 	return ast.HashStmt{
 		mod: p.mod
-		source_file: p.file_name
+		source_file: p.file_path
 		val: val
 		kind: kind
 		main: main_str
@@ -403,6 +402,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VEXE' { token.AtKind.vexe_path }
 		'@VEXEROOT' { token.AtKind.vexeroot_path }
 		'@VMODROOT' { token.AtKind.vmodroot_path }
+		'@VMODHASH' { token.AtKind.vmod_hash }
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}

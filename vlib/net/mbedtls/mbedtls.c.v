@@ -1,7 +1,5 @@
 module mbedtls
 
-pub const is_used = 1
-
 #flag -I @VEXEROOT/thirdparty/mbedtls/library
 #flag -I @VEXEROOT/thirdparty/mbedtls/include
 // #flag -D _FILE_OFFSET_BITS=64

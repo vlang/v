@@ -47,6 +47,7 @@ pub mut:
 }
 
 pub struct Mail {
+pub:
 	from        string
 	to          string
 	cc          string

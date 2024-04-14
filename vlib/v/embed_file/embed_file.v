@@ -1,7 +1,5 @@
 module embed_file
 
-pub const is_used = 1
-
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {
 	apath            string

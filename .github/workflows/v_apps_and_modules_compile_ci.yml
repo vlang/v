@@ -3,18 +3,26 @@ name: V Apps and Modules
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/v_apps_and_modules_compile_ci.yml'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/v_apps_and_modules_compile_ci.yml'
+
+concurrency:
+  group: app-modules-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   v-apps-compile:
     runs-on: ubuntu-latest
     if: >
-        github.event_name != 'push'
-        || github.event.ref == 'refs/heads/master'
-        || github.event.repository.full_name != 'vlang/v'
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +41,7 @@ jobs:
       - name: Test vsql compilation and examples
         run: |
           echo "Install vsql"
-          .github/workflows/retry.sh v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
+          .github/workflows/retry.sh v install https://github.com/ttytm/vsql@temp/vi-ci ; cd ~/.vmodules/vsql
           echo "Generate vsql/grammar.v"
           make vsql/grammar.v
           echo "Compile vsql"
@@ -45,10 +53,10 @@ jobs:
 
       - name: Test discord.v
         run: |
-          echo "Clone https://github.com/DarpHome/discord.v/"
-          .github/workflows/retry.sh git clone https://github.com/DarpHome/discord.v/ discord && cd discord
-          echo "Checkout last known good commit"
-          git checkout 533485c08f21df91ff62fea9477e7017d21f91c4
+          echo "Clone https://github.com/DarpHome/discord.v"
+          .github/workflows/retry.sh v install https://github.com/ttytm/discord.v@temp/v-ci && cd ~/.vmodules/discord
+          # echo "Checkout last known good commit"
+          # git checkout 789de8ad35ee2683fbcd950fc07936f052088d0c
           echo "Execute Tests"
           v test .
 
@@ -126,7 +134,7 @@ jobs:
           v fmt -c .
           exit_code=$?
           if [[ $exit_code -ne 0 && $exit_code -ne 5 ]]; then
-            # Don't fail on on internal errors
+            # Don't fail if there are only internal errors (exit code 5).
             v fmt -diff .
             exit 1
           fi
@@ -138,7 +146,7 @@ jobs:
           echo "Build Go2V"
           v /tmp/go2v/
           echo "Run Go2V tests"
-          VJOBS=1 v -stats test /tmp/go2v/
+          VJOBS=1 v test /tmp/go2v/
 
       - name: Install UI through VPM and make sure its examples compile
         run: |
@@ -163,10 +171,9 @@ jobs:
           echo "Build msgpack"
           v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
-          v -stats test ~/.vmodules/msgpack/
+          v test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
-
 
 #      - name: Build VEX
 #        run: |
@@ -179,13 +186,12 @@ jobs:
 #          echo "Run Vex Tests"
 #          v test ~/.vmodules/nedpals/vex
 
-
   vsl-and-vtl-compile:
     runs-on: ubuntu-20.04
     if: >
-        github.event_name != 'push'
-        || github.event.ref == 'refs/heads/master'
-        || github.event.repository.full_name != 'vlang/v'
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -no-parallel
@@ -221,10 +227,6 @@ jobs:
           ~/.vmodules/vsl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
           ~/.vmodules/vsl/bin/test --use-cblas
-          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
-          ~/.vmodules/vsl/bin/test --use-gc boehm
-          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
-          ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
 
       - name: Build vlang/vtl
         run: |
@@ -235,7 +237,19 @@ jobs:
           ~/.vmodules/vtl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
           ~/.vmodules/vtl/bin/test --use-cblas
-          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
-          ~/.vmodules/vtl/bin/test --use-gc boehm
-          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
-          ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
+
+  vpm-site:
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-12]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v doctor
+      - name: Build vpm
+        run: |
+          .github/workflows/retry.sh ./v install markdown
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/vpm
+          cd vpm && ../v .

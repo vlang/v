@@ -48,6 +48,7 @@ const start_local_time = local_as_unix_time()
 
 // in most systems, these are __quad_t, which is an i64
 pub struct C.timespec {
+pub:
 	tv_sec  i64
 	tv_nsec i64
 }

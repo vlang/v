@@ -182,6 +182,7 @@ pub fn chunk[T](array []T, size int) [][]T {
 }
 
 pub struct WindowAttribute {
+pub:
 	size int
 	step int = 1
 }

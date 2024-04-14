@@ -1,5 +1,5 @@
 (function () {
-	const docnav = document.querySelector('.doc-nav');
+	const docnav = document.querySelector('header.doc-nav');
 	const active = docnav.querySelector('li.active');
 	active?.scrollIntoView({ block: 'center', inline: 'nearest' });
 	setupMobileToggle();
@@ -62,7 +62,7 @@ function setupScrollSpy() {
 
 function setupMobileToggle() {
 	document.getElementById('toggle-menu').addEventListener('click', () => {
-		const docNav = document.querySelector('.doc-nav');
+		const docNav = document.querySelector('header.doc-nav');
 		const isHidden = docNav.classList.contains('hidden');
 		docNav.classList.toggle('hidden');
 		const search = docNav.querySelector('.search');
@@ -92,7 +92,7 @@ function setupDarkMode() {
 function setupSearch() {
 	const onInputChange = debounce((e) => {
 		const searchValue = e.target.value.toLowerCase();
-		const docNav = document.querySelector('.doc-nav');
+		const docNav = document.querySelector('header.doc-nav');
 		const menu = docNav.querySelector('.content');
 		const search = docNav.querySelector('.search');
 		if (searchValue === '') {
@@ -182,6 +182,7 @@ function setupSearch() {
 function setupSearchKeymaps() {
 	const searchInput = document.querySelector('#search input');
 	const mainContent = document.querySelector('#main-content');
+	const docnav = document.querySelector('header.doc-nav');
 	// Keyboard shortcut indicator
 	const searchKeys = document.createElement('div');
 	const modifierKeyPrefix = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
@@ -241,6 +242,7 @@ function setupSearchKeymaps() {
 				}
 				break;
 			default:
+				docnav.scroll(0, 0);
 				selectedIdx = -1;
 		}
 	});

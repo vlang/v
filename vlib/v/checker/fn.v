@@ -1,7 +1,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.util
 import v.token
 

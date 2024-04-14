@@ -8,6 +8,7 @@ import time
 // Encoder encodes the an `Any` type into JSON representation.
 // It provides parameters in order to change the end result.
 pub struct Encoder {
+pub:
 	newline              u8
 	newline_spaces_count int
 	escape_unicode       bool = true

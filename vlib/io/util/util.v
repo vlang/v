@@ -7,6 +7,7 @@ const retries = 10000
 
 @[params]
 pub struct TempFileOptions {
+pub:
 	path    string = os.temp_dir()
 	pattern string
 }
@@ -40,6 +41,7 @@ pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 
 @[params]
 pub struct TempDirOptions {
+pub:
 	path    string = os.temp_dir()
 	pattern string
 }

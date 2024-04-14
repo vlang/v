@@ -21,20 +21,18 @@ const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpx
 
 @[minify]
 pub struct Parser {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 mut:
 	file_base         string       // "hello.v"
-	file_name         string       // "/home/user/hello.v"
-	file_name_dir     string       // "/home/user"
+	file_path         string       // "/home/user/hello.v"
 	file_display_path string       // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
-	unique_prefix     string       // a hash of p.file_name, used for making anon fn generation unique
+	unique_prefix     string       // a hash of p.file_path, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
-	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
 	tok                       token.Token
 	prev_tok                  token.Token
 	peek_tok                  token.Token
-	table                     &ast.Table = unsafe { nil }
 	language                  ast.Language
 	fn_language               ast.Language // .c for `fn C.abcd()` declarations
 	expr_level                int  // prevent too deep recursions for pathological programs
@@ -72,17 +70,16 @@ mut:
 	inside_orm                bool
 	inside_chan_decl          bool
 	inside_attr_decl          bool
-	fixed_array_dim           int        // fixed array dim parsing level
-	or_is_handled             bool       // ignore `or` in this expression
-	builtin_mod               bool       // are we in the `builtin` module?
-	mod                       string     // current module name
-	is_manualfree             bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals               bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated              bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	is_translated             bool       // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
-	attrs                     []ast.Attr // attributes before next decl stmt
-	expr_mod                  string     // for constructing full type names in parse_type()
-	scope                     &ast.Scope = unsafe { nil }
+	fixed_array_dim           int               // fixed array dim parsing level
+	or_is_handled             bool              // ignore `or` in this expression
+	builtin_mod               bool              // are we in the `builtin` module?
+	mod                       string            // current module name
+	is_manualfree             bool              // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals               bool              // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated              bool              // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated             bool              // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
+	attrs                     []ast.Attr        // attributes before next decl stmt
+	expr_mod                  string            // for constructing full type names in parse_type()
 	imports                   map[string]string // alias => mod_name
 	ast_imports               []ast.Import      // mod_names
 	used_imports              []string // alias
@@ -109,6 +106,8 @@ mut:
 	script_mode_start_token   token.Token
 pub mut:
 	scanner        &scanner.Scanner = unsafe { nil }
+	table          &ast.Table       = unsafe { nil }
+	scope          &ast.Scope       = unsafe { nil }
 	errors         []errors.Error
 	warnings       []errors.Warning
 	notices        []errors.Notice
@@ -145,7 +144,7 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
 	mut p := Parser{
-		file_name: tmpl_path
+		file_path: tmpl_path
 		scanner: scanner.new_scanner(text, .skip_comments, pref_)
 		table: table
 		pref: pref_
@@ -164,7 +163,6 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref_)
-		comments_mode: comments_mode
 		table: table
 		pref: pref_
 		scope: &ast.Scope{
@@ -199,12 +197,11 @@ const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator)
 	'/')
 
 pub fn (mut p Parser) set_path(path string) {
-	p.file_name = path
+	p.file_path = path
 	p.file_base = os.base(path)
-	p.file_name_dir = os.dir(path)
-	p.file_display_path = os.real_path(p.file_name).replace_once(parser.normalised_working_folder,
+	p.file_display_path = os.real_path(p.file_path).replace_once(parser.normalised_working_folder,
 		'').replace('\\', '/')
-	p.inside_vlib_file = p.file_name_dir.contains('vlib')
+	p.inside_vlib_file = os.dir(path).contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
 
@@ -246,7 +243,6 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		comments_mode: comments_mode
 		table: table
 		pref: pref_
 		scope: &ast.Scope{
@@ -271,7 +267,6 @@ pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, .parse_comments, pref_) or { panic(err) }
-		comments_mode: .parse_comments
 		table: table_
 		pref: pref_
 		scope: &ast.Scope{
@@ -371,12 +366,12 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
-		codegen_files << parse_text(ptext, p.file_name, mut p.table, p.comments_mode,
+		codegen_files << parse_text(ptext, p.file_path, mut p.table, p.scanner.comments_mode,
 			p.pref)
 	}
 
 	return &ast.File{
-		path: p.file_name
+		path: p.file_path
 		path_base: p.file_base
 		is_test: p.inside_test_file
 		is_generated: p.is_generated
@@ -653,6 +648,7 @@ fn (mut p Parser) check(expected token.Kind) {
 
 @[params]
 struct ParamsForUnexpected {
+pub:
 	got            string
 	expecting      string
 	prepend_msg    string
@@ -699,7 +695,7 @@ fn (mut p Parser) check_js_name() string {
 fn (mut p Parser) check_name() string {
 	pos := p.tok.pos()
 	name := p.tok.lit
-	if p.peek_tok.kind == .dot && name in p.imports {
+	if p.tok.kind != .name && p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
 	}
 	match p.tok.kind {
@@ -716,7 +712,7 @@ fn (mut p Parser) check_name() string {
 
 @[if trace_parser ?]
 fn (p &Parser) trace_parser(label string) {
-	eprintln('parsing: ${p.file_name:-30}|tok.pos: ${p.tok.pos().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|${label}')
+	eprintln('parsing: ${p.file_path:-30}|tok.pos: ${p.tok.pos().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|${label}')
 }
 
 fn (mut p Parser) top_stmt() ast.Stmt {
@@ -886,7 +882,7 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 			mod: 'main'
 			is_main: true
 			stmts: stmts
-			file: p.file_name
+			file: p.file_path
 			return_type: ast.void_type
 			scope: p.scope
 			label_names: p.label_names
@@ -935,6 +931,7 @@ fn (mut p Parser) comment_stmt() ast.ExprStmt {
 
 @[params]
 struct EatCommentsConfig {
+pub:
 	same_line bool // Only eat comments on the same line as the previous token
 	follow_up bool // Comments directly below the previous token as long as there is no empty line
 }
@@ -2066,7 +2063,7 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	// print_backtrace()
 	mut kind := 'error:'
 	if p.pref.fatal_errors {
-		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
+		util.show_compiler_message(kind, pos: pos, file_path: p.file_path, message: s)
 		exit(1)
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
@@ -2074,11 +2071,11 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 			print_backtrace()
 			kind = 'parser error:'
 		}
-		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
+		util.show_compiler_message(kind, pos: pos, file_path: p.file_path, message: s)
 		exit(1)
 	} else {
 		p.errors << errors.Error{
-			file_path: p.file_name
+			file_path: p.file_path
 			pos: pos
 			reporter: .parser
 			message: s
@@ -2143,14 +2140,14 @@ fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 		return
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		util.show_compiler_message('warning:', pos: pos, file_path: p.file_name, message: s)
+		util.show_compiler_message('warning:', pos: pos, file_path: p.file_path, message: s)
 	} else {
 		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
 			p.should_abort = true
 			return
 		}
 		p.warnings << errors.Warning{
-			file_path: p.file_name
+			file_path: p.file_path
 			pos: pos
 			reporter: .parser
 			message: s
@@ -2170,10 +2167,10 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 		return
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		util.show_compiler_message('notice:', pos: pos, file_path: p.file_name, message: s)
+		util.show_compiler_message('notice:', pos: pos, file_path: p.file_path, message: s)
 	} else {
 		p.notices << errors.Notice{
-			file_path: p.file_name
+			file_path: p.file_path
 			pos: pos
 			reporter: .parser
 			message: s
@@ -3662,7 +3659,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		}
 		module_pos = attrs_pos.extend(name_pos)
 	}
-	full_name := util.qualify_module(p.pref, name, p.file_name)
+	full_name := util.qualify_module(p.pref, name, p.file_path)
 	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
 	mod_node = ast.Module{
@@ -3762,7 +3759,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_pos.extend(pos)
 			mod_pos: pos
 			alias_pos: submod_pos
-			mod: util.qualify_import(p.pref, source_name, p.file_name)
+			mod: util.qualify_import(p.pref, source_name, p.file_path)
 			alias: mod_alias
 		}
 	}
@@ -3772,7 +3769,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_node.pos
 			mod_pos: import_node.mod_pos
 			alias_pos: import_node.alias_pos
-			mod: util.qualify_import(p.pref, mod_name_arr[0], p.file_name)
+			mod: util.qualify_import(p.pref, mod_name_arr[0], p.file_path)
 			alias: mod_alias
 		}
 	}
@@ -4515,7 +4512,7 @@ fn verror(s string) {
 }
 
 fn (mut p Parser) top_level_statement_start() {
-	if p.comments_mode == .toplevel_comments {
+	if p.scanner.comments_mode == .toplevel_comments {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if trace_scanner ? {
@@ -4525,7 +4522,7 @@ fn (mut p Parser) top_level_statement_start() {
 }
 
 fn (mut p Parser) top_level_statement_end() {
-	if p.comments_mode == .toplevel_comments {
+	if p.scanner.comments_mode == .toplevel_comments {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if trace_scanner ? {
@@ -4653,6 +4650,7 @@ fn (mut p Parser) trace[T](fbase string, x &T) {
 
 @[params]
 struct ParserShowParams {
+pub:
 	msg   string
 	reach int = 3
 }

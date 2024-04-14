@@ -159,6 +159,7 @@ struct HtmlFileInfo {
 // TemplateCacheParams are used to specify cache expiration delay and provide placeholder data for substitution in templates.
 @[params]
 pub struct TemplateCacheParams {
+pub:
 	placeholders           &map[string]DtmMultiTypeMap = &map[string]DtmMultiTypeMap{}
 	cache_delay_expiration i64 = dtm.cache_delay_expiration_by_default
 }
@@ -166,6 +167,7 @@ pub struct TemplateCacheParams {
 // DynamicTemplateManagerInitialisationParams is used with 'initialize' function. (See below at initialize section)
 @[params]
 pub struct DynamicTemplateManagerInitialisationParams {
+pub:
 	def_cache_path       string
 	compress_html        bool = true
 	active_cache_server  bool = true

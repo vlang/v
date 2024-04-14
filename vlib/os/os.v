@@ -121,6 +121,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 
 @[params]
 pub struct MvParams {
+pub:
 	overwrite bool = true
 }
 
@@ -390,7 +391,7 @@ pub fn get_raw_lines_joined() string {
 	return res
 }
 
-// user_os returns current user operating system name.
+// user_os returns the current user's operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -443,7 +444,7 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
-// user_names returns an array of the name of every user on the system.
+// user_names returns an array containing the names of all users on the system.
 pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
@@ -465,7 +466,7 @@ pub fn user_names() ![]string {
 	}
 }
 
-// home_dir returns path to the user's home directory.
+// home_dir returns the path to the current user's home directory.
 pub fn home_dir() string {
 	$if windows {
 		return getenv('USERPROFILE')
@@ -490,8 +491,8 @@ pub fn expand_tilde_to_home(path string) string {
 	return path
 }
 
-// write_file writes `text` data to the file in `path`.
-// If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
+// write_file writes `text` data to a file with the given `path`.
+// If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
 	mut f := create(path)!
 	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
@@ -510,15 +511,15 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
-// find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
-// the absolute path of the executable if found
-pub fn find_abs_path_of_executable(exepath string) !string {
-	if exepath == '' {
-		return error('expected non empty `exepath`')
+// find_abs_path_of_executable searches the environment PATH for the
+// absolute path of the given executable name.
+pub fn find_abs_path_of_executable(exe_name string) !string {
+	if exe_name == '' {
+		return error('expected non empty `exe_name`')
 	}
 
 	for suffix in executable_suffixes {
-		fexepath := exepath + suffix
+		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return real_path(fexepath)
 		}
@@ -717,6 +718,7 @@ pub fn log(s string) {
 
 @[params]
 pub struct MkdirParams {
+pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 

@@ -6,11 +6,11 @@ features.
 ## Features
 
 - **Very fast** performance of C on the web.
-- **Easy to deploy** just one binary file that also includes all templates. No need to install any
-  dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 - **Middleware** functionality similar to other big frameworks.
 - **Controllers** to split up your apps logic.
+- **Easy to deploy** just one binary file that also includes all templates. No need to install any
+  dependencies.
 
 ## Quick Start
 

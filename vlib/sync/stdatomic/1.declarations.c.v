@@ -86,5 +86,3 @@ fn C.atomic_compare_exchange_strong_u64(voidptr, voidptr, u64) bool
 fn C.atomic_exchange_u64(voidptr, u64) u64
 fn C.atomic_fetch_add_u64(voidptr, u64) u64
 fn C.atomic_fetch_sub_u64(voidptr, u64) u64
-
-pub const used = 1

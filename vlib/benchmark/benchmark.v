@@ -153,6 +153,7 @@ pub fn (mut b Benchmark) record_measure(label string) i64 {
 // If it is set, the preparation time (compile time) will be shown before the measured runtime.
 @[params]
 pub struct MessageOptions {
+pub:
 	preparation time.Duration // the duration of the preparation time for the step
 }
 

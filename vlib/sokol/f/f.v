@@ -1,9 +1,7 @@
 module f
 
-import fontstash
-import sokol.c
-
-pub const used_import = fontstash.used_import + c.used_import
+import fontstash as _
+import sokol.c as _
 
 #flag linux -I.
 
