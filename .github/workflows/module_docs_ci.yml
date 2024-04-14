@@ -13,6 +13,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build V
         run: make
+      - name: Test v doc
+        run: |
+          # While the integration tests (executing the v doc command) should install
+          # markdown automatically, unit tests won't. Run integration tests first.
+          ./v test cmd/tools/vdoc/tests/
+          ./v test cmd/tools/vdoc/*.v
       - name: Build module documentation
         run: ./v doc -m -f html vlib/
       - name: Deploy docs to vercel

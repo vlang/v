@@ -84,6 +84,7 @@ const essential_list = [
 ]
 const skip_test_files = [
 	'do_not_remove',
+	'cmd/tools/vdoc/utils_test.v', // markdown not installed
 	'vlib/context/deadline_test.v', // sometimes blocks
 	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
 	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
