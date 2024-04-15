@@ -110,6 +110,14 @@ const html = '<!DOCTYPE html>
     }
   </script>
 </html>'
+
+Regular markdown list point 1
+List point 2
+List point 3
+
+Numbered markdown list point 1
+List point 2
+List point 3
 [94mmodule[39m [32mmain[39m
     ## Description
     
@@ -243,6 +251,11 @@ const html = '<!DOCTYPE html>
     </html>'
     ```
     
+    - Regular markdown list point 1
+    - List point 2
+    - List point 3
+    
+    1. Numbered markdown list point 1 2. List point 2 3. List point 3
 
 [94mconst[39m omega = [94m3[39m [90m// should be first[39m
 [94mconst[39m alpha = [94m5[39m [90m// should be in the middle[39m

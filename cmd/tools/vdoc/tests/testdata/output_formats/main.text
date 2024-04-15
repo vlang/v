@@ -131,6 +131,11 @@ module main
     </html>'
     ```
     
+    - Regular markdown list point 1
+    - List point 2
+    - List point 3
+    
+    1. Numbered markdown list point 1 2. List point 2 3. List point 3
 
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle
