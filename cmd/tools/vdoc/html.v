@@ -506,43 +506,12 @@ fn html_highlight(code string, tb &ast.Table) string {
 fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	// Allow README.md to go through unescaped except for script tags
-	escaped_html := if head && is_module_readme(dn) {
-		readme_lines := dn.comments[0].text.split_into_lines()
-		mut merged_lines := []string{}
-		mut is_codeblock := false
-		for i := 0; i < readme_lines.len; i++ {
-			l := readme_lines[i]
-			nl := readme_lines[i + 1] or {
-				merged_lines << l
-				break
-			}
-			l_trimmed := l.trim_left('\x01').trim_space()
-			if l_trimmed.starts_with('```') {
-				is_codeblock = !is_codeblock
-			}
-			// -> if l_trimmed.len > 1 && (is_ul || is_ol)
-			is_list := l_trimmed.len > 1 && ((l_trimmed[1] == ` ` && l_trimmed[0] in [`*`, `-`])
-				|| (l_trimmed.len > 2 && l_trimmed[2] == ` ` && l_trimmed[1] == `.`
-				&& l_trimmed[0].is_digit()))
-			if !is_codeblock && l != '' && nl != '' && !is_list
-				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
-				merged_lines << '${l} ${nl}'
-				i++
-				continue
-			}
-			merged_lines << l
-		}
-		merged_lines.join_lines()
-	} else {
-		dn.merge_comments_without_examples()
-	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
 			table: tb
 		}
 	}
-	md_content := markdown.render(escaped_html, mut renderer) or { '' }
+	md_content := markdown.render(dn.merge_comments_without_examples(), mut renderer) or { '' }
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
