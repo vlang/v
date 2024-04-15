@@ -132,7 +132,7 @@ fn (mut vd VDoc) collect_search_index(out Output) {
 			doc.head.merge_comments_without_examples()
 		}
 		vd.search_module_data << SearchModuleResult{
-			description: trim_doc_node_description(comments)
+			description: trim_doc_node_description(mod, comments)
 			link: vd.get_file_name(mod, out)
 		}
 		for _, dn in doc.contents {
@@ -151,7 +151,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	} else {
 		dn.merge_comments_without_examples()
 	}
-	dn_description := trim_doc_node_description(comments)
+	dn_description := trim_doc_node_description(dn.name, comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
 		prefix: if dn.parent_name != '' { '${dn.kind} (${dn.parent_name})' } else { '${dn.kind} ' }

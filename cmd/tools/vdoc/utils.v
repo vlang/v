@@ -33,13 +33,25 @@ fn is_module_readme(dn doc.DocNode) bool {
 	return dn.comments.len > 0 && (dn.content == 'module ${dn.name}' || dn.name == 'README')
 }
 
-fn trim_doc_node_description(desc string) string {
+// trim_doc_node_description returns the nodes trimmed description.
+// An example use are the descriptions of the search results in the sidebar.
+fn trim_doc_node_description(mod_name string, desc string) string {
 	mut dn_desc := desc.replace_each(['\r\n', '\n', '"', '\\"'])
-	// Handle module READMEs.
-	if dn_desc.starts_with('## Description\n\n') {
-		dn_desc = dn_desc['## Description\n\n'.len..].all_before('\n')
-		if dn_desc.starts_with('`') && dn_desc.count('`') > 1 {
-			dn_desc = dn_desc.all_after('`').all_after('`').trim_left(' ')
+	// Get the first "descriptive" line.
+	if dn_desc.starts_with('#') {
+		// Handle module READMEs.
+		for l in dn_desc.split_into_lines()[1..] {
+			if l != '' && !l.starts_with('#') {
+				quoted_mod_name := '`${mod_name}`'
+				if l.starts_with(quoted_mod_name) {
+					// Omit the module name in the description as it is redundant since the name is displayed as well.
+					// "`arrays` is a module that..." -> "is a module that..."
+					dn_desc = l.all_after(quoted_mod_name).trim_left(' ')
+				} else {
+					dn_desc = l
+				}
+				break
+			}
 		}
 	} else {
 		dn_desc = dn_desc.all_before('\n')
@@ -48,7 +60,7 @@ fn trim_doc_node_description(desc string) string {
 	if dn_desc.len > 80 {
 		dn_desc = dn_desc[..80]
 	}
-	// If `\` is last character, it ends with `\"` which leads to a JS error.
+	// If `\` is the last character, it ends with `\"` which leads to a JS error.
 	return dn_desc.trim_string_right('\\')
 }
 
