@@ -63,7 +63,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	mut comment := ''
 	mut next_on_newline := true
 	mut is_codeblock := false
-	mut trimmed_ident_before_code := ''
+	mut trimmed_indent := ''
 	for cmt in doc_comments.reverse() {
 		line_loop: for line in cmt.split_into_lines() {
 			l_normalized := line.trim_left('\x01')
@@ -76,7 +76,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			}
 			has_codeblock_quote := l.starts_with('```')
 			if is_codeblock {
-				comment += l_normalized.trim_string_left(trimmed_ident_before_code) + '\n'
+				comment += l_normalized.trim_string_left(trimmed_indent) + '\n'
 				if has_codeblock_quote {
 					is_codeblock = !is_codeblock
 				}
@@ -86,9 +86,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				if !is_codeblock && !last_ends_with_lb {
 					comment += '\n'
 				}
-				trimmed_ident_before_code = l_normalized.all_before(l)
 				comment += l + '\n'
 				is_codeblock = !is_codeblock
+				trimmed_indent = l_normalized.all_before(l)
 				next_on_newline = true
 				continue
 			}
