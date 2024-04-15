@@ -45,6 +45,7 @@ mut:
 	inside_ct_if_expr         bool
 	inside_or_expr            bool
 	inside_for                bool
+	inside_for_expr           bool
 	inside_fn                 bool // true even with implicit main
 	inside_fn_return          bool
 	inside_call_args          bool // true inside f(  ....  )
