@@ -130,3 +130,11 @@ const html = '<!DOCTYPE html>
   </script>
 </html>'
 ```
+
+- Regular markdown list point 1
+- List point 2
+- List point 3
+
+1. Numbered markdown list point 1
+2. List point 2
+3. List point 3

@@ -511,13 +511,21 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		readme_lines := dn.comments[0].text.split_into_lines()
 		mut merged_lines := []string{}
 		mut is_codeblock := false
-		for i := 0; i < readme_lines.len - 1; i++ {
+		for i := 0; i < readme_lines.len; i++ {
 			l := readme_lines[i]
-			nl := readme_lines[i + 1]
-			if l.trim_left('\x01').trim_space().starts_with('```') {
+			nl := readme_lines[i + 1] or {
+				merged_lines << l
+				break
+			}
+			l_trimmed := l.trim_left('\x01').trim_space()
+			if l_trimmed.starts_with('```') {
 				is_codeblock = !is_codeblock
 			}
-			if !is_codeblock && l != '' && nl != ''
+			// -> if l_trimmed.len > 1 && (is_ul || is_ol)
+			is_list := l_trimmed.len > 1 && ((l_trimmed[1] == ` ` && l_trimmed[0] in [`*`, `-`])
+				|| (l_trimmed.len > 2 && l_trimmed[2] == ` ` && l_trimmed[1] == `.`
+				&& l_trimmed[0].is_digit()))
+			if !is_codeblock && l != '' && nl != '' && !is_list
 				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
 				merged_lines << '${l} ${nl}'
 				i++
