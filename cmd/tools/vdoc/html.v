@@ -521,13 +521,10 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 			if l_trimmed.starts_with('```') {
 				is_codeblock = !is_codeblock
 			}
-			is_list := if l_trimmed.len > 1 {
-				list := l_trimmed[0] in [`*`, `-`] && l_trimmed[1] == ` `
-				num_list := l_trimmed[0].is_digit() && l_trimmed[1] == `.`
-				list || num_list
-			} else {
-				false
-			}
+			// -> if l_trimmed.len > 1 && (is_ul || is_ol)
+			is_list := l_trimmed.len > 1 && ((l_trimmed[1] == ` ` && l_trimmed[0] in [`*`, `-`])
+				|| (l_trimmed.len > 2 && l_trimmed[2] == ` ` && l_trimmed[1] == `.`
+				&& l_trimmed[0].is_digit()))
 			if !is_codeblock && l != '' && nl != '' && !is_list
 				&& !nl.trim_left('\x01').trim_space().starts_with('```') {
 				merged_lines << '${l} ${nl}'
