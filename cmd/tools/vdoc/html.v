@@ -506,7 +506,6 @@ fn html_highlight(code string, tb &ast.Table) string {
 fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	// Allow README.md to go through unescaped except for script tags
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
 			table: tb
