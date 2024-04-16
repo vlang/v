@@ -15,7 +15,7 @@ fn main() {
 	mut fp := flag.new_flag_parser(os.args#[1..])
 	fp.application('v retry')
 	fp.version('0.0.1')
-	fp.description('Run the command CMD in a loop, untill it succeeds, or until a predetermined amount of seconds pass.')
+	fp.description('Run the command CMD in a loop, until it succeeds, or until a predetermined amount of seconds pass.')
 	fp.arguments_description('CMD')
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
