@@ -26,7 +26,11 @@ const vcs_info = init_vcs_info() or {
 }
 
 fn init_vcs_info() !map[VCS]VCSInfo {
-	git_installed_raw_ver := os.execute_opt('git --version')!.output.all_after('git version ').all_before(' ').trim_space()
+	// The output from `git version` varies, depending on how git was compiled. Here are some examples:
+	// `git version 2.44.0` when compiled from source, or from brew on macos.
+	// `git version 2.39.3 (Apple Git-146)` on macos with XCode's cli tools.
+	// `git version 2.44.0.windows.1` on windows's Git Bash shell.
+	git_installed_raw_ver := os.execute_opt('git --version')!.output.all_after('git version ').all_before(' ').all_before('.windows').trim_space()
 	git_installed_ver := semver.from(git_installed_raw_ver)!
 	git_submod_filter_ver := semver.from('2.36.0')!
 	mut git_install_cmd := 'clone --depth=1 --recursive --shallow-submodules --filter=blob:none'
