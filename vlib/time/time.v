@@ -87,12 +87,12 @@ pub enum FormatDelimiter {
 }
 
 pub fn Time.new(t Time) Time {
-	return new_time(t)
+	return time_with_unix(t)
 }
 
 // new returns a time struct with the calculated Unix time.
 pub fn new(t Time) Time {
-	return new_time(t)
+	return time_with_unix(t)
 }
 
 // smonth returns the month name abbreviation.
@@ -107,26 +107,26 @@ pub fn (t Time) smonth() string {
 // unix returns the UNIX time with second resolution.
 @[inline]
 pub fn (t Time) unix() i64 {
-	return new_time(t).unix
+	return time_with_unix(t).unix
 }
 
 // unix_milli returns the UNIX time with millisecond resolution.
 @[inline]
 pub fn (t Time) unix_milli() i64 {
-	return new_time(t).unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
+	return time_with_unix(t).unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
 // unix_micro returns the UNIX time with microsecond resolution.
 @[inline]
 pub fn (t Time) unix_micro() i64 {
-	return new_time(t).unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
+	return time_with_unix(t).unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
 // unix_nano returns the UNIX time with nanosecond resolution.
 @[inline]
 pub fn (t Time) unix_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
-	return new_time(t).unix * 1_000_000_000 + i64(t.nanosecond)
+	return time_with_unix(t).unix * 1_000_000_000 + i64(t.nanosecond)
 }
 
 // unix_time returns the UNIX time with second resolution.
@@ -159,7 +159,7 @@ pub fn (t Time) unix_time_nano() i64 {
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
-	t_with_unix := new_time(t)
+	t_with_unix := time_with_unix(t)
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
@@ -177,12 +177,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return new_time(t).add(seconds * second)
+	return time_with_unix(t).add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return new_time(t).add(days * 24 * hour)
+	return time_with_unix(t).add(days * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.

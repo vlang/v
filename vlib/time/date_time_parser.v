@@ -304,7 +304,7 @@ fn (mut p DateTimeParser) parse() !Time {
 		return error_invalid_time(0, '${month_name} has only 30 days')
 	}
 
-	return new_time(
+	return new(
 		year: year_
 		month: month_
 		day: day_in_month
