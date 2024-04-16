@@ -113,20 +113,20 @@ pub fn (t Time) unix() i64 {
 // unix_milli returns the UNIX time with millisecond resolution.
 @[inline]
 pub fn (t Time) unix_milli() i64 {
-	return time_with_unix(t).unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
+	return t.unix() * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
 // unix_micro returns the UNIX time with microsecond resolution.
 @[inline]
 pub fn (t Time) unix_micro() i64 {
-	return time_with_unix(t).unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
+	return t.unix() * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
 // unix_nano returns the UNIX time with nanosecond resolution.
 @[inline]
 pub fn (t Time) unix_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
-	return time_with_unix(t).unix * 1_000_000_000 + i64(t.nanosecond)
+	return t.unix() * 1_000_000_000 + i64(t.nanosecond)
 }
 
 // unix_time returns the UNIX time with second resolution.
