@@ -36,7 +36,8 @@ pub fn (t Time) local() Time {
 		return t
 	}
 	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&t.unix), &loc_tm)
+	t_ := t.unix()
+	C.localtime_r(voidptr(&t_), &loc_tm)
 	return convert_ctime(loc_tm, t.nanosecond)
 }
 

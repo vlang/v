@@ -159,20 +159,19 @@ pub fn (t Time) unix_time_nano() i64 {
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
-	t_with_unix := time_with_unix(t)
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
 	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
 	// increased_time_second
-	mut increased_time_second := t_with_unix.unix + (increased_time_nanosecond / second)
+	mut increased_time_second := t.unix() + (increased_time_nanosecond / second)
 	increased_time_nanosecond = increased_time_nanosecond % second
 	if increased_time_nanosecond < 0 {
 		increased_time_second--
 		increased_time_nanosecond += second
 	}
 	res := unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
-	return if t_with_unix.is_local { res.as_local() } else { res }
+	return if t.is_local { res.as_local() } else { res }
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
@@ -207,7 +206,7 @@ pub fn since(t Time) Duration {
 // ```
 pub fn (t Time) relative() string {
 	znow := now()
-	mut secs := znow.unix - t.unix
+	mut secs := znow.unix - t.unix()
 	mut prefix := ''
 	mut suffix := ''
 	if secs < 0 {
@@ -269,7 +268,7 @@ pub fn (t Time) relative() string {
 // ```
 pub fn (t Time) relative_short() string {
 	znow := now()
-	mut secs := znow.unix - t.unix
+	mut secs := znow.unix - t.unix()
 	mut prefix := ''
 	mut suffix := ''
 	if secs < 0 {
