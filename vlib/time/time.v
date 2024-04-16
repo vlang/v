@@ -86,8 +86,6 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// new returns a time struct with the calculated Unix time.
-@[deprecated: 'use the `new` function instead of the static type method']
 pub fn Time.new(t Time) Time {
 	return new_time(t)
 }
@@ -106,8 +104,15 @@ pub fn (t Time) smonth() string {
 	return time.months_string[i * 3..(i + 1) * 3]
 }
 
+// unix returns the UNIX time with second resolution.
+@[inline]
+pub fn (t Time) unix() i64 {
+	return if t.unix > 0 { *t } else { new_time(t) }.unix
+}
+
 // unix_time returns the UNIX time with second resolution.
 @[inline]
+@[deprecated: 'use `t.unix()` instead']
 pub fn (t Time) unix_time() i64 {
 	return if t.unix > 0 { *t } else { new_time(t) }.unix
 }
