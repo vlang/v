@@ -104,29 +104,57 @@ pub fn (t Time) smonth() string {
 	return time.months_string[i * 3..(i + 1) * 3]
 }
 
-// unix_time returns the UNIX time with second resolution.
+// unix returns the UNIX time with second resolution.
 @[inline]
-pub fn (t Time) unix_time() i64 {
+pub fn (t Time) unix() i64 {
 	return new_time(t).unix
 }
 
-// unix_time_milli returns the UNIX time with millisecond resolution.
+// unix_milli returns the UNIX time with millisecond resolution.
 @[inline]
-pub fn (t Time) unix_time_milli() i64 {
+pub fn (t Time) unix_milli() i64 {
 	return new_time(t).unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
-// unix_time_micro returns the UNIX time with microsecond resolution.
+// unix_micro returns the UNIX time with microsecond resolution.
 @[inline]
-pub fn (t Time) unix_time_micro() i64 {
+pub fn (t Time) unix_micro() i64 {
 	return new_time(t).unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
-// unix_time_nano returns the UNIX time with nanosecond resolution.
+// unix_nano returns the UNIX time with nanosecond resolution.
 @[inline]
-pub fn (t Time) unix_time_nano() i64 {
+pub fn (t Time) unix_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
 	return new_time(t).unix * 1_000_000_000 + i64(t.nanosecond)
+}
+
+// unix_time returns the UNIX time with second resolution.
+@[deprecated: 'use `t.unix()` instead']
+@[deprecated_after: '2024-05-31']
+pub fn (t Time) unix_time() i64 {
+	return t.unix()
+}
+
+// unix_time_milli returns the UNIX time with millisecond resolution.
+@[deprecated: 'use `t.unix_milli()` instead']
+@[deprecated_after: '2024-05-31']
+pub fn (t Time) unix_time_milli() i64 {
+	return t.unix_milli()
+}
+
+// unix_time_micro returns the UNIX time with microsecond resolution.
+@[deprecated: 'use `t.unix_micro()` instead']
+@[deprecated_after: '2024-05-31']
+pub fn (t Time) unix_time_micro() i64 {
+	return t.unix_micro()
+}
+
+// unix_time_nano returns the UNIX time with nanosecond resolution.
+@[deprecated: 'use `t.unix_nano()` instead']
+@[deprecated_after: '2024-05-31']
+pub fn (t Time) unix_time_nano() i64 {
+	return t.unix_nano()
 }
 
 // add returns a new time with the given duration added.
