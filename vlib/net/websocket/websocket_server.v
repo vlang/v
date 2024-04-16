@@ -108,7 +108,7 @@ fn (mut s Server) handle_ping() {
 					}
 					clients_to_remove << c.client.id
 				}
-				if (time.now().unix - c.client.last_pong_ut) > s.get_ping_interval() * 2 {
+				if (time.now().unix() - c.client.last_pong_ut) > s.get_ping_interval() * 2 {
 					clients_to_remove << c.client.id
 					c.client.close(1000, 'no pong received') or { continue }
 				}
@@ -150,7 +150,7 @@ pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&Serve
 		client_state: ClientState{
 			state: .open
 		}
-		last_pong_ut: time.now().unix
+		last_pong_ut: time.now().unix()
 		id: rand.uuid_v4()
 	}
 	mut server_client := &ServerClient{
@@ -225,7 +225,7 @@ fn (mut s Server) accept_new_client() !&Client {
 		client_state: ClientState{
 			state: .open
 		}
-		last_pong_ut: time.now().unix
+		last_pong_ut: time.now().unix()
 		id: rand.uuid_v4()
 	}
 	return c

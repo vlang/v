@@ -22,13 +22,13 @@ fn test_stat() {
 
 	mut fstat := os.stat(test_file)!
 	eprintln(@LOCATION)
-	eprintln(' |  start_time: ${start_time.unix}\n |    end_time: ${end_time.unix}\n | fstat.ctime: ${fstat.ctime}\n | fstat.mtime: ${fstat.mtime}')
+	eprintln(' |  start_time: ${start_time.unix()}\n |    end_time: ${end_time.unix()}\n | fstat.ctime: ${fstat.ctime}\n | fstat.mtime: ${fstat.mtime}')
 	assert fstat.get_filetype() == .regular
 	assert fstat.size == u64(test_content.len)
-	assert fstat.ctime >= start_time.unix
-	assert fstat.ctime <= end_time.unix
-	assert fstat.mtime >= start_time.unix
-	assert fstat.mtime <= end_time.unix
+	assert fstat.ctime >= start_time.unix()
+	assert fstat.ctime <= end_time.unix()
+	assert fstat.mtime >= start_time.unix()
+	assert fstat.mtime <= end_time.unix()
 
 	$if !windows {
 		os.chmod(test_file, 0o600)!

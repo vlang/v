@@ -151,12 +151,9 @@ pub fn (t Time) format_rfc3339() string {
 		unsafe { buf.free() }
 	}
 
-	if t.unix == 0 && t.nanosecond == 0 {
-		return buf.bytestr()
-	}
-
-	if t.is_local {
-		utc_time := t.local_to_utc()
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
 		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
@@ -165,13 +162,13 @@ pub fn (t Time) format_rfc3339() string {
 		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
 		int_to_byte_array_no_pad(utc_time.nanosecond / 1_000_000, mut buf, 23)
 	} else {
-		int_to_byte_array_no_pad(t.year, mut buf, 4)
-		int_to_byte_array_no_pad(t.month, mut buf, 7)
-		int_to_byte_array_no_pad(t.day, mut buf, 10)
-		int_to_byte_array_no_pad(t.hour, mut buf, 13)
-		int_to_byte_array_no_pad(t.minute, mut buf, 16)
-		int_to_byte_array_no_pad(t.second, mut buf, 19)
-		int_to_byte_array_no_pad(t.nanosecond / 1_000_000, mut buf, 23)
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond / 1_000_000, mut buf, 23)
 	}
 
 	return buf.bytestr()
@@ -187,12 +184,9 @@ pub fn (t Time) format_rfc3339_nano() string {
 		unsafe { buf.free() }
 	}
 
-	if t.unix == 0 && t.nanosecond == 0 {
-		return buf.bytestr()
-	}
-
-	if t.is_local {
-		utc_time := t.local_to_utc()
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
 		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
@@ -201,13 +195,13 @@ pub fn (t Time) format_rfc3339_nano() string {
 		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
 		int_to_byte_array_no_pad(utc_time.nanosecond, mut buf, 29)
 	} else {
-		int_to_byte_array_no_pad(t.year, mut buf, 4)
-		int_to_byte_array_no_pad(t.month, mut buf, 7)
-		int_to_byte_array_no_pad(t.day, mut buf, 10)
-		int_to_byte_array_no_pad(t.hour, mut buf, 13)
-		int_to_byte_array_no_pad(t.minute, mut buf, 16)
-		int_to_byte_array_no_pad(t.second, mut buf, 19)
-		int_to_byte_array_no_pad(t.nanosecond, mut buf, 29)
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond, mut buf, 29)
 	}
 
 	return buf.bytestr()

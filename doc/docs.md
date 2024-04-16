@@ -1590,7 +1590,7 @@ fn main() {
 		month: 12
 		day: 25
 	}
-	println(time.new_time(my_time).utc_string())
+	println(time.new(my_time).utc_string())
 	println('Century: ${my_time.century()}')
 }
 ```
