@@ -26,11 +26,7 @@ const vcs_info = init_vcs_info() or {
 }
 
 fn init_vcs_info() !map[VCS]VCSInfo {
-	// The output from `git version` varies, depending on how git was compiled. Here are some examples:
-	// `git version 2.44.0` when compiled from source, or from brew on macos.
-	// `git version 2.39.3 (Apple Git-146)` on macos with XCode's cli tools.
-	// `git version 2.44.0.windows.1` on windows's Git Bash shell.
-	git_installed_raw_ver := os.execute_opt('git --version')!.output.all_after('git version ').all_before(' ').all_before('.windows').trim_space()
+	git_installed_raw_ver := parse_git_version(os.execute_opt('git --version')!.output) or { '' }
 	git_installed_ver := semver.from(git_installed_raw_ver)!
 	git_submod_filter_ver := semver.from('2.36.0')!
 	mut git_install_cmd := 'clone --depth=1 --recursive --shallow-submodules --filter=blob:none'
@@ -92,4 +88,18 @@ fn vcs_from_str(str string) ?VCS {
 		'hg' { .hg }
 		else { none }
 	}
+}
+
+// parse_git_version retrieves only the stable version part of the output of `git version`.
+// For example: parse_git_version('git version 2.39.3')! will return just '2.39.3'.
+pub fn parse_git_version(version string) !string {
+	git_version_start := 'git version '
+	// The output from `git version` varies, depending on how git was compiled. Here are some examples:
+	// `git version 2.44.0` when compiled from source, or from brew on macos.
+	// `git version 2.39.3 (Apple Git-146)` on macos with XCode's cli tools.
+	// `git version 2.44.0.windows.1` on windows's Git Bash shell.
+	if !version.starts_with(git_version_start) {
+		return error('should start with `${git_version_start}`')
+	}
+	return version.all_after(git_version_start).all_before(' ').all_before('.windows').trim_space()
 }
