@@ -46,6 +46,9 @@ pub fn sleep(dur Duration) {
 
 // new_time returns a time struct with the calculated Unix time.
 fn new_time(t Time) Time {
+	if t.unix != 0 {
+		return t
+	}
 	mut res := Time{}
 	#res.year.val = t.year.val
 	#res.month.val = t.month.val

@@ -107,38 +107,38 @@ pub fn (t Time) smonth() string {
 // unix returns the UNIX time with second resolution.
 @[inline]
 pub fn (t Time) unix() i64 {
-	return if t.unix > 0 { *t } else { new_time(t) }.unix
+	return new_time(t).unix
 }
 
 // unix_time returns the UNIX time with second resolution.
 @[inline]
 @[deprecated: 'use `t.unix()` instead']
 pub fn (t Time) unix_time() i64 {
-	return if t.unix > 0 { *t } else { new_time(t) }.unix
+	return new_time(t).unix
 }
 
 // unix_time_milli returns the UNIX time with millisecond resolution.
 @[inline]
 pub fn (t Time) unix_time_milli() i64 {
-	return if t.unix > 0 { *t } else { new_time(t) }.unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
+	return new_time(t).unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
 // unix_time_micro returns the UNIX time with microsecond resolution.
 @[inline]
 pub fn (t Time) unix_time_micro() i64 {
-	return if t.unix > 0 { *t } else { new_time(t) }.unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
+	return new_time(t).unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
 // unix_time_nano returns the UNIX time with nanosecond resolution.
 @[inline]
 pub fn (t Time) unix_time_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
-	return if t.unix > 0 { *t } else { new_time(t) }.unix * 1_000_000_000 + i64(t.nanosecond)
+	return new_time(t).unix * 1_000_000_000 + i64(t.nanosecond)
 }
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(duration_in_nanosecond Duration) Time {
-	ut := if t.unix > 0 { *t } else { new_time(t) }
+	ut := new_time(t)
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
@@ -156,12 +156,12 @@ pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return if t.unix > 0 { *t } else { new_time(t) }.add(seconds * second)
+	return new_time(t).add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return if t.unix > 0 { *t } else { new_time(t) }.add(days * 24 * hour)
+	return new_time(t).add(days * 24 * hour)
 }
 
 // since returns the time duration elapsed since a given time.
