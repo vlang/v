@@ -2600,7 +2600,10 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt) {
 			}
 		}
 		c.stmt(mut stmt)
-		if stmt is ast.GotoLabel {
+		if !c.inside_anon_fn && c.in_for_count > 0 && stmt is ast.BranchStmt
+			&& stmt.kind in [.key_continue, .key_break] {
+			c.scope_returns = true
+		} else if stmt is ast.GotoLabel {
 			unreachable = token.Pos{
 				line_nr: -1
 			}
