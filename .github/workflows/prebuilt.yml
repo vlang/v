@@ -20,6 +20,25 @@ jobs:
       run: |
         cd v
         ./v run examples/hello_world.v
+        ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
+
+  macos-arm64:
+    ## macos-14 is a m1 runner
+    runs-on: macos-14
+    timeout-minutes: 5
+    steps:
+    - name: Download V
+      run: |
+        tag=${GITHUB_REF##*/}
+        wget https://github.com/vlang/v/releases/download/$tag/v_macos_arm64.zip
+        unzip v_macos_arm64.zip
+        cd v
+        ./v -version
+    - name: Test V
+      run: |
+        cd v
+        ./v run examples/hello_world.v
+        ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
 
   macos-x86_64:
     runs-on: macos-latest
@@ -52,3 +71,4 @@ jobs:
       run: |
         & cd v
         & .\v.exe run .\examples\hello_world.v
+        & .\v.exe -showcc -gc none -cc tcc -no-retry-compilation run .\examples/hello_world.v
