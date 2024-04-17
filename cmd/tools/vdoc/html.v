@@ -317,7 +317,7 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	mut url := urllib.parse(repo_url) or { return '' }
-	if url.path.len <= 1 || file_name.len == 0 {
+	if url.path.len <= 1 || file_name == '' {
 		return ''
 	}
 	url.path = url.path.trim_right('/') + match url.host {
@@ -530,7 +530,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		hash_link = ' <a href="#${node_id}">#</a>'
 	}
 	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}">')
-	if dn.name.len > 0 {
+	if dn.name != '' {
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
@@ -571,7 +571,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
-	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
+	mut toc_slug := if dn.name == '' || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
 		if dn.children[0].name == '' {
 			toc_slug = slug(dn.name)

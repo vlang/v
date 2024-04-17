@@ -269,7 +269,7 @@ pub fn cp(src string, dst string) ! {
 // Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
 pub fn vfopen(path string, mode string) !&C.FILE {
-	if path.len == 0 {
+	if path == '' {
 		return error('vfopen called with ""')
 	}
 	mut fp := unsafe { nil }

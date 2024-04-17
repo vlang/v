@@ -316,7 +316,7 @@ fn auto_complete(args []string) {
 	if args.len <= 1 || args[0] != 'complete' {
 		if args.len == 1 {
 			shell_path := os.getenv('SHELL')
-			if shell_path.len > 0 {
+			if shell_path != '' {
 				shell_name := os.file_name(shell_path).to_lower()
 				if shell_name in auto_complete_shells {
 					println(setup_for_shell(shell_name))

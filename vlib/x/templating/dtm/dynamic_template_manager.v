@@ -205,7 +205,7 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 	}
 	if active_cache_handler {
 		// Control if cache folder created by user exist
-		if dir_path.len > 0 && os.exists(dir_path) && os.is_dir(dir_path) {
+		if dir_path != '' && os.exists(dir_path) && os.is_dir(dir_path) {
 			// WARNING: When setting the directory for caching files and for testing purposes,
 			// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified cache directory. Ensure that
 			// directory used for the cache does not contain any important files.

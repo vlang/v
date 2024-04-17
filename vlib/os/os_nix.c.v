@@ -296,7 +296,7 @@ fn init_os_args(argc int, argv &&u8) []string {
 //   }
 // ```
 pub fn ls(path string) ![]string {
-	if path.len == 0 {
+	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut res := []string{cap: 50}

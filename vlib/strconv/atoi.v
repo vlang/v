@@ -35,7 +35,7 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
 @[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
-	if s.len < 1 {
+	if s == '' {
 		return u64(0), 1
 	}
 
@@ -156,7 +156,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 // to stop on non or invalid digit characters and return with an error
 @[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
-	if _s.len < 1 {
+	if _s == '' {
 		// return error('parse_int: syntax error $s')
 		return i64(0)
 	}

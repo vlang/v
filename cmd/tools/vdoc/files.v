@@ -27,7 +27,7 @@ fn get_ignore_paths(path string) ![]string {
 }
 
 fn is_included(path string, ignore_paths []string) bool {
-	if path.len == 0 {
+	if path == '' {
 		return true
 	}
 	for ignore_path in ignore_paths {

@@ -78,7 +78,7 @@ pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 			for c > 0 {
 				tmp_str := txt1[0..c].join(' ')
 				// println("tmp_str: ${tmp_str}")
-				if tmp_str.len < 1 {
+				if tmp_str == '' {
 					break
 				}
 

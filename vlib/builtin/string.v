@@ -1678,7 +1678,7 @@ pub fn (s string) trim_space() string {
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	left, right := s.trim_indexes(cutset)
@@ -1719,7 +1719,7 @@ pub fn (s string) trim_indexes(cutset string) (int, int) {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 @[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos := 0

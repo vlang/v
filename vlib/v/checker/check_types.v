@@ -466,7 +466,7 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			if exp_fn.name.len == 0 {
+			if exp_fn.name == '' {
 				c.add_error_detail('expected argument ${i + 1} to be ${exp_arg_pointedness}, but the passed argument ${
 					i + 1} is ${got_arg_pointedness}')
 			} else {

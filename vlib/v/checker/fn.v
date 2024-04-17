@@ -493,7 +493,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		c.error('anonymous function must declare a body', node.decl.pos)
 	}
 	for param in node.decl.params {
-		if param.name.len == 0 {
+		if param.name == '' {
 			c.error('use `_` to name an unused parameter', param.pos)
 		}
 	}
@@ -1107,7 +1107,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				node.pos)
 		}
 	}
-	if !func.is_pub && func.language == .v && func.name.len > 0 && func.mod.len > 0
+	if !func.is_pub && func.language == .v && func.name != '' && func.mod.len > 0
 		&& func.mod != c.mod && !c.pref.is_test {
 		c.error('function `${func.name}` is private', node.pos)
 	}

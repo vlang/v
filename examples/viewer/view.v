@@ -296,7 +296,7 @@ pub fn load_image(mut app App) {
 	}
 
 	file_path := app.item_list.get_file_path()
-	if file_path.len > 0 {
+	if file_path != '' {
 		// println("${app.item_list.lst[app.item_list.item_index]} $file_path ${app.item_list.lst.len}")
 		app.texture, app.sampler, app.img_w, app.img_h = app.load_texture_from_file(file_path)
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)

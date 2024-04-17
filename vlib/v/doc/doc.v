@@ -201,7 +201,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
 	}
-	if node.name.len == 0 && node.comments.len == 0 && node.content.len == 0 {
+	if node.name == '' && node.comments.len == 0 && node.content.len == 0 {
 		return error('empty stmt')
 	}
 	match mut stmt {

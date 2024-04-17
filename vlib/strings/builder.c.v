@@ -195,7 +195,7 @@ pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
 	// }
-	if s.len > 0 {
+	if s != '' {
 		unsafe { b.push_many(s.str, s.len) }
 	}
 	// b.buf << []u8(s)  // TODO
