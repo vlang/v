@@ -74,7 +74,7 @@ jobs:
           .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
-          # ../v -prod . # NOTE: temporary disabled due to deprecations. Enable after resolving github.com/vlang/ved/pull/181
+          ../v -prod .
           cd ..
 
       - name: Build vlang/pdf
@@ -124,8 +124,8 @@ jobs:
           v install
           echo "Build v-analyzer debug"
           v build.vsh debug
-          # echo "Build v-analyzer release"
-          # v build.vsh release # NOTE: temporary disabled due to deprecations.
+          echo "Build v-analyzer release"
+          v build.vsh release
 
       - name: Format vlang/v-analyzer
         run: |
