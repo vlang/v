@@ -73,7 +73,7 @@ jobs:
           path: ${{ env.ZIPNAME }}
 
   build-macos-arm64:
-    runs-on: macos-latest
+    runs-on: macos-14
     env:
       TARGET_CFLAGS: -target arm64-apple-darwin
       VFLAGS: -skip-unused -cc clang
