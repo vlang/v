@@ -1,6 +1,7 @@
 name: Test prebuilt binaries
 
 on:
+  workflow_run:
   release:
     types: [edited, published]
 
