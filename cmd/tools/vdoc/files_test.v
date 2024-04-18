@@ -37,7 +37,5 @@ fn test_get_module_list() {
 	// `get_modules_list` uses `get_ignore_paths` internally.
 	mod_list := get_modules_list(tpath, []string{})
 	assert mod_list.len == submodules_no_ignore.len
-	// Test ignored.
-	assert mod_list.all(!it.contains('tests') && !it.contains('testdata') && !it.contains('echo')
-		&& !it.contains('bravo') && !it.contains('delta')), mod_list.str()
+	assert mod_list.all(it.contains('alpha') || it.contains('charly')), mod_list.str()
 }
