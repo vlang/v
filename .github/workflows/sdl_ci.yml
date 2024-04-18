@@ -1,6 +1,7 @@
 name: sdl CI
 
 on:
+  workflow_dispatch:
   push:
     paths-ignore:
       - "**.md"
