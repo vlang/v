@@ -21,9 +21,9 @@ pub mut:
 	pre_execute     FnCommandCallback = unsafe { nil }
 	execute         FnCommandCallback = unsafe { nil }
 	post_execute    FnCommandCallback = unsafe { nil }
-	disable_help    bool
-	disable_man     bool
-	disable_version bool
+	disable_help    bool              @[deprecated: 'use defaults.help instead'; deprecated_after: '2024-06-31']
+	disable_man     bool              @[deprecated: 'use defaults.man instead'; deprecated_after: '2024-06-31']
+	disable_version bool              @[deprecated: 'use defaults.version instead'; deprecated_after: '2024-06-31']
 	disable_flags   bool
 	sort_flags      bool
 	sort_commands   bool
@@ -33,7 +33,28 @@ pub mut:
 	required_args   int
 	args            []string
 	posix_mode      bool
+	defaults        struct {
+	pub:
+		help    Defaults = true
+		man     Defaults = true
+		version Defaults = true
+	mut:
+		parsed struct {
+		mut:
+			help    CommandFlag
+			version CommandFlag
+			man     CommandFlag
+		}
+	}
 }
+
+pub struct CommandFlag {
+pub mut:
+	command bool = true
+	flag    bool = true
+}
+
+type Defaults = CommandFlag | bool
 
 // str returns the `string` representation of the `Command`.
 pub fn (cmd Command) str() string {
@@ -129,12 +150,60 @@ pub fn (mut cmd Command) add_flag(flag Flag) {
 	cmd.flags << flag
 }
 
-// parse parses `args` into this structured `Command`.
-pub fn (mut cmd Command) parse(args []string) {
+// TODO: remove deprecated `disable_<>` switches after deprecation period.
+fn (mut cmd Command) parse_defaults() {
+	// Help
+	if cmd.defaults.help is bool {
+		// If `defaults.help` has the default value `true` and
+		// `disable_help` is also set, fall back to `disable_help`.
+		if cmd.defaults.help && cmd.disable_help {
+			cmd.defaults.parsed.help.flag = false
+			cmd.defaults.parsed.help.command = false
+		} else {
+			cmd.defaults.parsed.help.flag = cmd.defaults.help
+			cmd.defaults.parsed.help.command = cmd.defaults.help
+		}
+	} else if cmd.defaults.help is CommandFlag {
+		cmd.defaults.parsed.help.flag = cmd.defaults.help.flag
+		cmd.defaults.parsed.help.command = cmd.defaults.help.command
+	}
+	// Version
+	if cmd.defaults.version is bool {
+		if cmd.defaults.version && cmd.disable_help {
+			cmd.defaults.parsed.version.flag = false
+			cmd.defaults.parsed.version.command = false
+		} else {
+			cmd.defaults.parsed.version.flag = cmd.defaults.version
+			cmd.defaults.parsed.version.command = cmd.defaults.version
+		}
+	} else if cmd.defaults.version is CommandFlag {
+		cmd.defaults.parsed.version.flag = cmd.defaults.version.flag
+		cmd.defaults.parsed.version.command = cmd.defaults.version.command
+	}
+	// Man
+	if cmd.defaults.man is bool {
+		if cmd.defaults.man && cmd.disable_help {
+			cmd.defaults.parsed.man.flag = false
+			cmd.defaults.parsed.man.command = false
+		} else {
+			cmd.defaults.parsed.man.flag = cmd.defaults.man
+			cmd.defaults.parsed.man.command = cmd.defaults.man
+		}
+	} else if cmd.defaults.man is CommandFlag {
+		cmd.defaults.parsed.man.flag = cmd.defaults.man.flag
+		cmd.defaults.parsed.man.command = cmd.defaults.man.command
+	}
+	// Add Flags
 	if !cmd.disable_flags {
 		cmd.add_default_flags()
 	}
+	// Add Commands
 	cmd.add_default_commands()
+}
+
+// parse parses the flags and commands from the given `args` into the `Command`.
+pub fn (mut cmd Command) parse(args []string) {
+	cmd.parse_defaults()
 	if cmd.sort_flags {
 		cmd.flags.sort(a.name < b.name)
 	}
@@ -151,15 +220,15 @@ pub fn (mut cmd Command) parse(args []string) {
 // add_default_flags adds the commonly used `-h`/`--help` and
 // `-v`/`--version` flags to the `Command`.
 fn (mut cmd Command) add_default_flags() {
-	if !cmd.disable_help && !cmd.flags.contains('help') {
+	if cmd.defaults.parsed.help.flag && !cmd.flags.contains('help') {
 		use_help_abbrev := !cmd.flags.contains('h') && cmd.posix_mode
 		cmd.add_flag(help_flag(use_help_abbrev))
 	}
-	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') {
+	if cmd.defaults.parsed.version.flag && cmd.version != '' && !cmd.flags.contains('version') {
 		use_version_abbrev := !cmd.flags.contains('v') && cmd.posix_mode
 		cmd.add_flag(version_flag(use_version_abbrev))
 	}
-	if !cmd.disable_man && !cmd.flags.contains('man') {
+	if cmd.defaults.parsed.man.flag && !cmd.flags.contains('man') {
 		cmd.add_flag(man_flag())
 	}
 }
@@ -167,13 +236,13 @@ fn (mut cmd Command) add_default_flags() {
 // add_default_commands adds the command functions of the
 // commonly used `help` and `version` flags to the `Command`.
 fn (mut cmd Command) add_default_commands() {
-	if !cmd.disable_help && !cmd.commands.contains('help') && cmd.is_root() {
+	if cmd.defaults.parsed.help.command && !cmd.commands.contains('help') && cmd.is_root() {
 		cmd.add_command(help_cmd())
 	}
-	if !cmd.disable_version && cmd.version != '' && !cmd.commands.contains('version') {
+	if cmd.defaults.parsed.version.command && cmd.version != '' && !cmd.commands.contains('version') {
 		cmd.add_command(version_cmd())
 	}
-	if !cmd.disable_man && !cmd.commands.contains('man') && cmd.is_root() {
+	if cmd.defaults.parsed.man.command && !cmd.commands.contains('man') && cmd.is_root() {
 		cmd.add_command(man_cmd())
 	}
 }
@@ -185,16 +254,14 @@ fn (mut cmd Command) parse_flags() {
 		}
 		mut found := false
 		for i in 0 .. cmd.flags.len {
-			unsafe {
-				mut flag := &cmd.flags[i]
-				if flag.matches(cmd.args, cmd.posix_mode) {
-					found = true
-					flag.found = true
-					cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
-						eprintln_exit('Failed to parse flag `${cmd.args[0]}`: ${err}')
-					}
-					break
+			mut flag := &cmd.flags[i]
+			if flag.matches(cmd.args, cmd.posix_mode) {
+				found = true
+				flag.found = true
+				cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
+					eprintln_exit('Failed to parse flag `${cmd.args[0]}`: ${err}')
 				}
+				break
 			}
 		}
 		if !found {
@@ -222,7 +289,7 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	if cmd.is_root() && isnil(cmd.execute) {
-		if !cmd.disable_help {
+		if cmd.defaults.parsed.help.command {
 			cmd.execute_help()
 			return
 		}
@@ -251,7 +318,7 @@ fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 }
 
 fn (cmd Command) check_help_flag() {
-	if !cmd.disable_help && cmd.flags.contains('help') {
+	if cmd.defaults.parsed.help.flag && cmd.flags.contains('help') {
 		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
 			cmd.execute_help()
@@ -261,7 +328,7 @@ fn (cmd Command) check_help_flag() {
 }
 
 fn (cmd Command) check_man_flag() {
-	if !cmd.disable_man && cmd.flags.contains('man') {
+	if cmd.defaults.parsed.man.flag && cmd.flags.contains('man') {
 		man_flag := cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
 		if man_flag {
 			cmd.execute_man()
@@ -271,7 +338,7 @@ fn (cmd Command) check_man_flag() {
 }
 
 fn (cmd Command) check_version_flag() {
-	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
+	if cmd.defaults.parsed.version.flag && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
 			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
