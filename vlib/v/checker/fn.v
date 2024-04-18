@@ -2742,6 +2742,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)
 			}
+			if arg_expr.return_type.has_flag(.result) && arg_expr.or_block.kind != .block {
+				if arg_expr.return_type.clear_option_and_result() in [ast.void_type, 0] {
+					c.error('cannot use Result type in `${node.name}`', arg_expr.pos)
+				}
+			}
 		}
 		ast.StringLiteral, ast.StringInterLiteral {
 			if !is_map {
