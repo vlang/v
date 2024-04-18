@@ -26,19 +26,6 @@ fn get_ignore_paths(path string) ![]string {
 	return res.map(it.replace('/', os.path_separator))
 }
 
-fn is_included(path string, ignore_paths []string) bool {
-	if path == '' {
-		return true
-	}
-	for ignore_path in ignore_paths {
-		if !path.contains(ignore_path) {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 fn get_modules_list(opath string, ignore_paths2 []string) []string {
 	path := opath.trim_right('/\\')
 	names := os.ls(path) or { return [] }
@@ -46,15 +33,11 @@ fn get_modules_list(opath string, ignore_paths2 []string) []string {
 	ignore_paths << ignore_paths2
 	mut dirs := map[string]int{}
 	for name in names {
-		if name == 'testdata' {
-			continue
-		}
-		if name == 'tests' {
+		if name in ['testdata', 'tests'] {
 			continue
 		}
 		fpath := os.join_path(path, name)
-		fmeta := os.inode(fpath)
-		if fmeta.typ == .directory && is_included(fpath, ignore_paths) {
+		if os.is_dir(fpath) && !ignore_paths.any(fpath.contains(it)) {
 			current_ignore_paths := ignore_paths.filter(it.starts_with(fpath))
 			for k in get_modules_list(fpath, current_ignore_paths) {
 				dirs[k]++
