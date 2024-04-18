@@ -6,10 +6,12 @@ on:
     paths-ignore:
       - "**.md"
       - "**.yml"
+      - '!**/sdl_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
       - "**.yml"
+      - '!**/sdl_ci.yml'
 
 concurrency:
   group: sdl-ci-${{ github.event.pull_request.number || github.sha }}
