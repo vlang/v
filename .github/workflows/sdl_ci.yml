@@ -31,9 +31,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          v retry sudo apt-get update
-          v retry sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev
-          v retry sudo apt-get install -y libsdl2-mixer-dev libsdl2-image-dev
+          v retry sudo apt update
+          v retry sudo apt install --quiet -y libsdl2-dev libsdl2-ttf-dev
+          v retry sudo apt install --quiet -y libsdl2-mixer-dev libsdl2-image-dev
 
       - name: Clone sdl into .vmodules
         run: |
