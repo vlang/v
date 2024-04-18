@@ -7,23 +7,19 @@ fn get_ignore_paths(path string) ![]string {
 	ignore_content := os.read_file(ignore_file_path) or {
 		return error_with_code('ignore file not found.', 1)
 	}
-	mut res := []string{}
-	if ignore_content.trim_space().len > 0 {
-		rules := ignore_content.split_into_lines().map(it.trim_space())
-		mut final := []string{}
-		for rule in rules {
-			if rule.contains('*.') || rule.contains('**') {
-				println('vdoc: Wildcards in ignore rules are not allowed for now.')
-				continue
-			}
-			final << rule
-		}
-		res = final.map(os.join_path(path, it.trim_right('/')))
-	} else {
-		mut dirs := os.ls(path) or { return []string{} }
-		res = dirs.map(os.join_path(path, it)).filter(os.is_dir(it))
+	if ignore_content.trim_space() == '' {
+		return []string{}
 	}
-	return res.map(it.replace('/', os.path_separator))
+	rules := ignore_content.split_into_lines().map(it.trim_space())
+	mut res := []string{}
+	for rule in rules {
+		if rule.contains('*.') || rule.contains('**') {
+			println('vdoc: Wildcards in ignore rules are not allowed for now.')
+			continue
+		}
+		res << rule
+	}
+	return res.map(os.join_path(path, it.replace('/', os.path_separator)).trim_right(os.path_separator))
 }
 
 fn get_modules_list(opath string, ignore_paths2 []string) []string {
