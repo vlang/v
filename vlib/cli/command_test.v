@@ -6,7 +6,7 @@ fn test_if_command_parses_empty_args() {
 		execute: empty_func
 	}
 	cmd.parse(['command'])
-	assert cmd.name == 'command' && cmd.args == []string{}
+	assert cmd.name == 'command' && cmd.args == []
 }
 
 fn test_if_command_parses_args() {
