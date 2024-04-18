@@ -2,49 +2,63 @@ module main
 
 import os
 
-fn get_ignore_paths(path string) ![]string {
-	ignore_file_path := os.join_path(path, '.vdocignore')
-	ignore_content := os.read_file(ignore_file_path)!
-	if ignore_content.trim_space() == '' {
-		dir_contents := os.ls(path)!
-		return dir_contents.map(os.join_path(path, it)).filter(os.is_dir(it))
+struct IgnoreRules {
+mut:
+	patterns map[string]bool = {
+		'testdata': true
+		'tests':    true
+		'_test.v':  true
 	}
-	rules := ignore_content.split_into_lines().map(it.trim_space())
-	mut res := []string{}
-	for rule in rules {
-		if rule.contains('*.') || rule.contains('**') {
-			println('vdoc: Wildcards in ignore rules are not allowed for now.')
-			continue
-		}
-		res << rule
-	}
-	return res.map(os.join_path(path, it.replace('/', os.path_separator)).trim_right(os.path_separator))
+	paths map[string]bool
 }
 
-fn get_modules_list(opath string, ignore_paths2 []string) []string {
-	path := opath.trim_right('/\\')
-	names := os.ls(path) or { return [] }
-	mut ignore_paths := get_ignore_paths(path) or { []string{} }
-	ignore_paths << ignore_paths2
-	mut dirs := map[string]int{}
-	for name in names {
-		if name in ['testdata', 'tests'] {
+fn get_modules_list(opath string) []string {
+	mut ignore_rules := IgnoreRules{}
+	res := get_modules(opath, mut ignore_rules)
+	return res
+}
+
+fn get_modules(opath string, mut ignore_rules IgnoreRules) []string {
+	mut res := []string{}
+	for p in os.ls(opath) or { return [] } {
+		fp := os.join_path(opath, p)
+		if fp in ignore_rules.paths
+			|| ignore_rules.patterns.keys().any(p.contains(it.trim_right('/'))) {
 			continue
 		}
-		fpath := os.join_path(path, name)
-		if os.is_dir(fpath) && !ignore_paths.any(fpath.contains(it)) {
-			current_ignore_paths := ignore_paths.filter(it.starts_with(fpath))
-			for k in get_modules_list(fpath, current_ignore_paths) {
-				dirs[k]++
-			}
+		if os.is_dir(os.join_path(opath, p)) {
+			ignore_rules.get(opath)
+			res << get_modules(os.join_path(opath, p), mut ignore_rules)
 			continue
 		}
-		if fpath.ends_with('.v') && !fpath.ends_with('_test.v') {
-			dirs[path]++
-			continue
+		if p.ends_with('.v') {
+			res << os.join_path(opath, p)
 		}
 	}
-	mut res := dirs.keys()
-	res.sort()
 	return res
+}
+
+// Similar to `.gitignore`, a pattern starting with a / should only ignore
+// the pattern relative to the ignore files directory.
+// `/a` should ignore `/a` but not `/b/a`. While `a` should ignore `/a` and `/b/a`.
+fn (mut ignore_rules IgnoreRules) get(path string) {
+	ignore_content := os.read_file(os.join_path(path, '.vdocignore')) or { return }
+	if ignore_content.trim_space() == '' {
+		return
+	}
+	rules := ignore_content.split_into_lines().map(it.trim_space())
+	for rule in rules {
+		if rule.starts_with('#') {
+			continue
+		}
+		if rule.contains('*.') || rule.contains('**') {
+			eprintln('vdoc: Wildcards in ignore rules are not yet supported.')
+			continue
+		}
+		if rule.starts_with('/') {
+			ignore_rules.paths[os.join_path(path, rule.trim_left('/'))] = true
+		} else {
+			ignore_rules.patterns[rule] = true
+		}
+	}
 }
