@@ -244,7 +244,7 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
 	mut err_msg := err.msg()
 	if err.code() == 1 {
-		mod_list := get_modules_list(cfg.input_path)
+		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
 			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
@@ -307,7 +307,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi { get_modules_list(cfg.input_path) } else { [cfg.input_path] }
+	dirs := if cfg.is_multi { get_modules(cfg.input_path) } else { [cfg.input_path] }
 	for dirpath in dirs {
 		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {

@@ -30,17 +30,40 @@ fn test_get_module_list() {
 
 	os.chdir(tpath)!
 
-	// For information on leading slash rules, refer to the doc comment of `get_ignore_files`.
-	ignore_rules := ['bravo', '/echo', '/foxtrot/golf', 'hotel.v/']
+	// For information on leading slash rules, refer to the comments in `IgnoreRules.get`.
+	ignore_rules := ['bravo', '/echo', '/foxtrot/golf', 'hotel.v/', 'india/juliett']
 	os.write_file('.vdocignore', ignore_rules.join_lines())!
 
 	/* Create some submodules.
 	Modules inside `testdata` and `tests` directories and modules that
 	only contain `_test.v` files should be ignored by default. */
-	submodules_no_ignore := ['alpha', 'charly', 'charly/alpha', 'charly/delta', 'charly/echo',
-		'charly/foxtrot/golf', 'foxtrot', 'golf']
-	submodules_to_ignore := ['alpha/bravo', 'alpha/delta', 'bravo', 'echo', 'foxtrot/golf', 'tests',
-		'testdata', 'testdata/echo', 'hotel.v']
+	// Modules NOT to ignore.
+	submodules_no_ignore := [
+		'alpha',
+		'alpha_bravo', // test `bravo`
+		'bravo_charly', // test `bravo`
+		'charly',
+		'charly/alpha',
+		'charly/delta', // test `delta` in separate ignore file in `alpha`
+		'charly/echo', // test `/echo`
+		'charly/foxtrot/golf', // test `/foxtrot/golf`
+		'foxtrot',
+		'golf',
+		'hotel', // will include a `hotel.v` file, whose pattern is in the ignore list with a trailing slash
+	]
+	// Modules TO ignore.
+	submodules_to_ignore := [
+		'alpha/bravo', // test `bravo`
+		'alpha/delta', // test `delta` in separate ignore file
+		'alpha/india/juliett/kilo', // test `india/juliett`
+		'bravo', // test `bravo`
+		'echo', // test `/echo`
+		'foxtrot/golf', // test `/foxtrot/golf`
+		'hotel.v', // test `hotel.v/`
+		'tests', // test default
+		'testdata', // test default
+		'testdata/foxtrot', // test default
+	]
 	for p in arrays.append(submodules_no_ignore, submodules_to_ignore) {
 		os.mkdir_all(p)!
 		mod_name := p.all_after_last('/')
@@ -49,24 +72,18 @@ fn test_get_module_list() {
 	// Create a module that only contains a `_test.v` file.
 	os.mkdir('delta')!
 	os.write_file(os.join_path('delta', 'delta_test.v'), 'module delta')!
-	// Create a file with a name whose pattern is in the ignore list with a trailing slash.
-	os.write_file(os.join_path('alpha', 'hotel.v'), 'module alpha')!
 	// Add a `.vdocignore` file to a submodule.
 	os.write_file(os.join_path('alpha', '.vdocignore'), 'delta\n')!
 
-	mod_list := get_modules_list(tpath)
+	mod_list := get_modules(tpath)
 	// dump(mod_list)
-	assert mod_list.len == submodules_no_ignore.len + 1 // +1 since `alpha/hotel.v` was added separately.
-	for m in submodules_no_ignore {
-		assert mod_list.any(it.contains(os.join_path(tpath, m)))
+	assert mod_list.len == submodules_no_ignore.len
+	for m in submodules_no_ignore.map(os.join_path(tpath, it)) {
+		assert m in mod_list
 	}
-	for m in submodules_to_ignore {
-		assert !mod_list.any(it.contains(os.join_path(tpath, m)))
+	for m in submodules_to_ignore.map(os.join_path(tpath, it)) {
+		assert m !in mod_list
 	}
 	// `delta` only contains a `_test.v` file.
 	assert !mod_list.any(it.contains(os.join_path(tpath, 'delta')))
-	// `hotel.v/` is added as ignore pattern with a tailing slash.
-	// The directory should be ignored while the file should be included.
-	assert !mod_list.any(it.contains(os.join_path(tpath, 'hotel.v')))
-	assert os.join_path(tpath, 'alpha', 'hotel.v') in mod_list
 }
