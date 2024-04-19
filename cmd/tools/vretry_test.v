@@ -11,8 +11,8 @@ fn test_retry() {
 	}
 
 	fail_cmd := 'git asdf'
-	if os.getenv('CI') != 'true' {
-		// Skip longer running test in CI runs.
+	if os.getenv('CI') == 'true' {
+		// Skip longer running test on local runs.
 		res := os.execute('${vexe} retry ${fail_cmd}')
 		assert res.exit_code != 0
 		assert res.output.contains('error: exceeded maximum number of retries')
