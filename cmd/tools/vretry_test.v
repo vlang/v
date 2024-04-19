@@ -10,14 +10,18 @@ fn test_retry() {
 		os.rmdir_all(tpath) or {}
 	}
 
-	fail_cmd := os.execute('${vexe} retry git asdf')
-	assert fail_cmd.exit_code != 0
-	assert fail_cmd.output.contains('error: exceeded maximum number of retries')
+	if os.getenv('CI') != 'true' {
+		// Skip longer taking test in CI runs.
+		fail_cmd := os.execute('${vexe} retry git asdf')
+		assert fail_cmd.exit_code != 0
+		assert fail_cmd.output.contains('error: exceeded maximum number of retries')
+	}
 
 	with_flags_fail_cmd := os.execute('${vexe} retry -d 0.2 -r 3 git asdf')
 	assert with_flags_fail_cmd.exit_code != 0
 	assert with_flags_fail_cmd.output.contains('error: exceeded maximum number of retries (3)!')
 
+	os.chdir(os.dir(vexe))!
 	pass_cmd := os.execute('${vexe} retry git branch')
 	assert pass_cmd.exit_code == 0
 	assert pass_cmd.output.contains('master')
