@@ -22,24 +22,29 @@ fn get_modules(opath string, mut ignore_rules IgnoreRules) []string {
 	mut res := []string{}
 	for p in os.ls(opath) or { return [] } {
 		fp := os.join_path(opath, p)
-		if fp in ignore_rules.paths
-			|| ignore_rules.patterns.keys().any(p.contains(it.trim_right('/'))) {
+		if fp in ignore_rules.paths {
 			continue
 		}
-		if os.is_dir(os.join_path(opath, p)) {
+		is_dir := os.is_dir(fp)
+		if ignore_rules.patterns.keys().any(p.contains(it)
+			|| (is_dir && p.contains(it.trim_right('/'))))
+		{
+			continue
+		}
+		if is_dir {
 			ignore_rules.get(opath)
-			res << get_modules(os.join_path(opath, p), mut ignore_rules)
+			res << get_modules(fp, mut ignore_rules)
 			continue
 		}
 		if p.ends_with('.v') {
-			res << os.join_path(opath, p)
+			res << fp
 		}
 	}
 	return res
 }
 
-// Similar to `.gitignore`, a pattern starting with a / should only ignore
-// the pattern relative to the ignore files directory.
+// Similar to `.gitignore`, a pattern starting with `/` should only ignore
+// the pattern relative to the directory of the `.vdocignore` file.
 // `/a` should ignore `/a` but not `/b/a`. While `a` should ignore `/a` and `/b/a`.
 fn (mut ignore_rules IgnoreRules) get(path string) {
 	ignore_content := os.read_file(os.join_path(path, '.vdocignore')) or { return }
