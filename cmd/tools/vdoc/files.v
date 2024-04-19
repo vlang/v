@@ -4,11 +4,10 @@ import os
 
 fn get_ignore_paths(path string) ![]string {
 	ignore_file_path := os.join_path(path, '.vdocignore')
-	ignore_content := os.read_file(ignore_file_path) or {
-		return error_with_code('ignore file not found.', 1)
-	}
+	ignore_content := os.read_file(ignore_file_path)!
 	if ignore_content.trim_space() == '' {
-		return []string{}
+		dir_contents := os.ls(path)!
+		return dir_contents.map(os.join_path(path, it)).filter(os.is_dir(it))
 	}
 	rules := ignore_content.split_into_lines().map(it.trim_space())
 	mut res := []string{}
