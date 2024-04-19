@@ -37,10 +37,10 @@ fn test_get_module_list() {
 	/* Create some submodules.
 	Modules inside `testdata` and `tests` directories and modules that
 	only contain `_test.v` files should be ignored by default. */
-	submodules_no_ignore := ['alpha', 'charly', 'charly/alpha', 'charly/echo', 'charly/foxtrot/golf',
-		'foxtrot', 'golf']
-	submodules_to_ignore := ['alpha/bravo', 'bravo', 'echo', 'foxtrot/golf', 'tests', 'testdata',
-		'testdata/echo', 'hotel.v']
+	submodules_no_ignore := ['alpha', 'charly', 'charly/alpha', 'charly/delta', 'charly/echo',
+		'charly/foxtrot/golf', 'foxtrot', 'golf']
+	submodules_to_ignore := ['alpha/bravo', 'alpha/delta', 'bravo', 'echo', 'foxtrot/golf', 'tests',
+		'testdata', 'testdata/echo', 'hotel.v']
 	for p in arrays.append(submodules_no_ignore, submodules_to_ignore) {
 		os.mkdir_all(p)!
 		mod_name := p.all_after_last('/')
@@ -51,8 +51,11 @@ fn test_get_module_list() {
 	os.write_file(os.join_path('delta', 'delta_test.v'), 'module delta')!
 	// Create a file with a name whose pattern is in the ignore list with a trailing slash.
 	os.write_file(os.join_path('alpha', 'hotel.v'), 'module alpha')!
+	// Add a `.vdocignore` file to a submodule.
+	os.write_file(os.join_path('alpha', '.vdocignore'), 'delta\n')!
 
 	mod_list := get_modules_list(tpath)
+	// dump(mod_list)
 	assert mod_list.len == submodules_no_ignore.len + 1 // +1 since `alpha/hotel.v` was added separately.
 	for m in submodules_no_ignore {
 		assert mod_list.any(it.contains(os.join_path(tpath, m)))
@@ -60,6 +63,7 @@ fn test_get_module_list() {
 	for m in submodules_to_ignore {
 		assert !mod_list.any(it.contains(os.join_path(tpath, m)))
 	}
+	// `delta` only contains a `_test.v` file.
 	assert !mod_list.any(it.contains(os.join_path(tpath, 'delta')))
 	// `hotel.v/` is added as ignore pattern with a tailing slash.
 	// The directory should be ignored while the file should be included.
