@@ -169,7 +169,7 @@ fn (mut cmd Command) parse_defaults() {
 	}
 	// Version
 	if cmd.defaults.version is bool {
-		if cmd.defaults.version && cmd.disable_help {
+		if cmd.defaults.version && cmd.disable_version {
 			cmd.defaults.parsed.version.flag = false
 			cmd.defaults.parsed.version.command = false
 		} else {
@@ -182,7 +182,7 @@ fn (mut cmd Command) parse_defaults() {
 	}
 	// Man
 	if cmd.defaults.man is bool {
-		if cmd.defaults.man && cmd.disable_help {
+		if cmd.defaults.man && cmd.disable_man {
 			cmd.defaults.parsed.man.flag = false
 			cmd.defaults.parsed.man.command = false
 		} else {
