@@ -41,11 +41,11 @@ jobs:
           [ $(wc -l < vc/v.c) -gt 5000 ]
           [ $(wc -l < vc/v_win.c) -gt 5000 ]
 
+      - name: Deploy
+        if: ${{ github.event.repository.full_name == 'vlang/v' }}
+        run: |
           git -C vc add v.c v_win.c
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
-
           # in case there are recent commits:
           .github/workflows/retry.sh git -C vc pull --rebase origin master
-          # Note that failure below may happen, due to vlang/vc rejecting the push
-          # from forked repos; that is not usually a problem.
-          git -C vc push || true 
+          git -C vc push || true
