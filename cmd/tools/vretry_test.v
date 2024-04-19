@@ -10,24 +10,27 @@ fn test_retry() {
 		os.rmdir_all(tpath) or {}
 	}
 
+	fail_cmd := 'git asdf'
 	if os.getenv('CI') != 'true' {
 		// Skip longer taking test in CI runs.
-		fail_cmd := os.execute('${vexe} retry git asdf')
-		assert fail_cmd.exit_code != 0
-		assert fail_cmd.output.contains('error: exceeded maximum number of retries')
+		res := os.execute('${vexe} retry ${fail_cmd}')
+		assert res.exit_code != 0
+		assert res.output.contains('error: exceeded maximum number of retries')
 	}
 
-	with_flags_fail_cmd := os.execute('${vexe} retry -d 0.2 -r 3 git asdf')
-	assert with_flags_fail_cmd.exit_code != 0
-	assert with_flags_fail_cmd.output.contains('error: exceeded maximum number of retries (3)!')
+	mut res := os.execute('${vexe} retry -d 0.2 -r 3 ${fail_cmd}')
+	assert res.exit_code != 0
+	assert res.output.contains('error: exceeded maximum number of retries (3)!')
 
 	os.chdir(os.dir(vexe))!
-	pass_cmd := os.execute('${vexe} retry git branch')
-	assert pass_cmd.exit_code == 0
-	assert pass_cmd.output.contains('master')
+	pass_cmd := 'git branch'
+	res = os.execute('${vexe} retry ${pass_cmd}')
+	assert res.exit_code == 0
+	assert res.output == os.execute(pass_cmd).output
 
 	// Include flags on the cmd as well.
-	with_falgs_pass_cmd_with_falgs := os.execute('${vexe} retry -r 3 -- git branch --list')
-	assert with_falgs_pass_cmd_with_falgs.exit_code == 0
-	assert with_falgs_pass_cmd_with_falgs.output == os.execute('git branch --list').output
+	pass_cmd_with_flags := 'git branch --list'
+	res = os.execute('${vexe} retry -r 3 -- ${pass_cmd_with_flags}')
+	assert res.exit_code == 0
+	assert res.output == os.execute(pass_cmd_with_flags).output
 }
