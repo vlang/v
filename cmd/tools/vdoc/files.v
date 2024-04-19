@@ -4,26 +4,21 @@ import os
 
 fn get_ignore_paths(path string) ![]string {
 	ignore_file_path := os.join_path(path, '.vdocignore')
-	ignore_content := os.read_file(ignore_file_path) or {
-		return error_with_code('ignore file not found.', 1)
+	ignore_content := os.read_file(ignore_file_path)!
+	if ignore_content.trim_space() == '' {
+		dir_contents := os.ls(path)!
+		return dir_contents.map(os.join_path(path, it)).filter(os.is_dir(it))
 	}
+	rules := ignore_content.split_into_lines().map(it.trim_space())
 	mut res := []string{}
-	if ignore_content.trim_space().len > 0 {
-		rules := ignore_content.split_into_lines().map(it.trim_space())
-		mut final := []string{}
-		for rule in rules {
-			if rule.contains('*.') || rule.contains('**') {
-				println('vdoc: Wildcards in ignore rules are not allowed for now.')
-				continue
-			}
-			final << rule
+	for rule in rules {
+		if rule.contains('*.') || rule.contains('**') {
+			println('vdoc: Wildcards in ignore rules are not allowed for now.')
+			continue
 		}
-		res = final.map(os.join_path(path, it.trim_right('/')))
-	} else {
-		mut dirs := os.ls(path) or { return []string{} }
-		res = dirs.map(os.join_path(path, it)).filter(os.is_dir(it))
+		res << rule
 	}
-	return res.map(it.replace('/', os.path_separator))
+	return res.map(os.join_path(path, it.replace('/', os.path_separator)).trim_right(os.path_separator))
 }
 
 fn get_modules_list(opath string, ignore_paths2 []string) []string {

@@ -55,4 +55,8 @@ fn test_get_module_list() {
 	mod_list := get_modules_list(tpath, []string{})
 	assert mod_list.len == submodules_no_ignore.len
 	assert mod_list.all(it.contains('alpha') || it.contains('charly')), mod_list.str()
+
+	// Test empty `.vdocignore` file.
+	os.write_file('.vdocignore', '')!
+	assert get_modules_list(tpath, []string{}) == []
 }
