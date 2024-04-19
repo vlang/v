@@ -30,13 +30,17 @@ fn test_get_module_list() {
 
 	os.chdir(tpath)!
 
+	// For information on leading slash rules, refer to the doc comment of `get_ignore_files`.
+	ignore_rules := ['bravo', '/echo', '/foxtrot/golf', 'hotel.v/']
+	os.write_file('.vdocignore', ignore_rules.join_lines())!
+
 	/* Create some submodules.
 	Modules inside `testdata` and `tests` directories and modules that
 	only contain `_test.v` files should be ignored by default. */
 	submodules_no_ignore := ['alpha', 'charly', 'charly/alpha', 'charly/echo', 'charly/foxtrot/golf',
 		'foxtrot', 'golf']
 	submodules_to_ignore := ['alpha/bravo', 'bravo', 'echo', 'foxtrot/golf', 'tests', 'testdata',
-		'testdata/echo']
+		'testdata/echo', 'hotel.v']
 	for p in arrays.append(submodules_no_ignore, submodules_to_ignore) {
 		os.mkdir_all(p)!
 		mod_name := p.all_after_last('/')
@@ -45,17 +49,20 @@ fn test_get_module_list() {
 	// Create a module that only contains a `_test.v` file.
 	os.mkdir('delta')!
 	os.write_file(os.join_path('delta', 'delta_test.v'), 'module delta')!
-
-	// For information on a leading slash behaviour check the doc comment of `get_ignore_files`.
-	ignore_rules := ['bravo', '/echo', '/foxtrot/golf']
-	os.write_file('.vdocignore', ignore_rules.join_lines())!
+	// Create a file with a name whose pattern is in the ignore list with a trailing slash.
+	os.write_file(os.join_path('alpha', 'hotel.v'), 'module alpha')!
 
 	mod_list := get_modules_list(tpath)
-	assert mod_list.len == submodules_no_ignore.len
+	assert mod_list.len == submodules_no_ignore.len + 1 // +1 since `alpha/hotel.v` was added separately.
 	for m in submodules_no_ignore {
 		assert mod_list.any(it.contains(os.join_path(tpath, m)))
 	}
 	for m in submodules_to_ignore {
 		assert !mod_list.any(it.contains(os.join_path(tpath, m)))
 	}
+	assert !mod_list.any(it.contains(os.join_path(tpath, 'delta')))
+	// `hotel.v/` is added as ignore pattern with a tailing slash.
+	// The directory should be ignored while the file should be included.
+	assert !mod_list.any(it.contains(os.join_path(tpath, 'hotel.v')))
+	assert os.join_path(tpath, 'alpha', 'hotel.v') in mod_list
 }
