@@ -48,7 +48,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	}
 	if v.pref.is_debug {
 		eword := 'error:'
-		khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
+		khighlight := highlight_word(eword)
 		println(res.output.trim_right('\r\n').replace(eword, khighlight))
 	} else {
 		if res.output.len < 30 {
@@ -71,16 +71,17 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	if v.pref.is_quiet {
 		exit(1)
 	}
+	mut more_suggestions := ''
+	if res.output.contains('o: unrecognized file type')
+		|| res.output.contains('.o: file not recognized') {
+		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
+	}
 	verror('
 ==================
-C error. This should never happen.
-
-This is a compiler bug, please report it using `v bug file.v`.
-
-https://github.com/vlang/v/issues/new/choose
-
-You can also use #help on Discord: https://discord.gg/vlang
-')
+C error found. It should never happen, when compiling pure V code.
+This is a V compiler bug, please report it using `v bug file.v`,
+or goto https://github.com/vlang/v/issues/new/choose .
+You can also use #help on Discord: https://discord.gg/vlang .${more_suggestions}')
 }
 
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
@@ -996,8 +997,12 @@ fn missing_compiler_info() string {
 	return 'Install a C compiler, like gcc or clang'
 }
 
+fn highlight_word(keyword string) string {
+	return if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
+}
+
 fn error_context_lines(text string, keyword string, before int, after int) []string {
-	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
+	khighlight := highlight_word(keyword)
 	mut eline_idx := -1
 	mut lines := text.split_into_lines()
 	for idx, eline in lines {
