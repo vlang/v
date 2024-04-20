@@ -248,6 +248,7 @@ fn (c &Create) write_gitattributes() {
 **/*.vv linguist-language=V
 **/*.vsh linguist-language=V
 **/v.mod linguist-language=V
+.vdocignore linguist-language=ignore
 '
 	os.write_file(path, content) or { panic(err) }
 }

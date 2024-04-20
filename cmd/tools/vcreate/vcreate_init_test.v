@@ -91,6 +91,7 @@ fn init_and_check() ! {
 		'**/*.vv linguist-language=V',
 		'**/*.vsh linguist-language=V',
 		'**/v.mod linguist-language=V',
+		'.vdocignore linguist-language=ignore',
 		'',
 	].join_lines()
 
