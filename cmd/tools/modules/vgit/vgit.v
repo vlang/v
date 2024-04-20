@@ -137,12 +137,14 @@ pub mut:
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
 	make_fresh_tcc bool   // whether to do 'make fresh_tcc' before compiling an old V.
+	show_vccommit  bool   // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 }
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
-	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath) {
+	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath)
+		&& !vgit_context.show_vccommit {
 		// already compiled, no need to compile that specific v executable again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
@@ -152,7 +154,8 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
 	scripting.chdir(vgit_context.path_v)
 	scripting.run('git checkout --quiet ${vgit_context.commit_v}')
-	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
+	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath)
+		&& !vgit_context.show_vccommit {
 		// already compiled, so no need to compile v again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
@@ -162,6 +165,13 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.commit_v__hash = v_commithash
 	vgit_context.commit_v__ts = v_timestamp
 	vgit_context.commit_vc_hash = vccommit_before
+
+	if vgit_context.show_vccommit {
+		println('VHASH=${vgit_context.commit_v__hash}')
+		println('VCHASH=${vgit_context.commit_vc_hash}')
+		exit(0)
+	}
+
 	if os.exists('cmd/v') {
 		vgit_context.vvlocation = 'cmd/v'
 	} else {
