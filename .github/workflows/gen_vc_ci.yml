@@ -62,5 +62,5 @@ jobs:
           git -C vc log -3
 
       - name: Deploy
-        if: github.event.repository.full_name == 'vlang/v' && github.event.ref == 'refs/heads/master'
+        if: github.event.repository.full_name == 'vlang/v' && github.event_name == 'push' && github.event.ref == 'refs/heads/master'
         run: git -C vc push || true
