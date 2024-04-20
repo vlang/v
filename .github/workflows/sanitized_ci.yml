@@ -70,7 +70,7 @@ on:
       - 'vlib/v/embed_file/**.v'
 
 concurrency:
-  group: build-sanitized-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
