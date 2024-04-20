@@ -5,7 +5,11 @@ on:
     branches:
       - master
     paths-ignore:
+      - "**.vv"
+      - "**.out"
+      - "**.yml"
       - "**.md"
+      - '!**/gen_vc_ci.yml'
 
 jobs:
   build-vc:
@@ -18,6 +22,7 @@ jobs:
       - name: Build V
         run: make
       - name: Regenerate v.c and v_win.c
+        if: ${{ github.event.repository.full_name == 'vlang/v' }}
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"
           git config --global user.name "vlang-bot"
@@ -41,9 +46,6 @@ jobs:
           [ $(wc -l < vc/v.c) -gt 5000 ]
           [ $(wc -l < vc/v_win.c) -gt 5000 ]
 
-      - name: Deploy
-        if: ${{ github.event.repository.full_name == 'vlang/v' }}
-        run: |
           git -C vc add v.c v_win.c
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
           # in case there are recent commits:
