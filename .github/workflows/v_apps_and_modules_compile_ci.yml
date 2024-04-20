@@ -58,9 +58,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone https://github.com/DarpHome/discord.v"
-          .github/workflows/retry.sh v install https://github.com/ttytm/discord.v@temp/v-ci && cd ~/.vmodules/discord
-          # echo "Checkout last known good commit"
-          # git checkout 789de8ad35ee2683fbcd950fc07936f052088d0c
+          .github/workflows/retry.sh v install https://github.com/DarpHome/discord.v
+          cd ~/.vmodules/discord
+          echo "Checkout last known good commit"
+          git checkout c4777906464e4c97233e3afa532ddec7175e21ec
           echo "Execute Tests"
           v test .
 
