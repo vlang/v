@@ -1,8 +1,10 @@
+* text=auto eol=lf
+*.bat eol=crlf
+
 *.v linguist-language=V text=auto eol=lf
 *.vv linguist-language=V text=auto eol=lf
 *.vsh linguist-language=V text=auto eol=lf
 **/v.mod linguist-language=V text=auto eol=lf
-*.bat text=auto eol=crlf
-*.toml text eol=lf
-Dockerfile.* linguist-language=Dockerfile
 .vdocignore linguist-language=ignore
+
+Dockerfile.* linguist-language=Dockerfile
