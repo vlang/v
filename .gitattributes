@@ -3,5 +3,6 @@
 *.vsh linguist-language=V text=auto eol=lf
 **/v.mod linguist-language=V text=auto eol=lf
 *.bat text=auto eol=crlf
- Dockerfile.* linguist-language=Dockerfile
 *.toml text eol=lf
+Dockerfile.* linguist-language=Dockerfile
+.vdocignore linguist-language=ignore
