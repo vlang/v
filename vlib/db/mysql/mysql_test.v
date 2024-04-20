@@ -61,24 +61,24 @@ fn test_mysql() {
 	response = db.exec_param_many('select * from users', [''])!
 	assert response == [
 		mysql.Row{
-			vals: ['1', 'jackson','']
+			vals: ['1', 'jackson', '']
 		},
 		mysql.Row{
-			vals: ['2', 'shannon','']
+			vals: ['2', 'shannon', '']
 		},
 		mysql.Row{
-			vals: ['3', 'bailey','']
+			vals: ['3', 'bailey', '']
 		},
 		mysql.Row{
-			vals: ['4', 'blaze','']
+			vals: ['4', 'blaze', '']
 		},
 		mysql.Row{
-			vals: ['5', 'Hi','']
+			vals: ['5', 'Hi', '']
 		},
 	]
 
 	response = db.exec_param('select * from users where username = ?', 'blaze')!
 	assert response[0] == mysql.Row{
-		vals: ['4', 'blaze','']
+		vals: ['4', 'blaze', '']
 	}
 }

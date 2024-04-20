@@ -323,7 +323,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 
 	mut row := Row{}
 	for i in 0 .. num_cols {
-		if unsafe { row_vals == &u8(0) } || unsafe { row_vals[i] == nil} {
+		if unsafe { row_vals == &u8(0) } || unsafe { row_vals[i] == nil } {
 			row.vals << ''
 		} else {
 			row.vals << mystring(unsafe { &u8(row_vals[i]) })
