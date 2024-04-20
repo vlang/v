@@ -2,9 +2,25 @@ name: vlib modules CI
 
 on:
   pull_request:
+    paths-ignore:
+      - '**.vv'
+      - '**.out'
+      - '**.yml'
+      - '**.md'
+      - '!**/module_docs_ci.yml'
   push:
-    branches:
-      - master
+    paths-ignore:
+      - '**.vv'
+      - '**.out'
+      - '**.yml'
+      - '**.md'
+      - '!**/module_docs_ci.yml'
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   build-module-docs:
@@ -13,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make
+        run: make -j4
       - name: Test v doc
         run: |
           # While the integration tests (executing the v doc command) should install
@@ -23,5 +39,5 @@ jobs:
       - name: Build module documentation
         run: ./v doc -m -f html vlib/
       - name: Deploy docs to vercel
-        if: ${{ github.event.repository.full_name == 'vlang/v' }}
+        if: github.event.repository.full_name == 'vlang/v' && github.event.ref == 'refs/heads/master'
         run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true
