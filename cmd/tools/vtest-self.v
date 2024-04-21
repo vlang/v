@@ -340,47 +340,71 @@ fn main() {
 	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
-	args := os.args.clone()
-	args_string := args[1..].join(' ')
-	cmd_prefix := args_string.all_before('test-self')
-	title := 'testing vlib'
-	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
-	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
-	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
-	all_test_files << test_js_files
-	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
-
-	if just_essential {
-		all_test_files = essential_list.map(os.join_path(vroot, it))
+	args_idx := os.args.index('test-self')
+	cmd_prefix := os.args[1..args_idx].join(' ')
+	mut has_vlib_opt := false
+	mut has_cmd_opt := false
+	for arg in os.args#[args_idx + 1..] {
+		match arg {
+			'--vlib' {
+				has_vlib_opt = true
+			}
+			'--cmd' {
+				has_cmd_opt = true
+			}
+			else {
+				eprintln('error: unknown argument `${arg}`')
+				exit(1)
+			}
+		}
+	}
+	include_vlib := has_vlib_opt || (!has_vlib_opt && !has_cmd_opt)
+	include_cmd := has_cmd_opt || (!has_vlib_opt && !has_cmd_opt)
+	title := 'testing ' + match true {
+		include_cmd && include_vlib { 'vlib & cmd' }
+		include_vlib { 'vlib' }
+		include_cmd { 'cmd' }
+		else { '' }
 	}
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
+	mut all_test_files := []string{}
+	if include_vlib {
+		all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+		test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
+		all_test_files << test_js_files
+		all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
+		if !testing.is_node_present {
+			testroot := vroot + os.path_separator
+			tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
+				'/'))
+		}
+		if !testing.is_go_present {
+			tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
+		}
+		testing.find_started_process('mysqld') or {
+			tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
+			tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
+		}
+		testing.find_started_process('postgres') or {
+			tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
+			tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
+		}
+		$if windows {
+			if github_job == 'tcc' {
+				tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
+			}
+		}
+	}
+	if include_cmd {
+		all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
+	}
+	if just_essential {
+		all_test_files = essential_list.map(os.join_path(vroot, it))
+	}
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
-
-	if !testing.is_node_present {
-		testroot := vroot + os.path_separator
-		tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
-			'/'))
-	}
-	if !testing.is_go_present {
-		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
-	}
-	testing.find_started_process('mysqld') or {
-		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
-		tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
-	}
-	testing.find_started_process('postgres') or {
-		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
-		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
-	}
-
-	$if windows {
-		if github_job == 'tcc' {
-			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
-		}
-	}
 
 	mut werror := false
 	mut sanitize_memory := false
@@ -388,7 +412,7 @@ fn main() {
 	mut sanitize_undefined := false
 	mut asan_compiler := false
 	mut msan_compiler := false
-	for arg in args {
+	for arg in os.args {
 		if arg.contains('-asan-compiler') {
 			asan_compiler = true
 		}
