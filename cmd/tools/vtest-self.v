@@ -352,10 +352,7 @@ fn main() {
 			'--cmd' {
 				has_cmd_opt = true
 			}
-			else {
-				eprintln('error: unknown argument `${arg}`')
-				exit(1)
-			}
+			else {}
 		}
 	}
 	include_vlib, include_cmd := if !has_vlib_opt && !has_cmd_opt {
