@@ -341,11 +341,9 @@ fn main() {
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
 	args_idx := os.args.index('test-self')
-	cmd_prefix := os.args[1..args_idx]
+	cmd_prefix := os.args[1..args_idx].join(' ')
 	mut has_vlib_opt := false
 	mut has_cmd_opt := false
-	mut asan_compiler := false
-	mut msan_compiler := false
 	for arg in os.args#[args_idx + 1..] {
 		match arg {
 			'--vlib' {
@@ -354,37 +352,10 @@ fn main() {
 			'--cmd' {
 				has_cmd_opt = true
 			}
-			'--asan-compiler', '-asan-compiler' {
-				asan_compiler = true
-			}
-			'--msan-compiler', '-msan-compiler' {
-				msan_compiler = true
-			}
 			else {
 				eprintln('error: unknown argument `${arg}`')
 				exit(1)
 			}
-		}
-	}
-	mut werror := false
-	mut sanitize_memory := false
-	mut sanitize_address := false
-	mut sanitize_undefined := false
-	for arg in cmd_prefix {
-		match arg {
-			'-Werror', '-cstrict' {
-				werror = true
-			}
-			'-fsanitize=memory' {
-				sanitize_memory = true
-			}
-			'-fsanitize=address' {
-				sanitize_address = true
-			}
-			'-fsanitize=undefined' {
-				sanitize_undefined = true
-			}
-			else {}
 		}
 	}
 	include_vlib, include_cmd := if !has_vlib_opt && !has_cmd_opt {
@@ -399,7 +370,7 @@ fn main() {
 		else { '' }
 	}
 	testing.eheader(title)
-	mut tsession := testing.new_test_session(cmd_prefix.join(' '), true)
+	mut tsession := testing.new_test_session(cmd_prefix, true)
 	mut all_test_files := []string{}
 	if include_vlib {
 		all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
@@ -438,6 +409,32 @@ fn main() {
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
 
+	mut werror := false
+	mut sanitize_memory := false
+	mut sanitize_address := false
+	mut sanitize_undefined := false
+	mut asan_compiler := false
+	mut msan_compiler := false
+	for arg in os.args {
+		if arg.contains('-asan-compiler') {
+			asan_compiler = true
+		}
+		if arg.contains('-msan-compiler') {
+			msan_compiler = true
+		}
+		if arg.contains('-Werror') || arg.contains('-cstrict') {
+			werror = true
+		}
+		if arg.contains('-fsanitize=memory') {
+			sanitize_memory = true
+		}
+		if arg.contains('-fsanitize=address') {
+			sanitize_address = true
+		}
+		if arg.contains('-fsanitize=undefined') {
+			sanitize_undefined = true
+		}
+	}
 	if os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW').len == 0
 		&& ((sanitize_undefined || sanitize_memory || sanitize_address)
 		|| (msan_compiler || asan_compiler)) {
