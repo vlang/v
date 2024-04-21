@@ -366,16 +366,9 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -409,16 +402,9 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_noscan(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -468,16 +454,9 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_uncollectable(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -604,14 +583,10 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
 	}
+	vplayground_mlimit(n)
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
-		$if vplayground ? {
-			if n > 10000 {
-				panic('allocating more than 10 KB is not allowed in the playground')
-			}
-		}
 		if n < 0 {
 			panic('calloc_noscan(${n} < 0)')
 		}
@@ -744,3 +719,13 @@ __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+@[if vplayground ?]
+fn vplayground_mlimit(n isize) {
+	if n > 10000 {
+		panic('allocating more than 10 KB at once is not allowed in the V playground')
+	}
+	if total_m > 50 * 1024 * 1024 {
+		panic('allocating more than 50 MB is not allowed in the V playground')
+	}
+}
