@@ -358,8 +358,11 @@ fn main() {
 			}
 		}
 	}
-	include_vlib := has_vlib_opt || (!has_vlib_opt && !has_cmd_opt)
-	include_cmd := has_cmd_opt || (!has_vlib_opt && !has_cmd_opt)
+	include_vlib, include_cmd := if !has_vlib_opt && !has_cmd_opt {
+		true, true
+	} else {
+		has_vlib_opt, has_cmd_opt
+	}
 	title := 'testing ' + match true {
 		include_cmd && include_vlib { 'vlib & cmd' }
 		include_vlib { 'vlib' }
