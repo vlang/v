@@ -1,28 +1,36 @@
 name: VC gen
 
 on:
-  push:
-    branches:
-      - master
+  pull_request:
     paths-ignore:
-      - "**.vv"
-      - "**.out"
-      - "**.yml"
-      - "**.md"
+      - '**.vv'
+      - '**.out'
+      - '**.yml'
+      - '**.md'
       - '!**/gen_vc_ci.yml'
+  push:
+    paths-ignore:
+      - '**.vv'
+      - '**.out'
+      - '**.yml'
+      - '**.md'
+      - '!**/gen_vc_ci.yml'
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   build-vc:
     runs-on: ubuntu-latest
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    env:
-      VREPO: github.com/vlang/vc.git
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make
+        run: make -j4
       - name: Regenerate v.c and v_win.c
-        if: ${{ github.event.repository.full_name == 'vlang/v' }}
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"
           git config --global user.name "vlang-bot"
@@ -32,7 +40,7 @@ jobs:
 
           rm -rf vc
           .github/workflows/retry.sh git clone --depth=1 \
-            https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@$VREPO
+            https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
 
           rm -rf vc/v.c vc/v_win.c
 
@@ -48,6 +56,11 @@ jobs:
 
           git -C vc add v.c v_win.c
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
+
           # in case there are recent commits:
           .github/workflows/retry.sh git -C vc pull --rebase origin master
-          git -C vc push || true
+          git -C vc log -3
+
+      - name: Deploy
+        if: github.event.repository.full_name == 'vlang/v' && github.event_name == 'push' && github.event.ref == 'refs/heads/master'
+        run: git -C vc push || true
