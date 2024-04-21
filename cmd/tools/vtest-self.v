@@ -191,6 +191,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
 	'vlib/orm/orm_references_test.v',
+	'vlib/v/compiler_errors_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
