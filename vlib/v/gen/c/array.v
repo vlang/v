@@ -760,13 +760,17 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
+	g.write('if (')
+	g.expr(node.left)
+	g.write('${deref_field}len > 0) { ')
 	g.write('qsort(')
 	g.expr(node.left)
 	g.write('${deref_field}data, ')
 	g.expr(node.left)
 	g.write('${deref_field}len, ')
 	g.expr(node.left)
-	g.write('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn})')
+	g.write('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn});')
+	g.write(' }')
 }
 
 // `nums.filter(it % 2 == 0)`
