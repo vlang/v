@@ -11,7 +11,7 @@ on:
       - '**/cmd/tools/vpm/**'
 
 concurrency:
-  group: vpm-ci-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:

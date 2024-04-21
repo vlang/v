@@ -43,7 +43,7 @@ on:
       - 'vlib/v/gen/native/tests/**.v'
 
 concurrency:
-  group: native-backend-ci-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:

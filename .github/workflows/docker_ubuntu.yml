@@ -11,7 +11,7 @@ on:
       - "**.yml"
 
 concurrency:
-  group: docker-ubuntu-musl-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
