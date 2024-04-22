@@ -373,7 +373,9 @@ fn main() {
 		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
 			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
 				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
-				tpaths_ref[p] = true
+				unsafe {
+					tpaths_ref[p] = true
+				}
 			}
 		})
 	}
