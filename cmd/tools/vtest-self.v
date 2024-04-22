@@ -341,12 +341,12 @@ fn main() {
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
 	args_idx := os.args.index('test-self')
-	cmd_prefix := os.args[1..args_idx].join(' ')
-	args := os.args#[args_idx + 1..]
-	tdirs := if args.len > 0 {
+	vargs := os.args[1..args_idx]
+	targs := os.args#[args_idx + 1..]
+	tdirs := if targs.len > 0 {
 		mut dirs := []string{}
 		mut has_err := false
-		for arg in args {
+		for arg in targs {
 			// For now, handle flags separately.
 			if arg.starts_with('-') {
 				continue
@@ -367,7 +367,7 @@ fn main() {
 	}
 	title := 'testing: ${tdirs.join(', ')}'
 	testing.eheader(title)
-	mut tsession := testing.new_test_session(cmd_prefix, true)
+	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
 	for dir in tdirs {
