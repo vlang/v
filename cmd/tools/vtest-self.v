@@ -340,30 +340,53 @@ fn main() {
 	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
-	args := os.args.clone()
-	args_string := args[1..].join(' ')
-	cmd_prefix := args_string.all_before('test-self')
-	title := 'testing vlib'
-	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
-	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
-	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
-	all_test_files << test_js_files
-	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
-
+	args_idx := os.args.index('test-self')
+	vargs := os.args[1..args_idx]
+	targs := os.args#[args_idx + 1..]
+	tdirs := if targs.len > 0 {
+		mut dirs := []string{}
+		mut has_err := false
+		for arg in targs {
+			// For now, handle flags separately.
+			if arg.starts_with('-') {
+				continue
+			}
+			if !os.is_dir(os.join_path(vroot, arg)) {
+				eprintln('error: failed to find directory `${arg}`')
+				has_err = true
+				continue
+			}
+			dirs << arg
+		}
+		if has_err {
+			exit(1)
+		}
+		dirs
+	} else {
+		['vlib', 'cmd']
+	}
+	title := 'testing: ${tdirs.join(', ')}'
+	testing.eheader(title)
+	mut tpaths := map[string]bool{}
+	mut tpaths_ref := &tpaths
+	for dir in tdirs {
+		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
+			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
+				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
+				unsafe {
+					tpaths_ref[p] = true
+				}
+			}
+		})
+	}
+	mut all_test_files := tpaths.keys()
 	if just_essential {
 		all_test_files = essential_list.map(os.join_path(vroot, it))
 	}
-	testing.eheader(title)
-	mut tsession := testing.new_test_session(cmd_prefix, true)
+	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
-
-	if !testing.is_node_present {
-		testroot := vroot + os.path_separator
-		tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
-			'/'))
-	}
 	if !testing.is_go_present {
 		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
 	}
@@ -375,7 +398,6 @@ fn main() {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
-
 	$if windows {
 		if github_job == 'tcc' {
 			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
@@ -388,7 +410,7 @@ fn main() {
 	mut sanitize_undefined := false
 	mut asan_compiler := false
 	mut msan_compiler := false
-	for arg in args {
+	for arg in os.args {
 		if arg.contains('-asan-compiler') {
 			asan_compiler = true
 		}
