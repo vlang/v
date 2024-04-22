@@ -342,62 +342,58 @@ fn main() {
 	os.chdir(vroot) or { panic(err) }
 	args_idx := os.args.index('test-self')
 	cmd_prefix := os.args[1..args_idx].join(' ')
-	mut has_vlib_opt := false
-	mut has_cmd_opt := false
-	for arg in os.args#[args_idx + 1..] {
-		match arg {
-			'--vlib' {
-				has_vlib_opt = true
+	args := os.args#[args_idx + 1..]
+	tdirs := if args.len > 0 {
+		mut dirs := []string{}
+		mut has_err := false
+		for arg in args {
+			// For now, handle flags separately.
+			if arg.starts_with('-') {
+				continue
 			}
-			'--cmd' {
-				has_cmd_opt = true
+			if !os.is_dir(os.join_path(vroot, arg)) {
+				eprintln('error: failed to find directory `${arg}`')
+				has_err = true
+				continue
 			}
-			else {}
+			dirs << arg
 		}
-	}
-	include_vlib, include_cmd := if !has_vlib_opt && !has_cmd_opt {
-		true, true
+		if has_err {
+			exit(1)
+		}
+		dirs
 	} else {
-		has_vlib_opt, has_cmd_opt
+		['vlib', 'cmd']
 	}
-	title := 'testing ' + match true {
-		include_cmd && include_vlib { 'vlib & cmd' }
-		include_vlib { 'vlib' }
-		include_cmd { 'cmd' }
-		else { '' }
-	}
+	title := 'testing: ${tdirs.join(', ')}'
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
-	mut all_test_files := []string{}
-	if include_vlib {
-		all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
-		test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
-		all_test_files << test_js_files
-		all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
-		if !testing.is_node_present {
-			testroot := vroot + os.path_separator
-			tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
-				'/'))
-		}
-		if !testing.is_go_present {
-			tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
-		}
-		testing.find_started_process('mysqld') or {
-			tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
-			tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
-		}
-		testing.find_started_process('postgres') or {
-			tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
-			tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
-		}
-		$if windows {
-			if github_job == 'tcc' {
-				tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
+	mut tpaths := map[string]bool{}
+	mut tpaths_ref := &tpaths
+	for dir in tdirs {
+		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
+			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
+				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
+				tpaths_ref[p] = true
 			}
-		}
+		})
 	}
-	if include_cmd {
-		all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
+	mut all_test_files := tpaths.keys()
+	if !testing.is_go_present {
+		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
+	}
+	testing.find_started_process('mysqld') or {
+		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
+		tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
+	}
+	testing.find_started_process('postgres') or {
+		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
+		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
+	}
+	$if windows {
+		if github_job == 'tcc' {
+			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
+		}
 	}
 	if just_essential {
 		all_test_files = essential_list.map(os.join_path(vroot, it))
