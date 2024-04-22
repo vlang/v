@@ -367,7 +367,6 @@ fn main() {
 	}
 	title := 'testing: ${tdirs.join(', ')}'
 	testing.eheader(title)
-	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
 	for dir in tdirs {
@@ -379,6 +378,13 @@ fn main() {
 		})
 	}
 	mut all_test_files := tpaths.keys()
+	if just_essential {
+		all_test_files = essential_list.map(os.join_path(vroot, it))
+	}
+	mut tsession := testing.new_test_session(vargs.join(' '), true)
+	tsession.exec_mode = .compile_and_run
+	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
+	tsession.skip_files << skip_test_files
 	if !testing.is_go_present {
 		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
 	}
@@ -395,12 +401,6 @@ fn main() {
 			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 	}
-	if just_essential {
-		all_test_files = essential_list.map(os.join_path(vroot, it))
-	}
-	tsession.exec_mode = .compile_and_run
-	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	tsession.skip_files << skip_test_files
 
 	mut werror := false
 	mut sanitize_memory := false
