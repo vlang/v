@@ -29,7 +29,7 @@ jobs:
 
       - name: Build V
         id: build
-        run: make && sudo ./v symlink -githubci
+        run: make && sudo ./v symlink
 
       - name: Install dependencies
         run: |
@@ -218,7 +218,7 @@ jobs:
 
       - name: Build V
         id: build
-        run: make && sudo ./v symlink -githubci
+        run: make && sudo ./v symlink
 
       - name: Install dependencies
         run: |
@@ -269,7 +269,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v symlink -githubci
+        run: make && ./v symlink
       - name: Build vpm
         run: |
           v retry v install markdown
