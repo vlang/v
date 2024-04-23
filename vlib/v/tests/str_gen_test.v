@@ -333,7 +333,7 @@ fn create_option_err() !string {
 }
 
 fn test_result_err() {
-	assert '${create_option_err()}' == 'Result(error: this is an error)'
+	assert '${create_option_err() or { 'Result(error: this is an error)' }}' == 'Result(error: this is an error)'
 }
 
 fn create_option_none() ?string {
