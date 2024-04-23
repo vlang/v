@@ -1282,6 +1282,14 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 					if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
+				} else if mut call_arg.expr.right is ast.Ident {
+					mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr.right)
+					if ctyp != ast.void_type {
+						comptime_args[k] = ctyp
+						if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+							comptime_args[k] = comptime_args[k].set_nr_muls(0)
+						}
+					}
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				comptime_args[k] = g.comptime.comptime_for_field_type
