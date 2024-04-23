@@ -125,7 +125,9 @@ by using any of the following commands in a terminal:
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
 * [Modules](#modules)
     * [Create modules](#create-modules)
+    * [Special considerations for project folders](#special-considerations-for-project-folders)
     * [init functions](#init-functions)
+    * [cleanup functions](#cleanup-functions)
 
 </td></tr>
 <tr><td width=33% valign=top>
@@ -3269,9 +3271,9 @@ fn main() {
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
 
-### Special considerations
+### Special considerations for project folders
 
-For the top level project folder (the one that is compiled with v .), and *only*
+For the top level project folder (the one, compiled with `v .`), and *only*
 that folder, you can have several .v files, that may be mentioning different modules
 with `module main`, `module abc` etc
 
@@ -3285,7 +3287,7 @@ Note that in ordinary modules, all .v files must start with `module name_of_fold
 ### `init` functions
 
 If you want a module to automatically call some setup/initialization code when it is imported,
-you can use a module `init` function:
+you can define a module `init` function:
 
 ```v
 fn init() {
@@ -3293,8 +3295,24 @@ fn init() {
 }
 ```
 
-The `init` function cannot be public - it will be called automatically. This feature is
-particularly useful for initializing a C library.
+The `init` function cannot be public - it will be called automatically by V, *just once*, no matter
+how many times the module was imported in your program. This feature is particularly useful for
+initializing a C library.
+
+### `cleanup` functions
+
+If you want a module to automatically call some cleanup/deinitialization code, when your program
+ends, you can define a module `cleanup` function:
+
+```v
+fn cleanup() {
+	// your deinitialisation code here ...
+}
+```
+
+Just like the `init` function, the `cleanup` function for a module cannot be public - it will be
+called automatically, when your program ends, once per module, even if the module was imported
+transitively by other modules several times, in the reverse order of the init calls.
 
 ## Type Declarations
 
