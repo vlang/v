@@ -19,7 +19,7 @@ concurrency:
 jobs:
   gcc:
     runs-on: windows-2019
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 271
     env:
       VFLAGS: -cc gcc
@@ -71,7 +71,7 @@ jobs:
 
   msvc:
     runs-on: windows-2019
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 271
     env:
       VFLAGS: -cc msvc
@@ -117,7 +117,7 @@ jobs:
 
   tcc:
     runs-on: windows-2019
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 181
     env:
       VFLAGS: -cc tcc -no-retry-compilation

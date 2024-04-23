@@ -20,7 +20,7 @@ concurrency:
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc

@@ -56,7 +56,7 @@ jobs:
           windows-2019
         ]
     runs-on: ${{ matrix.os }}
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     steps:
       - uses: actions/checkout@v4
 

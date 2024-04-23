@@ -25,7 +25,7 @@ concurrency:
 jobs:
   build-vc:
     runs-on: ubuntu-latest
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -62,5 +62,5 @@ jobs:
           git -C vc log -3
 
       - name: Deploy
-        if: github.event.repository.full_name == 'vlang/v' && github.event_name == 'push' && github.event.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
         run: git -C vc push || true

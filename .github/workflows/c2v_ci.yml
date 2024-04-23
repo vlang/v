@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   build-doom:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-12]
@@ -59,7 +59,7 @@ jobs:
           WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
 
   test-regression:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     runs-on: ubuntu-20.04
     timeout-minutes: 20
     env:
