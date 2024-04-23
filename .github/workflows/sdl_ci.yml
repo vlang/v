@@ -1,17 +1,20 @@
 name: sdl CI
 
 on:
+  workflow_dispatch:
   push:
     paths-ignore:
       - "**.md"
       - "**.yml"
+      - '!**/sdl_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
       - "**.yml"
+      - '!**/sdl_ci.yml'
 
 concurrency:
-  group: sdl-ci-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -26,18 +29,21 @@ jobs:
       - name: Build V
         run: make && sudo ./v symlink
 
+      - name: Install dependencies
+        run: |
+          v retry 'sudo apt update'
+          v retry 'sudo apt install -y libsdl2-dev libsdl2-ttf-dev'
+          v retry 'sudo apt install -y libsdl2-mixer-dev libsdl2-image-dev'
+
       - name: Clone sdl into .vmodules
         run: |
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/sdl
+          v retry 'git clone --filter=blob:none https://github.com/vlang/sdl'
           cd sdl
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/sdl
 
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libsdl2-mixer-dev libsdl2-image-dev
+      - name: Ensure SDL setup works
+        run: ./v ~/.vmodules/sdl/setup.vsh
 
       - name: Run tests
         run: ./v test sdl
@@ -49,3 +55,13 @@ jobs:
         run: |
           v shader sdl/examples/sdl_opengl_and_sokol
           v should-compile-all sdl/examples/
+          ~/.vmodules/sdl/examples/versions/main
+
+      - name: Check SDL works, when installed through vpm
+        run: |
+          rm -rf sdl/
+          rm -rf ~/.vmodules/sdl
+          v retry 'v install sdl'
+          ls -la ~/.vmodules/sdl/
+          v ~/.vmodules/sdl/setup.vsh
+          v run ~/.vmodules/sdl/examples/versions

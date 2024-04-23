@@ -210,6 +210,7 @@ pub fn run[A, X](mut global_app A, port int) {
 
 @[params]
 pub struct RunParams {
+pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	family               net.AddrFamily = .ip6
 	host                 string

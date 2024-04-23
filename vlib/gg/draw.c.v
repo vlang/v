@@ -226,6 +226,7 @@ pub enum PaintStyle {
 
 @[params]
 pub struct DrawRectParams {
+pub:
 	x          f32
 	y          f32
 	w          f32

@@ -82,7 +82,7 @@ pub fn init(cfg Config) &Context {
 	}
 
 	ctx_ptr = ctx
-	C.atexit(restore_terminal_state)
+	at_exit(restore_terminal_state) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ctx_ptr

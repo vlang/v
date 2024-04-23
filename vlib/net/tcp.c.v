@@ -9,8 +9,7 @@ pub const tcp_default_write_timeout = 30 * time.second
 @[heap]
 pub struct TcpConn {
 pub mut:
-	sock TcpSocket
-mut:
+	sock           TcpSocket
 	handle         int
 	write_deadline time.Time
 	read_deadline  time.Time
@@ -181,7 +180,7 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 }
 
 pub fn (mut c TcpConn) read_deadline() !time.Time {
-	if c.read_deadline.unix == 0 {
+	if c.read_deadline.unix() == 0 {
 		return c.read_deadline
 	}
 	return error('none')
@@ -246,7 +245,7 @@ pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
 }
 
 pub fn (mut c TcpConn) write_deadline() !time.Time {
-	if c.write_deadline.unix == 0 {
+	if c.write_deadline.unix() == 0 {
 		return c.write_deadline
 	}
 	return error('none')
@@ -312,8 +311,7 @@ pub fn (c TcpConn) str() string {
 
 pub struct TcpListener {
 pub mut:
-	sock TcpSocket
-mut:
+	sock            TcpSocket
 	accept_timeout  time.Duration
 	accept_deadline time.Time
 	is_blocking     bool = true
@@ -450,7 +448,7 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 }
 
 pub fn (c &TcpListener) accept_deadline() !time.Time {
-	if c.accept_deadline.unix != 0 {
+	if c.accept_deadline.unix() != 0 {
 		return c.accept_deadline
 	}
 	return error('invalid deadline')

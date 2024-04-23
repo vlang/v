@@ -143,7 +143,7 @@ fn maybe_color(term_color fn (string) string, str string) string {
 }
 
 fn collect_v_files(path string, recursive bool) ![]string {
-	if path.len == 0 {
+	if path == '' {
 		return error('path cannot be empty')
 	}
 	if !os.is_dir(path) {

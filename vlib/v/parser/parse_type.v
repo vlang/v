@@ -320,7 +320,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 		is_method: false
 		attrs: p.attrs
 	}
-	if has_generic && generic_types.len == 0 && name.len > 0 {
+	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 			fn_type_pos)
 	}

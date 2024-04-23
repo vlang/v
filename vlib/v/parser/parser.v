@@ -21,6 +21,7 @@ const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpx
 
 @[minify]
 pub struct Parser {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 mut:
 	file_base         string       // "hello.v"
@@ -32,7 +33,6 @@ mut:
 	tok                       token.Token
 	prev_tok                  token.Token
 	peek_tok                  token.Token
-	table                     &ast.Table = unsafe { nil }
 	language                  ast.Language
 	fn_language               ast.Language // .c for `fn C.abcd()` declarations
 	expr_level                int  // prevent too deep recursions for pathological programs
@@ -45,6 +45,7 @@ mut:
 	inside_ct_if_expr         bool
 	inside_or_expr            bool
 	inside_for                bool
+	inside_for_expr           bool
 	inside_fn                 bool // true even with implicit main
 	inside_fn_return          bool
 	inside_call_args          bool // true inside f(  ....  )
@@ -70,17 +71,16 @@ mut:
 	inside_orm                bool
 	inside_chan_decl          bool
 	inside_attr_decl          bool
-	fixed_array_dim           int        // fixed array dim parsing level
-	or_is_handled             bool       // ignore `or` in this expression
-	builtin_mod               bool       // are we in the `builtin` module?
-	mod                       string     // current module name
-	is_manualfree             bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals               bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated              bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	is_translated             bool       // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
-	attrs                     []ast.Attr // attributes before next decl stmt
-	expr_mod                  string     // for constructing full type names in parse_type()
-	scope                     &ast.Scope = unsafe { nil }
+	fixed_array_dim           int               // fixed array dim parsing level
+	or_is_handled             bool              // ignore `or` in this expression
+	builtin_mod               bool              // are we in the `builtin` module?
+	mod                       string            // current module name
+	is_manualfree             bool              // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals               bool              // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated              bool              // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated             bool              // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
+	attrs                     []ast.Attr        // attributes before next decl stmt
+	expr_mod                  string            // for constructing full type names in parse_type()
 	imports                   map[string]string // alias => mod_name
 	ast_imports               []ast.Import      // mod_names
 	used_imports              []string // alias
@@ -107,6 +107,8 @@ mut:
 	script_mode_start_token   token.Token
 pub mut:
 	scanner        &scanner.Scanner = unsafe { nil }
+	table          &ast.Table       = unsafe { nil }
+	scope          &ast.Scope       = unsafe { nil }
 	errors         []errors.Error
 	warnings       []errors.Warning
 	notices        []errors.Notice
@@ -647,6 +649,7 @@ fn (mut p Parser) check(expected token.Kind) {
 
 @[params]
 struct ParamsForUnexpected {
+pub:
 	got            string
 	expecting      string
 	prepend_msg    string
@@ -929,6 +932,7 @@ fn (mut p Parser) comment_stmt() ast.ExprStmt {
 
 @[params]
 struct EatCommentsConfig {
+pub:
 	same_line bool // Only eat comments on the same line as the previous token
 	follow_up bool // Comments directly below the previous token as long as there is no empty line
 }
@@ -2786,9 +2790,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// handle the easy cases first, then check for an already known V typename, not shadowed by a local variable
 		if (is_option || p.peek_tok.kind in [.lsbr, .lt, .lpar]) && (is_mod_cast
 			|| is_c_pointer_cast || is_c_type_cast || is_js_cast || is_generic_cast
-			|| (language == .v && name.len > 0 && (name[0].is_capital()
-			|| (!known_var && (name in p.table.type_idxs
-			|| name_w_mod in p.table.type_idxs))
+			|| (language == .v && name != '' && (name[0].is_capital() || (!known_var
+			&& (name in p.table.type_idxs || name_w_mod in p.table.type_idxs))
 			|| name.all_after_last('.')[0].is_capital()))) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO: handle C.stat()
@@ -3389,7 +3392,7 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 			p.check(.comma)
 		}
 		name := p.tok.lit
-		if name.len > 0 && !name[0].is_capital() {
+		if name != '' && !name[0].is_capital() {
 			p.error('generic parameter needs to be uppercase')
 		}
 		if name.len > 1 {
@@ -4647,6 +4650,7 @@ fn (mut p Parser) trace[T](fbase string, x &T) {
 
 @[params]
 struct ParserShowParams {
+pub:
 	msg   string
 	reach int = 3
 }

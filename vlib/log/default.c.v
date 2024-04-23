@@ -16,7 +16,7 @@ mut:
 // init will be called before the user's main program starts, to initialize the default logger
 fn init() {
 	default_logger = new_thread_safe_log()
-	C.atexit(deinit)
+	at_exit(deinit) or {}
 }
 
 // deinit will be called on exit of the program and will free the memory allocated for the default logger

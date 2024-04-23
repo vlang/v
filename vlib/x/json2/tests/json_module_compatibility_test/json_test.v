@@ -91,7 +91,7 @@ fn test_parse_user() {
 fn test_encode_decode_time() {
 	user := User2{
 		age: 25
-		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+		reg_date: time.new(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
 	}
 	s := json.encode(user)
 

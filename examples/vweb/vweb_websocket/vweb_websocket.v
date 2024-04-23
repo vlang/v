@@ -40,11 +40,9 @@ fn new_app() !&App {
 }
 
 fn new_websocker_server() !&websocket.Server {
-	mut wss := &websocket.Server{
-		logger: &log.Log{
-			level: .debug
-		}
-	}
+	mut logger := &log.Log{}
+	logger.set_level(.debug)
+	mut wss := websocket.new_server(.ip, 8080, '', logger: logger)
 	wss.on_connect(fn (mut server_client websocket.ServerClient) !bool {
 		slog('ws.on_connect, server_client.client_key: ${server_client.client_key}')
 		return true

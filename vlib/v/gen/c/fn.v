@@ -2552,6 +2552,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					}
 					if atype.has_flag(.generic) || arg.expr is ast.StructInit {
 						g.write('(voidptr)&/*qq*/')
+					} else if arg.expr is ast.None {
+						g.expr_with_opt(arg.expr, arg_typ, expected_type)
+						return
 					} else {
 						needs_closing = true
 						if arg_typ_sym.kind in [.sum_type, .interface_] {

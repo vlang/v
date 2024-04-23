@@ -244,7 +244,7 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
 	mut err_msg := err.msg()
 	if err.code() == 1 {
-		mod_list := get_modules_list(cfg.input_path, []string{})
+		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
 			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
@@ -260,7 +260,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		path: cfg.output_path
 		typ: cfg.output_type
 	}
-	if out.path.len == 0 {
+	if out.path == '' {
 		if cfg.output_type == .unset {
 			out.typ = .ansi
 		} else {
@@ -307,9 +307,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [
-			cfg.input_path,
-		] }
+	dirs := if cfg.is_multi { get_modules(cfg.input_path) } else { [cfg.input_path] }
 	for dirpath in dirs {
 		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
@@ -348,7 +346,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	vd.vprintln('Rendering docs...')
-	if out.path.len == 0 || out.path == 'stdout' || out.path == '-' {
+	if out.path == '' || out.path == 'stdout' || out.path == '-' {
 		if out.typ == .html {
 			vd.render_static_html(out)
 		}
@@ -371,7 +369,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			out.path = os.real_path('.')
 		}
 		if cfg.is_multi {
-			out.path = os.join_path(out.path, '_docs')
+			out.path = if cfg.input_path == out.path {
+				os.join_path(out.path, '_docs')
+			} else {
+				out.path
+			}
 			if !os.exists(out.path) {
 				os.mkdir(out.path) or { panic(err) }
 			} else {

@@ -53,7 +53,7 @@ fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret P
 		}
 	}
 	// validate
-	if method.len == 0 || path.len == 0 {
+	if method == '' || path == '' {
 		pret.ret = -1
 		pret.err = 'error parsing request: invalid method or path'
 		return
@@ -81,7 +81,7 @@ fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, m
 		buf += pret.ret
 	}
 	// validate
-	if method.len == 0 || path.len == 0 {
+	if method == '' || path == '' {
 		pret.ret = -1
 		pret.err = 'error parsing request: invalid method or path'
 		return

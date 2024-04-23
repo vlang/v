@@ -52,7 +52,7 @@ pub fn (tag &Tag) str() string {
 	html_str.write_string('<${tag.name}')
 	for key, value in tag.attributes {
 		html_str.write_string(' ${key}')
-		if value.len > 0 {
+		if value != '' {
 			html_str.write_string('="${value}"')
 		}
 	}

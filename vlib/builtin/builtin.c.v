@@ -32,6 +32,23 @@ pub fn exit(code int) {
 	C.exit(code)
 }
 
+// at_exit registers a fn callback, that will be called at normal process termination.
+// It returns an error, if the registration was not successful.
+// The registered callback functions, will be called either via exit/1,
+// or via return from the main program, in the reverse order of their registration.
+// The same fn may be registered multiple times.
+// Each callback fn will called once for each registration.
+pub fn at_exit(cb FnExitCb) ! {
+	$if freestanding {
+		return error('at_exit not implemented with -freestanding')
+	} $else {
+		res := C.atexit(cb)
+		if res != 0 {
+			return error_with_code('at_exit failed', res)
+		}
+	}
+}
+
 // panic_debug private function that V uses for panics, -cg/-g is passed
 // recent versions of tcc print nicer backtraces automatically
 // Note: the duplication here is because tcc_backtrace should be called directly
@@ -349,16 +366,9 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -392,16 +402,9 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_noscan(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -451,16 +454,9 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_uncollectable(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -587,14 +583,10 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
 	}
+	vplayground_mlimit(n)
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
-		$if vplayground ? {
-			if n > 10000 {
-				panic('allocating more than 10 KB is not allowed in the playground')
-			}
-		}
 		if n < 0 {
 			panic('calloc_noscan(${n} < 0)')
 		}
@@ -727,3 +719,13 @@ __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+@[if vplayground ?]
+fn vplayground_mlimit(n isize) {
+	if n > 10000 {
+		panic('allocating more than 10 KB at once is not allowed in the V playground')
+	}
+	if total_m > 50 * 1024 * 1024 {
+		panic('allocating more than 50 MB is not allowed in the V playground')
+	}
+}

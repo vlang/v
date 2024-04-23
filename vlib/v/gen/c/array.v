@@ -463,15 +463,23 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	}
 }
 
-fn (mut g Gen) write_closure_fn(mut expr ast.AnonFn, var_name string) {
-	past := g.past_tmp_var_new()
-	fn_ptr_name := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
-		past.tmp_var)
-	g.write('${fn_ptr_name} = ')
+fn (mut g Gen) declare_closure_fn(mut expr ast.AnonFn, var_name string) {
+	decl_var := g.fn_var_signature(expr.decl.return_type, expr.decl.params.map(it.typ),
+		var_name)
+	g.write('${decl_var} = ')
 	g.gen_anon_fn(mut expr)
 	g.writeln(';')
-	g.past_tmp_var_done(past)
-	g.write('(${var_name})') // usually `it`
+}
+
+fn (mut g Gen) write_closure_fn(mut expr ast.AnonFn, var_name string, declared_var string) {
+	if declared_var == '' {
+		past := g.past_tmp_var_new()
+		g.declare_closure_fn(mut expr, past.var_name)
+		g.past_tmp_var_done(past)
+		g.write('(${var_name})') // usually `it`
+	} else {
+		g.write('${declared_var}(${var_name})')
+	}
 }
 
 // `nums.map(it % 2 == 0)`
@@ -515,6 +523,15 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ret_typ,
 		'{0}')
 	g.writeln('${past.tmp_var} = __new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${ret_elem_type}));\n')
+
+	mut closure_var := ''
+	if mut expr is ast.AnonFn {
+		if expr.inherited_vars.len > 0 {
+			closure_var = g.new_tmp_var()
+			g.declare_closure_fn(mut expr, closure_var)
+		}
+	}
+
 	i := g.new_tmp_var()
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
@@ -526,7 +543,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
 			if expr.inherited_vars.len > 0 {
-				g.write_closure_fn(mut expr, var_name)
+				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(${var_name})')
@@ -743,13 +760,17 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
+	g.write('if (')
+	g.expr(node.left)
+	g.write('${deref_field}len > 0) { ')
 	g.write('qsort(')
 	g.expr(node.left)
 	g.write('${deref_field}data, ')
 	g.expr(node.left)
 	g.write('${deref_field}len, ')
 	g.expr(node.left)
-	g.write('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn})')
+	g.write('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn});')
+	g.write(' }')
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -769,11 +790,21 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	noscan := g.check_noscan(info.elem_type)
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
 	g.writeln('${past.tmp_var} = __new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${elem_type_str}));\n')
+
+	mut expr := node.args[0].expr
+	var_name := g.get_array_expr_param_name(mut expr)
+
+	mut closure_var := ''
+	if mut expr is ast.AnonFn {
+		if expr.inherited_vars.len > 0 {
+			closure_var = g.new_tmp_var()
+			g.declare_closure_fn(mut expr, closure_var)
+		}
+	}
+
 	i := g.new_tmp_var()
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	mut expr := node.args[0].expr
-	var_name := g.get_array_expr_param_name(mut expr)
 	g.write_prepared_var(var_name, info, elem_type_str, past.tmp_var, i)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -781,7 +812,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
-				g.write_closure_fn(mut expr, var_name)
+				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(${var_name})')
@@ -1163,11 +1194,21 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	elem_type_str := g.typ(info.elem_type)
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'bool',
 		'false')
+
+	mut expr := node.args[0].expr
+	var_name := g.get_array_expr_param_name(mut expr)
+
+	mut closure_var := ''
+	if mut expr is ast.AnonFn {
+		if expr.inherited_vars.len > 0 {
+			closure_var = g.new_tmp_var()
+			g.declare_closure_fn(mut expr, closure_var)
+		}
+	}
 	i := g.new_tmp_var()
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
-	mut expr := node.args[0].expr
-	var_name := g.get_array_expr_param_name(mut expr)
+
 	g.write_prepared_var(var_name, info, elem_type_str, past.tmp_var, i)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -1175,7 +1216,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
-				g.write_closure_fn(mut expr, var_name)
+				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(${var_name})')
@@ -1244,10 +1285,20 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'bool',
 		'true')
 	i := g.new_tmp_var()
-	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
-	g.indent++
+
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
+
+	mut closure_var := ''
+	if mut expr is ast.AnonFn {
+		if expr.inherited_vars.len > 0 {
+			closure_var = g.new_tmp_var()
+			g.declare_closure_fn(mut expr, closure_var)
+		}
+	}
+
+	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.indent++
 	g.write_prepared_var(var_name, info, elem_type_str, past.tmp_var, i)
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
@@ -1256,7 +1307,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		ast.AnonFn {
 			g.write('if (!(')
 			if expr.inherited_vars.len > 0 {
-				g.write_closure_fn(mut expr, var_name)
+				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
 				g.gen_anon_fn_decl(mut expr)
 				g.write('${expr.decl.name}(${var_name})')

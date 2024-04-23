@@ -7,20 +7,39 @@ import v.util.diff
 const vexe_path = @VEXE
 const vexe = os.quoted_path(vexe_path)
 const vroot = os.dir(vexe_path)
-const diff_cmd = find_diff_cmd()
 const should_autofix = os.getenv('VAUTOFIX') != ''
 
-fn find_diff_cmd() string {
-	return diff.find_working_diff_command() or { '' }
-}
-
-fn test_vet() {
+fn test_output() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
-	test_dir := 'cmd/tools/vdoc/tests/testdata'
-	main_files := get_main_files_in_dir(test_dir)
-	fails := check_path(test_dir, main_files)
-	assert fails == 0
+	mut total_fails := 0
+	test_files := vtest.filter_vtest_only(os.walk_ext('cmd/tools/vdoc/tests/testdata',
+		'.v'), basepath: vroot)
+	for path in test_files {
+		mut fails := 0
+		qpath := os.quoted_path(path)
+		path_no_ext := path.all_before_last('.')
+		print(path + ' ')
+		fails += check_output('${vexe} doc ${qpath}', path_no_ext + '.out')
+		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.unsorted.out',
+			should_sort: false
+		)
+		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.comments.out')
+		fails += check_output('${vexe} doc -readme -comments ${qpath}', '${path_no_ext}.readme.comments.out')
+		// test the main 3 different formats:
+		program_dir := os.quoted_path(if os.is_dir(path) { path } else { os.dir(path) })
+		for fmt in ['html', 'ansi', 'text'] {
+			fails += check_output('${vexe} doc -f ${fmt} -o - -html-only-contents -readme -comments ${program_dir}',
+				'${path_no_ext}.${fmt}')
+		}
+		if fails == 0 {
+			println(term.green('OK'))
+		} else {
+			total_fails += fails
+		}
+		flush_stdout()
+	}
+	assert total_fails == 0
 }
 
 fn test_run_examples_good() {
@@ -48,45 +67,46 @@ fn test_run_examples_bad() {
 	assert res.output.contains('Example: assert 5 * 5 == 77'), res.output
 }
 
-fn get_main_files_in_dir(dir string) []string {
-	mut mfiles := os.walk_ext(dir, '.v')
-	mfiles.sort()
-	return mfiles
-}
+fn test_out_path() {
+	// Work around CI issues covering v doc generation for relative input paths in tmp dir.
+	// Instead just generate documentation in the v source dir.
+	if os.getenv('CI') == 'true' {
+		mod := 'coroutines'
+		// Default output path.
+		os.execute_opt('${vexe} doc -f html -m vlib/${mod}')!
+		assert os.exists(os.join_path(vroot, 'vlib', 'coroutines', '_docs', '${mod}.html'))
 
-fn check_path(dir string, tests []string) int {
-	mut total_fails := 0
-	paths := vtest.filter_vtest_only(tests, basepath: vroot)
-	for path in paths {
-		mut fails := 0
-		qpath := os.quoted_path(path)
-		path_no_ext := path.all_before_last('.')
-		print(path + ' ')
-		fails += check_output('${vexe} doc ${qpath}', path_no_ext + '.out')
-		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.unsorted.out',
-			should_sort: false
-		)
-		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.comments.out')
-		fails += check_output('${vexe} doc -readme -comments ${qpath}', '${path_no_ext}.readme.comments.out')
-		// test the main 3 different formats:
-		program_dir := os.quoted_path(if os.is_file(path) { os.dir(path) } else { path })
-		fails += check_output('${vexe} doc -f html -o - -html-only-contents -readme -comments ${program_dir}',
-			'${path_no_ext}.html')
-		fails += check_output('${vexe} doc -f ansi -o - -html-only-contents -readme -comments ${program_dir}',
-			'${path_no_ext}.ansi')
-		fails += check_output('${vexe} doc -f text -o - -html-only-contents -readme -comments ${program_dir}',
-			'${path_no_ext}.text')
-		//
-		total_fails += fails
-		if fails == 0 {
-			println(term.green('OK'))
-		}
-		flush_stdout()
+		// Custom out path (no `_docs` subdir).
+		out_dir := os.join_path(vroot, 'vlib', 'coroutines', 'docs')
+		os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${mod}')!
+		assert os.exists(os.join_path(out_dir, '${mod}.html'))
+
+		return
 	}
-	return total_fails
+
+	test_path := os.join_path(os.vtmp_dir(), 'vdoc_test_${rand.ulid()}')
+	os.mkdir_all(test_path)!
+	os.chdir(test_path)!
+	defer {
+		os.rmdir_all(test_path) or {}
+	}
+
+	// Copy a *small* vlib module for the test.
+	mod := 'coroutines'
+	os.cp_all(os.join_path(vroot, 'vlib', mod), os.join_path(test_path, mod), true) or {}
+
+	// Relative input with default output path.
+	os.execute_opt('${vexe} doc -f html -m ${mod}')!
+	assert os.exists(os.join_path(test_path, mod, '_docs', '${mod}.html'))
+
+	// Custom out path (no `_docs` subdir).
+	out_dir := os.join_path(os.vtmp_dir(), 'docs_test')
+	os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${mod}')!
+	assert os.exists(os.join_path(out_dir, '${mod}.html'))
 }
 
 fn print_compare(expected string, found string) {
+	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.red('FAIL'))
 	println('============')
 	println('expected:')
@@ -100,15 +120,6 @@ fn print_compare(expected string, found string) {
 	println('============\n')
 }
 
-fn clean_line_endings(s string) string {
-	mut res := s.trim_space()
-	res = res.replace(' \n', '\n')
-	res = res.replace(' \r\n', '\n')
-	res = res.replace('\r\n', '\n')
-	res = res.trim('\n')
-	return res
-}
-
 @[params]
 struct CheckOutputParams {
 	should_sort bool = true
@@ -119,16 +130,10 @@ fn check_output(cmd string, out_path string, opts CheckOutputParams) int {
 		return 0
 	}
 	mut fails := 0
-	mut expected := os.read_file(out_path) or { panic(err) }
-	expected = clean_line_endings(expected)
-
 	os.setenv('VDOC_SORT', opts.should_sort.str(), true)
-	res := os.execute(cmd)
-
-	if res.exit_code < 0 {
-		panic(res.output)
-	}
-	found := clean_line_endings(res.output)
+	expected := os.read_file(out_path) or { panic(err) }.replace('\r\n', '\n').trim_space()
+	res := os.execute_opt(cmd) or { panic(err) }
+	found := res.output.replace('\r\n', '\n').trim_space()
 	if expected != found {
 		print_compare(expected, found)
 		eprintln('>>>           cmd: VDOC_SORT=${opts.should_sort} ${cmd}')

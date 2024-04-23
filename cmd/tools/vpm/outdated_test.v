@@ -15,6 +15,7 @@ fn testsuite_begin() {
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.chdir(test_path)!
+	println('test_path: ${test_path}')
 }
 
 fn testsuite_end() {
@@ -49,7 +50,7 @@ fn test_outdated() {
 	}
 	// "Outdate" previously installed. Leave out `libsodium`.
 	for m in ['pcre', 'vtray', os.join_path('nedpals', 'args')] {
-		cmd_ok(@LOCATION, 'git -C ${m} fetch --unshallow')
+		cmd_ok(@LOCATION, 'git -C ${m} fetch --all')
 		cmd_ok(@LOCATION, 'git -C ${m} reset --hard HEAD~')
 		assert is_outdated(m)
 	}

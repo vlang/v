@@ -281,7 +281,7 @@ pub fn minify_css(css string) string {
 
 	for line in lines {
 		trimmed := line.trim_space()
-		if trimmed.len > 0 {
+		if trimmed != '' {
 			sb.write_string(trimmed)
 		}
 	}
@@ -301,7 +301,7 @@ pub fn minify_js(js string) string {
 
 	for line in lines {
 		trimmed := line.trim_space()
-		if trimmed.len > 0 {
+		if trimmed != '' {
 			sb.write_string(trimmed)
 			sb.write_u8(` `)
 		}

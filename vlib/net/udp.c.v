@@ -122,7 +122,7 @@ pub fn (mut c UdpConn) read(mut buf []u8) !(int, Addr) {
 }
 
 pub fn (c &UdpConn) read_deadline() !time.Time {
-	if c.read_deadline.unix == 0 {
+	if c.read_deadline.unix() == 0 {
 		return c.read_deadline
 	}
 	return error('none')
@@ -133,7 +133,7 @@ pub fn (mut c UdpConn) set_read_deadline(deadline time.Time) {
 }
 
 pub fn (c &UdpConn) write_deadline() !time.Time {
-	if c.write_deadline.unix == 0 {
+	if c.write_deadline.unix() == 0 {
 		return c.write_deadline
 	}
 	return error('none')

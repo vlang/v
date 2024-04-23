@@ -62,7 +62,7 @@ fn executable_fallback() string {
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
-			if foundpath.len > 0 {
+			if foundpath != '' {
 				exepath = foundpath
 			}
 		}
@@ -121,6 +121,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 
 @[params]
 pub struct MvParams {
+pub:
 	overwrite bool = true
 }
 
@@ -640,7 +641,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
-	if path.len == 0 {
+	if path == '' {
 		return
 	}
 	if !is_dir(path) {
@@ -678,7 +679,7 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
-	if path.len == 0 {
+	if path == '' {
 		return
 	}
 	if !is_dir(path) {
@@ -717,6 +718,7 @@ pub fn log(s string) {
 
 @[params]
 pub struct MkdirParams {
+pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 

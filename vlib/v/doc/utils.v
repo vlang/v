@@ -63,9 +63,11 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	mut comment := ''
 	mut next_on_newline := true
 	mut is_codeblock := false
+	mut trimmed_indent := ''
 	for cmt in doc_comments.reverse() {
 		line_loop: for line in cmt.split_into_lines() {
-			l := line.trim_left('\x01').trim_space()
+			l_normalized := line.trim_left('\x01')
+			l := l_normalized.trim_space()
 			last_ends_with_lb := comment.ends_with('\n')
 			if l == '' {
 				comment += if last_ends_with_lb { '\n' } else { '\n\n' }
@@ -74,7 +76,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			}
 			has_codeblock_quote := l.starts_with('```')
 			if is_codeblock {
-				comment += l + '\n'
+				comment += l_normalized.trim_string_left(trimmed_indent) + '\n'
 				if has_codeblock_quote {
 					is_codeblock = !is_codeblock
 				}
@@ -86,11 +88,14 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				}
 				comment += l + '\n'
 				is_codeblock = !is_codeblock
+				trimmed_indent = l_normalized.all_before(l)
 				next_on_newline = true
 				continue
 			}
+			is_list := l.len > 1 && ((l[1] == ` ` && l[0] in [`-`, `*`, `+`])
+				|| (l.len > 2 && l[2] == ` ` && l[1] == `.` && l[0].is_digit()))
 			line_before_spaces := l.before(' ')
-			if (l.starts_with('|') && l.ends_with('|')) || l.starts_with('- ')
+			if is_list || (l.starts_with('|') && l.ends_with('|'))
 				|| (l.starts_with('#') && line_before_spaces.count('#') == line_before_spaces.len) {
 				comment += l + '\n'
 				next_on_newline = true

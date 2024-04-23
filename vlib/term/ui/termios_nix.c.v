@@ -115,7 +115,7 @@ fn (mut ctx Context) termios_setup() ! {
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
-	C.atexit(restore_terminal_state)
+	at_exit(restore_terminal_state) or {}
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
 		mut c := ctx_ptr

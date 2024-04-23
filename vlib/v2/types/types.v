@@ -498,7 +498,7 @@ fn (t Enum) name() string {
 fn (t FnType) name() string {
 	mut name := 'fn ('
 	for i, param in t.params {
-		if param.name.len > 0 {
+		if param.name != '' {
 			name += '${param.name} '
 		}
 		name += param.typ.name()

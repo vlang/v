@@ -269,7 +269,7 @@ pub fn cp(src string, dst string) ! {
 // Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
 pub fn vfopen(path string, mode string) !&C.FILE {
-	if path.len == 0 {
+	if path == '' {
 		return error('vfopen called with ""')
 	}
 	mut fp := unsafe { nil }
@@ -539,9 +539,11 @@ pub fn get_raw_line() string {
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		str := unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
 		ret := str.clone()
-		unsafe {
-			if nr_chars > 0 && buf != 0 {
-				C.free(buf)
+		$if !autofree {
+			unsafe {
+				if nr_chars > 0 && buf != 0 {
+					C.free(buf)
+				}
 			}
 		}
 		return ret

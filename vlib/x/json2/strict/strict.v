@@ -16,6 +16,7 @@ pub enum KeyType {
 }
 
 pub struct StructCheckResult {
+pub:
 	duplicates  []string
 	superfluous []string
 }

@@ -51,6 +51,7 @@ pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	table                  &ast.Table = unsafe { nil }

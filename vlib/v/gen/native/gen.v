@@ -231,6 +231,7 @@ struct GlobalVar {}
 
 @[params]
 struct VarConfig {
+pub:
 	offset i32      // offset from the variable
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }

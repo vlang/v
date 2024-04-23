@@ -151,7 +151,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		comments << p.eat_comments()
 		// arr_expr
+		p.inside_for_expr = true
 		cond := p.expr(0)
+		p.inside_for_expr = false
 		// 0 .. 10
 		// start := p.tok.lit.int()
 		// TODO: use RangeExpr

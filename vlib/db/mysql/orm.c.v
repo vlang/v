@@ -244,7 +244,7 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 			stmt.bind_text(data)
 		}
 		time.Time {
-			unix := int(data.unix)
+			unix := int(data.unix())
 			stmt_bind_primitive(mut stmt, unix)
 		}
 		orm.InfixType {

@@ -53,6 +53,7 @@ mut:
 // DynamicLibLoaderConfig is a configuration for DynamicLibLoader.
 @[params]
 pub struct DynamicLibLoaderConfig {
+pub:
 	// flags is the flags for dlopen.
 	flags int = dl.rtld_lazy
 	// key is the key to register the DynamicLibLoader.
@@ -67,7 +68,7 @@ pub struct DynamicLibLoaderConfig {
 fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	mut paths := []string{}
 
-	if conf.env_path.len > 0 {
+	if conf.env_path != '' {
 		if env_path := os.getenv_opt(conf.env_path) {
 			paths << env_path.split(os.path_delimiter)
 		}

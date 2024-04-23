@@ -23,6 +23,7 @@ pub fn (mut f Gen) attrs(attrs []ast.Attr) {
 
 @[params]
 pub struct AttrsOptions {
+pub:
 	inline bool
 }
 

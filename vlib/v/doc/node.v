@@ -6,51 +6,48 @@ pub const should_sort = os.getenv_opt('VDOC_SORT') or { 'true' }.bool()
 
 pub fn (nodes []DocNode) find(symname string) !DocNode {
 	for node in nodes {
-		if node.name != symname {
-			continue
+		if node.name == symname {
+			return node
 		}
-		return node
 	}
 	return error('symbol not found')
 }
 
-// sort_by_name sorts the array based on the symbol names.
-pub fn (mut nodes []DocNode) sort_by_name() {
-	if doc.should_sort {
-		nodes.sort_with_compare(compare_nodes_by_name)
+// arrange sorts the DocNodes based on their symbols and names.
+pub fn (mut nodes []DocNode) arrange() {
+	if !doc.should_sort {
+		return
 	}
+	mut kinds := []SymbolKind{}
+	for v in nodes {
+		if v.kind !in kinds {
+			kinds << v.kind
+		}
+	}
+	kinds.sort_with_compare(compare_sym_kinds)
+	mut res := []DocNode{}
+	for k in kinds {
+		mut kind_nodes := nodes.filter(it.kind == k)
+		kind_nodes.sort(a.name < b.name)
+		res << kind_nodes
+	}
+	nodes = res.clone()
 }
 
-// sort_by_kind sorts the array based on the symbol kind.
-pub fn (mut nodes []DocNode) sort_by_kind() {
-	if doc.should_sort {
-		nodes.sort_with_compare(compare_nodes_by_kind)
+fn compare_sym_kinds(a &SymbolKind, b &SymbolKind) int {
+	ak := int(*a)
+	bk := int(*b)
+	return match true {
+		ak < bk { -1 }
+		ak > bk { 1 }
+		else { 0 }
 	}
-}
-
-fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
-	ak := int((*a).kind)
-	bk := int((*b).kind)
-	if ak < bk {
-		return -1
-	}
-	if ak > bk {
-		return 1
-	}
-	return 0
-}
-
-fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
-	al := a.name.to_lower()
-	bl := b.name.to_lower()
-	return compare_strings(al, bl)
 }
 
 // arr() converts the map into an array of `DocNode`.
 pub fn (cnts map[string]DocNode) arr() []DocNode {
-	mut contents := cnts.keys().map(cnts[it])
-	contents.sort_by_name()
-	contents.sort_by_kind()
+	mut contents := cnts.values()
+	contents.arrange()
 	return contents
 }
 

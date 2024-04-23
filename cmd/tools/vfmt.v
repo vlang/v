@@ -214,7 +214,7 @@ fn (mut foptions FormatOptions) find_diff_cmd() string {
 }
 
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
-	if formatted_file_path.len == 0 {
+	if formatted_file_path == '' {
 		return
 	}
 	fc := os.read_file(file) or {

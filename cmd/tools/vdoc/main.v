@@ -49,7 +49,7 @@ fn main() {
 	}
 	args := os.args[2..].clone()
 	cfg := parse_arguments(args)
-	if cfg.input_path.len == 0 {
+	if cfg.input_path == '' {
 		eprintln('vdoc: No input path found.')
 		exit(1)
 	}
@@ -172,7 +172,7 @@ fn parse_arguments(args []string) Config {
 				cfg.is_verbose = true
 			}
 			else {
-				if cfg.input_path.len < 1 {
+				if cfg.input_path == '' {
 					cfg.input_path = arg
 				} else if !cfg.is_multi {
 					// Symbol name filtering should not be enabled

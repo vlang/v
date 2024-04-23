@@ -73,11 +73,12 @@ jobs:
           path: ${{ env.ZIPNAME }}
 
   build-macos-arm64:
-    runs-on: macos-latest
+    runs-on: macos-14
     env:
       TARGET_CFLAGS: -target arm64-apple-darwin
       VFLAGS: -skip-unused -cc clang
       ZIPNAME: v_macos_arm64.zip
+      TCC_OPTS: --branch thirdparty-macos-arm64
     steps:
       - uses: actions/checkout@v4
       - name: Compile
@@ -86,6 +87,10 @@ jobs:
           ./v -cflags "$TARGET_CFLAGS" -prod cmd/tools/vup.v
           ./v -cflags "$TARGET_CFLAGS" -prod cmd/tools/vdoctor.v
           ./v -cflags "$TARGET_CFLAGS" -prod -o v cmd/v
+      - name: Get correct TCC for ARM64
+        run: |
+           rm -rf thirdparty/tcc
+           git clone $TCC_OPTS https://github.com/vlang/tccbin thirdparty/tcc
       - name: Remove excluded
         run: |
            rm -rf .git/

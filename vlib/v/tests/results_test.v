@@ -75,7 +75,7 @@ fn test_unsafe_return_error() {
 }
 
 fn return_reference_type(path string) !&string {
-	if path.len == 0 {
+	if path == '' {
 		return error('vfopen called with ""')
 	}
 	str := ''

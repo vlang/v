@@ -1678,7 +1678,7 @@ pub fn (s string) trim_space() string {
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	left, right := s.trim_indexes(cutset)
@@ -1719,7 +1719,7 @@ pub fn (s string) trim_indexes(cutset string) (int, int) {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 @[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos := 0
@@ -1785,24 +1785,20 @@ pub fn (s string) trim_string_right(str string) string {
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
 pub fn compare_strings(a &string, b &string) int {
-	if a < b {
-		return -1
+	return match true {
+		a < b { -1 }
+		a > b { 1 }
+		else { 0 }
 	}
-	if a > b {
-		return 1
-	}
-	return 0
 }
 
 // compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
 fn compare_strings_by_len(a &string, b &string) int {
-	if a.len < b.len {
-		return -1
+	return match true {
+		a.len < b.len { -1 }
+		a.len > b.len { 1 }
+		else { 0 }
 	}
-	if a.len > b.len {
-		return 1
-	}
-	return 0
 }
 
 // compare_lower_strings returns the same as compare_strings but converts `a` and `b` to lower case before comparing.

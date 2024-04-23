@@ -37,21 +37,25 @@ pub:
 pub type DTDListItem = DTDElement | DTDEntity
 
 pub struct DTDEntity {
+pub:
 	name  string @[required]
 	value string @[required]
 }
 
 pub struct DTDElement {
+pub:
 	name       string   @[required]
 	definition []string @[required]
 }
 
 pub struct DocumentTypeDefinition {
+pub:
 	name string
 	list []DTDListItem
 }
 
 pub struct DocumentType {
+pub:
 	name string  @[required]
 	dtd  DTDInfo
 }

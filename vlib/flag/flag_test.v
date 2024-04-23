@@ -204,6 +204,14 @@ fn test_free_args_could_be_limited() {
 	assert args[0] == 'a'
 	assert args[1] == 'b'
 	assert args[2] == 'c'
+
+	mut fp2 := flag.new_flag_parser(['--', 'a'])
+	fp2.limit_free_args_to_at_least(1)!
+	args2 := fp2.finalize() or {
+		assert false
+		return
+	}
+	assert args2[0] == 'a'
 }
 
 fn test_error_for_to_few_free_args() {

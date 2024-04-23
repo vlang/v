@@ -15,20 +15,20 @@ fn main() {
 	mut fp := flag.new_flag_parser(os.args#[1..])
 	fp.application('v retry')
 	fp.version('0.0.1')
-	fp.description('Run the command CMD in a loop, untill it succeeds, or until a predetermined amount of seconds pass.')
+	fp.description('Run the command CMD in a loop, until it succeeds, or until a predetermined amount of seconds pass.')
 	fp.arguments_description('CMD')
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.timeout = fp.float('timeout', `t`, 300.0, 'Timeout in seconds. Default: 300.0 seconds.') * time.second
 	context.delay = fp.float('delay', `d`, 1.0, 'Delay between each retry in seconds. Default: 1.0 second.') * time.second
-	context.retries = fp.int('retries', `r`, 999_999_999, 'Maximum number of retries. Default: 999_999_999.')
+	context.retries = fp.int('retries', `r`, 10, 'Maximum number of retries. Default: 10.')
 	if context.show_help {
 		println(fp.usage())
 		exit(0)
 	}
 	command_args := fp.finalize() or {
-		eprintln('Error: ${err}')
+		eprintln('error: ${err}')
 		exit(1)
 	}
 	cmd := command_args.join(' ')
@@ -40,14 +40,12 @@ fn main() {
 	}(context)
 
 	mut res := 0
-	mut i := 0
-	for {
-		i++
+	for i in 0 .. context.retries {
 		res = os.system(cmd)
 		if res == 0 {
 			break
 		}
-		if i >= context.retries {
+		if i == context.retries - 1 {
 			eprintln('error: exceeded maximum number of retries (${context.retries})!')
 			exit(res)
 		}

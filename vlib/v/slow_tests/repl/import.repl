@@ -1,4 +1,4 @@
 import time
-time.now().unix_time() > 160000
+time.now().unix() > 160000
 ===output===
 true
