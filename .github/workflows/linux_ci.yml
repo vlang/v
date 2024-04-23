@@ -6,11 +6,16 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
+      - 'cmd/tools'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
+      - 'cmd/tools'
+      - '!cmd/tools/builders/**.v'
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -64,9 +69,9 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: ./v test-self
+        run: ./v test-self vlib
       # - name: Self tests (-cstrict)
-      #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
+      #   run: V_CI_CSTRICT=1 ./v -cstrict test-self vlib
       - name: Build examples
         run: ./v -W build-examples
       - name: Run the submodule example, using a relative path
@@ -156,11 +161,11 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: ./v test-self
+        run: ./v test-self vlib
       - name: Self tests (-prod)
-        run: ./v -o vprod -prod cmd/v && ./vprod test-self
+        run: ./v -o vprod -prod cmd/v && ./vprod test-self vlib
       - name: Self tests (-cstrict)
-        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self vlib
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris with -autofree
@@ -259,13 +264,11 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: ./v test-self
+        run: ./v test-self vlib
       - name: Self tests (vprod)
-        run: |
-          ./v -o vprod -prod cmd/v
-          ./vprod test-self
+        run: ./v -o vprod -prod cmd/v && ./vprod test-self vlib
       - name: Self tests (-cstrict)
-        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self vlib
 
       - name: Build examples
         run: ./v build-examples
@@ -334,4 +337,4 @@ jobs:
   #   - name: quick debug
   #     run: ./v -stats vlib/strconv/format_test.v
   #   - name: Self tests
-  #     run: ./v test-self
+  #     run: ./v test-self vlib

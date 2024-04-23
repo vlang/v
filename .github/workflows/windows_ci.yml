@@ -6,11 +6,15 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/windows_ci.yml'
+      - 'cmd/tools'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**/windows_ci.yml'
+      - 'cmd/tools'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -50,7 +54,7 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: .\v.exe test-self
+        run: .\v.exe test-self vlib
       # - name: Test
       #   run: .\v.exe test-all
       - name: Build option_test.c.v with -autofree
@@ -99,9 +103,7 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: |
-          ./v -cg cmd\tools\vtest-self.v
-          ./v test-self
+        run: ./v -cg cmd\tools\vtest-self.v && ./v test-self vlib
       # - name: Test
       #   run: .\v.exe test-all
       - name: Test v->js
@@ -154,7 +156,7 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: ./v test-self
+        run: ./v test-self vlib
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -196,7 +198,7 @@ jobs:
       #   run: ./v doc clipboard
       #
       # - name: Self tests
-      #   run: ./v test-self
+      #   run: ./v test-self vlib
       # - name: Test v->js
       #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       # - name: Test v binaries

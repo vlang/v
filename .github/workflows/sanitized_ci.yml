@@ -17,8 +17,6 @@ on:
       - '!**'
       - '!**.md'
       - '!**.yml'
-      - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/strconv/**.v'
       - 'vlib/strings/**.v'
@@ -44,8 +42,6 @@ on:
   pull_request:
     paths:
       - '!**'
-      - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/strconv/**.v'
       - 'vlib/strings/**.v'
@@ -94,7 +90,7 @@ jobs:
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
@@ -141,11 +137,11 @@ jobs:
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
         run:
           ./v -cflags -fsanitize=address -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
@@ -175,7 +171,7 @@ jobs:
       ##          .\.github\workflows\windows-install-sqlite.bat
       ##      - name: Self tests (TODO: /fsanitize=address)
       ##        run: |
-      ##          .\v.exe -cflags "/fsanitize=address" test-self
+      ##          .\v.exe -cflags "/fsanitize=address" test-self vlib
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
@@ -197,11 +193,11 @@ jobs:
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
         run:
           ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
@@ -225,10 +221,10 @@ jobs:
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory test-self
+        run: ./v -cflags -fsanitize=memory test-self vlib
       - name: Self tests (V compiled with -fsanitize=memory)
         run: |
           ./v -cflags -fsanitize=memory -o v cmd/v
-          ./v -cc tcc test-self -msan-compiler
+          ./v -cc tcc test-self -msan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=memory)
         run: ./v build-examples

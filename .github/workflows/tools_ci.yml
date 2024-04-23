@@ -1,0 +1,63 @@
+name: Tools CI
+
+on:
+  push:
+    paths:
+      - '**/tools_ci.yml'
+      - 'cmd/tools/**'
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - '!**.md'
+  pull_request:
+    paths:
+      - '**/tools_ci.yml'
+      - 'cmd/tools/**'
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - '!**.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, windows-2019, macos-12]
+        optimization: ['', -prod]
+        include:
+          - os: ubuntu-20.04
+            cc: tcc
+          - os: ubuntu-20.04
+            cc: gcc
+          - os: ubuntu-20.04
+            cc: clang
+          - os: windows-2019
+            cc: tcc
+          - os: windows-2019
+            cc: gcc
+          - os: windows-2019
+            cc: msvc
+          - os: macos-12
+            cc: clang
+          - optimization: -cflags -fsanitize=undefined
+            os: ubuntu-20.04
+            cc: clang
+          - optimization: -cflags -fsanitize=memory
+            os: ubuntu-20.04
+            cc: clang
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        if: runner.os != 'Windows'
+        run: make -j4 && ./v ${{ matrix.optimization }} -showcc -o v cmd/v && ./v doctor
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 ${{ matrix.optimization }} -showcc -o v.exe cmd/v && ./v doctor
+      - name: Test
+        run: ./v ${{ matrix.optimization }} -d network test-self cmd/tools

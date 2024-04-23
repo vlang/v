@@ -6,11 +6,15 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
+      - 'cmd/tools'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
+      - 'cmd/tools'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -63,7 +67,7 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: VJOBS=1 ./v test-self
+        run: VJOBS=1 ./v test-self vlib
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris with -autofree
