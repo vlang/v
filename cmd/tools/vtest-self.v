@@ -3,10 +3,25 @@ module main
 import os
 import testing
 
-const github_job = os.getenv('GITHUB_JOB')
+struct Config {
+	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
+	run_slow_sanitize      bool   = os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW') != ''
+	is_musl_ci             bool   = os.getenv('V_CI_MUSL') != ''
+	is_ubuntu_musl_ci      bool   = os.getenv('V_CI_UBUNTU_MUSL') != ''
+	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
+	github_job             string = os.getenv('GITHUB_JOB')
+mut:
+	test_dirs        []string = ['cmd', 'vlib']
+	is_asan_compiler bool
+	is_msan_compiler bool
+	// Options relating to the v command itself (passed in the prefix) `v [...args] test-self`.
+	werror             bool
+	sanitize_memory    bool
+	sanitize_address   bool
+	sanitize_undefined bool
+}
 
-const just_essential = os.getenv('VTEST_JUST_ESSENTIAL') != ''
-	|| os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
+const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -336,40 +351,67 @@ const skip_on_sandboxed_packaging = [
 	'vlib/v/gen/c/coutput_test.v',
 ]
 
+fn Config.init(vargs []string, targs []string) !Config {
+	mut cfg := Config{}
+	for arg in vargs {
+		match arg {
+			'-Werror', '-cstrict' { cfg.werror = true }
+			'-fsanitize=memory' { cfg.sanitize_memory = true }
+			'-fsanitize=address' { cfg.sanitize_address = true }
+			'-fsanitize=undefined' { cfg.sanitize_undefined = true }
+			else {}
+		}
+	}
+	if targs.len == 0 {
+		return cfg
+	}
+	mut tdirs := []string{}
+	mut errs := []string{}
+	for arg in targs {
+		match arg {
+			'-asan-compiler', '--asan-compiler' {
+				cfg.is_asan_compiler = true
+			}
+			'-msan-compiler', '--msan-compiler' {
+				cfg.is_msan_compiler = true
+			}
+			else {
+				if arg.starts_with('-') {
+					errs << 'error: unkown flag `${arg}`'
+					continue
+				}
+				if !os.is_dir(os.join_path(vroot, arg)) {
+					errs << 'error: failed to find directory `${arg}`'
+					continue
+				}
+				tdirs << arg
+			}
+		}
+	}
+	if errs.len > 0 {
+		return error(errs.join_lines())
+	}
+	if tdirs.len > 0 {
+		cfg.test_dirs = tdirs
+	}
+	return cfg
+}
+
 fn main() {
-	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-	vroot := os.dir(vexe)
 	os.chdir(vroot) or { panic(err) }
 	args_idx := os.args.index('test-self')
 	vargs := os.args[1..args_idx]
 	targs := os.args#[args_idx + 1..]
-	tdirs := if targs.len > 0 {
-		mut dirs := []string{}
-		mut has_err := false
-		for arg in targs {
-			// For now, handle flags separately.
-			if arg.starts_with('-') {
-				continue
-			}
-			if !os.is_dir(os.join_path(vroot, arg)) {
-				eprintln('error: failed to find directory `${arg}`')
-				has_err = true
-				continue
-			}
-			dirs << arg
-		}
-		if has_err {
-			exit(1)
-		}
-		dirs
-	} else {
-		['vlib', 'cmd']
+	cfg := Config.init(vargs, targs) or {
+		eprintln(err)
+		exit(1)
 	}
-	title := 'testing: ${tdirs.join(', ')}'
+	// dump(cfg)
+	title := 'testing: ${cfg.test_dirs.join(', ')}'
 	testing.eheader(title)
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
-	for dir in tdirs {
+	for dir in cfg.test_dirs {
 		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
 			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
 				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
@@ -380,7 +422,7 @@ fn main() {
 		})
 	}
 	mut all_test_files := tpaths.keys()
-	if just_essential {
+	if cfg.run_just_essential {
 		all_test_files = essential_list.map(os.join_path(vroot, it))
 	}
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
@@ -399,68 +441,40 @@ fn main() {
 		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
 	$if windows {
-		if github_job == 'tcc' {
+		if cfg.github_job == 'tcc' {
 			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 	}
-
-	mut werror := false
-	mut sanitize_memory := false
-	mut sanitize_address := false
-	mut sanitize_undefined := false
-	mut asan_compiler := false
-	mut msan_compiler := false
-	for arg in os.args {
-		if arg.contains('-asan-compiler') {
-			asan_compiler = true
-		}
-		if arg.contains('-msan-compiler') {
-			msan_compiler = true
-		}
-		if arg.contains('-Werror') || arg.contains('-cstrict') {
-			werror = true
-		}
-		if arg.contains('-fsanitize=memory') {
-			sanitize_memory = true
-		}
-		if arg.contains('-fsanitize=address') {
-			sanitize_address = true
-		}
-		if arg.contains('-fsanitize=undefined') {
-			sanitize_undefined = true
-		}
-	}
-	if os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW').len == 0
-		&& ((sanitize_undefined || sanitize_memory || sanitize_address)
-		|| (msan_compiler || asan_compiler)) {
+	if !cfg.run_slow_sanitize
+		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
+		|| (cfg.is_msan_compiler || cfg.is_asan_compiler)) {
 		tsession.skip_files << skip_fsanitize_too_slow
 	}
-	if werror {
+	if cfg.werror {
 		tsession.skip_files << skip_with_werror
 	}
-	if sanitize_memory {
+	if cfg.sanitize_memory {
 		tsession.skip_files << skip_with_fsanitize_memory
 	}
-	if sanitize_address {
+	if cfg.sanitize_address {
 		tsession.skip_files << skip_with_fsanitize_address
 	}
-	if sanitize_undefined {
+	if cfg.sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
 	}
-	if asan_compiler {
+	if cfg.is_asan_compiler {
 		tsession.skip_files << skip_with_asan_compiler
 	}
-	if msan_compiler {
+	if cfg.is_msan_compiler {
 		tsession.skip_files << skip_with_msan_compiler
 	}
-	// println(tsession.skip_files)
-	if os.getenv('V_CI_MUSL').len > 0 {
+	if cfg.is_musl_ci {
 		tsession.skip_files << skip_on_musl
 	}
-	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
+	if cfg.is_ubuntu_musl_ci {
 		tsession.skip_files << skip_on_ubuntu_musl
 	}
-	if os.getenv('VTEST_SANDBOXED_PACKAGING').len > 0 {
+	if cfg.is_sandboxed_packaging {
 		tsession.skip_files << skip_on_sandboxed_packaging
 	}
 	$if !amd64 && !arm64 {
@@ -493,11 +507,12 @@ fn main() {
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
+	// dump(tsession.skip_files)
 	mut unavailable_files := tsession.files.filter(!os.exists(it))
 	unavailable_files << tsession.skip_files.filter(it != 'do_not_remove' && !os.exists(it))
 	if unavailable_files.len > 0 {
 		for f in unavailable_files {
-			eprintln('failed to find file: ${f}')
+			eprintln('error: failed to find file: ${f}')
 		}
 		exit(1)
 	}
