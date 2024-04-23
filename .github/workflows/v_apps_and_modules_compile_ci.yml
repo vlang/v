@@ -27,15 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
-
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
+        run: make && sudo ./v symlink -githubci
+
+      - name: Install dependencies
+        run: |
+          v retry sudo apt-get update
+          v retry sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          v retry sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
 
       - name: Test vtcc
         run: .github/workflows/compile_v_with_vtcc.sh
@@ -58,7 +58,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone https://github.com/DarpHome/discord.v"
-          .github/workflows/retry.sh v install https://github.com/DarpHome/discord.v
+          v retry v install https://github.com/DarpHome/discord.v
           cd ~/.vmodules/discord
           echo "Checkout last known good commit"
           git checkout c4777906464e4c97233e3afa532ddec7175e21ec
@@ -69,7 +69,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install VAB"
-          .github/workflows/retry.sh v install vab
+          v retry v install vab
           echo "Build vab"
           v ~/.vmodules/vab
           echo "Build vab with -gc boehm -skip-unused"
@@ -78,16 +78,16 @@ jobs:
       - name: Build vlang/ved
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ved
-          cd ved && ../v -o ved .
-          ../v -autofree .
-          ../v -prod .
+          v retry git clone --depth 1 https://github.com/vlang/ved
+          cd ved && v -o ved .
+          v -autofree .
+          v -prod .
           cd ..
 
       - name: Build vlang/pdf
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          .github/workflows/retry.sh v install pdf
+          v retry v install pdf
           echo "PDF examples should compile"
           v should-compile-all ~/.vmodules/pdf/examples
 
@@ -95,7 +95,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install the libsodium wrapper"
-          .github/workflows/retry.sh v install libsodium
+          v retry v install libsodium
           echo "Test libsodium"
           VJOBS=1 v test ~/.vmodules/libsodium
 
@@ -103,7 +103,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone Coreutils"
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
+          v retry git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
           echo "Build Coreutils"
           cd /tmp/coreutils; make
 
@@ -111,11 +111,11 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install markdown"
-          .github/workflows/retry.sh v install markdown
+          v retry v install markdown
           echo "Install pcre"
-          .github/workflows/retry.sh v install pcre
+          v retry v install pcre
           echo "Clone Gitly"
-          .github/workflows/retry.sh git clone https://github.com/vlang/gitly /tmp/gitly
+          v retry git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
           v -cc gcc /tmp/gitly
           ## echo "Build Gitly with -autofree"
@@ -130,7 +130,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
-          .github/workflows/retry.sh git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          v retry git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
@@ -156,7 +156,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone Go2V"
-          .github/workflows/retry.sh git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
+          v retry git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
           echo "Build Go2V"
           v /tmp/go2v/
           echo "Run Go2V tests"
@@ -166,7 +166,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Official VPM modules should be installable"
-          .github/workflows/retry.sh v install ui
+          v retry v install ui
           echo "Examples of UI should compile"
           v ~/.vmodules/ui/examples/build_examples.vsh
 
@@ -174,9 +174,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone the AdventOfCode repo"
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
+          v retry git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
           echo "Install dependencies"
-          .github/workflows/retry.sh v install pcre
+          v retry v install pcre
           echo "Execute Tests"
           cd /tmp/adventofcode && v run verify.v
 
@@ -184,7 +184,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install msgpack"
-          .github/workflows/retry.sh v install msgpack
+          v retry v install msgpack
           echo "Build msgpack"
           v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
@@ -196,7 +196,7 @@ jobs:
       #   if: ${{ !cancelled() }} && steps.build.outcome == 'success'
       #   run: |
       #     echo "Install Vex"
-      #     .github/workflows/retry.sh v install nedpals.vex
+      #     v retry v install nedpals.vex
       #     echo "Compile all of the Vex examples"
       #     v should-compile-all ~/.vmodules/nedpals/vex/examples
       #     echo "Compile the simple Vex example with -skip-unused"
@@ -216,22 +216,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
-          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
-
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
+        run: make && sudo ./v symlink -githubci
+
+      - name: Install dependencies
+        run: |
+          v retry sudo apt-get update
+          v retry sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          v retry sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
+          v retry sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
 
       - name: Build vlang/vsl
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Installing dependencies"
-          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends \
+          v retry sudo apt-get install --quiet -y --no-install-recommends \
             gfortran \
             libxi-dev \
             libxcursor-dev \
@@ -243,7 +243,7 @@ jobs:
             libopenmpi-dev \
             opencl-headers
           echo "Install VSL"
-          .github/workflows/retry.sh v install vsl
+          v retry v install vsl
           echo "Execute Tests using Pure V Backend"
           ~/.vmodules/vsl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
@@ -253,7 +253,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install VTL"
-          .github/workflows/retry.sh v install vtl
+          v retry v install vtl
           echo "Install dependencies"
           echo "Execute Tests using Pure V Backend"
           ~/.vmodules/vtl/bin/test
@@ -269,9 +269,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v doctor
+        run: make && ./v symlink -githubci
       - name: Build vpm
         run: |
-          .github/workflows/retry.sh ./v install markdown
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/vpm
-          cd vpm && ../v .
+          v retry v install markdown
+          v retry git clone --depth 1 https://github.com/vlang/vpm
+          cd vpm && v .
