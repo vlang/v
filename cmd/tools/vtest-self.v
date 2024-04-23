@@ -351,7 +351,7 @@ const skip_on_sandboxed_packaging = [
 	'vlib/v/gen/c/coutput_test.v',
 ]
 
-fn Config.init(vargs []string, targs []string) Config {
+fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
 	for arg in vargs {
 		match arg {
@@ -366,7 +366,7 @@ fn Config.init(vargs []string, targs []string) Config {
 		return cfg
 	}
 	mut tdirs := []string{}
-	mut has_err := false
+	mut errs := []string{}
 	for arg in targs {
 		match arg {
 			'-asan-compiler', '--asan-compiler' {
@@ -377,21 +377,19 @@ fn Config.init(vargs []string, targs []string) Config {
 			}
 			else {
 				if arg.starts_with('-') {
-					eprintln('error: unkown flag `${arg}`')
-					has_err = true
+					errs << 'error: unkown flag `${arg}`'
 					continue
 				}
 				if !os.is_dir(os.join_path(vroot, arg)) {
-					eprintln('error: failed to find directory `${arg}`')
-					has_err = true
+					errs << 'error: failed to find directory `${arg}`'
 					continue
 				}
 				tdirs << arg
 			}
 		}
 	}
-	if has_err {
-		exit(1)
+	if errs.len > 0 {
+		return error(errs.join_lines())
 	}
 	if tdirs.len > 0 {
 		cfg.test_dirs = tdirs
@@ -404,7 +402,10 @@ fn main() {
 	args_idx := os.args.index('test-self')
 	vargs := os.args[1..args_idx]
 	targs := os.args#[args_idx + 1..]
-	cfg := Config.init(vargs, targs)
+	cfg := Config.init(vargs, targs) or {
+		eprintln(err)
+		exit(1)
+	}
 	// dump(cfg)
 	title := 'testing: ${cfg.test_dirs.join(', ')}'
 	testing.eheader(title)
