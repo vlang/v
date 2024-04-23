@@ -72,13 +72,16 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		ret_sym := g.table.sym(g.fn_decl.return_type)
 		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
+		is_veb := ret_sym.cname == 'veb__Result'
 
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
 				if stmt.name.starts_with('main.vweb_tmpl') {
 					if is_html {
 						g.inside_vweb_tmpl = true
-						if is_x_vweb {
+						if is_veb {
+							g.vweb_filter_fn_name = 'veb__filter'
+						} else if is_x_vweb {
 							g.vweb_filter_fn_name = 'x__vweb__filter'
 						} else {
 							g.vweb_filter_fn_name = 'vweb__filter'
@@ -96,7 +99,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 
 		if is_html {
 			// return a vweb or x.vweb html template
-			if is_x_vweb {
+			if is_veb {
+				ctx_name := g.fn_decl.params[1].name
+				g.writeln('veb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
+			} else if is_x_vweb {
 				ctx_name := g.fn_decl.params[1].name
 				g.writeln('x__vweb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
 			} else {
