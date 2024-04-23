@@ -44,7 +44,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install vsql"
-          .github/workflows/retry.sh v install https://github.com/ttytm/vsql@temp/vi-ci ; cd ~/.vmodules/vsql
+          v retry v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
           echo "Generate vsql/grammar.v"
           make vsql/grammar.v
           echo "Compile vsql"
