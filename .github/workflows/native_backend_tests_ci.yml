@@ -43,7 +43,7 @@ on:
       - 'vlib/v/gen/native/tests/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -56,7 +56,6 @@ jobs:
           windows-2019
         ]
     runs-on: ${{ matrix.os }}
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     steps:
       - uses: actions/checkout@v4
 

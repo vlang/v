@@ -13,13 +13,12 @@ on:
       - '!**/linux_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   tcc:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -99,7 +98,6 @@ jobs:
 
   tcc-boehm-gc:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -156,7 +154,6 @@ jobs:
 
   gcc:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -262,7 +259,6 @@ jobs:
 
   clang:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang

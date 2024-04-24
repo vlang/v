@@ -13,10 +13,13 @@ on:
       - '**.yml'
       - '!**/vab_ci.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
@@ -59,7 +62,6 @@ jobs:
 
   v-compiles-os-android:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

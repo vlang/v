@@ -19,13 +19,12 @@ on:
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 jobs:
   build-vc:
     runs-on: ubuntu-latest
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     steps:
       - uses: actions/checkout@v4
       - name: Build V

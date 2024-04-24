@@ -14,13 +14,12 @@ on:
       - '!**/sdl_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc

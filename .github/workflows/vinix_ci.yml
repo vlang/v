@@ -13,10 +13,13 @@ on:
       - "**.yml"
       - "!**/vinix_ci.yml"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   vinix-build:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 10
     env:
       VFLAGS: -gc none

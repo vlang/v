@@ -4,19 +4,19 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - '!**/paths_ci.yml'
   pull_request:
     paths-ignore:
       - "**.md"
+      - '!**/paths_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-
   space-paths-linux:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
@@ -42,7 +42,6 @@ jobs:
 
   space-paths-macos:
     runs-on: macos-14
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
@@ -71,7 +70,6 @@ jobs:
 
   space-paths-windows:
     runs-on: windows-2022
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: 'path with some $punctuation, and some spaces'

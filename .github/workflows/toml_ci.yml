@@ -12,10 +12,13 @@ on:
       - '**.yml'
       - '!**/toml_ci.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   toml-module-pass-external-test-suites:
     runs-on: ubuntu-latest
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
