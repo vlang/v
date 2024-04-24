@@ -13,12 +13,11 @@ on:
       - '!**/time_ci.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   test-time-linux:
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +35,6 @@ jobs:
         run: TZ=Europe/Paris ./v test vlib/time/
 
   test-time-macos:
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +52,6 @@ jobs:
         run: TZ=Europe/Paris ./v test vlib/time/
 
   test-time-windows:
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     runs-on: windows-2019
     steps:
       - uses: actions/checkout@v4

@@ -12,11 +12,13 @@ on:
       - '**.yml'
       - '!**/cross_ci.yml'
 
-jobs:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
+jobs:
   macos-cross:
     runs-on: macos-latest
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 25
     env:
       VFLAGS: -cc clang
@@ -48,7 +50,6 @@ jobs:
 
   linux-cross:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 25
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -97,7 +98,6 @@ jobs:
 
   windows-cross:
     runs-on: windows-2019
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

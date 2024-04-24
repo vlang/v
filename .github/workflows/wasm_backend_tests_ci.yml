@@ -41,13 +41,12 @@ on:
       - 'vlib/v/gen/wasm/tests/**.v'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   wasm-backend-ubuntu:
     runs-on: ubuntu-22.04
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +68,6 @@ jobs:
 
   wasm-backend-macos:
     runs-on: macOS-12
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +88,6 @@ jobs:
 
 #  wasm-backend-windows:
 #    runs-on: windows-2022
-#    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
 #    timeout-minutes: 121
 #    steps:
 #      - uses: actions/checkout@v4

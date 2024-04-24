@@ -10,9 +10,12 @@ on:
     paths-ignore:
       - "**.md"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   bootstrapping-works:
-    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14]
