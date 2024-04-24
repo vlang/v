@@ -1,57 +1,40 @@
-name: Periodic
+name: Periodic CI
 
 on:
   schedule:
     - cron: '0 */6 * * *'
+  push:
+    paths:
+      - '**/periodic_ci.yml'
+  pull_request:
+    paths:
+      - '**/periodic_ci.yml'
 
 jobs:
-  network-tests-ubuntu:
-    runs-on: ubuntu-20.04
-    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v'
+  network:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: tcc
+          - os: windows-latest
+            cc: msvc
+          - os: macos-13
+            cc: clang
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    if: github.event_name != 'schedule' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
     timeout-minutes: 30
     env:
+      VFLAGS: -cc ${{ matrix.cc }}
       V_CI_PERIODIC: 1
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dependencies 1
-        run: .github/workflows/retry.sh sudo apt-get install --quiet -y sqlite3 libsqlite3-dev
-      - name: Build v
-        run: make
-      - name: Symlink V
-        run: sudo ./v symlink
-        ## - name: Run network tests
-        ##   run: ./v -d network test vlib/net
-
-  network-tests-macos:
-    runs-on: macos-14
-    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v'
-    timeout-minutes: 30
-    env:
-      V_CI_PERIODIC: 1
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: make
-      - name: Symlink V
-        run: sudo ./v symlink
-      - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
-        run: ./v examples/json.v
-        ## - name: Run network tests
-        ##   run: ./v -d network test vlib/net
-
-  network-windows-msvc:
-    runs-on: windows-2019
-    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v'
-    timeout-minutes: 30
-    env:
-      V_CI_PERIODIC: 1
-      VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v4
       - name: Build
-        run: |
-          echo %VFLAGS%
-          echo $VFLAGS
-          .\make.bat -msvc
-          ## - name: Run network tests
-          ##   run: .\v.exe -d network test vlib/net
+        if: runner.os != 'Windows'
+        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+      - name: Test
+        run: ./v -d network test-self vlib/net
