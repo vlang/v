@@ -51,11 +51,11 @@ const another_byte = u8(123)
 const another_color = Color.red
 const another_permission = Permissions.read | .write
 
-// test_read_bytes_into_newline_text tests reading text from a file with newlines.
+// test_read_bytes_with_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and
 // returning on each newline, even before the buffer is full, and reaching EOF before
 // the buffer is completely filled.
-fn test_read_bytes_into_newline_text() {
+fn test_read_bytes_with_newline_text() {
 	mut f := os.open_file(tfile, 'w')!
 	f.write_string('Hello World!\nGood\r morning.')!
 	f.close()
@@ -63,25 +63,25 @@ fn test_read_bytes_into_newline_text() {
 	f = os.open_file(tfile, 'r')!
 	mut buf := []u8{len: 8}
 
-	n0 := f.read_bytes_into_newline(mut buf)!
+	n0 := f.read_bytes_with_newline(mut buf)!
 	assert n0 == 8
 
-	n1 := f.read_bytes_into_newline(mut buf)!
+	n1 := f.read_bytes_with_newline(mut buf)!
 	assert n1 == 5
 
-	n2 := f.read_bytes_into_newline(mut buf)!
+	n2 := f.read_bytes_with_newline(mut buf)!
 	assert n2 == 8
 
-	n3 := f.read_bytes_into_newline(mut buf)!
+	n3 := f.read_bytes_with_newline(mut buf)!
 	assert n3 == 6
 
 	f.close()
 }
 
-// test_read_bytes_into_newline_binary tests reading a binary file with NUL bytes.
+// test_read_bytes_with_newline_binary tests reading a binary file with NUL bytes.
 // This test simulates the scenario when a byte stream is read and a newline byte
 // appears in that stream and an EOF occurs before the buffer is full.
-fn test_read_bytes_into_newline_binary() {
+fn test_read_bytes_with_newline_binary() {
 	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	mut bw := []u8{len: 15}
 	bw[9] = 0xff
@@ -98,15 +98,15 @@ fn test_read_bytes_into_newline_binary() {
 	f = os.open_file(tfile, 'r')!
 	mut buf := []u8{len: 10}
 
-	n0 := f.read_bytes_into_newline(mut buf)!
+	n0 := f.read_bytes_with_newline(mut buf)!
 	assert n0 == 10
 	assert buf[..n0] == n0_bytes
 
-	n1 := f.read_bytes_into_newline(mut buf)!
+	n1 := f.read_bytes_with_newline(mut buf)!
 	assert n1 == 3
 	assert buf[..n1] == n1_bytes
 
-	n2 := f.read_bytes_into_newline(mut buf)!
+	n2 := f.read_bytes_with_newline(mut buf)!
 	assert n2 == 2
 	assert buf[..n2] == n2_bytes
 	f.close()
@@ -374,7 +374,7 @@ fn test_reopen() {
 	mut line_buffer := []u8{len: 1024}
 
 	mut f2 := os.open(tfile2)!
-	x := f2.read_bytes_into_newline(mut line_buffer)!
+	x := f2.read_bytes_with_newline(mut line_buffer)!
 	assert !f2.eof()
 	assert x > 0
 	assert line_buffer#[..x].bytestr() == 'Another file\n'
@@ -491,4 +491,26 @@ fn test_path_devnull() {
 	// dump(content_after.len)
 	assert content.len == 0
 	assert content_after.len == 0
+}
+
+const some_lines_content = 'line 11\nline 22\nline33\n'
+
+fn test_read_lines() {
+	os.write_file(tfile, some_lines_content)!
+	lines := os.read_lines(tfile)!
+	assert lines == some_lines_content.split_into_lines()
+}
+
+fn test_write_lines() {
+	wline1_file := os.join_path_single(tfolder, 'wline1.txt')
+	wline2_file := os.join_path_single(tfolder, 'wline2.txt')
+	os.write_file(wline1_file, some_lines_content)!
+	lines := os.read_lines(wline1_file)!
+	os.write_lines(wline2_file, lines)!
+	c1 := os.read_file(wline1_file)!
+	c2 := os.read_file(wline2_file)!
+	// dump(c1.bytes().hex())
+	// dump(c2.bytes().hex())
+	assert c1 == c2
+	assert c1.split_into_lines() == some_lines_content.split_into_lines()
 }
