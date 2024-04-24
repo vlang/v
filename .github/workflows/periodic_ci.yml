@@ -10,9 +10,6 @@ on:
     paths:
       - '**/periodic_ci.yml'
 
-env:
-  V_CI_PERIODIC: 1
-
 jobs:
   network:
     strategy:
@@ -28,14 +25,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     if: github.event_name != 'push' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
     env:
-      VFLAGS: -cc ${{ matrix.cc }} -d network -showcc
+      VFLAGS: -cc ${{ matrix.cc }}
+      V_CI_PERIODIC: 1
     steps:
       - uses: actions/checkout@v4
       - name: Build
         if: runner.os != 'Windows'
-        run: make -j4 && ./v doctor
+        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./make.bat -msvc && ./v doctor
+        run: ./make.bat -msvc && ./v -showcc -o v cmd/v && ./v doctor
       - name: Test
-        run: ./v test-self vlib/net
+        run: ./v -d network test-self vlib/net
