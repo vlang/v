@@ -62,7 +62,7 @@ jobs:
         run: |
           pwd
           v version
-          cd c:\
+          cd ~
           pwd
           v version
           echo 'println(123)' > hi.v
