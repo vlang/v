@@ -46,10 +46,11 @@ jobs:
           v version
           echo 'println(123)' > hi.v
           v run hi.v
-          echo "Everything was fine on macos too :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "Everything fine on macos too :rocket:" >> $GITHUB_STEP_SUMMARY
 
   check-windows:
     runs-on: windows-2019
+    shell: bash
     steps:
       - name: Checkout V
         uses: actions/checkout@v4
