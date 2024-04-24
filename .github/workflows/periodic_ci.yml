@@ -23,7 +23,7 @@ jobs:
             cc: clang
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    if: github.event_name != 'push' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
+    if: github.event_name != 'schedule' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
     env:
       VFLAGS: -cc ${{ matrix.cc }}
       V_CI_PERIODIC: 1
@@ -34,6 +34,6 @@ jobs:
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./make.bat -msvc && ./v -showcc -o v cmd/v && ./v doctor
+        run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
       - name: Test
         run: ./v -d network test-self vlib/net
