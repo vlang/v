@@ -30,7 +30,6 @@ jobs:
           v run hi.v
           echo 'Using `sudo ./v symlink` :rocket: !!!' >> $GITHUB_STEP_SUMMARY
 
-jobs:
   check-ubuntu:
     runs-on: ubuntu-20.04
     steps:
