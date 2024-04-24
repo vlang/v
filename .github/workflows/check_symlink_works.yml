@@ -28,6 +28,7 @@ jobs:
           v version
           echo 'println(123)' > hi.v
           v run hi.v
+          echo "Everything was fine" >> $GITHUB_STEP_SUMMARY
 
   check-macos:
     runs-on: macos-13
@@ -45,6 +46,7 @@ jobs:
           v version
           echo 'println(123)' > hi.v
           v run hi.v
+          echo "Everything was fine on macos too" >> $GITHUB_STEP_SUMMARY
 
   check-windows:
     runs-on: windows-2019
@@ -64,3 +66,4 @@ jobs:
           v version
           echo 'println(123)' > hi.v
           v run hi.v
+          echo "All fine on Windows as well" >> $GITHUB_STEP_SUMMARY
