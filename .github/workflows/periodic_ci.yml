@@ -24,6 +24,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     if: github.event_name != 'schedule' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
+    timeout-minutes: 30
     env:
       VFLAGS: -cc ${{ matrix.cc }}
       V_CI_PERIODIC: 1

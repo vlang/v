@@ -1,4 +1,4 @@
-// vtest retry: 3
+// vtest retry: 9
 module http
 
 // internal tests have access to *everything in the module*
