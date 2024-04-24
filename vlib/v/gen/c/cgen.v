@@ -6570,9 +6570,6 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					}
 					len := sym.info.size
 					if len > 0 {
-						if fixed_elem_name.starts_with('C__') {
-							fixed_elem_name = fixed_elem_name[3..]
-						}
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len
 							g.write_fn_ptr_decl(&elem_sym.info, '')
