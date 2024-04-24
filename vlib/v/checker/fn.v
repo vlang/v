@@ -2516,6 +2516,10 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
+			if c.table.final_sym(arg.typ).kind == .array {
+				// allow mutable []array to be passed as mut
+				continue
+			}
 			c.error('function in `spawn` statement cannot contain mutable non-reference arguments',
 				arg.expr.pos())
 		}
