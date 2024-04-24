@@ -30,6 +30,7 @@ mut:
 
 @[params]
 pub struct MiddlewareOptions[T] {
+pub:
 	handler fn (mut ctx T) bool @[required]
 	after   bool
 }
