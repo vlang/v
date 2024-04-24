@@ -16,7 +16,7 @@ jobs:
 
   space-paths-linux:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
@@ -42,7 +42,7 @@ jobs:
 
   space-paths-macos:
     runs-on: macos-14
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
@@ -71,7 +71,7 @@ jobs:
 
   space-paths-windows:
     runs-on: windows-2022
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: 'path with some $punctuation, and some spaces'

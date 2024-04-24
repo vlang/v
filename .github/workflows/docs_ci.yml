@@ -15,10 +15,7 @@ on:
 jobs:
   check-markdown:
     runs-on: ubuntu-20.04
-    if: >
-      github.event_name != 'push'
-      || github.event.ref == 'refs/heads/master'
-      || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -31,10 +28,7 @@ jobs:
 
   report-missing-fn-doc:
     runs-on: ubuntu-20.04
-    if: >
-      github.event_name != 'push'
-      || github.event.ref == 'refs/heads/master'
-      || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 5
     env:
       MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/

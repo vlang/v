@@ -25,7 +25,7 @@ concurrency:
 jobs:
   build-module-docs:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -39,5 +39,5 @@ jobs:
       - name: Build module documentation
         run: ./v doc -m -f html vlib/
       - name: Deploy docs to vercel
-        if: github.event.repository.full_name == 'vlang/v' && github.event_name == 'push' && github.event.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
         run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true

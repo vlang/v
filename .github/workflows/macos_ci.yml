@@ -19,7 +19,7 @@ concurrency:
 jobs:
   clang:
     runs-on: macOS-12
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang

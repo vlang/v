@@ -47,7 +47,7 @@ concurrency:
 jobs:
   wasm-backend-ubuntu:
     runs-on: ubuntu-22.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
 
   wasm-backend-macos:
     runs-on: macOS-12
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
 
 #  wasm-backend-windows:
 #    runs-on: windows-2022
-#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+#    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.repository != 'vlang/v'
 #    timeout-minutes: 121
 #    steps:
 #      - uses: actions/checkout@v4
