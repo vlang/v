@@ -1,9 +1,3 @@
-#!/usr/bin/env -S v run
-
-// import json
-// import os
-import v.reflection { get_type }
-
 // Declare structures covering a subset of a HAR file
 
 struct HarContent {
@@ -64,7 +58,7 @@ fn show_struct[T](object &T) {
 		show_string(json_name)
 		println('')
 
-		println('value ${T.name}.${field.name} (json: ${json_name}) of type ${type_name(field.typ)}')
+		println('value ${T.name}.${field.name} (json: ${json_name}), field.typ: ${field.typ}')
 		$if field.typ is string {
 			print('string: ')
 			show_string(object.$(field.name))
@@ -85,13 +79,6 @@ fn show_string(s string) {
 	print(`"`)
 	print(s)
 	print(`"`)
-}
-
-fn type_name(idx int) string {
-	if typ := get_type(idx) {
-		return typ.name
-	}
-	panic('unknown type ${idx}')
 }
 
 fn test_main() {
