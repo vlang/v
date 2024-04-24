@@ -10,13 +10,13 @@ const localserver = '127.0.0.1:${sport}'
 const exit_after_time = 12000
 // milliseconds
 const vexe = os.getenv('VEXE')
-const vweb_logfile = os.getenv('VWEB_LOGFILE')
+const veb_logfile = os.getenv('VEB_LOGFILE')
 const vroot = os.dir(vexe)
-const serverexe = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
+const serverexe = os.join_path(os.cache_dir(), 'veb_test_server.exe')
 const tcp_r_timeout = 10 * time.second
 const tcp_w_timeout = 10 * time.second
 
-// setup of vweb webserver
+// setup of veb webserver
 fn testsuite_begin() {
 	os.chdir(vroot) or {}
 	if os.exists(serverexe) {
@@ -24,20 +24,20 @@ fn testsuite_begin() {
 	}
 }
 
-fn test_a_simple_vweb_app_can_be_compiled() {
-	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
-	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/x/vweb/tests/vweb_test_server.v')
+fn test_simple_veb_app_can_be_compiled() {
+	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
+	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
 
-fn test_a_simple_vweb_app_runs_in_the_background() {
+fn test_a_simple_veb_app_runs_in_the_background() {
 	mut suffix := ''
 	$if !windows {
 		suffix = ' > /dev/null &'
 	}
-	if vweb_logfile != '' {
-		suffix = ' 2>> ${os.quoted_path(vweb_logfile)} >> ${os.quoted_path(vweb_logfile)} &'
+	if veb_logfile != '' {
+		suffix = ' 2>> ${os.quoted_path(veb_logfile)} >> ${os.quoted_path(veb_logfile)} &'
 	}
 	server_exec_cmd := '${os.quoted_path(serverexe)} ${sport} ${exit_after_time} ${suffix}'
 	$if debug_net_socket_client ? {
@@ -58,21 +58,21 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 
 // web client tests follow
 fn assert_common_headers(received string) {
-	assert received.starts_with('HTTP/1.1 200 OK\r\n')
-	assert received.contains('Server: VWeb\r\n')
-	assert received.contains('Content-Length:')
-	assert received.contains('Connection: close\r\n')
+	assert received.starts_with('HTTP/1.1 200 OK\r\n'), received
+	assert received.contains('Server: veb\r\n'), received
+	assert received.contains('Content-Length:'), received
+	assert received.contains('Connection: close\r\n'), received
 }
 
-fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
+fn test_a_simple_tcp_client_can_connect_to_the_veb_server() {
 	received := simple_tcp_client(path: '/') or {
 		assert err.msg() == ''
 		return
 	}
 	assert_common_headers(received)
-	assert received.contains('Content-Type: text/plain')
-	assert received.contains('Content-Length: 15')
-	assert received.ends_with('Welcome to VWeb')
+	assert received.contains('Content-Type: text/plain'), received
+	assert received.contains('Content-Length: 14'), received
+	assert received.ends_with('Welcome to veb'), received
 }
 
 fn test_a_simple_tcp_client_simple_route() {
@@ -109,7 +109,7 @@ fn test_a_simple_tcp_client_html_page() {
 // net.http client based tests follow:
 fn assert_common_http_headers(x http.Response) ! {
 	assert x.status() == .ok
-	assert x.header.get(.server)! == 'VWeb'
+	assert x.header.get(.server)! == 'veb'
 	assert x.header.get(.content_length)!.int() > 0
 }
 
@@ -117,7 +117,7 @@ fn test_http_client_index() {
 	x := http.get('http://${localserver}/') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)! == 'text/plain'
-	assert x.body == 'Welcome to VWeb'
+	assert x.body == 'Welcome to veb'
 	assert x.header.get(.connection)! == 'close'
 }
 
@@ -218,9 +218,9 @@ fn test_http_client_multipart_form_data() {
 
 	mut files := []http.FileData{}
 	files << http.FileData{
-		filename: 'vweb'
+		filename: 'veb'
 		content_type: 'text'
-		data: '"vweb test"'
+		data: '"veb test"'
 	}
 
 	mut form_config_files := http.PostMultipartFormConfig{
@@ -351,11 +351,11 @@ ${config.content}'
 // phenomenon: parsing url error when querypath is `//`
 fn test_empty_querypath() {
 	mut x := http.get('http://${localserver}') or { panic(err) }
-	assert x.body == 'Welcome to VWeb'
+	assert x.body == 'Welcome to veb'
 	x = http.get('http://${localserver}/') or { panic(err) }
-	assert x.body == 'Welcome to VWeb'
+	assert x.body == 'Welcome to veb'
 	x = http.get('http://${localserver}//') or { panic(err) }
-	assert x.body == 'Welcome to VWeb'
+	assert x.body == 'Welcome to veb'
 	x = http.get('http://${localserver}///') or { panic(err) }
-	assert x.body == 'Welcome to VWeb'
+	assert x.body == 'Welcome to veb'
 }

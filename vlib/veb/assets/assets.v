@@ -4,7 +4,7 @@ import crypto.md5
 import os
 import strings
 import time
-import x.vweb
+import veb
 
 pub enum AssetType {
 	css
@@ -183,7 +183,7 @@ fn (mut am AssetManager) get_cache_key(file_path string, last_modified i64) stri
 // this function is called
 pub fn (mut am AssetManager) cleanup_cache() ! {
 	if am.cache_dir == '' {
-		return error('[vweb.assets]: cache directory is not valid')
+		return error('[veb.assets]: cache directory is not valid')
 	}
 	cached_files := os.ls(am.cache_dir)!
 
@@ -205,12 +205,12 @@ pub fn (am AssetManager) exists(asset_type AssetType, include_name string) bool 
 	return assets.any(it.include_name == include_name)
 }
 
-// include css/js files in your vweb app from templates
+// include css/js files in your veb app from templates
 // Example:
 // ```html
 // @{app.am.include(.css, 'main.css')}
 // ```
-pub fn (am AssetManager) include(asset_type AssetType, include_name string) vweb.RawHtml {
+pub fn (am AssetManager) include(asset_type AssetType, include_name string) veb.RawHtml {
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.include_name == include_name {
@@ -229,13 +229,13 @@ pub fn (am AssetManager) include(asset_type AssetType, include_name string) vweb
 					'<script src="${real_path}"></script>'
 				}
 				else {
-					eprintln('[vweb.assets] can only include css or js assets')
+					eprintln('[veb.assets] can only include css or js assets')
 					''
 				}
 			}
 		}
 	}
-	eprintln('[vweb.assets] no asset with include name "${include_name}" exists!')
+	eprintln('[veb.assets] no asset with include name "${include_name}" exists!')
 	return ''
 }
 
@@ -281,7 +281,7 @@ pub fn minify_css(css string) string {
 
 	for line in lines {
 		trimmed := line.trim_space()
-		if trimmed.len > 0 {
+		if trimmed != '' {
 			sb.write_string(trimmed)
 		}
 	}
@@ -301,7 +301,7 @@ pub fn minify_js(js string) string {
 
 	for line in lines {
 		trimmed := line.trim_space()
-		if trimmed.len > 0 {
+		if trimmed != '' {
 			sb.write_string(trimmed)
 			sb.write_u8(` `)
 		}

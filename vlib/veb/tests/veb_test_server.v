@@ -1,17 +1,17 @@
 module main
 
 import os
-import x.vweb
+import veb
 import time
 
 const known_users = ['bilbo', 'kent']
 
 struct ServerContext {
-	vweb.Context
+	veb.Context
 }
 
 // Custom 404 page
-pub fn (mut ctx ServerContext) not_found() vweb.Result {
+pub fn (mut ctx ServerContext) not_found() veb.Result {
 	ctx.res.set_status(.not_found)
 	return ctx.html('404 on "${ctx.req.url}"')
 }
@@ -34,7 +34,7 @@ fn exit_after_timeout(timeout_in_ms int) {
 
 fn main() {
 	if os.args.len != 3 {
-		panic('Usage: `vweb_test_server.exe PORT TIMEOUT_IN_MILLISECONDS`')
+		panic('Usage: `veb_test_server.exe PORT TIMEOUT_IN_MILLISECONDS`')
 	}
 	http_port := os.args[1].int()
 	assert http_port > 0
@@ -50,28 +50,28 @@ fn main() {
 		}
 	}
 	eprintln('>> webserver: pid: ${os.getpid()}, started on http://localhost:${app.port}/ , with maximum runtime of ${app.timeout} milliseconds.')
-	vweb.run_at[ServerApp, ServerContext](mut app, host: 'localhost', port: http_port, family: .ip)!
+	veb.run_at[ServerApp, ServerContext](mut app, host: 'localhost', port: http_port, family: .ip)!
 }
 
 // pub fn (mut app ServerApp) init_server() {
 //}
 
-pub fn (mut app ServerApp) index(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) index(mut ctx ServerContext) veb.Result {
 	assert app.global_config.max_ping == 50
-	return ctx.text('Welcome to VWeb')
+	return ctx.text('Welcome to veb')
 }
 
-pub fn (mut app ServerApp) simple(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) simple(mut ctx ServerContext) veb.Result {
 	return ctx.text('A simple result')
 }
 
-pub fn (mut app ServerApp) html_page(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) html_page(mut ctx ServerContext) veb.Result {
 	return ctx.html('<h1>ok</h1>')
 }
 
 // the following serve custom routes
 @['/:user/settings']
-pub fn (mut app ServerApp) settings(mut ctx ServerContext, username string) vweb.Result {
+pub fn (mut app ServerApp) settings(mut ctx ServerContext, username string) veb.Result {
 	if username !in known_users {
 		return ctx.not_found()
 	}
@@ -79,7 +79,7 @@ pub fn (mut app ServerApp) settings(mut ctx ServerContext, username string) vweb
 }
 
 @['/:user/:repo/settings']
-pub fn (mut app ServerApp) user_repo_settings(mut ctx ServerContext, username string, repository string) vweb.Result {
+pub fn (mut app ServerApp) user_repo_settings(mut ctx ServerContext, username string, repository string) veb.Result {
 	if username !in known_users {
 		return ctx.not_found()
 	}
@@ -87,25 +87,25 @@ pub fn (mut app ServerApp) user_repo_settings(mut ctx ServerContext, username st
 }
 
 @['/json_echo'; post]
-pub fn (mut app ServerApp) json_echo(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) json_echo(mut ctx ServerContext) veb.Result {
 	// eprintln('>>>>> received http request at /json_echo is: $app.req')
 	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
 	return ctx.ok(ctx.req.data)
 }
 
 @['/login'; post]
-pub fn (mut app ServerApp) login_form(mut ctx ServerContext, username string, password string) vweb.Result {
+pub fn (mut app ServerApp) login_form(mut ctx ServerContext, username string, password string) veb.Result {
 	return ctx.html('username: x${username}x | password: x${password}x')
 }
 
 @['/form_echo'; post]
-pub fn (mut app ServerApp) form_echo(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) form_echo(mut ctx ServerContext) veb.Result {
 	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
 	return ctx.ok(ctx.form['foo'])
 }
 
 @['/file_echo'; post]
-pub fn (mut app ServerApp) file_echo(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) file_echo(mut ctx ServerContext) veb.Result {
 	if 'file' !in ctx.files {
 		ctx.res.set_status(.internal_server_error)
 		return ctx.text('no file')
@@ -115,13 +115,13 @@ pub fn (mut app ServerApp) file_echo(mut ctx ServerContext) vweb.Result {
 }
 
 @['/query_echo']
-pub fn (mut app ServerApp) query_echo(mut ctx ServerContext, a string, b int) vweb.Result {
+pub fn (mut app ServerApp) query_echo(mut ctx ServerContext, a string, b int) veb.Result {
 	return ctx.text('a: x${a}x | b: x${b}x')
 }
 
 // Make sure [post] works without the path
 @[post]
-pub fn (mut app ServerApp) json(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) json(mut ctx ServerContext) veb.Result {
 	// eprintln('>>>>> received http request at /json is: $app.req')
 	ctx.set_content_type(ctx.req.header.get(.content_type) or { '' })
 	return ctx.ok(ctx.req.data)
@@ -129,11 +129,11 @@ pub fn (mut app ServerApp) json(mut ctx ServerContext) vweb.Result {
 
 @[host: 'example.com']
 @['/with_host']
-pub fn (mut app ServerApp) with_host(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) with_host(mut ctx ServerContext) veb.Result {
 	return ctx.ok('')
 }
 
-pub fn (mut app ServerApp) shutdown(mut ctx ServerContext) vweb.Result {
+pub fn (mut app ServerApp) shutdown(mut ctx ServerContext) veb.Result {
 	session_key := ctx.get_cookie('skey') or { return ctx.not_found() }
 	if session_key != 'superman' {
 		return ctx.not_found()

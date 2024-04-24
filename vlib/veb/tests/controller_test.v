@@ -1,4 +1,4 @@
-import x.vweb
+import veb
 import time
 import os
 import net.http
@@ -10,11 +10,11 @@ const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 pub struct App {
-	vweb.Controller
+	veb.Controller
 mut:
 	started chan bool
 }
@@ -23,32 +23,32 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (app &App) index(mut ctx Context) vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('from app')
 }
 
 @['/conflict/test']
-pub fn (app &App) conflicting(mut ctx Context) vweb.Result {
+pub fn (app &App) conflicting(mut ctx Context) veb.Result {
 	return ctx.text('from conflicting')
 }
 
 pub struct Other {
-	vweb.Controller
+	veb.Controller
 }
 
-pub fn (app &Other) index(mut ctx Context) vweb.Result {
+pub fn (app &Other) index(mut ctx Context) veb.Result {
 	return ctx.text('from other')
 }
 
 pub struct HiddenByOther {}
 
-pub fn (app &HiddenByOther) index(mut ctx Context) vweb.Result {
+pub fn (app &HiddenByOther) index(mut ctx Context) veb.Result {
 	return ctx.text('from hidden')
 }
 
 pub struct SubController {}
 
-pub fn (app &SubController) index(mut ctx Context) vweb.Result {
+pub fn (app &SubController) index(mut ctx Context) veb.Result {
 	return ctx.text('from sub')
 }
 
@@ -66,7 +66,7 @@ fn testsuite_begin() {
 	// even though it is declared last
 	app.register_controller[HiddenByOther, Context]('/other/hide', mut hidden)!
 
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	_ := <-app.started
 
 	spawn fn () {
@@ -108,7 +108,7 @@ fn test_conflicting_controllers() {
 		assert true == false, 'this should not fail'
 	}
 
-	vweb.run_at[App, Context](mut app, port: port) or {
+	veb.run_at[App, Context](mut app, port: port) or {
 		assert err.msg() == 'conflicting paths: duplicate controller handling the route "/other"'
 		return
 	}
@@ -123,7 +123,7 @@ fn test_conflicting_controller_routes() {
 		assert true == false, 'this should not fail'
 	}
 
-	vweb.run_at[App, Context](mut app, port: port) or {
+	veb.run_at[App, Context](mut app, port: port) or {
 		assert err.msg() == 'conflicting paths: method "conflicting" with route "/conflict/test" should be handled by the Controller of path "/conflict"'
 		return
 	}

@@ -1,6 +1,6 @@
 // vtest flaky: true
 // vtest retry: 3
-import x.vweb
+import veb
 import net.http
 import time
 import os
@@ -11,7 +11,7 @@ const localserver = 'http://127.0.0.1:${port}'
 
 const exit_after = time.second * 10
 
-const tmp_file = os.join_path(os.vtmp_dir(), 'vweb_large_payload.txt')
+const tmp_file = os.join_path(os.vtmp_dir(), 'veb_large_payload.txt')
 
 pub struct App {
 mut:
@@ -22,21 +22,21 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (mut app App) index(mut ctx Context) vweb.Result {
+pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return ctx.text('Hello V!')
 }
 
 @[post]
-pub fn (mut app App) post_request(mut ctx Context) vweb.Result {
+pub fn (mut app App) post_request(mut ctx Context) veb.Result {
 	return ctx.text(ctx.req.data)
 }
 
-pub fn (app &App) file(mut ctx Context) vweb.Result {
+pub fn (app &App) file(mut ctx Context) veb.Result {
 	return ctx.file(tmp_file)
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 fn testsuite_begin() {
@@ -47,31 +47,31 @@ fn testsuite_begin() {
 	}()
 
 	mut app := &App{}
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
 	_ := <-app.started
 }
 
 fn test_large_request_body() {
 	// string of a's of 8.96mb send over the connection
-	// vweb reads a maximum of 4096KB per picoev loop cycle
-	// this test tests if vweb is able to do multiple of these
+	// veb reads a maximum of 4096KB per picoev loop cycle
+	// this test tests if veb is able to do multiple of these
 	// cycles and updates the response body each cycle
-	mut buf := []u8{len: vweb.max_read * 10, init: `a`}
+	mut buf := []u8{len: veb.max_read * 10, init: `a`}
 
 	str := buf.bytestr()
 	mut x := http.post('${localserver}/post_request', str)!
 
-	assert x.body.len == vweb.max_read * 10
+	assert x.body.len == veb.max_read * 10
 }
 
 fn test_large_request_header() {
 	// same test as test_large_request_body, but then with a large header,
 	// which is parsed separately
-	mut buf := []u8{len: vweb.max_read * 2, init: `a`}
+	mut buf := []u8{len: veb.max_read * 2, init: `a`}
 
 	str := buf.bytestr()
-	// make 1 header longer than vwebs max read limit
+	// make 1 header longer than vebs max read limit
 	mut x := http.fetch(http.FetchConfig{
 		url: localserver
 		header: http.new_custom_header_from_map({
@@ -113,12 +113,12 @@ fn test_smaller_content_length() {
 }
 
 fn test_sendfile() {
-	mut buf := []u8{len: vweb.max_write * 10, init: `a`}
+	mut buf := []u8{len: veb.max_write * 10, init: `a`}
 	os.write_file(tmp_file, buf.bytestr())!
 
 	x := http.get('${localserver}/file')!
 
-	assert x.body.len == vweb.max_write * 10
+	assert x.body.len == veb.max_write * 10
 }
 
 fn testsuite_end() {

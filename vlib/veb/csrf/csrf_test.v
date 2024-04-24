@@ -2,8 +2,8 @@ import time
 import net.http
 import net.html
 import os
-import x.vweb
-import x.vweb.csrf
+import veb
+import veb.csrf
 
 const sport = 12385
 const localserver = '127.0.0.1:${sport}'
@@ -27,7 +27,7 @@ const csrf_config_origin = csrf.CsrfConfig{
 // =====================================
 
 fn test_set_token() {
-	mut ctx := vweb.Context{}
+	mut ctx := veb.Context{}
 
 	token := csrf.set_token(mut ctx, csrf_config)
 
@@ -37,7 +37,7 @@ fn test_set_token() {
 }
 
 fn test_protect() {
-	mut ctx := vweb.Context{}
+	mut ctx := veb.Context{}
 
 	token := csrf.set_token(mut ctx, csrf_config)
 
@@ -51,7 +51,7 @@ fn test_protect() {
 	cookie_map := {
 		csrf_config.cookie_name: cookie
 	}
-	ctx = vweb.Context{
+	ctx = veb.Context{
 		form: form
 		req: http.Request{
 			method: .post
@@ -72,7 +72,7 @@ fn test_timeout() {
 		max_age: timeout
 	}
 
-	mut ctx := vweb.Context{}
+	mut ctx := veb.Context{}
 
 	token := csrf.set_token(mut ctx, short_time_config)
 
@@ -88,7 +88,7 @@ fn test_timeout() {
 	cookie_map := {
 		short_time_config.cookie_name: cookie
 	}
-	ctx = vweb.Context{
+	ctx = veb.Context{
 		form: form
 		req: http.Request{
 			method: .post
@@ -118,7 +118,7 @@ fn test_valid_origin() {
 	}
 	req.add_header(.origin, 'http://${allowed_origin}')
 	req.add_header(.referer, 'http://${allowed_origin}/test')
-	mut ctx := vweb.Context{
+	mut ctx := veb.Context{
 		form: form
 		req: req
 	}
@@ -143,7 +143,7 @@ fn test_invalid_origin() {
 		cookies: cookie_map
 	}
 	req.add_header(.origin, 'http://${allowed_origin}')
-	mut ctx := vweb.Context{
+	mut ctx := veb.Context{
 		form: form
 		req: req
 	}
@@ -156,7 +156,7 @@ fn test_invalid_origin() {
 		cookies: cookie_map
 	}
 	req.add_header(.referer, 'http://${allowed_origin}/test')
-	ctx = vweb.Context{
+	ctx = veb.Context{
 		form: form
 		req: req
 	}
@@ -168,7 +168,7 @@ fn test_invalid_origin() {
 		method: .post
 		cookies: cookie_map
 	}
-	ctx = vweb.Context{
+	ctx = veb.Context{
 		form: form
 		req: req
 	}
@@ -181,12 +181,12 @@ fn test_invalid_origin() {
 // ================================
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 	csrf.CsrfContext
 }
 
 pub struct App {
-	vweb.Middleware[Context]
+	veb.Middleware[Context]
 mut:
 	started chan bool
 }
@@ -195,7 +195,7 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-fn (app &App) index(mut ctx Context) vweb.Result {
+fn (app &App) index(mut ctx Context) veb.Result {
 	ctx.set_csrf_token(mut ctx)
 
 	return ctx.html('<form action="/auth" method="post">
@@ -206,14 +206,14 @@ fn (app &App) index(mut ctx Context) vweb.Result {
 }
 
 @[post]
-fn (app &App) auth(mut ctx Context) vweb.Result {
+fn (app &App) auth(mut ctx Context) veb.Result {
 	return ctx.ok('authenticated')
 }
 
 // 			App cleanup function
 // ======================================
 
-pub fn (mut app App) shutdown(mut ctx Context) vweb.Result {
+pub fn (mut app App) shutdown(mut ctx Context) veb.Result {
 	spawn app.exit_gracefully()
 	return ctx.ok('good bye')
 }
@@ -241,7 +241,7 @@ fn test_run_app_in_background() {
 	app.route_use('/auth', csrf.middleware[Context](csrf_config))
 
 	spawn exit_after_timeout(mut app, exit_after_time)
-	spawn vweb.run_at[App, Context](mut app, port: sport, family: .ip)
+	spawn veb.run_at[App, Context](mut app, port: sport, family: .ip)
 	_ := <-app.started
 }
 
@@ -328,7 +328,7 @@ fn testsuite_end() {
 // Utility functions
 
 fn get_token_cookie(session_id string) (string, string) {
-	mut ctx := vweb.Context{
+	mut ctx := veb.Context{
 		req: http.Request{
 			cookies: {
 				session_id_cookie_name: session_id

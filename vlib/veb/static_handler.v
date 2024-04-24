@@ -9,7 +9,7 @@ mut:
 	static_hosts      map[string]string
 }
 
-// StaticHandler provides methods to handle static files in your vweb App
+// StaticHandler provides methods to handle static files in your veb App
 pub struct StaticHandler {
 pub mut:
 	static_files      map[string]string
@@ -81,7 +81,7 @@ pub fn (mut sh StaticHandler) mount_static_folder_at(directory_path string, moun
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://localhost/assets/main.css .
 pub fn (mut sh StaticHandler) host_mount_static_folder_at(host string, directory_path string, mount_path string) !bool {
-	if mount_path.len < 1 || mount_path[0] != `/` {
+	if mount_path == '' || mount_path[0] != `/` {
 		return error('invalid mount path! The path should start with `/`')
 	} else if !os.exists(directory_path) {
 		return error('directory `${directory_path}` does not exist. The directory should be relative to the current working directory: ${os.getwd()}')

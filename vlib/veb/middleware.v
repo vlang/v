@@ -30,6 +30,7 @@ mut:
 
 @[params]
 pub struct MiddlewareOptions[T] {
+pub:
 	handler fn (mut ctx T) bool @[required]
 	after   bool
 }
@@ -250,7 +251,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 		ctx.res.set_status(.forbidden)
 		ctx.text('invalid CORS origin')
 
-		$if vweb_trace_cors ? {
+		$if veb_trace_cors ? {
 			eprintln('[veb]: rejected CORS request from "${origin}". Reason: invalid origin')
 		}
 		return false
@@ -264,7 +265,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 		ctx.res.set_status(.method_not_allowed)
 		ctx.text('${ctx.req.method} requests are not allowed')
 
-		$if vweb_trace_cors ? {
+		$if veb_trace_cors ? {
 			eprintln('[veb]: rejected CORS request from "${origin}". Reason: invalid request method: ${ctx.req.method}')
 		}
 		return false
@@ -277,7 +278,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 				ctx.res.set_status(.forbidden)
 				ctx.text('invalid Header "${header}"')
 
-				$if vweb_trace_cors ? {
+				$if veb_trace_cors ? {
 					eprintln('[veb]: rejected CORS request from "${origin}". Reason: invalid header "${header}"')
 				}
 				return false
@@ -285,7 +286,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 		}
 	}
 
-	$if vweb_trace_cors ? {
+	$if veb_trace_cors ? {
 		eprintln('[veb]: received CORS request from "${origin}": HTTP ${ctx.req.method} ${ctx.req.url}')
 	}
 
@@ -296,7 +297,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 // preflight request and validating the headers of a cross-origin request.
 // Example:
 // ```v
-// app.use(vweb.cors[Context](vweb.CorsOptions{
+// app.use(veb.cors[Context](veb.CorsOptions{
 //     origins: ['*']
 //     allowed_methods: [.get, .head, .patch, .put, .post, .delete]
 // }))

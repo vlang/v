@@ -48,7 +48,7 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 				}
 			}
 
-			// create a new user context and pass the vweb's context
+			// create a new user context and pass the veb's context
 			mut user_context := X{}
 			user_context.Context = ctx
 

@@ -23,7 +23,7 @@ pub enum RedirectType {
 @[heap]
 pub struct Context {
 mut:
-	// vweb will try to infer the content type base on file extension,
+	// veb will try to infer the content type base on file extension,
 	// and if `content_type` is not empty the `Content-Type` header will always be
 	// set to this value
 	content_type string
@@ -32,14 +32,14 @@ mut:
 	// if true the response should not be sent and the connection should be closed
 	// manually.
 	takeover bool
-	// how the http response should be handled by vweb's backend
+	// how the http response should be handled by veb's backend
 	return_type ContextReturnType = .normal
 	return_file string
 	// If the `Connection: close` header is present the connection should always be closed
 	client_wants_to_close bool
 pub:
 	// TODO: move this to `handle_request`
-	// time.ticks() from start of vweb connection handle.
+	// time.ticks() from start of veb connection handle.
 	// You can use it to determine how much time is spent on your request.
 	page_gen_start i64
 	req            http.Request
@@ -84,27 +84,27 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 // and the response body to `response`
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && !ctx.takeover {
-		eprintln('[vweb] a response cannot be sent twice over one connection')
+		eprintln('[veb] a response cannot be sent twice over one connection')
 		return Result{}
 	}
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
 	ctx.res.body = response
-	$if vweb_livereload ? {
+	$if veb_livereload ? {
 		if mimetype == 'text/html' {
-			ctx.res.body = response.replace('</html>', '<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
+			ctx.res.body = response.replace('</html>', '<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
 		}
 	}
 
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
 	ctx.res.header.set(.content_type, custom_mimetype)
-	if ctx.res.body.len > 0 {
+	if ctx.res.body != '' {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
-	// send vweb's closing headers
-	ctx.res.header.set(.server, 'VWeb')
+	// send veb's closing headers
+	ctx.res.header.set(.server, 'veb')
 	if !ctx.takeover && ctx.client_wants_to_close {
 		// Only sent the `Connection: close` header when the client wants to close
 		// the connection. This typically happens when the client only supports HTTP 1.0
@@ -119,7 +119,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if ctx.takeover {
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
 	}
-	// result is send in `vweb.v`, `handle_route`
+	// result is send in `veb.v`, `handle_route`
 	return Result{}
 }
 
@@ -148,7 +148,7 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 // Response HTTP_OK with file as payload
 pub fn (mut ctx Context) file(file_path string) Result {
 	if !os.exists(file_path) {
-		eprintln('[vweb] file "${file_path}" does not exist')
+		eprintln('[veb] file "${file_path}" does not exist')
 		return ctx.not_found()
 	}
 
@@ -164,7 +164,7 @@ pub fn (mut ctx Context) file(file_path string) Result {
 	}
 
 	if content_type.len == 0 {
-		eprintln('[vweb] no MIME type found for extension "${ext}"')
+		eprintln('[veb] no MIME type found for extension "${ext}"')
 		return ctx.server_error('')
 	}
 
@@ -173,18 +173,18 @@ pub fn (mut ctx Context) file(file_path string) Result {
 
 fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	mut file := os.open(file_path) or {
-		eprint('[vweb] error while trying to open file: ${err.msg()}')
+		eprint('[veb] error while trying to open file: ${err.msg()}')
 		ctx.res.set_status(.not_found)
 		return ctx.text('resource does not exist')
 	}
 
 	// seek from file end to get the file size
 	file.seek(0, .end) or {
-		eprintln('[vweb] error while trying to read file: ${err.msg()}')
+		eprintln('[veb] error while trying to read file: ${err.msg()}')
 		return ctx.server_error('could not read resource')
 	}
 	file_size := file.tell() or {
-		eprintln('[vweb] error while trying to read file: ${err.msg()}')
+		eprintln('[veb] error while trying to read file: ${err.msg()}')
 		return ctx.server_error('could not read resource')
 	}
 	file.close()
@@ -192,7 +192,7 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	if ctx.takeover {
 		// it's a small file so we can send the response directly
 		data := os.read_file(file_path) or {
-			eprintln('[vweb] error while trying to read file: ${err.msg()}')
+			eprintln('[veb] error while trying to read file: ${err.msg()}')
 			return ctx.server_error('could not read resource')
 		}
 		return ctx.send_response_to_client(content_type, data)
@@ -227,6 +227,7 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 
 @[params]
 pub struct RedirectParams {
+pub:
 	typ RedirectType
 }
 
@@ -263,7 +264,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string {
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
 	if cookie_raw == '' {
-		eprintln('[vweb] error setting cookie: name of cookie is invalid.\n${cookie}')
+		eprintln('[veb] error setting cookie: name of cookie is invalid.\n${cookie}')
 		return
 	}
 	ctx.res.header.add(.set_cookie, cookie_raw)
@@ -274,7 +275,7 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 	ctx.content_type = mime
 }
 
-// takeover_conn prevents vweb from automatically sending a response and closing
+// takeover_conn prevents veb from automatically sending a response and closing
 // the connection. You are responsible for closing the connection.
 // In takeover mode if you call a Context method the response will be directly
 // send over the connection and you can send multiple responses.
