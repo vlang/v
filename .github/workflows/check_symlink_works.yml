@@ -12,6 +12,25 @@ on:
       - '.github/workflows/check_symlink_works.yml'
 
 jobs:
+  check-ubuntu-with-sudo:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout V
+        uses: actions/checkout@v4
+      - name: Build V
+        run: make && sudo ./v symlink
+      - name: Check if V is usable
+        run: |
+          pwd
+          v version
+          cd ~
+          pwd
+          v version
+          echo 'println(123)' > hi.v
+          v run hi.v
+          echo 'Using `sudo ./v symlink` :rocket: !!!' >> $GITHUB_STEP_SUMMARY
+
+jobs:
   check-ubuntu:
     runs-on: ubuntu-20.04
     steps:
