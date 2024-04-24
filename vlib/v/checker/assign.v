@@ -498,26 +498,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		left_sym := c.table.sym(left_type_unwrapped)
 		right_sym := c.table.sym(right_type_unwrapped)
 
-		old_assign_error_condition := left_sym.kind == .array && !c.inside_unsafe
-			&& node.op in [.assign, .decl_assign] && right_sym.kind == .array && left is ast.Ident
-			&& !left.is_blank_ident() && right is ast.Ident
-		if old_assign_error_condition {
-			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `array2 ${node.op.str()} array1.clone()` instead of `array2 ${node.op.str()} array1` (or use `unsafe`)',
-				node.pos)
-		}
-		// Do not allow `a = val.array_field`, only `a = val.array_field.clone()`
-		// TODO: turn this warning into an error after 2022/09/24
-		// TODO: and remove the less strict check from above.
 		if left_sym.kind == .array && !c.inside_unsafe && right_sym.kind == .array
 			&& left is ast.Ident && !left.is_blank_ident() && right in [ast.Ident, ast.SelectorExpr]
 			&& ((node.op == .decl_assign && left.is_mut) || node.op == .assign) {
-			// no point to show the notice, if the old error was already shown:
-			if !old_assign_error_condition {
-				mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
-				c.warn('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
-					node.pos)
-			}
+			// Do not allow direct array assignments outside unsafe.
+			// E.g.: `a2 = a1` wants `a2 = a1.clone()`, `a = val.arr_field` wants `a = val.arr_field.clone()`
+			mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
+			c.error('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
+				node.pos)
 		}
 		if left_sym.kind == .array && right_sym.kind == .array {
 			right_info := right_sym.info as ast.Array
