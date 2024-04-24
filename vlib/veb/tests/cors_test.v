@@ -1,4 +1,4 @@
-import x.vweb
+import veb
 import net.http
 import os
 import time
@@ -7,17 +7,17 @@ const port = 13012
 const localserver = 'http://localhost:${port}'
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'
-const cors_options = vweb.CorsOptions{
+const cors_options = veb.CorsOptions{
 	origins: [allowed_origin]
 	allowed_methods: [.get, .head]
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 pub struct App {
-	vweb.Middleware[Context]
+	veb.Middleware[Context]
 mut:
 	started chan bool
 }
@@ -26,12 +26,12 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (app &App) index(mut ctx Context) vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('index')
 }
 
 @[post]
-pub fn (app &App) post(mut ctx Context) vweb.Result {
+pub fn (app &App) post(mut ctx Context) veb.Result {
 	return ctx.text('post')
 }
 
@@ -44,9 +44,9 @@ fn testsuite_begin() {
 	}()
 
 	mut app := &App{}
-	app.use(vweb.cors[Context](cors_options))
+	app.use(veb.cors[Context](cors_options))
 
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
 	// app startup time
 	_ := <-app.started
 }

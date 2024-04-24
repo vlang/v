@@ -9,7 +9,7 @@ mut:
 	static_hosts      map[string]string
 }
 
-// StaticHandler provides methods to handle static files in your vweb App
+// StaticHandler provides methods to handle static files in your veb App
 pub struct StaticHandler {
 pub mut:
 	static_files      map[string]string

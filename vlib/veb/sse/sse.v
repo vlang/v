@@ -1,6 +1,6 @@
 module sse
 
-import x.vweb
+import veb
 import net
 import strings
 
@@ -36,7 +36,7 @@ pub mut:
 }
 
 // start an SSE connection
-pub fn start_connection(mut ctx vweb.Context) &SSEConnection {
+pub fn start_connection(mut ctx veb.Context) &SSEConnection {
 	ctx.res.header.set(.connection, 'keep-alive')
 	ctx.res.header.set(.cache_control, 'no-cache')
 	ctx.send_response_to_client('text/event-stream', '')

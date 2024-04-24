@@ -7,7 +7,7 @@ import net.http
 import net.urllib
 import rand
 import time
-import x.vweb
+import veb
 
 @[params]
 pub struct CsrfConfig {
@@ -66,13 +66,13 @@ pub fn (ctx &CsrfContext) clear_csrf_token[T](mut user_context T) {
 }
 
 // csrf_token_input returns an HTML hidden input containing the csrf token
-pub fn (ctx &CsrfContext) csrf_token_input() vweb.RawHtml {
+pub fn (ctx &CsrfContext) csrf_token_input() veb.RawHtml {
 	return '<input type="hidden" name="${ctx.config.token_name}" value="${ctx.csrf_token}">'
 }
 
-// middleware returns a handler that you can use with vweb's middleware
-pub fn middleware[T](config CsrfConfig) vweb.MiddlewareOptions[T] {
-	return vweb.MiddlewareOptions[T]{
+// middleware returns a handler that you can use with veb's middleware
+pub fn middleware[T](config CsrfConfig) veb.MiddlewareOptions[T] {
+	return veb.MiddlewareOptions[T]{
 		after: false
 		handler: fn [config] [T](mut ctx T) bool {
 			ctx.config = config
@@ -89,7 +89,7 @@ pub fn middleware[T](config CsrfConfig) vweb.MiddlewareOptions[T] {
 
 // set_token returns the csrftoken and sets an encrypted cookie with the hmac of
 // `config.get_secret` and the csrftoken
-pub fn set_token(mut ctx vweb.Context, config &CsrfConfig) string {
+pub fn set_token(mut ctx veb.Context, config &CsrfConfig) string {
 	expire_time := time.now().add_seconds(config.max_age)
 	session_id := ctx.get_cookie(config.session_cookie) or { '' }
 
@@ -115,7 +115,7 @@ pub fn set_token(mut ctx vweb.Context, config &CsrfConfig) string {
 // protect returns false and sends an http 401 response when the csrf verification
 // fails. protect will always return true if the current request method is in
 // `config.safe_methods`.
-pub fn protect(mut ctx vweb.Context, config &CsrfConfig) bool {
+pub fn protect(mut ctx veb.Context, config &CsrfConfig) bool {
 	// if the request method is a "safe" method we allow the request
 	if ctx.req.method in config.safe_methods {
 		return true
@@ -178,7 +178,7 @@ pub fn protect(mut ctx vweb.Context, config &CsrfConfig) bool {
 }
 
 // check_origin_and_referer validates the `Origin` and `Referer` headers.
-fn check_origin_and_referer(ctx vweb.Context, config &CsrfConfig) bool {
+fn check_origin_and_referer(ctx veb.Context, config &CsrfConfig) bool {
 	// wildcard allow all hosts NOT SAFE!
 	if '*' in config.allowed_hosts {
 		return true
@@ -206,7 +206,7 @@ fn check_origin_and_referer(ctx vweb.Context, config &CsrfConfig) bool {
 }
 
 // request_is_invalid sends an http 403 response
-fn request_is_invalid(mut ctx vweb.Context) {
+fn request_is_invalid(mut ctx veb.Context) {
 	ctx.res.set_status(.forbidden)
 	ctx.text('Forbidden: Invalid or missing CSRF token')
 }

@@ -3,13 +3,13 @@
 import os
 import log
 import time
-import x.vweb
+import veb
 import net.http
 
 const vexe = os.getenv('VEXE')
 const vroot = os.dir(vexe)
 const port = 48872
-const welcome_text = 'Welcome to our simple vweb server'
+const welcome_text = 'Welcome to our simple veb server'
 
 // Use a known good http client like `curl` (if it exists):
 const curl_executable = os.find_abs_path_of_executable('curl') or { '' }
@@ -93,7 +93,7 @@ fn test_net_http_connecting_through_ipv6_works() {
 //
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 pub struct App {
@@ -105,7 +105,7 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (mut app App) index(mut ctx Context) vweb.Result {
+pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return ctx.text(welcome_text)
 }
 
@@ -119,7 +119,7 @@ fn start_services() {
 
 	log.debug('starting webserver...')
 	mut app := &App{}
-	spawn vweb.run[App, Context](mut app, port)
+	spawn veb.run[App, Context](mut app, port)
 	_ := <-app.started
 	log.debug('webserver started')
 }

@@ -1,7 +1,7 @@
-import x.vweb.assets
+import veb.assets
 import os
 
-const base_cache_dir = os.join_path(os.vtmp_dir(), 'xvweb_assets_test_cache')
+const base_cache_dir = os.join_path(os.vtmp_dir(), 'veb_assets_test_cache')
 
 fn testsuite_begin() {
 	os.mkdir_all(base_cache_dir) or {}
@@ -143,7 +143,7 @@ fn test_minify_cache_last_modified() {
 	js_assets = am.get_assets(.js)
 	// check if the file isn't added twice
 	assert js_assets.len == 1
-	// if the file path was not modified, vweb.assets didn't overwrite the file
+	// if the file path was not modified, veb.assets didn't overwrite the file
 	assert js_assets[0].file_path == old_cached_path
 }
 

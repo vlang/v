@@ -1,6 +1,6 @@
 // vtest retry: 3
-import x.vweb
-import x.vweb.sse
+import veb
+import veb.sse
 import time
 import net.http
 
@@ -9,7 +9,7 @@ const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 pub struct App {
@@ -21,10 +21,10 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-fn (app &App) sse(mut ctx Context) vweb.Result {
+fn (app &App) sse(mut ctx Context) veb.Result {
 	ctx.takeover_conn()
 	spawn handle_sse_conn(mut ctx)
-	return vweb.no_result()
+	return veb.no_result()
 }
 
 fn handle_sse_conn(mut ctx Context) {
@@ -45,7 +45,7 @@ fn testsuite_begin() {
 		exit(1)
 	}()
 
-	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip)
+	spawn veb.run_at[App, Context](mut app, port: port, family: .ip)
 	// app startup time
 	_ := <-app.started
 }

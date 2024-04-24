@@ -29,7 +29,7 @@ pub fn no_result() Result {
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
 pub const headers_close = http.new_custom_header_from_map({
-	'Server': 'VWeb'
+	'Server': 'veb'
 }) or { panic('should never fail') }
 
 pub const http_302 = http.new_response(
@@ -203,13 +203,14 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 	return routes
 }
 
-// run - start a new VWeb server, listening to all available addresses, at the specified `port`
+// run - start a new veb server, listening to all available addresses, at the specified `port`
 pub fn run[A, X](mut global_app A, port int) {
 	run_at[A, X](mut global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
 }
 
 @[params]
 pub struct RunParams {
+pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	family               net.AddrFamily = .ip6
 	host                 string
@@ -282,7 +283,7 @@ mut:
 	before_accept_loop()
 }
 
-// run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
+// run_at - start a new veb server, listening only on a specific address `host`, at the specified `port`
 // Example: veb.run_at(new_app(), veb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 @[direct_array_access; manualfree]
 pub fn run_at[A, X](mut global_app A, params RunParams) ! {
@@ -295,7 +296,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 
 	if params.show_startup_message {
 		host := if params.host == '' { 'localhost' } else { params.host }
-		println('[Veb] Running app on http://${host}:${params.port}/')
+		println('[veb] Running app on http://${host}:${params.port}/')
 	}
 	flush_stdout()
 
@@ -758,7 +759,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			}
 		}
 		// send only the headers, because if the response body is too big, TcpConn code will
-		// actually block, because it has to wait for the socket to become ready to write. Vweb
+		// actually block, because it has to wait for the socket to become ready to write. veb
 		// will handle this case.
 		if !was_done && !user_context.Context.done && !user_context.Context.takeover {
 			eprintln('[veb] handler for route "${url.path}" does not send any data!')
@@ -772,14 +773,14 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 	url_words := url.path.split('/').filter(it != '')
 
-	$if vweb_livereload ? {
-		if url.path.starts_with('/vweb_livereload/') {
+	$if veb_livereload ? {
+		if url.path.starts_with('/veb_livereload/') {
 			if url.path.ends_with('current') {
-				user_context.handle_vweb_livereload_current()
+				user_context.handle_veb_livereload_current()
 				return
 			}
 			if url.path.ends_with('script.js') {
-				user_context.handle_vweb_livereload_script()
+				user_context.handle_veb_livereload_script()
 				return
 			}
 		}
@@ -897,7 +898,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 						method_args := params.clone()
 						if method_args.len + 1 != method.args.len {
-							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the vweb route `${method.attrs}` (${method_args.len})')
+							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
 						app.$method(mut user_context, method_args)
 						return
@@ -975,9 +976,9 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 	}
 	static_file := app.static_files[asked_path] or { return false }
 
-	// StaticHandler ensures that the mime type exists on either the App or in vweb
+	// StaticHandler ensures that the mime type exists on either the App or in veb
 	ext := os.file_ext(static_file)
-	mut mime_type := app.static_mime_types[ext] or { vweb.mime_types[ext] }
+	mut mime_type := app.static_mime_types[ext] or { veb.mime_types[ext] }
 
 	static_host := app.static_hosts[asked_path] or { '' }
 	if static_file == '' || mime_type == '' {

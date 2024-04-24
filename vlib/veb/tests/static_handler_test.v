@@ -1,4 +1,4 @@
-import x.vweb
+import veb
 import net.http
 import os
 import time
@@ -10,7 +10,7 @@ const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 
 pub struct App {
-	vweb.StaticHandler
+	veb.StaticHandler
 mut:
 	started chan bool
 }
@@ -19,17 +19,17 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (mut app App) index(mut ctx Context) vweb.Result {
+pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return ctx.text('Hello V!')
 }
 
 @[post]
-pub fn (mut app App) post_request(mut ctx Context) vweb.Result {
+pub fn (mut app App) post_request(mut ctx Context) veb.Result {
 	return ctx.text(ctx.req.data)
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 fn testsuite_begin() {
@@ -51,7 +51,7 @@ fn run_app_test() {
 		assert err.msg().starts_with('unknown MIME type for file extension ".what"'), 'throws error on unknown mime type'
 	}
 
-	app.static_mime_types['.what'] = vweb.mime_types['.txt']
+	app.static_mime_types['.what'] = veb.mime_types['.txt']
 
 	if _ := app.handle_static('not_found', true) {
 		assert false, 'should throw directory not found error'
@@ -75,7 +75,7 @@ fn run_app_test() {
 
 	app.mount_static_folder_at('testdata', '/static') or { panic(err) }
 
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
 	_ := <-app.started
 }
@@ -109,7 +109,7 @@ fn test_custom_mime_types() {
 	x := http.get('${localserver}/unknown_mime.what')!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_type)! == vweb.mime_types['.txt']
+	assert x.header.get(.content_type)! == veb.mime_types['.txt']
 	assert x.body.trim_space() == 'unknown_mime'
 }
 

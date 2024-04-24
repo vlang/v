@@ -3,7 +3,7 @@ import net.http
 import io
 import os
 import time
-import x.vweb
+import veb
 
 const exit_after = time.second * 10
 const port = 13009
@@ -20,7 +20,7 @@ Accept: */*
 const response_body = 'intact!'
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 pub struct App {
@@ -33,12 +33,12 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (mut app App) index(mut ctx Context) vweb.Result {
+pub fn (mut app App) index(mut ctx Context) veb.Result {
 	app.counter++
 	return ctx.text('${response_body}:${app.counter}')
 }
 
-pub fn (mut app App) reset(mut ctx Context) vweb.Result {
+pub fn (mut app App) reset(mut ctx Context) veb.Result {
 	app.counter = 0
 	return ctx.ok('')
 }
@@ -47,7 +47,7 @@ fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 	mut app := &App{}
 
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 5)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 5)
 	_ := <-app.started
 
 	spawn fn () {

@@ -1,4 +1,4 @@
-import x.vweb
+import veb
 import net.http
 import os
 import time
@@ -10,14 +10,14 @@ const localserver = 'http://127.0.0.1:${port}'
 const exit_after = time.second * 10
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 pub mut:
 	counter int
 }
 
 @[heap]
 pub struct App {
-	vweb.Middleware[Context]
+	veb.Middleware[Context]
 mut:
 	started chan bool
 }
@@ -26,25 +26,25 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
-pub fn (app &App) index(mut ctx Context) vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	return ctx.text('from index, ${ctx.counter}')
 }
 
 @['/bar/bar']
-pub fn (app &App) bar(mut ctx Context) vweb.Result {
+pub fn (app &App) bar(mut ctx Context) veb.Result {
 	return ctx.text('from bar, ${ctx.counter}')
 }
 
-pub fn (app &App) unreachable(mut ctx Context) vweb.Result {
+pub fn (app &App) unreachable(mut ctx Context) veb.Result {
 	return ctx.text('should never be reachable!')
 }
 
 @['/nested/route/method']
-pub fn (app &App) nested(mut ctx Context) vweb.Result {
+pub fn (app &App) nested(mut ctx Context) veb.Result {
 	return ctx.text('from nested, ${ctx.counter}')
 }
 
-pub fn (app &App) after(mut ctx Context) vweb.Result {
+pub fn (app &App) after(mut ctx Context) veb.Result {
 	return ctx.text('from after, ${ctx.counter}')
 }
 
@@ -87,7 +87,7 @@ fn testsuite_begin() {
 
 	app.Middleware.route_use('/after', handler: after_middleware, after: true)
 
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
 	_ := <-app.started
 
