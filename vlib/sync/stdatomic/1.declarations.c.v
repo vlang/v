@@ -24,6 +24,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
 			#flag -L/usr/lib/gcc/x86_64-linux-gnu/13
+			#flag -L/usr/lib/gcc/x86_64-linux-gnu/14
 			// Redhat/CentOS paths:
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/6
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/7
@@ -33,6 +34,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/11
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/12
 			#flag -L/usr/lib/gcc/x86_64-redhat-linux/13
+			#flag -L/usr/lib/gcc/x86_64-redhat-linux/14
 			// Gentoo paths:
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/6
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/7
@@ -42,6 +44,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/11
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/12
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/13
+			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/14
 		} $else $if arm64 {
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/6
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/7
@@ -51,6 +54,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/11
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/12
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/13
+			#flag -L/usr/lib/gcc/aarch64-linux-gnu/14
 			// Redhat/CentOS paths:
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/6
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/7
@@ -60,6 +64,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/11
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/12
 			#flag -L/usr/lib/gcc/aarch64-redhat-linux/13
+			#flag -L/usr/lib/gcc/aarch64-redhat-linux/14
 			// Gentoo paths:
 			#flag -L/usr/lib/gcc/aarch64-pc-linux-gnu/6
 			#flag -L/usr/lib/gcc/aarch64-pc-linux-gnu/7
@@ -69,6 +74,7 @@ $if linux {
 			#flag -L/usr/lib/gcc/aarch64-pc-linux-gnu/11
 			#flag -L/usr/lib/gcc/aarch64-pc-linux-gnu/12
 			#flag -L/usr/lib/gcc/aarch64-pc-linux-gnu/13
+			#flag -L/usr/lib/gcc/aarch64-pc-linux-gnu/14
 		}
 		#flag -latomic
 	}
