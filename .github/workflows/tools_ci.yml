@@ -49,7 +49,7 @@ jobs:
             cmd="./v -cc clang -cflags -fsanitize=memory test-self cmd"
             echo $cmd && $cmd
           else
-            # TODO: enable thread sanitzer after switching to ubuntu-22.04. Ref. https://github.com/orgs/community/discussions/63391
+            # TODO: enable thread sanitizer after switching to ubuntu-22.04. Ref. https://github.com/orgs/community/discussions/63391
             # cmd="./v -cc gcc -cflags -fsanitize=thread test-self cmd"
             # echo $cmd && $cmd
             cmd="./v -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self cmd/tools"
