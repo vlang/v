@@ -352,8 +352,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 		if is_liveshared {
 			if g.pref.os == .windows {
-				g.definitions.write_string('__declspec(dllexport) ${type_name} ${impl_fn_name}(')
-				g.write('__declspec(dllexport) ${type_name} ${impl_fn_name}(')
+				g.definitions.write_string('VV_EXPORTED_SYMBOL ${type_name} ${impl_fn_name}(')
+				g.write('VV_EXPORTED_SYMBOL ${type_name} ${impl_fn_name}(')
 			} else {
 				g.definitions.write_string('${type_name} ${impl_fn_name}(')
 				g.write('${type_name} ${impl_fn_name}(')
