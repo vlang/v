@@ -1278,12 +1278,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			if param.is_mut {
 				tok := param.specifier()
-				param_sym := c.table.sym(param.typ)
-				if !(param_sym.info is ast.Struct && param_sym.info.attrs.any(it.name == 'params'
-					&& !it.has_arg)) {
-					c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
-						call_arg.expr.pos())
-				}
+				c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
+					call_arg.expr.pos())
 			} else {
 				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
