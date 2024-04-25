@@ -5,10 +5,14 @@ on:
     - cron: '0 */6 * * *'
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/bootstrapping_works_ci.yml'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/bootstrapping_works_ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -18,7 +22,7 @@ jobs:
   bootstrapping-works:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-13]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -30,7 +34,7 @@ jobs:
         with:
           fetch-depth: 10
       - name: Build v
-        run: make
+        run: make -j4
       - name: v.c can be compiled and run with -os cross (bootstrapping works)
         run: |
           ls -la v vc/v.c
@@ -56,14 +60,10 @@ jobs:
           ls -la v vc/v.c
           ls -la v_from_vc v_from_vc_produced_native_v
           ls -la v_from_vc2 v_from_vc_produced_native_v2
-
-##      - name: Ensure v up works
-##        run: |
-##          ./v cmd/tools/oldv.v
-##          ./cmd/tools/oldv -v HEAD^^^
-##          cd ~/.cache/oldv/v_at_HEAD___/
-##          ./v version
-##          ./v -v up
-##          ./v version
-##          ./v  -o v2 cmd/v
-##          ./v2 -o v3 cmd/v
+      - name: Ensure v up works
+        run: |
+          ./v cmd/tools/oldv.v
+          ./cmd/tools/oldv -v HEAD^^^
+          cd ~/.cache/oldv/v_at_HEAD___/
+          ./v version && ./v -v up && ./v version
+          ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
