@@ -351,8 +351,13 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.write('${type_name} no_impl_${name}(')
 		}
 		if is_liveshared {
-			g.definitions.write_string('${type_name} ${impl_fn_name}(')
-			g.write('${type_name} ${impl_fn_name}(')
+			if g.pref.os == .windows {
+				g.definitions.write_string('__declspec(dllexport) ${type_name} ${impl_fn_name}(')
+				g.write('__declspec(dllexport) ${type_name} ${impl_fn_name}(')
+			} else {
+				g.definitions.write_string('${type_name} ${impl_fn_name}(')
+				g.write('${type_name} ${impl_fn_name}(')
+			}
 		}
 	} else {
 		if !(node.is_pub || g.pref.is_debug) {
