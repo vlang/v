@@ -1,7 +1,7 @@
 module main
 
 import os
-import term
+import term { bright_green, bright_red, bright_yellow, ecolorize }
 import os.cmdline
 
 // Symbol type to search
@@ -59,7 +59,6 @@ const vlib_dir = os.join_path(os.dir(vexe), 'vlib')
 const vmod_dir = os.vmodules_dir()
 const vmod_paths = os.vmodules_paths()[1..]
 const current_dir = os.abs_path('.')
-const color_out = term.can_show_color_on_stdout()
 
 fn (mut cfg Symbol) set_from_str(str_in string) {
 	if str_in !in symbols {
@@ -105,49 +104,26 @@ fn invalid_option(invalid ParamOption, arg string) {
 	}
 }
 
-fn valid_args_quantity_or_show_help(args []string) {
-	if true in [
-		(args.len < 1),
-		'-help' in args,
-		'--help' in args,
-		args == ['help'],
-	] {
-		os.system('${os.quoted_path(vexe)} help where')
-		exit(0)
-	}
-}
-
 fn make_and_print_error(msg string, opts []string, arg string) {
 	if verbose || format {
-		eprintln('\n' + maybe_color(term.bright_yellow, msg))
+		eprintln('\n' + ecolorize(bright_yellow, msg))
 		if opts.len > 0 {
-			eprint(opts.map(maybe_color(term.bright_green, it)).join(' | '))
+			eprint(opts.map(ecolorize(bright_green, it)).join(' | '))
 		}
-		eprintln(' ...can not be ${maybe_color(term.bright_red, arg)}')
+		eprintln(' ...can not be ${ecolorize(bright_red, arg)}')
 	} else {
-		eprint(maybe_color(term.bright_yellow, msg) + ' ')
+		eprint(ecolorize(bright_yellow, msg) + ' ')
 		if opts.len > 0 {
-			eprint(opts.map(maybe_color(term.bright_green, it)).join(' | '))
+			eprint(opts.map(ecolorize(bright_green, it)).join(' | '))
 		}
-		eprintln(' ...can not be ${maybe_color(term.bright_red, arg)}')
+		eprintln(' ...can not be ${ecolorize(bright_red, arg)}')
 	}
 	exit(1)
 }
 
-fn maybe_color(term_color fn (string) string, str string) string {
-	if color_out {
-		return term_color(str)
-	} else {
-		return str
-	}
-}
-
 fn collect_v_files(path string, recursive bool) ![]string {
-	if path == '' {
-		return error('path cannot be empty')
-	}
-	if !os.is_dir(path) {
-		return error('path does not exist or is not a directory')
+	if path == '' || !os.is_dir(path) {
+		return error('path `${path}` does not exist or is not a directory')
 	}
 	mut all_files := []string{}
 	mut entries := os.ls(path)!
@@ -167,13 +143,10 @@ fn collect_v_files(path string, recursive bool) ![]string {
 }
 
 fn resolve_module(path string) !string {
-	if os.is_dir(path) {
-		return path
-	} else if os.is_dir(os.join_path(vmod_dir, path)) {
-		return os.join_path(vmod_dir, path)
-	} else if os.is_dir(os.join_path(vlib_dir, path)) {
-		return os.join_path(vlib_dir, path)
-	} else {
-		return error('Path: ${path} not found')
+	return match true {
+		os.is_dir(path) { path }
+		os.is_dir(os.join_path(vmod_dir, path)) { os.join_path(vmod_dir, path) }
+		os.is_dir(os.join_path(vlib_dir, path)) { os.join_path(vlib_dir, path) }
+		else { error('Path: ${path} not found') }
 	}
 }
