@@ -61,9 +61,9 @@ jobs:
         run: |
           ## sudo dpkg --add-architecture i386
           .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-          .github/workflows/retry.sh sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
-          ## .github/workflows/retry.sh sudo apt-get install --quiet -y wine32
+          .github/workflows/retry.sh sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+          .github/workflows/retry.sh sudo apt install --quiet -y mingw-w64 wine-stable winetricks
+          ## .github/workflows/retry.sh sudo apt install --quiet -y wine32
 
       - name: Turn off the wine crash dialog
         run: winetricks nocrashdialog

@@ -31,13 +31,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           # The following is needed for examples/wkhtmltopdf.v
           .github/workflows/retry.sh wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          .github/workflows/retry.sh sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
-          .github/workflows/retry.sh sudo apt-get install --quiet -y expect
+          .github/workflows/retry.sh sudo apt install --quiet -y xfonts-75dpi xfonts-base
+          .github/workflows/retry.sh sudo apt install --quiet -y expect
           .github/workflows/retry.sh sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
@@ -118,9 +118,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
         run: make -j4 && ./v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
@@ -225,10 +225,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          .github/workflows/retry.sh sudo apt-get install --quiet -y clang
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt install --quiet -y clang
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
@@ -327,7 +327,7 @@ jobs:
   #   - uses: actions/checkout@v4
   #   - name: Install dependencies
   #     run: |
-  #        .github/workflows/retry.sh sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #        .github/workflows/retry.sh sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
   #   - name: Build v
   #     run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
   #   # - name: Test v binaries

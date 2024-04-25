@@ -78,10 +78,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          .github/workflows/retry.sh sudo apt-get install --quiet -y g++-9 g++-11
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          .github/workflows/retry.sh sudo apt install --quiet -y g++-9 g++-11
 
       - name: Build v
         run: make

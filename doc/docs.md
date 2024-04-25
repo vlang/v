@@ -6986,7 +6986,7 @@ v -os linux .
 For Ubuntu/Debian based distributions:
 
 ```shell
-sudo apt-get install gcc-mingw-w64-x86-64
+sudo apt install gcc-mingw-w64-x86-64
 ```
 
 For Arch based distributions:
