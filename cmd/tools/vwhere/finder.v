@@ -1,7 +1,7 @@
 module main
 
 import os
-import term
+import term { colorize }
 import regex
 import os.cmdline
 
@@ -19,41 +19,45 @@ mut:
 }
 
 fn (mut fdr Finder) configure_from_arguments(args []string) {
-	match args.len {
-		1 {
-			fdr.name = args[0]
-		}
-		else {
-			fdr.symbol.set_from_str(args[0])
-			if fdr.symbol == .method && !args[1].contains('.') {
-				make_and_print_error('method require a special notation:', [
-					'Receiver.method',
-				], '${args[1]}')
-			} else if fdr.symbol == .method {
-				temp_args := args[1].split('.')
-				fdr.receiver = temp_args[0]
-				fdr.name = temp_args[1]
-			} else {
-				fdr.name = args[1]
-			}
-			if fdr.name.contains('-') {
-				make_and_print_error('It seems you forgot positional arg name:', [], fdr.name)
-			}
-			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
-			if fdr.symbol == .var && fdr.visib != .all {
-				make_and_print_error('-vis ${fdr.visib} just can be set with symbol_type:',
-					['fn', 'method', 'const', 'struct', 'enum', 'interface', 'regexp'],
-					'${fdr.symbol}')
-			}
-			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
-			if fdr.symbol != .var && fdr.mutab != .any {
-				make_and_print_error('-mut ${fdr.mutab} just can be set with symbol_type:',
-					['var'], '${fdr.symbol}')
-			}
-			fdr.modul = cmdline.option(args, '-mod', '')
-			fdr.dirs = cmdline.options(args, '-dir')
-		}
+	if args.len == 1 {
+		fdr.name = args[0]
+		return
 	}
+	fdr.symbol.set_from_str(args[0])
+	if fdr.symbol == .method && !args[1].contains('.') {
+		make_and_print_error('method require a special notation:', [
+			'Receiver.method',
+		], '${args[1]}')
+	} else if fdr.symbol == .method {
+		temp_args := args[1].split('.')
+		fdr.receiver = temp_args[0]
+		fdr.name = temp_args[1]
+	} else {
+		fdr.name = args[1]
+	}
+	if fdr.name.contains('-') {
+		make_and_print_error('It seems you forgot positional arg name:', [], fdr.name)
+	}
+	fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
+	if fdr.symbol == .var && fdr.visib != .all {
+		make_and_print_error('-vis ${fdr.visib} just can be set with symbol_type:', [
+			'fn',
+			'method',
+			'const',
+			'struct',
+			'enum',
+			'interface',
+			'regexp',
+		], '${fdr.symbol}')
+	}
+	fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
+	if fdr.symbol != .var && fdr.mutab != .any {
+		make_and_print_error('-mut ${fdr.mutab} just can be set with symbol_type:', [
+			'var',
+		], '${fdr.symbol}')
+	}
+	fdr.modul = cmdline.option(args, '-mod', '')
+	fdr.dirs = cmdline.options(args, '-dir')
 }
 
 fn (mut fdr Finder) search_for_matches() {
@@ -78,16 +82,13 @@ fn (mut fdr Finder) search_for_matches() {
 				panic(err)} }
 		paths_to_search << fdr.dirs.map(resolve_module(it) or { panic(err) })
 	}
-	// for p in paths_to_search {
-	// 	println(p)
-	// }
+
+	// dump(paths_to_search)
 	mut files_to_search := []string{}
-	for path in paths_to_search {
-		files_to_search << collect_v_files(path, recursive) or { panic(err) }
+	for p in paths_to_search {
+		files_to_search << collect_v_files(p, recursive) or { panic(err) }
 	}
-	// for f in files_to_search {
-	// 	println(f)
-	// }
+	// dump(files_to_search)
 
 	// Auxiliary rgx
 	sp := r'\s*'
@@ -104,26 +105,14 @@ fn (mut fdr Finder) search_for_matches() {
 	na := '${fdr.name}'
 
 	query := match fdr.symbol {
-		.@fn {
-			'.*${sy}${sp}${na}${sp}${op}.*${cp}.*'
-		}
-		.method {
-			'.*fn${st}${na}${sp}${op}.*${cp}.*'
-		}
-		.var {
-			'.*${na}${sp}:=.*'
-		}
-		.@const {
-			'.*${na}${sp} = .*'
-		}
-		.regexp {
-			'${na}'
-		}
-		else {
-			'.*${sy}${sp}${na}${sp}.*' // for struct, enum and interface
-		}
+		.@fn { '.*${sy}${sp}${na}${sp}${op}.*${cp}.*' }
+		.method { '.*fn${st}${na}${sp}${op}.*${cp}.*' }
+		.var { '.*${na}${sp}:=.*' }
+		.@const { '.*${na}${sp} = .*' }
+		.regexp { '${na}' }
+		else { '.*${sy}${sp}${na}${sp}.*' } // struct, enum, interface
 	}
-	// println(query)
+	// dump(query)
 	for file in files_to_search {
 		fdr.search_within_file(file, query)
 	}
@@ -192,10 +181,10 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 fn (fdr Finder) show_results() {
 	if fdr.matches.len < 1 && (verbose || header) {
 		print(fdr)
-		println(maybe_color(term.bright_yellow, 'No Matches found'))
+		println(colorize(term.bright_yellow, 'No Matches found'))
 	} else if verbose || header {
 		print(fdr)
-		println(maybe_color(term.bright_green, '${fdr.matches.len} matches Found\n'))
+		println(colorize(term.bright_green, '${fdr.matches.len} matches Found\n'))
 		for result in fdr.matches {
 			result.show()
 		}
@@ -207,15 +196,15 @@ fn (fdr Finder) show_results() {
 }
 
 fn (fdr Finder) str() string {
-	v := maybe_color(term.bright_red, '${fdr.visib}')
-	m := maybe_color(term.bright_red, '${fdr.mutab}')
+	v := colorize(term.bright_red, '${fdr.visib}')
+	m := colorize(term.bright_red, '${fdr.mutab}')
 	st := if fdr.receiver != '' { ' ( _ ${fdr.receiver})' } else { '' }
-	s := maybe_color(term.bright_magenta, '${fdr.symbol}')
-	n := maybe_color(term.bright_cyan, '${fdr.name}')
+	s := colorize(term.bright_magenta, '${fdr.symbol}')
+	n := colorize(term.bright_cyan, '${fdr.name}')
 
-	mm := if fdr.modul != '' { maybe_color(term.blue, '${fdr.modul}') } else { '' }
+	mm := if fdr.modul != '' { colorize(term.blue, '${fdr.modul}') } else { '' }
 	dd := if fdr.dirs.len != 0 {
-		fdr.dirs.map(maybe_color(term.blue, it))
+		fdr.dirs.map(colorize(term.blue, it))
 	} else {
 		fdr.dirs
 	}
@@ -241,9 +230,9 @@ struct Match {
 }
 
 fn (mtc Match) show() {
-	path := maybe_color(term.bright_magenta, mtc.path)
-	line := maybe_color(term.bright_yellow, '${mtc.line}')
-	text := maybe_color(term.bright_green, '${mtc.text}')
+	path := colorize(term.bright_magenta, mtc.path)
+	line := colorize(term.bright_yellow, '${mtc.line}')
+	text := colorize(term.bright_green, '${mtc.text}')
 	if verbose || format {
 		println('${path}\n${line} : [ ${text} ]\n')
 	} else {
