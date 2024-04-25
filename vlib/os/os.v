@@ -154,6 +154,18 @@ pub fn read_lines(path string) ![]string {
 	return res
 }
 
+// write_lines writes the given array of `lines` to `path`.
+// The lines are separated by `\n` .
+pub fn write_lines(path string, lines []string) ! {
+	mut f := create(path)!
+	defer {
+		f.close()
+	}
+	for line in lines {
+		f.writeln(line)!
+	}
+}
+
 // sigint_to_signal_name will translate `si` signal integer code to it's string code representation.
 pub fn sigint_to_signal_name(si int) string {
 	// POSIX signals:

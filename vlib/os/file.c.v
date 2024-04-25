@@ -282,20 +282,7 @@ pub fn (mut f File) writeln(s string) !int {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	/*
-	$if linux {
-		$if !android {
-			snl := s + '\n'
-			C.syscall(sys_write, f.fd, snl.str, snl.len)
-			return
-		}
-	}
-	*/
-	// TODO: perf
-	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
-	if written == 0 && s.len != 0 {
-		return error('0 bytes written')
-	}
+	written := f.write_string(s)!
 	x := C.fputs(c'\n', f.cfile)
 	if x < 0 {
 		return error('could not add newline')
