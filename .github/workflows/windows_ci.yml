@@ -103,7 +103,9 @@ jobs:
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
-        run: ./v -cg cmd\tools\vtest-self.v && ./v test-self vlib
+        run: |
+          ./v -cg cmd\tools\vtest-self.v
+          ./v test-self vlib
       # - name: Test
       #   run: .\v.exe test-all
       - name: Test v->js
