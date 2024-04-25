@@ -25,7 +25,8 @@ struct Lol {
 
 struct User {
 	name string
-	age  int
+mut:
+	age int
 }
 
 struct Foo {
@@ -259,6 +260,10 @@ fn bar_config(c Config, def int) {
 
 fn foo_user(u User) {}
 
+fn foo_mut_user(mut u User) {
+	u.age++
+}
+
 fn test_struct_literal_args() {
 	foo_config(20,
 		n: 10
@@ -275,6 +280,10 @@ fn test_struct_literal_args() {
 	foo_user(name: 'Peter')
 	foo_user(age: 7)
 	foo_user(name: 'Stew', age: 50)
+
+	mut user := User{'Stew', 50}
+	foo_mut_user(mut user)
+	assert user.age == 51
 }
 
 struct City {
