@@ -107,7 +107,7 @@ fn invalid_option(invalid ParamOption, arg string) {
 
 fn valid_args_quantity_or_show_help(args []string) {
 	if true in [
-		args.len < 1,
+		(args.len < 1),
 		'-help' in args,
 		'--help' in args,
 		args == ['help'],
