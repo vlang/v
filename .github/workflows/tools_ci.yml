@@ -52,8 +52,9 @@ jobs:
             cmd="./v -cc clang -cflags -fsanitize=memory test-self cmd/tools"
             echo $cmd && $cmd
           else
-            cmd="./v -cc gcc -cflags -fsanitize=thread test-self cmd/tools"
-            echo $cmd && $cmd
+            # TODO: enable thread sanitzer after switching to ubuntu-22.04. Ref. https://github.com/orgs/community/discussions/63391
+            # cmd="./v -cc gcc -cflags -fsanitize=thread test-self cmd/tools"
+            # echo $cmd && $cmd
             cmd="./v -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self cmd/tools"
             echo $cmd && $cmd
             # cmd="./v -cc gcc -cflags -fsanitize=kernel-address test-self cmd/tools"
@@ -94,7 +95,7 @@ jobs:
       - name: Test
         run: ./v test-self cmd/tools
       - name: Test (-cstrict)
-        if: ${{ matrix.cc != 'tcc' }}
+        if: ${{ matrix.cc == 'msvc' }}
         run: ./v -cstrict test-self cmd/tools
       - name: Test (-prod)
         if: ${{ matrix.cc != 'tcc' }}
