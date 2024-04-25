@@ -255,7 +255,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						param.type_pos)
 				}
 				if param.is_mut && arg_typ_sym.info.attrs.any(it.name == 'params') {
-					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed',
 						param.type_pos)
 				}
