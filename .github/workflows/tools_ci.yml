@@ -36,28 +36,25 @@ jobs:
       - name: Build V
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Test
-        run: ./v test-self cmd/tools
+        run: ./v test-self cmd
       - name: Test (-cstrict)
         if: ${{ matrix.cc != 'tcc' }}
-        run: ./v -cstrict test-self cmd/tools
-      - name: Test (-prod)
-        if: ${{ matrix.cc != 'tcc' }}
-        run: ./v -prod test-self cmd/tools
+        run: ./v -W -cstrict test-self cmd
       - name: Test sanitized
         if: ${{ matrix.cc != 'tcc' }}
         run: |
           if [[ ${{ matrix.cc }} == "clang" ]]; then
-            cmd="./v -cc clang -cflags -fsanitize=undefined test-self cmd/tools"
+            cmd="./v -cc clang -cflags -fsanitize=undefined test-self cmd"
             echo $cmd && $cmd
-            cmd="./v -cc clang -cflags -fsanitize=memory test-self cmd/tools"
+            cmd="./v -cc clang -cflags -fsanitize=memory test-self cmd"
             echo $cmd && $cmd
           else
             # TODO: enable thread sanitzer after switching to ubuntu-22.04. Ref. https://github.com/orgs/community/discussions/63391
-            # cmd="./v -cc gcc -cflags -fsanitize=thread test-self cmd/tools"
+            # cmd="./v -cc gcc -cflags -fsanitize=thread test-self cmd"
             # echo $cmd && $cmd
             cmd="./v -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self cmd/tools"
             echo $cmd && $cmd
-            # cmd="./v -cc gcc -cflags -fsanitize=kernel-address test-self cmd/tools"
+            # cmd="./v -cc gcc -cflags -fsanitize=kernel-address test-self cmd"
             # echo $cmd && $cmd
           fi
 
@@ -74,11 +71,9 @@ jobs:
       - name: Build V
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
       - name: Test
-        run: ./v test-self cmd/tools
+        run: ./v test-self cmd
       - name: Test (-cstrict)
-        run: ./v -cstrict test-self cmd/tools
-      - name: Test (-prod)
-        run: ./v -prod test-self cmd/tools
+        run: ./v -W -cstrict test-self cmd
 
   windows:
     runs-on: windows-2019
@@ -93,10 +88,7 @@ jobs:
       - name: Build V
         run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
       - name: Test
-        run: ./v test-self cmd/tools
+        run: ./v test-self cmd
       - name: Test (-cstrict)
         if: ${{ matrix.cc == 'msvc' }}
-        run: ./v -cstrict test-self cmd/tools
-      - name: Test (-prod)
-        if: ${{ matrix.cc != 'tcc' }}
-        run: ./v -prod test-self cmd/tools
+        run: ./v -W -cstrict test-self cmd
