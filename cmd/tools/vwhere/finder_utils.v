@@ -1,7 +1,7 @@
 module main
 
 import os
-import term { colorize }
+import term { bright_green, bright_red, bright_yellow, colorize }
 import os.cmdline
 
 // Symbol type to search
@@ -106,17 +106,17 @@ fn invalid_option(invalid ParamOption, arg string) {
 
 fn make_and_print_error(msg string, opts []string, arg string) {
 	if verbose || format {
-		eprintln('\n' + colorize(term.bright_yellow, msg))
+		eprintln('\n' + colorize(bright_yellow, msg))
 		if opts.len > 0 {
-			eprint(opts.map(colorize(term.bright_green, it)).join(' | '))
+			eprint(opts.map(colorize(bright_green, it)).join(' | '))
 		}
-		eprintln(' ...can not be ${colorize(term.bright_red, arg)}')
+		eprintln(' ...can not be ${colorize(bright_red, arg)}')
 	} else {
-		eprint(colorize(term.bright_yellow, msg) + ' ')
+		eprint(colorize(bright_yellow, msg) + ' ')
 		if opts.len > 0 {
-			eprint(opts.map(colorize(term.bright_green, it)).join(' | '))
+			eprint(opts.map(colorize(bright_green, it)).join(' | '))
 		}
-		eprintln(' ...can not be ${colorize(term.bright_red, arg)}')
+		eprintln(' ...can not be ${colorize(bright_red, arg)}')
 	}
 	exit(1)
 }

@@ -1,7 +1,7 @@
 module main
 
 import os
-import term { colorize }
+import term { blue, bright_cyan, bright_green, bright_magenta, bright_red, bright_yellow, colorize }
 import regex
 import os.cmdline
 
@@ -181,10 +181,10 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 fn (fdr Finder) show_results() {
 	if fdr.matches.len < 1 && (verbose || header) {
 		print(fdr)
-		println(colorize(term.bright_yellow, 'No Matches found'))
+		println(colorize(bright_yellow, 'No Matches found'))
 	} else if verbose || header {
 		print(fdr)
-		println(colorize(term.bright_green, '${fdr.matches.len} matches Found\n'))
+		println(colorize(bright_green, '${fdr.matches.len} matches Found\n'))
 		for result in fdr.matches {
 			result.show()
 		}
@@ -196,15 +196,15 @@ fn (fdr Finder) show_results() {
 }
 
 fn (fdr Finder) str() string {
-	v := colorize(term.bright_red, '${fdr.visib}')
-	m := colorize(term.bright_red, '${fdr.mutab}')
+	v := colorize(bright_red, '${fdr.visib}')
+	m := colorize(bright_red, '${fdr.mutab}')
 	st := if fdr.receiver != '' { ' ( _ ${fdr.receiver})' } else { '' }
-	s := colorize(term.bright_magenta, '${fdr.symbol}')
-	n := colorize(term.bright_cyan, '${fdr.name}')
+	s := colorize(bright_magenta, '${fdr.symbol}')
+	n := colorize(bright_cyan, '${fdr.name}')
 
-	mm := if fdr.modul != '' { colorize(term.blue, '${fdr.modul}') } else { '' }
+	mm := if fdr.modul != '' { colorize(blue, '${fdr.modul}') } else { '' }
 	dd := if fdr.dirs.len != 0 {
-		fdr.dirs.map(colorize(term.blue, it))
+		fdr.dirs.map(colorize(blue, it))
 	} else {
 		fdr.dirs
 	}
@@ -230,9 +230,9 @@ struct Match {
 }
 
 fn (mtc Match) show() {
-	path := colorize(term.bright_magenta, mtc.path)
-	line := colorize(term.bright_yellow, '${mtc.line}')
-	text := colorize(term.bright_green, '${mtc.text}')
+	path := colorize(bright_magenta, mtc.path)
+	line := colorize(bright_yellow, '${mtc.line}')
+	text := colorize(bright_green, '${mtc.text}')
 	if verbose || format {
 		println('${path}\n${line} : [ ${text} ]\n')
 	} else {
