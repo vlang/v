@@ -4,6 +4,7 @@
 import os
 import time
 import arrays
+import log
 
 const warmup_samples = 2
 
@@ -25,7 +26,7 @@ fn elog(msg string) {
 		f.write_string(line) or {}
 		f.close()
 	}
-	eprint(line)
+	log.info(msg)
 }
 
 fn lsystem(cmd string) int {
@@ -74,8 +75,8 @@ fn main() {
 
 	// fetch the last commit's hash
 	commit := lexec('git rev-parse HEAD')[..8]
-	if os.exists('website/index.html') {
-		uploaded_index := os.read_file('website/index.html')!
+	if os.exists('fast.vlang.io/index.html') {
+		uploaded_index := os.read_file('fast.vlang.io/index.html')!
 		if uploaded_index.contains('>${commit}<') {
 			elog('NOTE: commit ${commit} had been benchmarked already.')
 			if !os.args.contains('-force') {
@@ -159,13 +160,28 @@ fn main() {
 
 	// upload the result to github pages
 	if os.args.contains('-upload') {
-		elog('uploading...')
-		os.chdir('website')!
+		os.chdir('${fast_dir}/fast.vlang.io/')!
+		elog('Uploading to fast.vlang.io/ ...')
 		lexec('git checkout gh-pages')
 		os.mv('../index.html', 'index.html')!
-		lsystem('git commit -am "update benchmark for commit ${commit}"')
+		elog('   adding changes...')
+		lsystem('git commit -am "update fast.vlang.io for commit ${commit}"')
+		elog('   pushing...')
 		lsystem('git push origin gh-pages')
-		elog('uploading done')
+		elog('uploading to fast.vlang.io/ done')
+		os.chdir(fast_dir)!
+
+		os.chdir('${fast_dir}/docs.vlang.io/')!
+		elog('Uploading to docs.vlang.io/ ...')
+		elog('   running build.vsh...')
+		lexec('${vdir}/vprod run build.vsh')
+		elog('   adding changes...')
+		lsystem('git add .')
+		lsystem('git commit -am "update docs for commit ${commit}"')
+		elog('   pushing...')
+		lsystem('git push')
+		elog('uploading to fast.vlang.io/ done')
+		os.chdir(fast_dir)!
 	}
 }
 
