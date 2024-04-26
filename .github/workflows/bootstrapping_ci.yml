@@ -35,9 +35,8 @@ jobs:
           fetch-depth: 10
       - name: Build V
         run: make -j4
-      - name: Test bootstrapping (self-hosting compiler)
+      - name: Test bootstrapping (v.c can be compiled and run with -os cross)
         run: |
-          ## Ensure v.c can be compiled and run with -os cross.
           ls -la v vc/v.c
           ./v -os cross -o vc/v.c cmd/v
           cc $B_CFLAGS -o v_from_vc vc/v.c $B_LFLAGS
@@ -46,11 +45,11 @@ jobs:
           ./v_from_vc run examples/hello_world.v
           ./v_from_vc -o v_from_vc_produced_native_v cmd/v
           ./v_from_vc_produced_native_v run examples/hello_world.v
-          ## The next make invocation will simulate building V from scratch.
+          ### the next make invocation will simulate building V from scratch
           make local=1
           ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
           ./v_from_vc_produced_native_v -os cross -o vc/v.c cmd/v
-          ## Do it a second time, just in case.
+          ### do it a second time, just in case:
           clang $B_CFLAGS -o v_from_vc2 vc/v.c $B_LFLAGS
           ls -lart v_from_vc2
           ./v_from_vc2 version
