@@ -76,7 +76,7 @@ fn test_out_files() {
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
 				if n_found.starts_with(n_expected) {
-					println('${term.green('OK (panic)')} C:${compile_ms:5}ms, R:${run_ms:2}ms ${label}')
+					println('${term.green('OK (panic)')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
 					continue
 				} else {
 					// Both have panics, but there was a difference...
@@ -88,7 +88,7 @@ fn test_out_files() {
 			}
 		}
 		if expected != found {
-			println('${term.red('FAIL')} C:${compile_ms:5}ms, R:${run_ms:2}ms ${label}')
+			println('${term.red('FAIL')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
 			println(term.header('expected:', '-'))
 			println(expected)
 			println(term.header('found:', '-'))
@@ -101,7 +101,7 @@ fn test_out_files() {
 			}
 			total_errors++
 		} else {
-			println('${term.green('OK  ')} C:${compile_ms:5}ms, R:${run_ms:2}ms ${label}')
+			println('${term.green('OK  ')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
 		}
 	}
 	assert total_errors == 0

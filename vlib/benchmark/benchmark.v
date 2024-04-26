@@ -188,7 +188,7 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 			}
 		}
 		if opts.preparation > 0 {
-			return '${label:-5s} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:6.1F} ms, R: ${timed_line}'
+			return '${label:-5s} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:7.1F} ms, R: ${timed_line}'
 		}
 		return '${label:-5s} [${sprogress}] ${timed_line}'
 	}
