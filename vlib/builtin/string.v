@@ -1524,7 +1524,7 @@ pub fn (s string) to_lower() string {
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
-	if s.len > 0 && s[0].is_digit() {
+	if s == '' || s[0].is_digit() {
 		return false
 	}
 	for i in 0 .. s.len {
@@ -1558,7 +1558,7 @@ pub fn (s string) to_upper() string {
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {
-	if s.len > 0 && s[0].is_digit() {
+	if s == '' || s[0].is_digit() {
 		return false
 	}
 	for i in 0 .. s.len {
