@@ -21,7 +21,7 @@ sudo systemctl start  postgresql
 ### Ubuntu/Debian
 
 ```
-sudo apt-get install postgresql postgresql-client
+sudo apt install postgresql postgresql-client
 sudo systemctl enable postgresql # to autostart on startup
 sudo systemctl start  postgresql
 ```
@@ -41,7 +41,7 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 
 ## Installing libpq-dev or its equivalent for your OS:
 
-**Ubuntu/Debian**: `sudo apt-get install libpq-dev`
+**Ubuntu/Debian**: `sudo apt install libpq-dev`
 
 **Red Hat Linux (RHEL)**: `yum install postgresql-devel`
 

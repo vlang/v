@@ -28,8 +28,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install build-essential meson -y
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt install build-essential meson -y
 
       - name: Build V
         run: make
