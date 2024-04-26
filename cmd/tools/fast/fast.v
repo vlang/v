@@ -160,6 +160,11 @@ fn main() {
 
 	// upload the result to github pages
 	if os.args.contains('-upload') {
+		$if freebsd {
+			// Note: tcc currently can not compile vpm on FreeBSD, due to its dependence on net.ssl and net.mbedtls, so force using clang instead:
+			lexec('${vdir}/vprod -cc clang ${vdir}/cmd/tools/vpm/')
+		}
+
 		os.chdir('${fast_dir}/fast.vlang.io/')!
 		elog('Uploading to fast.vlang.io/ ...')
 		lexec('git checkout gh-pages')
@@ -173,6 +178,8 @@ fn main() {
 
 		os.chdir('${fast_dir}/docs.vlang.io/')!
 		elog('Uploading to docs.vlang.io/ ...')
+		elog('   installing dependencies...')
+		lexec('${vdir}/vprod install')
 		elog('   running build.vsh...')
 		lexec('${vdir}/vprod run build.vsh')
 		elog('   adding changes...')
