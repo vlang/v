@@ -175,22 +175,24 @@ fn main() {
 		lexec('git checkout gh-pages')
 		os.mv('../index.html', 'index.html')!
 		elog('   adding changes...')
-		lsystem('git commit -am "update fast.vlang.io for commit ${commit}"')
+		lexec('git commit -am "update fast.vlang.io for commit ${commit}"')
 		elog('   pushing...')
-		lsystem('git push origin gh-pages')
+		lexec('git push origin gh-pages')
 		elog('   uploading to fast.vlang.io/ done')
 		os.chdir(fast_dir)!
 
 		os.chdir('${fast_dir}/docs.vlang.io/')!
 		elog('Uploading to docs.vlang.io/ ...')
+		elog('   pulling upstream changes...')
+		lexec('git pull')
 		elog('   running build.vsh...')
 		lexec('${vdir}/vprod run build.vsh')
-		elog('   adding changes...')
-		lsystem('git add .')
+		elog('   adding new docs...')
+		lexec('git add .')
 		elog('   commiting...')
-		lsystem('git commit -am "update docs for commit ${commit}"')
+		lexec('git commit -am "update docs for commit ${commit}"')
 		elog('   pushing...')
-		lsystem('git push')
+		lexec('git push')
 		elog('   uploading to fast.vlang.io/ done')
 		os.chdir(fast_dir)!
 	}
