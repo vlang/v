@@ -110,6 +110,14 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	if p.output_cross_c {
+		// avoid linking any GC related code, since the target may not have an usable GC system
+		p.gc_mode = .no_gc
+		p.use_cache = false
+		p.skip_unused = false
+		p.parse_define('no_backtrace') // the target may not have usable backtrace() and backtrace_symbols()
+		p.parse_define('cross') // TODO: remove when `$if cross {` works
+	}
 	if p.gc_mode == .unknown {
 		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
 			p.gc_mode = .no_gc

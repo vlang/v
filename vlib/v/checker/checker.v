@@ -2453,6 +2453,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		'pkgconfig' {
+			if c.pref.output_cross_c {
+				// do not add any flags, since we do not know what the target platform is for the cross platform builds
+				// and it is better to be as conservative as possible
+				return
+			}
 			args := if node.main.contains('--') {
 				node.main.split(' ')
 			} else {
