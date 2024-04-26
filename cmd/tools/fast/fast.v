@@ -162,7 +162,12 @@ fn main() {
 	if os.args.contains('-upload') {
 		$if freebsd {
 			// Note: tcc currently can not compile vpm on FreeBSD, due to its dependence on net.ssl and net.mbedtls, so force using clang instead:
+			elog('FreeBSD: compiling the VPM tool with clang...')
 			lexec('${vdir}/vprod -cc clang ${vdir}/cmd/tools/vpm/')
+			os.chdir('${fast_dir}/docs.vlang.io/docs_generator/')!
+			elog('FreeBSD: installing the dependencies for the docs generator...')
+			lexec('${vdir}/vprod install')
+			os.chdir(fast_dir)!
 		}
 
 		os.chdir('${fast_dir}/fast.vlang.io/')!
@@ -173,21 +178,20 @@ fn main() {
 		lsystem('git commit -am "update fast.vlang.io for commit ${commit}"')
 		elog('   pushing...')
 		lsystem('git push origin gh-pages')
-		elog('uploading to fast.vlang.io/ done')
+		elog('   uploading to fast.vlang.io/ done')
 		os.chdir(fast_dir)!
 
 		os.chdir('${fast_dir}/docs.vlang.io/')!
 		elog('Uploading to docs.vlang.io/ ...')
-		elog('   installing dependencies...')
-		lexec('${vdir}/vprod install')
 		elog('   running build.vsh...')
 		lexec('${vdir}/vprod run build.vsh')
 		elog('   adding changes...')
 		lsystem('git add .')
+		elog('   commiting...')
 		lsystem('git commit -am "update docs for commit ${commit}"')
 		elog('   pushing...')
 		lsystem('git push')
-		elog('uploading to fast.vlang.io/ done')
+		elog('   uploading to fast.vlang.io/ done')
 		os.chdir(fast_dir)!
 	}
 }
