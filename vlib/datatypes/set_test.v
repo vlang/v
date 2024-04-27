@@ -108,6 +108,20 @@ fn test_difference() {
 	assert third_set.exists('boo')
 }
 
+fn test_diff() {
+	m := ['a', 'b', 'c']
+	n := ['a', 'b', 'c']
+	assert m == n
+	mut set_m := Set[string]{}
+	mut set_n := Set[string]{}
+	set_m.add_all(m)
+	set_n.add_all(n)
+	assert set_m == set_n
+	diff1 := set_m - set_n
+	diff2 := set_n - set_m
+	assert diff1 == diff2
+}
+
 fn test_subset() {
 	mut set := Set[string]{}
 	set.add_all(['a', 'b', 'c'])
