@@ -1,67 +1,6 @@
 import os
 
-$if windows {
-	$if tinyc {
-		#flag -ladvapi32
-		#flag -luser32
-	}
-}
-
-fn main() {
-	at_exit(|| os.rmdir_all(os.vtmp_dir()) or {}) or {}
-
-	if os.args.len > 3 {
-		print('usage: v symlink [OPTIONS]')
-		exit(1)
-	}
-	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-
-	if '-githubci' in os.args {
-		setup_symlink_github()
-	} else {
-		setup_symlink_windows(vexe)
-		setup_symlink_unix(vexe)
-	}
-}
-
-fn setup_symlink_github() {
-	// We append V's install location (which should
-	// be the current directory) to the PATH environment variable.
-
-	// Resources:
-	// 1. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
-	// 2. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-environment-variable
-	mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
-		eprintln('The `GITHUB_PATH` env variable is not defined.')
-		eprintln('    This command: `v symlink -githubci` is intended to be used within GithubActions .yml files.')
-		eprintln('    It also needs to be run *as is*, *** without `sudo` ***, otherwise it will not work.')
-		eprintln('    For local usage, outside CIs, on !windows, prefer `sudo ./v symlink` .')
-		eprintln('    On windows, use `.\\v.exe symlink` instead.')
-		exit(1)
-	}
-	content += '\n${os.getwd()}\n'
-	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
-}
-
-@[if !windows]
-fn setup_symlink_unix(vexe string) {
-	mut link_path := '/data/data/com.termux/files/usr/bin/v'
-	if !os.is_dir('/data/data/com.termux/files') {
-		link_dir := '/usr/local/bin'
-		if !os.exists(link_dir) {
-			os.mkdir_all(link_dir) or { panic(err) }
-		}
-		link_path = link_dir + '/v'
-	}
-	os.rm(link_path) or {}
-	os.symlink(vexe, link_path) or {
-		eprintln('Failed to create symlink "${link_path}". Try again with sudo.')
-		exit(1)
-	}
-}
-
-@[if windows]
-fn setup_symlink_windows(vexe string) {
+fn setup_symlink(vexe string) {
 	// Create a symlink in a new local folder (.\.bin\.v.exe)
 	// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
 	// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
@@ -150,7 +89,6 @@ fn warn_and_exit(err string) {
 }
 
 // get the system environment registry handle
-@[if windows]
 fn get_reg_sys_env_handle() !voidptr {
 	// open the registry key
 	reg_key_path := 'Environment'
@@ -162,7 +100,6 @@ fn get_reg_sys_env_handle() !voidptr {
 }
 
 // get a value from a given $key
-@[if windows]
 fn get_reg_value(reg_env_key voidptr, key string) !string {
 	// query the value (shortcut the sizing step)
 	reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
@@ -174,7 +111,6 @@ fn get_reg_value(reg_env_key voidptr, key string) !string {
 }
 
 // sets the value for the given $key to the given  $value
-@[if windows]
 fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 	if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(), value.len * 2) != 0 {
 		return error('Unable to set registry value for "${key}". %PATH% may be too long.')
@@ -184,7 +120,6 @@ fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 
 // Broadcasts a message to all listening windows (explorer.exe in particular)
 // letting them know that the system environment has changed and should be reloaded
-@[if windows]
 fn send_setting_change_msg(message_data string) !bool {
 	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
 		os.smto_abortifhung, 5000, 0) == 0 {
