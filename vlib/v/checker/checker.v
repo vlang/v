@@ -1308,7 +1308,8 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		// allow `f() or {}`
 		return
 	}
-	mut last_stmt := node.stmts.last()
+	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
+	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
 	c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
 }
 
