@@ -1,11 +1,6 @@
 import os
 
-$if windows {
-	$if tinyc {
-		#flag -ladvapi32
-		#flag -luser32
-	}
-}
+const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 fn main() {
 	at_exit(|| os.rmdir_all(os.vtmp_dir()) or {}) or {}
@@ -14,12 +9,11 @@ fn main() {
 		print('usage: v symlink [OPTIONS]')
 		exit(1)
 	}
-	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 	if '-githubci' in os.args {
 		setup_symlink_github()
 	} else {
-		setup_symlink(vexe)
+		setup_symlink()
 	}
 }
 

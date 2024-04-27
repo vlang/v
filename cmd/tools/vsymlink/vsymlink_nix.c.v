@@ -1,6 +1,6 @@
 import os
 
-fn setup_symlink(vexe string) {
+fn setup_symlink() {
 	mut link_path := '/data/data/com.termux/files/usr/bin/v'
 	if !os.is_dir('/data/data/com.termux/files') {
 		link_dir := '/usr/local/bin'

@@ -1,6 +1,11 @@
 import os
 
-fn setup_symlink(vexe string) {
+$if tinyc {
+	#flag -ladvapi32
+	#flag -luser32
+}
+
+fn setup_symlink() {
 	// Create a symlink in a new local folder (.\.bin\.v.exe)
 	// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
 	// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
