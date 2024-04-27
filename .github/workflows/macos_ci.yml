@@ -6,14 +6,14 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
-      - 'cmd/tools'
+      - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
-      - 'cmd/tools'
+      - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
 concurrency:
