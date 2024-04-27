@@ -20,6 +20,9 @@ fn test_wasm() {
 
 	if !runtime_found {
 		eprintln('cannot find suitable wasm runtime, exiting...')
+		if os.getenv('VTEST_ONLY') == 'wasm' {
+			exit(1)
+		}
 		exit(0)
 	}
 
