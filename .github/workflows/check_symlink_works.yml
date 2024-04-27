@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'cmd/tools/vsymlink.v'
+      - 'cmd/tools/vsymlink/**.v'
       - '.github/workflows/check_symlink_works.yml'
   pull_request:
     paths:
-      - 'cmd/tools/vsymlink.v'
+      - 'cmd/tools/vsymlink/**.v'
       - '.github/workflows/check_symlink_works.yml'
 
 jobs:
