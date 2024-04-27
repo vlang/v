@@ -2654,6 +2654,9 @@ fn (mut p Parser) name_expr() ast.Expr {
 		first_pos := p.tok.pos()
 		mut last_pos := first_pos
 		mut elem_type_pos := p.peek_tok.pos()
+		if p.peek_tok.kind in [.question, .not] {
+			return p.error_with_pos('cannot use chan with Option or Result type', p.peek_tok.pos())
+		}
 		chan_type := p.parse_chan_type()
 		elem_type_pos = elem_type_pos.extend(p.prev_tok.pos())
 		mut has_cap := false
