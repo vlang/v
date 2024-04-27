@@ -30,14 +30,14 @@ fn test_wasm() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot, 'vlib/v/gen/wasm/tests')
-	files := os.ls(dir) or { panic(err) }
+	files := os.ls(dir)!
 	//
 	wrkdir := os.join_path(os.vtmp_dir(), 'wasm_tests')
-	os.mkdir_all(wrkdir) or { panic(err) }
+	os.mkdir_all(wrkdir)!
 	defer {
 		os.rmdir_all(wrkdir) or {}
 	}
-	os.chdir(wrkdir) or {}
+	os.chdir(wrkdir)!
 	mut tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no wasm tests found')
@@ -46,7 +46,7 @@ fn test_wasm() {
 	$if windows {
 		// FIXME:
 		if os.getenv('CI') == 'true' {
-			tests = tests.filter(it != 'arrays.vv' && it != 'asm.vv' && it != 'builtin.vv')
+			tests = tests.filter(it !in ['arrays.vv', 'asm.vv', 'builtin.vv'])
 		}
 	}
 	bench.set_total_expected_steps(tests.len)
@@ -69,7 +69,7 @@ fn test_wasm() {
 			eprintln(bench.step_message_fail(cmd))
 
 			if os.exists(tmperrfile) {
-				err := os.read_file(tmperrfile) or { panic(err) }
+				err := os.read_file(tmperrfile)!
 				eprintln(err)
 			}
 
