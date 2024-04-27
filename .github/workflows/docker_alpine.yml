@@ -3,14 +3,18 @@ name: Docker Alpine MUSL CI
 on:
   push:
     paths-ignore:
-      - "**.md"
-      - "**.yml"
+      - '**.md'
+      - '**.yml'
       - '!**/docker_alpine.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - "**.md"
-      - "**.yml"
+      - '**.md'
+      - '**.yml'
       - '!**/docker_alpine.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

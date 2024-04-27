@@ -92,3 +92,28 @@ jobs:
       - name: Test (-cstrict)
         if: ${{ matrix.cc == 'msvc' }}
         run: ./v -W -cstrict test-self cmd
+
+  ubuntu-docker-musl:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Test
+        run: ./v test-self cmd
+      - name: Test (-cstrict)
+        run: ./v -W -cstrict test-self cmd
