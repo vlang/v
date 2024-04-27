@@ -42,50 +42,27 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
-env:
-  VTEST_ONLY: wasm
-
 jobs:
-  wasm-backend-ubuntu:
-    runs-on: ubuntu-22.04
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-12, windows-2022]
+      fail-fast: false
     timeout-minutes: 121
+    env:
+      VTEST_ONLY: wasm
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        if: runner.os != 'Windows'
+        run: make -j4
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat
       - name: Build examples
         run: ./v build-examples
       - name: Setup Wasmer
         uses: wasmerio/setup-wasmer@v3.1
       - name: Test the WASM backend
         run: ./v test vlib/v/gen/wasm/tests/
-
-  wasm-backend-macos:
-    runs-on: macOS-12
-    timeout-minutes: 121
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: make -j4 && ./v symlink -githubci
-      - name: Build examples
-        run: ./v build-examples
-      - name: Setup Wasmer
-        uses: wasmerio/setup-wasmer@v3.1
-      - name: Test the WASM backend
-        run: ./v test vlib/v/gen/wasm/tests/
-
-  wasm-backend-windows:
-    runs-on: windows-2022
-    timeout-minutes: 121
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: ./make.bat -msvc
-      - name: Symlink V
-        run: ./v symlink -githubci
-      - name: Build examples
-        run: v build-examples
-      - name: Setup Wasmer
-        uses: wasmerio/setup-wasmer@v3.1
-      - name: Test the WASM backend
-        run: v test vlib/v/gen/wasm/tests/
