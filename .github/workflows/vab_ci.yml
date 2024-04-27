@@ -3,15 +3,19 @@ name: vab CI
 on:
   workflow_call:
   push:
-    paths-ignore:
-      - "**.md"
-      - '**.yml'
-      - '!**/vab_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/vab_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - '**.yml'
-      - '!**/vab_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/vab_ci.yml'
+      - '!**.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

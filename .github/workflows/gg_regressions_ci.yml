@@ -2,15 +2,19 @@ name: Graphics CI
 
 on:
   push:
-    paths-ignore:
-      - "**.md"
-      - '**.yml'
-      - '!**/gg_regressions_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/gg_regressions_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - '**.yml'
-      - '!**/gg_regressions_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/gg_regressions_ci.yml'
+      - '!**.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

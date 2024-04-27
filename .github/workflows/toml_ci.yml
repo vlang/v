@@ -2,15 +2,15 @@ name: toml CI
 
 on:
   push:
-    paths-ignore:
-      - "**.md"
-      - '**.yml'
-      - '!**/toml_ci.yml'
+    paths:
+      - 'vlib/**'
+      - '**/toml_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - '**.yml'
-      - '!**/toml_ci.yml'
+    paths:
+      - 'vlib/**'
+      - '**/toml_ci.yml'
+      - '!**.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

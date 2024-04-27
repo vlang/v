@@ -2,19 +2,13 @@ name: vlib modules CI
 
 on:
   pull_request:
-    paths-ignore:
-      - '**.vv'
-      - '**.out'
-      - '**.yml'
-      - '**.md'
-      - '!**/module_docs_ci.yml'
+    paths:
+      - 'vlib/**.v'
+      - '**/module_docs_ci.yml'
   push:
-    paths-ignore:
-      - '**.vv'
-      - '**.out'
-      - '**.yml'
-      - '**.md'
-      - '!**/module_docs_ci.yml'
+    paths:
+      - 'vlib/**.v'
+      - '**/module_docs_ci.yml'
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
