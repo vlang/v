@@ -39,6 +39,7 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
+      - '**/sanitized_ci.yml'
   pull_request:
     paths:
       - '!**'
@@ -64,6 +65,7 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
+      - '**/sanitized_ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -161,7 +163,7 @@ jobs:
           .\make.bat -msvc
           .\v.exe self
       - name: Ensure code is well formatted
-        run: v test-cleancode
+        run: ./v test-cleancode
       # - name: Install dependencies
       #   run: |
       #     .\v.exe setup-freetype
