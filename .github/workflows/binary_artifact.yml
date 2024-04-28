@@ -100,10 +100,10 @@ jobs:
            rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
-          cd ..
-          zip -r9 --symlinks $ZIPNAME v/
-          mv $ZIPNAME v/
-          cd v/
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v4
         with:
