@@ -50,31 +50,19 @@ jobs:
   native-backend:
     strategy:
       matrix:
-        os: [
-          ubuntu-20.04,
-          macos-11, macos-12,
-          windows-2019
-        ]
+        os: [ubuntu-20.04, macos-12, windows-2019]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Install linker
-        if: ${{ startsWith(matrix.os, 'ubuntu')}}
-        run: |
-          .github/workflows/retry.sh sudo apt install --quiet -y binutils
-
-      - name: Build V with make.bat
-        if: ${{ startsWith(matrix.os, 'windows') }}
-        run: |
-          .\make.bat
-          .\v.exe symlink -githubci
-      - name: Build V with make
-        if: ${{ !startsWith(matrix.os, 'windows') }}
-        run: |
-          make
-          ./v symlink -githubci
-
+        if: runner.os == 'Linux'
+        run: .github/workflows/retry.sh sudo apt -qq install binutils
+      - name: Build V
+        if: runner.os != 'Windows'
+        run: make -j4 && ./v symlink -githubci
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat && ./v symlink -githubci
       - name: Run the native backend tests serially with more details
         run: |
           v vlib/v/gen/native/macho_test.v
