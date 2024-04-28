@@ -3,15 +3,21 @@ name: sdl CI
 on:
   workflow_dispatch:
   push:
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
-      - '!**/sdl_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/sdl_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
-      - '!**/sdl_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/sdl_ci.yml'
+      - '!**.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

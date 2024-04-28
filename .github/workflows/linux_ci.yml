@@ -6,16 +6,15 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
-      - 'cmd/tools'
+      - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
-      - 'cmd/tools'
+      - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

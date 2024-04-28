@@ -3,14 +3,18 @@ name: Docker Ubuntu MUSL CI
 on:
   push:
     paths-ignore:
-      - "**.md"
-      - "**.yml"
-      - "!**/docker_ubuntu.yml"
+      - '**.md'
+      - '**.yml'
+      - '!**/docker_ubuntu.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - "**.md"
-      - "**.yml"
-      - "!**/docker_ubuntu.yml"
+      - '**.md'
+      - '**.yml'
+      - '!**/docker_ubuntu.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -46,4 +50,4 @@ jobs:
         run: ./v test-cleancode
 
       - name: Test V fixed tests
-        run: ./v test-self
+        run: ./v test-self vlib

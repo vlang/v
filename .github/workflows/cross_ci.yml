@@ -3,14 +3,18 @@ name: Cross CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
       - '**.yml'
       - '!**/cross_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
       - '**.yml'
       - '!**/cross_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
