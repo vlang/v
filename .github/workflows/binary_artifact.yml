@@ -139,6 +139,8 @@ jobs:
            rm -rf vc/
            rm -rf v_old.exe
            rm -rf vlib/v/tests/bench/gcboehm/*.svg
+           find |grep pdb$|xargs rm -rf
+           find |grep ilk$|xargs rm -rf
       - name: Create archive
         shell: msys2 {0}
         run: |
