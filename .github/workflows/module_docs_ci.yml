@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - 'vlib/**.v'
+      - 'vlib/**.md'
       - '**/module_docs_ci.yml'
   push:
     paths:
       - 'vlib/**.v'
+      - 'vlib/**.md'
       - '**/module_docs_ci.yml'
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
