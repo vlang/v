@@ -768,6 +768,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-print-watched-files' {
 				res.print_watched_files = true
 			}
+			'-http' {
+				run_http_argument := 'import net.http.file; file.serve()'
+				mut new_args := args.filter(it != '-http')
+				new_args << ['-e', run_http_argument]
+				eprintln_cond(show_output && !res.is_quiet, "Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
+				run_code_in_tmp_vfile_and_exit(new_args, mut res, '-e', 'vsh', run_http_argument)
+			}
 			'-cross' {
 				res.output_cross_c = true
 				res.build_options << '${arg}'
