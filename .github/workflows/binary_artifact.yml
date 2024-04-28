@@ -28,7 +28,12 @@ jobs:
           ./v -skip-unused -cc $CC -prod cmd/tools/vup.v
           ./v -skip-unused -cc $CC -prod cmd/tools/vdoctor.v
       - name: Remove excluded
-        run: rm -rf .git/ thirdparty/tcc/.git vc/ v_old vlib/v/tests/bench/gcboehm/*.svg
+        run: |
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
+           rm -rf vc/
+           rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
           cd ..
@@ -87,7 +92,12 @@ jobs:
           rm -rf thirdparty/tcc
           git clone --branch thirdparty-macos-arm64 --depth=1 https://github.com/vlang/tccbin thirdparty/tcc
       - name: Remove excluded
-        run: rm -rf .git/ thirdparty/tcc/.git vc/ v_old vlib/v/tests/bench/gcboehm/*.svg
+        run: |
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
+           rm -rf vc/
+           rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
           cd ..
@@ -118,7 +128,12 @@ jobs:
           .\v.exe -skip-unused -prod -cc msvc cmd\tools\vdoctor.v
       - name: Remove excluded
         shell: msys2 {0}
-        run: rm -rf .git/ thirdparty/tcc/.git vc/ v_old.exe vlib/v/tests/bench/gcboehm/*.svg
+        run: |
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
+           rm -rf vc/
+           rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create archive
         shell: msys2 {0}
         run: |
