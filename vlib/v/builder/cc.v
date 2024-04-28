@@ -178,7 +178,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
-	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
+	guess_compiler := $if macos { true } $else { v.pref.is_prod }
+	if ccoptions.guessed_compiler == 'cc' && guess_compiler {
 		// deliberately guessing only for -prod builds for performance reasons
 		ccversion := os.execute('cc --version')
 		if ccversion.exit_code == 0 {
