@@ -194,7 +194,6 @@ jobs:
           ./v build-module vlib/os/cmdline
       - name: native machine code generation
         run: |
-          exit
           ./v -o vprod -prod cmd/v
           cd cmd/tools
           echo "Generating a 1m line V file..."
@@ -203,7 +202,7 @@ jobs:
           echo "Building it..."
           ../../vprod -backend native -o 1m 1m.v
           echo "Running it..."
-          # ./1m
+          ./1m
           ls
       - name: compile vdoctor.v with -skip-unused and -prod
         run: ./v -showcc -skip-unused -cc gcc -prod cmd/tools/vdoctor.v
@@ -292,7 +291,6 @@ jobs:
           ./v build-module vlib/os/cmdline
       - name: native machine code generation
         run: |
-          exit
           ./v -o vprod -prod cmd/v
           cd cmd/tools
           echo "Generating a 1m line V file..."
@@ -301,6 +299,7 @@ jobs:
           echo "Building it..."
           ../../vprod -backend native -o 1m 1m.v
           echo "Running it..."
+          ./1m
           ls
 
   # autofree-selfcompile:
