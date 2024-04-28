@@ -11,14 +11,23 @@ on:
       - 'cmd/tools/vsymlink/**.v'
       - '.github/workflows/check_symlink_works.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
-  check-ubuntu-with-sudo:
-    runs-on: ubuntu-20.04
+  test-sudo:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-13]
+      fail-fast: false
     steps:
-      - name: Checkout V
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make -j4
+      - name: Symlink
+        run: sudo ./v symlink
       - name: Check if V is usable
         run: |
           pwd
@@ -28,15 +37,23 @@ jobs:
           v version
           echo 'println(123)' > hi.v
           v run hi.v
-          echo 'Using `sudo ./v symlink` :rocket: !!!' >> $GITHUB_STEP_SUMMARY
 
-  check-ubuntu:
-    runs-on: ubuntu-20.04
+  test-githubci:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-13, windows-2019]
+      fail-fast: false
     steps:
-      - name: Checkout V
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v symlink -githubci
+        if: runner.os != 'Windows'
+        run: make -j4
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat
+      - name: Symlink
+        run: ./v symlink -githubci
       - name: Check if V is usable
         run: |
           pwd
@@ -46,43 +63,3 @@ jobs:
           v version
           echo 'println(123)' > hi.v
           v run hi.v
-          echo "Everything was fine :rocket:" >> $GITHUB_STEP_SUMMARY
-
-  check-macos:
-    runs-on: macos-13
-    steps:
-      - name: Checkout V
-        uses: actions/checkout@v4
-      - name: Build V
-        run: make && ./v symlink -githubci
-      - name: Check if V is usable
-        run: |
-          pwd
-          v version
-          cd ~
-          pwd
-          v version
-          echo 'println(123)' > hi.v
-          v run hi.v
-          echo "Everything fine on macos too :rocket:" >> $GITHUB_STEP_SUMMARY
-
-  check-windows:
-    runs-on: windows-2019
-    steps:
-      - name: Checkout V
-        uses: actions/checkout@v4
-      - name: Build V
-        run: |
-          .\make.bat
-          .\v.exe symlink -githubci
-      - name: Check if V is usable
-        shell: bash
-        run: |
-          pwd
-          v version
-          cd ~
-          pwd
-          v version
-          echo 'println(123)' > hi.v
-          v run hi.v
-          echo "All fine on Windows as well :rocket:" >> $GITHUB_STEP_SUMMARY
