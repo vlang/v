@@ -36,10 +36,10 @@ jobs:
            rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
-          cd ..
-          zip -r9 --symlinks $ZIPNAME v/
-          mv $ZIPNAME v/
-          cd v/
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v4
         with:
@@ -63,10 +63,10 @@ jobs:
         run: rm -rf .git/ thirdparty/tcc/.git vc/ v_old vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
-          cd ..
-          zip -r9 --symlinks $ZIPNAME v/
-          mv $ZIPNAME v/
-          cd v/
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v4
         with:
@@ -137,11 +137,11 @@ jobs:
       - name: Create archive
         shell: msys2 {0}
         run: |
-          cd ..
-          # Use `powershell Compress-Archive`, because `zip` is not installed by default.
-          powershell Compress-Archive v $ZIPNAME
-          mv $ZIPNAME v/
-          cd v/
+           cd ..
+           # Use `powershell Compress-Archive`, because `zip` is not installed by default.
+           powershell Compress-Archive v $ZIPNAME
+           mv $ZIPNAME v/
+           cd v/
       - name: Create artifact
         uses: actions/upload-artifact@v4
         with:
