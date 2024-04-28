@@ -60,7 +60,12 @@ jobs:
           ./v -skip-unused -cc $CC -prod cmd/tools/vup.v
           ./v -skip-unused -cc $CC -prod cmd/tools/vdoctor.v
       - name: Remove excluded
-        run: rm -rf .git/ thirdparty/tcc/.git vc/ v_old vlib/v/tests/bench/gcboehm/*.svg
+        run: |
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
+           rm -rf vc/
+           rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
            cd ..
