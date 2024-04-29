@@ -402,7 +402,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-v', '-V', '--version', '-version' {
 				if command_pos == -1 {
 					// Version flags after a command are intended for the command, not for V itself.
-					if current_args.len > 1 && arg == '-v' {
+					if args[i..].len > 1 && arg == '-v' {
 						// With additional args after the `-v` flag, it toggles verbosity, like Clang.
 						// E.g.: `v -v` VS `v -v run examples/hello_world.v`.
 						res.is_verbose = true
