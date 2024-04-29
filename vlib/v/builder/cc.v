@@ -190,7 +190,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				if v.pref.is_verbose {
 					eprintln('failed to detect C compiler from version info `${cc_ver.output}`')
 				}
-				eprintln('Compilation with unkown C compiler')
+				eprintln('Compilation with unknown C compiler')
 				ccoptions.cc = .unknown
 			}
 		} else {
@@ -209,7 +209,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			// vfmt on
 		}
 		if ccoptions.cc == .unknown {
-			eprintln('Compilation with unkown C compiler `${cc_file_name}`')
+			eprintln('Compilation with unknown C compiler `${cc_file_name}`')
 		}
 	}
 
