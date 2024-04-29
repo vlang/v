@@ -100,6 +100,7 @@ enum CC {
 	icc
 	msvc
 	clang
+	unknown
 }
 
 struct CcompilerOptions {
@@ -180,11 +181,17 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' {
 		if cc_ver := os.execute_opt('cc --version') {
-			ccoptions.cc = match true {
+			if cc_ver.output.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
 				// Also covers `g++`, `g++-9`, `g++-11` etc.
-				cc_ver.output.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') { .gcc }
-				cc_ver.output.contains('clang version ') { .clang }
-				else { panic('failed to detect C compiler from version info `${cc_ver.output}`') }
+				ccoptions.cc = .gcc
+			} else if cc_ver.output.contains('clang version ') {
+				ccoptions.cc = .clang
+			} else {
+				if v.pref.is_verbose {
+					eprintln('failed to detect C compiler from version info `${cc_ver.output}`')
+				}
+				eprintln('Compilation with unkown C compiler')
+				ccoptions.cc = .unknown
 			}
 		} else {
 			panic('unknown C compiler')
@@ -198,8 +205,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			cc_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
 			cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' { .msvc }
 			cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
-			else { panic('unknown C compiler `${cc_file_name}`') }
+			else { .unknown }
 			// vfmt on
+		}
+		if ccoptions.cc == .unknown {
+			eprintln('Compilation with unkown C compiler `${cc_file_name}`')
 		}
 	}
 
