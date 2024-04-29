@@ -67,42 +67,55 @@ fn test_run_examples_bad() {
 	assert res.output.contains('Example: assert 5 * 5 == 77'), res.output
 }
 
+const small_pure_v_vlib_module = 'bitfield'
+
 fn test_out_path() {
 	// Work around CI issues covering v doc generation for relative input paths in tmp dir.
 	// Instead just generate documentation in the v source dir.
 	if os.getenv('CI') == 'true' {
-		mod := 'coroutines'
-		// Default output path.
-		os.execute_opt('${vexe} doc -f html -m vlib/${mod}')!
-		assert os.exists(os.join_path(vroot, 'vlib', 'coroutines', '_docs', '${mod}.html'))
+		default_output_path := os.join_path(vroot, 'vlib', small_pure_v_vlib_module, '_docs')
+		os.execute_opt('${vexe} doc -f html -m vlib/${small_pure_v_vlib_module}')!
+		defer {
+			os.rmdir_all(default_output_path) or {}
+		}
+		final_html_path := os.join_path(default_output_path, '${small_pure_v_vlib_module}.html')
+		assert os.exists(final_html_path), final_html_path
 
 		// Custom out path (no `_docs` subdir).
-		out_dir := os.join_path(vroot, 'vlib', 'coroutines', 'docs')
-		os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${mod}')!
-		assert os.exists(os.join_path(out_dir, '${mod}.html'))
-
+		out_dir := os.join_path(vroot, 'vlib', small_pure_v_vlib_module, 'docs')
+		os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${small_pure_v_vlib_module}')!
+		defer {
+			os.rmdir_all(out_dir) or {}
+		}
+		out_html_path := os.join_path(out_dir, '${small_pure_v_vlib_module}.html')
+		assert os.exists(out_html_path), out_html_path
 		return
 	}
 
+	// Copy a *small* vlib module, that is written in pure V, for the test:
 	test_path := os.join_path(os.vtmp_dir(), 'vdoc_test_${rand.ulid()}')
+	test_mod_path := os.join_path(test_path, small_pure_v_vlib_module)
 	os.mkdir_all(test_path)!
-	os.chdir(test_path)!
 	defer {
+		os.chdir(vroot) or {}
 		os.rmdir_all(test_path) or {}
 	}
-
-	// Copy a *small* vlib module for the test.
-	mod := 'coroutines'
-	os.cp_all(os.join_path(vroot, 'vlib', mod), os.join_path(test_path, mod), true) or {}
+	os.chdir(test_path)!
+	os.cp_all(os.join_path(vroot, 'vlib', small_pure_v_vlib_module), test_mod_path, true) or {}
 
 	// Relative input with default output path.
-	os.execute_opt('${vexe} doc -f html -m ${mod}')!
-	assert os.exists(os.join_path(test_path, mod, '_docs', '${mod}.html'))
+	os.execute_opt('${vexe} doc -f html -m ${small_pure_v_vlib_module}')!
+	output_path := os.join_path(test_mod_path, '_docs', '${small_pure_v_vlib_module}.html')
+	assert os.exists(output_path), output_path
 
 	// Custom out path (no `_docs` subdir).
 	out_dir := os.join_path(os.vtmp_dir(), 'docs_test')
-	os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${mod}')!
-	assert os.exists(os.join_path(out_dir, '${mod}.html'))
+	defer {
+		os.rmdir_all(out_dir) or {}
+	}
+	os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${small_pure_v_vlib_module}')!
+	html_path := os.join_path(out_dir, '${small_pure_v_vlib_module}.html')
+	assert os.exists(html_path), html_path
 }
 
 fn print_compare(expected string, found string) {
