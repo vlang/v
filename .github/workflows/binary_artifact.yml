@@ -1,6 +1,7 @@
 name: Build binary artifacts
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - '**/binary_artifact.yml'
