@@ -94,18 +94,22 @@ fn (mut v Builder) show_cc(cmd string, response_file string, response_file_conte
 	}
 }
 
+enum CC {
+	tcc
+	gcc
+	icc
+	msvc
+	clang
+	unknown
+}
+
 struct CcompilerOptions {
 mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
 	//
-	//
-	debug_mode  bool
-	is_cc_tcc   bool
-	is_cc_gcc   bool
-	is_cc_icc   bool
-	is_cc_msvc  bool
-	is_cc_clang bool
+	debug_mode bool
+	cc         CC
 	//
 	env_cflags  string // prepended *before* everything else
 	env_ldflags string // appended *after* everything else
@@ -175,31 +179,42 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
-	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
-		// deliberately guessing only for -prod builds for performance reasons
-		ccversion := os.execute('cc --version')
-		if ccversion.exit_code == 0 {
-			if ccversion.output.contains('This is free software;')
-				&& ccversion.output.contains('Free Software Foundation, Inc.') {
-				ccoptions.guessed_compiler = 'gcc'
+	if ccoptions.guessed_compiler == 'cc' {
+		if cc_ver := os.execute_opt('cc --version') {
+			if cc_ver.output.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
+				// Also covers `g++`, `g++-9`, `g++-11` etc.
+				ccoptions.cc = .gcc
+			} else if cc_ver.output.contains('clang version ') {
+				ccoptions.cc = .clang
+			} else {
+				if v.pref.is_verbose {
+					eprintln('failed to detect C compiler from version info `${cc_ver.output}`')
+				}
+				eprintln('Compilation with unknown C compiler')
+				ccoptions.cc = .unknown
 			}
-			if ccversion.output.contains('clang version ') {
-				ccoptions.guessed_compiler = 'clang'
-			}
+		} else {
+			panic('unknown C compiler')
+		}
+	} else {
+		cc_file_name := os.file_name(ccompiler)
+		ccoptions.cc = match true {
+			// vfmt off
+			cc_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc' { .tcc }
+			cc_file_name.contains('gcc') || cc_file_name.contains('g++') || ccoptions.guessed_compiler == 'gcc' { .gcc }
+			cc_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
+			cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' { .msvc }
+			cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
+			else { .unknown }
+			// vfmt on
+		}
+		if ccoptions.cc == .unknown {
+			eprintln('Compilation with unknown C compiler `${cc_file_name}`')
 		}
 	}
-	ccompiler_file_name := os.file_name(ccompiler)
-	ccoptions.is_cc_tcc = ccompiler_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc'
-	ccoptions.is_cc_gcc = ccompiler_file_name.contains('gcc') || ccoptions.guessed_compiler == 'gcc'
-	ccoptions.is_cc_icc = ccompiler_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc'
-	ccoptions.is_cc_msvc = ccompiler_file_name.contains('msvc')
-		|| ccoptions.guessed_compiler == 'msvc'
-	ccoptions.is_cc_clang = ccompiler_file_name.contains('clang')
-		|| ccoptions.guessed_compiler == 'clang'
 
 	// Add -fwrapv to handle UB overflows
-	if (ccoptions.is_cc_gcc || ccoptions.is_cc_clang || ccoptions.is_cc_tcc)
-		&& v.pref.os in [.macos, .linux, .windows] {
+	if ccoptions.cc in [.gcc, .clang, .tcc] && v.pref.os in [.macos, .linux, .windows] {
 		ccoptions.args << '-fwrapv'
 	}
 
@@ -208,7 +223,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.args << '-fpermissive'
 		ccoptions.args << '-w'
 	}
-	if ccoptions.is_cc_clang {
+	if ccoptions.cc == .clang {
 		if ccoptions.debug_mode {
 			debug_options = ['-g', '-O0']
 		}
@@ -227,7 +242,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			'-Wno-int-to-void-pointer-cast',
 		]
 	}
-	if ccoptions.is_cc_gcc {
+	if ccoptions.cc == .gcc {
 		if ccoptions.debug_mode {
 			debug_options = ['-g']
 			if user_darwin_version > 9 {
@@ -236,7 +251,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 		optimization_options = ['-O3', '-flto']
 	}
-	if ccoptions.is_cc_icc {
+	if ccoptions.cc == .icc {
 		if ccoptions.debug_mode {
 			debug_options = ['-g']
 			if user_darwin_version > 9 {
@@ -251,7 +266,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if v.pref.is_prod {
 		// don't warn for vlib tests
-		if ccoptions.is_cc_tcc && !(v.parsed_files.len > 0
+		if ccoptions.cc == .tcc && !(v.parsed_files.len > 0
 			&& v.parsed_files.last().path.contains('vlib')) {
 			eprintln('Note: tcc is not recommended for -prod builds')
 		}
@@ -298,7 +313,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.args << '-Wl,--no-entry'
 	}
 	if ccoptions.debug_mode && builder.current_os != 'windows' && v.pref.build_mode != .build_module {
-		if builder.current_os == 'macos' && !ccoptions.is_cc_tcc {
+		if ccoptions.cc != .tcc && builder.current_os == 'macos' {
 			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
 		} else {
 			ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
@@ -306,7 +321,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if v.pref.os == .freebsd {
 		// Needed for -usecache on FreeBSD 13, otherwise we get `ld: error: duplicate symbol: _const_math__bits__de_bruijn32` errors there
-		if !ccoptions.is_cc_tcc {
+		if ccoptions.cc != .tcc {
 			ccoptions.linker_flags << '-Wl,--allow-multiple-definition'
 		} else {
 			// tcc needs this, otherwise it fails to compile the runetype.h system header with:
@@ -318,7 +333,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
-	if ccoptions.is_cc_tcc {
+	if ccoptions.cc == .tcc {
 		// tcc 806b3f98 needs this flag too:
 		ccoptions.wargs << '-Wno-write-strings'
 	}
@@ -333,7 +348,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os in [.macos, .ios] {
-		if !ccoptions.is_cc_tcc && !user_darwin_ppc && !v.pref.is_bare && ccompiler != 'musl-gcc' {
+		if ccoptions.cc != .tcc && !user_darwin_ppc && !v.pref.is_bare && ccompiler != 'musl-gcc' {
 			ccoptions.source_args << '-x objective-c'
 		}
 	}
@@ -378,14 +393,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
-		if !ccoptions.is_cc_tcc {
+		if ccoptions.cc != .tcc {
 			$if linux {
 				ccoptions.linker_flags << '-Xlinker -z'
 				ccoptions.linker_flags << '-Xlinker muldefs'
 			}
 		}
 	}
-	if ccoptions.is_cc_tcc && 'no_backtrace' !in v.pref.compile_defines {
+	if ccoptions.cc == .tcc && 'no_backtrace' !in v.pref.compile_defines {
 		ccoptions.post_args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux
@@ -426,7 +441,7 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 		// /volatile:ms - there seems to be no equivalent,
 		// normally msvc should use /volatile:iso
 		// but it could have an impact on vinix if it is created with msvc.
-		if !ccoptions.is_cc_msvc {
+		if ccoptions.cc != .msvc {
 			if v.pref.os != .wasm32_emscripten {
 				all << '-Wl,-stack=16777216'
 			}
@@ -625,7 +640,7 @@ pub fn (mut v Builder) cc() {
 			}
 		}
 		$if windows {
-			if v.ccoptions.is_cc_tcc {
+			if v.ccoptions.cc == .tcc {
 				def_name := v.pref.out_name[0..v.pref.out_name.len - 4]
 				v.pref.cleanup_files << '${def_name}.def'
 			}
