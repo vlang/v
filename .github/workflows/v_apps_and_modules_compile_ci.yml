@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  v-apps-compile:
+  common:
     runs-on: ubuntu-latest
     timeout-minutes: 121
     steps:
@@ -200,57 +200,51 @@ jobs:
       #     echo "Run Vex Tests"
       #     v test ~/.vmodules/nedpals/vex
 
-  vsl-and-vtl-compile:
+  vsl:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
       VFLAGS: -no-parallel
     steps:
       - uses: actions/checkout@v4
-
       - name: Build V
         id: build
         run: make && sudo ./v symlink
-
       - name: Install dependencies
         run: |
-          v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          v retry -- sudo apt install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
-          v retry -- sudo apt install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install \
+            libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
+            opencl-headers libxcursor-dev libxi-dev libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools
+      - name: Install vsl
+        run: v retry -- v install vsl
+      - name: Test with Pure V Backend
+        run: ~/.vmodules/vsl/bin/test
+      - name: Test with Pure V Backend and Pure V Math
+        run: ~/.vmodules/vsl/bin/test --use-cblas
 
-      - name: Build vlang/vsl
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+  vtl:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    env:
+      VFLAGS: -no-parallel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        id: build
+        run: make && sudo ./v symlink
+      - name: Install dependencies
         run: |
-          echo "Installing dependencies"
-          v retry -- sudo apt install --quiet -y --no-install-recommends \
-            gfortran \
-            libxi-dev \
-            libxcursor-dev \
-            mesa-common-dev \
-            liblapacke-dev \
-            libopenblas-dev \
-            libgc-dev \
-            libgl1-mesa-dev \
-            libopenmpi-dev \
-            opencl-headers
-          echo "Install VSL"
-          v retry -- v install vsl
-          echo "Execute Tests using Pure V Backend"
-          ~/.vmodules/vsl/bin/test
-          echo "Execute Tests using Pure V Backend with Pure V Math"
-          ~/.vmodules/vsl/bin/test --use-cblas
-
-      - name: Build vlang/vtl
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          echo "Install VTL"
-          v retry -- v install vtl
-          echo "Install dependencies"
-          echo "Execute Tests using Pure V Backend"
-          ~/.vmodules/vtl/bin/test
-          echo "Execute Tests using Pure V Backend with Pure V Math"
-          ~/.vmodules/vtl/bin/test --use-cblas
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install \
+            libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+          v retry v install vsl
+      - name: Install vtl
+        run: v retry v install vtl
+      - name: Test with Pure V Backend
+        run: ~/.vmodules/vtl/bin/test
+      - name: Test with Pure V Backend and Pure V Math
+        run: ~/.vmodules/vtl/bin/test --use-cblas
 
   vpm-site:
     strategy:
