@@ -337,13 +337,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
-		current_args := args[i..].clone()
 		match arg {
 			'-wasm-validate' {
 				res.wasm_validate = true
 			}
 			'-wasm-stack-top' {
-				res.wasm_stack_top = cmdline.option(current_args, arg, res.wasm_stack_top.str()).int()
+				res.wasm_stack_top = cmdline.option(args[i..], arg, res.wasm_stack_top.str()).int()
 				i++
 			}
 			'-apk' {
@@ -351,7 +350,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-arch' {
-				target_arch := cmdline.option(current_args, '-arch', '')
+				target_arch := cmdline.option(args[i..], '-arch', '')
 				i++
 				target_arch_kind := arch_from_string(target_arch) or {
 					eprintln_exit('unknown architecture target `${target_arch}`')
@@ -360,7 +359,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} ${target_arch}'
 			}
 			'-assert' {
-				assert_mode := cmdline.option(current_args, '-assert', '')
+				assert_mode := cmdline.option(args[i..], '-assert', '')
 				match assert_mode {
 					'aborts' {
 						res.assert_failure_mode = .aborts
@@ -395,11 +394,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_help = true
 			}
 			'-q' {
-				if command_pos != -1 {
+				if command_pos == -1 {
 					// a -q flag after a command is for the command, not for v
-					continue
+					res.is_quiet = true
 				}
-				res.is_quiet = true
 			}
 			'-v', '-V', '--version', '-version' {
 				if command_pos == -1 {
@@ -415,7 +413,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
-				continue
 			}
 			//'-i64' {
 			// res.use_64_int = true
@@ -444,11 +441,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-e' {
 				res.is_eval_argument = true
-				res.eval_argument = cmdline.option(current_args, '-e', '')
+				res.eval_argument = cmdline.option(args[i..], '-e', '')
 				i++
 			}
 			'-gc' {
-				gc_mode := cmdline.option(current_args, '-gc', '')
+				gc_mode := cmdline.option(args[i..], '-gc', '')
 				match gc_mode {
 					'none' {
 						res.gc_mode = .no_gc
@@ -556,7 +553,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.trace_calls = true
 			}
 			'-trace-fns' {
-				value := cmdline.option(current_args, arg, '')
+				value := cmdline.option(args[i..], arg, '')
 				res.build_options << arg
 				res.build_options << value
 				trace_fns := value.split(',')
@@ -610,13 +607,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-prof', '-profile' {
-				res.profile_file = cmdline.option(current_args, arg, '-')
+				res.profile_file = cmdline.option(args[i..], arg, '-')
 				res.is_prof = true
 				res.build_options << '${arg} ${res.profile_file}'
 				i++
 			}
 			'-profile-fns' {
-				profile_fns := cmdline.option(current_args, arg, '').split(',')
+				profile_fns := cmdline.option(args[i..], arg, '').split(',')
 				if profile_fns.len > 0 {
 					res.profile_fns << profile_fns
 				}
@@ -672,32 +669,32 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.show_depgraph = true
 			}
 			'-run-only' {
-				res.run_only = cmdline.option(current_args, arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
+				res.run_only = cmdline.option(args[i..], arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
 				i++
 			}
 			'-exclude' {
-				patterns := cmdline.option(current_args, arg, '').split_any(',')
+				patterns := cmdline.option(args[i..], arg, '').split_any(',')
 				res.exclude << patterns
 				i++
 			}
 			'-test-runner' {
-				res.test_runner = cmdline.option(current_args, arg, res.test_runner)
+				res.test_runner = cmdline.option(args[i..], arg, res.test_runner)
 				i++
 			}
 			'-dump-c-flags' {
-				res.dump_c_flags = cmdline.option(current_args, arg, '-')
+				res.dump_c_flags = cmdline.option(args[i..], arg, '-')
 				i++
 			}
 			'-dump-modules' {
-				res.dump_modules = cmdline.option(current_args, arg, '-')
+				res.dump_modules = cmdline.option(args[i..], arg, '-')
 				i++
 			}
 			'-dump-files' {
-				res.dump_files = cmdline.option(current_args, arg, '-')
+				res.dump_files = cmdline.option(args[i..], arg, '-')
 				i++
 			}
 			'-dump-defines' {
-				res.dump_defines = cmdline.option(current_args, arg, '-')
+				res.dump_defines = cmdline.option(args[i..], arg, '-')
 				i++
 			}
 			'-experimental' {
@@ -710,9 +707,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.use_os_system_to_run = true
 			}
 			'-macosx-version-min' {
-				res.macosx_version_min = cmdline.option(current_args, arg, res.macosx_version_min)
-				i++
+				res.macosx_version_min = cmdline.option(args[i..], arg, res.macosx_version_min)
 				res.build_options << '${arg} ${res.macosx_version_min}'
+				i++
 			}
 			'-nocache' {
 				res.use_cache = false
@@ -779,7 +776,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg}'
 			}
 			'-os' {
-				target_os := cmdline.option(current_args, '-os', '')
+				target_os := cmdline.option(args[i..], '-os', '')
 				i++
 				target_os_kind := os_from_string(target_os) or {
 					if target_os == 'cross' {
@@ -801,50 +798,49 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} ${target_os}'
 			}
 			'-printfn' {
-				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
+				res.printfn_list << cmdline.option(args[i..], '-printfn', '').split(',')
 				i++
 			}
 			'-cflags' {
-				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
+				res.cflags += ' ' + cmdline.option(args[i..], '-cflags', '')
 				res.build_options << '${arg} "${res.cflags.trim_space()}"'
 				i++
 			}
 			'-ldflags' {
-				res.ldflags += ' ' + cmdline.option(current_args, '-ldflags', '')
+				res.ldflags += ' ' + cmdline.option(args[i..], '-ldflags', '')
 				res.build_options << '${arg} "${res.ldflags.trim_space()}"'
 				i++
 			}
 			'-d', '-define' {
-				if current_args.len > 1 {
-					define := current_args[1]
+				if define := args[i..][1] {
 					res.parse_define(define)
 				}
 				i++
 			}
 			'-message-limit' {
-				res.message_limit = cmdline.option(current_args, arg, '5').int()
+				res.message_limit = cmdline.option(args[i..], arg, '5').int()
 				i++
 			}
 			'-thread-stack-size' {
-				res.thread_stack_size = cmdline.option(current_args, arg, res.thread_stack_size.str()).int()
+				res.thread_stack_size = cmdline.option(args[i..], arg, res.thread_stack_size.str()).int()
 				i++
 			}
 			'-cc' {
-				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
+				res.ccompiler = cmdline.option(args[i..], '-cc', 'cc')
 				res.build_options << '${arg} "${res.ccompiler}"'
 				i++
 			}
 			'-c++' {
-				res.cppcompiler = cmdline.option(current_args, '-c++', 'c++')
+				res.cppcompiler = cmdline.option(args[i..], '-c++', 'c++')
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
-				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
+				res.checker_match_exhaustive_cutoff_limit = cmdline.option(args[i..],
 					arg, '10').int()
 				i++
 			}
 			'-o', '-output' {
-				res.out_name = cmdline.option(current_args, arg, '')
+				res.out_name = cmdline.option(args[i..], arg, '')
 				if res.out_name.ends_with('.js') {
 					res.backend = .js_node
 					res.output_cross_c = true
@@ -860,7 +856,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_o = true
 			}
 			'-b', '-backend' {
-				sbackend := cmdline.option(current_args, arg, 'c')
+				sbackend := cmdline.option(args[i..], arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
 					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, native, wasm')
@@ -880,19 +876,19 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.output_es5 = true
 			}
 			'-path' {
-				path := cmdline.option(current_args, '-path', '')
+				path := cmdline.option(args[i..], '-path', '')
 				res.build_options << '${arg} "${path}"'
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
 			'-bare-builtin-dir' {
-				bare_builtin_dir := cmdline.option(current_args, arg, '')
+				bare_builtin_dir := cmdline.option(args[i..], arg, '')
 				res.build_options << '${arg} "${bare_builtin_dir}"'
 				res.bare_builtin_dir = bare_builtin_dir
 				i++
 			}
 			'-custom-prelude' {
-				path := cmdline.option(current_args, '-custom-prelude', '')
+				path := cmdline.option(args[i..], '-custom-prelude', '')
 				res.build_options << '${arg} ${path}'
 				prelude := os.read_file(path) or {
 					eprintln_exit('cannot open custom prelude file: ${err}')
@@ -901,15 +897,15 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-raw-vsh-tmp-prefix' {
-				res.raw_vsh_tmp_prefix = cmdline.option(current_args, arg, '')
+				res.raw_vsh_tmp_prefix = cmdline.option(args[i..], arg, '')
 				i++
 			}
 			'-cmain' {
-				res.cmain = cmdline.option(current_args, '-cmain', '')
+				res.cmain = cmdline.option(args[i..], '-cmain', '')
 				i++
 			}
 			'-line-info' {
-				res.line_info = cmdline.option(current_args, arg, '')
+				res.line_info = cmdline.option(args[i..], arg, '')
 				res.parse_line_info(res.line_info)
 				i++
 			}
