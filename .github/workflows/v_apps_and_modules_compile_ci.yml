@@ -212,7 +212,7 @@ jobs:
         run: make && sudo ./v symlink
       - name: Install dependencies
         run: |
-          v retry sudo apt update
+          v retry -- sudo apt -qq update
           v retry -- sudo apt -qq install \
             libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
             opencl-headers libxcursor-dev libxi-dev libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools
@@ -235,7 +235,7 @@ jobs:
         run: make && sudo ./v symlink
       - name: Install dependencies
         run: |
-          v retry sudo apt update
+          v retry -- sudo apt -qq update
           v retry -- sudo apt -qq install \
             libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
           v retry v install vsl
