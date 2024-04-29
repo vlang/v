@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     steps:
-      - name: Checkout V ${{ github.ref_name }}
+      - name: Checkout V ${{ github.head_ref }}
         uses: actions/checkout@v4
         with:
           path: v
