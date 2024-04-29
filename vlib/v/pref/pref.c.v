@@ -402,16 +402,15 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_quiet = true
 			}
 			'-v', '-V', '--version', '-version' {
-				if command_pos != -1 {
-					// a -v flag after the command, is intended for the command, not for V itself
-					continue
-				}
-				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
-				if args.len > 1 {
-					res.is_verbose = true
-				} else {
-					command = 'version'
-					command_pos = i
+				if command_pos == -1 {
+					// Version flags after a command are intended for the command, not for V itself.
+					if args.len > 1 && arg == '-v' {
+						// With additional args after the `-v` flag, it toggles verbosity, like Clang.
+						// E.g.: `v -v` VS `v -v run examples/hello_world.v`.
+						res.is_verbose = true
+					} else {
+						command = 'version'
+					}
 				}
 			}
 			'-progress' {
