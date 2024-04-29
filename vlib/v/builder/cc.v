@@ -192,17 +192,21 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				if cc_ver.output == gpp_ver.output {
 					ccoptions.cc = .gcc
 				}
+			} else {
+				panic('unknown C compiler')
 			}
 		}
 	} else {
-		ccompiler_file_name := os.file_name(ccompiler)
+		cc_file_name := os.file_name(ccompiler)
 		ccoptions.cc = match true {
-			ccompiler_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc' { .tcc }
-			ccompiler_file_name.contains('gcc') || ccoptions.guessed_compiler == 'gcc' { .gcc }
-			ccompiler_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
-			ccompiler_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' { .msvc }
-			ccompiler_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
-			else { panic('unknown ccompiler: ${ccompiler_file_name}') }
+			// vfmt off
+			cc_file_name.contains('tcc') || ccoptions.guessed_compiler == 'tcc' { .tcc }
+			cc_file_name.contains('gcc') || cc_file_name.contains('g++') || ccoptions.guessed_compiler == 'gcc' { .gcc }
+			cc_file_name.contains('clang') || ccoptions.guessed_compiler == 'clang' { .clang }
+			cc_file_name.contains('msvc') || ccoptions.guessed_compiler == 'msvc' { .msvc }
+			cc_file_name.contains('icc') || ccoptions.guessed_compiler == 'icc' { .icc }
+			else { panic('unknown C compiler `${cc_file_name}`') }
+			// vfmt on
 		}
 	}
 
