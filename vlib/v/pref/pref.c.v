@@ -401,7 +401,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				res.is_quiet = true
 			}
-			'-v' {
+			'-v', '-V', '--version', '-version' {
 				if command_pos != -1 {
 					// a -v flag after the command, is intended for the command, not for V itself
 					continue
@@ -958,11 +958,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln_exit('Too many targets. Specify just one target: <target.v|target_directory>.')
 					}
-					continue
-				}
-				if arg in ['-V', '-version', '--version'] {
-					command = 'version'
-					command_pos = i
 					continue
 				}
 				if command != '' && command != 'build-module' {
