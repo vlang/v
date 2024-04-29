@@ -180,14 +180,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' {
 		if cc_ver := os.execute_opt('cc --version') {
-			if cc_ver.output.contains('Free Software Foundation')
-				&& cc_ver.output.contains('This is free software') {
-				// Also covers `g++-9` and `g++-11`.
-				ccoptions.cc = .gcc
-			} else if cc_ver.output.contains('clang version ') {
-				ccoptions.cc = .clang
-			} else {
-				panic('failed to detect C compiler from version info `${cc_ver.output}`')
+			ccoptions.cc = match true {
+				// Also covers `g++`, `g++-9`, `g++-11` etc.
+				cc_ver.output.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') { .gcc }
+				cc_ver.output.contains('clang version ') { .clang }
+				else { panic('failed to detect C compiler from version info `${cc_ver.output}`') }
 			}
 		}
 	} else {
