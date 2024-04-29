@@ -6,6 +6,8 @@ on:
     paths:
       - '**/binary_artifact.yml'
   push:
+    paths:
+      - '**/binary_artifact.yml'
     tags:
       - weekly.**
       - 0.**
