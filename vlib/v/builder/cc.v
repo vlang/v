@@ -186,6 +186,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				cc_ver.output.contains('clang version ') { .clang }
 				else { panic('failed to detect C compiler from version info `${cc_ver.output}`') }
 			}
+		} else {
+			panic('unknown C compiler')
 		}
 	} else {
 		cc_file_name := os.file_name(ccompiler)
