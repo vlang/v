@@ -21,6 +21,7 @@ on:
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/gen/native/**.v'
       - 'vlib/v/gen/native/tests/**.v'
+      - '.github/workflows/native_backend_ci.yml'
   pull_request:
     paths:
       - '!**'
@@ -41,6 +42,7 @@ on:
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/gen/native/**.v'
       - 'vlib/v/gen/native/tests/**.v'
+      - '.github/workflows/native_backend_ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
