@@ -180,15 +180,15 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' {
-		cc_ver := os.execute_opt('cc --version') or { panic('unknown C compiler') }
-		if cc_ver.output.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
+		cc_ver := os.execute('cc --version').output
+		if cc_ver.replace('\n', '').contains('Free Software Foundation, Inc.This is free software;') {
 			// Also covers `g++`, `g++-9`, `g++-11` etc.
 			ccoptions.cc = .gcc
-		} else if cc_ver.output.contains('clang version ') {
+		} else if cc_ver.contains('clang version ') {
 			ccoptions.cc = .clang
 		} else {
 			if v.pref.is_verbose {
-				eprintln('failed to detect C compiler from version info `${cc_ver.output}`')
+				eprintln('failed to detect C compiler from version info `${cc_ver}`')
 			}
 			eprintln('Compilation with unknown C compiler')
 			ccoptions.cc = .unknown
