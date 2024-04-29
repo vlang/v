@@ -298,26 +298,19 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	match arch {
 		.arm64 {
-			return Arm64{
-				g: 0
-			}
+			return Arm64{}
 		}
 		.amd64 {
 			return Amd64{
-				g: 0
 				fn_arg_registers: amd64_get_call_regs(target_os)
 				fn_arg_sse_registers: amd64_get_call_sseregs(target_os)
 			}
 		}
 		._auto {
 			$if amd64 {
-				return Amd64{
-					g: 0
-				}
+				return Amd64{}
 			} $else $if arm64 {
-				return Arm64{
-					g: 0
-				}
+				return Arm64{}
 			} $else {
 				eprintln('-native only have amd64 and arm64 codegens')
 				exit(1)
@@ -345,7 +338,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
-		labels: 0
 		structs: []Struct{len: table.type_symbols.len}
 		eval: eval.new_eval(table, pref_)
 	}
@@ -379,10 +371,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 		pref: p
 		out_name: out_name
 		table: ast.new_table()
-		code_gen: Amd64{
-			g: 0
-		}
-		labels: 0
+		code_gen: Amd64{}
 	}
 	g.code_gen.g = &mut g
 	return &mut g

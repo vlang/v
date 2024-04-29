@@ -73,7 +73,7 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			e.open_scope()
 			underscore := stmt.val_var == '_'
 			if !underscore {
-				e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{-1, 32}, true, stmt.val_type)
+				e.set(ast.Ident{ name: stmt.val_var }, Int{-1, 32}, true, stmt.val_type)
 			}
 			fstart := e.expr(stmt.cond, ast.int_type_idx).as_i64() or {
 				e.error('invalid integer for start of range')
@@ -85,8 +85,7 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			}
 			for i in fstart .. fend {
 				if !underscore {
-					e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{i, 32}, false,
-						stmt.val_type)
+					e.set(ast.Ident{ name: stmt.val_var }, Int{i, 32}, false, stmt.val_type)
 				}
 				e.stmts(stmt.stmts)
 			}
