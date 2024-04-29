@@ -161,7 +161,7 @@ jobs:
           .\make.bat -msvc
           .\v.exe self
       - name: Ensure code is well formatted
-        run: v test-cleancode
+        run: .\v.exe test-cleancode
       # - name: Install dependencies
       #   run: |
       #     .\v.exe setup-freetype
