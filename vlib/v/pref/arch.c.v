@@ -2,11 +2,11 @@ module pref
 
 pub enum Arch {
 	_auto
-	amd64
-	arm64
-	arm32
-	rv64
-	rv32
+	amd64 // aka x86_64
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
 	i386
 	js_node
 	js_browser
@@ -30,22 +30,22 @@ pub fn get_host_arch() Arch {
 
 pub fn arch_from_string(arch_str string) !Arch {
 	match arch_str {
-		'amd64', 'x86_64', 'x64', 'x86' {
+		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
 			return .amd64
 		}
-		'aarch64', 'arm64' {
+		'aarch64', 'arm64' { // arm64 recommended
 			return .arm64
 		}
-		'aarch32', 'arm32', 'arm' {
+		'aarch32', 'arm32', 'arm' { // arm32 recommended
 			return .arm32
 		}
-		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' {
+		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
 			return .rv64
 		}
-		'rv32', 'riscv32' {
+		'rv32', 'riscv32' { // rv32 recommended
 			return .rv32
 		}
-		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' {
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 			return .i386
 		}
 		'js', 'js_node' {
