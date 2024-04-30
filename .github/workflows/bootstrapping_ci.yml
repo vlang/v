@@ -1,8 +1,6 @@
 name: Bootstrapping CI
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'
   push:
     paths-ignore:
       - '**.md'
