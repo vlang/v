@@ -1131,7 +1131,7 @@ pub fn cc_from_string(s string) CompilerType {
 	if s == '' {
 		return .gcc
 	}
-	cc := s.all_after_last('\\').all_after_last('/')
+	cc := os.file_name(s).to_lower()
 	return match true {
 		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
 		cc.contains('gcc') { .gcc }
