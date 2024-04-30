@@ -523,7 +523,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 
 	g.finish()
 
-	mut b := strings.new_builder(640000)
+	mut b := strings.new_builder(g.out.len + 200_000)
 	b.write_string(g.hashes())
 	if g.use_segfault_handler || g.pref.is_prof {
 		b.writeln('\n#define V_USE_SIGNAL_H')
