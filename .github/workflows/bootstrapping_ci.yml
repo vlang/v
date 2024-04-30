@@ -3,13 +3,23 @@ name: Bootstrapping CI
 on:
   push:
     paths-ignore:
-      - '**.md'
       - '**.yml'
+      - '**.md'
+      - '**.vv'
+      - '**.out'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+      - '!cmd/tools/vup.v'
       - '!**/bootstrapping_ci.yml'
   pull_request:
     paths-ignore:
-      - '**.md'
       - '**.yml'
+      - '**.md'
+      - '**.vv'
+      - '**.out'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+      - '!cmd/tools/vup.v'
       - '!**/bootstrapping_ci.yml'
 
 concurrency:
