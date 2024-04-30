@@ -24,8 +24,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
-      VFLAGS: -cc clang -no-parallel
-      B_CFLAGS: -g
+      VFLAGS: -no-parallel
+      B_CFLAGS:
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v4
