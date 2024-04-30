@@ -1136,8 +1136,8 @@ pub fn cc_from_string(s string) CompilerType {
 		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
 		cc.contains('gcc') { .gcc }
 		cc.contains('clang') { .clang }
-		cc.contains('mingw') { .mingw }
 		cc.contains('msvc') { .msvc }
+		cc.contains('mingw') { .mingw }
 		cc.contains('++') { .cplusplus }
 		else { .gcc }
 	}
