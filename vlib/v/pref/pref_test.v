@@ -10,7 +10,7 @@ fn test_check_parametes() {
 	assert cmd == ''
 }
 
-fn test_version_falg() {
+fn test_version_flag() {
 	// Vars instead of consts to prevent dupl decls in pref.
 	vexe := @VEXE
 	vroot := os.dir(vexe)
