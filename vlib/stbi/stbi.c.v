@@ -112,6 +112,7 @@ fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file
 
 @[params]
 pub struct LoadParams {
+pub:
 	// the number of channels you expect the image to have.
 	// If set to 0 stbi will figure out the correct number of channels
 	desired_channels int = C.STBI_rgb_alpha
