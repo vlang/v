@@ -58,7 +58,7 @@ pub fn fix_reset_dbg_line(src string, out_file string) string {
 	// since it has to iterate over pretty much the entire src string several times.
 	// The loop below, does it just once, combining counting the lines, and finding the reset line:
 	mut dbg_reset_line_idx := 0
-	mut lines := 1
+	mut lines := 2
 	for idx, ob in src {
 		if ob == `\n` {
 			lines++
