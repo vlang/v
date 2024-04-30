@@ -936,12 +936,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command !in ['', 'build-module'] && !is_source_file(command) {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				err_detail := if command == '' { '' } else { ' for command `${command}`' }
-				eprintln_exit('Unknown argument `${arg}`${err_detail}')
+				extension := if command == '' { '' } else { ' for command `${command}`' }
+				eprintln_exit('Unknown argument `${arg}`${extension}')
 			}
 		}
 	}
