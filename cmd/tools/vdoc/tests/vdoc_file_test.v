@@ -75,20 +75,16 @@ fn test_out_path() {
 	if os.getenv('CI') == 'true' {
 		default_output_path := os.join_path(vroot, 'vlib', small_pure_v_vlib_module, '_docs')
 		os.execute_opt('${vexe} doc -f html -m vlib/${small_pure_v_vlib_module}')!
-		defer {
-			os.rmdir_all(default_output_path) or {}
-		}
 		final_html_path := os.join_path(default_output_path, '${small_pure_v_vlib_module}.html')
 		assert os.exists(final_html_path), final_html_path
 
 		// Custom out path (no `_docs` subdir).
 		out_dir := os.join_path(vroot, 'vlib', small_pure_v_vlib_module, 'docs')
 		os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${small_pure_v_vlib_module}')!
-		defer {
-			os.rmdir_all(out_dir) or {}
-		}
 		out_html_path := os.join_path(out_dir, '${small_pure_v_vlib_module}.html')
 		assert os.exists(out_html_path), out_html_path
+		os.rmdir_all(out_dir) or {}
+		os.rmdir_all(default_output_path) or {}
 		return
 	}
 
