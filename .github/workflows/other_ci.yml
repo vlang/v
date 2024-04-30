@@ -21,14 +21,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  no-gpl-by-accident:
+  prevent-gpl-licenses:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: No GPL licensed code, should be added accidentally
+      - name: Checkout V ${{ github.head_ref }}
+        uses: actions/checkout@v4
+        with:
+          path: v
+      - name: Checkout V master
+        uses: actions/checkout@v4
+        with:
+          repository: vlang/v
+          path: vmaster
+      - name: Detect potentially added GPL licensed code
         run: |
-          ! grep -r --exclude="*.yml" "a GPL license" .
+          gpl_search_cmd="grep 'GPL' -r --exclude-dir=.git --exclude=*.yml --exclude=*.md --exclude=*.vv --exclude=*_test.v ."
+          cd vmaster
+          eval $gpl_search_cmd > ../gpl_res_vmaster
+          cd ../v
+          eval $gpl_search_cmd > ../gpl_res_vnew
+          cd ..
+          diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
 
   code-formatting:
     runs-on: ubuntu-20.04
