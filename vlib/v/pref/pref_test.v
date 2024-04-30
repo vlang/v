@@ -34,7 +34,14 @@ fn test_version_falg() {
 	assert v_verbose_cmd_res != v_ver_cmd_res
 	assert v_verbose_cmd_res.contains('v.pref.lookup_path:')
 
-	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -cc tcc -v run ${example_path}')!.output
+	// tcc does not handle the symver assembly directive which is
+	// a problem on FreeBSD 14
+	mut compiler := 'tcc'
+	$if freebsd && clang {
+		compiler = 'clang'
+	}
+
+	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -cc ${compiler} -v run ${example_path}')!.output
 	assert v_verbose_cmd_with_additional_args_res != v_ver_cmd_res
 	assert v_verbose_cmd_with_additional_args_res.contains('v.pref.lookup_path:')
 }
