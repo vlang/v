@@ -59,9 +59,8 @@ jobs:
           ls -la v_from_vc2 v_from_vc_produced_native_v2
       - name: Test `v up`
         run: |
-          # Get commit sha from the last successful, fast workflow that could build V on master.
-          # The workflow used below is `Path Testing CI` (18477644).
-          last_good_commit=$(curl -s "https://api.github.com/repos/vlang/v/actions/workflows/18477644/runs?branch=master&status=success&per_page=1" | jq -r '.workflow_runs[0].head_sha')
+          # Derive commit sha from an older successful fast workflow on master that was able to build V.
+          last_good_commit=$(curl -s "https://api.github.com/repos/vlang/v/actions/workflows/18477644/runs?branch=master&status=success&per_page=2" | jq -r '.workflow_runs[1].head_sha')
           echo "last_good_commit=$last_good_commit"
           ./v run cmd/tools/oldv.v -v $last_good_commit
           cd ~/.cache/oldv/v_at_$last_good_commit
