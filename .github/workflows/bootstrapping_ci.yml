@@ -16,7 +16,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   bootstrap-v:
