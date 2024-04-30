@@ -213,31 +213,27 @@ pub fn (flags []Flag) get_strings(name string) ![]string {
 // parse parses flag values from arguments and return
 // an array of arguments with all consumed elements removed.
 pub fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
-	if flag.matches(args, posix_mode) {
-		if flag.flag == .bool {
-			new_args := flag.parse_bool(args)!
-			return new_args
-		} else {
-			if flag.value.len > 0 && flag.flag != .int_array && flag.flag != .float_array
-				&& flag.flag != .string_array {
-				return error('The argument `${flag.name}` accept only one value!')
-			}
-
-			new_args := flag.parse_raw(args)!
-			return new_args
+	return match true {
+		!flag.matches(args[0], posix_mode) {
+			args
 		}
-	} else {
-		return args
+		flag.flag == .bool {
+			flag.parse_bool(args)!
+		}
+		flag.value.len > 0 && flag.flag !in [.int_array, .float_array, .string_array] {
+			error('The argument `${flag.name}` accept only one value!')
+		}
+		else {
+			flag.parse_raw(args)!
+		}
 	}
 }
 
 // matches returns `true` if first arg in `args` matches this flag.
-fn (mut flag Flag) matches(args []string, posix_mode bool) bool {
+fn (mut flag Flag) matches(arg string, posix_mode bool) bool {
 	prefix := if posix_mode { '--' } else { '-' }
-	return (flag.name != '' && args[0] == '${prefix}${flag.name}')
-		|| (flag.name != '' && args[0].starts_with('${prefix}${flag.name}='))
-		|| (flag.abbrev != '' && args[0] == '-${flag.abbrev}')
-		|| (flag.abbrev != '' && args[0].starts_with('-${flag.abbrev}='))
+	return (flag.name != '' && arg.starts_with(prefix + flag.name))
+		|| (flag.abbrev != '' && arg.starts_with('-' + flag.abbrev))
 }
 
 fn (mut flag Flag) parse_raw(args []string) ![]string {

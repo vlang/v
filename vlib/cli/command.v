@@ -248,16 +248,16 @@ fn (mut cmd Command) add_default_commands() {
 }
 
 fn (mut cmd Command) parse_flags() {
-	for {
-		if cmd.args.len < 1 || !cmd.args[0].starts_with('-') {
-			break
+	for cmd.args.len > 0 {
+		if !cmd.args[0].starts_with('-') {
+			return
 		}
 		mut found := false
-		for i in 0 .. cmd.flags.len {
-			mut flag := &cmd.flags[i]
-			if flag.matches(cmd.args, cmd.posix_mode) {
+		for mut flag in cmd.flags {
+			if flag.matches(cmd.args[0], cmd.posix_mode) {
 				found = true
 				flag.found = true
+				// Eat flag and its values, continue with reduced args.
 				cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
 					eprintln_exit('Failed to parse flag `${cmd.args[0]}`: ${err}')
 				}
