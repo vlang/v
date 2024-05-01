@@ -73,9 +73,6 @@ pub enum CompilerType {
 	cplusplus
 }
 
-pub const list_of_flags_with_param = ['b', 'd', 'e', 'o', 'define', 'backend', 'cc', 'os', 'cflags',
-	'ldflags', 'path', 'arch']
-
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
 @[heap; minify]
@@ -921,11 +918,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
 				if arg.starts_with('-') {
-					if arg[1..] in pref.list_of_flags_with_param {
-						// skip parameter
-						i++
-						continue
-					}
 				} else {
 					if command == '' {
 						command = arg
