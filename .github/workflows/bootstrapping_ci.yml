@@ -60,15 +60,16 @@ jobs:
           ls -la v_from_vc2 v_from_vc_produced_native_v2
       - name: Test `v up`
         run: |
-          # Derive commit sha from an older successful fast workflow on master that was able to build V.
-          last_good_commit=$(curl -L \
+          # Derive a commit sha from an older successful fast workflow on master that was able to build V.
+          # The workflow used below is `Path Testing CI` (18477644).
+          recent_good_commit=$(curl -L \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/vlang/v/actions/workflows/18477644/runs?branch=master&status=success&per_page=2" \
             | jq -r '.workflow_runs[1].head_sha')
-          echo "last_good_commit=$last_good_commit"
-          ./v run cmd/tools/oldv.v -v $last_good_commit
-          cd ~/.cache/oldv/v_at_$last_good_commit
+          echo "recent_good_commit=$recent_good_commit"
+          ./v run cmd/tools/oldv.v -v $recent_good_commit
+          cd ~/.cache/oldv/v_at_$recent_good_commit
           ./v version && ./v -v up && ./v version
           ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
