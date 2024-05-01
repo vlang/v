@@ -94,44 +94,54 @@ fn test_if_flag_gets_set_with_long_arg() {
 	cmd.parse(['command', '--flag', 'value'])
 }
 
-fn flag_should_have_value_of_42(cmd cli.Command) ! {
+fn assert_flags(cmd cli.Command) ! {
 	flag := cmd.flags.get_string('flag')!
 	assert flag == 'value'
 	value := cmd.flags.get_int('value')!
 	assert value == 42
+	flag2 := cmd.flags.get_string('flag-2')!
+	assert flag2 == 'value-2'
 }
 
 fn test_if_multiple_flags_get_set() {
 	mut cmd := cli.Command{
 		name: 'command'
-		execute: flag_should_have_value_of_42
+		execute: assert_flags
 	}
 	cmd.add_flag(cli.Flag{
 		flag: .string
 		name: 'flag'
+	})
+	cmd.add_flag(cli.Flag{
+		flag: .string
+		name: 'flag-2'
 	})
 	cmd.add_flag(cli.Flag{
 		flag: .int
 		name: 'value'
 	})
-	cmd.parse(['command', '-flag', 'value', '-value', '42'])
+	cmd.parse(['command', '-flag=value', '-value', '42', '-flag-2', 'value-2'])
 }
 
 fn test_if_required_flags_get_set() {
 	mut cmd := cli.Command{
 		name: 'command'
-		execute: flag_should_have_value_of_42
+		execute: assert_flags
 	}
 	cmd.add_flag(cli.Flag{
 		flag: .string
 		name: 'flag'
+	})
+	cmd.add_flag(cli.Flag{
+		flag: .string
+		name: 'flag-2'
 	})
 	cmd.add_flag(cli.Flag{
 		flag: .int
 		name: 'value'
 		required: true
 	})
-	cmd.parse(['command', '-flag', 'value', '-value', '42'])
+	cmd.parse(['command', '-flag', 'value', '-value', '42', '-flag-2', 'value-2'])
 }
 
 fn flag_is_set_in_subcommand(cmd cli.Command) ! {
