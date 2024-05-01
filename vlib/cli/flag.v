@@ -232,8 +232,10 @@ pub fn (mut flag Flag) parse(args []string, posix_mode bool) ![]string {
 // matches returns `true` if first arg in `args` matches this flag.
 fn (mut flag Flag) matches(arg string, posix_mode bool) bool {
 	prefix := if posix_mode { '--' } else { '-' }
-	return (flag.name != '' && arg.starts_with(prefix + flag.name))
-		|| (flag.abbrev != '' && arg.starts_with('-' + flag.abbrev))
+	return (flag.name != '' && arg == '${prefix}${flag.name}')
+		|| (flag.name != '' && arg.starts_with('${prefix}${flag.name}='))
+		|| (flag.abbrev != '' && arg == '-${flag.abbrev}')
+		|| (flag.abbrev != '' && arg.starts_with('-${flag.abbrev}='))
 }
 
 fn (mut flag Flag) parse_raw(args []string) ![]string {
