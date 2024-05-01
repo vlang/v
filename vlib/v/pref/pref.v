@@ -920,7 +920,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if command == 'build' && is_source_file(arg) {
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
-				if arg.len != 0 && arg[0] == `-` {
+				if arg.starts_with('-') {
 					if arg[1..] in pref.list_of_flags_with_param {
 						// skip parameter
 						i++
