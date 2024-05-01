@@ -42,7 +42,7 @@ jobs:
           COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
           rm -rf vc
-          v retry -- git clone --depth=1 \
+          ./v retry -- git clone --depth=1 \
             https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
 
           rm -rf vc/v.c vc/v_win.c
@@ -65,7 +65,7 @@ jobs:
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
 
           # in case there are recent commits:
-          v retry -- git -C vc pull --rebase origin master
+          ./v retry -- git -C vc pull --rebase origin master
           git -C vc log -3
 
       - name: Deploy
