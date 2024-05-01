@@ -29,18 +29,42 @@ pub fn get_host_arch() Arch {
 }
 
 pub fn arch_from_string(arch_str string) !Arch {
-	return match arch_str {
-		'amd64', 'x86_64', 'x64', 'x86' { .amd64 } // amd64 recommended
-		'aarch64', 'arm64' { .arm64 } // arm64 recommended
-		'aarch32', 'arm32', 'arm' { .arm32 } // arm32 recommended
-		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { .rv64 } // rv64 recommended
-		'rv32', 'riscv32' { .rv32 } // rv32 recommended
-		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { .i386 } // i386 recommended
-		'js', 'js_node' { .js_node }
-		'js_browser' { .js_browser }
-		'js_freestanding' { .js_freestanding }
-		'wasm32', 'wasm' { .wasm32 }
-		'' { ._auto }
-		else { error('invalid arch: ${arch_str}') }
+	match arch_str {
+		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
+			return .amd64
+		}
+		'aarch64', 'arm64' { // arm64 recommended
+			return .arm64
+		}
+		'aarch32', 'arm32', 'arm' { // arm32 recommended
+			return .arm32
+		}
+		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
+			return .rv64
+		}
+		'rv32', 'riscv32' { // rv32 recommended
+			return .rv32
+		}
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
+			return .i386
+		}
+		'js', 'js_node' {
+			return .js_node
+		}
+		'js_browser' {
+			return .js_browser
+		}
+		'js_freestanding' {
+			return .js_freestanding
+		}
+		'wasm32', 'wasm' {
+			return .wasm32
+		}
+		'' {
+			return ._auto
+		}
+		else {
+			return error('invalid arch: ${arch_str}')
+		}
 	}
 }
