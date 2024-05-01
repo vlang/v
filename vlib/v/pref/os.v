@@ -37,66 +37,128 @@ pub enum OS {
 
 // Helper function to convert string names to OS enum
 pub fn os_from_string(os_str string) !OS {
-	return match os_str {
-		'' { ._auto }
-		'linux', 'nix' { .linux }
-		'windows' { .windows }
-		'ios' { .ios }
-		'macos', 'darwin' { .macos }
-		'freebsd' { .freebsd }
-		'openbsd' { .openbsd }
-		'netbsd' { .netbsd }
-		'dragonfly' { .dragonfly }
-		'js', 'js_node' { .js_node }
-		'js_freestanding' { .js_freestanding }
-		'js_browser' { .js_browser }
-		'solaris' { .solaris }
-		'qnx' { .qnx }
-		'serenity' { .serenity }
-		'plan9' { .plan9 }
-		'vinix' { .vinix }
-		'android' { .android }
-		'termux' { .termux }
-		'haiku' { .haiku }
-		'raw' { .raw }
-		'wasm32' { .wasm32 }
-		'wasm32_wasi' { .wasm32_wasi }
-		'wasm32_emscripten' { .wasm32_emscripten }
-		'browser' { .browser }
-		'wasi' { .wasi }
-		else { return error('bad OS ${os_str}') }
+	match os_str {
+		'' {
+			return ._auto
+		}
+		'linux' {
+			return .linux
+		}
+		'nix' {
+			return .linux
+		}
+		'windows' {
+			return .windows
+		}
+		'ios' {
+			return .ios
+		}
+		'macos' {
+			return .macos
+		}
+		'darwin' {
+			return .macos
+		}
+		'freebsd' {
+			return .freebsd
+		}
+		'openbsd' {
+			return .openbsd
+		}
+		'netbsd' {
+			return .netbsd
+		}
+		'dragonfly' {
+			return .dragonfly
+		}
+		'js', 'js_node' {
+			return .js_node
+		}
+		'js_freestanding' {
+			return .js_freestanding
+		}
+		'js_browser' {
+			return .js_browser
+		}
+		'solaris' {
+			return .solaris
+		}
+		'serenity' {
+			return .serenity
+		}
+		'qnx' {
+			return .qnx
+		}
+		'plan9' {
+			return .plan9
+		}
+		'vinix' {
+			return .vinix
+		}
+		'android' {
+			return .android
+		}
+		'termux' {
+			return .termux
+		}
+		'haiku' {
+			return .haiku
+		}
+		'raw' {
+			return .raw
+		}
+		// WASM options:
+		'wasm32' {
+			return .wasm32
+		}
+		'wasm32_wasi' {
+			return .wasm32_wasi
+		}
+		'wasm32_emscripten' {
+			return .wasm32_emscripten
+		}
+		// Native WASM options:
+		'browser' {
+			return .browser
+		}
+		'wasi' {
+			return .wasi
+		}
+		else {
+			return error('bad OS ${os_str}')
+		}
 	}
 }
 
 pub fn (o OS) str() string {
-	return match o {
-		._auto { 'RESERVED: AUTO' }
-		.ios { 'iOS' }
-		.macos { 'MacOS' }
-		.linux { 'Linux' }
-		.windows { 'Windows' }
-		.freebsd { 'FreeBSD' }
-		.openbsd { 'OpenBSD' }
-		.netbsd { 'NetBSD' }
-		.dragonfly { 'Dragonfly' }
-		.js_node { 'NodeJS' }
-		.js_freestanding { 'JavaScript' }
-		.js_browser { 'JavaScript(Browser)' }
-		.android { 'Android' }
-		.termux { 'Termux' }
-		.solaris { 'Solaris' }
-		.qnx { 'QNX' }
-		.serenity { 'SerenityOS' }
-		.plan9 { 'Plan9' }
-		.vinix { 'Vinix' }
-		.haiku { 'Haiku' }
-		.wasm32 { 'WebAssembly' }
-		.wasm32_emscripten { 'WebAssembly(Emscripten)' }
-		.wasm32_wasi { 'WebAssembly(WASI)' }
-		.browser { 'browser' }
-		.wasi { 'wasi' }
-		.raw { 'Raw' }
-		.all { 'all' }
+	match o {
+		._auto { return 'RESERVED: AUTO' }
+		.ios { return 'iOS' }
+		.macos { return 'MacOS' }
+		.linux { return 'Linux' }
+		.windows { return 'Windows' }
+		.freebsd { return 'FreeBSD' }
+		.openbsd { return 'OpenBSD' }
+		.netbsd { return 'NetBSD' }
+		.dragonfly { return 'Dragonfly' }
+		.js_node { return 'NodeJS' }
+		.js_freestanding { return 'JavaScript' }
+		.js_browser { return 'JavaScript(Browser)' }
+		.android { return 'Android' }
+		.termux { return 'Termux' }
+		.solaris { return 'Solaris' }
+		.qnx { return 'QNX' }
+		.serenity { return 'SerenityOS' }
+		.plan9 { return 'Plan9' }
+		.vinix { return 'Vinix' }
+		.haiku { return 'Haiku' }
+		.wasm32 { return 'WebAssembly' }
+		.wasm32_emscripten { return 'WebAssembly(Emscripten)' }
+		.wasm32_wasi { return 'WebAssembly(WASI)' }
+		.browser { return 'browser' }
+		.wasi { return 'wasi' }
+		.raw { return 'Raw' }
+		.all { return 'all' }
 	}
 }
 
