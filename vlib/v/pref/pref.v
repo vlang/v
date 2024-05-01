@@ -917,8 +917,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if command == 'build' && is_source_file(arg) {
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
-				if arg.starts_with('-') {
-				} else {
+				if !arg.starts_with('-') {
 					if command == '' {
 						command = arg
 						command_pos = i
@@ -931,12 +930,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					continue
 				}
-				if command != '' && command != 'build-module' {
+				if command !in ['', 'build-module'] {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				extension := if command.len == 0 { '' } else { ' for command `${command}`' }
-				eprintln_exit('Unknown argument `${arg}`${extension}')
+				err_detail := if command == '' { '' } else { ' for command `${command}`' }
+				eprintln_exit('Unknown argument `${arg}`${err_detail}')
 			}
 		}
 	}
