@@ -67,6 +67,7 @@ fn test_union() {
 	first_set.add_all(['b', 'c', 'd'])
 	second_set.add_all(['a', 'e'])
 	mut third_set := first_set.@union(second_set)
+	assert first_set.elements.len == 3
 	assert third_set.exists('a')
 	assert third_set.exists('b')
 	assert third_set.exists('c')
@@ -80,6 +81,7 @@ fn test_intersection() {
 	mut second_set := Set[string]{}
 	second_set.add_all(['bar', 'baz', 'boo'])
 	mut third_set := first_set.intersection(second_set)
+	assert first_set.exists('foo') == true
 	assert third_set.exists('foo') == false
 	assert third_set.exists('bar')
 	assert third_set.exists('baz')
