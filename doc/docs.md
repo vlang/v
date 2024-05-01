@@ -5532,6 +5532,24 @@ fn main() {
 	assert bf == BitField.read | .write
 	assert bf.all(.read | .write)
 	assert !bf.has(.other)
+	empty := BitField.zero()
+	assert empty.is_empty()
+	assert !empty.has(.read)
+	assert !empty.has(.write)
+	assert !empty.has(.other)
+	mut full := empty
+	full.set_all()
+	assert int(full) == 7 // 0x01 + 0x02 + 0x04
+	assert full == .read | .write | .other
+	mut v := full
+	v.clear(.read | .other)
+	assert v == .write
+	v.clear_all()
+	assert v == empty
+	assert BitField.read == BitField.from('read')!
+	assert BitField.other == BitField.from('other')!
+	assert BitField.write == BitField.from(2)!
+	assert BitField.zero() == BitField.from('')!
 }
 ```
 
