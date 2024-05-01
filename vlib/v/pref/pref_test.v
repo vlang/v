@@ -1,20 +1,18 @@
-module pref
-
+import v.pref
 import v.vmod
 import os
 
+const vexe = @VEXE
+const vroot = os.dir(vexe)
+
 fn test_check_parametes() {
 	// reproducing issue https://github.com/vlang/v/issues/13983
-	_, cmd := parse_args_and_show_errors(['help'], [''], true)
+	_, cmd := pref.parse_args_and_show_errors(['help'], [''], true)
 	// no command found from args
 	assert cmd == ''
 }
 
 fn test_version_flag() {
-	// Vars instead of consts to prevent dupl decls in pref.
-	vexe := @VEXE
-	vroot := os.dir(vexe)
-
 	v_ver := vmod.from_file(os.join_path(vroot, 'v.mod'))!.version
 	v_ver_cmd_res := os.execute_opt('${vexe} --version')!.output
 	assert v_ver_cmd_res.starts_with('V ${v_ver}'), v_ver_cmd_res
@@ -44,4 +42,18 @@ fn test_version_flag() {
 	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -cc ${compiler} -v run ${example_path}')!.output
 	assert v_verbose_cmd_with_additional_args_res != v_ver_cmd_res
 	assert v_verbose_cmd_with_additional_args_res.contains('v.pref.lookup_path:')
+}
+
+fn test_v_cmds_and_flags() {
+	build_cmd_res := os.execute('${vexe} build ${vroot}/examples/hello_world.v')
+	assert build_cmd_res.output.trim_space() == 'Use `v ${vroot}/examples/hello_world.v` instead.'
+
+	too_many_targets_res := os.execute('${vexe} ${vroot}/examples/hello_world.v ${vroot}/examples/fizz_buzz.v')
+	assert too_many_targets_res.output.trim_space() == 'Too many targets. Specify just one target: <target.v|target_directory>.'
+
+	unkown_arg_res := os.execute('${vexe} -xyz')
+	assert unkown_arg_res.output.trim_space() == 'Unknown argument `-xyz`'
+
+	unkown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
+	assert unkown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 }
