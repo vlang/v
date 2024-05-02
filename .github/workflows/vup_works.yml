@@ -1,0 +1,65 @@
+name: v up works
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '**.vv'
+      - '**.out'
+      - '!**/vup_works.yml'
+      - '!cmd/tools/vup.v'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '**.vv'
+      - '**.out'
+      - '!**/vup_works.yml'
+      - '!cmd/tools/vup.v'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v-up-works-ubuntu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build v
+        run: make && ./v symlink -githubci && ./v version
+
+      - name: Download latest ZIP
+        run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
+
+      - name: Extract ZIP, and copy the current vup.v in the extract
+        run: |
+          rm -rf /tmp/v_linux
+          unzip -q -d v_linux/ v_linux.zip
+          mv v_linux /tmp/v_linux
+          rm -rf /tmp/v_linux/v/cmd/tools/vup
+          cp cmd/tools/vup.v /tmp/v_linux/v/cmd/tools/vup.v
+          /tmp/v_linux/v/v version
+
+      - name: Run v up in the extract 1
+        run: |
+          cd /tmp/v_linux/v
+          ./v version
+          ./v up
+          ./v version
+
+#      - name: Extract ZIP 2
+#        run: |
+#          rm -rf /tmp/v_linux
+#          unzip -q -d v_linux/ v_linux.zip
+#          mv v_linux /tmp/v_linux
+#          /tmp/v_linux/v/v version
+#
+#      - name: Run v up in the extract 2
+#        run: |
+#          cd /tmp/v_linux/v
+#          ./v version
+#          ./v up
+#          ./v version
