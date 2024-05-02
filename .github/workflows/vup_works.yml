@@ -48,18 +48,20 @@ jobs:
           cd /tmp/v_linux/v
           ./v version
           ./v up
-          ./v version
+          echo "Updated ./v version: $(./v version)"
+          echo "Current   v version: $(v version)"
 
-#      - name: Extract ZIP 2
-#        run: |
-#          rm -rf /tmp/v_linux
-#          unzip -q -d v_linux/ v_linux.zip
-#          mv v_linux /tmp/v_linux
-#          /tmp/v_linux/v/v version
-#
-#      - name: Run v up in the extract 2
-#        run: |
-#          cd /tmp/v_linux/v
-#          ./v version
-#          ./v up
-#          ./v version
+      - name: Extract ZIP 2
+        run: |
+          rm -rf /tmp/v_linux
+          unzip -q -d v_linux/ v_linux.zip
+          mv v_linux /tmp/v_linux
+          /tmp/v_linux/v/v version
+
+      - name: Run v up in the extract 2
+        run: |
+          cd /tmp/v_linux/v
+          ./v version
+          ./v up
+          echo "Updated ./v version: $(./v version)"
+          echo "Current   v version: $(v version)"
