@@ -9,7 +9,6 @@ pub enum DiffTool {
 	colordiff // `diff` wrapper.
 	delta // viewer for git and diff output.
 	// fc // built-in tool on windows. // TODO: enable when its command output can be read.
-	@none
 }
 
 @[params]
@@ -36,12 +35,9 @@ const known_diff_tool_defaults = {
 	// .fc:        '/lnt'
 }
 
-pub const available_tool = find_working_diff_tool() or {
-	// Allows public checking for the available tool and prevents repeated searches
-	// when using compare functions with automatic diff tool detection.
-	dbg('${@LOCATION}: No working comparison command found')
-	DiffTool.@none
-}
+// Allows public checking for the available tool and prevents repeated searches
+// when using compare functions with automatic diff tool detection.
+pub const available_tool = find_working_diff_tool()
 
 // compare_files returns a string displaying the differences between two files.
 pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
@@ -56,12 +52,14 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 				@LOCATION)
 		}
 	}
-	if diff.available_tool == .@none {
-		return error('error: failed to find comparison command')
-	}
-	tool := match true {
-		opts.cmd != .auto { opts.cmd }
-		else { diff.available_tool }
+	tool := if opts.cmd == .auto {
+		auto_tool := diff.available_tool or {
+			return error('error: failed to find comparison command')
+		}
+
+		auto_tool
+	} else {
+		opts.cmd
 	}
 	tool_cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
 	os.find_abs_path_of_executable(tool_cmd) or {
@@ -98,7 +96,7 @@ pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
 	return compare_files(path1, path2, opts)!
 }
 
-fn find_working_diff_tool() !DiffTool {
+fn find_working_diff_tool() ?DiffTool {
 	for tool in diff.known_diff_tool_defaults.keys() {
 		cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
 		os.find_abs_path_of_executable(cmd) or { continue }
@@ -112,7 +110,7 @@ fn find_working_diff_tool() !DiffTool {
 		}
 		return tool
 	}
-	return error('No working "diff" command found')
+	return none
 }
 
 fn run_tool(cmd string, dbg_location string) string {
