@@ -1001,7 +1001,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		// after it to the script:
 		res.is_crun = true
 		res.path = command
-		res.run_args = command_args[1..]
+		res.run_args = command_args
 	} else if command == 'interpret' {
 		res.backend = .interpret
 		res.path = command_args[0] or { eprintln_exit('v interpret: no v files listed') }
