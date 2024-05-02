@@ -349,11 +349,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.source_args << '-x objective-c'
 		}
 	}
-	// The C file we are compiling
-	ccoptions.source_args << '"${v.out_name_c}"'
 	if v.pref.os == .macos {
 		ccoptions.source_args << '-x none'
 	}
+	// The C file we are compiling
+	ccoptions.source_args << '"${v.out_name_c}"'
 	if !v.pref.no_std {
 		if v.pref.os == .linux {
 			ccoptions.source_args << '-std=${builder.c_std_gnu}'
