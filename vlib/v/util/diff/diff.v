@@ -41,6 +41,7 @@ pub const available_tool = find_working_diff_tool()
 
 // compare_files returns a string displaying the differences between two files.
 pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
+	p1, p2 := os.quoted_path(os.real_path(path1)), os.quoted_path(os.real_path(path2))
 	if v := opts.env_overwrite_var {
 		env_cmd := os.getenv(v)
 		if env_cmd != '' {
@@ -48,8 +49,7 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 			os.find_abs_path_of_executable(tool) or {
 				return error('error: failed to find comparison command `${tool}`')
 			}
-			return run_tool('${tool} ${args} ${os.quoted_path(os.real_path(path1))} ${os.quoted_path(os.real_path(path2))}',
-				@LOCATION)
+			return run_tool('${tool} ${args} ${p1} ${p2}', @LOCATION)
 		}
 	}
 	tool := if opts.cmd == .auto {
@@ -65,19 +65,18 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 	os.find_abs_path_of_executable(tool_cmd) or {
 		return error('error: failed to find comparison command `${tool_cmd}`')
 	}
-	p1, p2 := os.quoted_path(os.real_path(path1)), os.quoted_path(os.real_path(path2))
 	if opts.args == '' {
 		args := if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
 		if tool == .diff {
 			// Ensure that the diff command supports the color option.
 			// E.g., some BSD installations do not include `diffutils` alongside `diff` by default.
-			res := run_tool('${tool} ${args} --color=always ${p1} ${p2}', @LOCATION)
+			res := run_tool('${tool_cmd} ${args} --color=always ${p1} ${p2}', @LOCATION)
 			if !res.contains('unrecognized option') {
 				return res
 			}
 		}
 	}
-	return run_tool('${tool} ${opts.args} ${p1} ${p2}', @LOCATION)
+	return run_tool('${tool_cmd} ${opts.args} ${p1} ${p2}', @LOCATION)
 }
 
 // compare_text returns a string displaying the differences between two strings.
