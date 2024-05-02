@@ -32,6 +32,14 @@ fn test_duration_str() {
 	assert time.Duration(168 * time.hour + 5 * time.minute + 7 * time.second).str() == '168:05:07'
 }
 
+fn test_negative_duration() {
+	now := time.parse('2000-01-01 10:00:00')!
+	later := time.parse('2000-01-01 11:00:00')!
+	duration := now - later
+	assert time.Duration(-1 * time.hour) == duration
+	assert duration.str() == '-1:00:00'
+}
+
 fn test_duration_debug() {
 	assert time.Duration(1 * time.nanosecond).debug() == 'Duration: 1ns'
 	assert time.Duration(169 * time.hour + 5 * time.minute + 7 * time.second).debug() == 'Duration: 7days, 1h, 5m, 7s'
