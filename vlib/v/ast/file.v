@@ -4,7 +4,6 @@
 module ast
 
 import v.errors
-import hash.fnv1a
 
 // Each V source file is represented by one File structure.
 // When the V compiler runs, the parser will fill an []File.
@@ -38,19 +37,6 @@ pub mut:
 	unique_prefix    string   // a hash of the `.path` field, used for making anon fn generation unique
 }
 
-@[minify]
-pub struct EmbeddedFile {
-pub:
-	compression_type string
-pub mut:
-	rpath string // used in the source code, as an ID/key to the embed
-	apath string // absolute path during compilation to the resource
-	// these are set by gen_embed_file_init in v/gen/c/embed
-	is_compressed bool
-	bytes         []u8
-	len           int
-}
-
 @[unsafe]
 pub fn (f &File) free() {
 	unsafe {
@@ -67,8 +53,4 @@ pub fn (f &File) free() {
 		f.notices.free()
 		f.global_labels.free()
 	}
-}
-
-pub fn (e EmbeddedFile) hash() u64 {
-	return fnv1a.sum64_string('${e.apath}, ${e.compression_type}, ${e.is_compressed}, ${e.len}')
 }
