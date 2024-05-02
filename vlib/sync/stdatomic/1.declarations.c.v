@@ -45,6 +45,17 @@ $if linux {
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/12
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/13
 			#flag -L/usr/lib/gcc/x86_64-pc-linux-gnu/14
+			$if musl ? {
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/6
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/7
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/8
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/9
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/10
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/11
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/12
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/13
+				#flag -L/usr/lib/gcc/x86_64-pc-linux-musl/14
+			}
 		} $else $if arm64 {
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/6
 			#flag -L/usr/lib/gcc/aarch64-linux-gnu/7
