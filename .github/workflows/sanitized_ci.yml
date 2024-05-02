@@ -115,7 +115,7 @@ jobs:
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
