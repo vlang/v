@@ -226,11 +226,6 @@ fn vweb_tmpl_${fn_name}() string {
 			i--
 			continue
 		}
-		mut isp := false
-
-		if line.contains('%') {
-			isp = true
-		}
 		if line.contains('@if ') {
 			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@if') or { continue }
@@ -261,28 +256,6 @@ fn vweb_tmpl_${fn_name}() string {
 			source.writeln(tmpl_str_start)
 			continue
 		}
-		// @foo => ${foo}
-		/*
-		if line.contains('@') {
-			mut pos := line.index('@') or { 0 }
-			if line.len > pos + 1 && line[pos + 1].is_letter() {
-				if line.contains('img') {
-					start := pos + 1
-					for pos < line.len && line[pos] != `)` {
-						pos++
-					}
-					source.write_string('\${')
-					source.write_string(line[start..pos + 1])
-					source.write_string('}')
-					println(source.str())
-					continue
-
-					// println('@@@ ${line}')
-					// println('${line}')
-				}
-			}
-		}
-		*/
 		if state == .simple {
 			// by default, just copy 1:1
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
@@ -357,11 +330,11 @@ fn vweb_tmpl_${fn_name}() string {
 			}
 			else {}
 		}
-		// %translation_key => ${tr('translation_key')}
-		if isp {
-			pos := line.index('%') or { 0 }
+
+		if pos := line.index('%') {
+			// %translation_key => ${tr('translation_key')}		
 			mut line_ := line
-			if line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
+			if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
 				mut end := pos + 1
 				for end < line.len && (line[end].is_letter() || line[end] == `_`) {
 					end++
