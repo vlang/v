@@ -35,11 +35,9 @@ fn main() {
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
-	v_hash := @VCURRENTHASH
-	current_hash := version.githash(vroot) or { v_hash }
-	// println(v_hash)
-	// println(current_hash)
-	if v_hash == current_hash && !app.skip_current {
+	hash_when_vup_was_compiled := @VCURRENTHASH
+	current_hash_from_filesystem := version.githash(vroot) or { hash_when_vup_was_compiled }
+	if !app.skip_current && hash_when_vup_was_compiled == current_hash_from_filesystem {
 		println('V is already updated.')
 		app.show_current_v_version()
 		return
