@@ -159,15 +159,16 @@ pub fn find_working_diff_command() !string {
 pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	tool := diff_cmd.all_before(' ')
 	os.find_abs_path_of_executable(tool) or { return 'comparison command: `${tool}` not found' }
+	p1, p2 := os.quoted_path(os.real_path(path1)), os.quoted_path(os.real_path(path2))
 	if tool == 'diff' {
 		// Ensure that the diff command supports the color option.
 		// E.g., some BSD installations do not include `diffutils` as a core package alongside `diff`.
-		res := os.execute('${diff_cmd} --color=always ${diff.default_diff_args} ${os.quoted_path(path1)} ${os.quoted_path(path2)}')
+		res := os.execute('${diff_cmd} --color=always ${diff.default_diff_args} ${p1} ${p2}')
 		if !res.output.starts_with('diff: unrecognized option') {
 			return res.output.trim_right('\r\n')
 		}
 	}
-	cmd := '${diff_cmd} ${diff.default_diff_args} ${os.quoted_path(path1)} ${os.quoted_path(path2)}'
+	cmd := '${diff_cmd} ${diff.default_diff_args} ${p1} ${p2}'
 	return os.execute(cmd).output.trim_right('\r\n')
 }
 
