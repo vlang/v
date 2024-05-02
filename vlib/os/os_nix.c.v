@@ -339,10 +339,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 // execute starts the specified command, waits for it to complete, and returns its output.
 @[manualfree]
 pub fn execute(cmd string) Result {
-	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
-	// }
-	pcmd := if cmd.contains('2>') { cmd.clone() } else { '${cmd} 2>&1' }
+	pcmd := 'exec 2>&1;${cmd}'
 	defer {
 		unsafe { pcmd.free() }
 	}
