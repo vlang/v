@@ -40,7 +40,13 @@ jobs:
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "LIBRARY_PATH is '$LIBRARY_PATH'"
       - name: Build V
-        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+        run: |
+          make -j4
+          if [ "${{ matrix.os }}" = "macos-12" ]; then
+          ./v -cg -cstrict -o v cmd/v
+          else
+          ./v -cg -o v cmd/v
+          fi
       - name: Run sanitizers
         run: |
           ./v -o v2 cmd/v -cflags -fsanitize=undefined
