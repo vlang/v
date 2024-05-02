@@ -306,17 +306,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if os.getenv('VNORUN') != '' {
 		res.skip_running = true
 	}
-	mut command := ''
-	mut command_pos := -1
-
-	/*
-	$if macos || linux {
+	/* $if macos || linux {
 		res.use_cache = true
 		res.skip_unused = true
-	}
-	*/
+	} */
 
-	// for i, arg in args {
+	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		match arg {
@@ -376,21 +371,19 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_help = true
 			}
 			'-q' {
-				if command_pos == -1 {
-					// a -q flag after a command is for the command, not for v
-					res.is_quiet = true
-				}
+				res.is_quiet = true
 			}
 			'-v', '-V', '--version', '-version' {
-				if command_pos == -1 {
+				if command != '' {
 					// Version flags after a command are intended for the command, not for V itself.
-					if args[i..].len > 1 && arg == '-v' {
-						// With additional args after the `-v` flag, it toggles verbosity, like Clang.
-						// E.g.: `v -v` VS `v -v run examples/hello_world.v`.
-						res.is_verbose = true
-					} else {
-						command = 'version'
-					}
+					continue
+				}
+				if args[i..].len > 1 && arg == '-v' {
+					// With additional args after the `-v` flag, it toggles verbosity, like Clang.
+					// E.g.: `v -v` VS `v -v run examples/hello_world.v`.
+					res.is_verbose = true
+				} else {
+					command = 'version'
 				}
 			}
 			'-progress' {
@@ -919,8 +912,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				if !arg.starts_with('-') {
 					if command == '' {
-						command = arg
-						command_pos = i
+						command, command_idx = arg, i
 						if res.is_eval_argument || command in ['run', 'crun', 'watch'] {
 							break
 						}
@@ -982,12 +974,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)
 	}
 
+	command_args := args[command_idx + 1..]
 	if res.is_run || res.is_crun {
-		if command_pos + 2 > args.len {
-			eprintln_exit('v run: no v files listed')
-		}
-		res.path = args[command_pos + 1]
-		res.run_args = args[command_pos + 2..]
+		res.path = command_args[0] or { eprintln_exit('v run: no v files listed') }
+		res.run_args = command_args[1..]
 		if res.path == '-' {
 			// `echo "println(2+5)" | v -`
 			contents := os.get_raw_lines_joined()
@@ -1011,15 +1001,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		// after it to the script:
 		res.is_crun = true
 		res.path = command
-		res.run_args = args[command_pos + 1..]
+		res.run_args = command_args[1..]
 	} else if command == 'interpret' {
 		res.backend = .interpret
-		if command_pos + 2 > args.len {
-			eprintln_exit('v interpret: no v files listed')
-		}
-		res.path = args[command_pos + 1]
-		res.run_args = args[command_pos + 2..]
-
+		res.path = command_args[0] or { eprintln_exit('v interpret: no v files listed') }
 		if res.path != '' {
 			must_exist(res.path)
 			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
@@ -1028,13 +1013,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.path += '.v'
 			}
 		}
+		res.run_args = command_args[1..]
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
-		if command_pos + 1 >= args.len {
-			eprintln_exit('v build-module: no module specified')
-		}
-		res.path = args[command_pos + 1]
+		res.path = command_args[0] or { eprintln_exit('v build-module: no module specified') }
 	}
 	if res.ccompiler == 'musl-gcc' {
 		res.is_musl = true
