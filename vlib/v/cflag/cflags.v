@@ -33,7 +33,7 @@ pub fn (cf &CFlag) eval() string {
 			if remainder.starts_with(cflag.fexisting_literal) {
 				sparams := remainder[cflag.fexisting_literal.len + 1..].all_before(')')
 				i += sparams.len + cflag.fexisting_literal.len + 1
-				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim(' \'"'))
+				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim('\t \'"'))
 				// mut found_spath := ''
 				for spath in svalues {
 					if os.exists(spath) {
