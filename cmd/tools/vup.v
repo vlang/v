@@ -159,6 +159,7 @@ fn (app App) git_command(command string) {
 		os.execute_or_exit(command)
 	}
 	if git_result.exit_code != 0 {
+		eprintln('Failed git command: ${command}')
 		eprintln(git_result.output)
 		exit(1)
 	}
