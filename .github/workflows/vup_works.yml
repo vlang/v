@@ -1,4 +1,4 @@
-name: v up works
+name: Upgrading from a release with v up works
 
 on:
   push:
