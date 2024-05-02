@@ -43,9 +43,9 @@ jobs:
         run: |
           make -j4
           if [ "${{ matrix.os }}" = "macos-12" ]; then
-          ./v -cg -cstrict -o v cmd/v
+            ./v -cg -cstrict -o v cmd/v
           else
-          ./v -cg -o v cmd/v
+            ./v -cg -o v cmd/v
           fi
       - name: Run sanitizers
         run: |
