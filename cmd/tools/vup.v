@@ -44,7 +44,7 @@ fn main() {
 		app.show_current_v_version()
 		return
 	}
-	$if windows {
+	if os.user_os() == 'windows' {
 		app.backup('cmd/tools/vup.exe')
 	}
 	if !app.recompile_v() {
@@ -67,14 +67,14 @@ fn (app App) update_from_master() {
 	app.vprintln('> updating from master ...')
 	if !os.exists('.git') {
 		// initialize as if it had been cloned
-		app.git_command('init')
-		app.git_command('remote add origin https://github.com/vlang/v')
-		app.git_command('fetch')
-		app.git_command('reset --hard origin/master')
-		app.git_command('clean --quiet -xdf --exclude v --exclude v.exe --exclude cmd/tools/vup --exclude cmd/tools/vup.exe')
+		app.git_command('git init')
+		app.git_command('git remote add origin https://github.com/vlang/v')
+		app.git_command('git fetch')
+		app.git_command('git reset --hard origin/master')
+		app.git_command('git clean -xdf --exclude v --exclude v.exe --exclude cmd/tools/vup --exclude cmd/tools/vup.exe')
 	} else {
 		// pull latest
-		app.git_command('pull https://github.com/vlang/v master')
+		app.git_command('git pull https://github.com/vlang/v master')
 	}
 }
 
@@ -85,22 +85,24 @@ fn (app App) recompile_v() bool {
 	if app.skip_v_self {
 		return app.make(vself)
 	}
-	app.vprintln('> recompiling v itself with `${vself}` ...')
+
 	self_result := os.execute(vself)
 	if self_result.exit_code == 0 {
 		println(self_result.output.trim_space())
+		println('> done recompiling.')
 		return true
 	} else {
-		app.vprintln('`${vself}` failed, running `make`...')
+		println('> `${vself}` failed, running `make`...')
 		app.vprintln(self_result.output.trim_space())
 	}
 	return app.make(vself)
 }
 
 fn (app App) recompile_vup() bool {
+	eprintln('> recompiling vup.v ...')
 	vup_result := os.execute('${os.quoted_path(app.vexe)} -g cmd/tools/vup.v')
 	if vup_result.exit_code != 0 {
-		eprintln('recompiling vup.v failed:')
+		eprintln('> failed recompiling vup.v .')
 		eprintln(vup_result.output)
 		return false
 	}
@@ -108,6 +110,7 @@ fn (app App) recompile_vup() bool {
 }
 
 fn (app App) make(vself string) bool {
+	println('> running make ...')
 	make := get_make_cmd_name()
 	make_result := os.execute(make)
 	if make_result.exit_code != 0 {
@@ -117,6 +120,7 @@ fn (app App) make(vself string) bool {
 		return false
 	}
 	app.vprintln(make_result.output)
+	println('> done running make.')
 	return true
 }
 
@@ -137,6 +141,7 @@ fn (app App) show_current_v_version() {
 
 fn (app App) backup(file string) {
 	backup_file := '${file}_old.exe'
+	println('> backing up `${file}` to `${backup_file}` ...')
 	if os.exists(backup_file) {
 		os.rm(backup_file) or { eprintln('failed removing ${backup_file}: ${err.msg()}') }
 	}
@@ -144,12 +149,12 @@ fn (app App) backup(file string) {
 }
 
 fn (app App) git_command(command string) {
-	app.vprintln('git_command: git ${command}')
-	git_result := os.execute('git ${command}')
+	println('> git_command: ${command}')
+	git_result := os.execute(command)
 	if git_result.exit_code < 0 {
-		app.get_git()
+		app.install_git()
 		// Try it again with (maybe) git installed
-		os.execute_or_exit('git ${command}')
+		os.execute_or_exit(command)
 	}
 	if git_result.exit_code != 0 {
 		eprintln(git_result.output)
@@ -158,35 +163,33 @@ fn (app App) git_command(command string) {
 	app.vprintln(git_result.output)
 }
 
-fn (app App) get_git() {
-	$if windows {
-		println('Downloading git 32 bit for Windows, please wait.')
-		// We'll use 32 bit because maybe someone out there is using 32-bit windows
-		res_download := os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.getwd()}/git32.exe"')
-		if res_download.exit_code != 0 {
-			eprintln('Unable to install git automatically: please install git manually')
-			panic(res_download.output)
-		}
-		res_git32 := os.execute(os.quoted_path(os.join_path_single(os.getwd(), 'git32.exe')))
-		if res_git32.exit_code != 0 {
-			eprintln('Unable to install git automatically: please install git manually')
-			panic(res_git32.output)
-		}
-	} $else { // Probably some kind of *nix, usually need to get using a package manager.
+fn (app App) install_git() {
+	if os.user_os() != 'windows' {
+		// Probably some kind of *nix, usually need to get using a package manager.
 		eprintln("error: Install `git` using your system's package manager")
+	}
+	println('Downloading git 32 bit for Windows, please wait.')
+	// We'll use 32 bit because maybe someone out there is using 32-bit windows
+	res_download := os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.getwd()}/git32.exe"')
+	if res_download.exit_code != 0 {
+		eprintln('Unable to install git automatically: please install git manually')
+		panic(res_download.output)
+	}
+	res_git32 := os.execute(os.quoted_path(os.join_path_single(os.getwd(), 'git32.exe')))
+	if res_git32.exit_code != 0 {
+		eprintln('Unable to install git automatically: please install git manually')
+		panic(res_git32.output)
 	}
 }
 
 fn get_make_cmd_name() string {
-	mut cmd := 'make'
-	$if windows {
-		cmd = 'make.bat'
+	if os.user_os() == 'windows' {
+		return 'make.bat'
 	}
-	if cmd == 'make' {
-		make_sure_cmd_is_available(cmd)
-		cc := os.getenv_opt('CC') or { 'cc' }
-		make_sure_cmd_is_available(cc)
-	}
+	cmd := 'make'
+	make_sure_cmd_is_available(cmd)
+	cc := os.getenv_opt('CC') or { 'cc' }
+	make_sure_cmd_is_available(cc)
 	return cmd
 }
 
