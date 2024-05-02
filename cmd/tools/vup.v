@@ -72,9 +72,10 @@ fn (app App) update_from_master() {
 		app.git_command('git fetch')
 		app.git_command('git remote set-head origin master')
 		app.git_command('git reset --hard origin/master')
-		// Note: in the .zip files, thirdparty/tcc/.git is missing to save space.
-		// -> Git clean below will try to remove thirdparty/tcc/ too, if it is not excluded specifically:
-		app.git_command('git clean -xfd --exclude ./thirdparty/tcc --exclude ./v --exclude ./v.exe --exclude ./cmd/tools/vup --exclude ./cmd/tools/vup.exe .')
+		// Note 1: patterns starting with /, will match only against the root;
+		//         `--exclude v` will match also vlib/v/ in addition to ./v; `--exclude /v` will only match ./v
+		// Note 2: patterns ending with / are treated as folders.
+		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
 	} else {
 		// pull latest
 		app.git_command('git pull https://github.com/vlang/v master')
