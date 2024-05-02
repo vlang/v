@@ -1,0 +1,6 @@
+vlib/v/checker/tests/result_chan_test_err.vv:2:12: error: cannot use chan with Result type
+    1 | fn main() {
+    2 |     c := chan !string{}
+      |               ^
+    3 |     println(c.len)
+    4 | }
