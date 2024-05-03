@@ -62,8 +62,11 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 		opts.tool
 	}
 	tool_cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
-	os.find_abs_path_of_executable(tool_cmd) or {
-		return error('error: failed to find comparison command `${tool_cmd}`')
+	if opts.tool != .auto {
+		// At this point it was already ensured that the automatically detected tool is available.
+		os.find_abs_path_of_executable(tool_cmd) or {
+			return error('error: failed to find comparison command `${tool_cmd}`')
+		}
 	}
 	mut args := opts.args
 	if args == '' {
