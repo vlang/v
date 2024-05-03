@@ -63,7 +63,12 @@ pub fn (d Duration) str() string {
 	if d == time.infinite {
 		return 'inf'
 	}
+	mut sign := ''
 	mut t := i64(d)
+	if t < 0 {
+		sign = '-'
+		t = -t
+	}
 	hr := t / time.hour
 	t -= hr * time.hour
 	min := t / time.minute
@@ -77,12 +82,12 @@ pub fn (d Duration) str() string {
 	ns := t
 
 	return match true {
-		hr > 0 { '${hr}:${min:02}:${sec:02}' }
-		min > 0 { '${min}:${sec:02}.${ms:03}' }
-		sec > 0 { '${sec}.${ms:03}s' }
-		ms > 0 { '${ms}.${us:03}ms' }
-		us > 0 { '${us}.${ns:03}us' }
-		else { '${ns}ns' }
+		hr > 0 { '${sign}${hr}:${min:02}:${sec:02}' }
+		min > 0 { '${sign}${min}:${sec:02}.${ms:03}' }
+		sec > 0 { '${sign}${sec}.${ms:03}s' }
+		ms > 0 { '${sign}${ms}.${us:03}ms' }
+		us > 0 { '${sign}${us}.${ns:03}us' }
+		else { '${sign}${ns}ns' }
 	}
 }
 
