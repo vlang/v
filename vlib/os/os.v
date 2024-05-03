@@ -291,9 +291,9 @@ pub fn dir(opath string) string {
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
-	quote := match path[0] {
-		`'` { "'" }
-		`"` { '"' }
+	quote := match true {
+		opath[0] == `'` && opath[opath.len - 1] == `'` { "'" }
+		opath[0] == `"` && opath[opath.len - 1] == `"` { '"' }
 		else { '' }
 	}
 	return path[..pos] + quote
