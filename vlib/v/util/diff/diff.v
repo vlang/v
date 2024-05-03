@@ -105,7 +105,7 @@ fn find_working_diff_tool() ?DiffTool {
 			// Sanity check that the `delta` executable is actually the diff tool.
 			res := os.execute('${cmd} --help').output.split_into_lines()[0]
 			if !res.contains('diff') {
-				dbg('${@LOCATION} delta does not appear to be the diff tool `${res}`')
+				dbg('delta does not appear to be the diff tool `${res}`', @LOCATION)
 				continue
 			}
 		}
@@ -115,9 +115,9 @@ fn find_working_diff_tool() ?DiffTool {
 }
 
 fn run_tool(cmd string, dbg_location string) string {
-	dbg('${dbg_location}: cmd=`${cmd}`')
+	dbg('cmd=`${cmd}`', dbg_location)
 	res := os.execute(cmd)
-	dbg('${dbg_location}: res=`${res}`')
+	dbg('res=`${res}`', dbg_location)
 	return res.output.trim_right('\r\n')
 }
 
@@ -190,6 +190,6 @@ pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected str
 }
 
 @[if vdiff_debug ?]
-fn dbg(msg string) {
-	println('[DIFF DEBUG] ' + msg)
+fn dbg(msg string, location string) {
+	println('[DIFF DEBUG] ${location}: ${msg}')
 }
