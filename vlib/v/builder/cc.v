@@ -405,22 +405,26 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		println('>>> setup_ccompiler_options ccoptions: ${ccoptions}')
 	}
 	if v.pref.os == .macos {
-		for flag in ccoptions.linker_flags {
-			if flag.starts_with('-') {
-				continue
-			}
-			if os.is_file(flag) {
-				ccoptions.source_args << '-x none'
-				break
-			}
-			path := if flag.starts_with('"') && flag.ends_with('"') {
-				flag[1..flag.len - 1]
-			} else {
-				flag
-			}
-			if os.is_dir(os.dir(path)) {
-				ccoptions.source_args << '-x none'
-				break
+		if v.pref.use_cache {
+			ccoptions.source_args << '-x none'
+		} else {
+			for flag in ccoptions.linker_flags {
+				if flag.starts_with('-') {
+					continue
+				}
+				if os.is_file(flag) {
+					ccoptions.source_args << '-x none'
+					break
+				}
+				path := if flag.starts_with('"') && flag.ends_with('"') {
+					flag[1..flag.len - 1]
+				} else {
+					flag
+				}
+				if os.is_dir(os.dir(path)) {
+					ccoptions.source_args << '-x none'
+					break
+				}
 			}
 		}
 	}
