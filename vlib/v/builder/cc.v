@@ -351,17 +351,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	// The C file we are compiling
 	ccoptions.source_args << '"${v.out_name_c}"'
-	if v.pref.os == .macos {
-		ccoptions.source_args << '-x none'
-	}
-	if !v.pref.no_std {
-		if v.pref.os == .linux {
-			ccoptions.source_args << '-std=${builder.c_std_gnu}'
-		} else {
-			ccoptions.source_args << '-std=${builder.c_std}'
-		}
-		ccoptions.source_args << '-D_DEFAULT_SOURCE'
-	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
 		if v.pref.macosx_version_min != '0' {
@@ -411,6 +400,38 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	ccoptions.env_cflags = os.getenv('CFLAGS')
 	ccoptions.env_ldflags = os.getenv('LDFLAGS')
+	if v.pref.os == .macos {
+		if v.pref.use_cache {
+			ccoptions.source_args << '-x none'
+		} else {
+			for flag in ccoptions.linker_flags {
+				if flag.starts_with('-') {
+					continue
+				}
+				if os.is_file(flag) {
+					ccoptions.source_args << '-x none'
+					break
+				}
+				path := if flag.starts_with('"') && flag.ends_with('"') {
+					flag[1..flag.len - 1]
+				} else {
+					flag
+				}
+				if os.is_dir(os.dir(path)) {
+					ccoptions.source_args << '-x none'
+					break
+				}
+			}
+		}
+	}
+	if !v.pref.no_std {
+		if v.pref.os == .linux {
+			ccoptions.source_args << '-std=${builder.c_std_gnu}'
+		} else {
+			ccoptions.source_args << '-std=${builder.c_std}'
+		}
+		ccoptions.source_args << '-D_DEFAULT_SOURCE'
+	}
 	$if trace_ccoptions ? {
 		println('>>> setup_ccompiler_options ccompiler: ${ccompiler}')
 		println('>>> setup_ccompiler_options ccoptions: ${ccoptions}')

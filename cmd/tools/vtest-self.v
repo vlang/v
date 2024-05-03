@@ -504,6 +504,11 @@ fn main() {
 		tsession.skip_files << skip_on_non_windows
 	}
 	$if macos {
+		$if arm64 {
+			if cfg.github_job == 'clang' {
+				tsession.skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			}
+		}
 		tsession.skip_files << skip_on_macos
 	}
 	$if !macos {
