@@ -291,7 +291,12 @@ pub fn dir(opath string) string {
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
-	return path[..pos]
+	quote := match path[0] {
+		`'` { "'" }
+		`"` { '"' }
+		else { '' }
+	}
+	return path[..pos] + quote
 }
 
 // base returns the last element of path.
