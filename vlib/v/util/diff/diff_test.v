@@ -46,7 +46,7 @@ fn test_compare_files() {
 	assert res.contains("name: 'foo'"), res
 
 	// From here on, pass `.diff` via the arg or environment variable to enforce consistent behavior in regular tests.
-	res = diff.compare_files(p1, p2, cmd: .diff)!
+	res = diff.compare_files(p1, p2, tool: .diff)!
 	assert res.contains("-\tname: 'Foo'"), res
 	assert res.contains("+\tname: 'foo'"), res
 	assert res.contains("-\tversion: '0.0.0'"), res
@@ -58,7 +58,7 @@ fn test_compare_files() {
 	assert res == diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
 
 	// Test custom options.
-	res = diff.compare_files(p1, p2, cmd: .diff, args: '-U 2 -i')!
+	res = diff.compare_files(p1, p2, tool: .diff, args: '-U 2 -i')!
 	assert !res.contains("+\tname: 'foo'"), res
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
@@ -83,21 +83,21 @@ fn test_compare_files() {
 		p1, p2))
 
 	// Test custom option that interferes with default options.
-	res = diff.compare_files(p1, p2, cmd: .diff, args: '--side-by-side', env_overwrite_var: none)!
+	res = diff.compare_files(p1, p2, tool: .diff, args: '--side-by-side', env_overwrite_var: none)!
 	assert res.match_glob("*version: '0.0.0'*|*version: '0.1.0'*"), res
 
 	// Test custom diff command.
 	// Test windows default `fc`.
 	/* $if windows { // TODO: enable when its `os.execute` output can be read.
-		res = diff.compare_files(p1, p1, cmd: .fc)!
+		res = diff.compare_files(p1, p1, tool: .fc)!
 		assert res.contains('FC: no differences encountered')
-		res = diff.compare_files(p1, p2, cmd: .fc, args: '/b')!
+		res = diff.compare_files(p1, p2, tool: .fc, args: '/b')!
 		assert res.contains('FC: ABCD longer than abc')
 	} */
 }
 
 fn test_compare_string() {
-	mut res := diff.compare_text('abc', 'abcd', cmd: .diff)!
+	mut res := diff.compare_text('abc', 'abcd', tool: .diff)!
 	assert res.contains('-abc'), res
 	assert res.contains('+abcd'), res
 	assert !res.contains('No newline at end of file'), res
@@ -115,7 +115,7 @@ fn test_coloring() {
 	os.write_file(p1, f1)!
 	os.write_file(p2, f2)!
 	esc := rune(27)
-	res := diff.compare_files(p1, p2, cmd: .diff)!
+	res := diff.compare_files(p1, p2, tool: .diff)!
 	assert res.contains('${esc}[31m-abc${esc}['), res
 	assert res.contains('${esc}[32m+abcd${esc}['), res
 	// Test deprecated

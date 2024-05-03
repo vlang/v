@@ -14,7 +14,7 @@ pub enum DiffTool {
 @[params]
 pub struct CompareOptions {
 pub:
-	cmd DiffTool
+	tool DiffTool
 	// Custom args used with the diff command.
 	args string
 	// Sets the environment variable whose value can overwrite a diff command passed to a compare function.
@@ -52,14 +52,14 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 			return run_tool('${tool} ${args} ${p1} ${p2}', @LOCATION)
 		}
 	}
-	tool := if opts.cmd == .auto {
+	tool := if opts.tool == .auto {
 		auto_tool := diff.available_tool or {
 			return error('error: failed to find comparison command')
 		}
 
 		auto_tool
 	} else {
-		opts.cmd
+		opts.tool
 	}
 	tool_cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
 	os.find_abs_path_of_executable(tool_cmd) or {
