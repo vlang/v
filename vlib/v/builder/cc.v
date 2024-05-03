@@ -413,12 +413,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				ccoptions.source_args << '-x none'
 				break
 			}
-			dir := os.dir(if flag.starts_with('"') && flag.ends_with('"') {
+			path := if flag.starts_with('"') && flag.ends_with('"') {
 				flag[1..flag.len - 1]
 			} else {
 				flag
-			})
-			if os.is_dir(dir) {
+			}
+			if os.is_dir(os.dir(path)) {
 				ccoptions.source_args << '-x none'
 				break
 			}
