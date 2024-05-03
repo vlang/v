@@ -400,10 +400,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	ccoptions.env_cflags = os.getenv('CFLAGS')
 	ccoptions.env_ldflags = os.getenv('LDFLAGS')
-	$if trace_ccoptions ? {
-		println('>>> setup_ccompiler_options ccompiler: ${ccompiler}')
-		println('>>> setup_ccompiler_options ccoptions: ${ccoptions}')
-	}
 	if v.pref.os == .macos {
 		if v.pref.use_cache {
 			ccoptions.source_args << '-x none'
@@ -435,6 +431,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.source_args << '-std=${builder.c_std}'
 		}
 		ccoptions.source_args << '-D_DEFAULT_SOURCE'
+	}
+	$if trace_ccoptions ? {
+		println('>>> setup_ccompiler_options ccompiler: ${ccompiler}')
+		println('>>> setup_ccompiler_options ccoptions: ${ccoptions}')
 	}
 	v.ccoptions = ccoptions
 	// setup the cache too, so that different compilers/options do not interfere:
