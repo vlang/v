@@ -415,8 +415,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			}
 			dir := os.dir(if flag.starts_with('"') && flag.ends_with('"') {
 				flag[1..flag.len - 1]
-				} else {
-					flag
+			} else {
+				flag
 			})
 			if os.is_dir(dir) {
 				ccoptions.source_args << '-x none'
