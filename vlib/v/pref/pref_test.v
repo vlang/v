@@ -56,4 +56,10 @@ fn test_v_cmds_and_flags() {
 
 	unkown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unkown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
+
+	no_run_files_res := os.execute('${vexe} run')
+	assert no_run_files_res.output.trim_space() == 'v run: no v files listed'
+
+	no_bm_files_res := os.execute('${vexe} build-module')
+	assert no_bm_files_res.output.trim_space() == 'v build-module: no module specified'
 }
