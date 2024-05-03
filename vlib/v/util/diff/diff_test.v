@@ -97,7 +97,7 @@ fn test_compare_files() {
 }
 
 fn test_compare_string() {
-	mut res := diff.compare_text('abc', 'abcd', tool: .diff)!
+	mut res := diff.compare_text('abc\n', 'abcd\n', tool: .diff)!
 	assert res.contains('-abc'), res
 	assert res.contains('+abcd'), res
 	assert !res.contains('No newline at end of file'), res
