@@ -26,7 +26,7 @@ pub:
 // Default options for `diff` and `colordiff`.
 // Short `diff` args are supported more widely (e.g. on OpenBSD, ref. https://man.openbsd.org/diff.1).
 // `-d -a -U 2` ^= `--minimal --text --unified=2`
-const default_diff_args = $if openbsd || freebsd { '-d -a -U 2' } $else { '-d -a -U 2 -F="fn "' }
+const default_diff_args = $if openbsd || freebsd { '-d -a -U 2' } $else { '-d -a -U 2 -F "fn "' }
 const known_diff_tool_defaults = {
 	// When searching for an automatically available diff tool, the tools are searched in this order.
 	DiffTool.delta: ''
@@ -65,18 +65,20 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 	os.find_abs_path_of_executable(tool_cmd) or {
 		return error('error: failed to find comparison command `${tool_cmd}`')
 	}
-	if opts.args == '' {
-		args := if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
+	mut args := opts.args
+	if args == '' {
+		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
 		if tool == .diff {
 			// Ensure that the diff command supports the color option.
-			// E.g., some BSD installations do not include `diffutils` alongside `diff` by default.
+			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
+			// might not include additional diffutils by default.
 			res := run_tool('${tool_cmd} ${args} --color=always ${p1} ${p2}', @LOCATION)
 			if !res.contains('unrecognized option') {
 				return res
 			}
 		}
 	}
-	return run_tool('${tool_cmd} ${opts.args} ${p1} ${p2}', @LOCATION)
+	return run_tool('${tool_cmd} ${args} ${p1} ${p2}', @LOCATION)
 }
 
 // compare_text returns a string displaying the differences between two strings.
