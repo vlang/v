@@ -52,36 +52,21 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 			return run_tool('${tool} ${args} ${p1} ${p2}', @LOCATION)
 		}
 	}
-	tool := if opts.tool == .auto {
-		auto_tool := diff.available_tool or {
-			return error('error: failed to find comparison command')
-		}
-
-		auto_tool
-	} else {
-		opts.tool
-	}
-	tool_cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
-	if opts.tool != .auto {
-		// At this point it was already ensured that the automatically detected tool is available.
-		os.find_abs_path_of_executable(tool_cmd) or {
-			return error('error: failed to find comparison command `${tool_cmd}`')
-		}
-	}
+	tool, cmd := opts.find_tool()!
 	mut args := opts.args
 	if args == '' {
 		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
-		if tool == .diff {
+		if opts.tool == .diff {
 			// Ensure that the diff command supports the color option.
 			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
 			// might not include additional diffutils by default.
-			res := run_tool('${tool_cmd} ${args} --color=always ${p1} ${p2}', @LOCATION)
+			res := run_tool('${cmd} ${args} --color=always ${p1} ${p2}', @LOCATION)
 			if !res.contains('unrecognized option') {
 				return res
 			}
 		}
 	}
-	return run_tool('${tool_cmd} ${args} ${p1} ${p2}', @LOCATION)
+	return run_tool('${cmd} ${args} ${p1} ${p2}', @LOCATION)
 }
 
 // compare_text returns a string displaying the differences between two strings.
@@ -98,6 +83,27 @@ pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
 	os.write_file(path1, text1 + '\n')!
 	os.write_file(path2, text2 + '\n')!
 	return compare_files(path1, path2, opts)!
+}
+
+fn (opts CompareOptions) find_tool() !(DiffTool, string) {
+	tool := if opts.tool == .auto {
+		auto_tool := diff.available_tool or {
+			return error('error: failed to find comparison command')
+		}
+
+		auto_tool
+	} else {
+		opts.tool
+	}
+	cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
+	if opts.tool == .auto {
+		// At this point it was already ensured that the automatically detected tool is available.
+		return tool, cmd
+	}
+	os.find_abs_path_of_executable(cmd) or {
+		return error('error: failed to find comparison command `${cmd}`')
+	}
+	return tool, cmd
 }
 
 fn find_working_diff_tool() ?DiffTool {
