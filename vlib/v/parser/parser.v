@@ -3890,10 +3890,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.unexpected(got: 'eof', expecting: 'an expression')
 			return ast.ConstDecl{}
 		}
+		expr := p.expr(0)
 		if is_block {
 			end_comments << p.eat_comments(same_line: true)
 		}
-		expr := p.expr(0)
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod
