@@ -83,8 +83,14 @@ pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
 	}
 	path1 := os.join_path_single(tmp_dir, 'text1.txt')
 	path2 := os.join_path_single(tmp_dir, 'text2.txt')
-	os.write_file(path1, text1)!
-	os.write_file(path2, text2)!
+	// When comparing strings and not files, prevent `\ No newline at end of file` in the output.
+	if !text1.ends_with('\n') || !text2.ends_with('\n') {
+		os.write_file(path1, text1 + '\n')!
+		os.write_file(path2, text2 + '\n')!
+	} else {
+		os.write_file(path1, text1)!
+		os.write_file(path2, text2)!
+	}
 	return compare_files(path1, path2, opts)!
 }
 
