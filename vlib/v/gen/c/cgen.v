@@ -4901,7 +4901,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	g.write(g.get_ternary_name(name))
 	if is_auto_heap {
 		g.write('))')
-		if is_option {
+		if is_option && node.or_expr.kind != .absent {
 			g.write('.data')
 		}
 	}
