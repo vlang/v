@@ -19,7 +19,7 @@ pub:
 	args string
 	// Sets the environment variable whose value can overwrite a diff command passed to a compare function.
 	// It also enables the use of commands that are not in the list of known diff tools.
-	// Set it to 'none' to disable it.
+	// Set it to `none` to disable it.
 	env_overwrite_var ?string = 'VDIFF_CMD'
 }
 
@@ -121,9 +121,9 @@ fn find_working_diff_tool() ?DiffTool {
 		os.find_abs_path_of_executable(cmd) or { continue }
 		if tool == .delta {
 			// Sanity check that the `delta` executable is actually the diff tool.
-			res := os.execute('${cmd} --help').output.split_into_lines()[0]
-			if !res.contains('diff') {
-				dbg('delta does not appear to be the diff tool `${res}`', @LOCATION)
+			help_desc := os.execute('${cmd} --help').output.trim_space().all_before('\n')
+			if !help_desc.contains('diff') {
+				dbg('delta does not appear to be the diff tool `${help_desc}`', @LOCATION)
 				continue
 			}
 		}
