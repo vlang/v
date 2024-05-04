@@ -3890,14 +3890,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.unexpected(got: 'eof', expecting: 'an expression')
 			return ast.ConstDecl{}
 		}
-		expr := p.expr(0)
-		if expr is ast.ArrayInit && !expr.is_fixed && p.pref.is_vet {
-			p.vet_notice('use a fixed array, instead of a dynamic one', pos.line_nr, vet.FixKind.unknown,
-				.default)
-		}
 		if is_block {
 			end_comments << p.eat_comments(same_line: true)
 		}
+		expr := p.expr(0)
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod
