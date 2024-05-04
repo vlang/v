@@ -121,7 +121,8 @@ fn find_working_diff_tool() ?DiffTool {
 		os.find_abs_path_of_executable(cmd) or { continue }
 		if tool == .delta {
 			// Sanity check that the `delta` executable is actually the diff tool.
-			help_desc := os.execute('${cmd} --help').output.trim_space().all_before('\n')
+			res := os.execute_opt('${cmd} --help') or { continue }
+			help_desc := res.output.trim_space().all_before('\n')
 			if !help_desc.contains('diff') {
 				dbg('delta does not appear to be the diff tool `${help_desc}`', @LOCATION)
 				continue
