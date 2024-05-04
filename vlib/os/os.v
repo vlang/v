@@ -568,6 +568,8 @@ pub fn is_file(path string) bool {
 
 // join_path joins any number of path elements into a single path, separating
 // them with a platform-specific path_separator. Empty elements are ignored.
+// Windows platform output will rewrite forward slashes to backslash.
+// Consider looking at the unit tests in os_test.v for semi-formal API.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
@@ -576,25 +578,36 @@ pub fn join_path(base string, dirs ...string) string {
 	defer {
 		unsafe { sb.free() }
 	}
-	sbase := base.trim_right('\\/')
-	defer {
-		unsafe { sbase.free() }
+	mut needs_sep := false
+	if base != '' {
+		$if windows {
+			sb.write_string(base.replace('/', '\\'))
+		} $else {
+			sb.write_string(base)
+		}
+		needs_sep = !base.ends_with(path_separator)
 	}
-	sb.write_string(sbase)
-	for d in dirs {
-		if d != '' {
-			sb.write_string(path_separator)
-			sb.write_string(d)
+	for od in dirs {
+		if od != '' && od != '.' {
+			mut md := od
+			$if windows {
+				md = md.replace('/', '\\')
+			}
+			// NOTE(hholst80): split_any not available in js backend,
+			// which could have been more clean way to implement this.
+			nestdirs := md.split(path_separator)
+			for id in nestdirs {
+				if id != '' && id != '.' {
+					if needs_sep {
+						sb.write_string(path_separator)
+					}
+					sb.write_string(id)
+					needs_sep = !id.ends_with(path_separator)
+				}
+			}
 		}
 	}
-	mut res := sb.str()
-	if sbase == '' {
-		res = res.trim_left(path_separator)
-	}
-	if res.contains('/./') {
-		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
-		res = res.replace('/./', '/')
-	}
+	res := sb.str()
 	return res
 }
 

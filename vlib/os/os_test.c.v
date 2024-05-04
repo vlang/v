@@ -619,11 +619,16 @@ fn test_join() {
 		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
 		assert os.join_path('', 'f1', 'f2') == 'f1\\f2'
 		assert os.join_path('v', '', 'dir') == 'v\\dir'
+		assert os.join_path('v', 'foo/bar', 'dir') == 'v\\foo\\bar\\dir'
+		assert os.join_path('v', 'foo/bar\\baz', '/dir') == 'v\\foo\\bar\\baz\\dir'
+		assert os.join_path('C:', 'f1\\..', 'f2') == 'C:\\f1\\..\\f2'
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
 		assert os.join_path('/foo/bar', './file.txt') == '/foo/bar/file.txt'
 		assert os.join_path('', 'f1', 'f2') == 'f1/f2'
 		assert os.join_path('v', '', 'dir') == 'v/dir'
+		assert os.join_path('/', 'test') == '/test'
+		assert os.join_path('/foo/bar', './.././file.txt') == '/foo/bar/../file.txt'
 	}
 }
 
