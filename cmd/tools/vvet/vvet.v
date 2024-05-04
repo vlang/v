@@ -13,12 +13,13 @@ import v.help
 import term
 
 struct Vet {
-	opt Options
 mut:
-	errors  []vet.Error
-	warns   []vet.Error
-	notices []vet.Error
-	file    string
+	opt            Options
+	errors         []vet.Error
+	warns          []vet.Error
+	notices        []vet.Error
+	file           string
+	filtered_lines FilteredLines
 }
 
 struct Options {
@@ -28,6 +29,8 @@ struct Options {
 	show_warnings       bool
 	use_color           bool
 	doc_private_fns_too bool
+mut:
+	is_vfmt_off bool
 }
 
 const term_colors = term.can_show_color_on_stderr()
@@ -107,20 +110,42 @@ fn (mut vt Vet) vet_file(path string) {
 	prefs.is_vsh = path.ends_with('.vsh')
 	mut table := ast.new_table()
 	vt.vprintln("vetting file '${path}'...")
-	_, errors, notices := parser.parse_vet_file(path, mut table, prefs)
+	file, errors, notices := parser.parse_vet_file(path, mut table, prefs)
+	vt.stmts(file.stmts)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
 	vt.notices << notices
-	// Scan each line in file for things to improve
 	source_lines := os.read_lines(vt.file) or { []string{} }
-	for lnumber, line in source_lines {
-		vt.vet_line(source_lines, line, lnumber)
+	for ln, line in source_lines {
+		vt.vet_line(source_lines, line, ln)
 	}
 }
 
 // vet_line vets the contents of `line` from `vet.file`.
 fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
 	vt.vet_fn_documentation(lines, line, lnumber)
+	vt.vet_space_usage(line, lnumber)
+}
+
+fn (mut vt Vet) vet_space_usage(line string, lnumber int) {
+	if line.starts_with('// vfmt off') {
+		vt.opt.is_vfmt_off = true
+	} else if line.starts_with('// vfmt on') {
+		vt.opt.is_vfmt_off = false
+	}
+	if vt.opt.is_vfmt_off {
+		return
+	}
+	if lnumber !in vt.filtered_lines[.space_indent] {
+		if line.starts_with(' ') {
+			vt.error('Looks like you are using spaces for indentation.', lnumber, .vfmt)
+		}
+	}
+	if lnumber !in vt.filtered_lines[.trailing_space] {
+		if line.ends_with(' ') {
+			vt.error('Looks like you have trailing whitespace.', lnumber, .unknown)
+		}
+	}
 }
 
 // vet_fn_documentation ensures that functions are documented
@@ -226,6 +251,62 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 					lnumber, .doc)
 			}
 		}
+	}
+}
+
+fn (mut vt Vet) stmts(stmts []ast.Stmt) {
+	for stmt in stmts {
+		vt.stmt(stmt)
+	}
+}
+
+fn (mut vt Vet) stmt(stmt ast.Stmt) {
+	match stmt {
+		ast.ConstDecl { vt.exprs(stmt.fields.map(it.expr)) }
+		ast.ExprStmt { vt.expr(stmt.expr) }
+		ast.Return { vt.exprs(stmt.exprs) }
+		ast.AssertStmt { vt.expr(stmt.expr) }
+		ast.AssignStmt { vt.exprs(stmt.right) }
+		ast.FnDecl { vt.stmts(stmt.stmts) }
+		else {}
+	}
+}
+
+fn (mut vt Vet) exprs(exprs []ast.Expr) {
+	for expr in exprs {
+		vt.expr(expr)
+	}
+}
+
+fn (mut vt Vet) expr(expr ast.Expr) {
+	match expr {
+		ast.Comment {
+			vt.filtered_lines.comments(expr.is_multi, expr.pos)
+		}
+		ast.StringLiteral, ast.StringInterLiteral {
+			vt.filtered_lines.assigns(expr.pos)
+		}
+		ast.ArrayInit {
+			vt.filtered_lines.assigns(expr.pos)
+		}
+		ast.InfixExpr {
+			vt.expr(expr.right)
+		}
+		ast.CallExpr {
+			vt.expr(expr.left)
+			vt.exprs(expr.args.map(it.expr))
+		}
+		ast.MatchExpr {
+			for b in expr.branches {
+				vt.stmts(b.stmts)
+			}
+		}
+		ast.IfExpr {
+			for b in expr.branches {
+				vt.stmts(b.stmts)
+			}
+		}
+		else {}
 	}
 }
 

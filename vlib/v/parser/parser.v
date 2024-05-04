@@ -278,28 +278,6 @@ pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)
-	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
-		source_lines := os.read_lines(path) or { []string{} }
-		mut is_vfmt_off := false
-		for lnumber, line in source_lines {
-			if line.starts_with('// vfmt off') {
-				is_vfmt_off = true
-			} else if line.starts_with('// vfmt on') {
-				is_vfmt_off = false
-			}
-			if is_vfmt_off {
-				continue
-			}
-			if line.starts_with('  ') {
-				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
-					.vfmt, .space_indent)
-			}
-			if line.ends_with(' ') {
-				p.vet_error('Looks like you have trailing whitespace.', lnumber, .unknown,
-					.trailing_space)
-			}
-		}
-	}
 	p.vet_errors << p.scanner.vet_errors
 	file := p.parse()
 	unsafe { p.free_scanner() }
@@ -910,11 +888,6 @@ fn (mut p Parser) comment() ast.Comment {
 	is_multi := num_newlines > 0
 	pos.last_line = pos.line_nr + num_newlines
 	p.next()
-	// Filter out false positive space indent vet errors inside comments
-	if p.vet_errors.len > 0 && is_multi {
-		p.vet_errors = p.vet_errors.filter(it.typ != .space_indent
-			|| it.pos.line_nr - 1 > pos.last_line || it.pos.line_nr - 1 <= pos.line_nr)
-	}
 	return ast.Comment{
 		text: text
 		is_multi: is_multi
@@ -3467,17 +3440,6 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 	}
 }
 
-fn (mut p Parser) filter_string_vet_errors(pos token.Pos) {
-	if p.vet_errors.len == 0 {
-		return
-	}
-	p.vet_errors = p.vet_errors.filter(
-		(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
-		|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
-		|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
-		|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
-}
-
 fn (mut p Parser) string_expr() ast.Expr {
 	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
@@ -3490,7 +3452,6 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		p.filter_string_vet_errors(pos)
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
@@ -3570,7 +3531,6 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fposs << p.prev_tok.pos()
 	}
 	pos = pos.extend(p.prev_tok.pos())
-	p.filter_string_vet_errors(pos)
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
