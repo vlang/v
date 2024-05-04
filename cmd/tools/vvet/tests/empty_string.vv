@@ -1,0 +1,13 @@
+fn main() {
+	foo := 'foo'
+	foo.len == 0
+	foo.len != 0
+	foo.len < 1
+	foo.len > 0
+
+	bar := 'bar'
+	0 == bar.len
+	0 != bar.len
+	1 > bar.len
+	0 < bar.len
+}

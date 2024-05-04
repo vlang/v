@@ -289,6 +289,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		}
 		ast.InfixExpr {
 			vt.vet_in_condition(expr)
+			vt.vet_empty_str(expr)
 			vt.expr(expr.right)
 		}
 		ast.CallExpr {
@@ -317,6 +318,37 @@ fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 				.unknown)
 		}
 		vt.expr(field.expr)
+	}
+}
+
+fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
+	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral
+		&& expr.left.field_name == 'len' {
+		if expr.right.val == '0' && expr.op != .lt {
+			// TODO: remove as when values can be smart casted.
+			expr_str := (expr.left as ast.SelectorExpr).expr.str()
+			op := if expr.op == .gt { '!=' } else { expr.op.str() }
+			vt.notice("Use `${expr_str} ${op} ''` instead of `${expr_str}.len ${expr.op} 0`",
+				expr.pos.line_nr, .unknown)
+		} else if expr.right.val == '1' && expr.op in [.lt, .gt] {
+			expr_str := (expr.left as ast.SelectorExpr).expr.str()
+			op := if expr.op == .lt { '==' } else { '!=' }
+			vt.notice("Use `${expr_str} ${op} ''` instead of `${expr_str}.len ${expr.op} 1`",
+				expr.pos.line_nr, .unknown)
+		}
+	} else if expr.left is ast.IntegerLiteral && expr.right is ast.SelectorExpr
+		&& expr.right.field_name == 'len' {
+		if (expr.left as ast.IntegerLiteral).val == '0' && expr.op != .gt {
+			expr_str := expr.right.expr.str()
+			op := if expr.op == .lt { '!=' } else { expr.op.str() }
+			vt.notice("Use `'' ${op} ${expr_str}` instead of `0 ${expr.op} ${expr_str}.len`",
+				expr.pos.line_nr, .unknown)
+		} else if (expr.left as ast.IntegerLiteral).val == '1' && expr.op in [.lt, .gt] {
+			expr_str := expr.right.expr.str()
+			op := if expr.op == .lt { '!=' } else { '==' }
+			vt.notice("Use `'' ${op} ${expr_str}` instead of `1 ${expr.op} ${expr_str}.len`",
+				expr.pos.line_nr, .unknown)
+		}
 	}
 }
 
