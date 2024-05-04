@@ -290,6 +290,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 			vt.filtered_lines.assigns(expr.pos)
 		}
 		ast.InfixExpr {
+			vt.vet_in_condition(expr)
 			vt.expr(expr.right)
 		}
 		ast.CallExpr {
@@ -303,6 +304,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		}
 		ast.IfExpr {
 			for b in expr.branches {
+				vt.expr(b.cond)
 				vt.stmts(b.stmts)
 			}
 		}
@@ -330,6 +332,16 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		location = term.bold(location)
 	}
 	return '${location} ${kind} ${err.message}'
+}
+
+fn (mut vt Vet) vet_in_condition(expr ast.InfixExpr) {
+	if expr.right is ast.ArrayInit && expr.right.exprs.len == 1 && expr.op in [.key_in, .not_in] {
+		left := expr.left.str()
+		right := expr.right.exprs[0].str()
+		eq := if expr.op == .key_in { '==' } else { '!=' }
+		vt.error('Use `${left} ${eq} ${right}` instead of `${left} ${expr.op} [${right}]`',
+			expr.pos.line_nr, .vfmt)
+	}
 }
 
 fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
