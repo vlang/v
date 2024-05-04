@@ -254,6 +254,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
+				if param.is_mut && arg_typ_sym.info.attrs.any(it.name == 'params') {
+					c.error('declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed',
+						param.type_pos)
+				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
@@ -1278,8 +1282,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			if param.is_mut {
 				tok := param.specifier()
-				c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
-					call_arg.expr.pos())
+				param_sym := c.table.sym(param.typ)
+				if !(param_sym.info is ast.Struct && param_sym.info.attrs.any(it.name == 'params')) {
+					c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
+						call_arg.expr.pos())
+				}
 			} else {
 				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
