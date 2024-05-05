@@ -16,7 +16,7 @@ Options:
   -diff          Display the differences between the formatted source(s)
                  and the original source(s). This will attempt to find a
                  working `diff` command automatically unless you specify one
-                 with the VDIFF_TOOL environment variable.
+                 with the VDIFF_CMD environment variable.
 
   -l             List files whose formatting differs from vfmt.
 
@@ -33,11 +33,7 @@ Options:
                  checking code contributions in CI for example.
 
 Environment Variables:
-  VDIFF_TOOL     A command-line tool that will be executed with the original
-                 file path and a temporary formatted file path as arguments.
-                 e.g. `VDIFF_TOOL=opendiff v fmt -diff path/to/file.v` will
-                 become: opendiff path/to/file.v /tmp/v/vfmt_file.v
+  VDIFF_CMD      A custom tool and options that will be used for viewing the
+                 differences between the original and the temporarily formatted
+                 files, e.g.: `VDIFF_CMD="diff -y -W 100" v fmt -diff path/file.v`
 
-  VDIFF_OPTIONS  A set of command-line options to be sent immediately after
-                 the `diff` command. e.g. VDIFF_OPTIONS="-W 80 -y"
-                 v fmt -diff path/to/file.v /tmp/v/vfmt_file.v
