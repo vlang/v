@@ -609,13 +609,17 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	if base != '' {
-		sb.write_string(sbase)
+	sb.write_string(sbase)
+	if elem != '' {
 		sb.write_string(path_separator)
+		sb.write_string(elem)
 	}
-	sb.write_string(elem)
 	normalize_path_in_builder(mut sb)
-	return sb.str()
+	mut res := sb.str()
+	if base == '' {
+		res = res.trim_left(path_separator)
+	}
+	return res
 }
 
 @[direct_array_access]
