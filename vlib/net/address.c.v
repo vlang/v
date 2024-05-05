@@ -60,6 +60,28 @@ pub fn (a Addr) family() AddrFamily {
 	return unsafe { AddrFamily(a.f) }
 }
 
+// port returns the ip or ip6 port of the given address `a`
+pub fn (a Addr) port() !u16 {
+	match unsafe { AddrFamily(a.f) } {
+		.ip {
+			unsafe {
+				return conv.ntoh16(a.addr.Ip.port)
+			}
+		}
+		.ip6 {
+			unsafe {
+				return conv.ntoh16(a.addr.Ip6.port)
+			}
+		}
+		.unix {
+			return error('unix addr has no port')
+		}
+		.unspec {
+			return error('unspec addr family when obtain port')
+		}
+	}
+}
+
 const max_ip_len = 24
 const max_ip6_len = 46
 
