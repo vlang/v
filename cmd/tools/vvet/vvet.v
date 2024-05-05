@@ -262,7 +262,7 @@ fn (mut vt Vet) stmts(stmts []ast.Stmt) {
 
 fn (mut vt Vet) stmt(stmt ast.Stmt) {
 	match stmt {
-		ast.ConstDecl { vt.exprs(stmt.fields.map(it.expr)) }
+		ast.ConstDecl { vt.const_decl(stmt) }
 		ast.ExprStmt { vt.expr(stmt.expr) }
 		ast.Return { vt.exprs(stmt.exprs) }
 		ast.AssertStmt { vt.expr(stmt.expr) }
@@ -307,6 +307,16 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 			}
 		}
 		else {}
+	}
+}
+
+fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
+	for field in stmt.fields {
+		if field.expr is ast.ArrayInit && !field.expr.is_fixed {
+			vt.notice('Use a fixed array instead of a dynamic one', field.expr.pos.line_nr,
+				.unknown)
+		}
+		vt.expr(field.expr)
 	}
 }
 
