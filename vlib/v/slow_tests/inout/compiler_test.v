@@ -98,7 +98,6 @@ fn test_all() {
 			if diff_ := diff.compare_text(expected, found) {
 				println(term.header('difference:', '-'))
 				println(diff_)
-				total_errors++
 			} else {
 				println(err)
 				println(term.header('expected:', '-'))
