@@ -200,19 +200,6 @@ fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('  is_script: ${compiler_params.is_script} ')
 }
 
-fn (mut foptions FormatOptions) find_diff_cmd() string {
-	if foptions.diff_cmd != '' {
-		return foptions.diff_cmd
-	}
-	if foptions.is_verify || foptions.is_diff {
-		foptions.diff_cmd = diff.find_working_diff_command() or {
-			eprintln(err)
-			exit(1)
-		}
-	}
-	return foptions.diff_cmd
-}
-
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
 	if formatted_file_path == '' {
 		return
@@ -230,12 +217,7 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		if !is_formatted_different {
 			return
 		}
-		diff_cmd := foptions.find_diff_cmd()
-		foptions.vlog('Using diff command: ${diff_cmd}')
-		diff_ := diff.color_compare_files(diff_cmd, file, formatted_file_path)
-		if diff_.len > 0 {
-			println(diff_)
-		}
+		println(diff.compare_files(file, formatted_file_path)!)
 		return
 	}
 	if foptions.is_verify {
