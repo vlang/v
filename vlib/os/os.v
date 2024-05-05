@@ -637,7 +637,7 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 	for idx in 0 .. sb.len - 3 {
 		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
 			unsafe {
-				for j := idx + 1; j < sb.len - 3; j++ {
+				for j := idx + 1; j < sb.len - 2; j++ {
 					sb[j] = sb[j + 2]
 				}
 				sb.len -= 2
