@@ -6095,6 +6095,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	if node.attrs.contains('export') {
 		attributes += 'VV_EXPORTED_SYMBOL '
 	}
+	if attr := node.attrs.find_first('_linker_section') {
+		attributes += '__attribute__ ((section ("${attr.arg}"))) '
+	}
 	for field in node.fields {
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_globals {

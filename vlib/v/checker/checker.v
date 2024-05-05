@@ -2240,6 +2240,14 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 }
 
 fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
+	required_args_attr := ['_linker_section']
+	for attr_name in required_args_attr {
+		if attr := node.attrs.find_first(attr_name) {
+			if attr.arg == '' {
+				c.error('missing argument for @[${attr_name}] attribute', attr.pos)
+			}
+		}
+	}
 	for mut field in node.fields {
 		c.check_valid_snake_case(field.name, 'global name', field.pos)
 		if field.name in c.global_names {
