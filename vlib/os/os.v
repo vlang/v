@@ -587,13 +587,10 @@ pub fn join_path(base string, dirs ...string) string {
 			sb.write_string(d)
 		}
 	}
+	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
 	if base == '' {
 		res = res.trim_left(path_separator)
-	}
-	if res.contains('/./') {
-		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
-		res = res.replace('/./', '/')
 	}
 	return res
 }
@@ -617,12 +614,30 @@ pub fn join_path_single(base string, elem string) string {
 		sb.write_string(path_separator)
 	}
 	sb.write_string(elem)
-	mut res := sb.str()
-	if res.contains('/./') {
-		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
-		res = res.replace('/./', '/')
+	normalize_path_in_builder(mut sb)
+	return sb.str()
+}
+
+@[direct_array_access]
+fn normalize_path_in_builder(mut sb strings.Builder) {
+	fs := $if windows { `/` } $else { `\\` }
+	rs := $if windows { `\\` } $else { `/` }
+	for idx in 0 .. sb.len {
+		unsafe {
+			if sb[idx] == fs {
+				sb[idx] = rs
+			}
+		}
 	}
-	return res
+	// Let `/foo/./bar.txt` be `/foo/bar.txt` in place:
+	for idx in 0 .. sb.len - 3 {
+		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
+			unsafe {
+				vmemcpy(&sb[idx + 1], &sb[idx + 3], sb.len - idx)
+				sb.len -= 2
+			}
+		}
+	}
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
