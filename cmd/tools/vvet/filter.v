@@ -1,9 +1,8 @@
 module main
 
 import v.token
-import v.vet
 
-type FilteredLines = map[vet.ErrorType]map[int]bool
+type FilteredLines = map[ErrorType]map[int]bool
 
 fn (mut fl FilteredLines) comments(is_multi bool, pos token.Pos) {
 	if !is_multi {
