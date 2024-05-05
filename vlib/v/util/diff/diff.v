@@ -56,7 +56,7 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 	mut args := opts.args
 	if args == '' {
 		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
-		if opts.tool == .diff {
+		if tool == .diff {
 			// Ensure that the diff command supports the color option.
 			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
 			// might not include additional diffutils by default.
