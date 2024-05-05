@@ -9,7 +9,6 @@ import v.ast
 import v.token
 import v.pref
 import v.util
-import v.vet
 import v.errors
 import os
 import hash.fnv1a
@@ -257,7 +256,7 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 	return res
 }
 
-pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error) {
+pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences) &ast.File {
 	$if trace_parse_vet_file ? {
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
@@ -276,10 +275,9 @@ pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)
-	vet_errors := p.scanner.vet_errors
 	file := p.parse()
 	unsafe { p.free_scanner() }
-	return file, vet_errors
+	return file
 }
 
 pub fn (mut p Parser) parse() &ast.File {
