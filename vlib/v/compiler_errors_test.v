@@ -1,5 +1,4 @@
 import os
-import rand
 import term
 import v.util.diff
 import v.util.vtest
@@ -409,10 +408,10 @@ fn chunka(s []u8, chunk_size int) string {
 
 fn diff_content(expected string, found string) {
 	println(term.bold(term.yellow('diff: ')))
-	if diff_cmd := diff.find_working_diff_command() {
-		println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+	if diff_ := diff.compare_text(expected, found) {
+		println(diff_)
 	} else {
-		println('>>>> could not find a working diff command; dumping bytes instead...')
+		println('>>>> `${err}`; dumping bytes instead...')
 		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
 		println('   found bytes:\n${chunka(found.bytes(), 25)}')
 		println('============')
