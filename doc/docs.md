@@ -251,7 +251,8 @@ In this case `main` doesn't return anything, so there is no return type.
 
 As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
 
-[`println`](builtin-functions.html#println) is one of the few [built-in functions](builtin-functions.html).
+[`println`](builtin-functions.html#println) is one of the few 
+[built-in functions](builtin-functions.html).
 It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in one file programs.
@@ -925,7 +926,8 @@ names << 'Sam'
 // names << 10  <-- This will not compile. `names` is an array of strings.
 ```
 
-`val in array` returns true if the array contains `val`. See [`in` operator](statements-&-expressions.html#in-operator).
+`val in array` returns true if the array contains `val`. 
+See [`in` operator](statements-&-expressions.html#in-operator).
 
 ```v
 names := ['John', 'Peter', 'Sam']
@@ -940,7 +942,8 @@ There are two fields that control the "size" of an array:
 * `cap`: *capacity* - the amount of memory space which has been reserved for elements,
   but not initialized or counted as elements. The array can grow up to this size without
   being reallocated. Usually, V takes care of this field automatically but there are
-  cases where the user may want to do manual optimizations (see [below](v-types.html#array-initialization)).
+  cases where the user may want to do manual optimizations 
+  (see [below](v-types.html#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
@@ -1040,7 +1043,8 @@ An array can be of these types:
 
 **Example Code:**
 
-This example uses [Structs](structs.html) and [Sum Types](type-declarations.html#sum-types) to create an array
+This example uses [Structs](structs.html) and 
+[Sum Types](type-declarations.html#sum-types) to create an array
 which can handle different types (e.g. Points, Lines) of data elements.
 
 ```v
@@ -4359,7 +4363,8 @@ A channel can be closed to indicate that no further objects can be pushed. Any a
 to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
-handled using an `or {}` block (see [Handling options/results](type-declarations.html#handling-optionsresults)).
+handled using an `or {}` block 
+(see [Handling options/results](type-declarations.html#handling-optionsresults)).
 
 ```v wip
 ch := chan int{}
@@ -6141,9 +6146,12 @@ the `.len` attribute in arrays.
 V supports the following compile time types:
 
 - `$alias` => matches [Type aliases](type-declarations.html#type-aliases).
-- `$array` => matches [Arrays](v-types.html#arrays) and [Fixed Size Arrays](v-types.html#fixed-size-arrays).
-- `$array_dynamic` => matches [Arrays](v-types.html#arrays), but not [Fixed Size Arrays](v-types.html#fixed-size-arrays).
-- `$array_fixed` => matches [Fixed Size Arrays](v-types.html#fixed-size-arrays), but not [Arrays](v-types.html#arrays)
+- `$array` => matches [Arrays](v-types.html#arrays) and 
+[Fixed Size Arrays](v-types.html#fixed-size-arrays).
+- `$array_dynamic` => matches [Arrays](v-types.html#arrays), 
+but not [Fixed Size Arrays](v-types.html#fixed-size-arrays).
+- `$array_fixed` => matches [Fixed Size Arrays](v-types.html#fixed-size-arrays), 
+but not [Arrays](v-types.html#arrays)
 - `$enum` => matches [Enums](type-declarations.html#enums).
 - `$float` => matches `f32`, `f64` and float literals.
 - `$function` => matches [Function Types](type-declarations.html#function-types).
@@ -6151,7 +6159,8 @@ V supports the following compile time types:
   and integer literals.
 - `$interface` => matches [Interfaces](type-declarations.html#interfaces).
 - `$map` => matches [Maps](v-types.html#maps).
-- `$option` => matches [Option Types](type-declarations.html#optionresult-types-and-error-handling).
+- `$option` => matches 
+[Option Types](type-declarations.html#optionresult-types-and-error-handling).
 - `$struct` => matches [Structs](structs.html).
 - `$sumtype` => matches [Sum Types](type-declarations.html#sum-types).
 - `$string` => matches [Strings](v-types.html#strings).
@@ -6851,8 +6860,9 @@ rm pgo_gen
 
 ## Atomics
 
-V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
-by [calling C](v-and-c.html) functions from V. The standard C11 atomic functions like `atomic_store()`
+V has no special support for atomics, yet, nevertheless it's possible 
+to treat variables as atomics by [calling C](v-and-c.html) functions from V. 
+The standard C11 atomic functions like `atomic_store()`
 are usually defined with the help of macros and C compiler magic to provide a kind of
 *overloaded C functions*.
 Since V does not support overloading functions by intention there are wrapper functions defined in
@@ -6973,7 +6983,8 @@ to race conditions. There are several approaches to deal with these:
 
 - use `shared` types for the variable declarations and use `lock` blocks for access.
   This is most appropriate for larger objects like structs, arrays or maps.
-- handle primitive data types as "atomics" using special C-functions (see [example here](atomics.html)).
+- handle primitive data types as "atomics" using special C-functions 
+(see [example here](atomics.html)).
 - use explicit synchronization primitives like mutexes to control access. The compiler
   cannot really help in this case, so you have to know what you are doing.
 - don't care &ndash; this approach is possible but makes only sense if the exact values
