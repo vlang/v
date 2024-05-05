@@ -1,5 +1,4 @@
 import os
-import rand
 import time
 import term
 import v.util.diff
@@ -10,8 +9,6 @@ const vexe = @VEXE
 const vroot = os.real_path(@VMODROOT)
 
 const testdata_folder = os.join_path(vroot, 'vlib', 'v', 'gen', 'c', 'testdata')
-
-const diff_cmd = diff.find_working_diff_command() or { '' }
 
 const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int() == 1
 
@@ -89,16 +86,16 @@ fn test_out_files() {
 		}
 		if expected != found {
 			println('${term.red('FAIL')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
-			println(term.header('expected:', '-'))
-			println(expected)
-			println(term.header('found:', '-'))
-			println(found)
-			if diff_cmd != '' {
+			if diff_ := diff.compare_text(expected, found) {
 				println(term.header('difference:', '-'))
-				println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+				println(diff_)
 			} else {
-				println(term.h_divider('-'))
+				println(term.header('expected:', '-'))
+				println(expected)
+				println(term.header('found:', '-'))
+				println(found)
 			}
+			println(term.h_divider('-'))
 			total_errors++
 		} else {
 			println('${term.green('OK  ')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')

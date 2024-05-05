@@ -21,7 +21,6 @@ fn run_fmt(mut input_files []string) {
 	fmt_message := 'vfmt tests'
 	eprintln(term.header(fmt_message, '-'))
 	tmpfolder := os.temp_dir()
-	diff_cmd := diff.find_working_diff_command() or { '' }
 	assert input_files.len > 0
 	input_files = vtest.filter_vtest_only(input_files)
 	if input_files.len == 0 {
@@ -51,13 +50,9 @@ fn run_fmt(mut input_files []string) {
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
-			if diff_cmd == '' {
-				eprintln('>> sorry, but no working "diff" CLI command can be found')
-				continue
-			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
-			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
+			println(diff.compare_files(opath, vfmt_result_file) or { err.msg() })
 			continue
 		}
 		fmt_bench.ok()
