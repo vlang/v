@@ -77,7 +77,7 @@ pub fn (a Addr) port() !u16 {
 			return error('unix addr has no port')
 		}
 		.unspec {
-			return error('unspec addr family when obtain port')
+			return error('cannot find port for unspec addr family')
 		}
 	}
 }
