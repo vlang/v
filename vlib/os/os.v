@@ -620,8 +620,12 @@ pub fn join_path_single(base string, elem string) string {
 
 @[direct_array_access]
 fn normalize_path_in_builder(mut sb strings.Builder) {
-	fs := $if windows { `/` } $else { `\\` }
-	rs := $if windows { `\\` } $else { `/` }
+	mut fs := `\\`
+	mut rs := `/`
+	$if windows {
+		fs = `/`
+		rs = `\\`
+	}
 	for idx in 0 .. sb.len {
 		unsafe {
 			if sb[idx] == fs {
@@ -633,7 +637,9 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 	for idx in 0 .. sb.len - 3 {
 		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
 			unsafe {
-				vmemcpy(&sb[idx + 1], &sb[idx + 3], sb.len - idx)
+				for j := idx + 1; j < sb.len - 3; j++ {
+					sb[j] = sb[j + 2]
+				}
 				sb.len -= 2
 			}
 		}
