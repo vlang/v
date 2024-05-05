@@ -115,18 +115,20 @@ fn test_out_path() {
 }
 
 fn print_compare(expected string, found string) {
-	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.red('FAIL'))
 	println('============')
-	println('expected:')
-	println(expected)
-	println('============')
-	println('found:')
-	println(found)
-	println('============\n')
-	println('diff:')
-	println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
-	println('============\n')
+	if diff_ := diff.color_compare_strings(expected, found) or {
+		println('diff:')
+		println(diff_)
+		println('============\n')
+	} else {
+		println('expected:')
+		println(expected)
+		println('============')
+		println('found:')
+		println(found)
+		println('============\n')
+	}
 }
 
 @[params]

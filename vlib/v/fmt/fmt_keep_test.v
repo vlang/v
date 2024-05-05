@@ -30,7 +30,6 @@ fn run_fmt(mut input_files []string) {
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len + 1)
 	tmpfolder := os.temp_dir()
-	diff_cmd := diff.find_working_diff_command() or { '' }
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep + 1
 		fmt_bench.step()
@@ -45,13 +44,9 @@ fn run_fmt(mut input_files []string) {
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
-			if diff_cmd == '' {
-				eprintln('>> sorry, but no working "diff" CLI command can be found')
-				continue
-			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
-			eprintln(diff.color_compare_files(diff_cmd, ipath, vfmt_result_file))
+			println(diff.compare_files(ipath, vfmt_result_file) or { err.msg() })
 			continue
 		}
 		fmt_bench.ok()

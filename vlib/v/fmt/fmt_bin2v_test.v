@@ -15,11 +15,6 @@ const fpref = &pref.Preferences{
 }
 
 fn test_bin2v_formatting() {
-	diff_cmd := diff.find_working_diff_command() or { '' }
-	if diff_cmd == '' {
-		eprintln('>> sorry, but no working "diff" CLI command can be found')
-		exit(0)
-	}
 	os.mkdir_all(tmpfolder)!
 	defer {
 		os.rmdir_all(tmpfolder) or {}
@@ -33,8 +28,8 @@ fn test_bin2v_formatting() {
 	expected_ocontent := os.read_file(b2v_keep_path)!
 	if expected_ocontent != result_ocontent {
 		vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
-		os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
-		eprintln(diff.color_compare_files(diff_cmd, b2v_keep_path, vfmt_result_file))
+		os.write_file(vfmt_result_file, result_ocontent)!
+		println(diff.compare_files(b2v_keep_path, vfmt_result_file)!)
 		exit(1)
 	} else {
 		assert true
