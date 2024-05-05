@@ -1,5 +1,10 @@
 module net
 
+fn test_ip_port() {
+	assert new_ip(1234, addr_ip_any).port()! == 1234
+	assert new_ip6(1234, addr_ip6_any).port()! == 1234
+}
+
 fn test_diagnostics() {
 	dump(aoffset)
 	eprintln('--------')
