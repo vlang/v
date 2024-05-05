@@ -40,7 +40,7 @@ by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
 ## Packaging V for distribution
-See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
+See the [notes on how to prepare a package for V](https://github.com/vlang/v/blob/master/doc/packaging_v_for_distributions.md) .
 
 ## Getting started
 
@@ -251,7 +251,7 @@ In this case `main` doesn't return anything, so there is no return type.
 
 As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
 
-[`println`](#println) is one of the few [built-in functions](#builtin-functions).
+[`println`](builtin-functions.html#println) is one of the few [built-in functions](builtin-functions.html).
 It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in one file programs.
@@ -371,12 +371,12 @@ fn private_function() {
 ```
 
 Functions are private (not exported) by default.
-To allow other [modules](#module-imports) to use them, prepend `pub`. The same applies
-to [structs](#structs), [constants](#constants) and [types](#type-declarations).
+To allow other [modules](module-imports.html) to use them, prepend `pub`. The same applies
+to [structs](structs.html), [constants](constants.html) and [types](type-declarations.html).
 
 > [!NOTE]
 > `pub` can only be used from a named module.
-> For information about creating a module, see [Modules](#modules).
+> For information about creating a module, see [Modules](modules.html).
 
 ## Variables
 
@@ -399,7 +399,7 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-By default V does not allow **global variables**. See more [details](#global-variables).
+By default V does not allow **global variables**. See more [details](global-variables.html).
 
 For consistency across different code bases, all variable and function names
 must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
@@ -522,7 +522,7 @@ f32 f64
 
 isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
 
-voidptr // this one is mostly used for [C interoperability](#v-and-c)
+voidptr // this one is mostly used for [C interoperability](v-and-c.html)
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -925,7 +925,7 @@ names << 'Sam'
 // names << 10  <-- This will not compile. `names` is an array of strings.
 ```
 
-`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
+`val in array` returns true if the array contains `val`. See [`in` operator](statements-&-expressions.html#in-operator).
 
 ```v
 names := ['John', 'Peter', 'Sam']
@@ -940,7 +940,7 @@ There are two fields that control the "size" of an array:
 * `cap`: *capacity* - the amount of memory space which has been reserved for elements,
   but not initialized or counted as elements. The array can grow up to this size without
   being reallocated. Usually, V takes care of this field automatically but there are
-  cases where the user may want to do manual optimizations (see [below](#array-initialization)).
+  cases where the user may want to do manual optimizations (see [below](v-types.html#array-initialization)).
 
 ```v
 mut nums := [1, 2, 3]
@@ -951,7 +951,7 @@ println(nums.len) // "0"
 ```
 
 `data` is a field (of type `voidptr`) with the address of the first
-element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
+element. This is for low-level [`unsafe`](memory-unsafe-code.html) code.
 
 > [!NOTE]
 > Fields are read-only and can't be modified by the user.
@@ -1001,7 +1001,7 @@ for i in 0 .. 1000 {
 ```
 
 > [!NOTE]
-> The above code uses a [range `for`](#range-for) statement.
+> The above code uses a [range `for`](statements-&-expressions.html#range-for) statement.
 
 You can initialize the array by accessing the `index` variable which gives
 the index as shown here:
@@ -1040,7 +1040,7 @@ An array can be of these types:
 
 **Example Code:**
 
-This example uses [Structs](#structs) and [Sum Types](#sum-types) to create an array
+This example uses [Structs](structs.html) and [Sum Types](type-declarations.html#sum-types) to create an array
 which can handle different types (e.g. Points, Lines) of data elements.
 
 ```v
@@ -1261,7 +1261,7 @@ println(array_2) // `[0, 1, 3, 5, 4]`
 ```
 
 A slice is always created with the smallest possible capacity `cap == len` (see
-[`cap` above](#array-initialization)) no matter what the capacity or length
+[`cap` above](v-types.html#array-initialization)) no matter what the capacity or length
 of the parent array is. As a result it is immediately reallocated and copied to another
 memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). In particular pushing elements to a slice
@@ -1500,7 +1500,7 @@ foo['c'] = 99
 
 ## Module imports
 
-For information about creating a module, see [Modules](#modules).
+For information about creating a module, see [Modules](modules.html).
 
 Modules can be imported using the `import` keyword:
 
@@ -2275,7 +2275,7 @@ my_label:
 ```
 
 `goto` should be avoided, particularly when `for` can be used instead.
-[Labelled break/continue](#labelled-break--continue) can be used to break out of
+[Labelled break/continue](#labelled-break-&-continue) can be used to break out of
 a nested loop, and those do not risk violating memory-safety.
 
 ## Structs
@@ -2299,7 +2299,7 @@ assert p.x == 10
 ### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
-and get a [reference](#references) to it, use the `&` prefix:
+and get a [reference](references.html) to it, use the `&` prefix:
 
 ```v
 struct Point {
@@ -2312,7 +2312,7 @@ p := &Point{10, 10}
 println(p.x)
 ```
 
-The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
+The type of `p` is `&Point`. It's a [reference](references.html) to `Point`.
 References are similar to Go pointers and C++ references.
 
 ```v
@@ -2340,7 +2340,7 @@ println(fc) // Foo{ x: 2 }
 println(c) // &Foo{ x: 2 } // Note `&` prefixed.
 ```
 
-see also [Stack and Heap](#stack-and-heap)
+see also [Stack and Heap](memory-management.html#stack-and-heap)
 
 ### Default field values
 
@@ -2355,7 +2355,7 @@ struct Foo {
 
 All struct fields are zeroed by default during the creation of the struct.
 Array and map fields are allocated.
-In case of reference value, see [here](#structs-with-reference-fields).
+In case of reference value, see [here](structs-with-reference-fields.html).
 
 It's also possible to define custom default values.
 
@@ -2367,7 +2367,7 @@ struct Foo {
 }
 ```
 
-You can mark a struct field with the `[required]` [attribute](#attributes), to tell V that
+You can mark a struct field with the `[required]` [attribute](attributes.html), to tell V that
 that field must be initialized when creating an instance of that struct.
 
 This example will not compile, since the field `n` isn't explicitly initialized:
@@ -2501,7 +2501,7 @@ __global:
 }
 ```
 
-Private fields are available only inside the same [module](#modules), any attempt
+Private fields are available only inside the same [module](modules.html), any attempt
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
 
@@ -2761,7 +2761,7 @@ Since there are also no globals, that means that the return values of the functi
 are a function of their arguments only, and their evaluation has no side effects
 (unless the function uses I/O).
 
-Function arguments are immutable by default, even when [references](#references) are passed.
+Function arguments are immutable by default, even when [references](references.html) are passed.
 
 > [!NOTE]
 > However, V is not a purely functional language.
@@ -3146,7 +3146,7 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-See also [Array methods](#array-methods).
+See also [Array methods](v-types.html#array-methods).
 
 <a id='custom-print-of-types'></a>
 
@@ -3217,7 +3217,7 @@ the expression itself, and the expression value.
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
 
-See [symbol visibility](#symbol-visibility), [Access modifiers](#access-modifiers).
+See [symbol visibility](symbol-visibility.html), [Access modifiers](structs.html#access-modifiers).
 
 ### Create modules
 
@@ -4359,7 +4359,7 @@ A channel can be closed to indicate that no further objects can be pushed. Any a
 to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
-handled using an `or {}` block (see [Handling options/results](#handling-optionsresults)).
+handled using an `or {}` block (see [Handling options/results](type-declarations.html#handling-optionsresults)).
 
 ```v wip
 ch := chan int{}
@@ -4379,7 +4379,7 @@ y := <-ch2 ?
 
 The `select` command allows monitoring several channels at the same time
 without noticeable CPU load. It consists of a list of possible transfers and associated branches
-of statements - similar to the [match](#match) command:
+of statements - similar to the [match](statements-&-expressions.html#match) command:
 
 ```v
 import time
@@ -4796,7 +4796,7 @@ Autofree can be enabled with an `-autofree` flag.
 
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
-memory manually. (See [attributes](#attributes)).
+memory manually. (See [Attributes](attributes.html)).
 
 > [!NOTE]
 > Autofree is still WIP. Until it stabilises and becomes the default, please
@@ -4989,7 +4989,7 @@ the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
 `r.f(&s)` would only borrow the reference to `s` is wrong.
 
-A solution to this dilemma is the `[heap]` [attribute](#attributes) at the declaration of
+A solution to this dilemma is the `[heap]` [attribute](attributes.html) at the declaration of
 `struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
 on the heap. This way the reference to `s` remains valid even after `g()` returns.
 The compiler takes into consideration that `MyStruct` objects are always heap
@@ -5831,7 +5831,7 @@ fn main() {
 
 #### <h4 id="comptime-values">.values</h4>
 
-You can read [Enum](#enums) values and their attributes.
+You can read [Enum](type-declarations.html#enums) values and their attributes.
 
 ```V
 enum Color {
@@ -5855,7 +5855,7 @@ fn main() {
 
 #### <h4 id="comptime-attrs">.attributes</h4>
 
-You can read [Struct](#structs) attributes.
+You can read [Struct](structs.html) attributes.
 
 ```V
 @[COLOR]
@@ -5880,7 +5880,7 @@ fn main() {
 
 #### <h4 id="comptime-variants">.variants</h4>
 
-You can read variant types from [Sum type](#sum-types).
+You can read variant types from [Sum type](type-declarations.html#sum-types).
 
 ```V
 type MySum = int | string
@@ -5935,7 +5935,7 @@ fn main() {
 // test2 returns string: foo
 ```
 
-See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
+See [`examples/compiletime/reflection.v`](https://github.com/vlang/v/blob/master/examples/compiletime/reflection.v)
 for a more complete example.
 
 ### Compile time code
@@ -6140,21 +6140,21 @@ the `.len` attribute in arrays.
 
 V supports the following compile time types:
 
-- `$alias` => matches [Type aliases](#type-aliases).
-- `$array` => matches [Arrays](#arrays) and [Fixed Size Arrays](#fixed-size-arrays).
-- `$array_dynamic` => matches [Arrays](#arrays), but not [Fixed Size Arrays](#fixed-size-arrays).
-- `$array_fixed` => matches [Fixed Size Arrays](#fixed-size-arrays), but not [Arrays](#arrays)
-- `$enum` => matches [Enums](#enums).
+- `$alias` => matches [Type aliases](type-declarations.html#type-aliases).
+- `$array` => matches [Arrays](v-types.html#arrays) and [Fixed Size Arrays](v-types.html#fixed-size-arrays).
+- `$array_dynamic` => matches [Arrays](v-types.html#arrays), but not [Fixed Size Arrays](v-types.html#fixed-size-arrays).
+- `$array_fixed` => matches [Fixed Size Arrays](v-types.html#fixed-size-arrays), but not [Arrays](v-types.html#arrays)
+- `$enum` => matches [Enums](type-declarations.html#enums).
 - `$float` => matches `f32`, `f64` and float literals.
-- `$function` => matches [Function Types](#function-types).
+- `$function` => matches [Function Types](type-declarations.html#function-types).
 - `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
   and integer literals.
-- `$interface` => matches [Interfaces](#interfaces).
-- `$map` => matches [Maps](#maps).
-- `$option` => matches [Option Types](#optionresult-types-and-error-handling).
-- `$struct` => matches [Structs](#structs).
-- `$sumtype` => matches [Sum Types](#sum-types).
-- `$string` => matches [Strings](#strings).
+- `$interface` => matches [Interfaces](type-declarations.html#interfaces).
+- `$map` => matches [Maps](v-types.html#maps).
+- `$option` => matches [Option Types](type-declarations.html#optionresult-types-and-error-handling).
+- `$struct` => matches [Structs](structs.html).
+- `$sumtype` => matches [Sum Types](type-declarations.html#sum-types).
+- `$string` => matches [Strings](v-types.html#strings).
 
 ### Environment specific files
 
@@ -6221,7 +6221,7 @@ With the example above:
 - `_notd_customflag.v` => similar to _d_customflag.v, but will be used
   *only* if you do NOT pass `-d customflag` to V.
 
-See also [Cross Compilation](#cross-compilation).
+See also [Cross Compilation](cross-compilation.html).
 
 ## Debugger
 
@@ -6852,7 +6852,7 @@ rm pgo_gen
 ## Atomics
 
 V has no special support for atomics, yet, nevertheless it's possible to treat variables as atomics
-by [calling C](#v-and-c) functions from V. The standard C11 atomic functions like `atomic_store()`
+by [calling C](v-and-c.html) functions from V. The standard C11 atomic functions like `atomic_store()`
 are usually defined with the help of macros and C compiler magic to provide a kind of
 *overloaded C functions*.
 Since V does not support overloading functions by intention there are wrapper functions defined in
@@ -6880,7 +6880,7 @@ fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
 
 const num_iterations = 10000000
 
-// see section "Global Variables" below
+// see section "Global Variables"
 __global (
 	atom u32 // ordinary variable but used as atomic
 )
@@ -6943,7 +6943,7 @@ will hang &ndash; dependent on the compiler optimization used.)
 By default V does not allow global variables. However, in low level applications they have their
 place so their usage can be enabled with the compiler flag `-enable-globals`.
 Declarations of global variables must be surrounded with a `__global ( ... )`
-specification &ndash; as in the example [above](#atomics).
+specification &ndash; as in the example [here](atomics.html).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
@@ -6973,7 +6973,7 @@ to race conditions. There are several approaches to deal with these:
 
 - use `shared` types for the variable declarations and use `lock` blocks for access.
   This is most appropriate for larger objects like structs, arrays or maps.
-- handle primitive data types as "atomics" using special C-functions (see [above](#atomics)).
+- handle primitive data types as "atomics" using special C-functions (see [example here](atomics.html)).
 - use explicit synchronization primitives like mutexes to control access. The compiler
   cannot really help in this case, so you have to know what you are doing.
 - don't care &ndash; this approach is possible but makes only sense if the exact values
@@ -7073,7 +7073,7 @@ use `v help`, `v help build` and `v help build-c`.
 
 **Visual debugging Setup:**
 
-* [Visual Studio Code](vscode.md)
+* [Visual Studio Code](https://github.com/vlang/v/blob/master/doc/vscode.md)
 
 ### Native Backend binaries
 
@@ -7167,7 +7167,7 @@ Since V can compile to C, calling V code from C is very easy, once you know how.
 
 Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
 
-More details in [call_v_from_c example](../examples/call_v_from_c).
+More details in [call_v_from_c example](https://github.com/vlang/v/blob/master/examples/call_v_from_c).
 
 ### Passing C compilation flags
 
@@ -7353,7 +7353,7 @@ pub struct C.SomeCStruct {
 The existence of the data members is made known to V, and they may be used without
 re-creating the original structure exactly.
 
-Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain
+Alternatively, you may [embed](structs.html#embedded-structs) the sub-data-structures to maintain
 a parallel code structure.
 
 ### Export to shared library
@@ -7675,11 +7675,11 @@ __global
 __offsetof
 ```
 
-See also [V Types](#v-types).
+See also [V Types](v-types.html).
 
 ## Appendix II: Operators
 
-This lists operators for [primitive types](#primitive-types) only.
+This lists operators for [primitive types](v-types.html#primitive-types) only.
 
 ```v ignore
 +    sum                    integers, floats, strings
