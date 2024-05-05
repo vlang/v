@@ -117,7 +117,7 @@ fn test_out_path() {
 fn print_compare(expected string, found string) {
 	println(term.red('FAIL'))
 	println('============')
-	if diff_ := diff.color_compare_strings(expected, found) or {
+	if diff_ := diff.compare_text(expected, found) {
 		println('diff:')
 		println(diff_)
 		println('============\n')

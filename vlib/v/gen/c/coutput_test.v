@@ -1,5 +1,4 @@
 import os
-import rand
 import time
 import term
 import v.util.diff
