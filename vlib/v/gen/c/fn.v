@@ -1055,11 +1055,13 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool
 			g.gen_array_all(node)
 			return true
 		}
-		'delete', 'drop' {
+		'delete', 'drop', 'delete_last' {
 			g.write('array_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
-			g.write(', ')
-			g.expr(node.args[0].expr)
+			if node.name != 'delete_last' {
+				g.write(', ')
+				g.expr(node.args[0].expr)
+			}
 			g.write(')')
 			return true
 		}
