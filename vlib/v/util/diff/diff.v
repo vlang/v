@@ -1,3 +1,4 @@
+@[has_globals]
 module diff
 
 import os
@@ -35,9 +36,16 @@ const known_diff_tool_defaults = {
 	// .fc:        '/lnt'
 }
 
+__global cached_available_tool = ?DiffTool(none)
+
 // Allows public checking for the available tool and prevents repeated searches
 // when using compare functions with automatic diff tool detection.
-pub const available_tool = find_working_diff_tool()
+pub fn available_tool() ?DiffTool {
+	if cached_available_tool == none {
+		cached_available_tool = find_working_diff_tool()
+	}
+	return cached_available_tool
+}
 
 // compare_files returns a string displaying the differences between two files.
 pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
@@ -96,7 +104,7 @@ pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
 
 fn (opts CompareOptions) find_tool() !(DiffTool, string) {
 	tool := if opts.tool == .auto {
-		auto_tool := diff.available_tool or {
+		auto_tool := available_tool() or {
 			return error('error: failed to find comparison command')
 		}
 
