@@ -60,7 +60,7 @@ by using any of the following commands in a terminal:
 * [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
 * [Functions](#functions)
-    * [Hoistings](#hoistings)
+    * [Hoisting](#hoisting)
     * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
@@ -340,7 +340,7 @@ Again, the type comes after the argument's name.
 Just like in Go and C, functions cannot be overloaded.
 This simplifies the code and improves maintainability and readability.
 
-### Hoistings
+### Hoisting
 
 Functions can be used before their declaration:
 `add` and `sub` are declared after `main`, but can still be called from `main`.
