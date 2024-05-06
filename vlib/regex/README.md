@@ -67,7 +67,7 @@ but it doesn't match `C` or `z`.
 Inside a cc, it is possible to specify a "range" of characters, for example
 `[ad-h]` is equivalent to writing `[adefgh]`.
 
-A cc can have different ranges at the same time, for example `[a-zA-z0-9]`
+A cc can have different ranges at the same time, for example `[a-zA-Z0-9]`
 matches all the latin lowercase, uppercase and numeric characters.
 
 It is possible to negate the meaning of a cc, using the caret char at the
