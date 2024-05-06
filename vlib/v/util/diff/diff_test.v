@@ -5,7 +5,7 @@ import term
 const tdir = os.join_path(os.vtmp_dir(), 'diff_test')
 
 fn testsuite_begin() {
-	if diff.DiffTool.diff !in diff.available_tools {
+	if diff.DiffTool.diff !in diff.available_tools() {
 		// On GitHub runners, diff should be available on all platforms.
 		// Prevent regressions by failing instead of skipping when it's not detected.
 		if os.getenv('CI') == 'true' {
