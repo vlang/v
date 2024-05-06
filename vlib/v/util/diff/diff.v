@@ -36,15 +36,16 @@ const known_diff_tool_defaults = {
 	// .fc:        '/lnt'
 }
 
-__global cached_available_tool = ?DiffTool(none)
+// List of detected diff tools.
+__global cache_of_available_tools = []DiffTool{}
 
-// Allows public checking for the available tool and prevents repeated searches
+// Allows public checking for the available tools and prevents repeated searches
 // when using compare functions with automatic diff tool detection.
-pub fn available_tool() ?DiffTool {
-	if cached_available_tool == none {
-		cached_available_tool = find_working_diff_tool()
+pub fn available_tools() []DiffTool {
+	if cache_of_available_tools.len == 0 {
+		cache_of_available_tools = find_working_diff_tools()
 	}
-	return cached_available_tool
+	return cache_of_available_tools
 }
 
 // compare_files returns a string displaying the differences between two files.
@@ -64,7 +65,7 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 	mut args := opts.args
 	if args == '' {
 		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
-		if tool == .diff {
+		if opts.tool == .diff {
 			// Ensure that the diff command supports the color option.
 			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
 			// might not include additional diffutils by default.
@@ -104,7 +105,7 @@ pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
 
 fn (opts CompareOptions) find_tool() !(DiffTool, string) {
 	tool := if opts.tool == .auto {
-		auto_tool := available_tool() or {
+		auto_tool := available_tools()[0] or {
 			return error('error: failed to find comparison command')
 		}
 
@@ -112,7 +113,7 @@ fn (opts CompareOptions) find_tool() !(DiffTool, string) {
 	} else {
 		opts.tool
 	}
-	cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
+	cmd := tool.cmd()
 	if opts.tool == .auto {
 		// At this point it was already ensured that the automatically detected tool is available.
 		return tool, cmd
@@ -123,9 +124,13 @@ fn (opts CompareOptions) find_tool() !(DiffTool, string) {
 	return tool, cmd
 }
 
-fn find_working_diff_tool() ?DiffTool {
+// Returns a list of programmatically-compatible known diff tools. Its result is intended to be stored
+// in a constant to prevent repeated searches when compare functions with automatic diff tool detection
+// are used. Using a public constant will also allow for external checking of available tools.
+fn find_working_diff_tools() []DiffTool {
+	mut tools := []DiffTool{}
 	for tool in diff.known_diff_tool_defaults.keys() {
-		cmd := $if windows { '${tool.str()}.exe' } $else { tool.str() }
+		cmd := tool.cmd()
 		os.find_abs_path_of_executable(cmd) or { continue }
 		if tool == .delta {
 			// Sanity check that the `delta` executable is actually the diff tool.
@@ -136,9 +141,14 @@ fn find_working_diff_tool() ?DiffTool {
 				continue
 			}
 		}
-		return tool
+		tools << tool
 	}
-	return none
+	return tools
+}
+
+fn (dt DiffTool) cmd() string {
+	cmd := dt.str()
+	return $if windows { '${cmd}.exe' } $else { cmd }
 }
 
 fn run_tool(cmd string, dbg_location string) string {
