@@ -4,7 +4,6 @@ module main
 
 import os
 import os.cmdline
-import v.vet
 import v.pref
 import v.parser
 import v.token
@@ -15,9 +14,9 @@ import term
 struct Vet {
 mut:
 	opt            Options
-	errors         []vet.Error
-	warns          []vet.Error
-	notices        []vet.Error
+	errors         []VetError
+	warns          []VetError
+	notices        []VetError
 	file           string
 	filtered_lines FilteredLines
 }
@@ -326,7 +325,7 @@ fn (vt &Vet) vprintln(s string) {
 	println(s)
 }
 
-fn (vt &Vet) e2string(err vet.Error) string {
+fn (vt &Vet) e2string(err VetError) string {
 	mut kind := '${err.kind}:'
 	mut location := '${err.file_path}:${err.pos.line_nr}:'
 	if vt.opt.use_color {
@@ -351,11 +350,11 @@ fn (mut vt Vet) vet_in_condition(expr ast.InfixExpr) {
 	}
 }
 
-fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
+fn (mut vt Vet) error(msg string, line int, fix FixKind) {
 	pos := token.Pos{
 		line_nr: line + 1
 	}
-	vt.errors << vet.Error{
+	vt.errors << VetError{
 		message: msg
 		file_path: vt.file
 		pos: pos
@@ -365,11 +364,11 @@ fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
 	}
 }
 
-fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
+fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
 	pos := token.Pos{
 		line_nr: line + 1
 	}
-	mut w := vet.Error{
+	mut w := VetError{
 		message: msg
 		file_path: vt.file
 		pos: pos
@@ -385,11 +384,11 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 	}
 }
 
-fn (mut vt Vet) notice(msg string, line int, fix vet.FixKind) {
+fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
 	pos := token.Pos{
 		line_nr: line + 1
 	}
-	vt.notices << vet.Error{
+	vt.notices << VetError{
 		message: msg
 		file_path: vt.file
 		pos: pos

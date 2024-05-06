@@ -1,7 +1,5 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-module vet
-
 import v.token
 
 pub enum ErrorKind {
@@ -24,7 +22,7 @@ pub enum ErrorType {
 }
 
 @[minify]
-pub struct Error {
+pub struct VetError {
 pub mut:
 	kind ErrorKind @[required]
 pub:
