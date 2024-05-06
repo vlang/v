@@ -1,13 +1,13 @@
-name: Build binary artifacts
+name: Release CI
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - '**/binary_artifact.yml'
+      - '.github/workflows/release_ci.yml'
   push:
     paths:
-      - '**/binary_artifact.yml'
+      - '.github/workflows/release_ci.yml'
     tags:
       - weekly.**
       - 0.**
