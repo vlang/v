@@ -16,6 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -98,50 +101,20 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release:
-    name: Create Github Release
     if: github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Create Release
-        id: create_release
+      - uses: actions/download-artifact@v4
+      - name: Create release
         uses: ncipollo/release-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: |
+            ~/work/v/v/windows/v_windows.zip
+            ~/work/v/v/linux/v_linux.zip
+            ~/work/v/v/macos_arm64/v_macos_arm64.zip
+            ~/work/v/v/macos_x86_64/v_macos_x86_64.zip
           tag: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          commit: ${{ github.sha }}
           draft: false
           prerelease: false
-
-  publish:
-    if: github.ref_type == 'tag'
-    needs: release
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        version: [windows, linux, macos_arm64, macos_x86_64]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fetch artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.version }}
-          path: ./${{ matrix.version }}
-      - name: Get release
-        id: get_release_info
-        uses: leahlundqvist/get-release@v1.3.1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          tag_name: ${{ github.ref_name }}
-      - name: Upload Release Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.get_release_info.outputs.upload_url }}
-          asset_path: ${{ matrix.version }}/v_${{ matrix.version }}.zip
-          asset_name: v_${{ matrix.version }}.zip
-          asset_content_type: application/zip
