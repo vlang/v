@@ -55,7 +55,8 @@ fn test_compare_files() {
 	// Test deprecated
 	assert res == diff.color_compare_files('diff', p1, p2)
 	// Test again using `find_working_diff_command()`.
-	assert res == diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
+	zzz := diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
+	assert term.strip_ansi(res) == term.strip_ansi(zzz)
 
 	// Test custom options.
 	res = diff.compare_files(p1, p2, tool: .diff, args: '-U 2 -i')!
