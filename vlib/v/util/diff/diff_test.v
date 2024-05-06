@@ -5,13 +5,18 @@ import term
 const tdir = os.join_path(os.vtmp_dir(), 'diff_test')
 
 fn testsuite_begin() {
-	// Disable environmental overwrites that can result in different compare outputs.
-	os.setenv('VDIFF_CMD', '', true)
-	os.find_abs_path_of_executable('diff') or {
+	if diff.DiffTool.diff !in diff.available_tools() {
+		// On GitHub runners, diff should be available on all platforms.
+		// Prevent regressions by failing instead of skipping when it's not detected.
+		if os.getenv('CI') == 'true' {
+			exit(1)
+		}
 		eprintln('> skipping test `${@FILE}`, since this test requires `diff` to be installed')
 		exit(0)
 	}
 	os.mkdir_all(tdir)!
+	// Disable environmental overwrites that can result in different compare outputs.
+	os.setenv('VDIFF_CMD', '', true)
 }
 
 fn testsuite_end() {
