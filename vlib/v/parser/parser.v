@@ -256,30 +256,6 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 	return res
 }
 
-pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences) &ast.File {
-	$if trace_parse_vet_file ? {
-		eprintln('> ${@MOD}.${@FN} path: ${path}')
-	}
-	global_scope := &ast.Scope{
-		parent: unsafe { nil }
-	}
-	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, .parse_comments, pref_) or { panic(err) }
-		table: table_
-		pref: pref_
-		scope: &ast.Scope{
-			start_pos: 0
-			parent: global_scope
-		}
-		errors: []errors.Error{}
-		warnings: []errors.Warning{}
-	}
-	p.set_path(path)
-	file := p.parse()
-	unsafe { p.free_scanner() }
-	return file
-}
-
 pub fn (mut p Parser) parse() &ast.File {
 	util.timing_start('PARSE')
 	defer {
