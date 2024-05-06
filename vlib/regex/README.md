@@ -94,7 +94,7 @@ For example `\w` is the meta-char `w`.
 
 A meta-char can match different types of characters.
 
-- `\w` matches a word char char `[a-zA-Z0-9_]`
+- `\w` matches a word char `[a-zA-Z0-9_]`
 - `\W` matches a non word char
 - `\d` matches a digit `[0-9]`
 - `\D` matches a non digit
@@ -180,7 +180,7 @@ nested. Like all other tokens, groups can have a quantifier too.
 `(c(pa)+z ?)+` matches `cpaz cpapaz cpapapaz` or `cpapaz`
 
 Lets analyze this last case, first we have the group `#0`, that is the most
-outer round brackets `(...)+`. This group has a quantifier `+`, that say to
+outer round brackets `(...)+`. This group has a quantifier `+`, that says to
 match its content *at least one time*.
 
 Then we have a simple char token `c`, and a second group `#1`: `(pa)+`.
@@ -227,10 +227,10 @@ for gi < re.groups.len {
 > To show the `group id number` in the result of the `get_query()`
 > the flag `debug` of the RE object must be `1` or `2`
 
-In order to simplify the use of the captured groups, it possible to use the
+In order to simplify the use of the captured groups, it is possible to use the
 utility function: `get_group_list`.
 
-This function return a list of groups using this support struct:
+This function returns a list of groups using this support struct:
 
 ```v oksyntax
 pub struct Re_group {
@@ -240,7 +240,7 @@ pub:
 }
 ```
 
-Here an example of use:
+Here is an example of use:
 
 ```v oksyntax
 /*
@@ -251,8 +251,8 @@ purpose. Example: #A0B0CC #A9F
 fn convert_html_rgb(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
-	// this is the regex query, it use the V string interpolation to customize the regex query
-	// Note: If you want use escaped code you must use the r"" (raw) strings,
+	// this is the regex query, it uses the V string interpolation to customize the regex query
+	// Note: If you want to use escaped code you must use the r"" (raw) strings,
 	// *** please remember that the V interpoaltion doesn't work on raw strings. ***
 	query := '#([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})'
 	mut re := regex.regex_opt(query) or { panic(err) }
@@ -271,7 +271,7 @@ fn convert_html_rgb(in_col string) u32 {
 }
 ```
 
-Others utility functions are `get_group_by_id` and `get_group_bounds_by_id`
+Other utility functions are `get_group_by_id` and `get_group_bounds_by_id`
 that get directly the string of a group using its `id`:
 
 ```v ignore
