@@ -20,6 +20,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+env:
+  V_CI_MUSL: 1
+
 jobs:
   alpine-musl-gcc:
     runs-on: ubuntu-20.04
@@ -27,7 +30,6 @@ jobs:
     container:
       image: thevlang/vlang:alpine-build
       env:
-        V_CI_MUSL: 1
         VFLAGS: -cc gcc
       volumes:
         - ${{github.workspace}}:/opt/vlang
@@ -57,7 +59,6 @@ jobs:
     container:
       image: thevlang/vlang:ubuntu-build
       env:
-        V_CI_MUSL: 1
         V_CI_UBUNTU_MUSL: 1
         VFLAGS: -cc musl-gcc -gc none
       volumes:
