@@ -1,6 +1,7 @@
 name: VC gen
 
 on:
+  workflow_dispatch:
   pull_request:
     paths-ignore:
       - '**.vv'
