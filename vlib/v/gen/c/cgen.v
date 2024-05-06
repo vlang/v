@@ -4901,7 +4901,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	g.write(g.get_ternary_name(name))
 	if is_auto_heap {
 		g.write('))')
-		if is_option {
+		if is_option && node.or_expr.kind != .absent {
 			g.write('.data')
 		}
 	}
@@ -6992,7 +6992,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			if g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
 			} else {
-				styp := g.typ(g.fn_decl.return_type)
+				styp := g.typ(g.fn_decl.return_type).replace('*', '_ptr')
 				err_obj := g.new_tmp_var()
 				g.writeln('\t${styp} ${err_obj};')
 				g.writeln('\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(_option));')
