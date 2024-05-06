@@ -24,7 +24,7 @@ env:
   V_CI_MUSL: 1
 
 jobs:
-  alpine-musl-gcc:
+  alpine-docker-musl-gcc:
     runs-on: ubuntu-20.04
     timeout-minutes: 241
     container:
@@ -53,7 +53,7 @@ jobs:
       - name: Run only essential tests
         run: VTEST_JUST_ESSENTIAL=1 ./v test-self
 
-  ubuntu-musl:
+  ubuntu-docker-musl:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     container:
