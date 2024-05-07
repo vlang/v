@@ -84,8 +84,7 @@ fn setup_symlink() {
 	}
 	C.RegCloseKey(reg_sys_env_handle)
 	if os.getenv('GITHUB_JOB') != '' {
-		// Append V's install location (should be the current directory) to GITHUBs PATH environment variable.
-
+		// Append V's install location to GITHUBs PATH environment variable.
 		// Resources:
 		// 1. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
 		// 2. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-environment-variable
