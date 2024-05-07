@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 import v.token
+import term
 
 pub enum ErrorKind {
 	error
@@ -33,4 +34,66 @@ pub:
 	pos       token.Pos // position in the file
 	fix       FixKind   @[required]
 	typ       ErrorType @[required]
+}
+
+fn (mut vt Vet) error(msg string, line int, fix FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	vt.errors << VetError{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .error
+		fix: fix
+		typ: .default
+	}
+}
+
+fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	mut w := VetError{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .warning
+		fix: fix
+		typ: .default
+	}
+	if vt.opt.is_werror {
+		w.kind = .error
+		vt.errors << w
+	} else {
+		vt.warns << w
+	}
+}
+
+fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	vt.notices << VetError{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: .default
+	}
+}
+
+fn (vt &Vet) e2string(err VetError) string {
+	mut kind := '${err.kind}:'
+	mut location := '${err.file_path}:${err.pos.line_nr}:'
+	if vt.opt.use_color {
+		kind = term.bold(match err.kind {
+			.warning { term.magenta(kind) }
+			.error { term.red(kind) }
+			.notice { term.yellow(kind) }
+		})
+		location = term.bold(location)
+	}
+	return '${location} ${kind} ${err.message}'
 }
