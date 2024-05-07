@@ -32,6 +32,11 @@ Options:
   -verify        Make sure the provided file is already formatted. Useful for
                  checking code contributions in CI for example.
 
+  -inprocess     Do everything in the same process. More prone to crashes in
+                 case of parser bugs for invalid source files, and it needs
+                 more memory, but it is faster for thousands of files, since
+                 it avoids the interprocess communication overhead.
+
 Environment Variables:
   VDIFF_CMD      A custom tool and options that will be used for viewing the
                  differences between the original and the temporarily formatted
