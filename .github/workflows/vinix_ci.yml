@@ -32,7 +32,7 @@ jobs:
           .github/workflows/retry.sh sudo apt install build-essential meson -y
 
       - name: Build V
-        run: make
+        run: make && ./v symlink -githubci
 
       - name: Clone current Vinix
         run: .github/workflows/retry.sh git clone https://github.com/vlang/vinix.git
