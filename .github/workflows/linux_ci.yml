@@ -29,9 +29,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build v
+        run: make -j4 && ./v symlink -githubci
+      - name: Build v with -prealloc
         run: |
-          echo $VFLAGS
-          make -j4 && ./v symlink -githubci
           v -d debug_malloc -d debug_realloc -o v cmd/v
           v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation
