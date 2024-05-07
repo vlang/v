@@ -292,6 +292,9 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 			vt.vet_empty_str(expr)
 			vt.expr(expr.right)
 		}
+		ast.ParExpr {
+			vt.expr(expr.expr)
+		}
 		ast.CallExpr {
 			vt.expr(expr.left)
 			vt.exprs(expr.args.map(it.expr))
@@ -322,10 +325,14 @@ fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 }
 
 fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
-	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral
+	if expr.left is ast.InfixExpr {
+		vt.expr(expr.left)
+	} else if expr.right is ast.InfixExpr {
+		vt.expr(expr.right)
+	} else if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral
 		&& expr.left.field_name == 'len' {
 		if expr.right.val == '0' && expr.op != .lt {
-			// TODO: remove as when values can be smart casted.
+			// TODO: remove as-casts when values can be smart casted.
 			expr_str := (expr.left as ast.SelectorExpr).expr.str()
 			op := if expr.op == .gt { '!=' } else { expr.op.str() }
 			vt.notice("Use `${expr_str} ${op} ''` instead of `${expr_str}.len ${expr.op} 0`",
