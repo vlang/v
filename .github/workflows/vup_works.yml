@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build v
-        run: make && ./v symlink -githubci && ./v version
+        run: make -j4 && ./v symlink && ./v version
 
       - name: Download latest release ZIP
         run: wget https://github.com/vlang/v/releases/latest/download/${{ matrix.zip }}

@@ -83,6 +83,21 @@ fn setup_symlink() {
 		warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 	}
 	C.RegCloseKey(reg_sys_env_handle)
+	if os.getenv('GITHUB_JOB') != '' {
+		// Append V's install location (should be the current directory) to GITHUBs PATH environment variable.
+
+		// Resources:
+		// 1. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+		// 2. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-environment-variable
+		mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
+			eprintln('The `GITHUB_PATH` env variable is not defined.')
+			exit(1)
+		}
+		content += '\n${new_sys_env_path}\n'
+		os.write_file(os.getenv('GITHUB_PATH'), content) or {
+			panic('Failed to write to GITHUB_PATH.')
+		}
+	}
 	println('Done.')
 	println('Note: Restart your shell/IDE to load the new %PATH%.')
 	println('After restarting your shell/IDE, give `v version` a try in another directory!')

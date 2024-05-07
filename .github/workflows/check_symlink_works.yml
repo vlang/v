@@ -22,6 +22,8 @@ jobs:
       matrix:
         os: [ubuntu-20.04, macos-13]
       fail-fast: false
+    env:
+      V_CI_SYMLINK: 1 # Use regular system symlinking.
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -53,7 +55,7 @@ jobs:
         if: runner.os == 'Windows'
         run: ./make.bat
       - name: Symlink
-        run: ./v symlink -githubci
+        run: ./v symlink
       - name: Check if V is usable
         run: |
           pwd
