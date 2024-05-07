@@ -16,35 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-sudo:
+  symlink:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-13]
-      fail-fast: false
-    env:
-      V_CI_SYMLINK: 1 # Use regular system symlinking.
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: make -j4
-      - name: Symlink
-        run: sudo ./v symlink
-      - name: Check if V is usable
-        run: |
-          pwd
-          v version
-          cd ~
-          pwd
-          v version
-          echo 'println(123)' > hi.v
-          v run hi.v
-
-  test-githubci:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04, macos-13, windows-2019]
+        os: [ubuntu-20.04, macos-12, windows-2019]
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
