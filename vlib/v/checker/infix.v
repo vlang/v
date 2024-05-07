@@ -743,6 +743,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+	// Do an ambiguous expression check for << >> and &, since they all have the same precedence (unlike in C)
+	if !c.is_builtin_mod && node.op in [.amp, .left_shift, .right_shift] {
+		if !c.mod.starts_with('math') { // TODO fix all warnings in math
+			if mut node.left is ast.InfixExpr {
+				if node.left.op != node.op && node.left.op in [.amp, .left_shift, .right_shift] {
+					// for example: `(a << b) & c` instead of `a << b & c`
+					c.note('ambiguous expression. use `()` to ensure correct order of operations',
+						node.pos)
+				}
+			}
+		}
+	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and] {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
