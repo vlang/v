@@ -3,6 +3,8 @@ import os
 
 fn main() {
 	mut cmd := Command{}
-	cmd.disable_man = true
+	cmd.defaults = struct {
+		man: false
+	}
 	cmd.parse(os.args)
 }

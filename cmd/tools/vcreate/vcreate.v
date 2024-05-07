@@ -74,7 +74,6 @@ fn main() {
 					name: 'v'
 				}
 				posix_mode: true
-				disable_man: true
 				flags: flags
 				pre_execute: validate
 				execute: new_project
@@ -92,7 +91,6 @@ fn main() {
 					name: 'v'
 				}
 				posix_mode: true
-				disable_man: true
 				flags: flags
 				pre_execute: validate
 				execute: init_project

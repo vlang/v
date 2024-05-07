@@ -7,7 +7,6 @@ import v.pref
 import v.builder
 import v.builder.cbuilder
 import v.ast
-import rand
 import term
 
 const base_os = pref.get_host_os()
@@ -28,7 +27,6 @@ const skip_modules = [
 	'v.eval',
 ]
 const is_verbose = os.getenv('VERBOSE') != ''
-const diff_cmd = diff.find_working_diff_command() or { '' }
 
 fn main() {
 	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
@@ -51,10 +49,7 @@ fn main() {
 			diff_modules[m] = true
 			summary := 'Different APIs found for module: `${m}`, between OS base: `${base_os}` and OS: `${other_os}`'
 			eprintln(term.header(summary, '-'))
-			if diff_cmd == '' {
-				continue
-			}
-			diff_ := diff.color_compare_strings(diff_cmd, rand.ulid(), api_base, api_os)
+			diff_ := diff.compare_text(api_base, api_os) or { continue }
 			println(diff_)
 			eprintln(term.h_divider('-'))
 		}
