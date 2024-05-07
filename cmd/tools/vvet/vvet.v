@@ -329,32 +329,35 @@ fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
 		vt.expr(expr.left)
 	} else if expr.right is ast.InfixExpr {
 		vt.expr(expr.right)
-	} else if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral
-		&& expr.left.field_name == 'len' {
-		if expr.right.val == '0' && expr.op != .lt {
-			// TODO: remove as-casts when values can be smart casted.
-			expr_str := (expr.left as ast.SelectorExpr).expr.str()
-			op := if expr.op == .gt { '!=' } else { expr.op.str() }
-			vt.notice("Use `${expr_str} ${op} ''` instead of `${expr_str}.len ${expr.op} 0`",
-				expr.pos.line_nr, .unknown)
-		} else if expr.right.val == '1' && expr.op in [.lt, .gt] {
-			expr_str := (expr.left as ast.SelectorExpr).expr.str()
-			op := if expr.op == .lt { '==' } else { '!=' }
-			vt.notice("Use `${expr_str} ${op} ''` instead of `${expr_str}.len ${expr.op} 1`",
-				expr.pos.line_nr, .unknown)
+	} else if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
+		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
+		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
+			&& operand.field_name == 'len' {
+			if expr.right.val == '0' && expr.op != .lt {
+				// Case: `var.len > 0`, `var.len == 0`, `var.len != 0`
+				op := if expr.op == .gt { '!=' } else { expr.op.str() }
+				vt.notice("Use `${operand.expr.name} ${op} ''` instead of `${operand.expr.name}.len ${expr.op} 0`",
+					expr.pos.line_nr, .unknown)
+			} else if expr.right.val == '1' && expr.op == .lt {
+				// Case: `var.len < 1`
+				vt.notice("Use `${operand.expr.name} == ''` instead of `${operand.expr.name}.len ${expr.op} 1`",
+					expr.pos.line_nr, .unknown)
+			}
 		}
-	} else if expr.left is ast.IntegerLiteral && expr.right is ast.SelectorExpr
-		&& expr.right.field_name == 'len' {
-		if (expr.left as ast.IntegerLiteral).val == '0' && expr.op != .gt {
-			expr_str := expr.right.expr.str()
-			op := if expr.op == .lt { '!=' } else { expr.op.str() }
-			vt.notice("Use `'' ${op} ${expr_str}` instead of `0 ${expr.op} ${expr_str}.len`",
-				expr.pos.line_nr, .unknown)
-		} else if (expr.left as ast.IntegerLiteral).val == '1' && expr.op in [.lt, .gt] {
-			expr_str := expr.right.expr.str()
-			op := if expr.op == .lt { '!=' } else { '==' }
-			vt.notice("Use `'' ${op} ${expr_str}` instead of `1 ${expr.op} ${expr_str}.len`",
-				expr.pos.line_nr, .unknown)
+	} else if expr.left is ast.IntegerLiteral && expr.right is ast.SelectorExpr {
+		operand := expr.right
+		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
+			&& operand.field_name == 'len' {
+			if (expr.left as ast.IntegerLiteral).val == '0' && expr.op != .gt {
+				// Case: `0 < var.len`, `0 == var.len`, `0 != var.len`
+				op := if expr.op == .lt { '!=' } else { expr.op.str() }
+				vt.notice("Use `'' ${op} ${operand.expr.name}` instead of `0 ${expr.op} ${operand.expr.name}.len`",
+					expr.pos.line_nr, .unknown)
+			} else if (expr.left as ast.IntegerLiteral).val == '1' && expr.op == .gt {
+				// Case: `1 > var.len`
+				vt.notice("Use `'' == ${operand.expr.name}` instead of `1 ${expr.op} ${operand.expr.name}.len`",
+					expr.pos.line_nr, .unknown)
+			}
 		}
 	}
 }
