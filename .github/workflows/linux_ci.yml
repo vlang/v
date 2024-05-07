@@ -115,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci && ./v -cc gcc -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: All code is formatted
         run: ./v test-cleancode
       - name: Install dependencies for examples and tools
@@ -123,6 +123,8 @@ jobs:
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+      - name: Recompile V with -cstrict and gcc
+        run: v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
@@ -221,7 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci && v -cc clang -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: All code is formatted
         run: ./v test-cleancode
       - name: Install dependencies for examples and tools
@@ -230,6 +232,8 @@ jobs:
           ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
           ./v retry -- sudo apt install --quiet -y clang
+      - name: Recompile V with -cstrict and clang
+        run: v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
@@ -322,10 +326,12 @@ jobs:
   #     V_CI_MUSL: 1
   #   steps:
   #   - name: Build v
-  #     run: echo $VFLAGS && make -j4 && ./v symlink -githubci && ./v -cg -o v cmd/v
+  #     run: echo $VFLAGS && make -j4 && ./v symlink -githubci
   #   - uses: actions/checkout@v4
   #   - name: Install dependencies for examples and tools
   #     run: ./v retry -- sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #   - name: Recompile V with -cg
+  #     run: ./v -cg -o v cmd/v
   #   # - name: Test v binaries
   #   #   run: ./v -N -W build-vbinaries
   #   # - name: Test v->js
