@@ -23,17 +23,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v symlink -githubci
 
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install build-essential meson -y
-
-      - name: Build V
-        run: make && ./v symlink -githubci
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install build-essential meson -y
 
       - name: Clone current Vinix
-        run: .github/workflows/retry.sh git clone https://github.com/vlang/vinix.git
+        run: ./v retry -- git clone https://github.com/vlang/vinix.git
 
       - name: Download Vinix kernel dependencies
         run: cd vinix/kernel && ./get-deps

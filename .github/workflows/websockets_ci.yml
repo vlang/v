@@ -28,14 +28,14 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: .github/workflows/retry.sh sudo apt install --quiet -y libssl-dev
       - name: Build v
         run: |
           echo $VFLAGS
           sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
-          make -j4
+          make -j4 && ./v symlink -githubci
           ./v -g -o v cmd/v
+      - name: Install dependencies
+        run: v retry -- sudo apt install --quiet -y libssl-dev
       - name: v doctor
         run: ./v doctor
       - name: Run websockets tests

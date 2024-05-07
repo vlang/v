@@ -33,14 +33,16 @@ jobs:
       PKG_CONFIG_PATH: /usr/local/opt/pkgconfig:/usr/local/opt/libpq/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/libpq/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig
     steps:
       - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v symlink -githubci && ./v -cg -cstrict -o v cmd/v
+      - name: All code is formatted
+        run: VJOBS=1 ./v test-cleancode
       - name: Install dependencies
         run: |
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
-          .github/workflows/retry.sh brew install libpq openssl mercurial
+          ./v retry -- brew install libpq openssl mercurial
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "LIBRARY_PATH is '$LIBRARY_PATH'"
-      - name: Build V
-        run: make -j4 && ./v -cg -cstrict -o v cmd/v
       - name: Run sanitizers
         run: |
           ./v -o v2 cmd/v -cflags -fsanitize=undefined
@@ -66,8 +68,6 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: All code is formatted
-        run: VJOBS=1 ./v test-cleancode
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -86,14 +86,14 @@ jobs:
           ./v doctor
       - name: Test ved
         run: |
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ved
+          ./v retry -- git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
           ../v -prod .
           cd ..
       - name: Build V UI examples
         run: |
-          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ui
+          ./v retry -- git clone --depth 1 https://github.com/vlang/ui
           cd ui
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui

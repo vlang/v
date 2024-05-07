@@ -54,7 +54,7 @@ jobs:
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
-        run: make -j4
+        run: make -j4 && ./v symlink -githubci
       - name: v test-cleancode
         run: ./v test-cleancode
       - name: v test-fmt
@@ -70,10 +70,10 @@ jobs:
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
-        run: make -j4
+        run: make -j4 && ./v symlink -githubci
       - name: Clone & Build previous vmaster/v
         run: |
-          .github/workflows/retry.sh git clone --depth=1 https://github.com/vlang/v vmaster/
+          ./v retry -- git clone --depth=1 https://github.com/vlang/v vmaster/
           (cd vmaster; make -j4)
       - name: V versions
         run: ./v version && ./vmaster/v version
@@ -93,16 +93,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 10
+      - name: Build v
+        run: make -j4 && ./v symlink -githubci
 
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          .github/workflows/retry.sh sudo apt install --quiet -y g++-9 g++-11
-
-      - name: Build v
-        run: make
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          ./v retry -- sudo apt install --quiet -y g++-9 g++-11
 
       - name: g++-9 version
         run: g++-9 --version
@@ -128,12 +127,12 @@ jobs:
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
-      - name: Install zzuf
-        run: .github/workflows/retry.sh sudo apt install -qq zzuf
       - name: Build local v
         run: |
-          make -j4
+          make -j4 && ./v symlink -githubci
           ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
+      - name: Install zzuf
+        run: ./v retry -- sudo apt install -qq zzuf
       - name: Run test-parser
         run: |
           ./v test-parser --show_source --linear examples/hello_world.v

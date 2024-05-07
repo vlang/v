@@ -28,25 +28,26 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          # The following is needed for examples/wkhtmltopdf.v
-          .github/workflows/retry.sh wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          .github/workflows/retry.sh sudo apt install --quiet -y xfonts-75dpi xfonts-base
-          .github/workflows/retry.sh sudo apt install --quiet -y expect
-          .github/workflows/retry.sh sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
           echo $VFLAGS
-          make
-          ./v test-cleancode
+          make -j4 && ./v symlink -githubci
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation
           ./v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Install dependencies for examples and tools
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          # The following is needed for examples/wkhtmltopdf.v
+          ./v retry -- wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+          ./v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base
+          ./v retry -- sudo apt install --quiet -y expect
+          ./v retry -- sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Test v->c
         run: |
           thirdparty/tcc/tcc.exe -version
@@ -63,8 +64,6 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: All code is formatted
-        run: ./v test-cleancode
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -115,13 +114,17 @@ jobs:
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
-        run: make -j4 && ./v -cc gcc -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Install dependencies for examples and tools
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+      - name: Recompile V with -cstrict and gcc
+        run: v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
@@ -137,7 +140,7 @@ jobs:
       # - name: Test v->js
       #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       # - name: Build Vorum
-      #   run: .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
+      #   run: ./v retry -- git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: V self compilation
@@ -155,8 +158,6 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: All code is formatted
-        run: ./v test-cleancode
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -221,14 +222,18 @@ jobs:
       VFLAGS: -cc clang
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          .github/workflows/retry.sh sudo apt install --quiet -y clang
       - name: Build V
-        run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Install dependencies for examples and tools
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          ./v retry -- sudo apt install --quiet -y clang
+      - name: Recompile V with -cstrict and clang
+        run: v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
@@ -256,8 +261,6 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: All code is formatted
-        run: ./v test-cleancode
 
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
@@ -322,12 +325,13 @@ jobs:
   #     VFLAGS: -cc musl-gcc
   #     V_CI_MUSL: 1
   #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Install dependencies
-  #     run: |
-  #        .github/workflows/retry.sh sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
   #   - name: Build v
-  #     run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+  #     run: echo $VFLAGS && make -j4 && ./v symlink -githubci
+  #   - uses: actions/checkout@v4
+  #   - name: Install dependencies for examples and tools
+  #     run: ./v retry -- sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #   - name: Recompile V with -cg
+  #     run: ./v -cg -o v cmd/v
   #   # - name: Test v binaries
   #   #   run: ./v -N -W build-vbinaries
   #   # - name: Test v->js
