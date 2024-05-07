@@ -72,13 +72,13 @@ jobs:
       # - name: Self tests (-cstrict)
       #   run: V_CI_CSTRICT=1 ./v -cstrict test-self vlib
       - name: Build examples
-        run: ./v -W build-examples
+        run: ./v -N -W build-examples
       - name: Run the submodule example, using a relative path
         run: ./v -W run examples/submodule
       - name: Build v tools
-        run: ./v -W build-tools
+        run: ./v -N -W build-tools
       - name: Build v binaries
-        run: ./v build-vbinaries
+        run: ./v -N -W build-vbinaries
       - name: Build benches
         run: ./v should-compile-all vlib/v/tests/bench/
       - name: Run a VSH script
@@ -133,7 +133,7 @@ jobs:
       # - name: Test V
       #   run: ./v test-all
       # - name: Test v binaries
-      #   run: ./v build-vbinaries
+      #   run: ./v -N -W build-vbinaries
       # - name: Test v->js
       #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       # - name: Build Vorum
@@ -166,7 +166,7 @@ jobs:
       - name: Self tests (-cstrict)
         run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self vlib
       - name: Build examples
-        run: ./v build-examples
+        run: ./v -N -W build-examples
       - name: Build tetris with -autofree
         run: ./v -autofree -o tetris examples/tetris/tetris.v
       - name: Build blog tutorial with -autofree
@@ -208,11 +208,11 @@ jobs:
       - name: compile vup.v with -skip-unused and -prod
         run: ./v -showcc -skip-unused -cc gcc -prod cmd/tools/vup.v
 
-      # - run: cd examples/native && ../../v -native hello_world.v && ./hello_world
-      # - name: Coveralls GitHub Action
-      #   uses: coverallsapp/github-action@v1.0.1
-      #   with:
-      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+        # - run: cd examples/native && ../../v -native hello_world.v && ./hello_world
+        # - name: Coveralls GitHub Action
+        #   uses: coverallsapp/github-action@v1.0.1
+        #   with:
+        #     github-token: ${{ secrets.GITHUB_TOKEN }}
 
   clang:
     runs-on: ubuntu-20.04
@@ -269,7 +269,7 @@ jobs:
         run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self vlib
 
       - name: Build examples
-        run: ./v build-examples
+        run: ./v -N -W build-examples
       - name: Build examples with -autofree
         run: |
           ./v -autofree -experimental -o tetris examples/tetris/tetris.v
@@ -329,7 +329,7 @@ jobs:
   #   - name: Build v
   #     run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
   #   # - name: Test v binaries
-  #   #   run: ./v build-vbinaries
+  #   #   run: ./v -N -W build-vbinaries
   #   # - name: Test v->js
   #   #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
   #   - name: quick debug
