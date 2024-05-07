@@ -35,11 +35,11 @@ jobs:
 
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make -j4 && ./v symlink -githubci
 
       - name: Install vab
         run: |
-          .github/workflows/retry.sh v install vab
+          v retry -- v install vab
           v -g ~/.vmodules/vab
           sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
@@ -70,11 +70,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make -j4 && ./v symlink -githubci
 
       - name: Install vab
         run: |
-          .github/workflows/retry.sh v install vab
+          v retry -- v install vab
           v -g ~/.vmodules/vab
           sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 

@@ -81,16 +81,18 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          .github/workflows/retry.sh sudo apt install clang
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
@@ -105,15 +107,17 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
@@ -128,16 +132,18 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          .github/workflows/retry.sh sudo apt install clang
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
@@ -164,12 +170,12 @@ jobs:
           .\v.exe self
       - name: Ensure code is well formatted
         run: .\v.exe test-cleancode
-      # - name: Install dependencies
-      #   run: |
-      #     .\v.exe setup-freetype
-      #     .\.github\workflows\windows-install-sqlite.bat
-      # - name: Self tests (/fsanitize=address) # TODO:
-      #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
+        # - name: Install dependencies
+        #   run: |
+        #     .\v.exe setup-freetype
+        #     .\.github\workflows\windows-install-sqlite.bat
+        # - name: Self tests (/fsanitize=address) # TODO:
+        #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
@@ -180,16 +186,18 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          .github/workflows/retry.sh sudo apt install clang
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
@@ -208,16 +216,18 @@ jobs:
       VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          .github/workflows/retry.sh sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          .github/workflows/retry.sh sudo apt install clang
       - name: Build V
-        run: make && ./v -cc clang -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink -githubci
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with clang and -cstrict
+        run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory test-self vlib
       - name: Self tests (V compiled with -fsanitize=memory)

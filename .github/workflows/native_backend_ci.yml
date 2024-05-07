@@ -56,15 +56,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install linker
-        if: runner.os == 'Linux'
-        run: .github/workflows/retry.sh sudo apt -qq install binutils
       - name: Build V
         if: runner.os != 'Windows'
         run: make -j4 && ./v symlink -githubci
       - name: Build V (Windows)
         if: runner.os == 'Windows'
         run: ./make.bat && ./v symlink -githubci
+      - name: Install linker
+        if: runner.os == 'Linux'
+        run: v retry -- sudo apt -qq install binutils
       - name: Run the native backend tests serially with more details
         run: |
           v vlib/v/gen/native/macho_test.v
