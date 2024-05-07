@@ -3,7 +3,6 @@ name: Debug CI
 on: [workflow_dispatch]
 
 jobs:
-
   debug-msvc:
     runs-on: windows-2019
     timeout-minutes: 121
