@@ -326,11 +326,11 @@ fn get_all_commands() []Command {
 		okmsg: 'There are no _test.v file regressions.'
 	}
 	res << Command{
-		line: '${vexe} ${vargs} -progress -W build-tools'
+		line: '${vexe} ${vargs} -progress -N -W build-tools'
 		okmsg: 'All tools can be compiled.'
 	}
 	res << Command{
-		line: '${vexe} ${vargs} -progress -W build-examples'
+		line: '${vexe} ${vargs} -progress -N -W build-examples'
 		okmsg: 'All examples can be compiled.'
 	}
 	res << Command{
