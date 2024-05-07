@@ -16,18 +16,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-sudo:
+  test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-13]
+        os: [ubuntu-20.04, macos-13, windows-2019]
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Build V
-        run: make -j4
-      - name: Symlink
-        run: sudo ./v symlink
+      - name: Build and symlink (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat && ./v symlink
+      - name: Build and symlink
+        if: runner.os != 'Windows'
+        run: make -j4 && sudo ./v symlink
       - name: Check if V is usable
         run: |
           pwd
