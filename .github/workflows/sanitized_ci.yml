@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -108,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -133,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -147,8 +147,7 @@ jobs:
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address -o v cmd/v &&
+        run: ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
@@ -187,7 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -217,7 +216,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies

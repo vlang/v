@@ -91,7 +91,7 @@ fn (app App) recompile_v() bool {
 	self_result := os.execute(vself)
 	if self_result.exit_code == 0 {
 		println(self_result.output.trim_space())
-		println('> done recompiling.')
+		println('> Done recompiling.')
 		return true
 	} else {
 		println('> `${vself}` failed, running `make`...')
@@ -101,10 +101,10 @@ fn (app App) recompile_v() bool {
 }
 
 fn (app App) recompile_vup() bool {
-	eprintln('> recompiling vup.v ...')
+	eprintln('> Recompiling vup.v ...')
 	vup_result := os.execute('${os.quoted_path(app.vexe)} -g cmd/tools/vup.v')
 	if vup_result.exit_code != 0 {
-		eprintln('> failed recompiling vup.v .')
+		eprintln('> Failed recompiling vup.v .')
 		eprintln(vup_result.output)
 		return false
 	}

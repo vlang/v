@@ -3,11 +3,11 @@ name: Path Testing CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
       - '!**/paths_ci.yml'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
       - '!**/paths_ci.yml'
 
 concurrency:

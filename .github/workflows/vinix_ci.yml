@@ -4,14 +4,14 @@ on:
   workflow_call:
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
   push:
     branches:
       - master
     paths-ignore:
-      - "**.md"
-      - "**.yml"
-      - "!**/vinix_ci.yml"
+      - '**.md'
+      - '**.yml'
+      - '!**/vinix_ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
 
       - name: Install dependencies
         run: |

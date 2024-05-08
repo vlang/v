@@ -1,5 +1,4 @@
 import cli { Command, CommandFlag }
-import os
 
 fn main() {
 	mut cmd := Command{
@@ -10,5 +9,5 @@ fn main() {
 			man: false
 		}
 	}
-	cmd.parse(os.args)
+	cmd.parse([''])
 }
