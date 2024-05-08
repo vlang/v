@@ -102,53 +102,44 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 			ch_next := s.at()
 			ch_next_byte := u8(ch_next)
 
-			if ch_next == `\\` {
-				decoded_s += ch_next_byte.ascii_str()
-				s.next()
-				continue
-			}
-
 			if q.is_multiline {
 				if ch_next_byte.is_space() {
 					eat_whitespace = true
 					continue
 				}
 			}
-
-			if ch_next == `"` {
-				decoded_s += '"'
+			if ch_next in [`\\`, `"`] {
+				decoded_s += ch_next_byte.ascii_str()
 				s.next()
 				continue
 			}
-
-			if ch_next == `n` {
-				decoded_s += '\n'
-				s.next()
-				continue
-			}
-
-			if ch_next == `t` {
-				decoded_s += '\t'
-				s.next()
-				continue
-			}
-
-			if ch_next == `b` {
-				decoded_s += '\b'
-				s.next()
-				continue
-			}
-
-			if ch_next == `r` {
-				decoded_s += '\r'
-				s.next()
-				continue
-			}
-
-			if ch_next == `f` {
-				decoded_s += '\f'
-				s.next()
-				continue
+			match rune(ch_next) {
+				`n` {
+					decoded_s += '\n'
+					s.next()
+					continue
+				}
+				`t` {
+					decoded_s += '\t'
+					s.next()
+					continue
+				}
+				`b` {
+					decoded_s += '\b'
+					s.next()
+					continue
+				}
+				`r` {
+					decoded_s += '\r'
+					s.next()
+					continue
+				}
+				`f` {
+					decoded_s += '\f'
+					s.next()
+					continue
+				}
+				else {}
 			}
 
 			escape := ch_byte.ascii_str() + ch_next_byte.ascii_str()
@@ -171,7 +162,6 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 					if slen <= s.remaining() {
 						pos := s.state().pos
 						sequence := s.text[pos..pos + slen + 1]
-
 						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
 							decoded_s += escape
 							continue
