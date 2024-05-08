@@ -50,7 +50,7 @@ jobs:
           v --version && exit 1 || exit 0
       - name: Symlink (-githubci)
         run: |
-          ./v symlink --githubci
+          ./v symlink -githubci
           cd /tmp/ && v version
           cd ~ && v version
           echo 'println(123)' > hi.v
