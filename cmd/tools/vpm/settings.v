@@ -36,6 +36,7 @@ fn init_settings() VpmSettings {
 	if dbg_env != '0' {
 		logger.set_level(.debug)
 		if dbg_env == '' {
+			os.mkdir_all(os.join_path(vmodules_path, 'cache'), mode: 0o700) or { panic(err) }
 			logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
 		}
 	}
