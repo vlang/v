@@ -19,10 +19,11 @@ fn test_cli_programs() {
 			has_err = true
 			continue
 		}
-		expected_out := os.read_file(out_path)!
+		mut expected_out := os.read_file(out_path)!
 		mut test_out := os.execute('${vexe} run ${test}').output
 		$if windows {
-			test_out = test_out.replace('\r\n', '\n').trim_space()
+			expected_out = expected_out.replace('\r\n', '\n')
+			test_out = test_out.replace('\r\n', '\n')
 		}
 		diff_ := diff.compare_text(expected_out, test_out)!
 		if diff_ != '' {
