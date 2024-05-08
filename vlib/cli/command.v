@@ -341,8 +341,7 @@ fn (cmd Command) check_version_flag() {
 	if cmd.defaults.parsed.version.flag && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
-			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
-			version_cmd.execute(version_cmd) or { panic(err) }
+			print_version_for_command(cmd) or { panic(err) }
 			exit(0)
 		}
 	}

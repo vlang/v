@@ -14,12 +14,34 @@ fn version_cmd() Command {
 	return Command{
 		name: 'version'
 		description: 'Prints version information.'
-		execute: version_func
+		execute: print_version_for_command
 	}
 }
 
-fn version_func(version_cmd Command) ! {
-	cmd := version_cmd.parent
-	version := '${cmd.name} version ${cmd.version}'
+fn print_version_for_command(cmd Command) ! {
+	version_cmd := if cmd.args.len > 0 {
+		mut cmd_ := &Command{}
+		for arg in cmd.args {
+			mut found := false
+			for sub_cmd in cmd.commands {
+				if sub_cmd.name == arg {
+					cmd_ = unsafe { &sub_cmd }
+					found = true
+					break
+				}
+			}
+			if !found {
+				args := cmd.args.join(' ')
+				println('Invalid command: ${args}')
+				return
+			}
+		}
+		cmd_
+	} else if cmd.parent != unsafe { nil } {
+		cmd.parent
+	} else {
+		&cmd
+	}
+	version := '${version_cmd.name} version ${version_cmd.version}'
 	println(version)
 }
