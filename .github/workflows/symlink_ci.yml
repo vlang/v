@@ -49,8 +49,9 @@ jobs:
           rm $(which v)
           v --version && exit 1 || exit 0
       - name: Symlink (-githubci)
+        run: ./v symlink -githubci
+      - name: Test after symlink with -githubci (in a separate script)
         run: |
-          ./v symlink --githubci
           cd /tmp/ && v version
           cd ~ && v version
           echo 'println(123)' > hi.v
