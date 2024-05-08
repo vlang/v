@@ -1,0 +1,19 @@
+name: Workflow Lint
+
+on:
+  push:
+    paths:
+      - '**.yml'
+  pull_request:
+    paths:
+      - '**.yml'
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify formatting
+        uses: creyD/prettier_action@v4.3
+        with:
+          prettier_options: --check .github/**/**.yml

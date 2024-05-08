@@ -7,12 +7,12 @@ name: Docs CI
 on:
   push:
     paths-ignore:
-      - "**.yml"
-      - "!**/docs_ci.yml"
+      - '**.yml'
+      - '!**/docs_ci.yml'
   pull_request:
     paths-ignore:
-      - "**.yml"
-      - "!**/docs_ci.yml"
+      - '**.yml'
+      - '!**/docs_ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: vlang/v
-          ref: master   # important
+          ref: master # important
           path: pv
 
       - name: Check against parent commit
