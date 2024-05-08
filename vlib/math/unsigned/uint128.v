@@ -431,7 +431,7 @@ pub fn uint128_from_dec_str(value string) !Uint128 {
 
 	for b_ in value {
 		b := b_ - `0`
-		if b < 0 || b > 9 {
+		if b > 9 {
 			// allow _ as a separator in decimal strings
 			if b_ == underscore {
 				continue
