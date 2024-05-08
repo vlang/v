@@ -1,15 +1,15 @@
-name: V Symlink Works
+name: Symlink CI
 
 on:
   workflow_dispatch:
   push:
     paths:
       - 'cmd/tools/vsymlink/**.v'
-      - '.github/workflows/check_symlink_works.yml'
+      - '.github/workflows/symlink_ci.yml'
   pull_request:
     paths:
       - 'cmd/tools/vsymlink/**.v'
-      - '.github/workflows/check_symlink_works.yml'
+      - '.github/workflows/symlink_ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
