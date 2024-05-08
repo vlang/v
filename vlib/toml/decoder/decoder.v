@@ -86,13 +86,8 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	mut s := scanner.new_simple_text(q.text)!
 	q.text = q.text.replace('\\"', '"')
 
-	for {
-		ch := s.next()
-		if ch == scanner.end_of_text {
-			break
-		}
+	for ch := s.next(); ch != scanner.end_of_text; ch = s.next() {
 		ch_byte := u8(ch)
-
 		if eat_whitespace && ch_byte.is_space() {
 			continue
 		}
