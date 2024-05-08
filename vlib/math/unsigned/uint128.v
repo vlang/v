@@ -429,7 +429,7 @@ pub fn uint128_from_dec_str(value string) !Uint128 {
 	mut res := unsigned.uint128_zero
 	underscore := `_`
 
-	for b_ in value.bytes() {
+	for b_ in value {
 		b := b_ - `0`
 		if b < 0 || b > 9 {
 			// allow _ as a separator in decimal strings
