@@ -20,48 +20,57 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-13, windows-2019]
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build and symlink (Windows)
-        if: runner.os == 'Windows'
-        run: ./make.bat && ./v symlink
-      - name: Build and symlink
-        if: runner.os != 'Windows'
-        run: make -j4 && sudo ./v symlink
-      - name: Check if V is usable
-        run: |
-          pwd
-          v version
-          cd ~
-          pwd
-          v version
-          echo 'println(123)' > hi.v
-          v run hi.v
-
-  test-githubci:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04, macos-13, windows-2019]
+        os: [ubuntu-20.04, macos-13]
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        if: runner.os != 'Windows'
         run: make -j4
-      - name: Build V (Windows)
-        if: runner.os == 'Windows'
+      - name: Symlink
+        run: |
+          ./v symlink
+          cd /tmp/ && v version
+          cd ~ && v version
+          echo 'println(123)' > hi.v
+          v run hi.v
+      - name: Unlink
+        run: |
+          rm $(which v)
+          v --version && exit 1 || exit 0
+      - name: Symlink (sudo)
+        run: |
+          sudo ./v symlink
+          cd /tmp/ && v version
+          cd ~ && v version
+          echo 'println(123)' > hi.v
+          v run hi.v
+      - name: Unlink
+        run: |
+          rm $(which v)
+          v --version && exit 1 || exit 0
+      - name: Symlink (-githubci)
+        run: |
+          ./v symlink --githubci
+          cd /tmp/ && v version
+          cd ~ && v version
+          echo 'println(123)' > hi.v
+          v run hi.v
+
+  test-windows:
+    runs-on: windows-2019
+    strategy:
+      matrix:
+        flags: ['', '-githubci']
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
         run: ./make.bat
       - name: Symlink
-        run: ./v symlink -githubci
+        run: ./v symlink ${{ matrix.flags }}
       - name: Check if V is usable
         run: |
-          pwd
-          v version
-          cd ~
-          pwd
-          v version
+          cd $RUNNER_TEMP && pwd && v version
+          cd ~ && pwd && v version
           echo 'println(123)' > hi.v
           v run hi.v
