@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Install dependencies
         run: |
           v retry -- sudo apt update

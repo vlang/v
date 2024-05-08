@@ -33,7 +33,7 @@ jobs:
         run: |
           gcc --version
           .\make.bat -gcc
-          .\v.exe symlink -githubci
+          .\v.exe symlink
       - name: All code is formatted
         run: v test-cleancode
       - name: Test new v.c
@@ -86,7 +86,7 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\make.bat -msvc
-          .\v.exe symlink -githubci
+          .\v.exe symlink
       - name: Build V with WX
         run: v -cflags /WX self
       - name: All code is formatted
@@ -133,7 +133,7 @@ jobs:
       - name: Build with make.bat -tcc
         run: |
           .\make.bat -tcc
-          .\v.exe symlink -githubci
+          .\v.exe symlink
       - name: All code is formatted
         run: v test-cleancode
       - name: Test new v.c

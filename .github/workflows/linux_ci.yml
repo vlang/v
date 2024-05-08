@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build v
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Build v with -prealloc
         run: |
           v -d debug_malloc -d debug_realloc -o v cmd/v
@@ -115,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: All code is formatted
         run: v test-cleancode
       - name: Install dependencies for examples and tools
@@ -223,7 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: All code is formatted
         run: v test-cleancode
       - name: Install dependencies for examples and tools
@@ -326,7 +326,7 @@ jobs:
   #     V_CI_MUSL: 1
   #   steps:
   #   - name: Build v
-  #     run: echo $VFLAGS && make -j4 && ./v symlink -githubci
+  #     run: echo $VFLAGS && make -j4 && ./v symlink
   #   - uses: actions/checkout@v4
   #   - name: Install dependencies for examples and tools
   #     run: v retry -- sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
