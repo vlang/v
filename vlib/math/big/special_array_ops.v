@@ -17,7 +17,7 @@ fn shrink_tail_zeros(mut a []u32) {
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are already allocated but of length 0
 fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-	// tranform back to Integers (on the stack without allocation)
+	// transform back to Integers (on the stack without allocation)
 	a := Integer{
 		signum: 1
 		digits: operand_a
