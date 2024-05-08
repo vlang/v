@@ -103,12 +103,12 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 					continue
 				}
 			}
-			if ch_next in [`\\`, `"`] {
-				decoded_s += ch_next_byte.ascii_str()
-				s.next()
-				continue
-			}
 			match rune(ch_next) {
+				`\\`, `"` {
+					decoded_s += ch_next_byte.ascii_str()
+					s.next()
+					continue
+				}
 				`n` {
 					decoded_s += '\n'
 					s.next()
