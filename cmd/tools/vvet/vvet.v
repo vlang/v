@@ -118,6 +118,9 @@ fn (mut vt Vet) vet_file(path string) {
 
 // vet_line vets the contents of `line` from `vet.file`.
 fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
+	if line == '' {
+		return
+	}
 	vt.vet_fn_documentation(lines, line, lnumber)
 	vt.vet_space_usage(line, lnumber)
 }
