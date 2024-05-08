@@ -1,0 +1,10 @@
+Usage: cli greet [flags] <name>
+
+Prints greeting in different languages.
+
+Flags:
+  -fun                '{"uri":"mqtt://broker.emqx.io:1883","topic":"test_emq/1
+'{"uri":"mqtt://broker.emqx.io:1883","topic":"test_emq/1","filters":[{"producer_id":0,"trace_group":2,"string_id
+                      ":3001},{"string_id":3002}]}'
+  -help               Prints help information.
+  -man                Prints the auto-generated manpage.
