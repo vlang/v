@@ -427,14 +427,16 @@ pub fn uint128_new(lo u64, hi u64) Uint128 {
 // The `_` character is allowed as a separator.
 pub fn uint128_from_dec_str(value string) !Uint128 {
 	mut res := unsigned.uint128_zero
-	for b_ in value.bytes() {
-		// allow _ as a separator in decimal strings
-		if b_ == '_'.bytes()[0] {
-			continue
-		}
+	underscore := '_'[0]
 
-		b := b_ - '0'.bytes()[0]
-		if b > 9 {
+	for b_ in value.bytes() {
+		b := b_ - '0'[0]
+		if b < 0 || b > 9 {
+			// allow _ as a separator in decimal strings
+			if b_ == underscore {
+				continue
+			}
+
 			return error('invalid character "${b}"')
 		}
 
