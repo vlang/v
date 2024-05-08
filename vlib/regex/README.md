@@ -134,7 +134,7 @@ The dot is a particular meta-char, that matches "any char".
 It is simpler to explain it with an example:
 
 Suppose you have `abccc ddeef` as a source string, that you want to parse
-with a regex. The following table show the query strings and the result of
+with a regex. The following table shows the query strings and the result of
 parsing source string.
 
 | query string | result      |
@@ -299,8 +299,8 @@ The `.group_csave` array will be filled then, following this logic:
 
 `re.group_csave[0]` - number of total saved records
 `re.group_csave[1+n*3]` - id of the saved group
-`re.group_csave[1+n*3]` - start index in the source string of the saved group
-`re.group_csave[1+n*3]` - end index in the source string of the saved group
+`re.group_csave[2+n*3]` - start index in the source string of the saved group
+`re.group_csave[3+n*3]` - end index in the source string of the saved group
 
 The regex will save groups, until it finishes, or finds that the array has no
 more space. If the space ends, no error is raised, and further records will
@@ -506,8 +506,8 @@ re.flag = regex.f_bin
 
 ### Initializer
 
-These functions are helper that create the `RE` struct,
-a `RE` struct can be created manually if you needed.
+These functions are helpers that create the `RE` struct.
+A `RE` struct can be created manually if needed.
 
 #### **Simplified initializer**
 
@@ -519,7 +519,7 @@ pub fn regex_opt(in_query string) ?RE
 #### **Base initializer**
 
 ```v ignore
-// new_regex create a REgex of small size, usually sufficient for ordinary use
+// new create a RE of small size, usually sufficient for ordinary use
 pub fn new() RE
 ```
 
@@ -528,8 +528,8 @@ pub fn new() RE
 After an initializer is used, the regex expression must be compiled with:
 
 ```v ignore
-// compile compiles the REgex returning an error if the compilation fails
-pub fn (mut re RE) compile_opt(in_txt string) ?
+// compile_opt compile RE pattern string,  returning an error if the compilation fails
+pub fn (mut re RE) compile_opt(pattern string) !
 ```
 
 ### Matching Functions
@@ -557,7 +557,7 @@ pub fn (mut re RE) find(in_txt string) (int, int)
 // the matches are [3,4] and [6,8]
 pub fn (mut re RE) find_all(in_txt string) []int
 
-// find_all find all the "non overlapping" occurrences of the matching pattern
+// find_all_str find all the "non overlapping" occurrences of the match pattern
 // return a list of strings
 // the result is like ['first match','secon match']
 pub fn (mut re RE) find_all_str(in_txt string) []string
@@ -567,7 +567,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string
 
 ```v ignore
 // replace return a string where the matches are replaced with the repl_str string,
-// this function support groups in the replace string
+// this function supports groups in the replace string
 pub fn (mut re RE) replace(in_txt string, repl string) string
 ```
 
