@@ -4,17 +4,20 @@ const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 fn main() {
 	at_exit(|| os.rmdir_all(os.vtmp_dir()) or {}) or {}
-
-	if os.args.len > 3 {
-		print('usage: v symlink [OPTIONS]')
-		exit(1)
+	if os.args.len > 2 {
+		if '-githubci' in os.args {
+			// TODO: [AFTER 2024-09-31] remove `-githubci` flag and function and only print usage and exit(1) .
+			if os.getenv('GITHUB_JOB') != '' {
+				println('::warning::Use `v symlink` instead of `v symlink -githubci`')
+			}
+			setup_symlink_github()
+			return
+		} else {
+			println('usage: v symlink')
+			exit(1)
+		}
 	}
-
-	if '-githubci' in os.args {
-		setup_symlink_github()
-	} else {
-		setup_symlink()
-	}
+	setup_symlink()
 }
 
 fn setup_symlink_github() {
