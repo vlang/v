@@ -5,6 +5,7 @@ on:
     paths-ignore:
       - '**.md'
       - '**.yml'
+      - '!**.bat'
       - '!**/windows_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
@@ -12,7 +13,9 @@ on:
     paths-ignore:
       - '**.md'
       - '**.yml'
+      - '!**.bat'
       - '!**/windows_ci.yml'
+      - '!**/windows-install-sqlite.bat'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 

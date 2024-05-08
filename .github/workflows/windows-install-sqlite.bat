@@ -1,11 +1,11 @@
 @echo off
 
-curl -L https://www.sqlite.org/2022/sqlite-amalgamation-3380200.zip -o sqlite-amalgamation-3380200.zip
+curl -L https://www.sqlite.org/2024/sqlite-amalgamation-3450300.zip -o sqlite-amalgamation-3450300.zip
 
-unzip sqlite-amalgamation-3380200.zip -d thirdparty\
+unzip sqlite-amalgamation-3450300.zip -d thirdparty\
 
-del thirdparty\sqlite-amalgamation-3380200\shell.c
+del thirdparty\sqlite-amalgamation-3450300\shell.c
 
-move /y thirdparty\sqlite-amalgamation-3380200 thirdparty\sqlite
+move /y thirdparty\sqlite-amalgamation-3450300 thirdparty\sqlite
 
 dir thirdparty\sqlite
