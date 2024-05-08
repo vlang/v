@@ -102,6 +102,8 @@ fn test_separators() {
 	// numbers of varying lengths and a random
 	// scattering of '_' throughout.
 	test_strings := [
+		'_',
+		'__',
 		'_0',
 		'0_',
 		'_0_',
