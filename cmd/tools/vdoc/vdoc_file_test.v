@@ -13,8 +13,9 @@ fn test_output() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
 	mut total_fails := 0
-	test_files := vtest.filter_vtest_only(os.walk_ext('cmd/tools/vdoc/tests/testdata',
-		'.v'), basepath: vroot)
+	test_files := vtest.filter_vtest_only(os.walk_ext('cmd/tools/vdoc/testdata', '.v'),
+		basepath: vroot
+	)
 	for path in test_files {
 		mut fails := 0
 		qpath := os.quoted_path(path)
@@ -45,7 +46,7 @@ fn test_output() {
 fn test_run_examples_good() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
-	res := os.execute('${vexe} doc -comments -run-examples cmd/tools/vdoc/tests/testdata/run_examples_good/main.v')
+	res := os.execute('${vexe} doc -comments -run-examples cmd/tools/vdoc/testdata/run_examples_good/main.v')
 	assert res.exit_code == 0
 	assert res.output.contains('module main'), res.output
 	assert res.output.contains('fn abc()'), res.output
@@ -57,7 +58,7 @@ fn test_run_examples_good() {
 fn test_run_examples_bad() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
-	res := os.execute('${vexe} doc -comments -run-examples cmd/tools/vdoc/tests/testdata/run_examples_bad/main.v')
+	res := os.execute('${vexe} doc -comments -run-examples cmd/tools/vdoc/testdata/run_examples_bad/main.v')
 	assert res.exit_code != 0
 	assert res.output.contains('error in documentation example'), res.output
 	assert res.output.contains(' left value: 5 * 5 = 25'), res.output

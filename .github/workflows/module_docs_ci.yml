@@ -24,13 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4
+        run: make -j4 && ./v symlink
+      - name: Install markdown from vpm
+        run: v retry -- v install markdown
       - name: Test v doc
-        run: |
-          # While the integration tests (executing the v doc command) should install
-          # markdown automatically, unit tests won't. Run integration tests first.
-          ./v test cmd/tools/vdoc/tests/
-          ./v test cmd/tools/vdoc/*.v
+        run: ./v test cmd/tools/vdoc/
       - name: Build module documentation
         run: ./v doc -m -f html vlib/
       - name: Deploy docs to vercel
