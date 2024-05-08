@@ -163,6 +163,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		return
 	}
 	// Scan function declarations for missing documentation
+	mut line_above := lines[lnumber - 1] or { return }
+	mut tags := []string{}
 	collect_tags := fn (line string) []string {
 		mut cleaned := line.all_before('/')
 		cleaned = cleaned.replace_each(clean_seq)
@@ -188,8 +190,6 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		return ''
 	}
-	mut line_above := lines[lnumber - 1]
-	mut tags := []string{}
 	if !line_above.starts_with('//') {
 		mut grab := true
 		for j := lnumber - 1; j >= 0; j-- {
