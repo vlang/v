@@ -17,7 +17,7 @@ pub fn (mut re RE) compile_opt(pattern string) ! {
 	}
 }
 
-// new_regex create a RE of small size, usually sufficient for ordinary use
+// new create a RE of small size, usually sufficient for ordinary use
 pub fn new() RE {
 	// init regex
 	mut re := RE{}
