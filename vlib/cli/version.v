@@ -19,29 +19,22 @@ fn version_cmd() Command {
 }
 
 fn print_version_for_command(cmd Command) ! {
-	version_cmd := if cmd.args.len > 0 {
-		mut cmd_ := &Command{}
-		for arg in cmd.args {
-			mut found := false
-			for sub_cmd in cmd.commands {
-				if sub_cmd.name == arg {
-					cmd_ = unsafe { &sub_cmd }
-					found = true
-					break
-				}
-			}
-			if !found {
-				args := cmd.args.join(' ')
-				println('Invalid command: ${args}')
+	if cmd.args.len > 0 {
+		for sub_cmd in cmd.commands {
+			if sub_cmd.name == cmd.args[0] {
+				version_cmd := unsafe { &sub_cmd }
+				print(version_cmd.version())
 				return
 			}
 		}
-		cmd_
+		println('Invalid command: ${cmd.args.join(' ')}')
 	} else if cmd.parent != unsafe { nil } {
-		cmd.parent
+		println(cmd.parent.version())
 	} else {
-		&cmd
+		println(cmd.version())
 	}
-	version := '${version_cmd.name} version ${version_cmd.version}'
-	println(version)
+}
+
+pub fn (cmd Command) version() string {
+	return '${cmd.name} version ${cmd.version}'
 }
