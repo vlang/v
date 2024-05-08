@@ -19,8 +19,12 @@ fn test_cli_programs() {
 			has_err = true
 			continue
 		}
-		expected := os.read_file(out_path)!
-		diff_ := diff.compare_text(expected, os.execute('${vexe} run ${test}').output)!
+		expected_out := os.read_file(out_path)!
+		mut test_out := os.execute('${vexe} run ${test}').output
+		$if windows {
+			test_out = test_out.replace('\r\n', '\n').trim_space()
+		}
+		diff_ := diff.compare_text(expected_out, test_out)!
 		if diff_ != '' {
 			println(term.red('FAIL'))
 			eprintln(diff_)
