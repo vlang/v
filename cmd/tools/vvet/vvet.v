@@ -146,6 +146,33 @@ fn (mut vt Vet) vet_space_usage(line string, lnumber int) {
 	}
 }
 
+fn collect_tags(line string) []string {
+	mut cleaned := line.all_before('/')
+	cleaned = cleaned.replace_each(clean_seq)
+	return cleaned.split(',')
+}
+
+fn ident_fn_name(line string) string {
+	mut fn_idx := line.index(' fn ') or { return '' }
+	if line.len < fn_idx + 5 {
+		return ''
+	}
+	mut tokens := line[fn_idx + 4..].split(' ')
+	// Skip struct identifier
+	if tokens.first().starts_with('(') {
+		fn_idx = line.index(')') or { return '' }
+		tokens = line[fn_idx..].split(' ')
+		if tokens.len > 1 {
+			tokens = [tokens[1]]
+		}
+	}
+	if tokens.len > 0 {
+		function_name_with_generic_parameters := tokens[0].all_before('(')
+		return function_name_with_generic_parameters.all_before('[')
+	}
+	return ''
+}
+
 // vet_fn_documentation ensures that functions are documented
 fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 	if line.starts_with('fn C.') {
@@ -165,31 +192,6 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 	// Scan function declarations for missing documentation
 	mut line_above := lines[lnumber - 1] or { return }
 	mut tags := []string{}
-	collect_tags := fn (line string) []string {
-		mut cleaned := line.all_before('/')
-		cleaned = cleaned.replace_each(clean_seq)
-		return cleaned.split(',')
-	}
-	ident_fn_name := fn (line string) string {
-		mut fn_idx := line.index(' fn ') or { return '' }
-		if line.len < fn_idx + 5 {
-			return ''
-		}
-		mut tokens := line[fn_idx + 4..].split(' ')
-		// Skip struct identifier
-		if tokens.first().starts_with('(') {
-			fn_idx = line.index(')') or { return '' }
-			tokens = line[fn_idx..].split(' ')
-			if tokens.len > 1 {
-				tokens = [tokens[1]]
-			}
-		}
-		if tokens.len > 0 {
-			function_name_with_generic_parameters := tokens[0].all_before('(')
-			return function_name_with_generic_parameters.all_before('[')
-		}
-		return ''
-	}
 	if !line_above.starts_with('//') {
 		mut grab := true
 		for j := lnumber - 1; j >= 0; j-- {
