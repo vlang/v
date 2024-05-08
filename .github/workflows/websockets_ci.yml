@@ -32,7 +32,7 @@ jobs:
         run: |
           echo $VFLAGS
           sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
-          make -j4 && ./v symlink -githubci
+          make -j4 && ./v symlink
           ./v -g -o v cmd/v
       - name: Install dependencies
         run: v retry -- sudo apt install --quiet -y libssl-dev

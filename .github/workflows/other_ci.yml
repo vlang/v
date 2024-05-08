@@ -54,7 +54,7 @@ jobs:
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: v test-cleancode
         run: ./v test-cleancode
       - name: v test-fmt
@@ -70,7 +70,7 @@ jobs:
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Clone & Build previous vmaster/v
         run: |
           ./v retry -- git clone --depth=1 https://github.com/vlang/v vmaster/
@@ -94,7 +94,7 @@ jobs:
         with:
           fetch-depth: 10
       - name: Build v
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
 
       - name: Install dependencies
         run: |
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build local v
         run: |
-          make -j4 && ./v symlink -githubci
+          make -j4 && ./v symlink
           ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Install zzuf
         run: ./v retry -- sudo apt install -qq zzuf

@@ -58,10 +58,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build V
         if: runner.os != 'Windows'
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./make.bat && ./v symlink -githubci
+        run: ./make.bat && ./v symlink
       - name: Install linker
         if: runner.os == 'Linux'
         run: v retry -- sudo apt -qq install binutils

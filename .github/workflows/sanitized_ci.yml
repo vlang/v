@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -108,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -133,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -186,7 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies
@@ -216,7 +216,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
       - name: Install dependencies

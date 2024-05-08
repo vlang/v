@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Build V with -cstrict
         run: v -cg -cstrict -o v cmd/v
       - name: All code is formatted
