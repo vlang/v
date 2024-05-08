@@ -80,10 +80,6 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 
 // compare_text returns a string displaying the differences between two strings.
 pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
-	opts.find_tool()!
-	if text1 == text2 {
-		return ''
-	}
 	ctime := time.sys_mono_now()
 	tmp_dir := os.join_path_single(os.vtmp_dir(), ctime.str())
 	os.mkdir(tmp_dir)!
