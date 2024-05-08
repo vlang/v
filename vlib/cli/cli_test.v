@@ -19,12 +19,8 @@ fn test_cli_programs() {
 			has_err = true
 			continue
 		}
-		mut expected_out := os.read_file(out_path)!
-		mut test_out := os.execute('${vexe} run ${test}').output
-		$if windows {
-			expected_out = expected_out.replace('\r\n', '\n')
-			test_out = test_out.replace('\r\n', '\n')
-		}
+		expected_out := os.read_file(out_path)!.replace('\r\n', '\n')
+		test_out := os.execute('${vexe} run ${test}').output.replace('\r\n', '\n')
 		diff_ := diff.compare_text(expected_out, test_out)!
 		if diff_ != '' {
 			println(term.red('FAIL'))
