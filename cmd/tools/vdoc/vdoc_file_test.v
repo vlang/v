@@ -98,11 +98,12 @@ fn test_out_path() {
 		os.rmdir_all(test_path) or {}
 	}
 	os.chdir(test_path)!
-	os.cp_all(os.join_path(vroot, 'vlib', small_pure_v_vlib_module), test_mod_path, true) or {}
+	mod_path := os.join_path(vroot, 'vlib', small_pure_v_vlib_module)
+	os.cp_all(mod_path, test_mod_path, true) or {}
 
 	// Relative input with default output path.
 	os.execute_opt('${vexe} doc -f html -m ${small_pure_v_vlib_module}')!
-	output_path := os.join_path(test_mod_path, '_docs', '${small_pure_v_vlib_module}.html')
+	output_path := os.join_path(mod_path, '_docs', '${small_pure_v_vlib_module}.html')
 	assert os.exists(output_path), output_path
 
 	// Custom out path (no `_docs` subdir).
