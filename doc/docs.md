@@ -5833,10 +5833,10 @@ fn main() {
 
 You can read [Enum](#enums) values and their attributes.
 
-```V
+```v
 enum Color {
-	red @[RED] // first attribute
-	blue @[BLUE] // second attribute
+	red  @[RED] // first attribute
+	blue  @[BLUE] // second attribute
 }
 
 fn main() {
@@ -5857,7 +5857,7 @@ fn main() {
 
 You can read [Struct](#structs) attributes.
 
-```V
+```v
 @[COLOR]
 struct Foo {
 	a int
@@ -5882,7 +5882,7 @@ fn main() {
 
 You can read variant types from [Sum type](#sum-types).
 
-```V
+```v
 type MySum = int | string
 
 fn main() {
@@ -5904,7 +5904,7 @@ fn main() {
 
 You can retrieve information about struct methods.
 
-```V
+```v
 struct Foo {
 }
 
@@ -5915,7 +5915,6 @@ fn (f Foo) test() int {
 fn (f Foo) test2() string {
 	return 'foo'
 }
-
 
 fn main() {
 	foo := Foo{}
@@ -6228,10 +6227,10 @@ See also [Cross Compilation](#cross-compilation).
 To use the native *V debugger*, add the `$dbg` statement to your source, where you 
 want the debugger to be invoked.
 
-```V
+```v
 fn main() {
 	a := 1
-	$dbg
+	$dbg;
 }
 ```
 
