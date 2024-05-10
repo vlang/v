@@ -79,8 +79,8 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/vlang/v/actions/workflows/18477644/runs?branch=master&status=success&per_page=2" \
-            | jq -r '.workflow_runs[1].head_sha')
+            "https://api.github.com/repos/vlang/v/actions/workflows/18477644/runs?branch=master&status=success&event=push&per_page=5&page=2" \
+            | jq -r '.workflow_runs[4].head_sha')
           echo "recent_good_commit=$recent_good_commit"
           # Build oldv at recent_good_commit.
           ./v run cmd/tools/oldv.v -v $recent_good_commit
