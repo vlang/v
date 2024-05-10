@@ -124,7 +124,7 @@ pub fn (mut ch Channel) close() {
 	}
 	mut nulladr := unsafe { nil }
 	for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr),
-		voidptr(-1)) {
+		isize(-1)) {
 		nulladr = unsafe { nil }
 	}
 	ch.readsem_im.post()
@@ -185,13 +185,13 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 		mut wradr := C.atomic_load_ptr(unsafe { &voidptr(&ch.write_adr) })
 		for wradr != C.NULL {
 			if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.write_adr), voidptr(&wradr),
-				unsafe { nil })
+				isize(0))
 			{
 				// there is a reader waiting for us
 				unsafe { C.memcpy(wradr, src, ch.objsize) }
 				mut nulladr := unsafe { nil }
 				for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_written), voidptr(&nulladr),
-					voidptr(wradr)) {
+					isize(wradr)) {
 					nulladr = unsafe { nil }
 				}
 				ch.readsem_im.post()
@@ -226,7 +226,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			if wradr != C.NULL {
 				mut src2 := src
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.read_adr), voidptr(&src2),
-					unsafe { nil })
+					isize(0))
 				{
 					ch.writesem.post()
 					continue
@@ -248,7 +248,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			mut src2 := src
 			for sp := u32(0); sp < spinloops_ || read_in_progress; sp++ {
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2),
-					unsafe { nil })
+					isize(0))
 				{
 					have_swapped = true
 					read_in_progress = true
@@ -271,7 +271,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 				}
 				if C.atomic_load_u16(&ch.closed) != 0 {
 					if have_swapped
-						|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), unsafe { nil }) {
+						|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), isize(0)) {
 						ch.writesem.post()
 						return .success
 					} else {
@@ -279,7 +279,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					}
 				}
 				if have_swapped
-					|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), unsafe { nil }) {
+					|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_read), voidptr(&src2), isize(0)) {
 					ch.writesem.post()
 					break
 				} else {
@@ -376,13 +376,13 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
 			for rdadr != C.NULL {
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.read_adr), voidptr(&rdadr),
-					unsafe { nil })
+					isize(0))
 				{
 					// there is a writer waiting for us
 					unsafe { C.memcpy(dest, rdadr, ch.objsize) }
 					mut nulladr := unsafe { nil }
 					for !C.atomic_compare_exchange_weak_ptr(voidptr(&ch.adr_read), voidptr(&nulladr),
-						voidptr(rdadr)) {
+						isize(rdadr)) {
 						nulladr = unsafe { nil }
 					}
 					ch.writesem_im.post()
@@ -473,7 +473,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 			if rdadr != C.NULL {
 				mut dest2 := dest
 				if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.write_adr), voidptr(&dest2),
-					unsafe { nil })
+					isize(0))
 				{
 					ch.readsem.post()
 					continue
@@ -495,7 +495,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 		mut dest2 := dest
 		for sp := u32(0); sp < spinloops_ || write_in_progress; sp++ {
 			if C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_written), voidptr(&dest2),
-				unsafe { nil })
+				isize(0))
 			{
 				have_swapped = true
 				break
@@ -519,7 +519,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 				ch.readsem_im.wait()
 			}
 			if have_swapped
-				|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_written), voidptr(&dest2), unsafe { nil }) {
+				|| C.atomic_compare_exchange_strong_ptr(voidptr(&ch.adr_written), voidptr(&dest2), isize(0)) {
 				ch.readsem.post()
 				break
 			} else {
