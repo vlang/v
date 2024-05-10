@@ -270,7 +270,7 @@ static inline int atomic_compare_exchange_strong_u32(unsigned* object, unsigned*
                                                  unsigned desired)
 {
 	unsigned old = *expected;
-    *expected = InterlockedCompareExchange(object, desired, old);
+    *expected = InterlockedCompareExchange((void *)object, desired, old);
     return *expected == old;
 }
 
