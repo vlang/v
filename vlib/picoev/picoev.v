@@ -212,6 +212,10 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 	accepted_fd := accept(listen_fd)
 
 	if accepted_fd == -1 {
+		if fatal_socket_error(accepted_fd) == false {
+			return
+		}
+
 		eprintln('Error during accept')
 		return
 	}
@@ -298,11 +302,11 @@ fn raw_callback(fd int, events int, context voidptr) {
 				pv.close_conn(fd)
 				return
 			} else if r == -1 {
-				eprintln('Error during req_read')
-
 				if fatal_socket_error(fd) == false {
 					return
 				}
+
+				eprintln('Error during req_read')
 
 				// fatal error
 				pv.close_conn(fd)
