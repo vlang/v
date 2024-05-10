@@ -94,8 +94,8 @@ $if linux {
 // The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
-fn C.atomic_compare_exchange_weak_ptr(voidptr, voidptr, isize) bool
-fn C.atomic_compare_exchange_strong_ptr(voidptr, voidptr, isize) bool
+fn C.atomic_compare_exchange_weak_ptr(voidptr, voidptr, voidptr) bool
+fn C.atomic_compare_exchange_strong_ptr(voidptr, voidptr, voidptr) bool
 fn C.atomic_exchange_ptr(voidptr, voidptr) voidptr
 fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr
 fn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr

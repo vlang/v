@@ -311,10 +311,12 @@ static inline void* atomic_load_ptr(void** x) {
 static inline void atomic_store_ptr(void** x, void* y) {
 	atomic_store_explicit((_Atomic(uintptr_t)*)x, (uintptr_t)y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_ptr(void** x, void** expected, intptr_t y) {
+static inline int atomic_compare_exchange_weak_ptr(void** x, void** expected, void* y) {
+   	// `void* y` should be `intptr_t y`, but tcc fails for it
 	return (int)atomic_compare_exchange_weak_explicit((_Atomic(uintptr_t)*)x, (unsigned long *)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_strong_ptr(void** x, void** expected, intptr_t y) {
+static inline int atomic_compare_exchange_strong_ptr(void** x, void** expected, void* y) {
+   	// `void* y` should be `intptr_t y`, but tcc fails for it
 	return (int)atomic_compare_exchange_strong_explicit((_Atomic(uintptr_t)*)x, (unsigned long *)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline void* atomic_exchange_ptr(void** x, void* y) {
