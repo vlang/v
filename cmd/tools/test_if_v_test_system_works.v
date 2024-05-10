@@ -117,11 +117,13 @@ fn main() {
 	}
 	check_ok('${vexe} test ${ok_fpath}').matches('*OK*a_single_ok_test.v*')
 	check_ok('${vexe} test "${tdir}"').matches('*OK*a_single_ok_test.v*')
+	check_ok('${vexe} -stats test "${tdir}"').matches('*OK*a_single_ok_test.v*')
 	//
 	fail_fpath := create_test('a_single_failing_test.v', 'fn test_fail(){ assert 1 == 2 }')!
 	check_fail('${vexe} ${fail_fpath}').has('> assert 1 == 2').has('a_single_failing_test.v:1: fn test_fail')
 	check_fail('${vexe} test ${fail_fpath}').has('> assert 1 == 2').has('a_single_failing_test.v:1: fn test_fail')
 	check_fail('${vexe} test "${tdir}"').has('> assert 1 == 2')
+	check_fail('${vexe} -stats test "${tdir}"').has('> assert 1 == 2')
 	rel_dir := os.join_path(tdir, rand.ulid())
 	os.mkdir(rel_dir)!
 	os.chdir(rel_dir)!

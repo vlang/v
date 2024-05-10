@@ -78,7 +78,7 @@ fn test_parse() {
 
 fn test_parse_file() {
 	dump(@LOCATION)
-	fpath := os.join_path(os.temp_dir(), 'txtar.txt')
+	fpath := os.join_path(os.vtmp_dir(), 'txtar.txt')
 	defer {
 		os.rm(fpath) or {}
 	}
@@ -91,20 +91,29 @@ fn test_parse_file() {
 
 fn test_unpack_to_folder_then_pack_same_folder() {
 	dump(@LOCATION)
-	folder := os.join_path(os.temp_dir(), 'txtar_folder')
-	defer {
-		os.rmdir_all(folder) or {}
-	}
+	folder := os.join_path(os.vtmp_dir(), 'txtar_folder')
 	a := txtar.parse(simple_archive_content)
+
 	txtar.unpack(a, folder)!
-	assert os.is_file(os.join_path(folder, 'empty'))
-	assert os.is_file(os.join_path(folder, 'folder2/another.txt'))
-	assert os.is_file(os.join_path(folder, 'folder3/final.txt'))
+	check_folder(folder)
+	os.rmdir_all(folder) or {}
+
+	a.unpack_to(folder)!
+	check_folder(folder)
+
 	b := txtar.pack(folder, 'abc')!
+	os.rmdir_all(folder) or {}
+
 	assert a.comment != b.comment
 	assert b.comment == 'abc'
 	assert b.files.len == a.files.len
 	ofiles := a.files.sorted(|x, y| x.path < y.path)
 	pfiles := b.files.sorted(|x, y| x.path < y.path)
 	assert ofiles == pfiles
+}
+
+fn check_folder(folder string) {
+	assert os.is_file(os.join_path(folder, 'empty'))
+	assert os.is_file(os.join_path(folder, 'folder2/another.txt'))
+	assert os.is_file(os.join_path(folder, 'folder3/final.txt'))
 }
