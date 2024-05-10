@@ -123,7 +123,7 @@ pub fn (mut ch Channel) close() {
 		return
 	}
 	mut nulladr := unsafe { nil }
-	for !C.atomic_compare_exchange_weak_ptr(unsafe { &voidptr(&ch.adr_written) }, &nulladr,
+	for !C.atomic_compare_exchange_weak_ptr(unsafe { voidptr(&ch.adr_written) }, &nulladr,
 		voidptr(-1)) {
 		nulladr = unsafe { nil }
 	}
@@ -190,7 +190,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 				// there is a reader waiting for us
 				unsafe { C.memcpy(wradr, src, ch.objsize) }
 				mut nulladr := unsafe { nil }
-				for !C.atomic_compare_exchange_weak_ptr(unsafe { &voidptr(&ch.adr_written) },
+				for !C.atomic_compare_exchange_weak_ptr(unsafe { voidptr(&ch.adr_written) },
 					&nulladr, wradr) {
 					nulladr = unsafe { nil }
 				}
@@ -381,7 +381,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 					// there is a writer waiting for us
 					unsafe { C.memcpy(dest, rdadr, ch.objsize) }
 					mut nulladr := unsafe { nil }
-					for !C.atomic_compare_exchange_weak_ptr(unsafe { &voidptr(&ch.adr_read) },
+					for !C.atomic_compare_exchange_weak_ptr(unsafe { voidptr(&ch.adr_read) },
 						&nulladr, rdadr) {
 						nulladr = unsafe { nil }
 					}
