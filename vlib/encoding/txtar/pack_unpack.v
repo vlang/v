@@ -52,3 +52,8 @@ pub fn parse_file(file_path string) !Archive {
 	content := os.read_file(file_path)!
 	return parse(content)
 }
+
+// unpack_to extracts the content of the archive `a`, into the folder `path`.
+pub fn (a &Archive) unpack_to(path string) ! {
+	unpack(a, path)!
+}

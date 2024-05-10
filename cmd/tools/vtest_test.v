@@ -18,8 +18,8 @@ fn testsuite_begin() {
 	os.setenv('VJOBS', '2', true)
 	os.rmdir_all(tpath) or {}
 	os.mkdir_all(tpath)!
-	txtar.unpack(txtar.parse('
-These are some known tests to make sure that `v test` and `v -stats test` work:
+
+	txtar.parse('Some known test files to make sure `v test` and `v -stats test` work:
 -- passing/1_test.v --
 fn test_abc() { assert true; assert true; assert true }
 fn test_def() { assert 2 * 2 == 4 }
@@ -31,8 +31,7 @@ fn test_xyz() { assert 3 == 10 - 7 }
 fn test_def() { assert 10 == 100 / 10 }
 -- partial/failing_test.v --
 fn test_xyz() { assert 5 == 7, "oh no" }
-'),
-		tpath)!
+').unpack_to(tpath)!
 	assert os.exists(os.join_path(tpath, 'passing/1_test.v'))
 	assert os.exists(os.join_path(tpath, 'passing/2_test.v'))
 	assert os.exists(os.join_path(tpath, 'partial/passing_test.v'))
