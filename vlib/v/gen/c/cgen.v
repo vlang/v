@@ -2990,6 +2990,11 @@ fn (mut g Gen) trace_autofree(line string) {
 	g.writeln(line)
 }
 
+@[if print_autofree_vars ?]
+fn (mut g Gen) print_autofree_var(var string, comment string) {
+	println('autofree: skipping `${var}`. ${comment}')
+}
+
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
 	g.writeln('// scopeobjects.len == ${scope.objects.len}')
 	if scope == unsafe { nil } {
@@ -3000,6 +3005,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 			ast.Var {
 				g.trace_autofree('// var "${obj.name}" var.pos=${obj.pos.pos} var.line_nr=${obj.pos.line_nr}')
 				if obj.name == g.returned_var_name {
+					g.print_autofree_var(obj.name, 'returned from function')
 					g.trace_autofree('// skipping returned var')
 					continue
 				}
@@ -3011,10 +3017,12 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 				}
 				if obj.is_tmp {
 					// Skip for loop vars
+					g.print_autofree_var(obj.name, 'tmp var (loop?)')
 					g.trace_autofree('// skipping tmp var "${obj.name}"')
 					continue
 				}
 				if obj.is_inherited {
+					g.print_autofree_var(obj.name, 'inherited')
 					g.trace_autofree('// skipping inherited var "${obj.name}"')
 					continue
 				}
@@ -3078,6 +3086,10 @@ fn (mut g Gen) autofree_variable(v ast.Var, is_option bool) {
 		// Don't free simple string literals.
 		match v.expr {
 			ast.StringLiteral {
+				if v.name == 'xxx' {
+					println(v)
+				}
+				g.print_autofree_var(v.name, 'string literal')
 				g.trace_autofree('// str literal')
 			}
 			else {
@@ -3098,9 +3110,15 @@ fn (mut g Gen) autofree_variable(v ast.Var, is_option bool) {
 		g.autofree_var_call('string_free', v)
 		return
 	}
-	if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
-		// Free user reference types
-		g.autofree_var_call('free', v)
+	// Free user reference types
+	is_user_ref := v.typ.is_ptr() && sym.name.after('.')[0].is_capital()
+	// if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
+	if is_user_ref {
+		if g.pref.experimental {
+			g.autofree_var_call('free', v)
+		} else {
+			g.print_autofree_var(v.name, 'user reference type, use -experimental to autofree those')
+		}
 	}
 	if sym.has_method('free') {
 		g.autofree_var_call(free_fn, v)
