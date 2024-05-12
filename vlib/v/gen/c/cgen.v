@@ -2996,7 +2996,7 @@ fn (mut g Gen) print_autofree_var(var ast.Var, comment string) {
 	if !g.pref.print_autofree_vars && g.pref.print_autofree_vars_in_fn == '' {
 		return
 	}
-	println('autofree: file.v:${var.pos.line_nr}: skipping `${var.name}` in fn `${g.last_fn_c_name}`. ${comment}')
+	println('autofree: ${g.file.path}:${var.pos.line_nr}: skipping `${var.name}` in fn `${g.last_fn_c_name}`. ${comment}')
 }
 
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
