@@ -403,8 +403,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
 		sym := c.table.sym(node.return_type)
 		if sym.kind == .void {
+			return_pos := if node.stmts.len == 0 {
+				node.pos
+			} else {
+				node.stmts.last().pos
+			}
 			node.stmts << ast.Return{
-				pos: node.pos
+				pos: return_pos // node.pos
 			}
 		}
 	}

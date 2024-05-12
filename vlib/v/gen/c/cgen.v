@@ -2960,6 +2960,7 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 }
 
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
+	// g.writeln('// afsv pos=${pos} line_nr=${line_nr} freeparent_scopes=${free_parent_scopes}')
 	g.autofree_scope_vars_stop(pos, line_nr, free_parent_scopes, -1)
 }
 
@@ -2974,6 +2975,7 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 	}
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
+	// g.writeln('// scope start pos=${scope.start_pos} ')
 	if scope.start_pos == 0 {
 		// TODO: why can scope.pos be 0? (only outside fns?)
 		return
@@ -2989,6 +2991,7 @@ fn (mut g Gen) trace_autofree(line string) {
 }
 
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
+	g.writeln('// scopeobjects.len == ${scope.objects.len}')
 	if scope == unsafe { nil } {
 		return
 	}
@@ -5281,6 +5284,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.write_defer_stmts_when_needed()
 		if fn_return_is_option || fn_return_is_result {
 			styp := g.typ(fn_ret_type)
+			if g.is_autofree {
+				g.trace_autofree('// free before return (no values returned)')
+				g.autofree_scope_vars(node.pos.pos, node.pos.line_nr, false)
+			}
 			g.writeln('return (${styp}){0};')
 		} else {
 			if g.is_autofree {
