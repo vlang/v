@@ -148,14 +148,16 @@ pub mut:
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
-	m64                bool         // true = generate 64-bit code, defaults to x64
-	ccompiler          string       // the name of the C compiler used
-	ccompiler_type     CompilerType // the type of the C compiler used
-	cppcompiler        string       // the name of the CPP compiler used
-	third_party_option string
-	building_v         bool
-	no_bounds_checking bool // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
-	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
+	m64                       bool         // true = generate 64-bit code, defaults to x64
+	ccompiler                 string       // the name of the C compiler used
+	ccompiler_type            CompilerType // the type of the C compiler used
+	cppcompiler               string       // the name of the CPP compiler used
+	third_party_option        string
+	building_v                bool
+	no_bounds_checking        bool   // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
+	autofree                  bool   // `v -manualfree` => false, `v -autofree` => true; false by default for now.
+	print_autofree_vars       bool   // print vars that are not freed by autofree
+	print_autofree_vars_in_fn string // same as above, but only for a single fn
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	trace_calls bool     // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
 	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
@@ -522,6 +524,18 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.autofree = true
 				res.gc_mode = .no_gc
 				res.build_options << arg
+			}
+			'-print_autofree_vars' {
+				res.print_autofree_vars = true
+				res.build_options << arg
+			}
+			'-print_autofree_vars_in_fn' {
+				res.print_autofree_vars = true
+				value := cmdline.option(args[i..], arg, '')
+				res.build_options << arg
+				res.build_options << value
+				res.print_autofree_vars_in_fn = value
+				i++
 			}
 			'-trace-calls' {
 				res.build_options << arg
