@@ -604,7 +604,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-cov', '-coverage' {
-				res.coverage_file = cmdline.option(current_args, arg, '-')
+				res.coverage_file = cmdline.option(args[i..], arg, '-')
 				res.is_coverage = true
 				res.build_options << '${arg} ${res.coverage_file}'
 				i++
