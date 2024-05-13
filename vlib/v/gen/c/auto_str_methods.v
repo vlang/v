@@ -179,7 +179,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	}
 	parent_type := typ.clear_flag(.option)
 	sym := g.table.sym(parent_type)
-	sym_has_str_method, _, _ := sym.str_method_info()
+	sym_has_str_method, expects_ptr, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
 
 	g.definitions.writeln('string ${str_fn_name}(${styp} it); // auto')
@@ -188,7 +188,13 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
-	deref := if typ.is_ptr() { '**(${sym.cname}**)&' } else { '*(${sym.cname}*)' }
+	deref := if typ.is_ptr() {
+		'**(${sym.cname}**)&'
+	} else if expects_ptr {
+		'(${sym.cname}*)'
+	} else {
+		'*(${sym.cname}*)'
+	}
 	if sym.kind == .string {
 		if typ.nr_muls() > 1 {
 			g.auto_str_funcs.writeln('\t\tres = ptr_str(*(${sym.cname}**)&it.data);')

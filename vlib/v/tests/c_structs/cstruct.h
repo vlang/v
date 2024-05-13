@@ -26,3 +26,9 @@ typedef struct Foo {
 typedef struct Bar {
     int a;
 } Bar;
+
+///
+
+typedef struct TestAlias {
+    int a;
+};
