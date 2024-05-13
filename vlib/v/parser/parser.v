@@ -3632,6 +3632,10 @@ fn (mut p Parser) import_stmt() ast.Import {
 		return import_node
 	}
 	mut source_name := p.check_name()
+	if source_name == '' {
+		p.error_with_pos('import name can not be empty', pos)
+		return import_node
+	}
 	mut mod_name_arr := []string{}
 	mod_name_arr << source_name
 	if import_pos.line_nr != pos.line_nr {

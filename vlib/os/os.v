@@ -578,36 +578,22 @@ pub fn join_path(base string, dirs ...string) string {
 	defer {
 		unsafe { sb.free() }
 	}
-	mut needs_sep := false
-	if base != '' {
-		$if windows {
-			sb.write_string(base.replace('/', '\\'))
-		} $else {
-			sb.write_string(base)
-		}
-		needs_sep = !base.ends_with(path_separator)
+	sbase := base.trim_right('\\/')
+	defer {
+		unsafe { sbase.free() }
 	}
-	for od in dirs {
-		if od != '' && od != '.' {
-			mut md := od
-			$if windows {
-				md = md.replace('/', '\\')
-			}
-			// NOTE(hholst80): split_any not available in js backend,
-			// which could have been more clean way to implement this.
-			nestdirs := md.split(path_separator)
-			for id in nestdirs {
-				if id != '' && id != '.' {
-					if needs_sep {
-						sb.write_string(path_separator)
-					}
-					sb.write_string(id)
-					needs_sep = !id.ends_with(path_separator)
-				}
-			}
+	sb.write_string(sbase)
+	for d in dirs {
+		if d != '' {
+			sb.write_string(path_separator)
+			sb.write_string(d)
 		}
 	}
-	res := sb.str()
+	normalize_path_in_builder(mut sb)
+	mut res := sb.str()
+	if base == '' {
+		res = res.trim_left(path_separator)
+	}
 	return res
 }
 
@@ -625,12 +611,54 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	if base != '' {
-		sb.write_string(sbase)
+	sb.write_string(sbase)
+	if elem != '' {
 		sb.write_string(path_separator)
+		sb.write_string(elem)
 	}
-	sb.write_string(elem)
-	return sb.str()
+	normalize_path_in_builder(mut sb)
+	mut res := sb.str()
+	if base == '' {
+		res = res.trim_left(path_separator)
+	}
+	return res
+}
+
+@[direct_array_access]
+fn normalize_path_in_builder(mut sb strings.Builder) {
+	mut fs := `\\`
+	mut rs := `/`
+	$if windows {
+		fs = `/`
+		rs = `\\`
+	}
+	for idx in 0 .. sb.len {
+		unsafe {
+			if sb[idx] == fs {
+				sb[idx] = rs
+			}
+		}
+	}
+	for idx in 0 .. sb.len - 3 {
+		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
+			unsafe {
+				// let `/foo/./bar.txt` become `/foo/bar.txt` in place
+				for j := idx + 1; j < sb.len - 2; j++ {
+					sb[j] = sb[j + 2]
+				}
+				sb.len -= 2
+			}
+		}
+		if sb[idx] == rs && sb[idx + 1] == rs {
+			unsafe {
+				// let `/foo//bar.txt` become `/foo/bar.txt` in place
+				for j := idx + 1; j < sb.len - 1; j++ {
+					sb[j] = sb[j + 1]
+				}
+				sb.len -= 1
+			}
+		}
+	}
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
