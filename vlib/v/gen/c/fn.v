@@ -1117,6 +1117,9 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 				}
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
+			} else if left_node.or_expr.kind == .propagate_option {
+				g.gen_expr_to_string(left_node, g.unwrap_generic(node.left_type))
+				return true
 			}
 		}
 	} else if left_node is ast.None {
