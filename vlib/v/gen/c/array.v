@@ -1146,10 +1146,13 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	}
 	g.expr(node.left)
 	g.write(', ')
-	if node.args[0].expr.is_auto_deref_var() {
+
+	elem_typ := g.table.sym(node.left_type).array_info().elem_type
+	// auto deref var is redundant for interfaces and sum types.
+	if node.args[0].expr.is_auto_deref_var()
+		&& g.table.sym(elem_typ).kind !in [.interface_, .sum_type] {
 		g.write('*')
 	}
-	elem_typ := g.table.sym(node.left_type).array_info().elem_type
 	if g.table.sym(elem_typ).kind in [.interface_, .sum_type] {
 		g.expr_with_cast(node.args[0].expr, node.args[0].typ, elem_typ)
 	} else {
