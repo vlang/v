@@ -1,3 +1,4 @@
+// vtest retry: 3
 import net
 
 const test_port = 45123

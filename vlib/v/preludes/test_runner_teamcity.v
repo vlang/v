@@ -153,7 +153,7 @@ fn (mut runner TeamcityTestRunner) fn_error(line_nr int, file string, mod string
 }
 
 fn (mut runner TeamcityTestRunner) test_duration() i64 {
-	return time.now().unix_time_milli() - runner.start_time.unix_time_milli()
+	return time.now().unix_milli() - runner.start_time.unix_milli()
 }
 
 // print_service prepare and prints a Teamcity service message.

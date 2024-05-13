@@ -149,7 +149,8 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
-		v_current_commit_hash: version.githash(pref_.building_v)
+		v_current_commit_hash: if pref_.building_v { version.githash(pref_.vroot) or {
+				@VCURRENTHASH} } else { @VCURRENTHASH }
 	}
 	checker.comptime = &comptime.ComptimeInfo{
 		resolver: checker
@@ -1307,7 +1308,8 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		// allow `f() or {}`
 		return
 	}
-	mut last_stmt := node.stmts.last()
+	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
+	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
 	c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
 }
 
@@ -1624,7 +1626,13 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		is_used_outside := sym.mod != c.mod
 		if is_used_outside && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
-			c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
+			if unwrapped_sym.kind == .struct_ && unwrapped_sym.name == 'time.Time' {
+				c.add_error_detail('this will become an error after 2024-05-31')
+				c.warn('field `${unwrapped_sym.name}.${field_name}` is not public, use `${node.expr}.unix()` instead',
+					node.pos)
+			} else {
+				c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
+			}
 		}
 		field_sym := c.table.sym(field.typ)
 		if field.is_deprecated && is_used_outside {
@@ -2232,6 +2240,14 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 }
 
 fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
+	required_args_attr := ['_linker_section']
+	for attr_name in required_args_attr {
+		if attr := node.attrs.find_first(attr_name) {
+			if attr.arg == '' {
+				c.error('missing argument for @[${attr_name}] attribute', attr.pos)
+			}
+		}
+	}
 	for mut field in node.fields {
 		c.check_valid_snake_case(field.name, 'global name', field.pos)
 		if field.name in c.global_names {
@@ -2446,6 +2462,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		'pkgconfig' {
+			if c.pref.output_cross_c {
+				// do not add any flags, since we do not know what the target platform is for the cross platform builds
+				// and it is better to be as conservative as possible
+				return
+			}
 			args := if node.main.contains('--') {
 				node.main.split(' ')
 			} else {
@@ -2593,7 +2614,10 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt) {
 			}
 		}
 		c.stmt(mut stmt)
-		if stmt is ast.GotoLabel {
+		if !c.inside_anon_fn && c.in_for_count > 0 && stmt is ast.BranchStmt
+			&& stmt.kind in [.key_continue, .key_break] {
+			c.scope_returns = true
+		} else if stmt is ast.GotoLabel {
 			unreachable = token.Pos{
 				line_nr: -1
 			}
@@ -3516,6 +3540,19 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			mut mcache := vmod.get_cache()
 			vmod_file_location := mcache.get_by_file(c.file.path)
 			node.val = os.dir(vmod_file_location.vmod_file)
+		}
+		.vmod_hash {
+			mut mcache := vmod.get_cache()
+			vmod_file_location := mcache.get_by_file(c.file.path)
+			if vmod_file_location.vmod_file.len == 0 {
+				c.error('@VMODHASH can only be used in projects that have a v.mod file',
+					node.pos)
+			}
+			hash := version.githash(os.dir(vmod_file_location.vmod_file)) or {
+				c.error(err.msg(), node.pos)
+				''
+			}
+			node.val = hash
 		}
 		.unknown {
 			c.error('unknown @ identifier: ${node.name}. Available identifiers: ${token.valid_at_tokens}',

@@ -322,7 +322,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
 					branch.pos)
 			}
-			if mut expr is ast.TypeNode && cond_sym.is_primitive() {
+			mut is_comptime := false
+			if c.comptime.inside_comptime_for {
+				// it is a compile-time field.typ checking
+				if mut node.cond is ast.SelectorExpr {
+					is_comptime = node.cond.expr_type == c.field_data_type
+						&& node.cond.field_name == 'typ'
+				}
+			}
+			if mut expr is ast.TypeNode && cond_sym.is_primitive() && !is_comptime {
 				c.error('matching by type can only be done for sum types, generics, interfaces, `${node.cond}` is none of those',
 					branch.pos)
 			}
@@ -442,7 +450,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match alias type `${expect_str}` with `${expr_str}`',
 					expr.pos())
-			} else if !c.check_types(expr_type, node.cond_type) {
+			} else if !c.check_types(expr_type, node.cond_type) && !is_comptime {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
@@ -535,16 +543,27 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	}
+	if node.branches.len == 0 {
+		c.error('`match` must have at least two branches including `else`, or an exhaustive set of branches',
+			node.pos)
+		return
+	}
 	mut else_branch := node.branches.last()
-	mut has_else := else_branch.is_else
-	if !has_else {
-		for i, branch in node.branches {
-			if branch.is_else && i != node.branches.len - 1 {
-				c.error('`else` must be the last branch of `match`', branch.pos)
-				else_branch = branch
-				has_else = true
+	mut has_else, mut has_non_else := else_branch.is_else, !else_branch.is_else
+	for branch in node.branches[..node.branches.len - 1] {
+		if branch.is_else {
+			if has_else {
+				c.error('`match` can have only one `else` branch', branch.pos)
 			}
+			c.error('`else` must be the last branch of `match`', branch.pos)
+			else_branch = branch
+			has_else = true
+		} else {
+			has_non_else = true
 		}
+	}
+	if !has_non_else {
+		c.error('`match` must have at least one non `else` branch', else_branch.pos)
 	}
 	if is_exhaustive {
 		if has_else && !c.pref.translated && !c.file.is_translated {

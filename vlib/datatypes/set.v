@@ -85,7 +85,7 @@ pub fn (mut set Set[T]) add_all(elements []T) {
 
 // @union returns the union of the two sets.
 pub fn (l Set[T]) @union(r Set[T]) Set[T] {
-	mut set := l
+	mut set := l.copy()
 	for e, _ in r.elements {
 		set.add(e)
 	}
@@ -94,7 +94,7 @@ pub fn (l Set[T]) @union(r Set[T]) Set[T] {
 
 // intersection returns the intersection of sets.
 pub fn (l Set[T]) intersection(r Set[T]) Set[T] {
-	mut set := l
+	mut set := l.copy()
 	for e, _ in l.elements {
 		if !r.exists(e) {
 			set.remove(e)
@@ -110,7 +110,7 @@ pub fn (l Set[T]) intersection(r Set[T]) Set[T] {
 
 // - returns the difference of sets.
 pub fn (l Set[T]) - (r Set[T]) Set[T] {
-	mut set := l
+	mut set := l.copy()
 	for e, _ in l.elements {
 		if r.exists(e) {
 			set.remove(e)

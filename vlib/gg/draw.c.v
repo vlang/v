@@ -3,9 +3,8 @@
 module gg
 
 import gx
-import sokol
-import sokol.sgl
 import math
+import sokol.sgl
 
 // draw_pixel draws one pixel on the screen.
 //
@@ -227,6 +226,7 @@ pub enum PaintStyle {
 
 @[params]
 pub struct DrawRectParams {
+pub:
 	x          f32
 	y          f32
 	w          f32

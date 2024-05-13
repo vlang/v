@@ -34,9 +34,13 @@ fn main() {
 		elog('fast_job end')
 	}
 
-	if !os.exists('website') {
-		println('cloning the website repo...')
-		os.system('git clone --filter=blob:none git@github.com:/vlang/website.git')
+	if !os.exists('fast.vlang.io/') {
+		println('cloning the fast.vlang.io/ repo...')
+		os.system('git clone git@github.com:/vlang/website.git fast.vlang.io/')
+	}
+	if !os.exists('docs.vlang.io') {
+		println('cloning the docs.vlang.io/ repo...')
+		os.system('git clone git@github.com:/vlang/docs.git docs.vlang.io/')
 	}
 	for {
 		elog('------------------- Checking for updates ... -------------------')

@@ -60,7 +60,7 @@ by using any of the following commands in a terminal:
 * [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
 * [Functions](#functions)
-    * [Hoistings](#hoistings)
+    * [Hoisting](#hoisting)
     * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
@@ -125,7 +125,9 @@ by using any of the following commands in a terminal:
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
 * [Modules](#modules)
     * [Create modules](#create-modules)
+    * [Special considerations for project folders](#special-considerations-for-project-folders)
     * [init functions](#init-functions)
+    * [cleanup functions](#cleanup-functions)
 
 </td></tr>
 <tr><td width=33% valign=top>
@@ -338,7 +340,7 @@ Again, the type comes after the argument's name.
 Just like in Go and C, functions cannot be overloaded.
 This simplifies the code and improves maintainability and readability.
 
-### Hoistings
+### Hoisting
 
 Functions can be used before their declaration:
 `add` and `sub` are declared after `main`, but can still be called from `main`.
@@ -1590,7 +1592,7 @@ fn main() {
 		month: 12
 		day: 25
 	}
-	println(time.new_time(my_time).utc_string())
+	println(time.new(my_time).utc_string())
 	println('Century: ${my_time.century()}')
 }
 ```
@@ -3269,9 +3271,9 @@ fn main() {
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
 
-### Special considerations
+### Special considerations for project folders
 
-For the top level project folder (the one that is compiled with v .), and *only*
+For the top level project folder (the one, compiled with `v .`), and *only*
 that folder, you can have several .v files, that may be mentioning different modules
 with `module main`, `module abc` etc
 
@@ -3285,7 +3287,7 @@ Note that in ordinary modules, all .v files must start with `module name_of_fold
 ### `init` functions
 
 If you want a module to automatically call some setup/initialization code when it is imported,
-you can use a module `init` function:
+you can define a module `init` function:
 
 ```v
 fn init() {
@@ -3293,8 +3295,24 @@ fn init() {
 }
 ```
 
-The `init` function cannot be public - it will be called automatically. This feature is
-particularly useful for initializing a C library.
+The `init` function cannot be public - it will be called automatically by V, *just once*, no matter
+how many times the module was imported in your program. This feature is particularly useful for
+initializing a C library.
+
+### `cleanup` functions
+
+If you want a module to automatically call some cleanup/deinitialization code, when your program
+ends, you can define a module `cleanup` function:
+
+```v
+fn cleanup() {
+	// your deinitialisation code here ...
+}
+```
+
+Just like the `init` function, the `cleanup` function for a module cannot be public - it will be
+called automatically, when your program ends, once per module, even if the module was imported
+transitively by other modules several times, in the reverse order of the init calls.
 
 ## Type Declarations
 
@@ -5514,6 +5532,24 @@ fn main() {
 	assert bf == BitField.read | .write
 	assert bf.all(.read | .write)
 	assert !bf.has(.other)
+	empty := BitField.zero()
+	assert empty.is_empty()
+	assert !empty.has(.read)
+	assert !empty.has(.write)
+	assert !empty.has(.other)
+	mut full := empty
+	full.set_all()
+	assert int(full) == 7 // 0x01 + 0x02 + 0x04
+	assert full == .read | .write | .other
+	mut v := full
+	v.clear(.read | .other)
+	assert v == .write
+	v.clear_all()
+	assert v == empty
+	assert BitField.read == BitField.from('read')!
+	assert BitField.other == BitField.from('other')!
+	assert BitField.write == BitField.from(2)!
+	assert BitField.zero() == BitField.from('')!
 }
 ```
 
@@ -5732,6 +5768,8 @@ that are substituted at compile time:
   recompiled on a different commit (after local modifications, or after
   using git bisect etc).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
+- `@VMODHASH` => is replaced by the shortened commit hash, derived from the .git directory
+  next to the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
   where the nearest v.mod file is (as a string).
 
@@ -5795,10 +5833,10 @@ fn main() {
 
 You can read [Enum](#enums) values and their attributes.
 
-```V
+```v
 enum Color {
-	red @[RED] // first attribute
-	blue @[BLUE] // second attribute
+	red  @[RED] // first attribute
+	blue  @[BLUE] // second attribute
 }
 
 fn main() {
@@ -5819,7 +5857,7 @@ fn main() {
 
 You can read [Struct](#structs) attributes.
 
-```V
+```v
 @[COLOR]
 struct Foo {
 	a int
@@ -5844,7 +5882,7 @@ fn main() {
 
 You can read variant types from [Sum type](#sum-types).
 
-```V
+```v
 type MySum = int | string
 
 fn main() {
@@ -5866,7 +5904,7 @@ fn main() {
 
 You can retrieve information about struct methods.
 
-```V
+```v
 struct Foo {
 }
 
@@ -5877,7 +5915,6 @@ fn (f Foo) test() int {
 fn (f Foo) test2() string {
 	return 'foo'
 }
-
 
 fn main() {
 	foo := Foo{}
@@ -6190,10 +6227,10 @@ See also [Cross Compilation](#cross-compilation).
 To use the native *V debugger*, add the `$dbg` statement to your source, where you 
 want the debugger to be invoked.
 
-```V
+```v
 fn main() {
 	a := 1
-	$dbg
+	$dbg;
 }
 ```
 
@@ -6966,7 +7003,7 @@ v -os linux .
 For Ubuntu/Debian based distributions:
 
 ```shell
-sudo apt-get install gcc-mingw-w64-x86-64
+sudo apt install gcc-mingw-w64-x86-64
 ```
 
 For Arch based distributions:

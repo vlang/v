@@ -578,18 +578,6 @@ pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO: t for pg, remove
 }
 
-// int returns the value of the string as an integer `'1'.int() == 1`.
-@[inline]
-pub fn (s string) int() int {
-	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
-}
-
-// i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
-@[inline]
-pub fn (s string) i64() i64 {
-	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
-}
-
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
 @[inline]
 pub fn (s string) i8() i8 {
@@ -602,6 +590,24 @@ pub fn (s string) i16() i16 {
 	return i16(strconv.common_parse_int(s, 0, 16, false, false) or { 0 })
 }
 
+// i32 returns the value of the string as i32 `'1'.i32() == i32(1)`.
+@[inline]
+pub fn (s string) i32() i32 {
+	return i32(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+}
+
+// int returns the value of the string as an integer `'1'.int() == 1`.
+@[inline]
+pub fn (s string) int() int {
+	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+}
+
+// i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
+@[inline]
+pub fn (s string) i64() i64 {
+	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
+}
+
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 @[inline]
 pub fn (s string) f32() f32 {
@@ -612,12 +618,6 @@ pub fn (s string) f32() f32 {
 @[inline]
 pub fn (s string) f64() f64 {
 	return strconv.atof64(s) or { 0 }
-}
-
-// u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
-@[inline]
-pub fn (s string) u8() u8 {
-	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
 // u8_array returns the value of the hex/bin string as u8 array.
@@ -671,6 +671,12 @@ pub fn (s string) u8_array() []u8 {
 		return ret
 	}
 	return []u8{}
+}
+
+// u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
+@[inline]
+pub fn (s string) u8() u8 {
+	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
@@ -1518,6 +1524,9 @@ pub fn (s string) to_lower() string {
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
+	if s == '' || s[0].is_digit() {
+		return false
+	}
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
@@ -1549,6 +1558,9 @@ pub fn (s string) to_upper() string {
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {
+	if s == '' || s[0].is_digit() {
+		return false
+	}
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
 			return false
@@ -1672,7 +1684,7 @@ pub fn (s string) trim_space() string {
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	left, right := s.trim_indexes(cutset)
@@ -1713,7 +1725,7 @@ pub fn (s string) trim_indexes(cutset string) (int, int) {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 @[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos := 0
@@ -1779,24 +1791,20 @@ pub fn (s string) trim_string_right(str string) string {
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
 pub fn compare_strings(a &string, b &string) int {
-	if a < b {
-		return -1
+	return match true {
+		a < b { -1 }
+		a > b { 1 }
+		else { 0 }
 	}
-	if a > b {
-		return 1
-	}
-	return 0
 }
 
 // compare_strings_by_len returns `-1` if `a.len < b.len`, `1` if `a.len > b.len` else `0`.
 fn compare_strings_by_len(a &string, b &string) int {
-	if a.len < b.len {
-		return -1
+	return match true {
+		a.len < b.len { -1 }
+		a.len > b.len { 1 }
+		else { 0 }
 	}
-	if a.len > b.len {
-		return 1
-	}
-	return 0
 }
 
 // compare_lower_strings returns the same as compare_strings but converts `a` and `b` to lower case before comparing.

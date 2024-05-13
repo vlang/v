@@ -35,9 +35,9 @@ pub const read_all_grow_len = 1024
 // ReadAllConfig allows options to be passed for the behaviour
 // of read_all.
 pub struct ReadAllConfig {
+pub:
 	read_to_end_of_stream bool
-mut:
-	reader Reader
+	reader                Reader
 }
 
 // read_all reads all bytes from a reader until either a 0 length read

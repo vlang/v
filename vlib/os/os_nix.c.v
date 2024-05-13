@@ -296,7 +296,7 @@ fn init_os_args(argc int, argv &&u8) []string {
 //   }
 // ```
 pub fn ls(path string) ![]string {
-	if path.len == 0 {
+	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut res := []string{cap: 50}
@@ -339,10 +339,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 // execute starts the specified command, waits for it to complete, and returns its output.
 @[manualfree]
 pub fn execute(cmd string) Result {
-	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
-	// }
-	pcmd := if cmd.contains('2>') { cmd.clone() } else { '${cmd} 2>&1' }
+	pcmd := 'exec 2>&1;${cmd}'
 	defer {
 		unsafe { pcmd.free() }
 	}

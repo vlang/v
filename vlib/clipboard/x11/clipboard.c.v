@@ -14,7 +14,7 @@ $if freebsd {
 }
 #flag -lX11
 
-#include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
+#include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt install libx11-dev`
 // X11
 
 @[typedef]

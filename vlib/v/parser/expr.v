@@ -4,7 +4,6 @@
 module parser
 
 import v.ast
-import v.vet
 import v.token
 
 fn (mut p Parser) expr(precedence int) ast.Expr {
@@ -52,6 +51,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.tok.pos())
 			} else if p.tok.kind == .question && p.peek_tok.kind == .amp {
 				node = p.prefix_expr()
+			} else if p.inside_for_expr && p.tok.kind == .name && p.tok.lit[0].is_capital()
+				&& p.peek_tok.kind == .lcbr && p.peek_token(2).kind in [.rcbr, .name] {
+				node = p.struct_init(p.mod + '.' + p.tok.lit, .normal, false)
 			} else {
 				if p.inside_comptime_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
@@ -683,10 +685,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.inside_in_array = false
 	}
 	p.expecting_type = prev_expecting_type
-	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && right.exprs.len == 1 {
-		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt,
-			.default)
-	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
@@ -720,7 +718,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 }
 
 fn (p &Parser) fileis(s string) bool {
-	return p.file_name.contains(s)
+	return p.file_path.contains(s)
 }
 
 fn (mut p Parser) prefix_expr() ast.Expr {

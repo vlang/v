@@ -6,7 +6,6 @@ module gg
 import os
 import os.font
 import gx
-import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
@@ -546,6 +545,7 @@ pub enum EndEnum {
 
 @[params]
 pub struct EndOptions {
+pub:
 	how EndEnum
 }
 

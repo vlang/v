@@ -2,7 +2,6 @@ module cbuilder
 
 import os
 import time
-import sync
 import v.util
 import v.builder
 import sync.pool

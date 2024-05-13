@@ -18,7 +18,7 @@ const dot_str = '.'
 
 // is_abs_path returns `true` if the given `path` is absolute.
 pub fn is_abs_path(path string) bool {
-	if path.len == 0 {
+	if path == '' {
 		return false
 	}
 	$if windows {
@@ -32,7 +32,7 @@ pub fn is_abs_path(path string) bool {
 // and returns the absolute path representation.
 pub fn abs_path(path string) string {
 	wd := getwd()
-	if path.len == 0 {
+	if path == '' {
 		return wd
 	}
 	npath := norm_path(path)
@@ -57,7 +57,7 @@ pub fn abs_path(path string) string {
 // - the last path separator
 @[direct_array_access]
 pub fn norm_path(path string) string {
-	if path.len == 0 {
+	if path == '' {
 		return os.dot_str
 	}
 	rooted := is_abs_path(path)
@@ -69,7 +69,7 @@ pub fn norm_path(path string) string {
 		volume = volume.replace(os.fslash_str, path_separator)
 	}
 	cpath := clean_path(path[volume_len..])
-	if cpath.len == 0 && volume_len == 0 {
+	if cpath == '' && volume_len == 0 {
 		return os.dot_str
 	}
 	spath := cpath.split(path_separator)
@@ -131,7 +131,7 @@ pub fn norm_path(path string) string {
 // An error is returned if there is no existing part of the given `path`.
 pub fn existing_path(path string) !string {
 	err := error('path does not exist')
-	if path.len == 0 {
+	if path == '' {
 		return err
 	}
 	if exists(path) {
@@ -164,7 +164,7 @@ pub fn existing_path(path string) !string {
 				recent_path = curr_path
 				continue
 			}
-			if recent_path.len == 0 {
+			if recent_path == '' {
 				break
 			}
 			return recent_path
@@ -180,7 +180,7 @@ pub fn existing_path(path string) !string {
 // - redundant separators
 // - the last path separator
 fn clean_path(path string) string {
-	if path.len == 0 {
+	if path == '' {
 		return os.empty_str
 	}
 	mut sb := strings.new_builder(path.len)

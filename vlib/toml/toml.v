@@ -58,70 +58,70 @@ fn decode_struct[T](doc Any, mut typ T) {
 			typ.$(field.name) = value.time()
 		} $else $if field.is_array {
 			arr := value.array()
-			match typeof(typ.$(field.name)).name {
-				'[]string' { typ.$(field.name) = arr.as_strings() }
-				'[]int' { typ.$(field.name) = arr.map(it.int()) }
-				'[]i64' { typ.$(field.name) = arr.map(it.i64()) }
-				'[]u64' { typ.$(field.name) = arr.map(it.u64()) }
-				'[]f32' { typ.$(field.name) = arr.map(it.f32()) }
-				'[]f64' { typ.$(field.name) = arr.map(it.f64()) }
-				'[]bool' { typ.$(field.name) = arr.map(it.bool()) }
-				'[]toml.DateTime' { typ.$(field.name) = arr.map(it.datetime()) }
-				'[]toml.Date' { typ.$(field.name) = arr.map(it.date()) }
-				'[]toml.Time' { typ.$(field.name) = arr.map(it.time()) }
+			match field.typ {
+				[]string { typ.$(field.name) = arr.as_strings() }
+				[]int { typ.$(field.name) = arr.map(it.int()) }
+				[]i64 { typ.$(field.name) = arr.map(it.i64()) }
+				[]u64 { typ.$(field.name) = arr.map(it.u64()) }
+				[]f32 { typ.$(field.name) = arr.map(it.f32()) }
+				[]f64 { typ.$(field.name) = arr.map(it.f64()) }
+				[]bool { typ.$(field.name) = arr.map(it.bool()) }
+				[]DateTime { typ.$(field.name) = arr.map(it.datetime()) }
+				[]Date { typ.$(field.name) = arr.map(it.date()) }
+				[]Time { typ.$(field.name) = arr.map(it.time()) }
 				else {}
 			}
 		} $else $if field.is_map {
 			mut mmap := value.as_map()
-			match typeof(typ.$(field.name)).name {
-				'map[string]string' {
+			match field.typ {
+				map[string]string {
 					typ.$(field.name) = mmap.as_strings()
 				}
 				// Should be cleaned up to use the more modern lambda syntax
 				// |k, v| k, v.int()
 				// Unfortunately lambdas have issues with multiple return at the time of writing
-				'map[string]int' {
+				map[string]int {
 					typ.$(field.name) = maps.to_map[string, Any, string, int](mmap, fn (k string, v Any) (string, int) {
 						return k, v.int()
 					})
 				}
-				'map[string]i64' {
+				map[string]i64 {
 					typ.$(field.name) = maps.to_map[string, Any, string, i64](mmap, fn (k string, v Any) (string, i64) {
 						return k, v.i64()
 					})
 				}
-				'map[string]u64' {
+				map[string]u64 {
 					typ.$(field.name) = maps.to_map[string, Any, string, u64](mmap, fn (k string, v Any) (string, u64) {
 						return k, v.u64()
 					})
 				}
-				'map[string]f32' {
+				map[string]f32 {
 					typ.$(field.name) = maps.to_map[string, Any, string, f32](mmap, fn (k string, v Any) (string, f32) {
 						return k, v.f32()
 					})
 				}
-				'map[string]f64' {
+				map[string]f64 {
 					typ.$(field.name) = maps.to_map[string, Any, string, f64](mmap, fn (k string, v Any) (string, f64) {
 						return k, v.f64()
 					})
 				}
-				'map[string]bool' {
+				map[string]bool {
 					typ.$(field.name) = maps.to_map[string, Any, string, bool](mmap, fn (k string, v Any) (string, bool) {
 						return k, v.bool()
 					})
 				}
-				'map[string]toml.DateTime' {
+				map[string]DateTime {
 					typ.$(field.name) = maps.to_map[string, Any, string, DateTime](mmap,
 						fn (k string, v Any) (string, DateTime) {
 						return k, v.datetime()
 					})
 				}
-				'map[string]toml.Date' {
+				map[string]Date {
 					typ.$(field.name) = maps.to_map[string, Any, string, Date](mmap, fn (k string, v Any) (string, Date) {
 						return k, v.date()
 					})
 				}
-				'map[string]toml.Time' {
+				map[string]Time {
 					typ.$(field.name) = maps.to_map[string, Any, string, Time](mmap, fn (k string, v Any) (string, Time) {
 						return k, v.time()
 					})
@@ -203,6 +203,7 @@ fn to_any[T](value T) Any {
 
 // DateTime is the representation of an RFC 3339 datetime string.
 pub struct DateTime {
+pub:
 	datetime string
 }
 
@@ -213,6 +214,7 @@ pub fn (dt DateTime) str() string {
 
 // Date is the representation of an RFC 3339 date-only string.
 pub struct Date {
+pub:
 	date string
 }
 
@@ -223,6 +225,7 @@ pub fn (d Date) str() string {
 
 // Time is the representation of an RFC 3339 time-only string.
 pub struct Time {
+pub:
 	time string
 }
 

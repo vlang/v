@@ -2,16 +2,27 @@ name: Graphics CI
 
 on:
   push:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/gg_regressions_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/gg_regressions_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gg-regressions:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 20
     env:
       VFLAGS: -cc tcc
@@ -23,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build local v
-        run: make
+        run: make -j4 && ./v symlink
 
       - name: Setup dependencies
         run: |
@@ -33,10 +44,10 @@ jobs:
           # libxcursor-dev libxi-dev : V gfx deps
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          .github/workflows/retry.sh sudo apt-get update
-          .github/workflows/retry.sh sudo apt-get install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev freeglut3-dev xsel xclip
-          .github/workflows/retry.sh wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
-          .github/workflows/retry.sh git clone https://github.com/Larpon/gg-regression-images gg-regression-images
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev freeglut3-dev xsel xclip
+          ./v retry -- wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
+          ./v retry -- git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
 
       - name: Sample and compare

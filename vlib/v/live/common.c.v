@@ -1,7 +1,5 @@
 module live
 
-pub const is_used = 1
-
 pub type FNLinkLiveSymbols = fn (linkcb voidptr)
 
 pub type FNLiveReloadCB = fn (info &LiveReloadInfo)

@@ -11,7 +11,7 @@ import os
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
-	mut is_static_type_method := language == .v && name.len > 0 && name[0].is_capital()
+	mut is_static_type_method := language == .v && name != '' && name[0].is_capital()
 		&& p.tok.kind == .dot
 	if is_static_type_method {
 		p.check(.dot)
@@ -529,7 +529,7 @@ run them via `v file.v` instead',
 			//
 			no_body: no_body
 			mod: p.mod
-			file: p.file_name
+			file: p.file_path
 			pos: start_pos
 			language: language
 		})
@@ -580,7 +580,7 @@ run them via `v file.v` instead',
 			//
 			no_body: no_body
 			mod: p.mod
-			file: p.file_name
+			file: p.file_path
 			pos: start_pos
 			language: language
 		})
@@ -650,7 +650,7 @@ run them via `v file.v` instead',
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		name_pos: name_pos
 		body_pos: body_start_pos
-		file: p.file_name
+		file: p.file_path
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		scope: p.scope
 		label_names: p.label_names
@@ -782,7 +782,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	_, generic_names := p.parse_generic_types()
 	params, _, is_variadic := p.fn_params()
 	for param in params {
-		if param.name.len == 0 && p.table.sym(param.typ).kind != .placeholder {
+		if param.name == '' && p.table.sym(param.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', param.pos)
 		}
 		if param.name in inherited_vars_name {
@@ -863,7 +863,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_anon: true
 			no_body: no_body
 			pos: pos.extend(p.prev_tok.pos())
-			file: p.file_name
+			file: p.file_path
 			scope: p.scope
 			label_names: label_names
 		}
@@ -1004,7 +1004,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			name := p.check_name()
 			comments << p.eat_comments()
 			mut param_names := [name]
-			if name.len > 0 && p.fn_language == .v && name[0].is_capital() {
+			if name != '' && p.fn_language == .v && name[0].is_capital() {
 				p.error_with_pos('parameter name must not begin with upper case letter (`${param_names[0]}`)',
 					p.prev_tok.pos())
 			}

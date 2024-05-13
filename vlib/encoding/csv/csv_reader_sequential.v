@@ -13,6 +13,7 @@ import os
 
 @[params]
 pub struct SequentialReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed by scr_buf as source of data
 	file_path    string

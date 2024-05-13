@@ -274,10 +274,10 @@ fn main() {
 	$if !android {
 		if os.args.len > 3 || (os.args.len >= 2 && os.args[1] in ['-h', '--help', '\\?', '-?']) {
 			eprintln('Usage:\nshow_obj [file_name:string] [single_material_flag:(true|false)]\n')
-			eprintln('file_name           : name of the .obj file, it must be in the folder "assets/models"')
-			eprintln('                      if no file name is passed the default V logo will be showed.')
-			eprintln('                      if you want custom models you can put them in the folder "assets/models".')
-			eprintln("single_material_flag: if true the viewer use for all the model's parts the default material\n")
+			eprintln('file_name           : name of the .obj file.')
+			eprintln('                      If no file name is passed the default V logo will be showed.')
+			eprintln('                      Try one of the .obj files in the "assets/models/" folder.')
+			eprintln("single_material_flag: if true the viewer use for all the model's parts the default material")
 			exit(0)
 		}
 

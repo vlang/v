@@ -20,10 +20,10 @@ in the browser. No need to quit the app, rebuild it, and refresh the page in the
 
 - **Very fast** performance of C on the web.
 - **Small binary** hello world website is <100 KB.
-- **Easy to deploy** just one binary file that also includes all templates. No need to install any
-  dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 - **Multithreaded** by default
+- **Easy to deploy** just one binary file that also includes all templates. No need to install any
+  dependencies.
 
 ### Examples
 
@@ -69,7 +69,7 @@ fn new_app() &App {
 
 @['/']
 pub fn (mut app App) page_home() vweb.Result {
-	// all this constants can be accessed by src/templates/page/home.html file.
+	// all these constants can be accessed by src/templates/page/home.html file.
 	page_title := 'V is the new V'
 	v_url := 'https://github.com/vlang/v'
 
@@ -210,8 +210,8 @@ fn (mut app App) create_product() vweb.Result {
 
 #### - Parameters
 
-Parameters are passed directly in endpoint route using colon sign `:` and received using the same
-name at function
+Parameters are passed directly in the endpoint route using a colon sign `:` and received
+using the same name in the function.
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
@@ -230,9 +230,9 @@ You have access to the raw request data such as headers
 or the request body by accessing `app` (which is `vweb.Context`).
 If you want to read the request body, you can do that by calling `app.req.data`.
 To read the request headers, you just call `app.req.header` and access the
-header you want example. `app.req.header.get(.content_type)`. See `struct Header`
+header you want, for example `app.req.header.get(.content_type)`. See `struct Header`
 for all available methods (`v doc net.http Header`).
-It has, too, fields for the `query`, `form`, `files`.
+It also has fields for the `query`, `form`, and `files`.
 
 #### - Parameter Arrays
 

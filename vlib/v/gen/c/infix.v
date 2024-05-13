@@ -784,9 +784,16 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		if left.sym.has_method(node.op.str()) {
 			method = left.sym.find_method(node.op.str()) or { ast.Fn{} }
 			method_name = left.sym.cname + '_' + util.replace_op(node.op.str())
-		} else if left.unaliased_sym.has_method(node.op.str()) {
-			method = left.unaliased_sym.find_method(node.op.str()) or { ast.Fn{} }
+		} else if left.unaliased_sym.has_method_with_generic_parent(node.op.str()) {
+			method = left.unaliased_sym.find_method_with_generic_parent(node.op.str()) or {
+				ast.Fn{}
+			}
 			method_name = left.unaliased_sym.cname + '_' + util.replace_op(node.op.str())
+			if left.unaliased_sym.info is ast.Struct
+				&& left.unaliased_sym.info.generic_types.len > 0 {
+				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
+					method_name)
+			}
 		} else {
 			g.gen_plain_infix_expr(node)
 			return

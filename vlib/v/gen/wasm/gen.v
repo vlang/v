@@ -558,7 +558,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	}
 
 	if node.language in [.js, .wasm] {
-		cfn_attrs := g.table.fns[node.name].attrs
+		cfn_attrs := unsafe { g.table.fns[node.name].attrs }
 
 		short_name := if node.language == .js {
 			node.name.all_after_last('JS.')

@@ -1,7 +1,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.util
 import v.token
 
@@ -255,6 +254,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
+				if param.is_mut && arg_typ_sym.info.attrs.any(it.name == 'params') {
+					c.error('declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed',
+						param.type_pos)
+				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
@@ -400,8 +403,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
 		sym := c.table.sym(node.return_type)
 		if sym.kind == .void {
+			return_pos := if node.stmts.len == 0 {
+				node.pos
+			} else {
+				node.stmts.last().pos
+			}
 			node.stmts << ast.Return{
-				pos: node.pos
+				pos: return_pos // node.pos
 			}
 		}
 	}
@@ -494,7 +502,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		c.error('anonymous function must declare a body', node.decl.pos)
 	}
 	for param in node.decl.params {
-		if param.name.len == 0 {
+		if param.name == '' {
 			c.error('use `_` to name an unused parameter', param.pos)
 		}
 	}
@@ -1108,7 +1116,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				node.pos)
 		}
 	}
-	if !func.is_pub && func.language == .v && func.name.len > 0 && func.mod.len > 0
+	if !func.is_pub && func.language == .v && func.name != '' && func.mod.len > 0
 		&& func.mod != c.mod && !c.pref.is_test {
 		c.error('function `${func.name}` is private', node.pos)
 	}
@@ -1279,8 +1287,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			if param.is_mut {
 				tok := param.specifier()
-				c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
-					call_arg.expr.pos())
+				param_sym := c.table.sym(param.typ)
+				if !(param_sym.info is ast.Struct && param_sym.info.attrs.any(it.name == 'params')) {
+					c.error('function `${node.name}` parameter `${param.name}` is `${tok}`, so use `${tok} ${call_arg.expr}` instead',
+						call_arg.expr.pos())
+				}
 			} else {
 				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
@@ -2517,6 +2528,10 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
+			if c.table.final_sym(arg.typ).kind == .array {
+				// allow mutable []array to be passed as mut
+				continue
+			}
 			c.error('function in `spawn` statement cannot contain mutable non-reference arguments',
 				arg.expr.pos())
 		}
@@ -2742,6 +2757,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					return
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)
+			}
+			if arg_expr.return_type.has_flag(.result) && arg_expr.or_block.kind != .block {
+				if arg_expr.return_type.clear_option_and_result() in [ast.void_type, 0] {
+					c.error('cannot use Result type in `${node.name}`', arg_expr.pos)
+				}
 			}
 		}
 		ast.StringLiteral, ast.StringInterLiteral {

@@ -3,16 +3,27 @@ name: vab CI
 on:
   workflow_call:
   push:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/vab_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/vab_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
@@ -24,11 +35,11 @@ jobs:
 
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make -j4 && ./v symlink
 
       - name: Install vab
         run: |
-          .github/workflows/retry.sh v install vab
+          v retry -- v install vab
           v -g ~/.vmodules/vab
           sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
@@ -55,16 +66,15 @@ jobs:
 
   v-compiles-os-android:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make -j4 && ./v symlink
 
       - name: Install vab
         run: |
-          .github/workflows/retry.sh v install vab
+          v retry -- v install vab
           v -g ~/.vmodules/vab
           sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 

@@ -191,5 +191,5 @@ The VDOC test vdoc_file_test.v now also supports VAUTOFIX, which is
 useful, if you change anything inside cmd/tools/vdoc or vlib/v/doc/,
 or inside the modules that it depends on (like markdown).
 After such changes, just run this command *2 times*, and commit the
-resulting changes in `cmd/tools/vdoc/tests/testdata` as well:
-`VAUTOFIX=1 ./v cmd/tools/vdoc/tests/vdoc_file_test.v`
+resulting changes in `cmd/tools/vdoc/testdata` as well:
+`VAUTOFIX=1 ./v cmd/tools/vdoc/vdoc_file_test.v`

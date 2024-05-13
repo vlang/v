@@ -163,7 +163,7 @@ pub fn (mut sem Semaphore) post() {
 		}
 	}
 	C.AcquireSRWLockExclusive(&sem.mtx)
-	c = C.atomic_fetch_add_u32(&sem.count, 1)
+	c = C.atomic_fetch_add_u32(voidptr(&sem.count), 1)
 	if c == 0 {
 		C.WakeConditionVariable(&sem.cond)
 	}

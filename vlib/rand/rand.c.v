@@ -133,7 +133,7 @@ fn deinit() {
 // init initializes the default RNG.
 fn init() {
 	default_rng = new_default()
-	C.atexit(deinit)
+	at_exit(deinit) or {}
 }
 
 fn read_32(mut rng PRNG, mut buf []u8) {

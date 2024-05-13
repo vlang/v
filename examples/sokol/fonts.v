@@ -1,4 +1,3 @@
-import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl

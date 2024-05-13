@@ -472,7 +472,7 @@ fn (re RE) parsed_replace_string(in_txt string, repl string) string {
 }
 
 // replace return a string where the matches are replaced with the repl_str string,
-// this function support use groups in the replace string
+// this function supports groups in the replace string
 pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	mut i := 0
 	mut res := strings.new_builder(in_txt.len)

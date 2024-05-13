@@ -7,12 +7,11 @@ const time_to_test = time.Time{
 	hour: 21
 	minute: 23
 	second: 42
-	unix: 332198622
 }
 
 fn test_now_format() {
 	t := time.now()
-	u := t.unix
+	u := t.unix()
 	assert t.format() == time.unix(int(u)).format()
 }
 

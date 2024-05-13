@@ -29,7 +29,7 @@ fn (vd VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
 fn (vd VDoc) write_markdown_content(contents []doc.DocNode, mut cw strings.Builder, mut hw strings.Builder, indent int, with_toc bool) {
 	cfg := vd.cfg
 	for cn in contents {
-		if with_toc && cn.name.len > 0 {
+		if with_toc && cn.name != '' {
 			hw.writeln(' '.repeat(2 * indent) + '- [${slug(cn.name)}](#${cn.name})')
 			cw.writeln('## ${cn.name}')
 		}

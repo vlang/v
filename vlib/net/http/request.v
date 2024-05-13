@@ -388,6 +388,7 @@ pub:
 
 pub struct UnexpectedExtraAttributeError {
 	Error
+pub:
 	attributes []string
 }
 

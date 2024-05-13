@@ -22,7 +22,7 @@ fn test_import() {
 	assert math.pi == math.pi
 	assert sha512.size == sha512.size
 	assert sum('module'.bytes()).hex() == sum('module'.bytes()).hex()
-	assert utc().unix_time() == utc().unix_time()
+	assert utc().unix() == utc().unix()
 }
 
 fn test_imports_array_as_fn_arg() {

@@ -27,29 +27,18 @@ fn help_cmd() Command {
 }
 
 // print_help_for_command outputs the help message of `help_cmd`.
-pub fn print_help_for_command(help_cmd Command) ! {
-	if help_cmd.args.len > 0 {
-		mut cmd := help_cmd.parent
-		for arg in help_cmd.args {
-			mut found := false
-			for sub_cmd in cmd.commands {
-				if sub_cmd.name == arg {
-					cmd = unsafe { &sub_cmd }
-					found = true
-					break
-				}
-			}
-			if !found {
-				args := help_cmd.args.join(' ')
-				println('Invalid command: ${args}')
+pub fn print_help_for_command(cmd Command) ! {
+	if cmd.args.len > 0 {
+		for sub_cmd in cmd.commands {
+			if sub_cmd.name == cmd.args[0] {
+				cmd_ := unsafe { &sub_cmd }
+				print(cmd_.help_message())
 				return
 			}
 		}
-		print(cmd.help_message())
-	} else {
-		if unsafe { help_cmd.parent != 0 } {
-			print(help_cmd.parent.help_message())
-		}
+		print('Invalid command: ${cmd.args.join(' ')}')
+	} else if cmd.parent != unsafe { nil } {
+		print(cmd.parent.help_message())
 	}
 }
 

@@ -29,6 +29,7 @@ fn empty_cb(mut p PoolProcessor, idx int, task_id int) voidptr {
 }
 
 pub struct PoolProcessorConfig {
+pub:
 	maxjobs  int
 	callback ThreadCB = empty_cb
 }
@@ -110,7 +111,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 	cb := ThreadCB(pool.thread_cb)
 	ilen := pool.items.len
 	for {
-		idx := int(C.atomic_fetch_add_u32(&pool.ntask, 1))
+		idx := int(C.atomic_fetch_add_u32(voidptr(&pool.ntask), 1))
 		if idx >= ilen {
 			break
 		}

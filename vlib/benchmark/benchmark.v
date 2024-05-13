@@ -153,6 +153,7 @@ pub fn (mut b Benchmark) record_measure(label string) i64 {
 // If it is set, the preparation time (compile time) will be shown before the measured runtime.
 @[params]
 pub struct MessageOptions {
+pub:
 	preparation time.Duration // the duration of the preparation time for the step
 }
 
@@ -187,7 +188,7 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 			}
 		}
 		if opts.preparation > 0 {
-			return '${label:-5s} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:6.1F} ms, R: ${timed_line}'
+			return '${label:-5s} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:7.1F} ms, R: ${timed_line}'
 		}
 		return '${label:-5s} [${sprogress}] ${timed_line}'
 	}

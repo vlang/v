@@ -183,6 +183,7 @@ pub mut:
 }
 
 pub struct Config {
+pub:
 	user_data  voidptr
 	init_fn    ?fn (voidptr)
 	frame_fn   ?fn (voidptr)

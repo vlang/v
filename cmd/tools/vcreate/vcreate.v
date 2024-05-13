@@ -74,7 +74,6 @@ fn main() {
 					name: 'v'
 				}
 				posix_mode: true
-				disable_man: true
 				flags: flags
 				pre_execute: validate
 				execute: new_project
@@ -92,7 +91,6 @@ fn main() {
 					name: 'v'
 				}
 				posix_mode: true
-				disable_man: true
 				flags: flags
 				pre_execute: validate
 				execute: init_project
@@ -244,10 +242,11 @@ fn (c &Create) write_gitattributes() {
 	content := '* text=auto eol=lf
 *.bat eol=crlf
 
-**/*.v linguist-language=V
-**/*.vv linguist-language=V
-**/*.vsh linguist-language=V
-**/v.mod linguist-language=V
+*.v linguist-language=V
+*.vv linguist-language=V
+*.vsh linguist-language=V
+v.mod linguist-language=V
+.vdocignore linguist-language=ignore
 '
 	os.write_file(path, content) or { panic(err) }
 }

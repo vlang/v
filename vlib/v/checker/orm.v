@@ -683,7 +683,8 @@ fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.T
 // get_orm_non_primitive_fields filters the table fields by selecting only
 // non-primitive fields such as arrays and structs.
 fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.StructField {
-	return fields.filter(fn [c] (field ast.StructField) bool {
+	mut res := []ast.StructField{}
+	for field in fields {
 		type_with_no_option_flag := field.typ.clear_flag(.option)
 		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct_
 		is_array := c.table.sym(type_with_no_option_flag).kind == .array
@@ -691,8 +692,11 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct_
 		is_time := c.table.get_type_name(type_with_no_option_flag) == 'time.Time'
 
-		return (is_struct || is_array_with_struct_elements) && !is_time
-	})
+		if (is_struct || is_array_with_struct_elements) && !is_time {
+			res << field
+		}
+	}
+	return res
 }
 
 // walkingdevel: Now I don't think it's a good solution

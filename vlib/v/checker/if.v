@@ -3,7 +3,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.token
 
 fn (mut c Checker) check_compatible_types(left_type ast.Type, right ast.TypeNode) ComptimeBranchSkipState {

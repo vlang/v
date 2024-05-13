@@ -350,7 +350,7 @@ pub fn cached_read_source_file(path string) !string {
 	$if trace_cached_read_source_file ? {
 		println('cached_read_source_file            ${path}')
 	}
-	if path.len == 0 {
+	if path == '' {
 		unsafe { cache.sources.free() }
 		unsafe { free(cache) }
 		cache = &SourceCache(unsafe { nil })

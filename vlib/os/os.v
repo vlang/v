@@ -62,7 +62,7 @@ fn executable_fallback() string {
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
-			if foundpath.len > 0 {
+			if foundpath != '' {
 				exepath = foundpath
 			}
 		}
@@ -121,6 +121,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 
 @[params]
 pub struct MvParams {
+pub:
 	overwrite bool = true
 }
 
@@ -151,6 +152,18 @@ pub fn read_lines(path string) ![]string {
 	res := buf.split_into_lines()
 	unsafe { buf.free() }
 	return res
+}
+
+// write_lines writes the given array of `lines` to `path`.
+// The lines are separated by `\n` .
+pub fn write_lines(path string, lines []string) ! {
+	mut f := create(path)!
+	defer {
+		f.close()
+	}
+	for line in lines {
+		f.writeln(line)!
+	}
 }
 
 // sigint_to_signal_name will translate `si` signal integer code to it's string code representation.
@@ -390,7 +403,7 @@ pub fn get_raw_lines_joined() string {
 	return res
 }
 
-// user_os returns current user operating system name.
+// user_os returns the current user's operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -443,7 +456,7 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
-// user_names returns an array of the name of every user on the system.
+// user_names returns an array containing the names of all users on the system.
 pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
@@ -465,7 +478,7 @@ pub fn user_names() ![]string {
 	}
 }
 
-// home_dir returns path to the user's home directory.
+// home_dir returns the path to the current user's home directory.
 pub fn home_dir() string {
 	$if windows {
 		return getenv('USERPROFILE')
@@ -490,8 +503,8 @@ pub fn expand_tilde_to_home(path string) string {
 	return path
 }
 
-// write_file writes `text` data to the file in `path`.
-// If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
+// write_file writes `text` data to a file with the given `path`.
+// If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
 	mut f := create(path)!
 	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
@@ -510,15 +523,15 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
-// find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
-// the absolute path of the executable if found
-pub fn find_abs_path_of_executable(exepath string) !string {
-	if exepath == '' {
-		return error('expected non empty `exepath`')
+// find_abs_path_of_executable searches the environment PATH for the
+// absolute path of the given executable name.
+pub fn find_abs_path_of_executable(exe_name string) !string {
+	if exe_name == '' {
+		return error('expected non empty `exe_name`')
 	}
 
 	for suffix in executable_suffixes {
-		fexepath := exepath + suffix
+		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return real_path(fexepath)
 		}
@@ -555,6 +568,8 @@ pub fn is_file(path string) bool {
 
 // join_path joins any number of path elements into a single path, separating
 // them with a platform-specific path_separator. Empty elements are ignored.
+// Windows platform output will rewrite forward slashes to backslash.
+// Consider looking at the unit tests in os_test.v for semi-formal API.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
@@ -574,13 +589,10 @@ pub fn join_path(base string, dirs ...string) string {
 			sb.write_string(d)
 		}
 	}
+	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
-	if sbase == '' {
+	if base == '' {
 		res = res.trim_left(path_separator)
-	}
-	if res.contains('/./') {
-		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
-		res = res.replace('/./', '/')
 	}
 	return res
 }
@@ -599,12 +611,54 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	if base != '' {
-		sb.write_string(sbase)
+	sb.write_string(sbase)
+	if elem != '' {
 		sb.write_string(path_separator)
+		sb.write_string(elem)
 	}
-	sb.write_string(elem)
-	return sb.str()
+	normalize_path_in_builder(mut sb)
+	mut res := sb.str()
+	if base == '' {
+		res = res.trim_left(path_separator)
+	}
+	return res
+}
+
+@[direct_array_access]
+fn normalize_path_in_builder(mut sb strings.Builder) {
+	mut fs := `\\`
+	mut rs := `/`
+	$if windows {
+		fs = `/`
+		rs = `\\`
+	}
+	for idx in 0 .. sb.len {
+		unsafe {
+			if sb[idx] == fs {
+				sb[idx] = rs
+			}
+		}
+	}
+	for idx in 0 .. sb.len - 3 {
+		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
+			unsafe {
+				// let `/foo/./bar.txt` become `/foo/bar.txt` in place
+				for j := idx + 1; j < sb.len - 2; j++ {
+					sb[j] = sb[j + 2]
+				}
+				sb.len -= 2
+			}
+		}
+		if sb[idx] == rs && sb[idx + 1] == rs {
+			unsafe {
+				// let `/foo//bar.txt` become `/foo/bar.txt` in place
+				for j := idx + 1; j < sb.len - 1; j++ {
+					sb[j] = sb[j + 1]
+				}
+				sb.len -= 1
+			}
+		}
+	}
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
@@ -640,7 +694,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
-	if path.len == 0 {
+	if path == '' {
 		return
 	}
 	if !is_dir(path) {
@@ -678,7 +732,7 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
-	if path.len == 0 {
+	if path == '' {
 		return
 	}
 	if !is_dir(path) {
@@ -717,6 +771,7 @@ pub fn log(s string) {
 
 @[params]
 pub struct MkdirParams {
+pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 

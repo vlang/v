@@ -330,8 +330,28 @@ fn vweb_tmpl_${fn_name}() string {
 			}
 			else {}
 		}
-		// by default, just copy 1:1
-		source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+
+		if pos := line.index('%') {
+			// %translation_key => ${tr('translation_key')}		
+			mut line_ := line
+			if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
+				mut end := pos + 1
+				for end < line.len && (line[end].is_letter() || line[end] == `_`) {
+					end++
+				}
+				key := line[pos + 1..end]
+				println('GOT tr key line="${line}" key="${key}"')
+				// source.writeln('\${tr("${key}")}')
+				line_ = line.replace('%${key}', '\${tr("${key}")}')
+				// i += key.len
+			}
+			// println(source.str())
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line_))
+			// exit(0)
+		} else {
+			// by default, just copy 1:1
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+		}
 	}
 
 	source.writeln(parser.tmpl_str_end)

@@ -50,7 +50,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 	// we could also access the name field by doing `name := ctx.form['name']`
 
 	// validate input field
-	if name.len == 0 {
+	if name == '' {
 		// set a form error
 		ctx.form_error = 'You must fill in all the fields!'
 		// send a HTTP 400 response code indicating that the form fields are incorrect

@@ -83,6 +83,24 @@ fn test_raw_decode_array_invalid() {
 	assert false
 }
 
+struct Foo {
+	int  []int
+	str  []string
+	f32  []f32
+	oint []?int
+}
+
+fn test_decode_array_fields() {
+	input := '{"int":[0, 1], "str":["2", "3"], "f32": [4.0, 5.0], "oint": [6, null]}'
+	foo := json.decode[Foo](input)!
+	assert foo.int == [0, 1]
+	assert foo.str == ['2', '3']
+	assert foo.f32 == [f32(4.0), 5.0]
+	a, b := foo.oint[0], foo.oint[1]
+	assert a? == 6
+	assert b? == 0
+}
+
 struct ContactItem {
 	description string
 	telnr       string
@@ -95,9 +113,9 @@ struct User {
 }
 
 fn test_decode_missing_comma() {
-	data := '{ 
-				"name": "Frodo", 
-				"age": 25 
+	data := '{
+				"name": "Frodo",
+				"age": 25
 				"contact": {
 					"description": "descr",
 					"telnr": "+32333"

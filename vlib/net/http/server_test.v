@@ -226,7 +226,7 @@ fn test_my_counting_handler_on_random_port() {
 	}
 	mut server := &http.Server{
 		show_startup_message: false
-		port: 0
+		addr: ''
 		accept_timeout: atimeout
 		handler: MyCountingHandler{}
 		on_running: fn (mut server http.Server) {

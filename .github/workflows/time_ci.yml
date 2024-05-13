@@ -2,23 +2,24 @@ name: Time CI
 
 on:
   push:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/time_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/time_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/time_ci.yml'
+    paths:
+      - 'vlib/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/time_ci.yml'
+      - '!**.md'
 
 concurrency:
-  group: time-ci-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   test-time-linux:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +37,6 @@ jobs:
         run: TZ=Europe/Paris ./v test vlib/time/
 
   test-time-macos:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +54,6 @@ jobs:
         run: TZ=Europe/Paris ./v test vlib/time/
 
   test-time-windows:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     runs-on: windows-2019
     steps:
       - uses: actions/checkout@v4

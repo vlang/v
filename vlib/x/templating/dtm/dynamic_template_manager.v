@@ -159,6 +159,7 @@ struct HtmlFileInfo {
 // TemplateCacheParams are used to specify cache expiration delay and provide placeholder data for substitution in templates.
 @[params]
 pub struct TemplateCacheParams {
+pub:
 	placeholders           &map[string]DtmMultiTypeMap = &map[string]DtmMultiTypeMap{}
 	cache_delay_expiration i64 = dtm.cache_delay_expiration_by_default
 }
@@ -166,6 +167,7 @@ pub struct TemplateCacheParams {
 // DynamicTemplateManagerInitialisationParams is used with 'initialize' function. (See below at initialize section)
 @[params]
 pub struct DynamicTemplateManagerInitialisationParams {
+pub:
 	def_cache_path       string
 	compress_html        bool = true
 	active_cache_server  bool = true
@@ -203,7 +205,7 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 	}
 	if active_cache_handler {
 		// Control if cache folder created by user exist
-		if dir_path.len > 0 && os.exists(dir_path) && os.is_dir(dir_path) {
+		if dir_path != '' && os.exists(dir_path) && os.is_dir(dir_path) {
 			// WARNING: When setting the directory for caching files and for testing purposes,
 			// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified cache directory. Ensure that
 			// directory used for the cache does not contain any important files.
@@ -1117,5 +1119,5 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 // This function is designed for handling timezone adjustments by converting the machine's local time at micro format to a universal micro format.
 //
 fn get_current_unix_micro_timestamp() i64 {
-	return time.now().unix_time_micro()
+	return time.now().unix_micro()
 }

@@ -1,7 +1,6 @@
 name: 📕 Documentation Issue
 description: Report an issue in the Reference documentation or Developer Guide
-title: (short issue description)
-labels: "Unit: Documentation"
+labels: ['Unit: Documentation']
 body:
   - type: textarea
     id: description

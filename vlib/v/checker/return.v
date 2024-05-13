@@ -3,7 +3,6 @@
 module checker
 
 import v.ast
-import v.pref
 
 // error_type_name returns a proper type name reference for error messages
 // ? => Option type

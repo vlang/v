@@ -4,10 +4,12 @@ import toml.ast
 import x.json2
 
 const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+const no_jq = os.getenv('VNO_JQ') == '1'
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
-// `git clone --depth 1 https://github.com/alexcrichton/toml-rs.git vlib/toml/tests/testdata/alexcrichton/toml-test`
+// `git clone -n https://github.com/toml-rs/toml.git vlib/toml/tests/testdata/alexcrichton`
+// `git -C vlib/toml/tests/testdata/alexcrichton reset --hard 499e8c4`
 // See also the CI toml tests
 // Kept for easier handling of future updates to the tests
 const valid_exceptions = [
@@ -62,11 +64,11 @@ fn run(args []string) !string {
 
 // test_alexcrichton_toml_rs run though 'testdata/alexcrichton/toml-test/test-suite/tests/*' if found.
 fn test_alexcrichton_toml_rs() {
-	this_file := @FILE
-	test_root := os.join_path(os.dir(this_file), 'testdata', 'alexcrichton', 'toml-test')
+	eprintln('> running ${@LOCATION}')
+	test_root := '${@VROOT}/vlib/toml/tests/testdata/alexcrichton/test-suite/tests'
 	if os.is_dir(test_root) {
-		valid_test_files := os.walk_ext(os.join_path(test_root, 'test-suite', 'tests',
-			'valid'), '.toml')
+		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
+		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')
 		println('Testing ${valid_test_files.len} valid TOML files...')
 		mut valid := 0
 		mut e := 0
@@ -94,7 +96,7 @@ fn test_alexcrichton_toml_rs() {
 		}
 
 		// If the command-line tool `jq` is installed, value tests can be run as well.
-		if jq != '' {
+		if jq != '' && !no_jq {
 			println('Testing value output of ${valid_test_files.len} valid TOML files using "${jq}"...')
 
 			if os.exists(compare_work_dir_root) {
@@ -171,8 +173,6 @@ fn test_alexcrichton_toml_rs() {
 			}
 		}
 
-		invalid_test_files := os.walk_ext(os.join_path(test_root, 'test-suite', 'tests',
-			'invalid'), '.toml')
 		println('Testing ${invalid_test_files.len} invalid TOML files...')
 		mut invalid := 0
 		e = 0

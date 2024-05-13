@@ -537,7 +537,7 @@ fn (mut g Gen) expr(expr ast.Expr) {
 		ast.InitExpr {
 			g.expr(expr.typ)
 			// with field names
-			if expr.fields.len > 0 && expr.fields[0].name.len > 0 {
+			if expr.fields.len > 0 && expr.fields[0].name != '' {
 				g.writeln('{')
 				in_init := g.in_init
 				g.in_init = true
@@ -886,7 +886,7 @@ fn (mut g Gen) attributes(attributes []ast.Attribute) {
 			g.write('if ')
 			g.expr(attribute.comptime_cond)
 		} else {
-			if attribute.name.len > 0 {
+			if attribute.name != '' {
 				g.write(attribute.name)
 				g.write(': ')
 			}
@@ -905,7 +905,7 @@ fn (mut g Gen) fn_type(typ ast.FnType) {
 	}
 	g.write('(')
 	for i, param in typ.params {
-		if param.name.len > 0 {
+		if param.name != '' {
 			g.write(param.name)
 			g.write(' ')
 		}

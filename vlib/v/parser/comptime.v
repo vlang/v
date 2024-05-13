@@ -5,7 +5,6 @@ module parser
 
 import os
 import v.ast
-import v.pref
 import v.token
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
@@ -92,7 +91,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 	return ast.HashStmt{
 		mod: p.mod
-		source_file: p.file_name
+		source_file: p.file_path
 		val: val
 		kind: kind
 		main: main_str
@@ -110,7 +109,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
-		if name != 'vweb' {
+		if name != 'vweb' && name != 'veb' {
 			p.error(error_msg)
 			return err_node
 		}
@@ -403,6 +402,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VEXE' { token.AtKind.vexe_path }
 		'@VEXEROOT' { token.AtKind.vexeroot_path }
 		'@VMODROOT' { token.AtKind.vmodroot_path }
+		'@VMODHASH' { token.AtKind.vmod_hash }
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}

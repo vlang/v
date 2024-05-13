@@ -4,10 +4,10 @@
 </p>
 <h1>The V Programming Language</h1>
 
-[vlang.io](https://vlang.io) 
-| [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) 
-| [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
-| [Speed](https://fast.vlang.io/) 
+[vlang.io](https://vlang.io)
+| [Docs](https://github.com/vlang/v/blob/master/doc/docs.md)
+| [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md)
+| [Speed](https://fast.vlang.io/)
 | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
 </div>
@@ -21,6 +21,7 @@
 [![Discord][DiscordBadge]][DiscordUrl]
 [![X][XBadge]][XUrl]
 [![Modules][ModulesBadge]][ModulesUrl]
+
 </div>
 
 ## Key Features of V
@@ -69,7 +70,7 @@ language, very similar to the way it is right now.
 
 --> **_(this is the preferred method)_**
 
-### Linux, macOS, Windows, *BSD, Solaris, WSL, etc.
+### Linux, macOS, Windows, \*BSD, Solaris, WSL, etc.
 
 Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
@@ -90,7 +91,7 @@ That should be it and you should find your V executable at `[path to V repo]/v`.
 
 Now you can try `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
-* *Trouble? Please see the note above and link to
+- *Trouble? Please see the note above and link to
   [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
   for help.*
 
@@ -156,7 +157,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 
 > [!NOTE]
 > There is no need to run `v symlink` more than once - v will still be available, even after
-> `v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
+> `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
 
 ### Void Linux
@@ -371,8 +372,8 @@ section on our
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
 [PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpatrons&style=flat
-[SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
-[XBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=x&style=flat&logoColor=white&color=1da1f2
+[SponsorBadge]: https://img.shields.io/github/sponsors/medvednikov?style=flat&logo=github&logoColor=white
+[XBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=x&style=flat&logoColor=white
 [ModulesBadge]: https://img.shields.io/badge/modules-reference-027d9c?logo=v&logoColor=white&logoWidth=10
 
 [WorkflowUrl]: https://github.com/vlang/v/commits/master

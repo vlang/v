@@ -1,6 +1,5 @@
 import os
 import term
-import rand
 import v.util.vtest
 import v.util.diff
 
@@ -75,14 +74,16 @@ fn check_path(dir string, tests []string) !int {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected ${program_out} content:')
-			println(expected)
-			println('============')
-			println('found:')
-			println(found)
-			println('============\n')
-			println('diff:')
-			println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+			if diff_ := diff.compare_text(expected, found) {
+				println('diff:')
+				println(diff_)
+			} else {
+				println('expected ${program_out} content:')
+				println(expected)
+				println('============')
+				println('found:')
+				println(found)
+			}
 			println('============\n')
 			nb_fail++
 		} else {

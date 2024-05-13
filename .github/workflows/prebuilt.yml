@@ -1,6 +1,7 @@
 name: Test prebuilt binaries
 
 on:
+  workflow_dispatch:
   release:
     types: [edited, published]
 
@@ -9,46 +10,62 @@ jobs:
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
-    - name: Download V
-      run: |
-        tag=${GITHUB_REF##*/}
-        wget https://github.com/vlang/v/releases/download/$tag/v_linux.zip
-        unzip v_linux.zip
-        cd v
-        ./v -version
-    - name: Test V
-      run: |
-        cd v
-        ./v run examples/hello_world.v
+      - name: Download V
+        run: |
+          wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
+          unzip v_linux.zip
+          cd v
+          ./v -version
+      - name: Test V
+        run: |
+          cd v
+          ./v run examples/hello_world.v
+          ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
+
+  macos-arm64:
+    ## macos-14 is a m1 runner
+    runs-on: macos-14
+    timeout-minutes: 5
+    steps:
+      - name: Download V
+        run: |
+          wget https://github.com/vlang/v/releases/latest/download/v_macos_arm64.zip
+          unzip v_macos_arm64.zip
+          cd v
+          ./v -version
+      - name: Test V
+        run: |
+          cd v
+          ./v run examples/hello_world.v
+          ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
 
   macos-x86_64:
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
-    - name: Download V
-      run: |
-        tag=${GITHUB_REF##*/}
-        wget https://github.com/vlang/v/releases/download/$tag/v_macos_x86_64.zip
-        unzip v_macos_x86_64.zip
-        cd v
-        ./v -version
-    - name: Test V
-      run: |
-        cd v
-        ./v run examples/hello_world.v
+      - name: Download V
+        run: |
+          wget https://github.com/vlang/v/releases/latest/download/v_macos_x86_64.zip
+          unzip v_macos_x86_64.zip
+          cd v
+          ./v -version
+      - name: Test V
+        run: |
+          cd v
+          ./v run examples/hello_world.v
 
   windows:
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
-    - name: Download V
-      run: |
-        Set-Variable -Name "tag" -Value $env:GITHUB_REF.split("/", 3)[-1]
-        & curl -L https://github.com/vlang/v/releases/download/$tag/v_windows.zip -o v_windows.zip
-        & unzip .\v_windows.zip
-        & cd v
-        & .\v.exe -version
-    - name: Test V
-      run: |
-        & cd v
-        & .\v.exe run .\examples\hello_world.v
+      - name: Download V
+        run: |
+          curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
+          unzip .\v_windows.zip
+          cd v
+          .\v.exe -version
+      - name: Test V
+        run: |
+          cd v
+          .\v.exe run .\examples\hello_world.v
+          .\v.exe -showcc -gc none -cc tcc -no-retry-compilation run .\examples/hello_world.v

@@ -103,6 +103,7 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 
 @[params]
 pub struct PoolOpts {
+pub:
 	null_terminated bool = true
 	intern_strings  bool = true
 	store_relocs    bool = true

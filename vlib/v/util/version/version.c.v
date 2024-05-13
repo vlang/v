@@ -17,7 +17,7 @@ pub fn vhash() string {
 
 pub fn full_hash() string {
 	build_hash := vhash()
-	current_hash := githash(false)
+	current_hash := @VCURRENTHASH
 	if build_hash == current_hash {
 		return build_hash
 	}
@@ -29,52 +29,35 @@ pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
 		return 'V ${version.v_version} ${full_hash()}'
 	}
-	hash := githash(false)
-	return 'V ${version.v_version} ${hash}'
+	return 'V ${version.v_version} ${@VCURRENTHASH}'
 }
 
-// githash(x) returns the current git commit hash.
-// When x is false, it is very fast - it just returns a predefined C constant.
-// When x is true, it tries to get the current commit hash, by parsing the
-// relevant files in the .git/ folder, or if that is not possible
-// for example when using a V from a V binary release, that does not have .git/
-// defaults to getting the predefined C constant again.
-// Note: githash(true) must be called only when v detects that it builds itself.
-// For all other programs, githash(false) should be used.
-pub fn githash(should_get_from_filesystem bool) string {
-	for {
-		// The `for` construct here is used as a goto substitute.
-		// The code in this function will break out of the `for`
-		// if it detects an error and can not continue.
-		if should_get_from_filesystem {
-			vexe := os.getenv('VEXE')
-			vroot := os.dir(vexe)
-			// .git/HEAD
-			git_head_file := os.join_path(vroot, '.git', 'HEAD')
-			if !os.exists(git_head_file) {
-				break
-			}
-			// 'ref: refs/heads/master' ... the current branch name
-			head_content := os.read_file(git_head_file) or { break }
-			mut current_branch_hash := head_content
-			if head_content.starts_with('ref: ') {
-				gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
-				gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
-				// .git/refs/heads/master
-				if !os.exists(gcbranch_file) {
-					break
-				}
-				// get the full commit hash contained in the ref heads file
-				branch_hash := os.read_file(gcbranch_file) or { break }
-				current_branch_hash = branch_hash
-			}
-			desired_hash_length := 7
-			if current_branch_hash.len > desired_hash_length {
-				return current_branch_hash[0..desired_hash_length]
-			}
-		}
-		break
+// githash tries to find the current git commit hash for the specified
+// project path by parsing the relevant files in its `.git/` folder.
+pub fn githash(path string) !string {
+	// .git/HEAD
+	git_head_file := os.join_path(path, '.git', 'HEAD')
+	if !os.exists(git_head_file) {
+		return error('failed to find `${git_head_file}`')
 	}
-
-	return @VCURRENTHASH
+	// 'ref: refs/heads/master' ... the current branch name
+	head_content := os.read_file(git_head_file) or {
+		return error('failed to read `${git_head_file}`')
+	}
+	current_branch_hash := if head_content.starts_with('ref: ') {
+		rev_rel_path := head_content.replace('ref: ', '').trim_space()
+		rev_file := os.join_path(path, '.git', rev_rel_path)
+		// .git/refs/heads/master
+		if !os.exists(rev_file) {
+			return error('failed to find revision file `${rev_file}`')
+		}
+		// get the full commit hash contained in the ref heads file
+		os.read_file(rev_file) or { return error('failed to read revision file `${rev_file}`') }
+	} else {
+		head_content
+	}
+	desired_hash_length := 7
+	return current_branch_hash[0..desired_hash_length] or {
+		error('failed to limit hash `${current_branch_hash}` to ${desired_hash_length} characters')
+	}
 }

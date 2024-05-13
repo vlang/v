@@ -205,6 +205,7 @@ fn overhead_for(c &Chunk) usize {
 //
 // Why not `interface?` Interfaces require memory allocation so it is simpler to pass a struct.
 pub struct Allocator {
+pub:
 	alloc            fn (voidptr, usize) (voidptr, usize, u32) = unsafe { nil }
 	remap            fn (voidptr, voidptr, usize, usize, bool) voidptr = unsafe { nil }
 	free_part        fn (voidptr, voidptr, usize, usize) bool = unsafe { nil }

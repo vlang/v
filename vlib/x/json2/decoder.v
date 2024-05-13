@@ -137,6 +137,25 @@ pub fn decode[T](src string) !T {
 	return decode_struct[T](T{}, res)
 }
 
+// decode_array is a generic function that decodes a JSON string into the array target type.
+pub fn decode_array[T](src string) ![]T {
+	res := raw_decode(src)!.as_map()
+	return decode_struct_array(T{}, res)
+}
+
+// decode_struct_array is a generic function that decodes a JSON map into array struct T.
+fn decode_struct_array[T](_ T, res map[string]Any) ![]T {
+	$if T is $struct {
+		mut arr := []T{}
+		for v in res.values() {
+			arr << decode_struct[T](T{}, v.as_map())!
+		}
+		return arr
+	} $else {
+		return error("The type `${T.name}` can't be decoded.")
+	}
+}
+
 // decode_struct is a generic function that decodes a JSON map into the struct T.
 fn decode_struct[T](_ T, res map[string]Any) !T {
 	mut typ := T{}
@@ -179,7 +198,7 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 				} $else $if field.typ is i16 {
 					typ.$(field.name) = res[json_name]!.int()
 				} $else $if field.typ is i32 {
-					typ.$(field.name) = i32(res[field.name]!.int())
+					typ.$(field.name) = i32(res[field.name]!.i32())
 				} $else $if field.typ is i64 {
 					typ.$(field.name) = res[json_name]!.i64()
 				} $else $if field.typ is ?u8 {
@@ -249,6 +268,41 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 						typ.$(field.name) = res[json_name]!.to_time()!
 					}
 				} $else $if field.is_array {
+					arr := res[field.name]! as []Any
+					// vfmt off
+					match field.typ {
+						[]bool  { typ.$(field.name) = arr.map(it.bool()) }
+						[]?bool { typ.$(field.name) = arr.map(?bool(it.bool())) }
+						[]f32   { typ.$(field.name) = arr.map(it.f32()) }
+						[]?f32  { typ.$(field.name) = arr.map(?f32(it.f32())) }
+						[]f64   { typ.$(field.name) = arr.map(it.f64()) }
+						[]?f64  { typ.$(field.name) = arr.map(?f64(it.f64())) }
+						[]i8    { typ.$(field.name) = arr.map(it.i8()) }
+						[]?i8   { typ.$(field.name) = arr.map(?i8(it.i8())) }
+						[]i16   { typ.$(field.name) = arr.map(it.i16()) }
+						[]?i16  { typ.$(field.name) = arr.map(?i16(it.i16())) }
+						[]i32   { typ.$(field.name) = arr.map(it.i32()) }
+						[]?i32  { typ.$(field.name) = arr.map(?i32(it.i32())) }
+						[]i64   { typ.$(field.name) = arr.map(it.i64()) }
+						[]?i64  { typ.$(field.name) = arr.map(?i64(it.i64())) }
+						[]int   { typ.$(field.name) = arr.map(it.int()) }
+						[]?int  { typ.$(field.name) = arr.map(?int(it.int())) }
+						[]string  { typ.$(field.name) = arr.map(it.str()) }
+						[]?string { typ.$(field.name) = arr.map(?string(it.str())) }
+						// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
+						[]time.Time { typ.$(field.name) = arr.map(it.to_time() or { time.Time{} }) }
+						[]?time.Time { typ.$(field.name) = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
+						[]u8   { typ.$(field.name) = arr.map(it.u64()) }
+						[]?u8  { typ.$(field.name) = arr.map(?u8(it.u64())) }
+						[]u16  { typ.$(field.name) = arr.map(it.u64()) }
+						[]?u16 { typ.$(field.name) = arr.map(?u16(it.u64())) }
+						[]u32  { typ.$(field.name) = arr.map(it.u64()) }
+						[]?u32 { typ.$(field.name) = arr.map(?u32(it.u64())) }
+						[]u64  { typ.$(field.name) = arr.map(it.u64()) }
+						[]?u64 { typ.$(field.name) = arr.map(?u64(it.u64())) }
+						else {}
+					}
+					// vfmt on
 				} $else $if field.is_struct {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 				} $else $if field.is_alias {

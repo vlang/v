@@ -1013,6 +1013,11 @@ fn test_lower() {
 	assert s.to_lower() == 'hi'
 	assert 'aloha!'[0] == `a`
 	assert 'aloha!'[5] == `!`
+	s = '123'
+	assert !s.is_lower()
+	assert s.to_lower() == '123'
+	s = ''
+	assert !s.is_lower()
 }
 
 fn test_upper() {
@@ -1033,6 +1038,11 @@ fn test_upper() {
 	s = 'HI'
 	assert s.is_upper()
 	assert s.to_upper() == 'HI'
+	s = '123'
+	assert !s.is_upper()
+	assert s.to_upper() == '123'
+	s = ''
+	assert !s.is_upper()
 }
 
 fn test_capitalize() {

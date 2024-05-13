@@ -3,16 +3,26 @@ name: Cross CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/cross_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/cross_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-
   macos-cross:
-    runs-on: macos-latest
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    runs-on: macos-13
     timeout-minutes: 25
     env:
       VFLAGS: -cc clang
@@ -20,14 +30,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 10
+      - name: Build V
+        run: make -j4 && ./v symlink
 
       - name: Install dependencies
         run: |
-          .github/workflows/retry.sh brew install mingw-w64
+          ./v retry -- brew install mingw-w64
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-
-      - name: Build V
-        run: make
 
       - name: Test symlink
         run: ./v symlink
@@ -44,7 +53,6 @@ jobs:
 
   linux-cross:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -52,19 +60,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 10
+      - name: Build v
+        run: make -j4 && ./v symlink
+
       - name: Install dependencies
         run: |
           ## sudo dpkg --add-architecture i386
-          .github/workflows/retry.sh sudo apt update
-          .github/workflows/retry.sh sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-          .github/workflows/retry.sh sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
-          ## .github/workflows/retry.sh sudo apt-get install --quiet -y wine32
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+          ./v retry -- sudo apt install --quiet -y mingw-w64 wine-stable winetricks
+          ## ./v retry -- sudo apt install --quiet -y wine32
 
       - name: Turn off the wine crash dialog
         run: winetricks nocrashdialog
-
-      - name: Build v
-        run: make
 
       - name: v.c can be compiled and run with -os cross
         run: |
@@ -93,7 +101,6 @@ jobs:
 
   windows-cross:
     runs-on: windows-2019
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

@@ -14,6 +14,7 @@ mut:
 
 @[params]
 pub struct WriterConfig {
+pub:
 	use_crlf  bool
 	delimiter u8 = `,`
 }

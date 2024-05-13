@@ -390,6 +390,7 @@ pub fn default_c_level() int {
 
 @[params]
 pub struct CompressParams {
+pub:
 	compression_level int // 1~22
 	nb_threads        int  = 1 // how many threads will be spawned to compress in parallel
 	checksum_flag     bool = true
@@ -422,6 +423,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 
 @[params]
 pub struct DecompressParams {
+pub:
 	window_log_max int
 }
 

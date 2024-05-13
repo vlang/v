@@ -423,12 +423,20 @@ pub fn uint128_new(lo u64, hi u64) Uint128 {
 	return Uint128{lo, hi}
 }
 
-// unint_from_dec_str returns an error or new Uint128 from given string
+// unint_from_dec_str returns an error or new Uint128 from given string.
+// The `_` character is allowed as a separator.
 pub fn uint128_from_dec_str(value string) !Uint128 {
 	mut res := unsigned.uint128_zero
-	for b_ in value.bytes() {
-		b := b_ - '0'.bytes()[0]
+	underscore := `_`
+
+	for b_ in value {
+		b := b_ - `0`
 		if b > 9 {
+			// allow _ as a separator in decimal strings
+			if b_ == underscore {
+				continue
+			}
+
 			return error('invalid character "${b}"')
 		}
 

@@ -16,6 +16,7 @@ mut:
 
 @[params]
 struct AddInfoConfig {
+pub:
 	use_threshold bool
 }
 

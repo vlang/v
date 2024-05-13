@@ -80,6 +80,7 @@ pub mut:
 
 @[params]
 pub struct RandomAccessReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
@@ -344,6 +345,7 @@ pub fn (mut cr RandomAccessReader) get_row(y int) ![]string {
 
 @[params]
 pub struct GetCellConfig {
+pub:
 	x int
 	y int
 }
@@ -444,6 +446,7 @@ pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
 ******************************************************************************/
 @[params]
 pub struct GetHeaderConf {
+pub:
 	header_row int // row where to inspect the header
 }
 
