@@ -311,8 +311,17 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	for dirpath in dirs {
 		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
-			vd.emit_generate_err(err)
-			exit(1)
+			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
+			if os.exists(os.join_path(dirpath, 'src')) {
+				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform,
+					cfg.symbol_name) or {
+					vd.emit_generate_err(err)
+					exit(1)
+				}
+			} else {
+				vd.emit_generate_err(err)
+				exit(1)
+			}
 		}
 		if dcs.contents.len == 0 {
 			continue
