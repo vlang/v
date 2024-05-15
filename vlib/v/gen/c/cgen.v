@@ -7127,6 +7127,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				'{'
 			}
 			if sym.language in [.c, .v] {
+				is_c_msvc := sym.language == .c && g.is_cc_msvc
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
@@ -7140,7 +7141,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							} else {
 								expr_str = g.expr_string(field.default_expr)
 							}
-							init_str += '.${field_name} = ${expr_str},'
+							if is_c_msvc && expr_str[0] == `(` {
+								init_str += '.${field_name} = ${expr_str.all_after_first(')')},'
+							} else {
+								init_str += '.${field_name} = ${expr_str},'
+							}
 						} else {
 							mut zero_str := g.type_default(field.typ)
 							if zero_str == '{0}' {
@@ -7151,7 +7156,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 									}
 								}
 							}
-							init_str += '.${field_name} = ${zero_str},'
+							if is_c_msvc && zero_str[0] == `(` {
+								init_str += '.${field_name} = ${zero_str.all_after_first(')')},'
+							} else {
+								init_str += '.${field_name} = ${zero_str},'
+							}
 						}
 						has_none_zero = true
 					}
