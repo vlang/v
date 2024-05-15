@@ -1056,7 +1056,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		inter_sym.methods
 	}
 	// voidptr is an escape hatch, it should be allowed to be passed
-	if utyp != ast.voidptr_type && utyp != ast.nil_type {
+	if utyp != ast.voidptr_type && utyp != ast.nil_type && utyp != ast.none_type {
 		mut are_methods_implemented := true
 
 		// Verify methods
