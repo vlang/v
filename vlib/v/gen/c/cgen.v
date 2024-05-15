@@ -7126,7 +7126,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			} else {
 				'{'
 			}
-			if sym.language == .v {
+			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
