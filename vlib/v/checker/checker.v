@@ -5080,9 +5080,9 @@ fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Iden
 			sym := c.table.sym(obj.typ.set_nr_muls(0))
 			if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 				suggestion := if sym.kind == .struct_ {
-					'declaring `${sym.name}` as `[heap]`'
+					'declaring `${sym.name}` as `@[heap]`'
 				} else {
-					'wrapping the `${sym.name}` object in a `struct` declared as `[heap]`'
+					'wrapping the `${sym.name}` object in a `struct` declared as `@[heap]`'
 				}
 				c.error('`${ident.name}` cannot be ${failed_action} outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 					ident.pos)
