@@ -5,7 +5,7 @@ import os
 struct IgnoreRules {
 mut:
 	// Ignore patterns use the path with a `.vdocignore` file as a base. E.g.:
-	// `{'<path>': {'<ignore_pattern>': true}, '<path/subpath>': {'<ignore_pattern>': true}}`
+	// `{'<path>': ['<pattern1>', '<pattern2>'], '<path/subpath>': ['<pattern3>']}`
 	patterns map[string][]string = {
 		// Default ignore patterns.
 		'': ['testdata', 'tests', '*_test.v']
