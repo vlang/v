@@ -7137,7 +7137,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						} else {
 							expr_str = g.expr_string(field.default_expr)
 						}
-						init_str += '${expr_str.all_after_first(')')},'
+						init_str += '${expr_str},'
 					}
 					has_none_zero = true
 				}
