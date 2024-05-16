@@ -8,6 +8,7 @@ mut:
 	// `{'<path>': {'<ignore_pattern>': true}, '<path/subpath>': {'<ignore_pattern>': true}}`
 	patterns map[string]map[string]bool = {
 		'': {
+			// Default ignore patterns.
 			'testdata': true
 			'tests':    true
 			'*_test.v': true
