@@ -7126,27 +7126,14 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			} else {
 				'{'
 			}
-			if sym.language == .c {
-				if info.fields.all(it.has_default_expr) {
-					for field in info.fields {
-						field_sym := g.table.sym(field.typ)
-						field_name := c_name(field.name)
-						mut expr_str := ''
-						if field_sym.kind in [.sum_type, .interface_] {
-							expr_str = g.expr_string_with_cast(field.default_expr, field.default_expr_typ,
-								field.typ)
-						} else {
-							expr_str = g.expr_string(field.default_expr)
-						}
-						init_str += '.${field_name} = ${expr_str},'
-					}
-					has_none_zero = true
-				}
-			} else if sym.language == .v {
+			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
 						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan] {
+						if sym.language == .c && !field.has_default_expr {
+							continue
+						}
 						field_name := c_name(field.name)
 						if field.has_default_expr {
 							mut expr_str := ''
