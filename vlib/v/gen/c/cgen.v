@@ -7130,6 +7130,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				if info.fields.all(it.has_default_expr) {
 					for field in info.fields {
 						field_sym := g.table.sym(field.typ)
+						field_name := c_name(field.name)
 						mut expr_str := ''
 						if field_sym.kind in [.sum_type, .interface_] {
 							expr_str = g.expr_string_with_cast(field.default_expr, field.default_expr_typ,
@@ -7137,7 +7138,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						} else {
 							expr_str = g.expr_string(field.default_expr)
 						}
-						init_str += '${expr_str},'
+						init_str += '.${field_name} = ${expr_str},'
 					}
 					has_none_zero = true
 				}
