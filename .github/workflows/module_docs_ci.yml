@@ -5,11 +5,13 @@ on:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
+      - 'cmd/tools/vdoc/**.v'
       - '**/module_docs_ci.yml'
   push:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
+      - 'cmd/tools/vdoc/**.v'
       - '**/module_docs_ci.yml'
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
