@@ -6,13 +6,9 @@ struct IgnoreRules {
 mut:
 	// Ignore patterns use the path with a `.vdocignore` file as a base. E.g.:
 	// `{'<path>': {'<ignore_pattern>': true}, '<path/subpath>': {'<ignore_pattern>': true}}`
-	patterns map[string]map[string]bool = {
-		'': {
-			// Default ignore patterns.
-			'testdata': true
-			'tests':    true
-			'*_test.v': true
-		}
+	patterns map[string][]string = {
+		// Default ignore patterns.
+		'': ['testdata', 'tests', '*_test.v']
 	}
 	paths map[string]bool
 }
@@ -39,7 +35,7 @@ fn get_paths(path string, mut ignore_rules IgnoreRules) []string {
 		is_dir := os.is_dir(fp)
 		for ignore_path, patterns in ignore_rules.patterns {
 			if fp.starts_with(ignore_path) {
-				if patterns.keys().any(p == it
+				if patterns.any(p == it
 					|| (it.contains('*') && p.ends_with(it.all_after('*')))
 					|| (is_dir && it.ends_with('/') && fp.ends_with(it.trim_right('/')))
 					|| (!it.ends_with('/') && it.contains('/') && fp.contains(it)))
@@ -82,7 +78,7 @@ fn (mut ignore_rules IgnoreRules) get(path string) {
 			// `/a` should ignore `/a` but not `/b/a`. While `a` should ignore `/a` and `/b/a`.
 			ignore_rules.paths[os.join_path(path, rule.trim_left('/'))] = true
 		} else {
-			ignore_rules.patterns[path][rule] = true
+			ignore_rules.patterns[path] << rule
 		}
 	}
 }
