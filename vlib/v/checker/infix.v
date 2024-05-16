@@ -331,6 +331,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
+			if (unwrapped_left_type.is_any_kind_of_pointer()
+				|| unwrapped_right_type.is_any_kind_of_pointer()) && node.op !in [.plus, .minus] {
+				c.error('infix `${node.op}` is not defined for pointer values', left_right_pos)
+			}
+
 			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if left_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
