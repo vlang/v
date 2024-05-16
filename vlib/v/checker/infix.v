@@ -331,8 +331,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
-			if (unwrapped_left_type.is_any_kind_of_pointer()
-				|| unwrapped_right_type.is_any_kind_of_pointer()) && node.op !in [.plus, .minus] {
+			if ((unwrapped_left_type.is_ptr() && !node.left.is_auto_deref_var())
+				|| (unwrapped_right_type.is_ptr() && !node.right.is_auto_deref_var()))
+				&& node.op !in [.plus, .minus] {
 				c.error('infix `${node.op}` is not defined for pointer values', left_right_pos)
 			}
 
