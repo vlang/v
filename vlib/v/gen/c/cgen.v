@@ -7126,8 +7126,22 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			} else {
 				'{'
 			}
-			if sym.language in [.c, .v] {
-				is_c_msvc := sym.language == .c && g.is_cc_msvc
+			if sym.language == .c {
+				if info.fields.all(it.has_default_expr) {
+					for field in info.fields {
+						field_sym := g.table.sym(field.typ)
+						mut expr_str := ''
+						if field_sym.kind in [.sum_type, .interface_] {
+							expr_str = g.expr_string_with_cast(field.default_expr, field.default_expr_typ,
+								field.typ)
+						} else {
+							expr_str = g.expr_string(field.default_expr)
+						}
+						init_str += '${expr_str.all_after_first(')')},'
+					}
+					has_none_zero = true
+				}
+			} else if sym.language == .v {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
@@ -7135,17 +7149,13 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
 							mut expr_str := ''
-							if g.table.sym(field.typ).kind in [.sum_type, .interface_] {
+							if field_sym.kind in [.sum_type, .interface_] {
 								expr_str = g.expr_string_with_cast(field.default_expr,
 									field.default_expr_typ, field.typ)
 							} else {
 								expr_str = g.expr_string(field.default_expr)
 							}
-							if is_c_msvc && expr_str[0] == `(` {
-								init_str += '.${field_name} = ${expr_str.all_after_first(')')},'
-							} else {
-								init_str += '.${field_name} = ${expr_str},'
-							}
+							init_str += '.${field_name} = ${expr_str},'
 						} else {
 							mut zero_str := g.type_default(field.typ)
 							if zero_str == '{0}' {
@@ -7156,11 +7166,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 									}
 								}
 							}
-							if is_c_msvc && zero_str[0] == `(` {
-								init_str += '.${field_name} = ${zero_str.all_after_first(')')},'
-							} else {
-								init_str += '.${field_name} = ${zero_str},'
-							}
+							init_str += '.${field_name} = ${zero_str},'
 						}
 						has_none_zero = true
 					}
