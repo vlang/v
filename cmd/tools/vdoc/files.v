@@ -4,10 +4,11 @@ import os
 
 struct IgnoreRules {
 mut:
-	patterns map[string]bool = {
-		'testdata': true
-		'tests':    true
-		'*_test.v': true
+	// Ignore patterns use the path with a `.vdocignore` file as a base. E.g.:
+	// `{'<path>': ['<pattern1>', '<pattern2>'], '<path/subpath>': ['<pattern3>']}`
+	patterns map[string][]string = {
+		// Default ignore patterns.
+		'': ['testdata', 'tests', '*_test.v']
 	}
 	paths map[string]bool
 }
@@ -25,19 +26,23 @@ fn get_modules(path string) []string {
 
 fn get_paths(path string, mut ignore_rules IgnoreRules) []string {
 	mut res := []string{}
-	for p in os.ls(path) or { return [] } {
+	outer: for p in os.ls(path) or { return [] } {
 		ignore_rules.get(path)
 		fp := os.join_path(path, p)
 		if fp in ignore_rules.paths {
 			continue
 		}
 		is_dir := os.is_dir(fp)
-		if ignore_rules.patterns.keys().any(p == it
-			|| (it.contains('*') && p.ends_with(it.all_after('*')))
-			|| (is_dir && it.ends_with('/') && fp.ends_with(it.trim_right('/')))
-			|| (!it.ends_with('/') && it.contains('/') && fp.contains(it)))
-		{
-			continue
+		for ignore_path, patterns in ignore_rules.patterns {
+			if fp.starts_with(ignore_path) {
+				if patterns.any(p == it
+					|| (it.contains('*') && p.ends_with(it.all_after('*')))
+					|| (is_dir && it.ends_with('/') && fp.ends_with(it.trim_right('/')))
+					|| (!it.ends_with('/') && it.contains('/') && fp.contains(it)))
+				{
+					continue outer
+				}
+			}
 		}
 		if is_dir {
 			res << get_paths(fp, mut ignore_rules)
@@ -73,7 +78,7 @@ fn (mut ignore_rules IgnoreRules) get(path string) {
 			// `/a` should ignore `/a` but not `/b/a`. While `a` should ignore `/a` and `/b/a`.
 			ignore_rules.paths[os.join_path(path, rule.trim_left('/'))] = true
 		} else {
-			ignore_rules.patterns[rule] = true
+			ignore_rules.patterns[path] << rule
 		}
 	}
 }
