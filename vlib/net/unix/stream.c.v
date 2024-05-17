@@ -424,7 +424,6 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 	addr := addrs[0]
 	// cast to the correct type
 	alen := addr.len()
-	eprintln(addr)
 
 	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
