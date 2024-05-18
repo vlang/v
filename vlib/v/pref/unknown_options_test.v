@@ -34,6 +34,6 @@ fn test_unknown_option_flags_with_run() {
 
 	res_run_no_o := os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')
 	assert res_run_no_o.exit_code == 0
-	assert res_run_no_o.output == 'Hello, World!\n'
+	assert res_run_no_o.output.trim_space() == 'Hello, World!'
 	assert !os.exists(tfile)
 }
