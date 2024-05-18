@@ -2289,8 +2289,12 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 		concrete_types = p.parse_concrete_types()
 	}
 	typ := match p.peek_tok.kind {
-		.string { ast.string_type_idx }
-		.lsbr { ast.array_type_idx }
+		.string {
+			ast.string_type_idx
+		}
+		.lsbr {
+			ast.array_type_idx
+		}
 		else {
 			if p.tok.kind == .dot {
 				if var := p.scope.find_var(name) { var.typ } else { 0 }
