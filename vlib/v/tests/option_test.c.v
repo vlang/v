@@ -8,11 +8,13 @@ fn test_err_with_code() {
 		assert false
 		_ := w
 	} else {
-		assert err.msg() == 'hi; code: 137'
+		assert err.str() == 'hi; code: 137'
+		assert err.msg() == 'hi'
 		assert err.code() == 137
 	}
 	v := opt_err_with_code(56) or {
-		assert err.msg() == 'hi; code: 56'
+		assert err.str() == 'hi; code: 56'
+		assert err.msg() == 'hi'
 		assert err.code() == 56
 		return
 	}
@@ -297,7 +299,7 @@ fn test_option_void_return_types_of_anon_fn() {
 }
 
 struct Foo {
-	f fn (int) !
+	f fn (int) ! = unsafe { nil }
 }
 
 fn test_option_void_return_types_of_anon_fn_in_struct() {

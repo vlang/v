@@ -40,7 +40,7 @@ pub fn (err IError) str() string {
 			err.msg()
 		}
 		MessageError {
-			err.str()
+			(*err).str()
 		}
 		else {
 			// >> Hack to allow old style custom error implementations
