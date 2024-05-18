@@ -145,7 +145,6 @@ fn check_output(cmd string, out_path string, opts CheckOutputParams) int {
 	mut fails := 0
 	os.setenv('VDOC_SORT', opts.should_sort.str(), true)
 	expected := os.read_file(out_path) or { panic(err) }.replace('\r\n', '\n').trim_space()
-	dump(cmd)
 	res := os.execute_opt(cmd) or { panic(err) }
 	found := res.output.replace('\r\n', '\n').trim_space()
 	if expected != found {
