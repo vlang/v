@@ -924,6 +924,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if command == 'build' && is_source_file(arg) {
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
+				if is_source_file(arg) && arg.ends_with('.vsh') {
+					// store for future iterations
+					res.is_vsh = true
+				}
 				if !arg.starts_with('-') {
 					if command == '' {
 						command, command_idx = arg, i
@@ -936,8 +940,16 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command !in ['', 'build-module'] && !is_source_file(command) {
 					// arguments for e.g. fmt should be checked elsewhere
+					continue
+				}
+				if res.is_vsh && command_idx < i {
+					// Allow for `script.vsh abc 123 -option`, because -option is for the .vsh program, not for v
+					continue
+				}
+				if command == 'doc' {
+					// Allow for `v doc -comments file.v`
 					continue
 				}
 				err_detail := if command == '' { '' } else { ' for command `${command}`' }
