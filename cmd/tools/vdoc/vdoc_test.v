@@ -11,7 +11,6 @@ fn testsuite_begin() {
 	os.chdir(tpath)!
 }
 
-
 fn testsuite_end() {
 	os.rmdir_all(tpath) or {}
 }
@@ -40,7 +39,10 @@ fn test_ignore_rules() {
 	rules := IgnoreRules.get('.')
 	assert rules.patterns['.'] == ['pattern1', 'pattern2']
 	assert rules.patterns['./subdir'] == ['pattern3']
-	assert rules.paths == {'./path1': true, './subdir/path2': true}
+	assert rules.paths == {
+		'./path1':        true
+		'./subdir/path2': true
+	}
 }
 
 fn test_get_module_list() {
