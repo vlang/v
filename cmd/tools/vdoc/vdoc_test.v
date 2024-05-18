@@ -3,6 +3,19 @@ module main
 import os
 import arrays
 
+const tpath = os.join_path(os.vtmp_dir(), 'vod_test_module')
+
+fn testsuite_begin() {
+	os.rmdir_all(tpath) or {}
+	os.mkdir_all(tpath)!
+	os.chdir(tpath)!
+}
+
+
+fn testsuite_end() {
+	os.rmdir_all(tpath) or {}
+}
+
 fn test_trim_doc_node_description() {
 	mod := 'foo'
 	mut readme := '## Description
@@ -20,16 +33,17 @@ It also assists with composing and testing baz.'
 	assert res2 == res
 }
 
+fn test_ignore_rules() {
+	os.write_file('.vdocignore', ['pattern1', 'pattern2', '/path1'].join_lines())!
+	os.mkdir('subdir')!
+	os.write_file(os.join_path('subdir', '.vdocignore'), ['pattern3', '/path2'].join_lines())!
+	rules := IgnoreRules.get('.')
+	assert rules.patterns['.'] == ['pattern1', 'pattern2']
+	assert rules.patterns['./subdir'] == ['pattern3']
+	assert rules.paths == {'./path1': true, './subdir/path2': true}
+}
+
 fn test_get_module_list() {
-	tpath := os.join_path(os.vtmp_dir(), 'vod_test_module')
-	os.rmdir_all(tpath) or {}
-	os.mkdir_all(tpath)!
-	defer {
-		os.rmdir_all(tpath) or {}
-	}
-
-	os.chdir(tpath)!
-
 	// For information on leading slash rules, refer to the comments in `IgnoreRules.get`.
 	ignore_rules := ['bravo', '/echo', '/foxtrot/golf', 'hotel.v/', 'india/juliett']
 	os.write_file('.vdocignore', ignore_rules.join_lines())!
