@@ -2018,7 +2018,7 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 
 @[inline]
 fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
-	if label.len == 0 {
+	if label == '' {
 		// ignore
 		return
 	}

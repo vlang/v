@@ -286,7 +286,7 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 	tmp_result := os.system(tmp_cmd)
 	res.vrun_elog('exit code: ${tmp_result}')
 	//
-	if output_option.len != 0 {
+	if output_option != '' {
 		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
 		os.rm(tmp_exe_file_path) or {}
 	}

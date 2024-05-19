@@ -173,7 +173,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_tmp: true
 				is_stack_obj: true
 			})
-			if key_var_name.len > 0 {
+			if key_var_name != '' {
 				return p.error_with_pos('cannot declare index variable with range `for`',
 					key_var_pos)
 			}

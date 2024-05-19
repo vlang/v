@@ -25,7 +25,7 @@ pub enum ValueKind {
 
 // check_json
 fn check_json(val string) ! {
-	if val.len == 0 {
+	if val == '' {
 		return error('empty string')
 	}
 }
