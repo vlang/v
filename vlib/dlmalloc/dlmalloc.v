@@ -1048,7 +1048,8 @@ fn (mut dl Dlmalloc) init_bins() {
 
 @[unsafe]
 fn (mut dl Dlmalloc) init_top(ptr &Chunk, size_ usize) {
-	offset := align_offset_usize(ptr.to_mem())
+	pmem := ptr.to_mem()
+	offset := align_offset_usize(usize(pmem))
 	mut p := ptr.plus_offset(offset)
 
 	size := size_ - offset
@@ -1301,7 +1302,8 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 		ssize := pad_request(sizeof(Segment))
 		mut offset := ssize + sizeof(usize) * 4 + malloc_alignment() - 1
 		rawsp := voidptr(usize(old_end) - offset)
-		offset = align_offset_usize((&Chunk(rawsp)).to_mem())
+		pmem := (&Chunk(rawsp)).to_mem()
+		offset = align_offset_usize(usize(pmem))
 		asp := voidptr(usize(rawsp) + offset)
 		csp := if asp < voidptr(usize(old_top) + min_chunk_size()) { old_top } else { asp }
 		mut sp := &Chunk(csp)
