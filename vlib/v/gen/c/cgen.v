@@ -1658,7 +1658,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 				else {}
 			}
 		}
-		call_conv_attribute_suffix := if call_conv.len != 0 {
+		call_conv_attribute_suffix := if call_conv != '' {
 			'__attribute__((${call_conv}))'
 		} else {
 			''
@@ -5127,24 +5127,24 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 		}
 		if node.main.contains('.m') {
 			g.definitions.writeln('')
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.definitions.writeln('#if ${ct_condition}')
 			}
 			// Objective C code import, include it after V types, so that e.g. `string` is
 			// available there
 			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.definitions.writeln(guarded_include)
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.definitions.writeln('#endif // \$if ${ct_condition}')
 			}
 		} else {
 			g.includes.writeln('')
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.includes.writeln('#if ${ct_condition}')
 			}
 			g.includes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.includes.writeln(guarded_include)
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.includes.writeln('#endif // \$if ${ct_condition}')
 			}
 		}
@@ -5164,43 +5164,43 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			// Might need to support '#preinclude' for .m files as well but for the moment
 			// this does the same as '#include' for them
 			g.definitions.writeln('')
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.definitions.writeln('#if ${ct_condition}')
 			}
 			// Objective C code import, include it after V types, so that e.g. `string` is
 			// available there
 			g.definitions.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.definitions.writeln(guarded_include)
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.definitions.writeln('#endif // \$if ${ct_condition}')
 			}
 		} else {
 			g.preincludes.writeln('')
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.preincludes.writeln('#if ${ct_condition}')
 			}
 			g.preincludes.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 			g.preincludes.writeln(guarded_include)
-			if ct_condition.len > 0 {
+			if ct_condition != '' {
 				g.preincludes.writeln('#endif // \$if ${ct_condition}')
 			}
 		}
 	} else if node.kind == 'insert' {
-		if ct_condition.len > 0 {
+		if ct_condition != '' {
 			g.includes.writeln('#if ${ct_condition}')
 		}
 		g.includes.writeln('// inserted by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
 		g.includes.writeln(node.val)
-		if ct_condition.len > 0 {
+		if ct_condition != '' {
 			g.includes.writeln('#endif // \$if ${ct_condition}')
 		}
 	} else if node.kind == 'define' {
-		if ct_condition.len > 0 {
+		if ct_condition != '' {
 			g.includes.writeln('#if ${ct_condition}')
 		}
 		g.includes.writeln('// defined by module `${node.mod}`')
 		g.includes.writeln('#define ${node.main}')
-		if ct_condition.len > 0 {
+		if ct_condition != '' {
 			g.includes.writeln('#endif // \$if ${ct_condition}')
 		}
 	}
@@ -5504,7 +5504,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write('return ${tmpvar}')
 		}
 		// Make sure to add our unpacks
-		if multi_unpack.len > 0 {
+		if multi_unpack != '' {
 			g.insert_before_stmt(multi_unpack)
 		}
 		if use_tmp_var && !fn_return_is_option && !fn_return_is_result {
@@ -7126,15 +7126,18 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			} else {
 				'{'
 			}
-			if sym.language == .v {
+			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
 						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan] {
+						if sym.language == .c && !field.has_default_expr {
+							continue
+						}
 						field_name := c_name(field.name)
 						if field.has_default_expr {
 							mut expr_str := ''
-							if g.table.sym(field.typ).kind in [.sum_type, .interface_] {
+							if field_sym.kind in [.sum_type, .interface_] {
 								expr_str = g.expr_string_with_cast(field.default_expr,
 									field.default_expr_typ, field.typ)
 							} else {
@@ -7216,11 +7219,11 @@ fn (g Gen) get_all_test_function_names() []string {
 		}
 	}
 	mut all_tfuncs := []string{}
-	if tsuite_begin.len > 0 {
+	if tsuite_begin != '' {
 		all_tfuncs << tsuite_begin
 	}
 	all_tfuncs << tfuncs
-	if tsuite_end.len > 0 {
+	if tsuite_end != '' {
 		all_tfuncs << tsuite_end
 	}
 	return all_tfuncs

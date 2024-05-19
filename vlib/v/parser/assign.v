@@ -226,6 +226,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						pos: lx.pos
 						is_stack_obj: p.inside_for
 					}
+					if p.prev_tok.kind == .string {
+						v.typ = ast.string_type_idx
+					} else if p.prev_tok.kind == .rsbr {
+						v.typ = ast.array_type_idx
+					}
 					if p.pref.autofree {
 						r0 := right[0]
 						if r0 is ast.CallExpr {

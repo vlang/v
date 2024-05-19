@@ -286,7 +286,7 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 	tmp_result := os.system(tmp_cmd)
 	res.vrun_elog('exit code: ${tmp_result}')
 	//
-	if output_option.len != 0 {
+	if output_option != '' {
 		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
 		os.rm(tmp_exe_file_path) or {}
 	}
@@ -924,6 +924,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if command == 'build' && is_source_file(arg) {
 					eprintln_exit('Use `v ${arg}` instead.')
 				}
+				if is_source_file(arg) && arg.ends_with('.vsh') {
+					// store for future iterations
+					res.is_vsh = true
+				}
 				if !arg.starts_with('-') {
 					if command == '' {
 						command, command_idx = arg, i
@@ -936,8 +940,16 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command !in ['', 'build-module'] && !is_source_file(command) {
 					// arguments for e.g. fmt should be checked elsewhere
+					continue
+				}
+				if res.is_vsh && command_idx < i {
+					// Allow for `script.vsh abc 123 -option`, because -option is for the .vsh program, not for v
+					continue
+				}
+				if command == 'doc' {
+					// Allow for `v doc -comments file.v`
 					continue
 				}
 				err_detail := if command == '' { '' } else { ' for command `${command}`' }

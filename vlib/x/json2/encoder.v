@@ -448,7 +448,7 @@ pub fn (f Any) prettify_json_str() string {
 // encode_string returns the JSON spec-compliant version of the string.
 @[direct_array_access]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
-	if s.len == 0 {
+	if s == '' {
 		empty := [u8(json2.quote_rune), json2.quote_rune]!
 		unsafe { buf.push_many(&empty[0], 2) }
 		return

@@ -22,7 +22,7 @@ fn fn_mr_get_user() (string, int, []string, UserData) {
 
 fn split_to_two(s string) !(string, string) {
 	mut tokens := s.split_nth(' ', 2)
-	if s.len == 0 {
+	if s == '' {
 		return error('error')
 	}
 	if tokens.len != 2 {

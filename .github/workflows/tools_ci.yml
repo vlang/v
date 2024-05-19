@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build V
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+      - name: Code in cmd/ is formatted
+        run: ./v fmt -verify cmd/
       - name: Test
         run: ./v test-self cmd
       - name: Test (-cstrict)
