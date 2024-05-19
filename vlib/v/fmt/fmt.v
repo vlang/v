@@ -132,7 +132,7 @@ pub fn (mut f Fmt) write(s string) {
 }
 
 pub fn (mut f Fmt) writeln(s string) {
-	if f.indent > 0 && f.empty_line && s.len > 0 {
+	if f.indent > 0 && f.empty_line && s != '' {
 		f.write_indent()
 	}
 	f.out.writeln(s)

@@ -11,10 +11,10 @@ fn imin(x u16, y u16) u16 {
 // From https://gist.github.com/zeozeozeo/f785910173f3115163bffd0c5240de07
 @[direct_array_access]
 pub fn zeozeozeo_levenshtein_distance(a string, b string) int {
-	if a.len == 0 {
+	if a == '' {
 		return b.len
 	}
-	if b.len == 0 {
+	if b == '' {
 		return a.len
 	}
 	if a == b {

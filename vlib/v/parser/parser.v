@@ -2712,10 +2712,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			mod = original_name
 			original_name = p.peek_token(4).lit
 		}
-		mut name := original_name
-		if mod.len > 0 {
-			name = '${mod}.${name}'
-		}
+		name := if mod != '' { '${mod}.${original_name}' } else { original_name }
 		name_w_mod := p.prepend_mod(name)
 		is_c_pointer_cast := language == .c && prev_tok_kind == .amp // `&C.abc(x)` is *always* a cast
 		is_c_type_cast := language == .c && (original_name in ['intptr_t', 'uintptr_t']
