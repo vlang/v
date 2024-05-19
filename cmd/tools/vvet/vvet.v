@@ -333,12 +333,12 @@ fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
 		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
 		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
 			&& operand.field_name == 'len' {
-			if expr.right.val == '0' && expr.op != .lt {
+			if expr.op != .lt && expr.right.val == '0' {
 				// Case: `var.len > 0`, `var.len == 0`, `var.len != 0`
 				op := if expr.op == .gt { '!=' } else { expr.op.str() }
 				vt.notice("Use `${operand.expr.name} ${op} ''` instead of `${operand.expr.name}.len ${expr.op} 0`",
 					expr.pos.line_nr, .unknown)
-			} else if expr.right.val == '1' && expr.op == .lt {
+			} else if expr.op == .lt && expr.right.val == '1' {
 				// Case: `var.len < 1`
 				vt.notice("Use `${operand.expr.name} == ''` instead of `${operand.expr.name}.len ${expr.op} 1`",
 					expr.pos.line_nr, .unknown)
@@ -348,12 +348,12 @@ fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
 		operand := expr.right
 		if operand.expr is ast.Ident && operand.expr.info.typ == ast.string_type_idx
 			&& operand.field_name == 'len' {
-			if (expr.left as ast.IntegerLiteral).val == '0' && expr.op != .gt {
+			if expr.op != .gt && (expr.left as ast.IntegerLiteral).val == '0' {
 				// Case: `0 < var.len`, `0 == var.len`, `0 != var.len`
 				op := if expr.op == .lt { '!=' } else { expr.op.str() }
 				vt.notice("Use `'' ${op} ${operand.expr.name}` instead of `0 ${expr.op} ${operand.expr.name}.len`",
 					expr.pos.line_nr, .unknown)
-			} else if (expr.left as ast.IntegerLiteral).val == '1' && expr.op == .gt {
+			} else if expr.op == .gt && (expr.left as ast.IntegerLiteral).val == '1' {
 				// Case: `1 > var.len`
 				vt.notice("Use `'' == ${operand.expr.name}` instead of `1 ${expr.op} ${operand.expr.name}.len`",
 					expr.pos.line_nr, .unknown)
