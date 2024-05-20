@@ -264,14 +264,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			left_sym = c.table.sym(unwrapped_left_type)
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if mut right_sym.info is ast.Alias && right_sym.info.language != .c
+			if mut right_sym.info is ast.Alias && (right_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
-				&& c.table.sym(right_sym.info.parent_type).is_primitive() {
+				&& (c.table.sym(right_sym.info.parent_type).is_primitive()
+				|| c.table.sym(right_sym.info.parent_type).kind == .enum_)) {
 				right_sym = c.table.sym(right_sym.info.parent_type)
 			}
-			if mut left_sym.info is ast.Alias && left_sym.info.language != .c
+			if mut left_sym.info is ast.Alias && (left_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
-				&& c.table.sym(left_sym.info.parent_type).is_primitive() {
+				&& (c.table.sym(left_sym.info.parent_type).is_primitive()
+				|| c.table.sym(left_sym.info.parent_type).kind == .enum_)) {
 				left_sym = c.table.sym(left_sym.info.parent_type)
 			}
 
