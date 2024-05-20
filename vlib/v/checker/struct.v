@@ -698,7 +698,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				node.init_fields[i].typ = got_type
 				node.init_fields[i].expected_type = exp_type
 
-				if got_type.is_ptr() && exp_type.is_ptr() && mut init_field.expr is ast.Ident {
+				if got_type.is_ptr() && exp_type.is_ptr() && mut init_field.expr is ast.Ident
+					&& !info.is_heap {
 					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
 						'assigned')
 				}
