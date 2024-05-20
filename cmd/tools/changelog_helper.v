@@ -209,7 +209,7 @@ fn (mut app App) process_line(text string) ! {
 	// exit(0)
 	//}
 	if (semicolon_pos < 15
-		&& prefix in ['checker', 'cgen', 'parser', 'v.parser', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt'])
+		&& prefix in ['checker', 'cgen', 'parser', 'v.parser', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools'])
 		|| (semicolon_pos < 30 && prefix.contains(', ')) {
 		s = '- ' + text[semicolon_pos + 2..].capitalize()
 	}
@@ -348,12 +348,6 @@ const db_strings = [
 	'pg:',
 ]
 
-const improvements_strings = [
-	'all:',
-	'v:',
-	'coroutines:',
-]
-
 const parser_strings = [
 	'parser:',
 	'ast:',
@@ -367,6 +361,7 @@ const stdlib_strings = [
 	'sync:',
 	'datatypes:',
 	'math:',
+	'math.',
 	'math.big',
 	'crypto',
 	'sokol',
@@ -376,11 +371,11 @@ const stdlib_strings = [
 	'toml:',
 	'vlib:',
 	'arrays:',
-	'math.',
 	'os.',
 	'term:',
 	'sync.',
 	'builtin:',
+	'builtin,',
 	'strconv',
 	'readline',
 	'cli:',
@@ -439,6 +434,13 @@ fn is_internal(text string) bool {
 	return is_xxx(text, internal_strings)
 }
 
+const improvements_strings = [
+	'all:',
+	'v:',
+	'coroutines:',
+	'autofree',
+]
+
 fn is_improvements(text string) bool {
 	return is_xxx(text, improvements_strings)
 }
@@ -469,6 +471,8 @@ const tools_strings = [
 	'vtest',
 	'repl',
 	'REPL',
+	'vet',
+	'tools.',
 ]
 
 fn is_tools(text string) bool {

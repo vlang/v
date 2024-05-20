@@ -1,3 +1,335 @@
+## V 0.4.6
+*20 May 2024*
+
+#### Improvements in the language
+- Experimental `x.vweb` is now `veb`, the official and recommended way to build web apps in V. Built on top of pico.v.
+- autofree: -print_autofree_vars command line flag for printing variables autofree couldn't free
+- Add `@VMODHASH` comptime variable to store the commit sha of a V module (#21091)
+- Fix sumtype support for option variant types (#21101)
+- Utilize new diff functions in errors (expected/found) (#21431)
+- Add @[_linker_section] for global variables
+
+#### Breaking changes
+- checker: disallow initializing private struct fields outside structs module (#21183)
+
+#### Checker improvements/fixes
+- Ambiguous expression notice for `& << >>`, similar to `&& ||`
+- Disallow using aliases of ?Type as !Type (#21128)
+- Fix option checker arg validation for ptr passing on non expected ptr (#21087)
+- Optimize option and result type check, add more typinfo to error details (#21105)
+- Move error handling for `any` type to the checker to resolve parsing issues (#21146)
+- Move error handling for user defined type duplicates to the checker to resolve parsing issues (#21147)
+- Detect redundant ref when assigning call expr with ref return (#21141)
+- Fix multi return using nil and voidptrfix (fix #17343) (#21144)
+- Fix C struct embedded init fields checking (#21137)
+- Remove resolved vfmt workaround and TODO (#21175)
+- Move more match validation from the parser into the checker, add error for match without branches (#21181)
+- Improve the error message for an unknown type (#21207)
+- Allow passing `none` to `fn f(arg ?&Type) {` (fix #21213) (#21231)
+- Fix -parallel-cc regression (part 1, workaround .filter(fn[c]) used in checker/orm.v) (#21238)
+- Detect and error on unreachable code in loops, after `continue` and `break` statements (#21294)
+- Disallow `Result` callbacks functions like `map/filter/all/any` (#21055)
+- Fix missing check for or expr on string interpolation (#17566)
+- Allow pass array as mut param to spawn fn (#21283)
+- Turn array assign warning into error (#21341)
+- Ignore last semicolon on or-expr (#21361)
+- Disallow structs with `@[params]` attribute as mutable function parameters (#21206)
+- Set auto Return pos correctly; cgen: autofree fix for optional returns
+- Disallow invalid ptr operations  (#21515)
+- Fix wrong checking for heap struct (#21511)
+- Allow alias enum flagged to have bit operations  (#21532)
+- Simplify, utilize pref.vroot (#21096)
+- Fix option interface member checking when `none` is passed (#21509)
+
+#### Parser improvements
+- Fix option as possible match case for sumtype (#21079)
+- orm: disallow invalid infix for where clause in `delete` and `update`  (#21113)
+- Fix case of falsely registering imports as used, remove unused imports (#21156)
+- Remove redundant comments_mode field (#21198)
+- Update file path fields; use more expressive name for file path, remove obsolete `file_name_dir` field (#21202)
+- Add missing docstrings for vlib/v/ast/comptime_const_values.v  functions (#21219)
+- Allow struct init on `for in Iterator{} {` (fix #21179) (#21282)
+- Fix `for x in Iterator{} {`, when there are no field initialisations (#21333)
+- Add check for result type on chan init (#21363)
+- Fix comptime panic for `$tmpl("x.html")`, when the template file contained % at the end (#21402)
+- Parse string and array typ idx of `ScopeVar` and `Ident` (#21523)
+
+#### Compiler internals
+- v.util: use tmp instead of cache dir for temporary diff files (#21075)
+- v.util: fix module lookup if module import parts end with the word `modules` (#21083)
+- v.util: update `githash` to be able to get the githash of every passed project (#21178)
+- v.util: improve detection for opendiff when automatically searching difftools (#21241)
+- v.util: improve color_compare_files (#21247)
+- v.util: improve find_diff_cmd: don't add spaces to result without env opts (#21242)
+- v.util: fix diff coloring, add test (#21260)
+- v.util: polish off diff utils after recent updates and fixes, add doc comments to pub fns (#21275)
+- v.builder: suggest using `v wipe-cache`, when the object files are not recognized
+- pref: be more conservative when generating code using `-cross`, allow for `$if cross ? {`
+- builder: use cc enum in CcompilerOptions, fix cc detection, enable cc guessing without prod flag (#21370)
+- pref: fix version flag handling (#21377)
+- pref: make minor performance related changes / simplify (#21379)
+- builder: simplify generic cc detection (#21380)
+- pref: extract architecture related code into `arch.c.v`; rename `pref.c.v` to `pref.v` (#21387)
+- pref: update `os_from_string`, add missing `qnx`, remove deprecated wasm options that used `-` instead of `_` (#21390)
+- v.util: rewrite diff module, deprecate old functions (#21403)
+- v.util: fix color when auto tool is `diff` (#21435)
+- v.util: make diff_test.v more robust to the color settings for the chosen local diff tool
+- v.util: fix performance with `v test-cleancode`, when a slower diff tool is installed (#21447)
+- v.util: remove fast path in `diff.compare_text` (#21458)
+- v.pref: error for `v file.v --unknown-option` (#21391)
+
+#### Standard library
+- builtin,dlmalloc: fixes for `v vlib/v/gen/c/coutput_test.v` for gcc14.1, which is stricter
+- Min window width and height
+- builtin: str.last_index(); pref: hide-auto-str;
+- toml: update the alexcrichton and BurntSushi repos to their successors toml-rs, and toml-test, record new exceptions (#21152)
+- breaking,vlib: update handling of imports whose symbols are not directly used in imported file, remove `pub const is_used = 1` workarounds (#21160)
+- json: allow `i32` decoding and encoding (#21162)
+- json2: add ability to decode arrays (#21163)
+- json2,checker,toml: allow field.typ compile-time checking with MatchExpr and add array of option checking (#21171)
+- gg: draw_text with custom fonts
+- x.json2: add a way to decode an array (#21186)
+- os: clarify some doc comments (#21209)
+- os: fix double free in os.get_raw_line() (used by os.input), with `-autofree` (#21204)
+- time: extract Duration related code into duration.v (#21229)
+- builtin: implement an `at_exit(cb)` wrapper for C.atexit (part 1) (#21254)
+- os: format readme, fix markdown inside html (#21286)
+- time: update unix time acces, fix issues related to deviating unix times (#21293)
+- vlib: refactor empty string checks to use `s == ''` or `s != ''`, instead of `s.len == 0` (#21300)
+- cli: update `command_test.v` (#21307)
+- cli: extend control over defaults (#21308)
+- thirdparty/sokol: bump _SGL_DEFAULT_MAX_VERTICES and _SGL_DEFAULT_MAX_COMMANDS again; mark them with `__v_ start` and `__v_ end`
+- sync: add Gentoo paths for libatomic
+- sync.stdatomic: add flag lines for gcc 14 too
+- gg: make `PenConfig` fields public (#21353)
+- builtin: fix undefined read s[0], from ''.is_lower() and ''.is_upper() in c7af2c2
+- builtin: fix empty string lower / upper assert (#21358)
+- cli: simplify flag parsing (#21392)
+- os,runtime: workaround for v.c generation instability
+- datatypes: fix for set `-` operator, union and intersection, now they no longer change the receiver (fix #21315) (#21362)
+- sync.stdatomic: add paths for compilation with musl on Gentoo (#21400)
+- os: fix os.execute stderr redirection (fix #20986) (#21404)
+- time: fix the string representation of a negative Duration (#21407)
+- cli: make program outputs using the cli module testable in `cli/testdata` (#21456)
+- math.unsigned: permit _ separators in Uint128 decimal strings passed to uint128_from_dec_str (#21461)
+- cli: fix default flags when their command equivalents are disabled (#21469)
+- toml: simplify `decode_quoted_escapes` (#21472)
+- os: fix join-path (#21425)
+- builtin: simplify MessageError.msg() (#21524)
+- all: replace usages of C.atexit(cb) with `at_exit(cb) or {}` (part 2) (#21263)
+- math.unsigned: fix some Uint256 bugs and add tests (#21528)
+
+
+#### Web
+- Update `mbedtls` to latest compatible version v3.3.0 (#21118)
+- veb.auth: a minor find_token fix
+- Improve descriptions (#21155)
+- ci: change listen ports in vweb_should_listen_on_both_ipv4_and_ipv6_by_default_test.v for both vweb and x.vweb, to reduce probability of network errors
+- ci: mark both vweb and x.vweb versions of vweb_should_listen_on_both_ipv4_and_ipv6_by_default_test.v as flaky
+- breaking,net.ftp: allow to choose a different port than port 21 (change FTP.connect to accept `host:port`, not just a `host` address) (#21185)
+- x.vweb: accept query params as method arguments (#21201)
+- net.http.file: support index_file (`index.html` by default), and auto_index (true by default) parameters to file.serve()
+- veb: copy x.vweb to veb, and make it work with comptime
+- ci: fix the ubuntu-docker-musl job by skipping veb_app_test.v
+- pref: support a shortcut: `v -http` for `v -e "import net.http.file; file.serve()"` .
+- net: add a .port()! method for net.Addr (#21412)
+- net: improve error message in .port()
+- picoev: handle `EAGAIN` or `EWOULDBLOCK` quietly (#21480)
+- net.unix: remove debug/trace eprintln (#21517)
+
+#### ORM
+- Add error for unchecked option multi return types, fix undefined behavior (#21106)
+
+#### Database drivers
+- db.mysql: fix invalid memory access in exec_one for returned rows with NULL fields (#21317)
+
+#### C backend
+- Enable autofree for option (#21051)
+- Force C struct types which does not implement str() to be passed as ptr (#21054)
+- Improve diagnostic information for ORM queries with invalid types
+- Allow static call on generic type (#21071)
+- Fix code generation for a struct field, having a type of fixed array of options `field [5]?Type` (#21082)
+- Add the `_M_ARM64` macro to endianness check (#21109)
+- Fix return code when returning interface result type (fix #21115) (#21130)
+- Fix const initialized with array (#21131)
+- Fix infix array heap comparison (#21145)
+- Fix C struct sumtype support (#21129)
+- Add `autofree` comptime check (#21197)
+- Fix comptime `$if !autofree {` (#21218)
+- Allow `for mut v in [12, 13, 14] { v+= 2 }`  (#21237)
+- Allow op overload for type with generic parent  (#21262)
+- Optimize .map(), .any(), .filter() and .all() when using closure (#21256)
+- Fix `none` passed to a generic option cast expression (fix #21215) (#21276)
+- Fix `-fsanitize=undefined` used with `[]int{}.sort()` (#21331)
+- Fix `myarr [1]C.mytype` fixed array fields, for `pub type C.mytype = voidptr` (#21266)
+- Fix comptime ref argument passing (#21335)
+- Use the real C line number instead of `#line 1000000 ...` in the C footer with `-g` (#21388)
+- Fine tune the line count reset for the C footer (fix off by 1 error in 00dd0bf)
+- Fix array.delete_last call generation (#21439)
+- Fix option ptr unwrapping (#21415)
+- Fix C struct option alias printing (#21496)
+- Handle auto deref var for index when the array element is an interface or a sumtype (#21491)
+- Fix C struct init when it has default expr (#21510)
+- Fix sumtype field naming (when they are the same as a C keyword) (#21527)
+
+#### vfmt
+- Update determining of struct field comments (#21066)
+- Inform about invalid interop function bodies instead of removing them (#21070)
+- Parse methods on JS interfaces, write JS method bodies (#21088)
+- Improve module detection when formatting imports (#21134)
+- Don't change paths when formatting imports (#21148)
+- Use fixed size array for max_len const (#21140)
+- Simplify const name formatting (#21143)
+- Improve import processing, add test (#21172)
+- Fix duplicates remove import comments (#21177)
+- Extend import import alias reference map for submodules (#21200)
+
+#### Tools
+- doc: fix vup/vself replacement scripts (#21092)
+- Prevent module updates during `v build-tools`, when VTEST_SANDBOXED_PACKAGING is set (#21094)
+- ci: update the reference to the v-analyzer repo
+- ci: retry all setup commands that need network access, till they succeed (so the CI jobs have less false positives) (#21103)
+- changelog: escape `@NAME` entries, to avoid mentioning unrelated github accounts
+- Add `v retry apt update`, intended to replace the retry.sh script, for more robust CI jobs (#21104)
+- vpm: show the final path where a module is installed, improve color contrast for white on black terminal sessions
+- vet: print help when passing no files or `--help`/`-help` flag after vet command (#21108)
+- Fix `v build-tools` (it skipped all tools in subfolders of cmd/tools/ after 6a4f293) (#21120)
+- .gitignore: ignore generated .NET files in bench/vectors (#21136)
+- vet: optimize performance for path detection, when vetting files (#21139)
+- vet: allow to overwrite excluded dirs (#21142)
+- ci: increase wait time for the xvfb check, to reduce the chance of false positives
+- Fix `v run cmd/tools/measure/parser_speed.v file.v`
+- Add `v run cmd/tools/measure/fmt_speed.v file.v`
+- ci: move build step for VPM site, into apps and modules ci, add concurrency config (#21191)
+- tools.vpm: debug-log to `$VMODULES/cache/vpm.log` if not running in debug mode (#21192)
+- vpm: optimize performance by adding filter when cloning (#21216)
+- vdoc: don't add _docs directory when an out path is specified (#21233)
+- ci: prefer dedicated tiggers for platform workflows, so sporadic fails can be retried quicker (#21251)
+- v.util: improve code related to diff tool specified via environment, add check if the diff tool exists (#21240)
+- vpm: check for git version before adding `--also-filter-submodules` flag (#21259)
+- ci: add logging to .github/workflows/retry.sh
+- Revise `vtest-self.v`: remove dead paths, fix json2 essential test path (#21267)
+- Add check for unavailable files in vtest (#21272)
+- ci: reactive app prod builds (#21295)
+- ci: add a m1 runner for testing the prebuilt zips too
+- ci: add workflow_run: event in prebuilt.yml
+- ci: simplify prebuilt.yml, make it usable for manual runs too
+- vpm: fix regression, so `v install sdl && v run ~/.vmodules/sdl/setup.vsh` works again
+- ci: fix outdated_test.v (--unshallow is not needed now)
+- ci: continue testing independent V apps, even if one fails, to get feedback for breaking changes faster (#21302)
+- ci: optimize apps and modules (#21303)
+- ci: test `v ~/.vmodules/sdl/setup.vsh`, to prevent future vpm regressions (#21306)
+- ci: prevent unintended deployment workflow steps (#21313)
+- Add a 2024.html page to https://fast.vlang.io/
+- vdoc: rewrite and extend vdocignore (#21314)
+- ci: fix the commit labels for the vc repo
+- Support `v run cmd/tools/oldv.v --show_VC_commit weekly.2024.03`
+- ci: use latest upstream `discord.v` in apps and modules test (#21322)
+- vdoc: remove obsolete entries from `.vdocignore` (#21320)
+- v: update linguist languages, add .vdocignore (#21321)
+- ci: update deployment workflow (#21323)
+- Allow for selectively running `v test-self vlib/` and `v test-self cmd/` (#21326)
+- Rewrite test-self arg handling (#21327)
+- ci: restore `v install elliotchance.vsql` in v_apps_and_modules_compile_ci.yml
+- ci: use `v retry -- cmd` to replace `.github/workflows/retry.sh cmd`, where possible in `v_apps_and_modules_compile_ci.yml` (#21336)
+- ci: update workflow conditions (#21338)
+- Improve `v symlink -githubci` diagnostic message, when used outside CIs or with sudo (#21340)
+- ci: update detection of workflow cancellation scenarios (#21342)
+- Fix compiling vwhere with `-cc gcc -cstrict` (#21347)
+- ci: remove the separate `-gc boehm` job (since `-gc boehm` is the default now) (#21352)
+- ci: add a separate cmd/tools testing job (#21344)
+- Update fast.v and fast_job.v to update docs.vlang.io and fast.vlang.io on each commit to master.
+- Make fast.v more robust to independent remote changes in vlang/docs
+- Utilize environment specific files for vsymlink  (#21360)
+- ci: update `binary_artifact.yml` (#21364)
+- ci: add docker to tools workflow, update ignore paths (#21368)
+- ci: split up vsl / vtl run, reducing the tool change CI time from ~19min to ~10min (#21372)
+- ci: fix binary_artifact.yml (#21373)
+- Refine `check_os_api_parity.v` (#21371)
+- ci: update native backend ci matrix (#21375)
+- ci: update symlink ci, add matrix (#21376)
+- ci: workaround defer codegen failing with nested if blocks and -cstrict in vdoc_file_test.v
+- ci: update detection of accidentally added gpl licenses (#21384)
+- ci: set cancel-in-progress to false in bootstrapping_ci.yml to avoid false positives
+- ci: do trigger bootstrapping_ci.yml periodically, but just on changes
+- ci: speed up bootstrapping_ci.yml, by using the default tcc when possible
+- ci: update `bootstrapping_ci.yml` trigger paths (#21394)
+- ci: pass a good commit to oldv.v in `bootstrapping_ci.yml` (#21393)
+- Be more verbose when doing `v up` in V folder produced by extracting a .zip release file
+- Exclude thirdparty/tcc from the git clean operation, that vup does in case of a missing .git folder
+- Protect from cleaning during `v up`, only ./v , not any matching folder
+- Use proper ignore/exclude patterns in the git clean, that `v up` does
+- Use more meaningful names in vup.v
+- Be verbose, when a git commands that `v up` executes fails
+- ci: add a v-up-works-ubuntu job, to ensure more robust `v up` runs (#21401)
+- ci: ensure v master is available when trying to check out its commits to build oldv (#21414)
+- Rewrite vet error handling (improve parser performance extend vvet) p1 (#21417)
+- Move dynamic const array check from parser into vet (#21423)
+- v.help: update help for `fmt` (#21430)
+- Move array_init_one_val checks from parser into vet (#21422)
+- Remove `vet_errors` and `vet_notices` from parser (#21424)
+- ci: temporary fix for gitly compilation
+- Remove vetting for spaces after / before parens (#21437)
+- Add `.github/workflows/show_manual_release_cmd.vsh`, to make cross platform testing of the release process easier
+- ci: merge docker_alpine and docker_ubuntu workflows in `docker_ci.yml` (#21446)
+- Move now obsolete vlib vet module to cmd vet (#21445)
+- Use `parse_file`, remove `parse_vet_file` (#21444)
+- ci: update binary artifact workflow, add matrix (#21378)
+- ci: add workflow_dispatch: to gen_vc_ci.yml
+- ci: fix vinix_ci.yml by using `./v symlink -githubci` in vinix_ci.yml
+- ci: port changes from Vinix's check.yml at 8231e569 to vinix_ci.yml
+- tools.vet: move error methods to `vvet/errors.v` (#21449)
+- ci: reduce false negatives for tcp_test.v, retry it 3 times before failing
+- Improve performance of `v test-cleancode` and `v fmt -inprocess -verify .` (#21450)
+- Make `./v symlink` work platform independent in CI (part 1) (#21453)
+- ci: replace .github/workflows/retry.sh usages in the CI with the shorter `v retry --`, move `v test-cleancode` upwards to save time for unformatted PRs (#21452)
+- Capitalize information output of `v up` (#21464)
+- ci: use `v symlink` without `-githubci` for regular symlinking (#21455)
+- ci: add a linter for the .yml workflow files (#21459)
+- ci: update symlink ci, extend tested cases (#21466)
+- tools.vet: update diff comparison in `vet_test.v` (#21457)
+- Call mkdir_all before set_output_path to avoid a vpm panic when ~/.vmodules/cache does not exist (#21463)
+- ci: make issue template title consistent, fix linter error regarding labels (#21460)
+- tools.vet: reduce nesting in `vet_fn_documentation`, skip vetting empty lines (#21465)
+- Print info to use v symlink instead of `v symlink -githubci` (#21471)
+- Move _test.v files for vdoc at the same level (#21473)
+- ci: update the helper script, for getting the most recent sqlite-amalgamation-3380200.zip (#21474)
+- vdoc: fix handling of .vdocignore files in subdirectories (#21514)
+- ci: run build-module-docs, when changes to the source of the `v doc` tool happen too
+- ci: use g++ not g++-11 in misc-tooling (g++-11 can not be found and installed on the CI runner anymore for some reason)
+- ci: update g++ to g++-10 in other_ci.yml, add workflow_dispatch: trigger for easier local future diagnostic
+- vdoc: improve vdocignore file handling by walking all .vdocignore sub-paths in IgnoreRules.get, add test (#21521)
+- ci: run `v fmt -w cmd/tools/vdoc/vdoc_test.v`
+- ci: make sure that unformatted code in just cmd/ is not allowed
+- ci: mark again tcp_test.v as flaky (it had 3 unrelated failures on the CI over the last week)
+- v: vet for empty string conditions (#21529)
+- tools.vet: add notice for empty strings conditions (#21421)
+
+#### Operating System support
+- ci: improve test robustness on windows (#21116)
+- v.pkgconfig: add pkgconfig path `/usr/libdata/pkgconfig` for FreeBSD base packages (#21151)
+- v.util: add diff tool color support detection (tested on linux and freebsd) (#21244)
+- v.util.diff: return diff options with the diff command for FreeBSD/OpenBSD (#21271)
+- v.pkgconfig: fix load_paths with `;` split char on windows (#21291)
+- Fix vpm on macos, when using the bundled git executable (#21292)
+- ci: fix the bundled tcc for macos arm64 (#21299)
+- ci: update the runner for build-macos-arm64 to `macos-14` too, so it runs on M1
+- Fix hot code reloading on windows (#21351)
+- Fix building vpm on the FreeBSD instance, that runs fast.v
+- Fix `v install` for the FreeBSD instance that updates docs.vlang.io .
+- ci: use macos-13 for cross_ci.yml to force the old non m1 runner
+- v.builder: update macos->linux cross compile message (~22MB -> ~77MB)
+- v.pref: fix new pref test on FreeBSD (#21385)
+- ci: stop earlier on vc/v.c files, that may break on systems != linux (#21397)
+- Fix compilation on macos-arm with `-cstrict`; run macos ci also on the arm runner (#21408)
+- ci: use `v` instead of `./v` in the platform linux/macos/windows/_ci.yml files (#21454)
+- ci: add a retry to vcreate_init_test.v (it is sporadically flaky on macos)
+- sync,os,thirdparty: fix cross compilation from macos to windows (#21484)
+- os: rename os_structs_stat_windows.v to os_structs_stat_windows.c.v to fix `v -Wimpure-v -os windows vlib/os/os_stat_test.v`
+- Default to `-cc clang` on FreeBSD in `cmd/tools/vtest_test.v` (#21534)
+
+
+
 ## V 0.4.5
 *20 March 2024*
 
@@ -118,6 +450,7 @@
 - x.crypto: add sm4 module (#20651)
 - crypto.aes: optimise performance (#20674)
 - os: add proper process termination with p.signal_term() (#20671)
+- os: simplify and unify os.join_path and os.join_path_single, and add more tests (#21494)
 - bitfield: enhance operation with multiple flags (#20683)
 - os: fix File.read() in JS backends (fix #20501) (#20633)
 - os: add error_posix() and error_win32() for explicit platform error handling and default behavior (#20694)
