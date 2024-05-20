@@ -460,7 +460,7 @@ fn (dl &Dlmalloc) compute_tree_index(size usize) u32 {
 		return dlmalloc.n_tree_bins - 1
 	} else {
 		k := sizeof(usize) * 8 - 1 - usize_leading_zeros(x)
-		return u32((k << 1) + (size >> (k + dlmalloc.tree_bin_shift - 1) & 1))
+		return u32((k << 1) + ((size >> (k + dlmalloc.tree_bin_shift - 1)) & 1))
 	}
 }
 
