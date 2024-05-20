@@ -1437,8 +1437,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 
 	using_new_err_struct_save := c.using_new_err_struct
 	// TODO: remove; this avoids a breaking change in syntax
-	if '${node.expr}' == 'err' {
-		c.using_new_err_struct = true
+	if node.expr is ast.Ident {
+		if node.expr.str() == 'err' {
+			c.using_new_err_struct = true
+		}
 	}
 
 	// T.name, typeof(expr).name
@@ -1545,7 +1547,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return ast.u32_type
 		}
 	}
-	mut unknown_field_msg := 'type `${sym.name}` has no field named `${field_name}`'
+	mut unknown_field_msg := ''
 	mut has_field := false
 	mut field := ast.StructField{}
 	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
@@ -1698,6 +1700,9 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.error('`${unwrapped_sym.name}` has no property `${node.field_name}`', node.pos)
 		}
 	} else {
+		if unknown_field_msg == '' {
+			unknown_field_msg = 'type `${sym.name}` has no field named `${field_name}`'
+		}
 		if sym.info is ast.Struct {
 			if c.smartcast_mut_pos != token.Pos{} {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
