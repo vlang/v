@@ -44,7 +44,7 @@ pub fn module_is_builtin(mod string) bool {
 
 @[direct_array_access]
 pub fn tabs(n int) string {
-	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+	return if n >= 0 && n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
 }
 
 //
