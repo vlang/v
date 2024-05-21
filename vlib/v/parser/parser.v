@@ -2105,6 +2105,9 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	if p.pref.skip_warnings {
 		return
 	}
+	if p.pref.skip_notes {
+		return
+	}
 	if p.is_generated {
 		return
 	}
