@@ -258,7 +258,7 @@ you will need additional development libraries for your system.
 
 | System              | Installation method                                                                                |
 |---------------------|----------------------------------------------------------------------------------------------------|
-| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev libgl-dev`                                                        |
+| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev libgl-dev libasound2-dev`                               |
 | Fedora/RH/CentOS    | `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel`                        |
 | NixOS               | add `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev` to `environment.systemPackages` |
 

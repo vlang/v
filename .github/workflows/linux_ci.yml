@@ -42,7 +42,7 @@ jobs:
         run: |
           v retry -- sudo apt update
           v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
           # The following is needed for examples/wkhtmltopdf.v
           v retry -- wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base
@@ -122,7 +122,7 @@ jobs:
         run: |
           v retry -- sudo apt update
           v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
       - name: Recompile V with -cstrict and gcc
         run: v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
@@ -230,7 +230,7 @@ jobs:
         run: |
           v retry -- sudo apt update
           v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev
+          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
           v retry -- sudo apt install --quiet -y clang
       - name: Recompile V with -cstrict and clang
         run: v -cc clang -cg -cstrict -o v cmd/v
