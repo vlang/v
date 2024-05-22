@@ -7,6 +7,10 @@ module builtin
 // ----- value to string functions -----
 //
 
+pub struct VContext {
+	allocator int
+}
+
 // type u8 = byte
 type byte = u8
 

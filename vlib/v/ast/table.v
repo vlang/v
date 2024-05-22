@@ -676,9 +676,10 @@ pub fn (t &Table) sym_by_idx(idx int) &TypeSymbol {
 	return t.type_symbols[idx]
 }
 
+@[direct_array_access]
 pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	idx := typ.idx()
-	if idx > 0 {
+	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
 	// this should never happen
@@ -688,10 +689,10 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 }
 
 // final_sym follows aliases until it gets to a "real" Type
-@[inline]
+@[direct_array_access]
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
-	if idx > 0 {
+	if idx > 0 && idx < t.type_symbols.len {
 		cur_sym := t.type_symbols[idx]
 		if cur_sym.info is Alias {
 			idx = cur_sym.info.parent_type.idx()
@@ -1540,7 +1541,8 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		if typ != voidptr_type && typ != nil_type && !inter_sym.info.types.contains(typ) {
+		if typ != voidptr_type && typ != nil_type && typ != none_type
+			&& !inter_sym.info.types.contains(typ) {
 			inter_sym.info.types << typ
 		}
 		if !inter_sym.info.types.contains(voidptr_type) {

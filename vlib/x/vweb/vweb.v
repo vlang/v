@@ -391,7 +391,7 @@ fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut bytes_to_write := int(params.file_responses[fd].total - params.file_responses[fd].pos)
 
-	$if linux {
+	$if linux || freebsd {
 		bytes_written := sendfile(fd, params.file_responses[fd].file.fd, bytes_to_write)
 		params.file_responses[fd].pos += bytes_written
 	} $else {

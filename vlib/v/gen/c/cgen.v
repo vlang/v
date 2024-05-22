@@ -2420,9 +2420,9 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		field_styp := g.typ(field.typ)
 		if got_sym.kind in [.sum_type, .interface_] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
-			sb.write_string(', .${field.name} = ptr->${field.name}')
+			sb.write_string(', .${c_name(field.name)} = ptr->${field.name}')
 		} else {
-			sb.write_string(', .${field.name} = (${field_styp}*)((char*)${ptr} + __offsetof_ptr(${ptr}, ${type_cname}, ${field.name}))')
+			sb.write_string(', .${c_name(field.name)} = (${field_styp}*)((char*)${ptr} + __offsetof_ptr(${ptr}, ${type_cname}, ${c_name(field.name)}))')
 		}
 	}
 	sb.writeln('};\n}')
@@ -2650,7 +2650,7 @@ fn cescape_nonascii(original string) string {
 			write_octal_escape(mut b, c)
 			continue
 		}
-		b.write_u8(c)
+		b << c
 	}
 	res := b.str()
 	return res
@@ -6579,7 +6579,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				if sym.info.fields.len > 0 {
 					g.writeln('\t// pointers to common sumtype fields')
 					for field in sym.info.fields {
-						g.type_definitions.writeln('\t${g.typ(field.typ.ref())} ${field.name};')
+						g.type_definitions.writeln('\t${g.typ(field.typ.ref())} ${c_name(field.name)};')
 					}
 				}
 				g.type_definitions.writeln('};')

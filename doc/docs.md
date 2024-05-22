@@ -2066,7 +2066,7 @@ from `low` up to *but not including* `high`.
 > This exclusive range notation and zero-based indexing follow principles of
 logical consistency and error reduction. As Edsger W. Dijkstra outlines in
 'Why Numbering Should Start at Zero'
-([EWD831](https://www.cs.utexas.edu/users/EWD/transcriptions/EWD08xx/EWD831.html)), 
+([EWD831](https://www.cs.utexas.edu/users/EWD/transcriptions/EWD08xx/EWD831.html)),
 zero-based indexing aligns the index with the preceding elements in a sequence,
 simplifying handling and minimizing errors, especially with adjacent subsequences.
 This logical and efficient approach shapes our language design, emphasizing clarity
@@ -3973,6 +3973,11 @@ fn main() {
 	println(user.name) // "Charles"
 
 	user2 := repo.find_user_by_id2(10) or { return }
+
+	// To create an Option var directly:
+	my_optional_int := ?int(none)
+	my_optional_string := ?string(none)
+	my_optional_user := ?User(none)
 }
 ```
 
@@ -6224,7 +6229,7 @@ See also [Cross Compilation](#cross-compilation).
 
 ## Debugger
 
-To use the native *V debugger*, add the `$dbg` statement to your source, where you 
+To use the native *V debugger*, add the `$dbg` statement to your source, where you
 want the debugger to be invoked.
 
 ```v
@@ -6234,18 +6239,18 @@ fn main() {
 }
 ```
 
-Running this V code, you will get the debugger REPL break when the execution 
+Running this V code, you will get the debugger REPL break when the execution
 reaches the `$dbg` statement.
 
 ```
 $ v run example.v
 Break on [main] main in example.v:3
-example.v:3 vdbg> 
+example.v:3 vdbg>
 ```
 
 At this point, execution is halted, and the debugger is now available.
 
-To see the available commands, type 
+To see the available commands, type
 ?, h or help. (Completion for commands works - Non-Windows only)
 
 ```
@@ -6311,7 +6316,7 @@ example.v:3 vdbg> l
 0005  }
 ```
 
-The default is read 3 lines before and 3 lines after, but you can 
+The default is read 3 lines before and 3 lines after, but you can
 pass a parameter to the command to read more lines, like `l 5`.
 
 Now, lets watch the variable changing on this loop.
@@ -6331,21 +6336,21 @@ i = 1 (int)
 
 `i` and it's value is automatically printed, because it is in the watch list.
 
-To repeat the last command issued, in this case the `c` command, 
+To repeat the last command issued, in this case the `c` command,
 just hit the *enter* key.
 
 ```
-example.v:3 vdbg> 
+example.v:3 vdbg>
 Break on [main] main in example.v:3
 i = 2 (int)
-example.v:3 vdbg> 
+example.v:3 vdbg>
 Break on [main] main in example.v:3
 i = 3 (int)
 example.v:3 vdbg>
 ```
 
 You can also see memory usage with `mem` or `memory` command, and
-check if the current context is an anon function (`anon?`), a method (`method?`) 
+check if the current context is an anon function (`anon?`), a method (`method?`)
 or a generic method (`generic?`) and clear the terminal window (`clear`).
 
 ## Call stack
@@ -6387,7 +6392,7 @@ example.v:5    |   > main.test
 
 ## Trace
 
-Another feature of `v.debug` is the possibility to add hook functions 
+Another feature of `v.debug` is the possibility to add hook functions
 before and after each function call.
 
 To enable this feature, add the `-d trace` switch when building or running

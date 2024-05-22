@@ -30,7 +30,7 @@ fn C.photon_set_log_output_stderr()
 fn C.photon_set_log_output_null()
 fn C.photon_join_current_thread_into_workpool() int
 fn C.photon_thread_create_and_migrate_to_work_pool(f voidptr, arg voidptr)
-fn C.photon_thread_create(f voidptr, arg voidptr)
+fn C.photon_thread_create(f voidptr, arg voidptr, stack_size u64)
 fn C.photon_thread_migrate()
 
 // fn C.photon_thread_migrate(work_pool voidptr)

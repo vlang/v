@@ -1435,6 +1435,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					continue
 				}
 			}
+			// if first_sym.name == 'VContext' && f.params[0].name == 'ctx' { // TODO use int comparison for perf
+			//}
+			/*
+			if param_typ_sym.info is ast.Struct && param_typ_sym.name == 'VContext' {
+				c.note('ok', call_arg.pos)
+				continue
+			}
+			*/
 			c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 		}
 		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
@@ -2644,6 +2652,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if nr_args < min_required_params {
 		if min_required_params == nr_args + 1 {
+			// params struct?
 			last_typ := f.params.last().typ
 			last_sym := c.table.sym(last_typ)
 			if last_sym.info is ast.Struct {
@@ -2658,6 +2667,19 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 					return
 				}
 			}
+			// Implicit context first arg?
+			/*
+			first_typ := f.params[0].typ
+			first_sym := c.table.sym(first_typ)
+			if first_sym.info is ast.Struct {
+				if c.fileis('a.v') {
+					if first_sym.name == 'VContext' && f.params[0].name == 'ctx' { // TODO use int comparison for perf
+						// c.error('got ctx ${first_sym.name}', node.pos)
+						return
+					}
+				}
+			}
+			*/
 		}
 		c.error('expected ${min_required_params} arguments, but got ${nr_args}', node.pos)
 		return error('')

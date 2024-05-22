@@ -65,11 +65,13 @@ pub fn (mut b Builder) clear() {
 }
 
 // write_u8 appends a single `data` byte to the accumulated buffer
+@[inline]
 pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
+@[inline]
 pub fn (mut b Builder) write_byte(data u8) {
 	b << data
 }

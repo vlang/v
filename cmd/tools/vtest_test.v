@@ -13,7 +13,11 @@ fn testsuite_end() {
 }
 
 fn testsuite_begin() {
-	os.setenv('VFLAGS', '', true)
+	$if freebsd {
+		os.setenv('VFLAGS', '-cc clang', true)
+	} $else {
+		os.setenv('VFLAGS', '', true)
+	}
 	os.setenv('VCOLORS', 'never', true)
 	os.setenv('VJOBS', '2', true)
 	os.rmdir_all(tpath) or {}

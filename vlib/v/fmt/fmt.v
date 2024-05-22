@@ -924,9 +924,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		}
 	}
 	f.inside_const = true
-	defer {
-		f.inside_const = false
-	}
+	defer { f.inside_const = false }
 	if !node.is_block {
 		f.write('const ')
 	}
@@ -975,13 +973,30 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	f.writeln('')
 }
 
-pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
-	f.write('defer {')
-	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-		f.writeln('')
+fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
+	f.write('defer ')
+	if node.stmts.len == 0 {
+		f.writeln('{}')
+	} else if node.stmts.len == 1 && node.pos.line_nr == node.pos.last_line
+		&& stmt_is_single_line(node.stmts[0]) {
+		f.write('{ ')
+		// the control stmts (return/break/continue...) print a newline inside them,
+		// so, since this'll all be on one line, trim any possible whitespace
+		str := f.node_str(node.stmts[0]).trim_space()
+		// single_line := ' defer { ${str} }'
+		// if single_line.len + f.line_len <= fmt.max_len {
+		// f.write(single_line)
+		// return
+		//}
+		f.write(str)
+
+		// f.stmt(node.stmts[0])
+		f.writeln(' }')
+	} else {
+		f.writeln('{')
 		f.stmts(node.stmts)
+		f.writeln('}')
 	}
-	f.writeln('}')
 }
 
 pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
@@ -1079,9 +1094,7 @@ pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
 fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	prev_fn_scope := f.fn_scope
 	f.fn_scope = node.scope
-	defer {
-		f.fn_scope = prev_fn_scope
-	}
+	defer { f.fn_scope = prev_fn_scope }
 	if node.language == .v || (node.is_method && node.language == .js) {
 		if !node.no_body {
 			f.write(' {')
@@ -1949,9 +1962,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any'] {
 			f.in_lambda_depth++
-			defer {
-				f.in_lambda_depth--
-			}
+			defer { f.in_lambda_depth-- }
 		}
 		if node.left is ast.Ident {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
@@ -2544,9 +2555,7 @@ const wsinfix_depth_max = 10
 
 fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
 	f.wsinfix_depth++
-	defer {
-		f.wsinfix_depth--
-	}
+	defer { f.wsinfix_depth-- }
 	for i, cnd in conditions {
 		c := cnd.trim_space()
 		if f.line_len + c.len < fmt.break_points[penalties[i]] {

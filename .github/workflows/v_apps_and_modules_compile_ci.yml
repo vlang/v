@@ -30,7 +30,8 @@ jobs:
       - name: Install dependencies
         run: |
           v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          v retry -- sudo apt install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
+          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev xfonts-75dpi xfonts-base
           v retry -- sudo apt install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
 
       - name: Test vtcc

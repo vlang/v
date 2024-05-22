@@ -8,6 +8,7 @@ module time
 #include <errno.h>
 
 pub struct C.tm {
+pub mut:
 	tm_sec    int
 	tm_min    int
 	tm_hour   int
