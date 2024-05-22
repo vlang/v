@@ -402,6 +402,9 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			if expr.typ == ast.i64_type {
 				return cast_expr_value.i64() or { return none }
 			}
+			if expr.typ == ast.int_type {
+				return cast_expr_value.i64() or { return none }
+			}
 			//
 			if expr.typ == ast.u8_type {
 				return cast_expr_value.u8() or { return none }
