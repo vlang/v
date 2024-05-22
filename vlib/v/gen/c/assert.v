@@ -183,7 +183,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr {
-			if expr.expr is ast.FloatLiteral {
+			if typ.is_float() || g.table.final_sym(typ).is_float() {
 				g.gen_expr_to_string(expr.expr, typ)
 			} else {
 				g.write(ctoslit(unknown_value))
