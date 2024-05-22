@@ -1,6 +1,7 @@
 name: Bootstrapping CI
 
 on:
+  workflow_dispatch:
   push:
     paths-ignore:
       - '**.yml'

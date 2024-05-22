@@ -1,6 +1,7 @@
 name: CI Linux
 
 on:
+  workflow_dispatch:
   push:
     paths-ignore:
       - '**.md'

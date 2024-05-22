@@ -12,6 +12,7 @@ name: Sanitized CI
 ## V modules.
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '!**'
