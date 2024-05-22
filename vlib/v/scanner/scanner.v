@@ -257,14 +257,14 @@ fn (mut s Scanner) ident_name() string {
 		}
 		break
 	}
-	name := s.text[start..s.pos]
+	name := s.text.substr_unsafe(start, s.pos)
 	s.pos--
 	return name
 }
 
 fn (s Scanner) num_lit(start int, end int) string {
 	if s.is_fmt {
-		return s.text[start..end]
+		return s.text.substr_unsafe(start, end)
 	}
 	unsafe {
 		txt := s.text.str
