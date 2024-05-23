@@ -20,6 +20,8 @@ const hw_native_no_builtin_size_limit = 300
 
 const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 
+const clang_path = os.find_abs_path_of_executable('clang') or { '' }
+
 fn main() {
 	mut commands := get_all_commands()
 	// summary
@@ -138,6 +140,23 @@ fn get_all_commands() []Command {
 			okmsg: 'V can run hello world.'
 			runcmd: .execute
 			expect: 'Hello, World!\n'
+		}
+		if clang_path != '' {
+			res << Command{
+				line: '${vexe} -os freebsd -gc none examples/hello_world.v'
+				okmsg: 'V cross compiles hello_world.v, to a FreeBSD executable'
+				rmfile: 'examples/hello_world'
+				after_cb: fn () ! {
+					for file in ['examples/hello_world',
+						os.join_path(os.vmodules_dir(), 'freebsdroot/usr/include/stdio.h')] {
+						if !os.exists(file) {
+							return error('>> file ${file} does not exist')
+						}
+					}
+				}
+			}
+		} else {
+			eprintln('Testing cross compilation to FreeBSD, needs clang.')
 		}
 		if os.getenv('V_CI_MUSL').len == 0 {
 			for compiler_name in ['clang', 'gcc'] {
