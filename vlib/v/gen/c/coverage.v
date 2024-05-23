@@ -6,6 +6,21 @@ module c
 import v.token
 
 @[inline]
+fn current_time() u64 {
+	unsafe {
+		$if windows {
+			tm := u64(0)
+			C.QueryPerformanceCounter(&tm)
+			return tm
+		} $else {
+			ts := C.timespec{}
+			C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
+			return u64(ts.tv_sec) * 1000000000 + u64(ts.tv_nsec)
+		}
+	}
+}
+
+@[inline]
 fn (mut g Gen) write_coverage_point(pos token.Pos) {
 	if g.unique_file_path_hash !in g.coverage_files {
 		g.coverage_files[g.unique_file_path_hash] = &CoverageInfo{
@@ -24,15 +39,26 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 }
 
 fn (mut g Gen) write_coverage_stats() {
-	is_stdout := g.pref.coverage_file == '-'
+	is_stdout := false // g.pref.coverage_file == '-'
 
+	g.cov_declarations.writeln('char* vcoverage_fnv1a(const u8* data) {')
+	g.cov_declarations.writeln('\tu32 h = 2166136261UL;')
+	g.cov_declarations.writeln('\tsize_t size = strlen(data);')
+	g.cov_declarations.writeln('\tfor (size_t i = 0; i < size; i++) {')
+	g.cov_declarations.writeln('\th ^= data[i];')
+	g.cov_declarations.writeln('\th *= 16777619;')
+	g.cov_declarations.writeln('\t}')
+	g.cov_declarations.writeln('\treturn u32_str(h).str;')
+	g.cov_declarations.writeln('}')
+	g.cov_declarations.writeln('')
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
 	if is_stdout {
 		g.cov_declarations.writeln('\tprintf("V coverage\\n");')
 		g.cov_declarations.writeln('\tprintf("${'-':50r}\\n");')
 	} else {
-		g.cov_declarations.writeln('\tFILE *fp = stdout;')
-		g.cov_declarations.writeln('\tfp = fopen ("${g.pref.coverage_file}", "w+");')
+		g.cov_declarations.writeln('time_t rawtime;')
+		g.cov_declarations.writeln('time(&rawtime);')
+		g.cov_declarations.writeln('\tFILE *fp = fopen(vcoverage_fnv1a(asctime(localtime(&rawtime))), "w+");')
 		g.cov_declarations.writeln('\tfprintf(fp, "V coverage\\n");')
 		g.cov_declarations.writeln('\tfprintf(fp, "${'-':50r}\\n");')
 	}
@@ -47,11 +73,13 @@ fn (mut g Gen) write_coverage_stats() {
 		g.cov_declarations.writeln('\t\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i)')
 		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
 		g.cov_declarations.writeln('\t\tt_counter += counter;')
+		g.cov_declarations.writeln('\t\tif (counter) {')
 		if is_stdout {
-			g.cov_declarations.writeln('\t\tprintf("[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
+			g.cov_declarations.writeln('\t\t\tprintf("[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
 		} else {
-			g.cov_declarations.writeln('\t\tfprintf(fp, "[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
+			g.cov_declarations.writeln('\t\t\tfprintf(fp, "[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
 		}
+		g.cov_declarations.writeln('\t\t}')
 		g.cov_declarations.writeln('\t}')
 		last_offset += nr_points
 	}

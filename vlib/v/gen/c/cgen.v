@@ -565,10 +565,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		b.writeln('\n// V profile counters:')
 		b.write_string(g.pcs_declarations.str())
 	}
-	if g.pref.is_coverage {
-		b.writeln('\n// V coverage:')
-		b.write_string(g.cov_declarations.str())
-	}
 	b.writeln('\n// V includes:')
 	b.write_string(g.includes.str())
 	b.writeln('\n// Enum definitions:')
@@ -644,6 +640,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		for fn_def in g.anon_fn_definitions {
 			b.writeln(fn_def)
 		}
+	}
+	if g.pref.is_coverage {
+		b.writeln('\n// V coverage:')
+		b.write_string(g.cov_declarations.str())
 	}
 	b.writeln('\n// end of V out')
 	mut header := b.last_n(b.len)
