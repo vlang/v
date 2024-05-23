@@ -1792,7 +1792,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		if field.typ == ast.int_type {
 			if mut field.expr is ast.IntegerLiteral {
 				mut is_large := field.expr.val.len > 13
-				if !is_large && field.expr.val.len > 8 {
+				if !is_large && field.expr.val.len > 9 {
 					val := field.expr.val.i64()
 					is_large = val > checker.int_max || val < checker.int_min
 				}
