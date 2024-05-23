@@ -212,38 +212,45 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	unsafe {
 		// strings
 		if typ == .si_s {
-			mut s := ''
 			if upper_case {
-				s = data.d.d_s.to_upper()
+				s := data.d.d_s.to_upper()
+				if width == 0 {
+					sb.write_string(s)
+				} else {
+					strconv.format_str_sb(s, bf, mut sb)
+				}
+				s.free()
 			} else {
-				s = data.d.d_s.clone()
+				if width == 0 {
+					sb.write_string(data.d.d_s)
+				} else {
+					strconv.format_str_sb(data.d.d_s, bf, mut sb)
+				}
 			}
-			if width == 0 {
-				sb.write_string(s)
-			} else {
-				strconv.format_str_sb(s, bf, mut sb)
-			}
-			s.free()
 			return
 		}
 
 		if typ == .si_r {
 			if width > 0 {
-				mut s := ''
 				if upper_case {
-					s = data.d.d_s.to_upper()
+					s := data.d.d_s.to_upper()
+					for _ in 1 .. (1 + (if width > 0 {
+						width
+					} else {
+						0
+					})) {
+						sb.write_string(s)
+					}
+					s.free()
 				} else {
-					s = data.d.d_s.clone()
+					for _ in 1 .. (1 + (if width > 0 {
+						width
+					} else {
+						0
+					})) {
+						sb.write_string(data.d.d_s)
+					}
 				}
-
-				for _ in 1 .. (1 + (if width > 0 {
-					width
-				} else {
-					0
-				})) {
-					sb.write_string(s)
-				}
-				s.free()
 			}
 			return
 		}

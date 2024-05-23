@@ -12,6 +12,9 @@
 function setupScrollSpy() {
 	const mainContent = document.querySelector('#main-content');
 	const toc = mainContent.querySelector('.doc-toc');
+	if (!toc) {
+		return;
+	}
 	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
 	let lastActive = null;

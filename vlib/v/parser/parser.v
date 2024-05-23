@@ -2105,6 +2105,9 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	if p.pref.skip_warnings {
 		return
 	}
+	if p.pref.skip_notes {
+		return
+	}
 	if p.is_generated {
 		return
 	}
@@ -2288,6 +2291,21 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 		// `generic_fn[int]`
 		concrete_types = p.parse_concrete_types()
 	}
+	typ := match p.peek_tok.kind {
+		.string {
+			ast.string_type_idx
+		}
+		.lsbr {
+			ast.array_type_idx
+		}
+		else {
+			if p.tok.kind == .dot {
+				if var := p.scope.find_var(name) { var.typ } else { 0 }
+			} else {
+				0
+			}
+		}
+	}
 	return ast.Ident{
 		tok_kind: p.tok.kind
 		kind: .unresolved
@@ -2299,6 +2317,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 		is_mut: is_mut
 		mut_pos: mut_pos
 		info: ast.IdentVar{
+			typ: typ
 			is_mut: is_mut
 			is_static: is_static
 			is_volatile: is_volatile
@@ -2696,10 +2715,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			mod = original_name
 			original_name = p.peek_token(4).lit
 		}
-		mut name := original_name
-		if mod.len > 0 {
-			name = '${mod}.${name}'
-		}
+		name := if mod != '' { '${mod}.${original_name}' } else { original_name }
 		name_w_mod := p.prepend_mod(name)
 		is_c_pointer_cast := language == .c && prev_tok_kind == .amp // `&C.abc(x)` is *always* a cast
 		is_c_type_cast := language == .c && (original_name in ['intptr_t', 'uintptr_t']

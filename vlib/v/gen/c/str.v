@@ -8,9 +8,13 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"${escaped_val}"')
+		g.write('"')
+		g.write(escaped_val)
+		g.write('"')
 	} else {
-		g.write('_SLIT("${escaped_val}")')
+		g.write('_SLIT("')
+		g.write(escaped_val)
+		g.write('")')
 	}
 }
 
@@ -149,7 +153,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
-		g.write('${str_fn_name}(')
+		g.write(str_fn_name)
+		g.write('(')
 		if str_method_expects_ptr && !is_ptr {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.typ(typ)}, ')

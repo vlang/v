@@ -16,7 +16,7 @@ import runtime
 // math.bits is needed by strconv.ftoa
 pub const builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings',
 	'builtin']
-pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
+pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']!
 
 pub const external_module_dependencies_for_tool = {
 	'vdoc': ['markdown']
@@ -34,7 +34,7 @@ const const_tabs = [
 	'\t\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t\t\t',
-]
+]!
 
 pub const nr_jobs = runtime.nr_jobs()
 
@@ -42,8 +42,9 @@ pub fn module_is_builtin(mod string) bool {
 	return mod in util.builtin_module_parts
 }
 
+@[direct_array_access]
 pub fn tabs(n int) string {
-	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+	return if n >= 0 && n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
 }
 
 //

@@ -51,11 +51,11 @@ fn test_v_cmds_and_flags() {
 	too_many_targets_res := os.execute('${vexe} ${vroot}/examples/hello_world.v ${vroot}/examples/fizz_buzz.v')
 	assert too_many_targets_res.output.trim_space() == 'Too many targets. Specify just one target: <target.v|target_directory>.'
 
-	unkown_arg_res := os.execute('${vexe} -xyz')
-	assert unkown_arg_res.output.trim_space() == 'Unknown argument `-xyz`'
+	unknown_arg_res := os.execute('${vexe} -xyz')
+	assert unknown_arg_res.output.trim_space() == 'Unknown argument `-xyz`'
 
-	unkown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
-	assert unkown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
+	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
+	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 
 	no_run_files_res := os.execute('${vexe} run')
 	assert no_run_files_res.output.trim_space() == 'v run: no v files listed'

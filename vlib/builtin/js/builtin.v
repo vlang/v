@@ -32,7 +32,7 @@ pub fn (err IError) str() string {
 			err.msg()
 		}
 		MessageError {
-			err.msg()
+			err.str()
 		}
 		else {
 			// >> Hack to allow old style custom error implementations
@@ -66,6 +66,11 @@ struct MessageError {
 pub:
 	msg  string
 	code int
+}
+
+// str returns the message and code of the MessageError
+pub fn (err MessageError) str() string {
+	return err.msg
 }
 
 // msg returns the message of the MessageError

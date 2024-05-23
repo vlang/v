@@ -37,13 +37,13 @@ pub fn new_sourcemap(file string, source_root string, sources_content_inline boo
 
 // Add a single mapping from original source line and column to the generated source's line and column for this source map being created.
 pub fn (mut sm SourceMap) add_mapping(source_name string, source_position SourcePositionType, gen_line u32, gen_column u32, name string) {
-	if source_name.len == 0 {
+	if source_name == '' {
 		panic('add_mapping, source_name should not be ""')
 	}
 
 	sources_ind := sm.sources.add(source_name)
 
-	names_ind := if name.len != 0 {
+	names_ind := if name != '' {
 		NameIndexType(IndexNumber(sm.names.add(name)))
 	} else {
 		NameIndexType(Empty{})
@@ -53,14 +53,14 @@ pub fn (mut sm SourceMap) add_mapping(source_name string, source_position Source
 
 // Add multiple mappings from the same source
 pub fn (mut sm SourceMap) add_mapping_list(source_name string, mapping_list []MappingInput) ! {
-	if source_name.len == 0 {
+	if source_name == '' {
 		panic('add_mapping_list, source_name should not be ""')
 	}
 
 	sources_ind := sm.sources.add(source_name)
 
 	for mapping in mapping_list {
-		names_ind := if mapping.name.len != 0 {
+		names_ind := if mapping.name != '' {
 			NameIndexType(IndexNumber(sm.names.add(mapping.name)))
 		} else {
 			NameIndexType(Empty{})

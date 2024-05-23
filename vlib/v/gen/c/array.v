@@ -94,7 +94,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 
 		ret_typ := g.typ(node.typ)
 		elem_typ := g.typ(node.elem_type)
-		if var_name.len == 0 {
+		if var_name == '' {
 			g.write('${ret_typ} ${past.tmp_var} =')
 		}
 		g.write('{')
@@ -300,7 +300,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 
 		ret_typ := g.typ(node.typ)
 		elem_typ := g.typ(node.elem_type)
-		if var_name.len == 0 {
+		if var_name == '' {
 			g.write('${ret_typ} ${past.tmp_var} =')
 		}
 		if is_default_array {

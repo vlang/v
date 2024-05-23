@@ -228,7 +228,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
-			skip_files << 'examples/gg/gg2.v'
 			skip_files << 'examples/pico/pico.v'
 			skip_files << 'examples/pico/raw_callback.v'
 			skip_files << 'examples/sokol/fonts.v'
@@ -265,7 +264,9 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			}
 		}
 		if testing.runner_os != 'Linux' || testing.github_job != 'tcc' {
-			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
+				skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+			}
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 			skip_files << 'vlib/x/vweb/tests/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 			skip_files << 'vlib/veb/tests/veb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
@@ -279,6 +280,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		}
 		if testing.github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
+			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
 		if testing.github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,
@@ -291,10 +294,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/08_sdf/sdf.v'
 			// Skip obj_viewer code in the CI
 			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
-			// skip the audio examples too on most CI jobs
-			skip_files << 'examples/sokol/sounds/melody.v'
-			skip_files << 'examples/sokol/sounds/wav_player.v'
-			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
 		// requires special compilation flags: `-b wasm -os browser`, skip it for now:
 		skip_files << 'examples/wasm/mandelbrot/mandelbrot.wasm.v'

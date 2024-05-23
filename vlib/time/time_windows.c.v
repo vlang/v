@@ -7,6 +7,7 @@ module time
 // #include <sysinfoapi.h>
 
 pub struct C.tm {
+pub mut:
 	tm_year int
 	tm_mon  int
 	tm_mday int
@@ -16,6 +17,7 @@ pub struct C.tm {
 }
 
 pub struct C._FILETIME {
+pub mut:
 	dwLowDateTime  u32
 	dwHighDateTime u32
 }

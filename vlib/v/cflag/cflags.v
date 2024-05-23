@@ -59,7 +59,7 @@ pub fn (cf &CFlag) format() string {
 	} else {
 		value = cf.eval()
 	}
-	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
+	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value != '' {
 		return '${cf.name}${value}'.trim_space()
 	}
 	// convert to absolute path

@@ -19,7 +19,7 @@ pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp u64) {
 }
 
 pub fn validate_commit_exists(commit string) {
-	if commit.len == 0 {
+	if commit != '' {
 		return
 	}
 	cmd := 'git cat-file -t "${commit}" ' // windows's cmd.exe does not support ' for quoting

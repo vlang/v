@@ -1,5 +1,5 @@
 fn issue(data string) ?(int, string) {
-	if data.len == 0 {
+	if data == '' {
 		return none
 	}
 	return data.len, data

@@ -379,7 +379,7 @@ fn Config.init(vargs []string, targs []string) !Config {
 			}
 			else {
 				if arg.starts_with('-') {
-					errs << 'error: unkown flag `${arg}`'
+					errs << 'error: unknown flag `${arg}`'
 					continue
 				}
 				if !os.is_dir(os.join_path(vroot, arg)) {
