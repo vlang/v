@@ -593,6 +593,13 @@ pub fn (mut v Builder) cc() {
 			return
 		}
 	}
+	// Cross compiling for FreeBSD
+	if v.pref.os == .freebsd {
+		$if !freebsd {
+			v.cc_freebsd_cross()
+			return
+		}
+	}
 	//
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
@@ -840,6 +847,77 @@ fn (mut b Builder) cc_linux_cross() {
 		return
 	}
 	println(out_name + ' has been successfully cross compiled for linux.')
+}
+
+fn (mut b Builder) cc_freebsd_cross() {
+	b.setup_ccompiler_options(b.pref.ccompiler)
+	b.build_thirdparty_obj_files()
+	b.setup_output_name()
+	parent_dir := os.vmodules_dir()
+	if !os.exists(parent_dir) {
+		os.mkdir(parent_dir) or { panic(err) }
+	}
+	// Download from:
+	// http://ftp.freebsd.org/pub/FreeBSD/releases/amd64/13.2-RELEASE/base.txz
+	sysroot := '/tmp/base13.2' // os.join_path(os.vmodules_dir(), 'freebsdroot')
+	// b.ensure_linuxroot_exists(sysroot)
+	obj_file := b.out_name_c + '.o'
+	cflags := b.get_os_cflags()
+	defines, others, libs := cflags.defines_others_libs()
+	mut cc_args := []string{}
+	cc_args << '-w'
+	cc_args << '-fPIC'
+	cc_args << '-c'
+	cc_args << '-target x86_64-unknown-freebsd14.0' // TODO custom freebsd versions
+	cc_args << defines
+	cc_args << '-I ${sysroot}/include '
+	cc_args << '-I ${sysroot}/usr/include '
+	cc_args << others
+	cc_args << '-o "${obj_file}"'
+	cc_args << '-c "${b.out_name_c}"'
+	cc_args << libs
+	b.dump_c_options(cc_args)
+	mut cc_name := 'cc'
+	mut out_name := b.pref.out_name
+	$if windows {
+		cc_name = 'clang.exe'
+		out_name = out_name.trim_string_right('.exe')
+	}
+	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
+	if b.pref.show_cc {
+		println(cc_cmd)
+	}
+	cc_res := os.execute(cc_cmd)
+	if cc_res.exit_code != 0 {
+		println('Cross compilation for FreeBSD failed (first step, cc). Make sure you have clang installed.')
+		verror(cc_res.output)
+		return
+	}
+	mut linker_args := ['-L${sysroot}/lib/', '-L${sysroot}/usr/lib/', '--sysroot=${sysroot}', '-v',
+		'-o ${out_name}', '-m elf_x86_64', '-dynamic-linker /libexec/ld-elf.so.1',
+		'${sysroot}/usr/lib/crt1.o ${sysroot}/usr/lib/crti.o ${obj_file}', '-lc', '-lcrypto', '-lssl',
+		'-lpthread', '${sysroot}/usr/lib/crtn.o', '-lm', '-lexecinfo'] // execinfo has backtrace
+	// linker_args << cflags.c_options_only_object_files()
+	// -ldl
+	b.dump_c_options(linker_args)
+	// mut ldlld := '${sysroot}/ld.lld'
+	mut ldlld := '/opt/homebrew/opt/llvm/bin/ld.lld'
+	$if windows {
+		ldlld = 'ld.lld.exe'
+	}
+	linker_cmd := '${b.quote_compiler_name(ldlld)} ' + linker_args.join(' ')
+	// s = s.replace('SYSROOT', sysroot) // TODO: $ inter bug
+	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
+	if b.pref.show_cc {
+		println(linker_cmd)
+	}
+	res := os.execute(linker_cmd)
+	if res.exit_code != 0 {
+		println('Cross compilation for FreeBSD failed (second step, lld).')
+		verror(res.output)
+		return
+	}
+	println(out_name + ' has been successfully cross compiled for FreeBSD.')
 }
 
 fn (mut c Builder) cc_windows_cross() {

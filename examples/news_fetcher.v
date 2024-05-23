@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.http
-import json
+import x.json2
 import sync.pool
 
 struct Story {
@@ -16,7 +16,7 @@ fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
 		println('failed to fetch data from /v0/item/${id}.json')
 		return pool.no_result
 	}
-	story := json.decode(Story, resp.body) or {
+	story := json2.decode[Story](resp.body) or {
 		println('failed to decode a story')
 		return pool.no_result
 	}
@@ -30,8 +30,10 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	ids := json.decode([]int, resp.body) or {
-		println('failed to decode topstories.json')
+	println(resp.body)
+	/*
+	ids := json2.decode[[]int](resp.body) or {
+		println('failed to decode topstories.json $err')
 		return
 	}#[0..10]
 	mut fetcher_pool := pool.new_pool_processor(
@@ -43,4 +45,5 @@ fn main() {
 	// by setting the VJOBS environment variable too.
 	// fetcher_pool.set_max_jobs( 4 )
 	fetcher_pool.work_on_items(ids)
+	*/
 }

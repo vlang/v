@@ -569,6 +569,11 @@ void v_free(voidptr ptr);
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
 
+#ifdef __FreeBSD__
+	#include <signal.h>
+	#include <execinfo.h>
+#endif
+
 #ifdef __NetBSD__
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
