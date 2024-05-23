@@ -36,6 +36,11 @@ struct TestDefaultAttribute {
 }
 
 fn test_mysql_orm() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
 	mut db := mysql.connect(
 		host: '127.0.0.1'
 		port: 3306

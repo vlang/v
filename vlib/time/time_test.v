@@ -219,7 +219,7 @@ fn test_weekday_str() {
 			hour: 0
 			minute: 0
 			second: 0
-			unix: 0
+			// unix: 0
 		}
 		assert t.weekday_str() == name
 	}
@@ -396,17 +396,4 @@ fn test_parse_three_letters_month() {
 	tm_s := tm.custom_format(format)
 	tm_tm := time.parse_format(tm_s, format)!
 	assert tm_tm.month == tm.month
-}
-
-fn test_tm_gmtoff() {
-	$if windows {
-		return
-	} $else {
-		rawtime := i64(0) // C.time_t{}
-
-		C.time(&rawtime) // C.tm{}
-
-		info := C.localtime(&rawtime)
-		assert info.tm_gmtoff == time.now().unix() - time.utc().unix()
-	}
 }

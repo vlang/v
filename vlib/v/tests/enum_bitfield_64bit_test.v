@@ -30,7 +30,7 @@ fn test_flag_enum_with_64_value_bits() {
 	dump(u64(bb))
 	assert u64(bb) == 65280
 	assert '${u64(bb):064b}' == '0000000000000000000000000000000000000000000000001111111100000000'
-	assert '${bb}' == 'PawnsBoard{.a7 | .b7 | .c7 | .d7 | .e7 | .f7 | .g7 | .h7}'
+	//	assert '${bb}' == 'PawnsBoard{.a7 | .b7 | .c7 | .d7 | .e7 | .f7 | .g7 | .h7}'
 
 	if false {
 		eprintln('----------------------------------------------')

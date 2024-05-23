@@ -48,16 +48,13 @@ fn test_protect() {
 	form := {
 		csrf_config.token_name: token
 	}
-	cookie_map := {
-		csrf_config.cookie_name: cookie
-	}
 	ctx = vweb.Context{
 		form: form
 		req: http.Request{
 			method: .post
-			cookies: cookie_map
 		}
 	}
+	ctx.req.add_cookie(name: csrf_config.cookie_name, value: cookie)
 	valid := csrf.protect(mut ctx, csrf_config)
 
 	assert valid == true
@@ -85,16 +82,13 @@ fn test_timeout() {
 	form := {
 		short_time_config.token_name: token
 	}
-	cookie_map := {
-		short_time_config.cookie_name: cookie
-	}
 	ctx = vweb.Context{
 		form: form
 		req: http.Request{
 			method: .post
-			cookies: cookie_map
 		}
 	}
+	ctx.req.add_cookie(name: short_time_config.cookie_name, value: cookie)
 
 	valid := csrf.protect(mut ctx, short_time_config)
 
@@ -108,14 +102,11 @@ fn test_valid_origin() {
 	form := {
 		csrf_config.token_name: token
 	}
-	cookie_map := {
-		csrf_config.cookie_name: cookie
-	}
 
 	mut req := http.Request{
 		method: .post
-		cookies: cookie_map
 	}
+	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
 	req.add_header(.origin, 'http://${allowed_origin}')
 	req.add_header(.referer, 'http://${allowed_origin}/test')
 	mut ctx := vweb.Context{
@@ -134,14 +125,10 @@ fn test_invalid_origin() {
 	form := {
 		csrf_config.token_name: token
 	}
-	cookie_map := {
-		csrf_config.cookie_name: cookie
-	}
-
 	mut req := http.Request{
 		method: .post
-		cookies: cookie_map
 	}
+	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
 	req.add_header(.origin, 'http://${allowed_origin}')
 	mut ctx := vweb.Context{
 		form: form
@@ -153,8 +140,8 @@ fn test_invalid_origin() {
 
 	req = http.Request{
 		method: .post
-		cookies: cookie_map
 	}
+	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
 	req.add_header(.referer, 'http://${allowed_origin}/test')
 	ctx = vweb.Context{
 		form: form
@@ -166,8 +153,8 @@ fn test_invalid_origin() {
 
 	req = http.Request{
 		method: .post
-		cookies: cookie_map
 	}
+	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
 	ctx = vweb.Context{
 		form: form
 		req: req
@@ -288,24 +275,25 @@ fn protect_route_util(path string) {
 		method: .post
 		url: 'http://${localserver}/${path}'
 		data: formdata
-		cookies: cookies
 		header: header
 	}
+	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
+	req.add_cookie(name: session_id_cookie_name, value: 'altered')
 
 	res = req.do() or { panic(err) }
 	assert res.status() == .forbidden
 
-	// Everything is valid now and the request should succeed
-	cookies[session_id_cookie_name] = session_id
-
+	//
 	req = http.Request{
 		method: .post
 		url: 'http://${localserver}/${path}'
 		data: formdata
-		cookies: cookies
 		header: header
 	}
+	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
+	req.add_cookie(name: session_id_cookie_name, value: session_id)
 
+	// Everything is valid now and the request should succeed, since session_id_cookie_name will be session_id
 	res = req.do() or { panic(err) }
 	assert res.status() == .ok
 }
@@ -328,13 +316,8 @@ fn testsuite_end() {
 // Utility functions
 
 fn get_token_cookie(session_id string) (string, string) {
-	mut ctx := vweb.Context{
-		req: http.Request{
-			cookies: {
-				session_id_cookie_name: session_id
-			}
-		}
-	}
+	mut ctx := vweb.Context{}
+	ctx.req.add_cookie(name: session_id_cookie_name, value: session_id)
 
 	token := csrf.set_token(mut ctx, csrf_config_origin)
 
