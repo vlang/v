@@ -781,6 +781,22 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 	}
 }
 
+fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
+	crossrepo_url := 'https://github.com/spytheman/freebsd_base13.2'
+	sysroot_git_config_path := os.join_path(sysroot, '.git', 'config')
+	if os.is_dir(sysroot) && !os.exists(sysroot_git_config_path) {
+		// remove existing obsolete unarchived .zip file content
+		os.rmdir_all(sysroot) or {}
+	}
+	if !os.is_dir(sysroot) {
+		println('Downloading files for FreeBSD cross compilation (~458MB) ...')
+		os.system('git clone ${crossrepo_url} ${sysroot}')
+		if !os.exists(sysroot_git_config_path) {
+			verror('Failed to clone `${crossrepo_url}` to `${sysroot}`')
+		}
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	b.setup_ccompiler_options(b.pref.ccompiler)
 	b.build_thirdparty_obj_files()
@@ -857,10 +873,8 @@ fn (mut b Builder) cc_freebsd_cross() {
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir) or { panic(err) }
 	}
-	// Download from:
-	// http://ftp.freebsd.org/pub/FreeBSD/releases/amd64/13.2-RELEASE/base.txz
-	sysroot := '/tmp/base13.2' // os.join_path(os.vmodules_dir(), 'freebsdroot')
-	// b.ensure_linuxroot_exists(sysroot)
+	sysroot := os.join_path(os.vmodules_dir(), 'freebsdroot')
+	b.ensure_freebsdroot_exists(sysroot)
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
