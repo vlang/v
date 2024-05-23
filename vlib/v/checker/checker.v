@@ -15,8 +15,6 @@ import v.pkgconfig
 import v.transformer
 import v.comptime
 
-const int_min = int(0x80000000)
-const int_max = int(0x7FFFFFFF)
 // prevent stack overflows by restricting too deep recursion:
 const expr_level_cutoff_limit = 40
 const stmt_level_cutoff_limit = 40
@@ -1792,9 +1790,9 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		if field.typ == ast.int_type {
 			if mut field.expr is ast.IntegerLiteral {
 				mut is_large := field.expr.val.len > 13
-				if !is_large && field.expr.val.len > 8 {
+				if !is_large && field.expr.val.len > 9 {
 					val := field.expr.val.i64()
-					is_large = val > checker.int_max || val < checker.int_min
+					is_large = overflows_i32(val)
 				}
 				if is_large {
 					c.error('overflow in implicit type `int`, use explicit type casting instead',
