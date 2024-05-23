@@ -1038,7 +1038,7 @@ pub fn last_error() IError {
 }
 
 // Magic constant because zero is used explicitly at times
-pub const error_code_not_set = int(0x7EFEFEFE)
+pub const error_code_not_set = 0x7EFEFEFE
 
 @[params]
 pub struct SystemError {
