@@ -15,8 +15,8 @@ import v.pkgconfig
 import v.transformer
 import v.comptime
 
-const int_min = int(0x80000000)
-const int_max = int(0x7FFFFFFF)
+const int_min = i64(0x80000000)
+const int_max = i64(0x7FFFFFFF)
 // prevent stack overflows by restricting too deep recursion:
 const expr_level_cutoff_limit = 40
 const stmt_level_cutoff_limit = 40
