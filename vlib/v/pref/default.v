@@ -306,12 +306,29 @@ pub fn vexe_path() string {
 	return real_vexe_path
 }
 
+pub fn (p &Preferences) vcross_linker_name() string {
+	vlname := os.getenv('VCROSS_LINKER_NAME')
+	if vlname != '' {
+		return vlname
+	}
+	$if macos {
+		return '/opt/homebrew/opt/llvm/bin/ld.lld'
+	}
+	$if windows {
+		return 'ld.lld.exe'
+	}
+	return 'ld.lld'
+}
+
 pub fn (p &Preferences) vcross_compiler_name() string {
 	vccname := os.getenv('VCROSS_COMPILER_NAME')
 	if vccname != '' {
 		return vccname
 	}
 	if p.os == .windows {
+		if p.os == .freebsd {
+			return 'clang'
+		}
 		if p.m64 {
 			return 'x86_64-w64-mingw32-gcc'
 		}

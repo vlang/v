@@ -877,7 +877,7 @@ fn (mut b Builder) cc_freebsd_cross() {
 	cc_args << '-c "${b.out_name_c}"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := 'cc'
+	mut cc_name := b.pref.vcross_compiler_name()
 	mut out_name := b.pref.out_name
 	$if windows {
 		cc_name = 'clang.exe'
@@ -901,10 +901,7 @@ fn (mut b Builder) cc_freebsd_cross() {
 	// -ldl
 	b.dump_c_options(linker_args)
 	// mut ldlld := '${sysroot}/ld.lld'
-	mut ldlld := '/opt/homebrew/opt/llvm/bin/ld.lld'
-	$if windows {
-		ldlld = 'ld.lld.exe'
-	}
+	mut ldlld := b.pref.vcross_linker_name()
 	linker_cmd := '${b.quote_compiler_name(ldlld)} ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO: $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
