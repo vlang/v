@@ -182,8 +182,10 @@ pub fn (mut am AssetManager) add(asset_type string, file string) bool {
 	}
 	asset := Asset{
 		file_path: file
-		last_modified: time.Time{
-			unix: os.file_last_mod_unix(file)
+		last_modified: unsafe {
+			time.Time{
+				unix: os.file_last_mod_unix(file)
+			}
 		}
 	}
 	if asset_type == 'css' {

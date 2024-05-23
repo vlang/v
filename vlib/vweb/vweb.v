@@ -153,11 +153,10 @@ mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
 	ctx          context.Context = context.EmptyContext{}
-pub:
+pub mut:
 	// HTTP Request
 	req http.Request
 	// TODO: Response
-pub mut:
 	done bool
 	// time.ticks() from start of vweb connection handle.
 	// You can use it to determine how much time is spent on your request.

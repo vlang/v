@@ -3,7 +3,7 @@ import time
 
 fn server_thread(c_chan chan int) {
 	errors_no_data := [net.err_timed_out.code(), int(net.error_ewouldblock), int(net.error_eagain),
-		C.EINTR]
+		int(net.error_eintr)]
 	mut buf := []u8{len: 128}
 	mut times := 0
 	mut read_len := 0

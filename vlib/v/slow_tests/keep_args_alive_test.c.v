@@ -48,7 +48,7 @@ fn tt(mut sem sync.Semaphore) int {
 }
 
 fn waste_mem(n int, mut sem sync.Semaphore) {
-	mut m := []voidptr{len: 30}
+	mut m := []voidptr{len: 30, init: 0}
 	for j := 0; n < 0 || j < n; j++ {
 		i := rand.intn(30) or { 0 }
 		m[i] = unsafe { malloc(10000) }

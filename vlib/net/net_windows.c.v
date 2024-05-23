@@ -15,6 +15,7 @@ pub const msg_dontwait = 0
 pub const error_ewouldblock = WsaError.wsaewouldblock
 pub const error_einprogress = WsaError.wsaeinprogress
 pub const error_eagain = WsaError.wsaewouldblock // on windows, is also wsaewouldblock
+pub const error_eintr = WsaError.wsaeintr
 
 const wsa_v22 = 0x202
 

@@ -45,7 +45,7 @@ fn test_crypto_sha512_384() {
 
 	d.reset()
 	d.write(data) or { assert false }
-	chksum := d.checksum()
+	chksum := d.sum([])
 	assert chksum.hex() == expected
 }
 
@@ -62,7 +62,7 @@ fn test_crypto_sha512_224() {
 
 	d.reset()
 	d.write(data) or { assert false }
-	chksum := d.checksum()
+	chksum := d.sum([])
 	assert chksum.hex() == expected
 }
 
@@ -79,6 +79,6 @@ fn test_crypto_sha512_256() {
 
 	d.reset()
 	d.write(data) or { assert false }
-	chksum := d.checksum()
+	chksum := d.sum([])
 	assert chksum.hex() == expected
 }

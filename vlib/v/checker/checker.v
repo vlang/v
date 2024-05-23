@@ -3258,7 +3258,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.warn('casting `${ft}` to `${tt}` is only allowed in `unsafe` code', node.pos)
 	} else if from_sym.kind == .array_fixed && !from_type.is_ptr() {
-		if !c.pref.translated && !c.file.is_translated {
+		if !c.pref.translated && !c.file.is_translated && !c.inside_unsafe {
 			c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
 		}
 	} else if final_from_sym.kind == .string && final_to_sym.is_number()

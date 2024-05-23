@@ -2,8 +2,8 @@ import db.sqlite
 
 struct Target {
 pub mut:
-	id   int    @[primary; sql: serial]
-	kind string @[nonull]
+	id   int     @[primary; sql: serial]
+	kind ?string
 }
 
 fn add_target(repo Target) !int {
@@ -15,15 +15,13 @@ fn add_target(repo Target) !int {
 		insert repo into Target
 	} or {
 		println(err)
+		assert true
 		return 1
 	}
-
 	assert true
-
-	return 1
+	return 2
 }
 
 fn test_main() {
-	add_target(Target{1, 'foo'}) or { println('>> ${err}') }
-	assert true
+	assert add_target(Target{1, 'foo'}) or { 3 } == 1
 }
