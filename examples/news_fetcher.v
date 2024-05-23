@@ -30,12 +30,14 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	println(resp.body)
+	// TODO bring back once json2 can decode []int
 	/*
 	ids := json2.decode[[]int](resp.body) or {
 		println('failed to decode topstories.json $err')
 		return
 	}#[0..10]
+	*/
+	ids := resp.body.replace_once('[', '').replace_once(']', '').split(',').map(it.int())
 	mut fetcher_pool := pool.new_pool_processor(
 		callback: worker_fetch
 	)
@@ -45,5 +47,4 @@ fn main() {
 	// by setting the VJOBS environment variable too.
 	// fetcher_pool.set_max_jobs( 4 )
 	fetcher_pool.work_on_items(ids)
-	*/
 }
