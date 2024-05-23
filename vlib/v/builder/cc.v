@@ -895,9 +895,12 @@ fn (mut b Builder) cc_freebsd_cross() {
 	}
 	mut linker_args := ['-L${sysroot}/lib/', '-L${sysroot}/usr/lib/', '--sysroot=${sysroot}', '-v',
 		'-o ${out_name}', '-m elf_x86_64', '-dynamic-linker /libexec/ld-elf.so.1',
-		'${sysroot}/usr/lib/crt1.o ${sysroot}/usr/lib/crti.o ${obj_file}', '-lc', '-lcrypto', '-lssl',
-		'-lpthread', '${sysroot}/usr/lib/crtn.o', '-lm', '-lexecinfo'] // execinfo has backtrace
-	// linker_args << cflags.c_options_only_object_files()
+		'${sysroot}/usr/lib/crt1.o ${sysroot}/usr/lib/crti.o ${obj_file}',
+		'${sysroot}/usr/lib/crtn.o']
+	linker_args << '-lc' // needed for fwrite, strlen etc
+	linker_args << '-lexecinfo' // needed for backtrace
+	linker_args << cflags.c_options_only_object_files() // support custom module defined linker flags
+	linker_args << libs
 	// -ldl
 	b.dump_c_options(linker_args)
 	// mut ldlld := '${sysroot}/ld.lld'
