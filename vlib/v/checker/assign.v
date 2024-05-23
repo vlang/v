@@ -214,7 +214,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					mut is_large := right.val.len > 13
 					if !is_large && right.val.len > 9 {
 						val := right.val.i64()
-						is_large = val > int_max || val < int_min
+						is_large = overflows_i32(val)
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',

@@ -1024,3 +1024,27 @@ fn (mut c Checker) pop_comptime_info() {
 	c.comptime.comptime_for_method = old.comptime_for_method
 	c.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
 }
+
+fn overflows_i8(val i64) bool {
+	return val > max_i8 || val < min_i8
+}
+
+fn overflows_i16(val i64) bool {
+	return val > max_i16 || val < min_i16
+}
+
+fn overflows_i32(val i64) bool {
+	return val > max_i32 || val < min_i32
+}
+
+fn overflows_u8(val i64) bool {
+	return val > max_u8 || val < min_u8
+}
+
+fn overflows_u16(val i64) bool {
+	return val > max_u16 || val < min_u16
+}
+
+fn overflows_u32(val i64) bool {
+	return val > max_u32 || val < min_u32
+}
