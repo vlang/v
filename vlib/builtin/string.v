@@ -4,6 +4,7 @@
 module builtin
 
 import strconv
+import strings
 
 /*
 Note: A V string should be/is immutable from the point of view of
@@ -337,12 +338,19 @@ pub fn (a string) clone() string {
 }
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
+@[manualfree]
 pub fn (s string) replace_once(rep string, with string) string {
 	idx := s.index_(rep)
 	if idx == -1 {
 		return s.clone()
 	}
-	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
+	mut sb := strings.new_builder(idx + with.len + (s.len - (idx + rep.len)))
+	sb.write_string(s.substr_unsafe(0, idx))
+	sb.write_string(with)
+	sb.write_string(s.substr_unsafe(idx + rep.len, s.len))
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
 }
 
 // replace replaces all occurrences of `rep` with the string passed in `with`.
@@ -1245,30 +1253,42 @@ pub fn (s string) last_index(needle string) ?int {
 	return idx
 }
 
-// index_kmp does KMP search.
+const kmp_stack_buffer_size = 20
+
+// index_kmp does KMP search inside the string `s` for the needle `p`.
+// It returns the first found index where the string `p` is found.
+// It returns -1, when the needle `p` is not present in `s`.
 @[direct_array_access; manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := []int{len: p.len}
+	mut stack_prefixes := [kmp_stack_buffer_size]int{}
+	mut p_prefixes := unsafe { &stack_prefixes[0] }
+	if p.len > kmp_stack_buffer_size {
+		p_prefixes = unsafe { vcalloc(p.len * sizeof(int)) }
+	}
 	defer {
-		unsafe { prefix.free() }
+		if p.len > kmp_stack_buffer_size {
+			unsafe { free(p_prefixes) }
+		}
 	}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for unsafe { p.str[j] != p.str[i] } && j > 0 {
-			j = prefix[j - 1]
+			j = unsafe { p_prefixes[j - 1] }
 		}
 		if unsafe { p.str[j] == p.str[i] } {
 			j++
 		}
-		prefix[i] = j
+		unsafe {
+			p_prefixes[i] = j
+		}
 	}
 	j = 0
 	for i in 0 .. s.len {
 		for unsafe { p.str[j] != s.str[i] } && j > 0 {
-			j = prefix[j - 1]
+			j = unsafe { p_prefixes[j - 1] }
 		}
 		if unsafe { p.str[j] == s.str[i] } {
 			j++
