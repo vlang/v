@@ -57,7 +57,7 @@ fn (mut g Gen) write_coverage_stats() {
 		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
 		g.cov_declarations.writeln('\t\tt_counter += counter;')
 		g.cov_declarations.writeln('\t\tif (counter) {')
-		g.cov_declarations.writeln("\t\t\tfprintf(fp, \"%s{\\\"file\\\":\\\"%s\\\",\\\"cov\\\":%.2f,\\\"points\\\":%d}\", ${int(is_first)} ? \"\" : \",\", \"${cov.file.path}\", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, ${nr_points});")
+		g.cov_declarations.writeln("\t\t\tfprintf(fp, \"%s{\\\"file\\\":\\\"%s\\\",\\\"hits\\\":%d,\\\"points\\\":%d}\", ${int(is_first)} ? \"\" : \",\", \"${cov.file.path}\", counter, ${nr_points});")
 		if is_first {
 			is_first = !is_first
 		}
