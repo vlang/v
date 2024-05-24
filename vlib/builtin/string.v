@@ -962,7 +962,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 					start = i
 				}
 			}
-			// Then add the remaining right part of the string as the last segment.
+			// Then add the remaining part of the string as the last segment.
 			if nth < 1 || res.len < nth {
 				res << s[start..]
 			}
