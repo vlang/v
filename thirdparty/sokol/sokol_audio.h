@@ -780,7 +780,9 @@ inline void saudio_setup(const saudio_desc& desc) { return saudio_setup(&desc); 
         #include "aaudio/AAudio.h"
     #endif
 #elif defined(_SAUDIO_LINUX)
+#if !defined(__FreeBSD__)
     #include <alloca.h>
+#endif
     #define _SAUDIO_PTHREADS (1)
     #include <pthread.h>
     #define ALSA_PCM_NEW_HW_PARAMS_API

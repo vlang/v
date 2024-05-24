@@ -8,11 +8,15 @@ $if linux {
 }
 
 #flag -I @VEXEROOT/thirdparty/sokol
+// FreeBSD requires the audio/alsa-lib to be installed
+#flag freebsd -I/usr/local/include
 #define SOKOL_IMPL
 #include "sokol_audio.h"
 #flag linux -lasound
 #flag darwin -framework AudioToolbox
 #flag windows -lole32
+#flag freebsd -L/usr/local/lib
+#flag freebsd -lasound
 
 // callback function for `stream_cb` in [[C.saudio_desc](#C.saudio_desc)] when calling [audio.setup()](#setup)
 //
