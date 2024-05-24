@@ -1,17 +1,14 @@
-module main
-
 import os
 
-fn exec(args []string) {
-	os.execve('/bin/bash', args, []) or {
-		// eprintln(err)
-		panic(err)
-	}
-}
-
+// NOTE: `execve` executes a new child process, in place of the current process.
+// Therefore, only the topmost example will be executed when it's not commented out.
 fn main() {
-	// exec(["-c","find /"]) //works
-	exec(['-c', 'find /tmp/']) // here it works as well
+	// Passes only an array of args.
+	os.execve(os.find_abs_path_of_executable('ls')!, ['-lh', '-s'], [])!
 
-	// exec(["-c","find","/tmp/"])  // does not work I guess is normal
+	// Considers args that would need to be passed within quotes. E.g.: `bash -c "ls -lh"`.
+	os.execve(os.find_abs_path_of_executable('bash')!, ['-c', 'ls -lah -s'], [])!
+
+	// Passes an environment variable that affects the commands output.
+	os.execve(os.find_abs_path_of_executable('man')!, ['true'], ['MANWIDTH=60'])!
 }
