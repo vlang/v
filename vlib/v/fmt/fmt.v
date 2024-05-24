@@ -101,6 +101,25 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 	return res[..import_start_pos] + f.out_imports.str() + res[import_start_pos..]
 }
 
+/*
+// vfmt has a special type_to_str which calls Table.type_to_str, but does extra work.
+// Having it here and not in Table saves cpu cycles when not running the compiler in vfmt mode.
+pub fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[string]string) string {
+	mut s := f.table.type_to_str_using_aliases(typ, import_aliases)
+	if s.contains('Result') {
+		println('${s}')
+	}
+	if s.starts_with('x.vweb') {
+		s = s.replace_once('x.vweb', 'veb.')
+	}
+	return s
+}
+
+pub fn (f &Fmt) type_to_str(typ ast.Type) string {
+	return f.table.type_to_str(typ)
+}
+*/
+
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias

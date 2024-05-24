@@ -306,18 +306,38 @@ pub fn vexe_path() string {
 	return real_vexe_path
 }
 
+pub fn (p &Preferences) vcross_linker_name() string {
+	vlname := os.getenv('VCROSS_LINKER_NAME')
+	if vlname != '' {
+		return vlname
+	}
+	$if macos {
+		return '/opt/homebrew/opt/llvm/bin/ld.lld'
+	}
+	$if windows {
+		return 'ld.lld.exe'
+	}
+	return 'ld.lld'
+}
+
 pub fn (p &Preferences) vcross_compiler_name() string {
 	vccname := os.getenv('VCROSS_COMPILER_NAME')
 	if vccname != '' {
 		return vccname
 	}
 	if p.os == .windows {
+		if p.os == .freebsd {
+			return 'clang'
+		}
 		if p.m64 {
 			return 'x86_64-w64-mingw32-gcc'
 		}
 		return 'i686-w64-mingw32-gcc'
 	}
 	if p.os == .linux {
+		return 'clang'
+	}
+	if p.os == .freebsd {
 		return 'clang'
 	}
 	if p.os == .wasm32_emscripten {
@@ -327,7 +347,7 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 		return 'emcc'
 	}
 	if p.backend == .c && !p.out_name.ends_with('.c') {
-		eprintln('Note: V can only cross compile to windows and linux for now by default.')
+		eprintln('Note: V can only cross compile to Windows and Linux for now by default.')
 		eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')
 		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: ${p.os} .')
 	}

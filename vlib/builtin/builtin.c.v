@@ -1,7 +1,7 @@
 @[has_globals]
 module builtin
 
-type FnExitCb = fn ()
+pub type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
 fn C.strerror(int) &char

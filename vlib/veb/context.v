@@ -42,8 +42,8 @@ pub:
 	// time.ticks() from start of veb connection handle.
 	// You can use it to determine how much time is spent on your request.
 	page_gen_start i64
-	req            http.Request
 pub mut:
+	req               http.Request
 	custom_mime_types map[string]string
 	// TCP connection to client. Only for advanced usage!
 	conn &net.TcpConn = unsafe { nil }

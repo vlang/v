@@ -15,8 +15,6 @@ import v.pkgconfig
 import v.transformer
 import v.comptime
 
-const int_min = int(0x80000000)
-const int_max = int(0x7FFFFFFF)
 // prevent stack overflows by restricting too deep recursion:
 const expr_level_cutoff_limit = 40
 const stmt_level_cutoff_limit = 40
@@ -1791,12 +1789,8 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		// Check for int overflow
 		if field.typ == ast.int_type {
 			if mut field.expr is ast.IntegerLiteral {
-				mut is_large := field.expr.val.len > 13
-				if !is_large && field.expr.val.len > 8 {
-					val := field.expr.val.i64()
-					is_large = val > checker.int_max || val < checker.int_min
-				}
-				if is_large {
+				val := field.expr.val.i64()
+				if overflows_i32(val) {
 					c.error('overflow in implicit type `int`, use explicit type casting instead',
 						field.expr.pos)
 				}
@@ -3258,7 +3252,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.warn('casting `${ft}` to `${tt}` is only allowed in `unsafe` code', node.pos)
 	} else if from_sym.kind == .array_fixed && !from_type.is_ptr() {
-		if !c.pref.translated && !c.file.is_translated {
+		if !c.pref.translated && !c.file.is_translated && !c.inside_unsafe {
 			c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
 		}
 	} else if final_from_sym.kind == .string && final_to_sym.is_number()
@@ -3416,9 +3410,14 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			if enum_decl := c.table.enum_decls[to_sym.name] {
 				mut in_range := false
 				if enum_decl.is_flag {
-					// if a flag enum has 4 variants, the maximum possible value would have all 4 flags set (0b1111)
-					max_val := (u64(1) << enum_decl.fields.len) - 1
-					in_range = node_val >= 0 && u64(node_val) <= max_val
+					if enum_decl.fields.len == 64 {
+						// for 64 fields, just use max_u64 and avoid UB:
+						in_range = node_val >= 0 && u64(node_val) <= max_u64
+					} else {
+						// if a flag enum has 4 variants, the maximum possible value would have all 4 flags set (0b1111)
+						max_val := (u64(1) << enum_decl.fields.len) - 1
+						in_range = node_val >= 0 && u64(node_val) <= max_val
+					}
 				} else {
 					mut enum_val := i64(0)
 

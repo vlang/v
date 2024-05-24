@@ -169,7 +169,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos && os.exists('/opt/procursus') {
 		ccoptions.linker_flags << '-Wl,-rpath,/opt/procursus/lib'
 	}
-	mut user_darwin_version := 999_999_999
+	mut user_darwin_version := 999_999
 	mut user_darwin_ppc := false
 	$if macos {
 		user_darwin_version = os.uname().release.split('.')[0].int()
@@ -593,6 +593,13 @@ pub fn (mut v Builder) cc() {
 			return
 		}
 	}
+	// Cross compiling for FreeBSD
+	if v.pref.os == .freebsd {
+		$if !freebsd {
+			v.cc_freebsd_cross()
+			return
+		}
+	}
 	//
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
@@ -774,6 +781,22 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 	}
 }
 
+fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
+	crossrepo_url := 'https://github.com/spytheman/freebsd_base13.2'
+	sysroot_git_config_path := os.join_path(sysroot, '.git', 'config')
+	if os.is_dir(sysroot) && !os.exists(sysroot_git_config_path) {
+		// remove existing obsolete unarchived .zip file content
+		os.rmdir_all(sysroot) or {}
+	}
+	if !os.is_dir(sysroot) {
+		println('Downloading files for FreeBSD cross compilation (~458MB) ...')
+		os.system('git clone ${crossrepo_url} ${sysroot}')
+		if !os.exists(sysroot_git_config_path) {
+			verror('Failed to clone `${crossrepo_url}` to `${sysroot}`')
+		}
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	b.setup_ccompiler_options(b.pref.ccompiler)
 	b.build_thirdparty_obj_files()
@@ -840,6 +863,75 @@ fn (mut b Builder) cc_linux_cross() {
 		return
 	}
 	println(out_name + ' has been successfully cross compiled for linux.')
+}
+
+fn (mut b Builder) cc_freebsd_cross() {
+	b.setup_ccompiler_options(b.pref.ccompiler)
+	b.build_thirdparty_obj_files()
+	b.setup_output_name()
+	parent_dir := os.vmodules_dir()
+	if !os.exists(parent_dir) {
+		os.mkdir(parent_dir) or { panic(err) }
+	}
+	sysroot := os.join_path(os.vmodules_dir(), 'freebsdroot')
+	b.ensure_freebsdroot_exists(sysroot)
+	obj_file := b.out_name_c + '.o'
+	cflags := b.get_os_cflags()
+	defines, others, libs := cflags.defines_others_libs()
+	mut cc_args := []string{}
+	cc_args << '-w'
+	cc_args << '-fPIC'
+	cc_args << '-c'
+	cc_args << '-target x86_64-unknown-freebsd14.0' // TODO custom freebsd versions
+	cc_args << defines
+	cc_args << '-I ${sysroot}/include '
+	cc_args << '-I ${sysroot}/usr/include '
+	cc_args << others
+	cc_args << '-o "${obj_file}"'
+	cc_args << '-c "${b.out_name_c}"'
+	cc_args << libs
+	b.dump_c_options(cc_args)
+	mut cc_name := b.pref.vcross_compiler_name()
+	mut out_name := b.pref.out_name
+	$if windows {
+		cc_name = 'clang.exe'
+		out_name = out_name.trim_string_right('.exe')
+	}
+	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
+	if b.pref.show_cc {
+		println(cc_cmd)
+	}
+	cc_res := os.execute(cc_cmd)
+	if cc_res.exit_code != 0 {
+		println('Cross compilation for FreeBSD failed (first step, cc). Make sure you have clang installed.')
+		verror(cc_res.output)
+		return
+	}
+	mut linker_args := ['-L${sysroot}/lib/', '-L${sysroot}/usr/lib/', '--sysroot=${sysroot}', '-v',
+		'-o ${out_name}', '-m elf_x86_64', '-dynamic-linker /libexec/ld-elf.so.1',
+		'${sysroot}/usr/lib/crt1.o ${sysroot}/usr/lib/crti.o ${obj_file}',
+		'${sysroot}/usr/lib/crtn.o']
+	linker_args << '-lc' // needed for fwrite, strlen etc
+	linker_args << '-lexecinfo' // needed for backtrace
+	linker_args << cflags.c_options_only_object_files() // support custom module defined linker flags
+	linker_args << libs
+	// -ldl
+	b.dump_c_options(linker_args)
+	// mut ldlld := '${sysroot}/ld.lld'
+	mut ldlld := b.pref.vcross_linker_name()
+	linker_cmd := '${b.quote_compiler_name(ldlld)} ' + linker_args.join(' ')
+	// s = s.replace('SYSROOT', sysroot) // TODO: $ inter bug
+	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
+	if b.pref.show_cc {
+		println(linker_cmd)
+	}
+	res := os.execute(linker_cmd)
+	if res.exit_code != 0 {
+		println('Cross compilation for FreeBSD failed (second step, lld).')
+		verror(res.output)
+		return
+	}
+	println(out_name + ' has been successfully cross compiled for FreeBSD.')
 }
 
 fn (mut c Builder) cc_windows_cross() {

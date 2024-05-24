@@ -3056,10 +3056,10 @@ fn (mut g Gen) print_autofree_var(var ast.Var, comment string) {
 }
 
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	g.writeln('// scopeobjects.len == ${scope.objects.len}')
 	if scope == unsafe { nil } {
 		return
 	}
+	g.trace_autofree('// scopeobjects.len == ${scope.objects.len}')
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {

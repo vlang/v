@@ -46,6 +46,6 @@ fn test_crypto_sha256_224() {
 	// with checksum
 	digest.reset()
 	_ := digest.write(data)!
-	chksum := digest.checksum()
+	chksum := digest.sum([])
 	assert chksum.hex() == expected
 }

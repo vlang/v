@@ -303,7 +303,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	hash := '${sync.thread_id().hex()}_${time.sys_mono_now()}'
+	hash := '${sync.thread_id().hex()}_${rand.ulid()}'
 	new_vtmp_dir := setup_new_vtmp_folder(hash)
 	if term.can_show_color_on_stderr() {
 		os.setenv('VCOLORS', 'always', true)
@@ -504,7 +504,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// where an executable is not writable, if it is running).
 	// Note, that the common session temporary folder ts.vtmp_dir,
 	// will be removed after all tests are done.
-	mut test_folder_path := os.join_path(ts.vtmp_dir, rand.ulid())
+	test_id := '${idx}_${thread_id}'
+	mut test_folder_path := os.join_path(ts.vtmp_dir, test_id)
 	if ts.build_tools {
 		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:
 		test_folder_path = ts.vtmp_dir

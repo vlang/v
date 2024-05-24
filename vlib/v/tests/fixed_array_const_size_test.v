@@ -2,6 +2,7 @@ const size = 5
 const u64_size = u64(5)
 const int_size = int(1)
 const infix_cast_size = int(100 / 50)
+const int_sizeof_cast_size = ((1600 / 8) / int(sizeof(u64)))
 
 struct Foo {
 	bar [size]u8
@@ -104,4 +105,9 @@ fn test_infix_const_expr_used_as_fixed_array_size() {
 	mat6 := Matrix6{}
 	println(mat6)
 	assert mat6.data.len == 6
+}
+
+fn test_int_sizeof_size() {
+	arr_fixed := [int_sizeof_cast_size]int{}
+	assert arr_fixed.len == 25
 }
