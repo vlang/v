@@ -4,6 +4,7 @@
 module c
 
 import v.token
+import os
 import rand { ulid }
 
 @[inline]
@@ -39,11 +40,11 @@ fn (mut g Gen) write_coverage_stats() {
 	build_hash := ulid()
 
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
-
-	g.cov_declarations.writeln('time_t rawtime;')
-	g.cov_declarations.writeln('char cov_filename[120];')
-	g.cov_declarations.writeln('time(&rawtime);')
-	g.cov_declarations.writeln('snprintf(cov_filename, 120, "vcover.%s.%s", "${build_hash}", vcoverage_fnv1a(asctime(localtime(&rawtime))));')
+	g.cov_declarations.writeln('\ttime_t rawtime;')
+	g.cov_declarations.writeln('\tchar cov_filename[120];')
+	g.cov_declarations.writeln('\ttime(&rawtime);')
+	g.cov_declarations.writeln('\tchar *cov_dir = getenv("VCOVDIR") != NULL ? getenv("VCOVDIR") : "${os.real_path(g.pref.coverage_dir)}";')
+	g.cov_declarations.writeln('\tsnprintf(cov_filename, 120, "%s/vcover.%s.%s", cov_dir, "${build_hash}", vcoverage_fnv1a(asctime(localtime(&rawtime))));')
 	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "w+");')
 	g.cov_declarations.writeln('\tfprintf(fp, "[");')
 	g.cov_declarations.writeln('\tint t_counter = 0;')
