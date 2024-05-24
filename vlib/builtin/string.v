@@ -979,65 +979,53 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
-	mut i := s.len - 1
 
 	match delim.len {
 		0 {
-			for i >= 0 {
+			for i := s.len - 1; i >= 0; i-- {
 				if nth > 0 && res.len == nth - 1 {
 					res << s[..i + 1]
 					break
 				}
 				res << s[i].ascii_str()
-				i--
 			}
-			return res
 		}
 		1 {
-			mut rbound := s.len
 			delim_byte := delim[0]
-
-			for i >= 0 {
+			mut rbound := s.len
+			for i := s.len - 1; i >= 0; i-- {
 				if s[i] == delim_byte {
 					if nth > 0 && res.len == nth - 1 {
 						break
 					}
 					res << s[i + 1..rbound]
 					rbound = i
-					i--
-				} else {
-					i--
 				}
 			}
-
 			if nth < 1 || res.len < nth {
 				res << s[..rbound]
 			}
-			return res
 		}
 		else {
 			mut rbound := s.len
-
-			for i >= 0 {
+			for i := s.len - 1; i >= 0; i-- {
 				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
 				if is_delim {
 					if nth > 0 && res.len == nth - 1 {
 						break
 					}
 					res << s[i..rbound]
-					rbound = i - delim.len
 					i -= delim.len
-				} else {
-					i--
+					rbound = i
 				}
 			}
-
 			if nth < 1 || res.len < nth {
 				res << s[..rbound]
 			}
-			return res
 		}
 	}
+
+	return res
 }
 
 // split_into_lines splits the string by newline characters.
