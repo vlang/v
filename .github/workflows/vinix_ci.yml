@@ -5,6 +5,8 @@ on:
   pull_request:
     paths-ignore:
       - '**.md'
+      - '**.yml'
+      - '!**/vinix_ci.yml'
   push:
     paths-ignore:
       - '**.md'
