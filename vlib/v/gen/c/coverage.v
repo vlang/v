@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module c
 
+import hash.fnv1a
 import v.token
 
 @[inline]
@@ -40,6 +41,7 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 
 fn (mut g Gen) write_coverage_stats() {
 	is_stdout := false // g.pref.coverage_file == '-'
+	is_json := true
 
 	g.cov_declarations.writeln('char* vcoverage_fnv1a(const u8* data) {')
 	g.cov_declarations.writeln('\tu32 h = 2166136261UL;')
@@ -51,20 +53,32 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('\treturn u32_str(h).str;')
 	g.cov_declarations.writeln('}')
 	g.cov_declarations.writeln('')
+
+	build_hash := fnv1a.sum64_string(current_time().str())
+
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
 	if is_stdout {
 		g.cov_declarations.writeln('\tprintf("V coverage\\n");')
 		g.cov_declarations.writeln('\tprintf("${'-':50r}\\n");')
 	} else {
 		g.cov_declarations.writeln('time_t rawtime;')
+		g.cov_declarations.writeln('char cov_filename[200];')
 		g.cov_declarations.writeln('time(&rawtime);')
-		g.cov_declarations.writeln('\tFILE *fp = fopen(vcoverage_fnv1a(asctime(localtime(&rawtime))), "w+");')
-		g.cov_declarations.writeln('\tfprintf(fp, "V coverage\\n");')
-		g.cov_declarations.writeln('\tfprintf(fp, "${'-':50r}\\n");')
+		g.cov_declarations.writeln('snprintf(cov_filename, 200, "vcover.%s.%s", "${build_hash}", vcoverage_fnv1a(asctime(localtime(&rawtime))));')
+
+		g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "w+");')
+
+		if is_json {
+			g.cov_declarations.writeln('\tfprintf(fp, "[");')
+		} else {
+			g.cov_declarations.writeln('\tfprintf(fp, "V coverage\\n");')
+			g.cov_declarations.writeln('\tfprintf(fp, "${'-':50r}\\n");')
+		}
 	}
 	g.cov_declarations.writeln('\tint t_counter = 0;')
 	mut last_offset := 0
 	mut t_points := 0
+	mut is_first := true
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
 		t_points += nr_points
@@ -76,6 +90,11 @@ fn (mut g Gen) write_coverage_stats() {
 		g.cov_declarations.writeln('\t\tif (counter) {')
 		if is_stdout {
 			g.cov_declarations.writeln('\t\t\tprintf("[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
+		} else if is_json {
+			g.cov_declarations.writeln("\t\t\tfprintf(fp, \"%s{\\\"file\\\":\\\"%s\\\",\\\"cov\\\":%.2f,\\\"points\\\":%d}\", ${int(is_first)} ? \"\" : \",\", \"${cov.file.path}\", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, ${nr_points});")
+			if is_first {
+				is_first = !is_first
+			}
 		} else {
 			g.cov_declarations.writeln('\t\t\tfprintf(fp, "[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
 		}
@@ -86,6 +105,8 @@ fn (mut g Gen) write_coverage_stats() {
 	if is_stdout {
 		g.cov_declarations.writeln('\tprintf("${'-':50r}\\n");')
 		g.cov_declarations.writeln('\tprintf("Total coverage: ${g.coverage_files.len} files, %.2f%% coverage\\n", ((double)t_counter/${t_points})*100);')
+	} else if is_json {
+		g.cov_declarations.writeln('\tfprintf(fp, "]");')
 	} else {
 		g.cov_declarations.writeln('\tfprintf(fp, "${'-':50r}\\n");')
 		g.cov_declarations.writeln('\tfprintf(fp, "Total coverage: ${g.coverage_files.len} files, %.2f%% coverage\\n", ((double)t_counter/${t_points})*100);')

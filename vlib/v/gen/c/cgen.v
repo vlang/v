@@ -2095,7 +2095,7 @@ fn (mut g Gen) write_v_source_line_info_pos(pos token.Pos) {
 fn (mut g Gen) write_v_source_line_info(node ast.Node) {
 	g.write_v_source_line_info_pos(node.pos())
 	if g.inside_ternary == 0 && g.pref.is_coverage
-		&& node !in [ast.MatchBranch, ast.IfBranch, ast.InfixExpr] {
+		&& node !in [ast.MatchBranch, ast.IfBranch, ast.InfixExpr, ast.UnsafeExpr] {
 		g.write_coverage_point(node.pos())
 	}
 }
@@ -2107,7 +2107,7 @@ fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
 		&& stmt !in [ast.FnDecl, ast.ForCStmt, ast.ForInStmt, ast.ForStmt] {
 		if stmt is ast.ExprStmt {
 			if !g.inside_assign
-				&& stmt.expr !in [ast.StringInterLiteral, ast.StringLiteral, ast.Ident] {
+				&& stmt.expr !in [ast.StringInterLiteral, ast.StringLiteral, ast.Ident, ast.UnsafeExpr] {
 				g.write_coverage_point(stmt.pos)
 			}
 		} else {
