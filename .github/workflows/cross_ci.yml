@@ -67,7 +67,7 @@ jobs:
         run: |
           ## sudo dpkg --add-architecture i386
           ./v retry -- sudo apt -qq update
-          ./v retry -- sudo apt -qq install libssl-dev sqlite3 libsqlite3-dev \
+          ./v retry -- sudo apt -qq install libssl-dev sqlite3 libsqlite3-dev
           ./v retry -- sudo apt -qq install mingw-w64 wine-stable winetricks
           ## ./v retry -- sudo apt -qq install wine32
 
