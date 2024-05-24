@@ -40,7 +40,7 @@ pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 @[manualfree]
 pub fn (mut b Builder) write_rune(r rune) {
 	mut buffer := [5]u8{}
-	res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
+	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
 	if res.len == 0 {
 		return
 	}
@@ -51,7 +51,7 @@ pub fn (mut b Builder) write_rune(r rune) {
 pub fn (mut b Builder) write_runes(runes []rune) {
 	mut buffer := [5]u8{}
 	for r in runes {
-		res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
+		res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
 		if res.len == 0 {
 			continue
 		}

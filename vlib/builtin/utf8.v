@@ -12,7 +12,7 @@ pub fn utf8_char_len(b u8) int {
 pub fn utf32_to_str(code u32) string {
 	unsafe {
 		mut buffer := malloc_noscan(5)
-		res := utf32_to_str_no_malloc(code, buffer)
+		res := utf32_to_str_no_malloc(code, mut buffer)
 		if res.len == 0 {
 			// the buffer was not used at all
 			free(buffer)
@@ -22,9 +22,9 @@ pub fn utf32_to_str(code u32) string {
 }
 
 @[manualfree; unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
+pub fn utf32_to_str_no_malloc(code u32, mut buf &u8) string {
 	unsafe {
-		len := utf32_decode_to_buffer(code, buf)
+		len := utf32_decode_to_buffer(code, mut buf)
 		if len == 0 {
 			return ''
 		}
@@ -34,7 +34,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 }
 
 @[manualfree; unsafe]
-pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
+pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &u8(buf)
