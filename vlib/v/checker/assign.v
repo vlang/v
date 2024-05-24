@@ -211,12 +211,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			if left_type == ast.int_type {
 				if mut right is ast.IntegerLiteral {
-					mut is_large := right.val.len > 13
-					if !is_large && right.val.len > 9 {
-						val := right.val.i64()
-						is_large = overflows_i32(val)
-					}
-					if is_large {
+					val := right.val.i64()
+					if overflows_i32(val) {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
 							right.pos)
 					}

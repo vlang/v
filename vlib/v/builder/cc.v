@@ -169,7 +169,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos && os.exists('/opt/procursus') {
 		ccoptions.linker_flags << '-Wl,-rpath,/opt/procursus/lib'
 	}
-	mut user_darwin_version := 999_999_999
+	mut user_darwin_version := 999_999
 	mut user_darwin_ppc := false
 	$if macos {
 		user_darwin_version = os.uname().release.split('.')[0].int()

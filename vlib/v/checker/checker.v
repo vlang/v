@@ -1789,12 +1789,8 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		// Check for int overflow
 		if field.typ == ast.int_type {
 			if mut field.expr is ast.IntegerLiteral {
-				mut is_large := field.expr.val.len > 13
-				if !is_large && field.expr.val.len > 9 {
-					val := field.expr.val.i64()
-					is_large = overflows_i32(val)
-				}
-				if is_large {
+				val := field.expr.val.i64()
+				if overflows_i32(val) {
 					c.error('overflow in implicit type `int`, use explicit type casting instead',
 						field.expr.pos)
 				}
