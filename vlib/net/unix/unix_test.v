@@ -1,7 +1,7 @@
 import os
 import net.unix
 
-const tfolder = os.join_path(os.vtmp_dir(), 'unix_test')
+const tfolder = os.join_path(os.temp_dir(), 'unix_${os.getpid()}')
 const socket_path = os.join_path(tfolder, 'v_unix.sock')
 
 fn testsuite_begin() {
