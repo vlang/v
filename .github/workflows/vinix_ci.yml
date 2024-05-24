@@ -6,8 +6,6 @@ on:
     paths-ignore:
       - '**.md'
   push:
-    branches:
-      - master
     paths-ignore:
       - '**.md'
       - '**.yml'
