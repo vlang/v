@@ -26,11 +26,6 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
 
-      - name: Install dependencies
-        run: |
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install build-essential meson -y
-
       - name: Clone current Vinix
         run: ./v retry -- git clone https://github.com/vlang/vinix.git
 

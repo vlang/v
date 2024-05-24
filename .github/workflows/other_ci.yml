@@ -99,10 +99,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev xfonts-75dpi xfonts-base
-          ./v retry -- sudo apt install --quiet -y g++-9 g++-10
+          ./v retry -- sudo apt -qq update
+          ./v retry -- sudo apt -qq install libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          ./v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev xfonts-75dpi xfonts-base
+          ./v retry -- sudo apt -qq install g++-9 g++-10
 
       - name: g++-9 version
         run: g++-9 --version
@@ -133,7 +133,7 @@ jobs:
           make -j4 && ./v symlink
           ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Install zzuf
-        run: ./v retry -- sudo apt install -qq zzuf
+        run: ./v retry -- sudo apt -qq install zzuf
       - name: Run test-parser
         run: |
           ./v test-parser --show_source --linear examples/hello_world.v

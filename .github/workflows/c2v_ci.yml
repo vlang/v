@@ -45,8 +45,8 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
-            v retry -- sudo apt update -y -qq
-            v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           else
             v retry -- brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
           fi
@@ -79,8 +79,8 @@ jobs:
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
         run: |
-          v retry -- sudo apt update -y -qq
-          v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           # c2v / DOOM dependencies
           # vgret dependencies
           # imagemagick              : convert, mogrify, import
@@ -88,7 +88,7 @@ jobs:
           # openimageio-tools        : idiff
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
+          v retry -- sudo apt -qq install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
         run: |
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD

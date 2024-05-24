@@ -41,14 +41,14 @@ jobs:
         run: v test-cleancode
       - name: Install dependencies for examples and tools
         run: |
-          v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install libssl-dev sqlite3 libsqlite3-dev valgrind
+          v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          v retry -- sudo apt -qq install xfonts-75dpi xfonts-base
+          v retry -- sudo apt -qq install expect
           # The following is needed for examples/wkhtmltopdf.v
-          v retry -- wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-          v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base
-          v retry -- sudo apt install --quiet -y expect
-          v retry -- sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
+          v retry wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+          sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Test v->c
         run: |
           thirdparty/tcc/tcc.exe -version
@@ -121,9 +121,9 @@ jobs:
         run: v test-cleancode
       - name: Install dependencies for examples and tools
         run: |
-          v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
       - name: Recompile V with -cstrict and gcc
         run: v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
@@ -229,10 +229,10 @@ jobs:
         run: v test-cleancode
       - name: Install dependencies for examples and tools
         run: |
-          v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
-          v retry -- sudo apt install --quiet -y clang
+          v retry -- sudo apt -qq update
+          v retry -- sudo apt -qq install postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          v retry -- sudo apt -qq install clang
       - name: Recompile V with -cstrict and clang
         run: v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
@@ -330,7 +330,7 @@ jobs:
   #     run: echo $VFLAGS && make -j4 && ./v symlink
   #   - uses: actions/checkout@v4
   #   - name: Install dependencies for examples and tools
-  #     run: v retry -- sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #     run: v retry -- sudo apt -qq install musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
   #   - name: Recompile V with -cg
   #     run: v -cg -o v cmd/v
   #   # - name: Test v binaries

@@ -66,10 +66,10 @@ jobs:
       - name: Install dependencies
         run: |
           ## sudo dpkg --add-architecture i386
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-          ./v retry -- sudo apt install --quiet -y mingw-w64 wine-stable winetricks
-          ## ./v retry -- sudo apt install --quiet -y wine32
+          ./v retry -- sudo apt -qq update
+          ./v retry -- sudo apt -qq install libssl-dev sqlite3 libsqlite3-dev \
+          ./v retry -- sudo apt -qq install mingw-w64 wine-stable winetricks
+          ## ./v retry -- sudo apt -qq install wine32
 
       - name: Turn off the wine crash dialog
         run: winetricks nocrashdialog
