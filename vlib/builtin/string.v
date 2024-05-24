@@ -922,71 +922,54 @@ pub fn (s string) rsplit_once(delim string) ?(string, string) {
 @[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
-	mut i := 0
 
 	match delim.len {
 		0 {
-			i = 1
-			for ch in s {
-				if nth > 0 && i >= nth {
-					res << s[i - 1..]
+			for i, ch in s {
+				if nth > 0 && res.len == nth - 1 {
+					res << s[i..]
 					break
 				}
 				res << ch.ascii_str()
-				i++
 			}
-			return res
 		}
 		1 {
-			mut start := 0
 			delim_byte := delim[0]
-
-			for i < s.len {
-				if s[i] == delim_byte {
-					was_last := nth > 0 && res.len == nth - 1
-					if was_last {
+			mut start := 0
+			for i, ch in s {
+				if ch == delim_byte {
+					if nth > 0 && res.len == nth - 1 {
 						break
 					}
-					val := s.substr(start, i)
-					res << val
-					start = i + delim.len
-					i = start
-				} else {
-					i++
+					res << s.substr(start, i)
+					start = i + 1
 				}
 			}
-
-			// Then the remaining right part of the string
 			if nth < 1 || res.len < nth {
 				res << s[start..]
 			}
-			return res
 		}
 		else {
 			mut start := 0
-			// Take the left part for each delimiter occurrence
-			for i <= s.len {
-				is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
-				if is_delim {
-					was_last := nth > 0 && res.len == nth - 1
-					if was_last {
+			// Add up to `nth` segments left of every occurrence of the delimiter.
+			for i := 0; i <= s.len; i++ {
+				if s[i..i + delim.len] or { break } == delim {
+					if nth > 0 && res.len == nth - 1 {
 						break
 					}
-					val := s.substr(start, i)
-					res << val
-					start = i + delim.len
-					i = start
-				} else {
-					i++
+					res << s.substr(start, i)
+					i += delim.len
+					start = i
 				}
 			}
-			// Then the remaining right part of the string
+			// Then add the remaining right part of the string as the last segment.
 			if nth < 1 || res.len < nth {
 				res << s[start..]
 			}
-			return res
 		}
 	}
+
+	return res
 }
 
 // rsplit_nth splits the string based on the passed `delim` substring in revese order.
