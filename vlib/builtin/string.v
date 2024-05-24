@@ -4,7 +4,6 @@
 module builtin
 
 import strconv
-import strings
 
 /*
 Note: A V string should be/is immutable from the point of view of
@@ -338,19 +337,12 @@ pub fn (a string) clone() string {
 }
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
-@[manualfree]
 pub fn (s string) replace_once(rep string, with string) string {
 	idx := s.index_(rep)
 	if idx == -1 {
 		return s.clone()
 	}
-	mut sb := strings.new_builder(idx + with.len + (s.len - (idx + rep.len)))
-	sb.write_string(s.substr_unsafe(0, idx))
-	sb.write_string(with)
-	sb.write_string(s.substr_unsafe(idx + rep.len, s.len))
-	res := sb.str()
-	unsafe { sb.free() }
-	return res
+	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
 }
 
 const replace_stack_buffer_size = 10
