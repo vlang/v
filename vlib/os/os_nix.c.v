@@ -172,7 +172,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(os.path_separator)
-	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
+	cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
 	mut subdirs := [cwd]
 	for i := 0; i < steps.len; i++ {
 		step := steps[i]
@@ -214,8 +214,8 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 }
 
 pub fn utime(path string, actime int, modtime int) ! {
-	u := &C.utimbuf{actime, modtime}
-	if C.utime(&char(path.str), u) != 0 {
+	u := C.utimbuf{actime, modtime}
+	if C.utime(&char(path.str), &u) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
@@ -255,7 +255,7 @@ pub fn uname() Uname {
 pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
-	mut buf := unsafe { &char(malloc_noscan(size)) }
+	buf := unsafe { &char(malloc_noscan(size)) }
 	if C.gethostname(buf, size) == 0 {
 		hstnme = unsafe { cstring_to_vstring(buf) }
 		unsafe { free(buf) }

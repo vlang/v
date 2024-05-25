@@ -345,8 +345,9 @@ pub fn (s string) replace_once(rep string, with string) string {
 	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
 }
 
+const replace_stack_buffer_size = 10
 // replace replaces all occurrences of `rep` with the string passed in `with`.
-@[direct_array_access]
+@[direct_array_access; manualfree]
 pub fn (s string) replace(rep string, with string) string {
 	if s.len == 0 || rep.len == 0 || rep.len > s.len {
 		return s.clone()
@@ -354,11 +355,17 @@ pub fn (s string) replace(rep string, with string) string {
 	if !s.contains(rep) {
 		return s.clone()
 	}
-	// TODO: PERF Allocating ints is expensive. Should be a stack array
-	// Get locations of all reps within this string
-	mut idxs := []int{cap: s.len / rep.len}
+	mut pidxs_len := 0
+	pidxs_cap := s.len / rep.len
+	mut stack_idxs := [replace_stack_buffer_size]int{}
+	mut pidxs := unsafe { &stack_idxs[0] }
+	if pidxs_cap > replace_stack_buffer_size {
+		pidxs = unsafe { &int(malloc(sizeof(int) * pidxs_cap)) }
+	}
 	defer {
-		unsafe { idxs.free() }
+		if pidxs_cap > replace_stack_buffer_size {
+			unsafe { free(pidxs) }
+		}
 	}
 	mut idx := 0
 	for {
@@ -366,41 +373,36 @@ pub fn (s string) replace(rep string, with string) string {
 		if idx == -1 {
 			break
 		}
-		idxs << idx
+		unsafe {
+			pidxs[pidxs_len] = idx
+			pidxs_len++
+		}
 		idx += rep.len
 	}
 	// Dont change the string if there's nothing to replace
-	if idxs.len == 0 {
+	if pidxs_len == 0 {
 		return s.clone()
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
-	new_len := s.len + idxs.len * (with.len - rep.len)
+	new_len := s.len + pidxs_len * (with.len - rep.len)
 	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
-	for _, rep_pos in idxs {
-		for i in s_idx .. rep_pos { // copy everything up to piece being replaced
-			unsafe {
-				b[b_i] = s[i]
-			}
-			b_i++
-		}
+	for j in 0 .. pidxs_len {
+		rep_pos := unsafe { pidxs[j] }
+		// copy everything up to piece being replaced
+		before_len := rep_pos - s_idx
+		unsafe { vmemcpy(&b[b_i], &s[s_idx], before_len) }
+		b_i += before_len
 		s_idx = rep_pos + rep.len // move string index past replacement
-		for i in 0 .. with.len { // copy replacement piece
-			unsafe {
-				b[b_i] = with[i]
-			}
-			b_i++
-		}
+		// copy replacement piece
+		unsafe { vmemcpy(&b[b_i], &with[0], with.len) }
+		b_i += with.len
 	}
-	if s_idx < s.len { // if any original after last replacement, copy it
-		for i in s_idx .. s.len {
-			unsafe {
-				b[b_i] = s[i]
-			}
-			b_i++
-		}
+	if s_idx < s.len {
+		// if any original after last replacement, copy it
+		unsafe { vmemcpy(&b[b_i], &s[s_idx], s.len - s_idx) }
 	}
 	unsafe {
 		b[new_len] = 0
@@ -445,7 +447,7 @@ pub fn (s string) replace_each(vals []string) string {
 			// The string already found is set to `/del`, to avoid duplicate searches.
 			for i in 0 .. rep.len {
 				unsafe {
-					s_.str[idx + i] = 127
+					s_.str[idx + i] = 0
 				}
 			}
 			// We need to remember both the position in the string,
@@ -1245,30 +1247,42 @@ pub fn (s string) last_index(needle string) ?int {
 	return idx
 }
 
-// index_kmp does KMP search.
+const kmp_stack_buffer_size = 20
+
+// index_kmp does KMP search inside the string `s` for the needle `p`.
+// It returns the first found index where the string `p` is found.
+// It returns -1, when the needle `p` is not present in `s`.
 @[direct_array_access; manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := []int{len: p.len}
+	mut stack_prefixes := [kmp_stack_buffer_size]int{}
+	mut p_prefixes := unsafe { &stack_prefixes[0] }
+	if p.len > kmp_stack_buffer_size {
+		p_prefixes = unsafe { &int(vcalloc(p.len * sizeof(int))) }
+	}
 	defer {
-		unsafe { prefix.free() }
+		if p.len > kmp_stack_buffer_size {
+			unsafe { free(p_prefixes) }
+		}
 	}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for unsafe { p.str[j] != p.str[i] } && j > 0 {
-			j = prefix[j - 1]
+			j = unsafe { p_prefixes[j - 1] }
 		}
 		if unsafe { p.str[j] == p.str[i] } {
 			j++
 		}
-		prefix[i] = j
+		unsafe {
+			p_prefixes[i] = j
+		}
 	}
 	j = 0
 	for i in 0 .. s.len {
 		for unsafe { p.str[j] != s.str[i] } && j > 0 {
-			j = prefix[j - 1]
+			j = unsafe { p_prefixes[j - 1] }
 		}
 		if unsafe { p.str[j] == s.str[i] } {
 			j++
