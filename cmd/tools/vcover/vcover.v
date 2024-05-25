@@ -27,19 +27,34 @@ pub fn (covdata []&VCoverData) find(filename string) ?&VCoverData {
 	return none
 }
 
-fn display_result(data []VCoverData) ! {
-	hits := arrays.sum(data.map(it.hits))!
-	points := arrays.sum(data.map(it.points))!
-	for lineinfo in data {
-		println('${(f64(lineinfo.hits) / lineinfo.points) * 100:7.2f} | ${lineinfo.hits:4u} | ${lineinfo.points:4u} | ${lineinfo.file}')
+pub fn (covdata []VCoverData) filter_data(filters []string) []VCoverData {
+	mut arr := []VCoverData{}
+	for data in covdata {
+		if filters.any(data.file.contains(it)) {
+			arr << data
+		}
 	}
-	println('Total coverage: ${data.len} files, ${(f64(hits) / points) * 100:.2f}% coverage')
+	return arr
 }
 
-fn report_file(covfile string) ! {
+fn display_result(filter string, data []VCoverData) ! {
+	mut covdata := data.clone()
+	if filter != '' {
+		filters := filter.split(',')
+		covdata = covdata.filter_data(filters)
+	}
+	hits := arrays.sum(covdata.map(it.hits))!
+	points := arrays.sum(covdata.map(it.points))!
+	for lineinfo in covdata {
+		println('${(f64(lineinfo.hits) / lineinfo.points) * 100:7.2f} | ${lineinfo.hits:4u} | ${lineinfo.points:4u} | ${lineinfo.file}')
+	}
+	println('Total coverage: ${covdata.len} files, ${(f64(hits) / points) * 100:.2f}% coverage')
+}
+
+fn report_file(filter string, covfile string) ! {
 	json_content := os.read_file(covfile)!
 	data := json.decode([]VCoverData, json_content)!
-	display_result(data)!
+	display_result(filter, data)!
 }
 
 fn summarize_coverage(covfile string, mut covdata []&VCoverData) ! {
@@ -62,14 +77,15 @@ fn main() {
 	args := cmdline.options_after(os.args, ['cover'])
 	covfile := os.real_path(cmdline.option(args, '-file', ''))
 	covdir := os.real_path(cmdline.option(args, '-dir', ''))
+	filter := cmdline.option(args, '-filter', '')
 
 	if covfile != '' {
-		report_file(covfile)!
+		report_file(filter, covfile)!
 	} else if covdir != '' {
 		mut sum_data := []&VCoverData{}
 		for coverfile in os.glob(covdir + '/vcover.*')! {
 			summarize_coverage(coverfile, mut sum_data)!
 		}
-		display_result(sum_data.map(*it))!
+		display_result(filter, sum_data.map(*it))!
 	}
 }
