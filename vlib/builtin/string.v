@@ -952,8 +952,8 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		else {
 			mut start := 0
 			// Add up to `nth` segments left of every occurrence of the delimiter.
-			for i := 0; i <= s.len; i++ {
-				if s[i..i + delim.len] or { break } == delim {
+			for i := 0; i + delim.len <= s.len; i++ {
+				if unsafe { s.substr_unsafe(i, i + delim.len) } == delim {
 					if nth > 0 && res.len == nth - 1 {
 						break
 					}
