@@ -27,10 +27,13 @@ pub fn (covdata []&VCoverData) find(filename string) ?&VCoverData {
 	return none
 }
 
-pub fn (covdata []VCoverData) filter_data(filters []string) []VCoverData {
+pub fn (covdata []VCoverData) filter_files(filters []string, remove_test bool) []VCoverData {
 	mut arr := []VCoverData{}
 	for data in covdata {
-		if filters.any(data.file.contains(it)) {
+		if remove_test && data.file.ends_with('_test.v') {
+			continue
+		}
+		if filters.len == 0 || filters.any(data.file.contains(it)) {
 			arr << data
 		}
 	}
@@ -41,10 +44,12 @@ fn display_result(filter string, data []VCoverData) ! {
 	mut covdata := data.clone()
 	if filter != '' {
 		filters := filter.split(',')
-		covdata = covdata.filter_data(filters)
+		covdata = covdata.filter_files(filters, true)
 		if covdata.len == 0 {
 			return error('No result found with such filter')
 		}
+	} else {
+		covdata = covdata.filter_files([], true)
 	}
 	hits := arrays.sum(covdata.map(it.hits))!
 	points := arrays.sum(covdata.map(it.points))!

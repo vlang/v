@@ -15,7 +15,7 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 			file: g.file
 		}
 	}
-	if g.fn_decl != unsafe { nil } && !g.fn_decl.is_test {
+	if g.fn_decl != unsafe { nil } {
 		curr_line := u64(pos.line_nr)
 		mut curr_cov := unsafe { g.coverage_files[g.unique_file_path_hash] }
 		if curr_line !in curr_cov.points {
