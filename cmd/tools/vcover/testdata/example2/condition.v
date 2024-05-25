@@ -1,6 +1,6 @@
-module example1
+module example2
 
-fn condition() int {
+pub fn condition() int {
 	mut res := 0
 	$if condition1 ? {
 		res += 1
