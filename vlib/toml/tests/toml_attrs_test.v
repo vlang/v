@@ -2,8 +2,8 @@ import toml
 
 struct TestStruct {
 	foo int
-	bar bool @[skip]
-	baz string = 'def' @[toml: barbaz] 
+	bar bool   @[skip]
+	baz string = 'def' @[toml: barbaz]
 }
 
 fn test_toml_attr_encode() {
