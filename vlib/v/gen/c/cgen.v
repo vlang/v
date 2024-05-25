@@ -2455,6 +2455,20 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	g.write(')'.repeat(rparen_n))
 }
 
+// use instead of expr() when you need a var to use as reference
+fn (mut g Gen) expr_with_var(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) string {
+	stmt_str := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+	tmp_var := g.new_tmp_var()
+	styp := g.typ(expected_type)
+	g.writeln('${styp} ${tmp_var};')
+	g.write('memcpy(&${tmp_var}, ')
+	g.expr(expr)
+	g.writeln(', sizeof(${styp}));')
+	g.write(stmt_str)
+	return tmp_var
+}
+
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := ast.mktyp(got_type_raw)

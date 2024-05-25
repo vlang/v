@@ -652,6 +652,10 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			info := field_unwrap_sym.info as ast.ArrayFixed
 			g.fixed_array_var_init(g.expr_string(sfield.expr), sfield.expr.is_auto_deref_var(),
 				info.elem_type, info.size)
+		} else if field_unwrap_sym.kind == .array_fixed && sfield.expr is ast.CallExpr {
+			info := field_unwrap_sym.info as ast.ArrayFixed
+			tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
+			g.fixed_array_var_init(tmp_var, false, info.elem_type, info.size)
 		} else {
 			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type
 				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
