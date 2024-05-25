@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Felipe Pena. All rights reserved.
+// Copyright (c) 2024 Felipe Pena and Delyan Angelov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
