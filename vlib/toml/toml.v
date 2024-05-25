@@ -33,7 +33,13 @@ pub fn decode[T](toml_txt string) !T {
 
 fn decode_struct[T](doc Any, mut typ T) {
 	$for field in T.fields {
-		value := doc.value(field.name)
+		mut field_name := field.name
+		for attr in field.attrs {
+			if attr.starts_with('toml:') {
+				field_name = attr.all_after(':').trim_space()
+			}
+		}
+		value := doc.value(field_name)
 		$if field.is_enum {
 			typ.$(field.name) = value.int()
 		} $else $if field.typ is string {
