@@ -43,6 +43,7 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 }
 
 fn (mut g Gen) write_coverage_stats() {
+	build_options := g.pref.build_options.join(' ')
 	coverage_meta_folder := os.join_path(g.pref.coverage_dir, 'meta')
 	if !os.exists(coverage_meta_folder) {
 		os.mkdir_all(coverage_meta_folder) or {}
@@ -77,6 +78,7 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_${counter_ulid}.csv", cov_dir);')
 	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "wb+");')
 	g.cov_declarations.writeln('\tfprintf(fp, "# path: ${g.pref.path}\\n");')
+	g.cov_declarations.writeln('\tfprintf(fp, "# build_options: ${build_options}\\n");')
 	g.cov_declarations.writeln('\tfprintf(fp, "meta,point,hits\\n");')
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
