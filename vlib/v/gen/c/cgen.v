@@ -2107,7 +2107,7 @@ fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
 		&& stmt !in [ast.FnDecl, ast.ForCStmt, ast.ForInStmt, ast.ForStmt] {
 		if stmt is ast.ExprStmt {
 			if !g.inside_assign
-				&& stmt.expr !in [ast.IndexExpr, ast.StringInterLiteral, ast.StringLiteral, ast.Ident, ast.UnsafeExpr] {
+				&& stmt.expr !in [ast.CastExpr, ast.IndexExpr, ast.StringInterLiteral, ast.StringLiteral, ast.Ident, ast.UnsafeExpr] {
 				g.write_coverage_point(stmt.pos)
 			}
 		} else {
