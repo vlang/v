@@ -5,7 +5,7 @@ module c
 
 import v.token
 import os
-import rand { ulid }
+import rand
 
 @[inline]
 fn (mut g Gen) write_coverage_point(pos token.Pos) {
@@ -21,49 +21,33 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 		if curr_line !in curr_cov.points {
 			curr_cov.points << curr_line
 		}
-		g.writeln('_v_cov[_v_cov_file_offset_${g.unique_file_path_hash}+${curr_cov.points.len - 1}] = 1;')
+		g.writeln('_v_cov[_v_cov_file_offset_${g.unique_file_path_hash}+${curr_cov.points.len - 1}]++;')
 	}
 }
 
 fn (mut g Gen) write_coverage_stats() {
-	g.cov_declarations.writeln('char* vcoverage_fnv1a(const u8* data) {')
-	g.cov_declarations.writeln('\tu32 h = 2166136261UL;')
-	g.cov_declarations.writeln('\tsize_t size = strlen(data);')
-	g.cov_declarations.writeln('\tfor (size_t i = 0; i < size; i++) {')
-	g.cov_declarations.writeln('\th ^= data[i];')
-	g.cov_declarations.writeln('\th *= 16777619;')
-	g.cov_declarations.writeln('\t}')
-	g.cov_declarations.writeln('\treturn u32_str(h).str;')
-	g.cov_declarations.writeln('}')
+	ulid_hash := rand.ulid() // rand.ulid provides a hash+timestamp, so that a collision is extremely unlikely
 	g.cov_declarations.writeln('')
-
-	build_hash := ulid()
-
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
-	g.cov_declarations.writeln('\ttime_t rawtime;')
-	g.cov_declarations.writeln('\tchar cov_filename[120];')
-	g.cov_declarations.writeln('\ttime(&rawtime);')
+	// g.cov_declarations.writeln('\tstruct timespec ts;')
+	// g.cov_declarations.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
+	g.cov_declarations.writeln('\tchar cov_filename[512];')
 	g.cov_declarations.writeln('\tchar *cov_dir = getenv("VCOVDIR") != NULL ? getenv("VCOVDIR") : "${os.real_path(g.pref.coverage_dir)}";')
-	g.cov_declarations.writeln('\tsnprintf(cov_filename, 120, "%s/vcover.%s.%s", cov_dir, "${build_hash}", vcoverage_fnv1a(asctime(localtime(&rawtime))));')
-	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "w+");')
-	g.cov_declarations.writeln('\tfprintf(fp, "[");')
-	g.cov_declarations.writeln('\tint t_counter = 0;')
-	g.cov_declarations.writeln('\tint is_first = 1;')
+	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcover_${ulid_hash}.csv", cov_dir);')
+	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "wb+");')
+	g.cov_declarations.writeln('\tfprintf(fp, "file,points,counter,hits\\n");')
 	mut last_offset := 0
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
 		g.cov_declarations.writeln('\t{')
-		g.cov_declarations.writeln('\t\tint counter = 0;')
-		g.cov_declarations.writeln('\t\tfor (int i = 0, is_first = 1, offset = ${last_offset}; i < ${nr_points}; ++i)')
-		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
-		g.cov_declarations.writeln('\t\tt_counter += counter;')
-		g.cov_declarations.writeln('\t\tif (counter) {')
-		g.cov_declarations.writeln("\t\t\tfprintf(fp, \"%s{\\\"file\\\":\\\"%s\\\",\\\"hits\\\":%d,\\\"points\\\":%d}\", is_first ? \"\" : \",\", \"${cov.file.path}\", counter, ${nr_points});")
-		g.cov_declarations.writeln('\t\t\tis_first = 0;')
+		g.cov_declarations.writeln('\t\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i) {')
+		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) {')
+		g.cov_declarations.writeln("\t\t\t\tfprintf(fp, \"\\\"%s\\\",%d,%d,%ld\\n\", \"${cov.file.path}\", ${nr_points}, i, _v_cov[_v_cov_file_offset_${k}+i]);")
+		g.cov_declarations.writeln('\t\t\t}')
 		g.cov_declarations.writeln('\t\t}')
 		g.cov_declarations.writeln('\t}')
 		last_offset += nr_points
 	}
-	g.cov_declarations.writeln('\tfprintf(fp, "]");')
+	g.cov_declarations.writeln('\tfclose(fp);')
 	g.cov_declarations.writeln('}')
 }

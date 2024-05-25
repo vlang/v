@@ -527,7 +527,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			g.cheaders.writeln('#define _v_cov_file_offset_${k} ${total_code_points}')
 			total_code_points += cov.points.len
 		}
-		g.cheaders.writeln('char _v_cov[${total_code_points}] = {0};')
+		g.cheaders.writeln('long int _v_cov[${total_code_points}] = {0};')
 	}
 
 	// insert for options forward
