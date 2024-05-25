@@ -48,20 +48,18 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "w+");')
 	g.cov_declarations.writeln('\tfprintf(fp, "[");')
 	g.cov_declarations.writeln('\tint t_counter = 0;')
+	g.cov_declarations.writeln('\tint is_first = 1;')
 	mut last_offset := 0
-	mut is_first := true
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
 		g.cov_declarations.writeln('\t{')
 		g.cov_declarations.writeln('\t\tint counter = 0;')
-		g.cov_declarations.writeln('\t\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i)')
+		g.cov_declarations.writeln('\t\tfor (int i = 0, is_first = 1, offset = ${last_offset}; i < ${nr_points}; ++i)')
 		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
 		g.cov_declarations.writeln('\t\tt_counter += counter;')
 		g.cov_declarations.writeln('\t\tif (counter) {')
-		g.cov_declarations.writeln("\t\t\tfprintf(fp, \"%s{\\\"file\\\":\\\"%s\\\",\\\"hits\\\":%d,\\\"points\\\":%d}\", ${int(is_first)} ? \"\" : \",\", \"${cov.file.path}\", counter, ${nr_points});")
-		if is_first {
-			is_first = !is_first
-		}
+		g.cov_declarations.writeln("\t\t\tfprintf(fp, \"%s{\\\"file\\\":\\\"%s\\\",\\\"hits\\\":%d,\\\"points\\\":%d}\", is_first ? \"\" : \",\", \"${cov.file.path}\", counter, ${nr_points});")
+		g.cov_declarations.writeln('\t\t\tis_first = 0;')
 		g.cov_declarations.writeln('\t\t}')
 		g.cov_declarations.writeln('\t}')
 		last_offset += nr_points
