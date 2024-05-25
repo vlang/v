@@ -23,12 +23,14 @@ mut:
 	handle(Request) Response
 }
 
+pub const default_server_port = 9009
+
 pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string = ':8080' // change to ':8080' when port is removed
-	port               int = 8080             @[deprecated: 'use addr']
+	addr               string = ':${http.default_server_port}'
+	port               int = http.default_server_port             @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
@@ -53,7 +55,7 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// remove when s.port is removed
 	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != 8080 {
+	if addr.len > 1 && s.port != http.default_server_port {
 		s.addr = '${addr[0]}:${s.port}'
 	}
 
