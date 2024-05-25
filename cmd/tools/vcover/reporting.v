@@ -1,14 +1,11 @@
-// Copyright (c) 2024 Felipe Pena. All rights reserved.
+// Copyright (c) 2024 Felipe Pena and Delyan Angelov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
 
 import json
 import os
-import os.cmdline
 import arrays
-
-const tmp_dir = os.join_path(os.vtmp_dir(), 'cover')
 
 @[heap]
 struct VCoverData {
@@ -81,12 +78,7 @@ fn summarize_coverage(covfile string, mut covdata []&VCoverData) ! {
 	}
 }
 
-fn main() {
-	args := cmdline.options_after(os.args, ['cover'])
-	covfile := os.real_path(cmdline.option(args, '-file', ''))
-	covdir := os.real_path(cmdline.option(args, '-dir', ''))
-	filter := cmdline.option(args, '-filter', '')
-
+fn process_file_or_folder(filter string, covfile string, covdir string) ! {
 	if covfile != '' {
 		report_file(filter, covfile) or { println('Error: ${err}') }
 	} else if covdir != '' {
