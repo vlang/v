@@ -60,7 +60,7 @@ fn (mut g Gen) write_coverage_stats() {
 		}
 		mut fmeta := os.create(metadata_coverage_fpath) or { continue }
 		fmeta.writeln('{') or { continue }
-		fmeta.writeln('  "file": "${cov.file.path}",') or { continue }
+		fmeta.writeln('  "file": "${cov.file.path}", "fhash": "${cov.fhash}",') or { continue }
 		fmeta.writeln('  "v_version": "${version.full_v_version(true)}",') or { continue }
 		fmeta.writeln('  "build_options": "${cov.build_options}",') or { continue }
 		fmeta.writeln('  "npoints": ${cov.points.len},') or { continue }
@@ -75,10 +75,12 @@ fn (mut g Gen) write_coverage_stats() {
 		fmeta.writeln('}') or { continue }
 		fmeta.close()
 	}
-	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_${counter_ulid}.csv", cov_dir);')
+	g.cov_declarations.writeln('\tstruct timespec ts;')
+	g.cov_declarations.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
+	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_${counter_ulid}.%ld.%ld.csv", cov_dir, ts.tv_sec, ts.tv_nsec);')
 	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "wb+");')
 	g.cov_declarations.writeln('\tfprintf(fp, "# path: ${g.pref.path}\\n");')
-	g.cov_declarations.writeln('\tfprintf(fp, "# build_options: ${build_options}\\n");')
+	g.cov_declarations.writeln('\tfprintf(fp, "# build_options: ${cescape_nonascii(cestring(build_options))}\\n");')
 	g.cov_declarations.writeln('\tfprintf(fp, "meta,point,hits\\n");')
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
