@@ -3,16 +3,33 @@
 // that can be found in the LICENSE file.
 module c
 
-import v.token
 import os
 import rand
+import v.ast
+import v.token
+import v.util.version
+import hash
 
-@[inline]
+// V coverage info
+@[heap]
+struct CoverageInfo {
+mut:
+	idx           int   // index
+	points        []u64 // code point line nr
+	file          &ast.File = unsafe { nil }
+	fhash         string // hash(fpath, build_options), prevents collisions for runs with different options, like `-os windows` or `-gc none`, which may affect the points, due to `$if ... {` etc
+	build_options string
+}
+
 fn (mut g Gen) write_coverage_point(pos token.Pos) {
 	if g.unique_file_path_hash !in g.coverage_files {
+		build_options := g.pref.build_options.join(' ')
+		fhash := hash.sum64_string('${build_options}:${g.unique_file_path_hash}', 32).hex_full()
 		g.coverage_files[g.unique_file_path_hash] = &CoverageInfo{
 			points: []
 			file: g.file
+			fhash: fhash
+			build_options: build_options
 		}
 	}
 	if g.fn_decl != unsafe { nil } {
@@ -26,27 +43,50 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 }
 
 fn (mut g Gen) write_coverage_stats() {
-	ulid_hash := rand.ulid() // rand.ulid provides a hash+timestamp, so that a collision is extremely unlikely
+	coverage_meta_folder := os.join_path(g.pref.coverage_dir, 'meta')
+	if !os.exists(coverage_meta_folder) {
+		os.mkdir_all(coverage_meta_folder) or {}
+	}
+	counter_ulid := rand.ulid() // rand.ulid provides a hash+timestamp, so that a collision is extremely unlikely
 	g.cov_declarations.writeln('')
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
-	// g.cov_declarations.writeln('\tstruct timespec ts;')
-	// g.cov_declarations.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
-	g.cov_declarations.writeln('\tchar cov_filename[512];')
-	g.cov_declarations.writeln('\tchar *cov_dir = getenv("VCOVDIR") != NULL ? getenv("VCOVDIR") : "${os.real_path(g.pref.coverage_dir)}";')
-	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcover_${ulid_hash}.csv", cov_dir);')
+	g.cov_declarations.writeln('\tchar cov_filename[2048];')
+	g.cov_declarations.writeln('\tchar *cov_dir = "${os.real_path(g.pref.coverage_dir)}";')
+	for _, mut cov in g.coverage_files {
+		metadata_coverage_fpath := os.join_path(coverage_meta_folder, '${cov.fhash}.txt')
+		if os.exists(metadata_coverage_fpath) {
+			continue
+		}
+		mut fmeta := os.create(metadata_coverage_fpath) or { continue }
+		fmeta.writeln('{') or { continue }
+		fmeta.writeln('  "file": "${cov.file.path}",') or { continue }
+		fmeta.writeln('  "v_version": "${version.full_v_version(true)}",') or { continue }
+		fmeta.writeln('  "build_options": "${cov.build_options}",') or { continue }
+		fmeta.writeln('  "npoints": ${cov.points.len},') or { continue }
+		fmeta.write_string('  "points": [  ') or { continue }
+		for idx, p in cov.points {
+			fmeta.write_string('${p + 1}') or { continue }
+			if idx < cov.points.len - 1 {
+				fmeta.write_string(',') or { continue }
+			}
+		}
+		fmeta.writeln('  ]') or { continue }
+		fmeta.writeln('}') or { continue }
+		fmeta.close()
+	}
+	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_${counter_ulid}.csv", cov_dir);')
 	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "wb+");')
-	g.cov_declarations.writeln('\tfprintf(fp, "file,points,counter,hits\\n");')
-	mut last_offset := 0
+	g.cov_declarations.writeln('\tfprintf(fp, "# path: ${g.pref.path}\\n");')
+	g.cov_declarations.writeln('\tfprintf(fp, "meta,point,hits\\n");')
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
 		g.cov_declarations.writeln('\t{')
-		g.cov_declarations.writeln('\t\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i) {')
+		g.cov_declarations.writeln('\t\tfor (int i = 0; i < ${nr_points}; ++i) {')
 		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) {')
-		g.cov_declarations.writeln("\t\t\t\tfprintf(fp, \"\\\"%s\\\",%d,%d,%ld\\n\", \"${cov.file.path}\", ${nr_points}, i, _v_cov[_v_cov_file_offset_${k}+i]);")
+		g.cov_declarations.writeln("\t\t\t\tfprintf(fp, \"%s,%d,%ld\\n\", \"${cov.fhash}\", i, _v_cov[_v_cov_file_offset_${k}+i]);")
 		g.cov_declarations.writeln('\t\t\t}')
 		g.cov_declarations.writeln('\t\t}')
 		g.cov_declarations.writeln('\t}')
-		last_offset += nr_points
 	}
 	g.cov_declarations.writeln('\tfclose(fp);')
 	g.cov_declarations.writeln('}')

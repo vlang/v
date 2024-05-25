@@ -42,15 +42,6 @@ fn string_array_to_map(a []string) map[string]bool {
 	return res
 }
 
-// V coverage info
-@[heap]
-struct CoverageInfo {
-pub mut:
-	idx    int   // index
-	points []u64 // code point line nr
-	file   &ast.File = unsafe { nil }
-}
-
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups

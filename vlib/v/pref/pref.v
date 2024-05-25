@@ -310,6 +310,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if os.getenv('VNORUN') != '' {
 		res.skip_running = true
 	}
+	coverage_dir_from_env := os.getenv('VCOVDIR')
+	if coverage_dir_from_env != '' {
+		res.coverage_dir = coverage_dir_from_env
+	}
 	/* $if macos || linux {
 		res.use_cache = true
 		res.skip_unused = true
@@ -605,8 +609,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cov', '-coverage' {
 				res.coverage_dir = cmdline.option(args[i..], arg, '-')
-				res.is_coverage = true
-				res.build_options << '${arg} ${res.coverage_dir}'
 				i++
 			}
 			'-profile-fns' {
@@ -1072,6 +1074,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if 'trace' in res.compile_defines_all {
 		res.is_trace = true
+	}
+	if res.coverage_dir != '' {
+		res.is_coverage = true
+		res.build_options << '-coverage ${res.coverage_dir}'
 	}
 	// keep only the unique res.build_options:
 	mut m := map[string]string{}
