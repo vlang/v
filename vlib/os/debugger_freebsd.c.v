@@ -6,8 +6,6 @@ fn C.ptrace(int, u32, voidptr, int) int
 
 // debugger_present returns a bool indicating if the process is being debugged
 pub fn debugger_present() bool {
-	// check if the parent could trace its process,
-	// if not a debugger must be present
 	$if freebsd {
 		// check if a child process could trace its parent process,
 		// if not a debugger must be present
@@ -28,9 +26,9 @@ pub fn debugger_present() bool {
 			}
 		} else {
 			mut status := 0
-			// wait until child process dies
+			// wait until the child process dies
 			C.waitpid(pid, &status, 0)
-			// check exit code of child process check
+			// check the exit code of the child process check
 			if C.WEXITSTATUS(status) == 0 {
 				return false
 			} else {

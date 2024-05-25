@@ -30,9 +30,9 @@ pub fn debugger_present() bool {
 				}
 			} else {
 				mut status := 0
-				// wait until child process dies
+				// wait until the child process dies
 				C.waitpid(pid, &status, 0)
-				// check exit code of child process check
+				// check the exit code of the child process check
 				if C.WEXITSTATUS(status) == 0 {
 					return false
 				} else {
