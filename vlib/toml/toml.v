@@ -93,32 +93,38 @@ fn decode_struct[T](doc Any, mut typ T) {
 					// |k, v| k, v.int()
 					// Unfortunately lambdas have issues with multiple return at the time of writing
 					map[string]int {
-						typ.$(field.name) = maps.to_map[string, Any, string, int](mmap, fn (k string, v Any) (string, int) {
+						typ.$(field.name) = maps.to_map[string, Any, string, int](mmap,
+							fn (k string, v Any) (string, int) {
 							return k, v.int()
 						})
 					}
 					map[string]i64 {
-						typ.$(field.name) = maps.to_map[string, Any, string, i64](mmap, fn (k string, v Any) (string, i64) {
+						typ.$(field.name) = maps.to_map[string, Any, string, i64](mmap,
+							fn (k string, v Any) (string, i64) {
 							return k, v.i64()
 						})
 					}
 					map[string]u64 {
-						typ.$(field.name) = maps.to_map[string, Any, string, u64](mmap, fn (k string, v Any) (string, u64) {
+						typ.$(field.name) = maps.to_map[string, Any, string, u64](mmap,
+							fn (k string, v Any) (string, u64) {
 							return k, v.u64()
 						})
 					}
 					map[string]f32 {
-						typ.$(field.name) = maps.to_map[string, Any, string, f32](mmap, fn (k string, v Any) (string, f32) {
+						typ.$(field.name) = maps.to_map[string, Any, string, f32](mmap,
+							fn (k string, v Any) (string, f32) {
 							return k, v.f32()
 						})
 					}
 					map[string]f64 {
-						typ.$(field.name) = maps.to_map[string, Any, string, f64](mmap, fn (k string, v Any) (string, f64) {
+						typ.$(field.name) = maps.to_map[string, Any, string, f64](mmap,
+							fn (k string, v Any) (string, f64) {
 							return k, v.f64()
 						})
 					}
 					map[string]bool {
-						typ.$(field.name) = maps.to_map[string, Any, string, bool](mmap, fn (k string, v Any) (string, bool) {
+						typ.$(field.name) = maps.to_map[string, Any, string, bool](mmap,
+							fn (k string, v Any) (string, bool) {
 							return k, v.bool()
 						})
 					}
@@ -129,12 +135,14 @@ fn decode_struct[T](doc Any, mut typ T) {
 						})
 					}
 					map[string]Date {
-						typ.$(field.name) = maps.to_map[string, Any, string, Date](mmap, fn (k string, v Any) (string, Date) {
+						typ.$(field.name) = maps.to_map[string, Any, string, Date](mmap,
+							fn (k string, v Any) (string, Date) {
 							return k, v.date()
 						})
 					}
 					map[string]Time {
-						typ.$(field.name) = maps.to_map[string, Any, string, Time](mmap, fn (k string, v Any) (string, Time) {
+						typ.$(field.name) = maps.to_map[string, Any, string, Time](mmap,
+							fn (k string, v Any) (string, Time) {
 							return k, v.time()
 						})
 					}
