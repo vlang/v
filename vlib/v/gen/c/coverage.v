@@ -54,15 +54,17 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('\tchar cov_filename[2048];')
 	g.cov_declarations.writeln('\tchar *cov_dir = "${os.real_path(g.pref.coverage_dir)}";')
 	for _, mut cov in g.coverage_files {
-		metadata_coverage_fpath := os.join_path(coverage_meta_folder, '${cov.fhash}.txt')
+		metadata_coverage_fpath := os.join_path(coverage_meta_folder, '${cov.fhash}.json')
 		if os.exists(metadata_coverage_fpath) {
 			continue
 		}
 		mut fmeta := os.create(metadata_coverage_fpath) or { continue }
 		fmeta.writeln('{') or { continue }
-		fmeta.writeln('  "file": "${cov.file.path}", "fhash": "${cov.fhash}",') or { continue }
-		fmeta.writeln('  "v_version": "${version.full_v_version(true)}",') or { continue }
-		fmeta.writeln('  "build_options": "${cov.build_options}",') or { continue }
+		fmeta.writeln('  "file": "${jesc(os.real_path(cov.file.path))}", "fhash": "${jesc(cov.fhash)}",') or {
+			continue
+		}
+		fmeta.writeln('  "v_version": "${jesc(version.full_v_version(true))}",') or { continue }
+		fmeta.writeln('  "build_options": "${jesc(cov.build_options)}",') or { continue }
 		fmeta.writeln('  "npoints": ${cov.points.len},') or { continue }
 		fmeta.write_string('  "points": [  ') or { continue }
 		for idx, p in cov.points {
@@ -79,8 +81,8 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
 	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_${counter_ulid}.%ld.%ld.csv", cov_dir, ts.tv_sec, ts.tv_nsec);')
 	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "wb+");')
-	g.cov_declarations.writeln('\tfprintf(fp, "# path: ${g.pref.path}\\n");')
-	g.cov_declarations.writeln('\tfprintf(fp, "# build_options: ${cescape_nonascii(cestring(build_options))}\\n");')
+	g.cov_declarations.writeln('\tfprintf(fp, "# path: ${cesc(os.real_path(g.pref.path))}\\n");')
+	g.cov_declarations.writeln('\tfprintf(fp, "# build_options: ${cesc(build_options)}\\n");')
 	g.cov_declarations.writeln('\tfprintf(fp, "meta,point,hits\\n");')
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
@@ -94,4 +96,12 @@ fn (mut g Gen) write_coverage_stats() {
 	}
 	g.cov_declarations.writeln('\tfclose(fp);')
 	g.cov_declarations.writeln('}')
+}
+
+fn cesc(s string) string {
+	return cescape_nonascii(cestring(s))
+}
+
+fn jesc(s string) string {
+	return escape_quotes(s)
 }
