@@ -42,6 +42,9 @@ fn display_result(filter string, data []VCoverData) ! {
 	if filter != '' {
 		filters := filter.split(',')
 		covdata = covdata.filter_data(filters)
+		if covdata.len == 0 {
+			return error('No result found with such filter')
+		}
 	}
 	hits := arrays.sum(covdata.map(it.hits))!
 	points := arrays.sum(covdata.map(it.points))!
@@ -80,12 +83,12 @@ fn main() {
 	filter := cmdline.option(args, '-filter', '')
 
 	if covfile != '' {
-		report_file(filter, covfile)!
+		report_file(filter, covfile) or { println('Error: ${err}') }
 	} else if covdir != '' {
 		mut sum_data := []&VCoverData{}
 		for coverfile in os.glob(covdir + '/vcover.*')! {
 			summarize_coverage(coverfile, mut sum_data)!
 		}
-		display_result(filter, sum_data.map(*it))!
+		display_result(filter, sum_data.map(*it)) or { println('Error: ${err}') }
 	}
 }
