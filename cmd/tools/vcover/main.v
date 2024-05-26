@@ -111,7 +111,11 @@ fn (mut ctx Context) show_report() ! {
 					continue
 				}
 			}
-			println('${hits:-8} ${location}')
+			mut final_path := normalize_path(location)
+			if !ctx.use_absolute_paths {
+				final_path = location.all_after_first('${ctx.working_folder}/')
+			}
+			println('${hits:-8} ${final_path}')
 		}
 	}
 	if ctx.show_percentages {
