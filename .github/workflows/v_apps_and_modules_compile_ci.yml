@@ -18,7 +18,11 @@ concurrency:
 
 jobs:
   common:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-12, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +33,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          v retry -- sudo apt update
-          v retry -- sudo apt install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
-          v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev xfonts-75dpi xfonts-base
-          v retry -- sudo apt install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
+          if [ $RUNNER_OS == 'Linux' ]; then
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
+            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev xfonts-75dpi xfonts-base
+            v retry -- sudo apt -qq install sassc libgit2-dev # needed by gitly
+          else
+            v retry brew install sassc libgit2
+          fi
 
       - name: Test vtcc
+        if: runner.os == 'Linux'
         run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples
@@ -150,7 +159,7 @@ jobs:
           fi
 
       - name: Build vlang/go2v
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-14' }}
         run: |
           echo "Clone Go2V"
           v retry -- git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
@@ -202,7 +211,11 @@ jobs:
       #     v test ~/.vmodules/nedpals/vex
 
   vsl:
-    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-12, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 121
     env:
       VFLAGS: -no-parallel
@@ -213,10 +226,14 @@ jobs:
         run: make && sudo ./v symlink
       - name: Install dependencies
         run: |
+          if [ $RUNNER_OS == 'Linux' ]; then
           v retry -- sudo apt -qq update
           v retry -- sudo apt -qq install \
             libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
             opencl-headers libxcursor-dev libxi-dev libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools
+          else
+            v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
+          fi
       - name: Install vsl
         run: v retry -- v install vsl
       - name: Test with Pure V Backend
@@ -225,10 +242,17 @@ jobs:
         run: ~/.vmodules/vsl/bin/test --use-cblas
 
   vtl:
-    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-12, macos-14]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 121
     env:
       VFLAGS: -no-parallel
+      # Fixes complaints about $TERM not being set when running the vtl test script
+      # (a warning on Linux, but an error on macOS).
+      TERM: xterm
     steps:
       - uses: actions/checkout@v4
       - name: Build V
@@ -236,9 +260,13 @@ jobs:
         run: make && sudo ./v symlink
       - name: Install dependencies
         run: |
-          v retry -- sudo apt -qq update
-          v retry -- sudo apt -qq install \
-            libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+          if [ $RUNNER_OS == 'Linux' ]; then
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install \
+              libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev
+          else
+            v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
+          fi
           v retry v install vsl
       - name: Install vtl
         run: v retry v install vtl
@@ -250,7 +278,7 @@ jobs:
   vpm-site:
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-12]
+        os: [ubuntu-20.04, macos-12, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
