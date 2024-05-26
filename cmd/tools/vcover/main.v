@@ -177,7 +177,7 @@ fn main() {
 			continue
 		}
 		if os.is_dir(t) {
-			found_counter_files := os.glob('${t}/${vcounter_glob_pattern}')!
+			found_counter_files := os.walk_ext(t, '.csv')
 			if found_counter_files.len == 0 {
 				log.error('Skipping ${t}, since there are 0 ${vcounter_glob_pattern} files in it')
 				continue
