@@ -56,7 +56,8 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('')
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
 	g.cov_declarations.writeln('\tchar cov_filename[2048];')
-	g.cov_declarations.writeln('\tchar *cov_dir = "${os.real_path(g.pref.coverage_dir)}";')
+	covdir := cesc(os.real_path(g.pref.coverage_dir))
+	g.cov_declarations.writeln('\tchar *cov_dir = "${covdir}";')
 	for _, mut cov in g.coverage_files {
 		metadata_coverage_fpath := os.join_path(coverage_meta_folder, '${cov.fhash}.json')
 		if os.exists(metadata_coverage_fpath) {
