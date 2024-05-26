@@ -329,11 +329,11 @@ pub fn (v &Builder) get_user_files() []string {
 		}
 		user_files << v_test_runner_prelude
 	}
-	if v.pref.is_test && v.pref.is_stats {
+	if v.pref.is_test && v.pref.show_asserts {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
-	}
-	if v.pref.backend.is_js() && v.pref.is_stats && v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'stats_import.js.v')
+		if v.pref.backend.is_js() {
+			user_files << os.join_path(preludes_path, 'stats_import.js.v')
+		}
 	}
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')

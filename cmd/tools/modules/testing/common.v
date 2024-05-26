@@ -85,6 +85,7 @@ pub mut:
 	build_tools   bool // builds only executables in cmd/tools; used by `v build-tools'
 	silent_mode   bool
 	show_stats    bool
+	show_asserts  bool
 	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
 	nmessages     chan LogMessage // many publishers, single consumer/printer
@@ -314,6 +315,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files: skip_files
 		fail_fast: testing.fail_fast
 		show_stats: '-stats' in vargs.split(' ')
+		show_asserts: '-show-asserts' in vargs.split(' ')
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
 		hash: hash
@@ -658,6 +660,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		mut r := os.execute(run_cmd)
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
+		if ts.show_asserts && r.exit_code == 0 {
+			println(r.output.split_into_lines().filter(it.contains(' assert')).join('\n'))
+		}
 		if r.exit_code != 0 {
 			mut details := get_test_details(file)
 			mut trimmed_output := r.output.trim_space()
