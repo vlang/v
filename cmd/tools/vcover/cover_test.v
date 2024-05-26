@@ -5,6 +5,7 @@ const vroot = os.dir(vexe)
 const tfolder = os.join_path(os.vtmp_dir(), 'cover_test')
 
 fn testsuite_begin() {
+	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)!
 	os.rmdir_all(tfolder) or {}
 	os.mkdir(tfolder) or {}
