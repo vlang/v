@@ -305,7 +305,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	mut all_tfuncs := g.get_all_test_function_names()
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
-	if g.pref.is_stats {
+	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
 	g.writeln('')
@@ -328,7 +328,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
-		if g.pref.is_stats {
+		if g.pref.show_asserts {
 			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
 		}
 		g.writeln('\t\t${tcname}();')
@@ -339,12 +339,12 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
 		//
 		g.writeln('\t}')
-		if g.pref.is_stats {
+		if g.pref.show_asserts {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
 		}
 		g.writeln('')
 	}
-	if g.pref.is_stats {
+	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
 	g.writeln('')
