@@ -132,6 +132,14 @@ jobs:
           # v -cc gcc run /tmp/gitly/tests/first_run.v
           # # /tmp/gitly/gitly -ci_run
 
+      - name: Build V UI examples
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          v retry -- v install ui
+          v -no-parallel ~/.vmodules/ui/examples/rectangles.v
+          v -no-parallel ~/.vmodules/ui/examples/users.v
+          # v run ~/.vmodules/ui/examples/build_examples.vsh
+
       - name: Build vlang/v-analyzer
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
