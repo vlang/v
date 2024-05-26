@@ -56,6 +56,8 @@ jobs:
             cc: msvc
           - os: macos-12
             cc: clang
+          - os: macos-14
+            cc: clang
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
