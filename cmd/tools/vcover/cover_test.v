@@ -29,21 +29,26 @@ fn test_help() {
 	assert res.output.contains('-A, --absolute            Use absolute paths for all files')
 }
 
+fn np(path string) string {
+	return path.replace('\\', '/')
+}
+
 fn test_simple() {
-	t1 := os.join_path(tfolder, 't1')
-	t2 := os.join_path(tfolder, 't2')
-	t3 := os.join_path(tfolder, 't3')
-	assert !os.exists(t1)
-	assert !os.exists(t2)
-	assert !os.exists(t3)
+	t1 := np(os.join_path(tfolder, 't1'))
+	t2 := np(os.join_path(tfolder, 't2'))
+	t3 := np(os.join_path(tfolder, 't3'))
+	assert !os.exists(t1), t1
+	assert !os.exists(t2), t2
+	assert !os.exists(t3), t3
 
 	r1 := os.execute('${os.quoted_path(vexe)} -coverage ${os.quoted_path(t1)} cmd/tools/vcover/testdata/simple/t1_test.v')
 	assert r1.exit_code == 0, r1.str()
 	assert r1.output.trim_space() == '10', r1.str()
 	assert os.exists(t1), t1
-	filter1 := os.execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/')
+	cmd := '${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/'
+	filter1 := os.execute(cmd)
 	assert filter1.exit_code == 0, filter1.output
-	assert filter1.output.contains('cmd/tools/vcover/testdata/simple/simple.v')
+	assert filter1.output.contains('cmd/tools/vcover/testdata/simple/simple.v'), filter1.output
 	assert filter1.output.trim_space().ends_with('|      4 |      9 |  44.44%'), filter1.output
 	hfilter1 := os.execute('${os.quoted_path(vexe)} cover ${os.quoted_path(t1)} --filter vcover/testdata/simple/ -H -P false')
 	assert hfilter1.exit_code == 0, hfilter1.output

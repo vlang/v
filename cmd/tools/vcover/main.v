@@ -35,7 +35,8 @@ const metadata_extension = '.json'
 const vcounter_glob_pattern = 'vcounters_*.csv'
 
 fn (mut ctx Context) load_meta(folder string) {
-	for mfile in os.walk_ext(folder, metadata_extension) {
+	for omfile in os.walk_ext(folder, metadata_extension) {
+		mfile := omfile.replace('\\', '/')
 		content := os.read_file(mfile) or { '' }
 		meta := os.file_name(mfile.replace(metadata_extension, ''))
 		data := json.decode(MetaData, content) or {

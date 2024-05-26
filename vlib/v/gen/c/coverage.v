@@ -48,7 +48,8 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 
 fn (mut g Gen) write_coverage_stats() {
 	build_options := g.pref.build_options.join(' ')
-	coverage_meta_folder := os.join_path(g.pref.coverage_dir, 'meta')
+	coverage_dir := os.real_path(g.pref.coverage_dir).replace('\\', '/')
+	coverage_meta_folder := '${coverage_dir}/meta'
 	if !os.exists(coverage_meta_folder) {
 		os.mkdir_all(coverage_meta_folder) or {}
 	}
@@ -56,16 +57,17 @@ fn (mut g Gen) write_coverage_stats() {
 	g.cov_declarations.writeln('')
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
 	g.cov_declarations.writeln('\tchar cov_filename[2048];')
-	covdir := cesc(os.real_path(g.pref.coverage_dir))
+	covdir := cesc(coverage_dir)
 	g.cov_declarations.writeln('\tchar *cov_dir = "${covdir}";')
 	for _, mut cov in g.coverage_files {
-		metadata_coverage_fpath := os.join_path(coverage_meta_folder, '${cov.fhash}.json')
+		metadata_coverage_fpath := '${coverage_meta_folder}/${cov.fhash}.json'
+		filepath := os.real_path(cov.file.path).replace('\\', '/')
 		if os.exists(metadata_coverage_fpath) {
 			continue
 		}
 		mut fmeta := os.create(metadata_coverage_fpath) or { continue }
 		fmeta.writeln('{') or { continue }
-		jfilepath := jesc(os.real_path(cov.file.path))
+		jfilepath := jesc(filepath)
 		jfhash := jesc(cov.fhash)
 		jversion := jesc(version.full_v_version(true))
 		jboptions := jesc(cov.build_options)
