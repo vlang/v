@@ -4,7 +4,7 @@ import net
 
 const use_net = net.no_timeout // ensure that `net` is used, i.e. no warnings
 
-const tfolder = os.join_path(os.vtmp_dir(), 'net_unix_test')
+const tfolder = os.join_path(os.temp_dir(), 'nuut_${os.getpid()}')
 const test_port = os.join_path(tfolder, 'domain_socket')
 
 fn testsuite_begin() {

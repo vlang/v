@@ -104,7 +104,8 @@ pub mut:
 	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines          bool // turned on by -g (it slows down .tmp.c generation slightly).
-	is_stats           bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
+	is_stats           bool // `v -stats file.v` will produce more detailed statistics for the file that is compiled
+	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
 	show_timings       bool // show how much time each compiler stage took
 	is_fmt             bool
 	is_vet             bool
@@ -367,6 +368,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-show-timings' {
 				res.show_timings = true
+			}
+			'-show-asserts' {
+				res.show_asserts = true
 			}
 			'-check-syntax' {
 				res.only_check_syntax = true
@@ -984,6 +988,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if command == 'run' {
 		res.is_run = true
 	}
+	res.show_asserts = res.show_asserts || res.is_stats || os.getenv('VTEST_SHOW_ASSERTS') != ''
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
 		eprintln_cond(show_output && !res.is_quiet, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output && !res.is_quiet, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
