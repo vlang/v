@@ -1,4 +1,4 @@
-FROM alpine:3.12
+FROM alpine:3.20
 
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 
@@ -6,22 +6,47 @@ WORKDIR /opt/vlang
 
 ENV VVV  /opt/vlang
 ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV VFLAGS -cc gcc
 
 RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
 
 ARG USE_LOCAL
 
-## libexecinfo is needed for the bundled tcc
 RUN apk --no-cache add \
-  git make upx gcc bash \
-  musl-dev libc-dev \
-  openssl-dev sqlite-dev \
-  libx11-dev glfw-dev freetype-dev \
-  libexecinfo-dev libexecinfo-static \
-  libc6-compat gcompat binutils
+  musl-dev libc-dev libc6-compat gcompat
 
-## RUN apk --no-cache add --virtual sdl2deps sdl2-dev sdl2_ttf-dev sdl2_mixer-dev sdl2_image-dev
+RUN apk --no-cache add \
+  openssl-dev sqlite-dev mbedtls \
+  libuv-dev libev-dev libevent-dev libmemcached-dev
+
+RUN apk --no-cache add \
+  binutils diffutils elfutils pcre strace \
+  libunwind-dev libunwind-static gc
+
+RUN apk --no-cache add \
+  make bash file git upx
+
+RUN apk --no-cache add gcc gdb wasi-sdk
+
+RUN apk --no-cache add \
+  mesa-dev mesa-gl mesa-gles mesa-glapi \
+  glfw-dev \
+  glu-dev \
+  glew-dev \
+  freetype-dev \
+  freeglut-dev \
+  libxi-dev libxi-static \
+  libxcursor-dev \
+  libx11-dev
+
+RUN apk --no-cache add \
+  sdl2_net-dev \
+  sdl2_gfx-dev \
+  sdl2_ttf-dev \
+  sdl2_image-dev \  
+  sdl2_mixer-dev \
+  sdl2_pango-dev \
+  sdl2-dev
+
 COPY . /vlang-local
 
 RUN if [[ -z "${USE_LOCAL}" ]] ; then \
