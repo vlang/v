@@ -191,7 +191,7 @@ docker run --rm -it vlang:latest
 git clone https://github.com/vlang/v
 cd v
 docker build -t vlang_alpine - < Dockerfile.alpine
-alias with_alpine='docker run --user 1000:1000 --rm --interactive --tty --volume ~:/home --volume .:/src --workdir /src vlang_alpine:latest'
+alias with_alpine='docker run --user 1000:1000 --rm --interactive --tty --volume .:/src --workdir /src vlang_alpine:latest'
 ```
 
 Compiling *static* executables, ready to be copied to a server, that is running
