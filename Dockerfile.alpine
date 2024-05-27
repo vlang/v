@@ -4,13 +4,9 @@ LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 
 WORKDIR /opt/vlang
 
-ENV VVV  /opt/vlang
 ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
-
-ARG USE_LOCAL
-
+## install development packages
 RUN apk --no-cache add \
   musl-dev libc-dev libc6-compat gcompat
 
@@ -39,6 +35,7 @@ RUN apk --no-cache add \
   libx11-dev
 
 RUN apk --no-cache add \
+  icu-data-full \
   sdl2_net-dev \
   sdl2_gfx-dev \
   sdl2_ttf-dev \
@@ -47,16 +44,34 @@ RUN apk --no-cache add \
   sdl2_pango-dev \
   sdl2-dev
 
+RUN ln -s /opt/vlang/v /usr/local/bin/v
+
 COPY . /vlang-local
 
+ARG USE_LOCAL
 RUN if [[ -z "${USE_LOCAL}" ]] ; then \
-      git clone https://github.com/vlang/v/ /opt/vlang && \
+      git clone --depth=1 --quiet https://github.com/vlang/v/ /opt/vlang && \
       rm -rf /vlang-local ; \
     else \
       mv /vlang-local/* . && \
       rm -rf /vlang-local ; \
     fi
 
-RUN make && v -version
+RUN mkdir -p /tmp/v /tmp/v /home/ && chown -Rh 1000:1000 /opt/ /tmp/ /home/
+
+## setup runtime environment for v and bash:
+USER 1000:1000
+ENV HOME     /home
+ENV VTMP     /tmp/v
+ENV VMODULES /tmp/vmodules
+
+RUN make && v -version && ls -la v
+RUN du -b -s .
+RUN time v -prod -skip-unused doctor
+RUN time v -prod -skip-unused self
+RUN time v -prod -skip-unused cmd/tools/vfmt.v
+RUN find . -type f -name *_test.v -or -name *.vv -or -name *.out | xargs rm
+RUN rm -rf v_old vc/ .git/
+RUN du -b -s .
 
 CMD ["v"]
