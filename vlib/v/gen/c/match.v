@@ -183,7 +183,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.writeln('else {')
 				}
 			} else {
@@ -191,7 +191,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if use_ternary {
 						g.write(' : ')
 					} else {
-						g.write_v_source_line_info(branch.pos)
+						g.write_v_source_line_info(branch)
 						g.write('else ')
 					}
 				}
@@ -201,7 +201,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if j == 0 && sumtype_index == 0 {
 						g.empty_line = true
 					}
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
 				g.write(cond_var)
@@ -428,7 +428,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.writeln('else {')
 				}
 			}
@@ -438,7 +438,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.write('else ')
 				}
 			}
@@ -448,7 +448,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if j == 0 {
 					g.writeln('')
 				}
-				g.write_v_source_line_info(branch.pos)
+				g.write_v_source_line_info(branch)
 				g.write('if (')
 			}
 			for i, expr in branch.exprs {

@@ -117,9 +117,11 @@ pub mut:
 	is_cstrict         bool     // turn on more C warnings; slightly slower
 	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
+	is_coverage        bool     // turn on code coverage stats
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
+	coverage_dir       string   // the coverage files will be stored inside coverage_dir
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
@@ -308,6 +310,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if os.getenv('VNORUN') != '' {
 		res.skip_running = true
+	}
+	coverage_dir_from_env := os.getenv('VCOVDIR')
+	if coverage_dir_from_env != '' {
+		res.coverage_dir = coverage_dir_from_env
 	}
 	/* $if macos || linux {
 		res.use_cache = true
@@ -603,6 +609,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.profile_file = cmdline.option(args[i..], arg, '-')
 				res.is_prof = true
 				res.build_options << '${arg} ${res.profile_file}'
+				i++
+			}
+			'-cov', '-coverage' {
+				res.coverage_dir = cmdline.option(args[i..], arg, '-')
 				i++
 			}
 			'-profile-fns' {
@@ -1069,6 +1079,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if 'trace' in res.compile_defines_all {
 		res.is_trace = true
+	}
+	if res.coverage_dir != '' {
+		res.is_coverage = true
+		res.build_options << '-coverage ${res.coverage_dir}'
 	}
 	// keep only the unique res.build_options:
 	mut m := map[string]string{}

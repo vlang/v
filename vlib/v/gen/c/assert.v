@@ -106,7 +106,7 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
-	g.write_v_source_line_info(node.pos)
+	g.write_v_source_line_info_stmt(node)
 	if g.pref.assert_failure_mode == .continues
 		|| g.fn_decl.attrs.any(it.name == 'assert_continues') {
 		return
