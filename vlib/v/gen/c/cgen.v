@@ -2096,7 +2096,13 @@ fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
 	g.write_v_source_line_info_pos(stmt.pos)
 	if g.inside_ternary == 0 && g.pref.is_coverage && !g.inside_for_c_stmt
 		&& stmt !in [ast.FnDecl, ast.ForCStmt, ast.ForInStmt, ast.ForStmt] {
-		g.write_coverage_point(stmt.pos)
+		if stmt is ast.AssertStmt {
+			if stmt.expr !in [ast.InfixExpr, ast.MatchExpr] {
+				g.write_coverage_point(stmt.pos)
+			}
+		} else {
+			g.write_coverage_point(stmt.pos)
+		}
 	}
 }
 
