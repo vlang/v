@@ -14,6 +14,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
+		for mut symfield in struct_sym.info.fields {
+			symfield.container_typ = struct_typ_idx
+			if struct_sym.info.is_union {
+				symfield.is_part_of_union = true
+			}
+		}
+
 		if node.language == .v && !c.is_builtin_mod && !struct_sym.info.is_anon {
 			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 		}
@@ -844,12 +851,22 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						node.pos)
 				}
 				if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
-					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
-					mut zero_struct_init := ast.StructInit{
-						pos: node.pos
-						typ: field.typ
+					&& !field.typ.has_flag(.option) {
+					field_final_sym := c.table.final_sym(field.typ)
+					if field_final_sym.kind == .struct_ {
+						mut zero_struct_init := ast.StructInit{
+							pos: node.pos
+							typ: field.typ
+						}
+						if field.is_part_of_union {
+							if field.name in inited_fields {
+								// fields that are part of an union, should only be checked, when they are explicitly initialised
+								c.struct_init(mut zero_struct_init, true, mut inited_fields)
+							}
+						} else {
+							c.struct_init(mut zero_struct_init, true, mut inited_fields)
+						}
 					}
-					c.struct_init(mut zero_struct_init, true, mut inited_fields)
 				}
 			}
 			for embed in info.embeds {
