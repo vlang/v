@@ -39,7 +39,7 @@ pub mut:
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
-	single_line_fields bool   // should struct fields be on a single line
+	single_line_fields bool // should struct fields be on a single line
 	in_lambda_depth    int
 	inside_const       bool
 	inside_unsafe      bool
