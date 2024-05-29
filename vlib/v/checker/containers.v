@@ -8,6 +8,9 @@ import v.token
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
 	unwrap_elem_type := c.unwrap_generic(node.elem_type)
+	if c.pref.warn_about_allocs {
+		c.warn_alloc('array initialization', node.pos)
+	}
 	// `x := []string{}` (the type was set in the parser)
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {

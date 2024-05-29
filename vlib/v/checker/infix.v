@@ -850,7 +850,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	if node.op == .plus && c.pref.warn_about_allocs {
+	if node.op == .plus && c.pref.warn_about_allocs && left_type == ast.string_type_idx
+		&& right_type == ast.string_type_idx {
 		c.warn_alloc('string concatenation', node.pos)
 	}
 	/*
