@@ -245,7 +245,9 @@ fn vweb_tmpl_${fn_name}() string {
 			// Remove new line byte
 			source.go_back(1)
 			source.writeln(parser.tmpl_str_end)
-			source.writeln(' } else { ')
+			pos := line.index('@else') or { continue }
+			source.writeln('}' + line[pos + 1..] + '{')
+			// source.writeln(' } else { ')
 			source.writeln(tmpl_str_start)
 			continue
 		}
@@ -332,7 +334,7 @@ fn vweb_tmpl_${fn_name}() string {
 		}
 
 		if pos := line.index('%') {
-			// %translation_key => ${tr('translation_key')}		
+			// %translation_key => ${tr('translation_key')}
 			mut line_ := line
 			if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
 				mut end := pos + 1

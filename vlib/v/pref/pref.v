@@ -232,8 +232,9 @@ pub mut:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
 	// wasm settings:
-	wasm_stack_top int = 1024 + (16 * 1024) // stack size for webassembly backend
-	wasm_validate  bool // validate webassembly code, by calling `wasm-validate`
+	wasm_stack_top    int = 1024 + (16 * 1024) // stack size for webassembly backend
+	wasm_validate     bool // validate webassembly code, by calling `wasm-validate`
+	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
 	// temp
 	// use_64_int bool
 }
@@ -503,6 +504,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-sourcemap' {
 				res.sourcemap = true
+			}
+			'-warn-about-allocs' {
+				res.warn_about_allocs = true
 			}
 			'-sourcemap-src-included' {
 				res.sourcemap_src_included = true
