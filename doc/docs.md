@@ -995,7 +995,7 @@ as reallocations can be avoided:
 mut numbers := []int{cap: 1000}
 println(numbers.len) // 0
 // Now appending elements won't reallocate
-for i in 0 .. 1000 {
+for i in 0 .. 999 {
 	numbers << i
 }
 ```
