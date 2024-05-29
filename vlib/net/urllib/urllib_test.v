@@ -114,6 +114,20 @@ fn test_parse() {
 		&& u.user.password == 'pass'
 }
 
+fn test_parse_authority() {
+	test_urls := {
+		'ftp://webmaster@www.google.com/':            ['webmaster', '']
+		'http://j@ne:password@google.com':            ['j@ne', 'password']
+		'http://jane:p@ssword@google.com/p@th?q=@go': ['jane', 'p@ssword']
+	}
+
+	for url, expected in test_urls {
+		u := urllib.parse(url)!
+		assert u.user.username == expected[0]
+		assert u.user.password == expected[1]
+	}
+}
+
 fn test_parse_slashes() {
 	assert urllib.parse('/')!.str() == '/'
 	assert urllib.parse('//')!.str() == '//'
