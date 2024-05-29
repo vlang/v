@@ -3,17 +3,6 @@
 // that can be found in the LICENSE file.
 import net.urllib
 
-fn test_net_urllib() {
-	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
-	u := urllib.parse(test_url) or {
-		assert false
-		return
-	}
-	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
-		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
-		&& u.user.password == 'pass'
-}
-
 fn test_str() {
 	url := urllib.parse('https://en.wikipedia.org/wiki/Brazil_(1985_film)') or {
 		panic('unable to parse URL')
@@ -115,12 +104,14 @@ fn test_parse() {
 		'ws://[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:4000',
 	]
 	for url in urls {
-		_ := urllib.parse(url) or {
-			eprintln(err)
-			assert false
-			return
-		}
+		urllib.parse(url)!
 	}
+
+	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
+	u := urllib.parse(test_url)!
+	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
+		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
+		&& u.user.password == 'pass'
 }
 
 fn test_parse_slashes() {
