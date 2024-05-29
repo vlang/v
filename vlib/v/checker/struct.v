@@ -449,12 +449,12 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
-		pos := type_sym.name.index_u8_last(`.`)
-		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() && (type_sym.kind != .struct_
-			|| !(type_sym.info is ast.Struct && type_sym.info.is_anon))
-			&& type_sym.kind != .placeholder {
-			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
+		if pos := type_sym.name.last_index_u8(`.`) {
+			if !type_sym.name[pos + 1].is_capital() && (type_sym.kind != .struct_
+				|| !(type_sym.info is ast.Struct && type_sym.info.is_anon))
+				&& type_sym.kind != .placeholder {
+				c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
+			}
 		}
 		if type_sym.kind == .enum_ && !c.pref.translated && !c.file.is_translated {
 			c.error('cannot initialize enums', node.pos)

@@ -534,8 +534,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) !ParseAuthorityRes {
-	i := authority.index_u8_last(`@`)
-	if i < 0 {
+	i := authority.last_index_u8(`@`) or {
 		return ParseAuthorityRes{
 			host: parse_host(authority)!
 			user: user('')
@@ -585,14 +584,11 @@ fn parse_host(host string) !string {
 			host3 := unescape(host[i..], .encode_host)!
 			return host1 + host2 + host3
 		}
-	} else {
-		i := host.index_u8_last(`:`)
-		if i != -1 {
-			colon_port := host[i..]
-			if !valid_optional_port(colon_port) {
-				return error(error_msg('parse_host: invalid port ${colon_port} after host ',
-					''))
-			}
+	} else if i := host.last_index_u8(`:`) {
+		colon_port := host[i..]
+		if !valid_optional_port(colon_port) {
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
+				''))
 		}
 	}
 	h := unescape(host, .encode_host)!
@@ -855,14 +851,16 @@ pub fn (v Values) encode() string {
 // resolve_path applies special path segments from refs and applies
 // them to base, per RFC 3986.
 fn resolve_path(base string, ref string) string {
-	mut full := ''
-	if ref == '' {
-		full = base
+	full := if ref == '' {
+		base
 	} else if ref[0] != `/` {
-		i := base.index_u8_last(`/`)
-		full = base[..i + 1] + ref
+		if i := base.last_index_u8(`/`) {
+			base[..i + 1] + ref
+		} else {
+			base + ref
+		}
 	} else {
-		full = ref
+		ref
 	}
 	if full == '' {
 		return ''
@@ -993,8 +991,7 @@ pub fn (u &URL) port() string {
 pub fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.index_u8_last(`:`)
-	if colon != -1 {
+	if colon := host.last_index_u8(`:`) {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]
 			host = host[..colon]

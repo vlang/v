@@ -266,11 +266,8 @@ pub fn file_ext(opath string) string {
 		return ''
 	}
 	path := file_name(opath)
-	pos := path.index_u8_last(`.`)
-	if pos == -1 {
-		return ''
-	}
-	if pos + 1 >= path.len || pos == 0 {
+	pos := path.last_index_u8(`.`) or { return '' }
+	if pos == 0 || pos + 1 >= path.len {
 		return ''
 	}
 	return path[pos..]
