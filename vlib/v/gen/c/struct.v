@@ -115,7 +115,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	} else {
 		// alias to pointer type
-		if g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr() {
+		if (g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr())
+			|| (node.typ.has_flag(.generic) && g.unwrap_generic(node.typ).is_ptr()) {
 			g.write('&')
 		}
 		if is_array || const_msvc_init {
