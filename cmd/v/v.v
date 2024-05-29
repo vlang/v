@@ -26,6 +26,7 @@ const external_tools = [
 	'cover',
 	'doc',
 	'doctor',
+	'download',
 	'fmt',
 	'gret',
 	'ls',
