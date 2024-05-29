@@ -23,6 +23,7 @@ const external_tools = [
 	'check-md',
 	'complete',
 	'compress',
+	'cover',
 	'doc',
 	'doctor',
 	'fmt',

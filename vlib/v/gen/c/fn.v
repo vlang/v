@@ -212,7 +212,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.writeln(';')
 	}
 
-	g.write_v_source_line_info(node.pos)
+	g.write_v_source_line_info_stmt(node)
 	fn_attrs := g.write_fn_attrs(node.attrs)
 	// Live
 	is_livefn := node.attrs.contains('live')

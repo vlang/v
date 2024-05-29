@@ -1,3 +1,4 @@
+//@[deprecated: '`x.vweb` is now `veb`. The module is no longer experimental.']
 module vweb
 
 import io

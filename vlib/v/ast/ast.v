@@ -341,6 +341,8 @@ pub:
 	is_deprecated    bool
 pub mut:
 	is_recursive     bool
+	is_part_of_union bool
+	container_typ    Type
 	default_expr     Expr
 	default_expr_typ Type
 	name             string

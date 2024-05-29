@@ -1,37 +1,77 @@
-FROM alpine:3.12
+FROM alpine:3.20
 
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 
 WORKDIR /opt/vlang
 
-ENV VVV  /opt/vlang
 ENV PATH /opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV VFLAGS -cc gcc
 
-RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
-
-ARG USE_LOCAL
-
-## libexecinfo is needed for the bundled tcc
+## install development packages
 RUN apk --no-cache add \
-  git make upx gcc bash \
-  musl-dev libc-dev \
-  openssl-dev sqlite-dev \
-  libx11-dev glfw-dev freetype-dev \
-  libexecinfo-dev libexecinfo-static \
-  libc6-compat gcompat binutils
+  musl-dev libc-dev libc6-compat gcompat
 
-## RUN apk --no-cache add --virtual sdl2deps sdl2-dev sdl2_ttf-dev sdl2_mixer-dev sdl2_image-dev
+RUN apk --no-cache add \
+  openssl-dev sqlite-dev mbedtls \
+  libuv-dev libev-dev libevent-dev libmemcached-dev
+
+RUN apk --no-cache add \
+  binutils diffutils elfutils pcre strace \
+  libunwind-dev libunwind-static gc
+
+RUN apk --no-cache add \
+  make bash file git upx
+
+RUN apk --no-cache add gcc gdb wasi-sdk
+
+RUN apk --no-cache add \
+  mesa-dev mesa-gl mesa-gles mesa-glapi \
+  glfw-dev \
+  glu-dev \
+  glew-dev \
+  freetype-dev \
+  freeglut-dev \
+  libxi-dev libxi-static \
+  libxcursor-dev \
+  libx11-dev
+
+RUN apk --no-cache add \
+  icu-data-full \
+  sdl2_net-dev \
+  sdl2_gfx-dev \
+  sdl2_ttf-dev \
+  sdl2_image-dev \  
+  sdl2_mixer-dev \
+  sdl2_pango-dev \
+  sdl2-dev
+
+RUN ln -s /opt/vlang/v /usr/local/bin/v
+
 COPY . /vlang-local
 
+ARG USE_LOCAL
 RUN if [[ -z "${USE_LOCAL}" ]] ; then \
-      git clone https://github.com/vlang/v/ /opt/vlang && \
+      git clone --depth=1 --quiet https://github.com/vlang/v/ /opt/vlang && \
       rm -rf /vlang-local ; \
     else \
       mv /vlang-local/* . && \
       rm -rf /vlang-local ; \
     fi
 
-RUN make && v -version
+RUN mkdir -p /tmp/v /tmp/v /home/ && chown -Rh 1000:1000 /opt/ /tmp/ /home/
+
+## setup runtime environment for v and bash:
+USER 1000:1000
+ENV HOME     /home
+ENV VTMP     /tmp/v
+ENV VMODULES /tmp/vmodules
+
+RUN make && v -version && ls -la v
+RUN du -b -s .
+RUN time v -prod -skip-unused doctor
+RUN time v -prod -skip-unused self
+RUN time v -prod -skip-unused cmd/tools/vfmt.v
+RUN find . -type f -name *_test.v -or -name *.vv -or -name *.out | xargs rm
+RUN rm -rf v_old vc/ .git/
+RUN du -b -s .
 
 CMD ["v"]

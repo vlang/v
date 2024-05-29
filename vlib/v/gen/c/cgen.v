@@ -69,6 +69,7 @@ mut:
 	auto_str_funcs            strings.Builder // function bodies of all auto generated _str funcs
 	dump_funcs                strings.Builder // function bodies of all auto generated _str funcs
 	pcs_declarations          strings.Builder // -prof profile counter declarations for each function
+	cov_declarations          strings.Builder // -cov coverage
 	embedded_data             strings.Builder // data to embed in the executable/binary
 	shared_types              strings.Builder // shared/lock types
 	shared_functions          strings.Builder // shared constructors
@@ -119,6 +120,7 @@ mut:
 	labeled_loops             map[string]&ast.Stmt
 	inner_loop                &ast.Stmt = unsafe { nil }
 	shareds                   map[int]string // types with hidden mutex for which decl has been emitted
+	coverage_files            map[u64]&CoverageInfo
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
@@ -299,6 +301,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		auto_str_funcs: strings.new_builder(100)
 		dump_funcs: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
+		cov_declarations: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		out_options_forward: strings.new_builder(100)
 		out_options: strings.new_builder(100)
@@ -379,6 +382,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
 			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
+			global_g.cov_declarations.write(g.cov_declarations) or { panic(err) }
 			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
@@ -410,6 +414,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			}
 			for k, v in g.sumtype_definitions {
 				global_g.sumtype_definitions[k] = v
+			}
+			for k, v in g.coverage_files {
+				global_g.coverage_files[k] = v
 			}
 			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
 			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
@@ -503,6 +510,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if g.pref.build_mode != .build_module {
 		// no init in builtin.o
 		g.write_init_function()
+	}
+
+	if g.pref.is_coverage {
+		mut total_code_points := 0
+		for k, cov in g.coverage_files {
+			g.cheaders.writeln('#define _v_cov_file_offset_${k} ${total_code_points}')
+			total_code_points += cov.points.len
+		}
+		g.cheaders.writeln('long int _v_cov[${total_code_points}] = {0};')
 	}
 
 	// insert for options forward
@@ -616,6 +632,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			b.writeln(fn_def)
 		}
 	}
+	if g.pref.is_coverage {
+		b.writeln('\n// V coverage:')
+		b.write_string(g.cov_declarations.str())
+	}
 	b.writeln('\n// end of V out')
 	mut header := b.last_n(b.len)
 	header = '#ifndef V_HEADER_FILE\n#define V_HEADER_FILE' + header
@@ -654,6 +674,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		auto_str_funcs: strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
+		cov_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		out_options_forward: strings.new_builder(100)
@@ -724,6 +745,7 @@ pub fn (mut g Gen) free_builders() {
 		g.dump_funcs.free()
 		g.comptime_definitions.free()
 		g.pcs_declarations.free()
+		g.cov_declarations.free()
 		g.hotcode_definitions.free()
 		g.embedded_data.free()
 		g.shared_types.free()
@@ -2049,7 +2071,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 }
 
 @[inline]
-fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
+fn (mut g Gen) write_v_source_line_info_pos(pos token.Pos) {
 	if g.inside_ternary == 0 && g.pref.is_vlines && g.is_vlines_enabled {
 		nline := pos.line_nr + 1
 		lineinfo := '\n#line ${nline} "${g.vlines_path}"'
@@ -2057,6 +2079,30 @@ fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 			eprintln('> lineinfo: ${lineinfo.replace('\n', '')}')
 		}
 		g.writeln(lineinfo)
+	}
+}
+
+@[inline]
+fn (mut g Gen) write_v_source_line_info(node ast.Node) {
+	g.write_v_source_line_info_pos(node.pos())
+	if g.inside_ternary == 0 && g.pref.is_coverage
+		&& node !in [ast.MatchBranch, ast.IfBranch, ast.InfixExpr] {
+		g.write_coverage_point(node.pos())
+	}
+}
+
+@[inline]
+fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
+	g.write_v_source_line_info_pos(stmt.pos)
+	if g.inside_ternary == 0 && g.pref.is_coverage && !g.inside_for_c_stmt
+		&& stmt !in [ast.FnDecl, ast.ForCStmt, ast.ForInStmt, ast.ForStmt] {
+		if stmt is ast.AssertStmt {
+			if stmt.expr !in [ast.InfixExpr, ast.MatchExpr] {
+				g.write_coverage_point(stmt.pos)
+			}
+		} else {
+			g.write_coverage_point(stmt.pos)
+		}
 	}
 }
 
@@ -2075,19 +2121,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AsmStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.asm_stmt(node)
 		}
 		ast.AssertStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.assert_stmt(node)
 		}
 		ast.AssignStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.assign_stmt(node)
 		}
 		ast.Block {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			if node.is_unsafe {
 				g.writeln('{ // Unsafe block')
 			} else {
@@ -2097,11 +2143,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.BranchStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.branch_stmt(node)
 		}
 		ast.ConstDecl {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.const_decl(node)
 		}
 		ast.ComptimeFor {
@@ -2121,7 +2167,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.enum_decl(node)
 		}
 		ast.ExprStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			// af := g.autofree && node.expr is ast.CallExpr && !g.is_builtin_mod
 			// if af {
 			// g.autofree_call_pregen(node.expr as ast.CallExpr)
@@ -2161,7 +2207,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.labeled_loops[node.label] = &node
 				}
 			}
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.for_c_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 			g.labeled_loops.delete(node.label)
@@ -2177,7 +2223,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.labeled_loops[node.label] = &node
 				}
 			}
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.for_in_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 			g.labeled_loops.delete(node.label)
@@ -2193,7 +2239,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.labeled_loops[node.label] = &node
 				}
 			}
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.for_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 			g.labeled_loops.delete(node.label)
@@ -2206,7 +2252,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('${c_name(node.name)}: {}')
 		}
 		ast.GotoStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.writeln('goto ${c_name(node.name)};')
 		}
 		ast.HashStmt {
@@ -2517,6 +2563,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			}
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
+			}
+			// Do not allocate for `Interface(unsafe{nil})` casts
+			is_nil_cast := expr is ast.UnsafeExpr && expr.expr is ast.Nil
+			if is_nil_cast {
+				g.write('/*nili*/')
+				g.write('((void*)0)')
+				return
 			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
 				false, got_styp)
@@ -5280,7 +5333,7 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.set_current_pos_as_last_stmt_pos()
-	g.write_v_source_line_info(node.pos)
+	g.write_v_source_line_info_stmt(node)
 
 	g.inside_return = true
 	defer {
@@ -6423,6 +6476,10 @@ fn (mut g Gen) write_init_function() {
 	}
 	if g.pref.use_coroutines {
 		g.writeln('\tdelete_photon_work_pool();')
+	}
+	if g.pref.is_coverage {
+		g.write_coverage_stats()
+		g.writeln('\tvprint_coverage_stats();')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {

@@ -190,10 +190,26 @@ docker run --rm -it vlang:latest
 ```bash
 git clone https://github.com/vlang/v
 cd v
-docker build -t vlang --file=Dockerfile.alpine .
-docker run --rm -it vlang:latest
+docker build -t vlang_alpine - < Dockerfile.alpine
+alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
 ```
 
+Compiling *static* executables, ready to be copied to a server, that is running
+another linux distro, without dependencies:
+```bash
+with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress examples/http_server.v
+with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
+ls -la examples/http_server examples/hello_world
+file   examples/http_server examples/hello_world
+examples/http_server: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
+examples/hello_world: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
+```
+
+You should see something like this:
+```
+-rwxr-xr-x 1 root root  16612 May 27 17:07 examples/hello_world
+-rwxr-xr-x 1 root root 335308 May 27 17:07 examples/http_server
+```
 </details>
 
 ### Termux/Android
