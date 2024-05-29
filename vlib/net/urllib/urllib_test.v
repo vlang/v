@@ -4,9 +4,6 @@
 import net.urllib
 
 fn test_net_urllib() {
-	test_query := 'Hellö Wörld@vlang'
-	assert urllib.query_escape(test_query) == 'Hell%C3%B6+W%C3%B6rld%40vlang'
-
 	test_url := 'https://joe:pass@www.mydomain.com:8080/som/url?param1=test1&param2=test2&foo=bar#testfragment'
 	u := urllib.parse(test_url) or {
 		assert false
@@ -25,13 +22,16 @@ fn test_str() {
 }
 
 fn test_escape_unescape() {
-	original := 'те ст: т\\%'
-	escaped := urllib.query_escape(original)
+	mut original := 'те ст: т\\%'
+	mut escaped := urllib.query_escape(original)
 	assert escaped == '%D1%82%D0%B5+%D1%81%D1%82%3A+%D1%82%5C%25'
-	unescaped := urllib.query_unescape(escaped) or {
-		assert false
-		return
-	}
+	mut unescaped := urllib.query_unescape(escaped)!
+	assert unescaped == original
+
+	original = 'Hellö Wörld@vlang'
+	escaped = urllib.query_escape(original)
+	assert escaped == 'Hell%C3%B6+W%C3%B6rld%40vlang'
+	unescaped = urllib.query_unescape(escaped)!
 	assert unescaped == original
 }
 
