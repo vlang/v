@@ -145,7 +145,9 @@ fn main() {
 	}
 	ecode := if has_internal_error { 5 } else { 0 }
 	if errors > 0 {
-		eprintln('Encountered a total of: ${errors} formatting errors.')
+		if !foptions.is_diff {
+			eprintln('Encountered a total of: ${errors} formatting errors.')
+		}
 		match true {
 			foptions.is_noerror { exit(0 + ecode) }
 			foptions.is_verify { exit(1 + ecode) }
@@ -245,7 +247,7 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 			return
 		}
 		println(diff.compare_files(file, formatted_file_path)!)
-		return
+		return error('')
 	}
 	if foptions.is_verify {
 		if !is_formatted_different {
