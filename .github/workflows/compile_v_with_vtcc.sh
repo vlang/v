@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -ex
 
 function show() {
-  printf "\u001b[35m$1\u001b[0m\n"
+	printf "\u001b[35m$1\u001b[0m\n"
 }
 
 show "Prepare"
@@ -23,7 +23,7 @@ show "Generate the C file, for the current V version"
 ls -la vlang.c
 
 show "Compile the C file with vtcc"
-export tcclib=thirdparty/tcc/lib/tcc 
+export tcclib=thirdparty/tcc/lib/tcc
 export tccinc=$tcclib/include
 ./vtcc/xx -o v_compiled_with_vtcc vlang.c -L$tcclib -I$tccinc -lc -ldl -pthread -ltcc1 $tcclib/bt-log.o
 ls -la v_compiled_with_vtcc
