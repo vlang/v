@@ -457,6 +457,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.write_v_source_line_info(branch)
 				g.write('if (')
 			}
+			reset_if = branch.exprs.any(g.match_must_reset_if(it))
 			for i, expr in branch.exprs {
 				if i > 0 {
 					g.write(' || ')
@@ -469,7 +470,6 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('.state == 2')
 					continue
 				}
-				reset_if = expr is ast.CallExpr && expr.or_block.kind != .absent
 				match type_sym.kind {
 					.array {
 						ptr_typ := g.equality_fn(node.cond_type)
@@ -552,5 +552,20 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 	if has_goto {
 		g.writeln('end_block:')
 		g.set_current_pos_as_last_stmt_pos()
+	}
+}
+
+// match_must_reset_if checks if codegen must break the if-elseif sequence in another if expr
+fn (mut g Gen) match_must_reset_if(node ast.Expr) bool {
+	return match node {
+		ast.CallExpr {
+			node.or_block.kind != .absent
+		}
+		ast.InfixExpr {
+			g.match_must_reset_if(node.left) || g.match_must_reset_if(node.right)
+		}
+		else {
+			false
+		}
 	}
 }
