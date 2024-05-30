@@ -419,6 +419,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 	type_sym := g.table.final_sym(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
+	mut reset_if := false
+	mut has_goto := false
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
 		if branch.is_else || (use_ternary && is_last) {
@@ -439,7 +441,11 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					g.writeln('')
 					g.write_v_source_line_info(branch)
-					g.write('else ')
+					if !reset_if {
+						g.write('else ')
+					} else {
+						reset_if = false
+					}
 				}
 			}
 			if use_ternary {
@@ -463,6 +469,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('.state == 2')
 					continue
 				}
+				reset_if = expr is ast.CallExpr && expr.or_block.kind != .absent
 				match type_sym.kind {
 					.array {
 						ptr_typ := g.equality_fn(node.cond_type)
@@ -532,7 +539,18 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
-			g.write('}')
+			if reset_if {
+				has_goto = true
+				g.writeln('goto end_block;')
+				g.writeln('}')
+				g.set_current_pos_as_last_stmt_pos()
+			} else {
+				g.write('}')
+			}
 		}
+	}
+	if has_goto {
+		g.writeln('end_block:')
+		g.set_current_pos_as_last_stmt_pos()
 	}
 }
