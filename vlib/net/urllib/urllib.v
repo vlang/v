@@ -564,7 +564,7 @@ fn parse_host(host string) !string {
 	if host.len > 0 && host[0] == `[` {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.index_u8_last(`]`)
+		i := host.index_u8_last(`]`)
 		if i == -1 {
 			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
@@ -580,9 +580,9 @@ fn parse_host(host string) !string {
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
 		if zone := host[..i].index('%25') {
-			host1 := unescape(host[..zone], .encode_host) or { return err.msg() }
-			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg() }
-			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
+			host1 := unescape(host[..zone], .encode_host)!
+			host2 := unescape(host[zone..i], .encode_zone)!
+			host3 := unescape(host[i..], .encode_host)!
 			return host1 + host2 + host3
 		}
 	} else {
@@ -595,10 +595,8 @@ fn parse_host(host string) !string {
 			}
 		}
 	}
-	h := unescape(host, .encode_host) or { return err.msg() }
+	h := unescape(host, .encode_host)!
 	return h
-	// host = h
-	// return host
 }
 
 // set_path sets the path and raw_path fields of the URL based on the provided
