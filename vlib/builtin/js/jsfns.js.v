@@ -23,7 +23,7 @@ pub interface JS.RegExp {
 	JS.Any
 }
 
-pub type SplitSeparator = JS.String | JS.RegExp
+pub type SplitSeparator = JS.RegExp | JS.String
 
 @[single_impl]
 pub interface JS.String {

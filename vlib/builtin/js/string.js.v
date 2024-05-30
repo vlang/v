@@ -104,9 +104,11 @@ pub fn (s string) split_any(delim string) []string {
 
 	mut regexp := JS.RegExp{}
 	#regexp = new RegExp('[' + pattern.str + ']', 'g')
+
 	tmparr := s.str.split(regexp).map(fn (it JS.Any) JS.Any {
 		res := ''
 		#res.str = it
+
 		return res
 	})
 	_ := tmparr
