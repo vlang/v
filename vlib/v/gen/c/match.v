@@ -81,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
+		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -541,7 +541,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
 			if reset_if {
 				has_goto = true
-				g.writeln('goto end_block;')
+				g.writeln('\tgoto end_block_${node.pos.line_nr};')
 				g.writeln('}')
 				g.set_current_pos_as_last_stmt_pos()
 			} else {
@@ -550,7 +550,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		}
 	}
 	if has_goto {
-		g.writeln('end_block:')
+		g.writeln('end_block_${node.pos.line_nr}:')
 		g.set_current_pos_as_last_stmt_pos()
 	}
 }
