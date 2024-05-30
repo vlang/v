@@ -19,6 +19,12 @@ pub interface JS.Number {
 	JS.Any
 }
 
+pub interface JS.RegExp {
+	JS.Any
+}
+
+pub type SplitSeparator = JS.String | JS.RegExp
+
 @[single_impl]
 pub interface JS.String {
 	JS.Any
@@ -32,7 +38,7 @@ pub interface JS.String {
 	endsWith(substr JS.String) JS.Boolean
 	startsWith(substr JS.String) JS.Boolean
 	slice(a JS.Number, b JS.Number) JS.String
-	split(dot JS.String) JS.Array
+	split(delim SplitSeparator) JS.Array
 	indexOf(needle JS.String) JS.Number
 	lastIndexOf(needle JS.String) JS.Number
 }
