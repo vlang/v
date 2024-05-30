@@ -33,6 +33,12 @@ fn (mut p Parser) register_used_import(alias string) {
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
 	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	for alias, mod in p.imports {
+		if mod == short_import_name {
+			p.register_used_import(alias)
+			return
+		}
+	}
 	p.register_used_import(short_import_name)
 }
 
