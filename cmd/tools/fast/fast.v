@@ -8,9 +8,9 @@ import log
 
 const warmup_samples = 2
 
-const max_samples = 10
+const max_samples = 20
 
-const discard_highest_samples = 6
+const discard_highest_samples = 16
 
 const voptions = ' -skip-unused -show-timings -stats '
 
