@@ -537,7 +537,7 @@ fn (mut p Parser) parse_type() ast.Type {
 			return 0
 		}
 		sym := p.table.sym(typ)
-		if sym.info is ast.Struct {
+		if p.inside_fn_concrete_type && sym.info is ast.Struct {
 			if !typ.has_flag(.generic) && sym.info.generic_types.len > 0 {
 				p.error_with_pos('missing concrete type on generic type', option_pos.extend(p.prev_tok.pos()))
 			}
