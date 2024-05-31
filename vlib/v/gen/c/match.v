@@ -550,7 +550,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		}
 	}
 	if has_goto {
-		g.writeln('end_block_${node.pos.line_nr}:')
+		g.writeln('end_block_${node.pos.line_nr}: {}')
 		g.set_current_pos_as_last_stmt_pos()
 	}
 }
