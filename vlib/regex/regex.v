@@ -419,12 +419,15 @@ enum BSLS_parse_state {
 	bsls_found
 	bsls_char
 	normal_char
+	hex_char
 }
 
 // parse_bsls return (index, str_len) bsls_validator_array index, len of the backslash sequence if present
-fn (re RE) parse_bsls(in_txt string, in_i int) (int, int) {
+fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 	mut status := BSLS_parse_state.start
 	mut i := in_i
+	mut hex_res := u32(0)
+	mut hex_count := 0
 
 	for i < in_txt.len {
 		// get our char
@@ -441,26 +444,76 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int) {
 		if status == .bsls_found {
 			for c, x in regex.bsls_validator_array {
 				if x.ch == ch {
-					return c, i - in_i + 1
+					return c, i - in_i + 1, hex_res
 				}
 			}
+
+			// check for \x00 hex byte
+			if ch == `x` {
+				println("Found x!!")
+				status = .hex_char
+				i += char_len
+				continue
+			}
+
 			status = .normal_char
 			continue
+		}
+
+		// manage hex byte
+		if status == .hex_char {
+			//println("hex_res: ${hex_res:08x} hex_count: ${hex_count}")
+			
+			// if over 8 nibble is more than 32 bit, error
+			if hex_count > 8 {
+				return regex.err_syntax_error, i - in_i , hex_res
+			}
+			
+			if ch >= `0` && ch <= `9` {
+				hex_count++
+				hex_res <<= 4
+				hex_res += u32(ch - `0`)
+				i += char_len
+			} else if ch >= `A` && ch <= `F` {
+				hex_count++
+				hex_res <<= 4
+				hex_res += u32(ch - `A`)
+				i += char_len
+			} else if ch >= `a` && ch <= `f` {
+				hex_count++
+				hex_res <<= 4
+				hex_res += u32(ch - `a`)
+				i += char_len
+			}
+
+			// look for more hex digits
+			if hex_count < 2 {
+				continue
+			}
+
+			if hex_count == 2 {
+				// we have a good result
+				//println("RESULT hex_res: ${hex_res:08x} hex_count: ${hex_count}")
+				return -2, i - in_i , hex_res
+			}
+
+			return regex.err_syntax_error, i, hex_res
+
 		}
 
 		// no BSLS validator, manage as normal escape char char
 		if status == .normal_char {
 			if ch in regex.bsls_escape_list {
-				return regex.no_match_found, i - in_i + 1
+				return regex.no_match_found, i - in_i + 1, hex_res
 			}
-			return regex.err_syntax_error, i - in_i + 1
+			return regex.err_syntax_error, i - in_i + 1, hex_res
 		}
 
 		// at the present time we manage only one char after the \
 		break
 	}
 	// not our bsls return KO
-	return regex.err_syntax_error, i
+	return regex.err_syntax_error, i, hex_res
 }
 
 /******************************************************************************
@@ -1200,8 +1253,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		// ist_bsls_char
 		if char_len == 1 && pc >= 0 {
 			if u8(char_tmp) == `\\` {
-				bsls_index, tmp := re.parse_bsls(in_txt, i)
-				// println("index: $bsls_index str:${in_txt[i..i+tmp]}")
+				bsls_index, tmp, hex_res := re.parse_bsls(in_txt, i)
 				if bsls_index >= 0 {
 					i = i + tmp
 					re.prog[pc].ist = u32(0) | regex.ist_bsls_char
@@ -1209,6 +1261,18 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 					re.prog[pc].rep_max = 1
 					re.prog[pc].validator = regex.bsls_validator_array[bsls_index].validator
 					re.prog[pc].ch = regex.bsls_validator_array[bsls_index].ch
+					pc = pc + 1
+					continue
+				}
+				// hex char
+				else if bsls_index == -2 {
+					i = i + tmp
+					re.prog[pc].ist = regex.ist_simple_char
+					re.prog[pc].ch = hex_res
+					re.prog[pc].ch_len = u8(char_len)
+					re.prog[pc].rep_min = 1
+					re.prog[pc].rep_max = 1
+					// println("char: ${char_tmp:c}")
 					pc = pc + 1
 					continue
 				}

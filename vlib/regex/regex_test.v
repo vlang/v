@@ -193,6 +193,13 @@ match_test_suite = [
     // test has `\0` chars
     TestItem{"abcxyz", "^abc\0xyz$", -1,3},
     TestItem{"abc\0xyz", "^abc\0xyz$", 0,7},
+
+    // test hex byte chars
+    TestItem{"abc\x41xyz", "^abcAxyz$", 0,7},
+    TestItem{"abc\x5fxyz", "^abc_xyz$", 0,7},
+    TestItem{"abc\x5Fxyz", "^abc_xyz$", 0,7},
+    TestItem{"abc\x7Fxyz", "^abc_xyz$", -1,3},
+
 ]
 )
 
