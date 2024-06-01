@@ -542,6 +542,11 @@ fn (mut p Parser) parse_type() ast.Type {
 			return 0
 		}
 		sym := p.table.sym(typ)
+		if p.inside_fn_concrete_type && sym.info is ast.Struct {
+			if !typ.has_flag(.generic) && sym.info.generic_types.len > 0 {
+				p.error_with_pos('missing concrete type on generic type', option_pos.extend(p.prev_tok.pos()))
+			}
+		}
 		if is_option && sym.info is ast.SumType && sym.info.is_anon {
 			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}

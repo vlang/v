@@ -47,6 +47,7 @@ mut:
 	inside_for_expr           bool
 	inside_fn                 bool // true even with implicit main
 	inside_fn_return          bool
+	inside_fn_concrete_type   bool // parsing fn_name[concrete_type]() call expr
 	inside_call_args          bool // true inside f(  ....  )
 	inside_unsafe_fn          bool
 	inside_str_interp         bool
@@ -3368,6 +3369,10 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
 	if p.tok.kind !in [.lt, .lsbr] {
 		return types
+	}
+	p.inside_fn_concrete_type = true
+	defer {
+		p.inside_fn_concrete_type = false
 	}
 	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
 	p.next() // `<`
