@@ -1306,16 +1306,16 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				} else {
 					'const '
 				})
-				}
+			}
 
 			mut array_set := false
 			mut map_set := false
 			if left is ast.IndexExpr {
-					g.expr(left.left)
-					if left.left_type.is_ptr() {
-						g.write('.valueOf()')
-					}
-					array_set = true
+				g.expr(left.left)
+				if left.left_type.is_ptr() {
+					g.write('.valueOf()')
+				}
+				array_set = true
 
 				if left.is_map {
 					map_set = true
@@ -1327,28 +1327,28 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					// work, but I'm hesitant about the amount of overhead this will
 					// introduce since those functions return arrays and not iterables,
 					// which might consume a lot of memory and cycles to set up
-						g.writeln('.length++;')
-						g.expr(left.left)
-						g.write('.map[')
-						g.expr(left.index)
-						g.write('.\$toJS()] = ')
-					} else {
+					g.writeln('.length++;')
+					g.expr(left.left)
+					g.write('.map[')
+					g.expr(left.index)
+					g.write('.\$toJS()] = ')
+				} else {
 					g.write('.arr.set(')
-						g.write('new int(')
-						g.cast_stack << ast.int_type_idx
-						g.expr(left.index)
-						g.write('.valueOf()')
-						g.cast_stack.delete_last()
-						g.write('),')
-					}
-			} else {
-					g.expr(left)
+					g.write('new int(')
+					g.cast_stack << ast.int_type_idx
+					g.expr(left.index)
+					g.write('.valueOf()')
+					g.cast_stack.delete_last()
+					g.write('),')
 				}
+			} else {
+				g.expr(left)
+			}
 
 			is_ptr := stmt.op == .assign && stmt.left_types[i].is_ptr() && !array_set
-				if is_ptr {
-					g.write('.val')
-				}
+			if is_ptr {
+				g.write('.val')
+			}
 
 			mut floor := false
 			mut is_special_assign := false
@@ -1357,8 +1357,8 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				.or_assign, .and_assign, .right_shift_assign, .left_shift_assign {
 					is_special_assign = true
 					if array_set {
-					g.write('new ${styp}(')
-					g.expr(left)
+						g.write('new ${styp}(')
+						g.expr(left)
 					}
 
 					l_sym := g.table.sym(stmt.left_types[i])
@@ -1370,13 +1370,13 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 					if !array_set {
 						g.write(' = ')
-					if (l_sym.name != 'f64' || l_sym.name != 'f32')
+						if (l_sym.name != 'f64' || l_sym.name != 'f32')
 							&& (l_sym.name != 'i64' && l_sym.name != 'u64')
 							&& l_sym.name != 'string' {
-						g.write('Math.floor(')
-						floor = true
-					}
-					g.expr(left)
+							g.write('Math.floor(')
+							floor = true
+						}
+						g.expr(left)
 					}
 
 					g.write(match stmt.op {
@@ -1392,39 +1392,39 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						.or_assign { ' | ' }
 						else { panic('unexpected op ${stmt.op}') }
 					})
-						}
+				}
 				.assign, .decl_assign {
 					if !array_set {
 						g.write(' = ')
 					}
-						}
-						else {
-					panic('unsupported assignment operator provided: ${stmt.op}')
-					}
 				}
+				else {
+					panic('unsupported assignment operator provided: ${stmt.op}')
+				}
+			}
 
-				// TODO: Multiple types??
+			// TODO: Multiple types??
 
 			should_cast := stmt.left_types.len != 0
 				&& g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
-						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
-				if should_cast {
-					g.cast_stack << stmt.left_types.first()
+				&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+			if should_cast {
+				g.cast_stack << stmt.left_types.first()
 				g.write('new ${g.typ(stmt.left_types.first())}(')
-				}
-				g.expr(val)
-				if is_ptr {
-					g.write('.val')
-				}
-				if should_cast {
-					g.write(')')
-					g.cast_stack.delete_last()
-				}
+			}
+			g.expr(val)
+			if is_ptr {
+				g.write('.val')
+			}
+			if should_cast {
+				g.write(')')
+				g.cast_stack.delete_last()
+			}
 			if is_special_assign && array_set {
-					g.write(')')
-				}
-				if floor {
-					g.write(')')
+				g.write(')')
+			}
+			if floor {
+				g.write(')')
 			}
 			if array_set && !map_set {
 				g.write(')')
@@ -3316,14 +3316,8 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 }
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
-	mut text := it.val.replace("'", "'")
-	text = text.replace('"', '\\"')
-	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
-	if true || should_cast {
-		g.write('new ')
-
-		g.write('string(')
-	}
+	text := it.val.replace("'", "'").replace('"', '\\"')
+	g.write('new string(')
 	if it.is_raw {
 		g.writeln('(function() { let s = String(); ')
 		for x in text {
@@ -3341,9 +3335,7 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.write('"')
 	}
-	if true || should_cast {
-		g.write(')')
-	}
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
