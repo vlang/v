@@ -769,6 +769,7 @@ pub fn (s string) last_index(needle string) ?int {
 // It returns -1, if `c` is not found.
 @[deprecated: 'use `.last_index_u8(c u8)` instead']
 @[deprecated_after: '2024-06-30']
+@[inline]
 pub fn (s string) index_u8_last(c u8) int {
 	return s.last_index_u8(c)
 }
