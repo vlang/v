@@ -460,9 +460,22 @@ fn (mut p Parser) parse_type() ast.Type {
 	if p.tok.kind == .question {
 		p.next()
 		is_option = true
+		if p.tok.kind == .not {
+			p.next()
+			is_result = true
+		}
 	} else if p.tok.kind == .not {
 		p.next()
 		is_result = true
+		if p.tok.kind == .question {
+			p.next()
+			is_option = true
+		}
+	}
+
+	if is_option && is_result {
+		p.error_with_pos('the type must be Option or Result', p.prev_tok.pos())
+		return 0
 	}
 
 	if is_option || is_result {
