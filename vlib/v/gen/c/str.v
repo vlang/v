@@ -92,6 +92,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
 	} else if sym.kind == .none_ || typ == ast.void_type.set_flag(.option) {
+		if expr is ast.CallExpr {
+			stmt_str := g.go_before_last_stmt()
+			g.expr(expr)
+			g.writeln(';')
+			g.write(stmt_str)
+		}
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		if expr !is ast.EnumVal {
