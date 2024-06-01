@@ -1338,33 +1338,23 @@ pub fn (s string) index_u8(c u8) int {
 	return -1
 }
 
-// TODO: this no longer needs to be a separate method after index_u8_last has been removed.
-@[direct_array_access]
-fn (s string) last_index_u8_(c u8) int {
+// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
+// It returns -1, if `c` is not found.
+@[deprecated: 'use `.last_index_u8(c u8)` instead']
+@[deprecated_after: '2024-06-30']
+pub fn (s string) index_u8_last(c u8) int {
+	return s.last_index_u8(c)
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if s[i] == c {
 			return i
 		}
 	}
 	return -1
-}
-
-// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
-// It returns -1, if `c` is not found.
-@[deprecated: 'use `.last_index_u8(c u8)` instead']
-@[deprecated_after: '2024-06-30']
-pub fn (s string) index_u8_last(c u8) int {
-	return s.last_index_u8_(c)
-}
-
-// last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
-@[inline]
-pub fn (s string) last_index_u8(c u8) ?int {
-	idx := s.last_index_u8_(c)
-	if idx == -1 {
-		return none
-	}
-	return idx
 }
 
 // count returns the number of occurrences of `substr` in the string.

@@ -1490,7 +1490,7 @@ fn test_index_u8() {
 	//
 }
 
-fn test_index_last() {
+fn test_last_index() {
 	assert 'abcabca'.last_index('ca')? == 5
 	assert 'abcabca'.last_index('ab')? == 3
 	assert 'abcabca'.last_index('b')? == 4
@@ -1500,16 +1500,16 @@ fn test_index_last() {
 	// TODO: `assert 'Zabcabca'.index_last('Y') == none` is a cgen error, 2023/12/04
 }
 
-fn test_index_u8_last() {
-	assert 'abcabca'.index_u8_last(`a`) == 6
-	assert 'abcabca'.index_u8_last(`c`) == 5
-	assert 'abcabca'.index_u8_last(`b`) == 4
-	assert 'Zabcabca'.index_u8_last(`Z`) == 0
+fn test_last_index_u8() {
+	assert 'abcabca'.last_index_u8(`a`) == 6
+	assert 'abcabca'.last_index_u8(`c`) == 5
+	assert 'abcabca'.last_index_u8(`b`) == 4
+	assert 'Zabcabca'.last_index_u8(`Z`) == 0
 	//
-	assert 'abc'.index_u8(`d`) == -1
-	assert 'abc'.index_u8(`A`) == -1
-	assert 'abc'.index_u8(`B`) == -1
-	assert 'abc'.index_u8(`C`) == -1
+	assert 'abc'.last_index_u8(`d`) == -1
+	assert 'abc'.last_index_u8(`A`) == -1
+	assert 'abc'.last_index_u8(`B`) == -1
+	assert 'abc'.last_index_u8(`C`) == -1
 }
 
 fn test_contains_byte() {

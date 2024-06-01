@@ -302,7 +302,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
 				mut current_column := u32(0)
-				last_nl_pos := current_segment.index_u8_last(`\n`)
+				last_nl_pos := current_segment.last_index_u8(`\n`)
 				if last_nl_pos != -1 {
 					current_column = u32(current_segment.len - last_nl_pos - 1)
 				}
@@ -536,7 +536,7 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 @[inline]
 fn get_ns(s string) string {
-	idx := s.index_u8_last(`.`)
+	idx := s.last_index_u8(`.`)
 	if idx == -1 {
 		return ''
 	}
