@@ -706,6 +706,8 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 					c.error('sum type `${node.name}` cannot be defined recursively', variant.pos)
 				}
 			}
+		} else if variant.typ.has_flag(.result) {
+			c.error('sum type cannot hold a Result type', variant.pos)
 		}
 		c.check_any_type(variant.typ, sym, variant.pos)
 
