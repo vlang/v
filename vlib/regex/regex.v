@@ -17,9 +17,7 @@ module regex
 import strings
 
 pub const v_regex_version = '1.0 alpha' // regex module version
-
 pub const max_code_len = 256 // default small base code len for the regex programs
-
 pub const max_quantifier = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
 
 // spaces chars (here only westerns!!) TODO: manage all the spaces from unicode
@@ -32,29 +30,17 @@ pub const no_match_found = -1
 
 // Errors
 pub const compile_ok = 0 // the regex string compiled, all ok
-
 pub const err_char_unknown = -2 // the char used is unknow to the system
-
 pub const err_undefined = -3 // the compiler symbol is undefined
-
 pub const err_internal_error = -4 // Bug in the regex system!!
-
 pub const err_cc_alloc_overflow = -5 // memory for char class full!!
-
 pub const err_syntax_error = -6 // syntax error in regex compiling
-
 pub const err_groups_overflow = -7 // max number of groups reached
-
 pub const err_groups_max_nested = -8 // max number of nested group reached
-
 pub const err_group_not_balanced = -9 // group not balanced
-
 pub const err_group_qm_notation = -10 // group invalid notation
-
 pub const err_invalid_or_with_cc = -11 // invalid or on two consecutive char class
-
 pub const err_neg_group_quantifier = -12 // negation groups can not have quantifier
-
 pub const err_consecutive_dots = -13
 
 //*************************************
@@ -66,9 +52,7 @@ const ist_simple_char = u32(0x7FFFFFFF) // single char instruction, 31 bit avail
 // AA = 00  regular class
 // AA = 01  Negated class ^ char
 const ist_char_class = u32(0xD1000000) // MASK
-
 const ist_char_class_pos = u32(0xD0000000) // char class normal [abc]
-
 const ist_char_class_neg = u32(0xD1000000) // char class negate [^abc]
 
 // dot char        10 0110 xx xxxxxxxx
@@ -82,7 +66,6 @@ const ist_or_branch = u32(0x91000000) // OR case
 
 // groups          10 010Y xx xxxxxxxx
 const ist_group_start = u32(0x92000000) // group start (
-
 const ist_group_end = u32(0x94000000) // group end   )
 
 // control instructions
@@ -257,6 +240,7 @@ mut:
 	// char
 	ch     rune // char of the token if any
 	ch_len u8   // char len
+	flag   u8   // flag for general usage
 	// Quantifiers / branch
 	rep_min int  // used also for jump next in the OR branch [no match] pc jump
 	rep_max int  // used also for jump next in the OR branch [   match] pc jump
@@ -294,13 +278,9 @@ fn (mut tok Token) reset() {
 *
 ******************************************************************************/
 pub const f_nl = 0x00000001 // end the match when find a new line symbol
-
 pub const f_ms = 0x00000002 // match true only if the match is at the start of the string
-
 pub const f_me = 0x00000004 // match true only if the match is at the end of the string
-
 pub const f_efm = 0x00000100 // exit on first token matched, used by search
-
 pub const f_bin = 0x00000200 // work only on bytes, ignore utf-8
 
 // behaviour modifier flags
@@ -419,17 +399,22 @@ enum BSLS_parse_state {
 	bsls_found
 	bsls_char
 	normal_char
+	hex_char
 }
 
 // parse_bsls return (index, str_len) bsls_validator_array index, len of the backslash sequence if present
-fn (re RE) parse_bsls(in_txt string, in_i int) (int, int) {
+fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 	mut status := BSLS_parse_state.start
 	mut i := in_i
+	mut hex_max_len := 2
+	mut hex_res := u32(0)
+	mut hex_count := 0
 
 	for i < in_txt.len {
 		// get our char
 		char_tmp, char_len := re.get_char(in_txt, i)
 		ch := u8(char_tmp)
+		// println("ch [${ch:c}]")
 
 		if status == .start && ch == `\\` {
 			status = .bsls_found
@@ -441,26 +426,86 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int) {
 		if status == .bsls_found {
 			for c, x in regex.bsls_validator_array {
 				if x.ch == ch {
-					return c, i - in_i + 1
+					return c, i - in_i + 1, hex_res
 				}
 			}
+
+			// check for \x00 hex 8bit
+			if ch == `x` {
+				status = .hex_char
+				hex_max_len = 2
+				i += char_len
+				continue
+			}
+
+			// check for \x00 hex 16bit
+			if ch == `X` {
+				status = .hex_char
+				hex_max_len = 4
+				i += char_len
+				continue
+			}
+
 			status = .normal_char
 			continue
+		}
+
+		// manage hex byte
+		if status == .hex_char {
+			if ch >= `0` && ch <= `9` {
+				hex_count++
+				hex_res <<= 4
+				hex_res += u32(ch - `0`)
+				i += char_len
+			} else if ch >= `A` && ch <= `F` {
+				hex_count++
+				hex_res <<= 4
+				hex_res += u32(ch - `A` + 10)
+				i += char_len
+			} else if ch >= `a` && ch <= `f` {
+				hex_count++
+				hex_res <<= 4
+				hex_res += u32(ch - `a` + 10)
+				i += char_len
+			} else {
+				return regex.err_syntax_error, i, hex_res
+			}
+
+			// println("hex_res: ${hex_res:08x} hex_count: ${hex_count}")
+
+			// look for more hex digits
+			if hex_count < hex_max_len {
+				continue
+			}
+
+			// if over 8 nibble is more than 32 bit, error
+			if hex_count > hex_max_len {
+				return regex.err_syntax_error, i - in_i, hex_res
+			}
+
+			if hex_count == hex_max_len {
+				// we have a good result
+				// println("RESULT hex_res: ${hex_res:08x} hex_count: ${hex_count}")
+				return -2, i - in_i, hex_res
+			}
+
+			// MUST NOT BE HERE!
+			return regex.err_syntax_error, i, hex_res
 		}
 
 		// no BSLS validator, manage as normal escape char char
 		if status == .normal_char {
 			if ch in regex.bsls_escape_list {
-				return regex.no_match_found, i - in_i + 1
+				return regex.no_match_found, i - in_i + 1, hex_res
 			}
-			return regex.err_syntax_error, i - in_i + 1
+			return regex.err_syntax_error, i - in_i + 1, hex_res
 		}
 
 		// at the present time we manage only one char after the \
 		break
 	}
 	// not our bsls return KO
-	return regex.err_syntax_error, i
+	return regex.err_syntax_error, i, hex_res
 }
 
 /******************************************************************************
@@ -1200,8 +1245,10 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		// ist_bsls_char
 		if char_len == 1 && pc >= 0 {
 			if u8(char_tmp) == `\\` {
-				bsls_index, tmp := re.parse_bsls(in_txt, i)
-				// println("index: $bsls_index str:${in_txt[i..i+tmp]}")
+				// if the index is negative:
+				// -1 ERROR
+				// -2 hex byte code BLSL
+				bsls_index, tmp, hex_res := re.parse_bsls(in_txt, i)
 				if bsls_index >= 0 {
 					i = i + tmp
 					re.prog[pc].ist = u32(0) | regex.ist_bsls_char
@@ -1210,6 +1257,34 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 					re.prog[pc].validator = regex.bsls_validator_array[bsls_index].validator
 					re.prog[pc].ch = regex.bsls_validator_array[bsls_index].ch
 					pc = pc + 1
+					continue
+				}
+				// hex char
+				// this code can mange up to \x for 32 bit
+				// at the present time only 8/16 bit are used
+				else if bsls_index == -2 {
+					mut value := hex_res
+					mut value_list := []u32{cap: 4}
+					mut count := 0
+					for value > 0 {
+						value_list << value & 0xFF
+						value = value >> 8
+						count++
+					}
+
+					count--
+					for count >= 0 {
+						re.prog[pc].ist = regex.ist_simple_char
+						re.prog[pc].ch = value_list[count]
+						re.prog[pc].ch_len = u8(char_len)
+						re.prog[pc].rep_min = 1
+						re.prog[pc].rep_max = 1
+						re.prog[pc].flag = 1 // state a byte char
+						// println("char: ${char_tmp:c}")
+						pc = pc + 1
+						count--
+					}
+					i = i + tmp
 					continue
 				}
 				// this is an escape char, skip the bsls and continue as a normal char
@@ -1514,7 +1589,11 @@ pub fn (re RE) get_code() string {
 		} else if ist == regex.ist_group_end {
 			res.write_string(')        GROUP_END   #:${tk.group_id}')
 		} else if ist == regex.ist_simple_char {
-			res.write_string('[${tk.ch:1c}]      query_ch')
+			if tk.flag == 0 {
+				res.write_string('[${tk.ch:1c}]      query_ch')
+			} else {
+				res.write_string('[0x${tk.ch:02X}]HEXquery_ch')
+			}
 		}
 
 		if tk.rep_max == regex.max_quantifier {
@@ -1615,10 +1694,14 @@ pub fn (re RE) get_query() string {
 
 		// char alone
 		if ch == regex.ist_simple_char {
-			if u8(ch) in regex.bsls_escape_list {
-				res.write_string('\\')
+			if tk.flag == 0 {
+				if u8(ch) in regex.bsls_escape_list {
+					res.write_string('\\')
+				}
+				res.write_string('${tk.ch:c}')
+			} else {
+				res.write_string('\\x${tk.ch:02x}')
 			}
-			res.write_string('${tk.ch:c}')
 		}
 
 		// quantifier
@@ -1799,7 +1882,11 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						buf2.write_string(" i,ch,len:[${state.i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${state.first_match:3d},${state.match_index:3d}] ")
 
 						if ist == regex.ist_simple_char {
-							buf2.write_string('query_ch: [${re.prog[state.pc].ch:1c}]')
+							if re.prog[state.pc].flag == 0 {
+								buf2.write_string('query_ch: [${re.prog[state.pc].ch:1c}]')
+							} else {
+								buf2.write_string('query_ch: [0x${re.prog[state.pc].ch:02X}]')
+							}
 						} else {
 							if ist == regex.ist_bsls_char {
 								buf2.write_string('BSLS [\\${re.prog[state.pc].ch:1c}]')
