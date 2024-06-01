@@ -19,7 +19,8 @@ fn parse(input string) RawVersion {
 	mut raw_version := input
 	mut prerelease := ''
 	mut metadata := ''
-	if plus_idx := raw_version.last_index_u8(`+`) {
+	plus_idx := raw_version.index_u8_last(`+`)
+	if plus_idx > 0 {
 		metadata = raw_version[(plus_idx + 1)..]
 		raw_version = raw_version[0..plus_idx]
 	}
