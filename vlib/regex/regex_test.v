@@ -195,11 +195,16 @@ match_test_suite = [
     TestItem{"abc\0xyz", "^abc\0xyz$", 0,7},
 
     // test hex byte chars
-    TestItem{"abc\x41xyz", "^abcAxyz$", 0,7},
-    TestItem{"abc\x5fxyz", "^abc_xyz$", 0,7},
-    TestItem{"abc\x5Fxyz", "^abc_xyz$", 0,7},
-    TestItem{"abc\x7Fxyz", "^abc_xyz$", -1,3},
-
+    TestItem{"abc_xyz", r"abc\x5Fxyz", 0,7},
+    TestItem{"abc_xyz", r"^abc\x5fxyz$", 0,7},
+    TestItem{"abcAxyz", r"^abc\x41xyz$", 0,7},
+    TestItem{"abcAAxyz", r"^abc\x41+xyz$", 0,8},
+    TestItem{"abcALxyz", r"^abc\x41\x4Cxyz$", 0,8},
+    TestItem{"abcAAxyz", r"^abc\X4141xyz$", 0,8},
+    TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
+    TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
+    TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
+    
 ]
 )
 

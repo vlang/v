@@ -257,6 +257,7 @@ mut:
 	// char
 	ch     rune // char of the token if any
 	ch_len u8   // char len
+	flag   u8   // flag for general usage 
 	// Quantifiers / branch
 	rep_min int  // used also for jump next in the OR branch [no match] pc jump
 	rep_max int  // used also for jump next in the OR branch [   match] pc jump
@@ -426,6 +427,7 @@ enum BSLS_parse_state {
 fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 	mut status := BSLS_parse_state.start
 	mut i := in_i
+	mut hex_max_len := 2
 	mut hex_res := u32(0)
 	mut hex_count := 0
 
@@ -433,6 +435,7 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 		// get our char
 		char_tmp, char_len := re.get_char(in_txt, i)
 		ch := u8(char_tmp)
+		//println("ch [${ch:c}]")
 
 		if status == .start && ch == `\\` {
 			status = .bsls_found
@@ -448,10 +451,18 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 				}
 			}
 
-			// check for \x00 hex byte
+			// check for \x00 hex 8bit
 			if ch == `x` {
-				println("Found x!!")
 				status = .hex_char
+				hex_max_len = 2
+				i += char_len
+				continue
+			}
+
+			// check for \x00 hex 16bit
+			if ch == `X` {
+				status = .hex_char
+				hex_max_len = 4
 				i += char_len
 				continue
 			}
@@ -462,13 +473,6 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 
 		// manage hex byte
 		if status == .hex_char {
-			//println("hex_res: ${hex_res:08x} hex_count: ${hex_count}")
-			
-			// if over 8 nibble is more than 32 bit, error
-			if hex_count > 8 {
-				return regex.err_syntax_error, i - in_i , hex_res
-			}
-			
 			if ch >= `0` && ch <= `9` {
 				hex_count++
 				hex_res <<= 4
@@ -477,26 +481,36 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 			} else if ch >= `A` && ch <= `F` {
 				hex_count++
 				hex_res <<= 4
-				hex_res += u32(ch - `A`)
+				hex_res += u32(ch - `A` + 10)
 				i += char_len
 			} else if ch >= `a` && ch <= `f` {
 				hex_count++
 				hex_res <<= 4
-				hex_res += u32(ch - `a`)
+				hex_res += u32(ch - `a` + 10)
 				i += char_len
+			} else {
+				return regex.err_syntax_error, i, hex_res
 			}
 
+			//println("hex_res: ${hex_res:08x} hex_count: ${hex_count}")
+			
 			// look for more hex digits
-			if hex_count < 2 {
+			if hex_count < hex_max_len {
 				continue
 			}
 
-			if hex_count == 2 {
+			// if over 8 nibble is more than 32 bit, error
+			if hex_count > hex_max_len {
+				return regex.err_syntax_error, i - in_i , hex_res
+			}
+
+			if hex_count == hex_max_len {
 				// we have a good result
 				//println("RESULT hex_res: ${hex_res:08x} hex_count: ${hex_count}")
 				return -2, i - in_i , hex_res
 			}
 
+			// MUST NOT BE HERE!
 			return regex.err_syntax_error, i, hex_res
 
 		}
@@ -1253,6 +1267,9 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		// ist_bsls_char
 		if char_len == 1 && pc >= 0 {
 			if u8(char_tmp) == `\\` {
+				// if the index is negative:
+				// -1 ERROR
+				// -2 hex byte code BLSL
 				bsls_index, tmp, hex_res := re.parse_bsls(in_txt, i)
 				if bsls_index >= 0 {
 					i = i + tmp
@@ -1264,18 +1281,36 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 					pc = pc + 1
 					continue
 				}
+
 				// hex char
+				// this code can mange up to \x for 32 bit
+				// at the present time only 8/16 bit are used
 				else if bsls_index == -2 {
+					mut value := hex_res
+					mut value_list := []u32{cap:4}
+					mut count := 0
+					for value > 0 {
+						value_list << value & 0xFF
+						value = value >> 8
+						count++
+					}
+
+					count--
+					for count >= 0 {
+						re.prog[pc].ist = regex.ist_simple_char
+						re.prog[pc].ch = value_list[count]
+						re.prog[pc].ch_len = u8(char_len)
+						re.prog[pc].rep_min = 1
+						re.prog[pc].rep_max = 1
+						re.prog[pc].flag = 1  // state a byte char
+						// println("char: ${char_tmp:c}")
+						pc = pc + 1
+						count--
+					}
 					i = i + tmp
-					re.prog[pc].ist = regex.ist_simple_char
-					re.prog[pc].ch = hex_res
-					re.prog[pc].ch_len = u8(char_len)
-					re.prog[pc].rep_min = 1
-					re.prog[pc].rep_max = 1
-					// println("char: ${char_tmp:c}")
-					pc = pc + 1
 					continue
 				}
+
 				// this is an escape char, skip the bsls and continue as a normal char
 				else if bsls_index == regex.no_match_found {
 					i += char_len
@@ -1578,7 +1613,12 @@ pub fn (re RE) get_code() string {
 		} else if ist == regex.ist_group_end {
 			res.write_string(')        GROUP_END   #:${tk.group_id}')
 		} else if ist == regex.ist_simple_char {
-			res.write_string('[${tk.ch:1c}]      query_ch')
+			if tk.flag == 0 {
+				res.write_string('[${tk.ch:1c}]      query_ch')
+			} else {
+				res.write_string('[0x${tk.ch:02X}]HEXquery_ch')
+			}
+
 		}
 
 		if tk.rep_max == regex.max_quantifier {
@@ -1679,10 +1719,14 @@ pub fn (re RE) get_query() string {
 
 		// char alone
 		if ch == regex.ist_simple_char {
-			if u8(ch) in regex.bsls_escape_list {
-				res.write_string('\\')
+			if tk.flag == 0 {
+				if u8(ch) in regex.bsls_escape_list {
+					res.write_string('\\')
+				}
+				res.write_string('${tk.ch:c}')
+			} else {
+				res.write_string('\\x${tk.ch:02x}')
 			}
-			res.write_string('${tk.ch:c}')
 		}
 
 		// quantifier
@@ -1863,7 +1907,11 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						buf2.write_string(" i,ch,len:[${state.i:3d},'${utf8_str(ch)}',${char_len}] f.m:[${state.first_match:3d},${state.match_index:3d}] ")
 
 						if ist == regex.ist_simple_char {
-							buf2.write_string('query_ch: [${re.prog[state.pc].ch:1c}]')
+							if re.prog[state.pc].flag == 0 {
+								buf2.write_string('query_ch: [${re.prog[state.pc].ch:1c}]')
+							} else {
+								buf2.write_string('query_ch: [0x${re.prog[state.pc].ch:02X}]')
+							}
 						} else {
 							if ist == regex.ist_bsls_char {
 								buf2.write_string('BSLS [\\${re.prog[state.pc].ch:1c}]')
