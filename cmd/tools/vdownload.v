@@ -9,6 +9,8 @@ import crypto.sha256
 struct Context {
 mut:
 	show_help           bool
+	show_sha1           bool
+	show_sha256         bool
 	target_folder       string
 	continue_on_failure bool
 	retries             int
@@ -27,6 +29,8 @@ fn main() {
 	fp.limit_free_args_to_at_least(1)!
 	ctx.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	ctx.target_folder = fp.string('target-folder', `t`, '.', 'The target folder, where the file will be stored. It will be created, if it does not exist. Default is current folder.')
+	ctx.show_sha1 = fp.bool('sha1', `1`, false, 'Show the SHA1 hash of the downloaded file.')
+	ctx.show_sha256 = fp.bool('sha256', `2`, false, 'Show the SHA256 hash of the downloaded file.')
 	ctx.continue_on_failure = fp.bool('continue', `c`, false, 'Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.')
 	ctx.retries = fp.int('retries', `r`, 10, 'Number of retries, when an URL fails to download.')
 	ctx.delay = time.Duration(u64(fp.float('delay', `d`, 1.0, 'Delay in seconds, after each retry.') * time.second))
@@ -82,18 +86,26 @@ fn main() {
 		log.info(' Finished downloading file: ${fpath} .')
 		log.info('                      size: ${fstat.size} bytes')
 
-		fbytes := os.read_bytes(fname)!
-		mut digest256 := sha256.new()
-		digest256.write(fbytes)!
-		mut sum256 := digest256.sum([])
-		hash256 := sum256.hex()
+		if !ctx.show_sha256 && !ctx.show_sha1 {
+			continue
+		}
 
-		mut digest1 := sha1.new()
-		digest1.write(fbytes)!
-		mut sum1 := digest1.sum([])
-		hash1 := sum1.hex()
-		log.info('                      SHA1: ${hash1}')
-		log.info('                    SHA256: ${hash256}')
+		fbytes := os.read_bytes(fname)!
+		if ctx.show_sha1 {
+			mut digest1 := sha1.new()
+			digest1.write(fbytes)!
+			mut sum1 := digest1.sum([])
+			hash1 := sum1.hex()
+			log.info('                      SHA1: ${hash1}')
+		}
+
+		if ctx.show_sha256 {
+			mut digest256 := sha256.new()
+			digest256.write(fbytes)!
+			mut sum256 := digest256.sum([])
+			hash256 := sum256.hex()
+			log.info('                    SHA256: ${hash256}')
+		}
 	}
 	println('Downloaded: ${downloaded} file(s) . Elapsed time: ${sw.elapsed()} . Errors: ${errors} .')
 	if !ctx.continue_on_failure && errors > 0 {
