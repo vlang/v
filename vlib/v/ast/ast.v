@@ -988,7 +988,7 @@ pub type IdentInfo = IdentFn | IdentVar
 
 pub enum IdentKind {
 	unresolved
-	blank_ident
+	blank_ident // discard identifier, `_` in `_ := 1`
 	variable
 	constant
 	global
