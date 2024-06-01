@@ -49,13 +49,18 @@ fn main() {
 	sw := time.new_stopwatch()
 	mut errors := 0
 	mut downloaded := 0
+	downloader := if os.is_atty(1) > 0 {
+		&http.Downloader(http.TerminalStreamingDownloader{})
+	} else {
+		&http.Downloader(http.SilentStreamingDownloader{})
+	}
 	for idx, url in ctx.urls {
 		fname := url.all_after_last('/')
 		fpath := '${ctx.target_folder}/${fname}'
 		mut file_errors := 0
 		log.info('Downloading [${idx + 1}/${ctx.urls.len}] from url: ${url} to ${fpath} ...')
 		for retry in 0 .. ctx.retries {
-			http.download_file(url, fname) or {
+			http.download_file_with_progress(url, fname, downloader: downloader) or {
 				log.error('    retry ${retry + 1}/${ctx.retries}, failed downloading from url: ${url}. Error: ${err}.')
 				file_errors++
 				time.sleep(ctx.delay)
