@@ -615,6 +615,7 @@ pub fn free(ptr voidptr) {
 			unsafe { C.GC_FREE(ptr) }
 		}
 	} $else {
+		//println('c.free')
 		C.free(ptr)
 	}
 }
