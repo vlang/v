@@ -35,40 +35,29 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 
 	req_headers := req.build_request_headers(method, host_name, path)
 	$if trace_http_request ? {
-		eprintln('> ${req_headers}')
+		eprint('> ')
+		eprint(req_headers)
+		eprintln('')
 	}
 
 	return req.do_request(req_headers, mut ssl_conn)!
 }
 
+fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
+	mut ssl_conn := unsafe { &ssl.SSLConn(con) }
+	return ssl_conn.socket_read_into_ptr(buf, bufsize)
+}
+
 fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
 	ssl_conn.write_string(req_headers) or { return err }
-
-	mut content := strings.new_builder(100)
-	mut buff := [bufsize]u8{}
-	bp := unsafe { &buff[0] }
-	mut readcounter := 0
-	for {
-		readcounter++
-		len := ssl_conn.socket_read_into_ptr(bp, bufsize) or { break }
-		$if debug_http ? {
-			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
-			eprintln('-'.repeat(20))
-			eprintln(unsafe { tos(bp, len) })
-			eprintln('-'.repeat(20))
-		}
-		if len <= 0 {
-			break
-		}
-		unsafe { content.write_ptr(bp, len) }
-		if req.on_progress != unsafe { nil } {
-			req.on_progress(req, content[content.len - len..], u64(content.len))!
-		}
-	}
+	mut content := strings.new_builder(4096)
+	req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn), read_from_ssl_connection_cb)!
 	ssl_conn.shutdown()!
 	response_text := content.str()
 	$if trace_http_response ? {
-		eprintln('< ${response_text}')
+		eprint('< ')
+		eprint(response_text)
+		eprinln('')
 	}
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!

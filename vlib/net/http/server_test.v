@@ -152,7 +152,7 @@ fn test_server_custom_handler() {
 		on_progress: fn (req &http.Request, chunk []u8, read_so_far u64) ! {
 			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
 			eprintln('>>>>>>>> on_progress, req.url: ${req.url} | got chunk.len: ${chunk.len:5}, read_so_far: ${read_so_far:8}, chunk: ${chunk#[0..30].bytestr()}')
-			progress_calls.chunks << chunk
+			progress_calls.chunks << chunk.clone()
 			progress_calls.reads << read_so_far
 		}
 		on_finish: fn (req &http.Request, final_size u64) ! {

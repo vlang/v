@@ -14,6 +14,8 @@ pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url strin
 
 pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
 
+pub type RequestProgressBodyFn = fn (request &Request, chunk []u8, body_read_so_far u64, body_expected_size u64, status_code int) !
+
 pub type RequestFinishFn = fn (request &Request, final_size u64) !
 
 // Request holds information about an HTTP request (either received by
@@ -43,10 +45,14 @@ pub mut:
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
 	max_retries            int  = 5 // maximum number of retries required when an underlying socket error occurs
-	// callbacks to allow custom reporting code to run, while the request is running
-	on_redirect RequestRedirectFn = unsafe { nil }
-	on_progress RequestProgressFn = unsafe { nil }
-	on_finish   RequestFinishFn   = unsafe { nil }
+	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
+	on_redirect      RequestRedirectFn     = unsafe { nil }
+	on_progress      RequestProgressFn     = unsafe { nil }
+	on_progress_body RequestProgressBodyFn = unsafe { nil }
+	on_finish        RequestFinishFn       = unsafe { nil }
+	//
+	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
 fn (mut req Request) free() {
@@ -176,40 +182,75 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 }
 
 fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
-	ua := req.user_agent
-	mut uheaders := []string{}
+	mut sb := strings.new_builder(4096)
+	version := if req.version == .unknown { Version.v1_1 } else { req.version }
+	sb.write_string(method.str())
+	sb.write_string(' ')
+	sb.write_string(path)
+	sb.write_string(' ')
+	sb.write_string(version.str())
+	sb.write_string('\r\n')
 	if !req.header.contains(.host) {
-		uheaders << 'Host: ${host_name}\r\n'
+		sb.write_string('Host: ')
+		sb.write_string(host_name)
+		sb.write_string('\r\n')
 	}
 	if !req.header.contains(.user_agent) {
-		uheaders << 'User-Agent: ${ua}\r\n'
+		ua := req.user_agent
+		sb.write_string('User-Agent: ')
+		sb.write_string(ua)
+		sb.write_string('\r\n')
 	}
 	if req.data.len > 0 && !req.header.contains(.content_length) {
-		uheaders << 'Content-Length: ${req.data.len}\r\n'
+		sb.write_string('Content-Length: ')
+		sb.write_string(req.data.len.str())
+		sb.write_string('\r\n')
 	}
+	chkey := CommonHeader.cookie.str()
 	for key in req.header.keys() {
-		if key == CommonHeader.cookie.str() {
+		if key == chkey {
 			continue
 		}
 		val := req.header.custom_values(key).join('; ')
-		uheaders << '${key}: ${val}\r\n'
+		sb.write_string(key)
+		sb.write_string(': ')
+		sb.write_string(val)
+		sb.write_string('\r\n')
 	}
-	uheaders << req.build_request_cookies_header()
-	version := if req.version == .unknown { Version.v1_1 } else { req.version }
-	return '${method} ${path} ${version}\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +
-		req.data
+	sb.write_string(req.build_request_cookies_header())
+	sb.write_string('Connection: close\r\n')
+	sb.write_string('\r\n')
+	sb.write_string(req.data)
+	return sb.str()
 }
 
 fn (req &Request) build_request_cookies_header() string {
-	if req.cookies.keys().len < 1 {
+	if req.cookies.len < 1 {
 		return ''
 	}
-	mut cookie := []string{}
+	mut sb_cookie := strings.new_builder(1024)
+	hvcookies := req.header.values(.cookie)
+	total_cookies := req.cookies.len + hvcookies.len
+	sb_cookie.write_string('Cookie: ')
+	mut idx := 0
 	for key, val in req.cookies {
-		cookie << '${key}=${val}'
+		sb_cookie.write_string(key)
+		sb_cookie.write_string('=')
+		sb_cookie.write_string(val)
+		if idx < total_cookies - 1 {
+			sb_cookie.write_string('; ')
+		}
+		idx++
 	}
-	cookie << req.header.values(.cookie)
-	return 'Cookie: ' + cookie.join('; ') + '\r\n'
+	for c in hvcookies {
+		sb_cookie.write_string(c)
+		if idx < total_cookies - 1 {
+			sb_cookie.write_string('; ')
+		}
+		idx++
+	}
+	sb_cookie.write_string('\r\n')
+	return sb_cookie.str()
 }
 
 fn (req &Request) http_do(host string, method Method, path string) !Response {
@@ -221,13 +262,17 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	// TODO: this really needs to be exposed somehow
 	client.write(s.bytes())!
 	$if trace_http_request ? {
-		eprintln('> ${s}')
+		eprint('> ')
+		eprint(s)
+		eprintln('')
 	}
 	mut bytes := req.read_all_from_client_connection(client)!
 	client.close()!
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
-		eprintln('< ${response_text}')
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
 	}
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
@@ -235,24 +280,81 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	return parse_response(response_text)
 }
 
-fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
-	mut read := i64(0)
-	mut b := []u8{len: 32768}
+// abstract over reading the whole content from TCP or SSL connections:
+type FnReceiveChunk = fn (con voidptr, buf &u8, bufsize int) !int
+
+fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
+	mut buff := [bufsize]u8{}
+	bp := unsafe { &buff[0] }
+	mut readcounter := 0
+	mut body_pos := u64(0)
+	mut old_len := u64(0)
+	mut new_len := u64(0)
+	mut expected_size := u64(0)
+	mut status_code := -1
 	for {
-		old_read := read
-		new_read := r.read(mut b[read..]) or { break }
-		if new_read <= 0 {
+		readcounter++
+		len := receive_chunk_cb(con, bp, bufsize) or { break }
+		$if debug_http ? {
+			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
+			eprintln('-'.repeat(20))
+			eprintln(unsafe { tos(bp, len) })
+			eprintln('-'.repeat(20))
+		}
+		if len <= 0 {
 			break
 		}
-		read += new_read
+		new_len = old_len + u64(len)
+		// Note: `schunk` and `bchunk` are used as convenient stack located views to the currently filled part of `buff`:
+		schunk := unsafe { bp.vstring_literal_with_len(len) }
+		mut bchunk := unsafe { bp.vbytes(len) }
+		if readcounter == 1 {
+			http_line := schunk.all_before('\r\n')
+			status_code = http_line.all_after(' ').all_before(' ').int()
+		}
 		if req.on_progress != unsafe { nil } {
-			req.on_progress(req, b[old_read..read], u64(read))!
+			req.on_progress(req, bchunk, u64(new_len))!
 		}
-		for b.len <= read {
-			unsafe { b.grow_len(4096) }
+		if body_pos == 0 {
+			bidx := schunk.index('\r\n\r\n') or { -1 }
+			if bidx > 0 {
+				body_buffer_offset := bidx + 4
+				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
+				body_pos = u64(old_len) + u64(body_buffer_offset)
+			}
 		}
+		body_so_far := u64(new_len) - body_pos
+		if req.on_progress_body != unsafe { nil } {
+			if expected_size == 0 {
+				lidx := schunk.index('Content-Length: ') or { -1 }
+				if lidx > 0 {
+					esize := schunk[lidx..].all_before('\r\n').all_after(': ').u64()
+					if esize > 0 {
+						expected_size = esize
+					}
+				}
+			}
+			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
+		}
+		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
+			unsafe { content.write_ptr(bp, len) }
+		}
+		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
+			break
+		}
+		old_len = new_len
 	}
-	return b[..read]
+}
+
+fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
+	mut r := unsafe { &net.TcpConn(con) }
+	return r.read_ptr(buf, bufsize)
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+	mut content := strings.new_builder(4096)
+	req.receive_all_data_from_cb_in_builder(mut content, voidptr(r), read_from_tcp_connection_cb)!
+	return content
 }
 
 // referer returns 'Referer' header value of the given request

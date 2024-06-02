@@ -8,7 +8,8 @@ import net.urllib
 const max_redirects = 16 // safari max - other browsers allow up to 20
 
 const content_type_default = 'text/plain'
-const bufsize = 1536
+
+const bufsize = 64 * 1024
 
 // FetchConfig holds configuration data for the fetch function.
 pub struct FetchConfig {
@@ -31,10 +32,14 @@ pub mut:
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
 	max_retries            int  = 5 // maximum number of retries required when an underlying socket error occurs
-	// callbacks to allow custom reporting code to run, while the request is running
-	on_redirect RequestRedirectFn = unsafe { nil }
-	on_progress RequestProgressFn = unsafe { nil }
-	on_finish   RequestFinishFn   = unsafe { nil }
+	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
+	on_redirect      RequestRedirectFn     = unsafe { nil }
+	on_progress      RequestProgressFn     = unsafe { nil }
+	on_progress_body RequestProgressBodyFn = unsafe { nil }
+	on_finish        RequestFinishFn       = unsafe { nil }
+	//
+	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
 // new_request creates a new Request given the request `method`, `url_`, and
@@ -153,10 +158,10 @@ pub fn delete(url string) !Response {
 	return fetch(method: .delete, url: url)
 }
 
-// TODO: @[noinline] attribute is used for temporary fix the 'get_text()' intermittent segfault / nil value when compiling with GCC 13.2.x and -prod option ( Issue #20506 )
-// fetch sends an HTTP request to the `url` with the given method and configuration.
-@[noinline]
-pub fn fetch(config FetchConfig) !Response {
+// prepare prepares a new request for fetching, but does not call its .do() method.
+// It is useful, if you want to reuse request objects, for several requests in a row,
+// modifying the request each time, then calling .do() to get the new response.
+pub fn prepare(config FetchConfig) !Request {
 	if config.url == '' {
 		return error('http.fetch: empty url')
 	}
@@ -179,11 +184,21 @@ pub fn fetch(config FetchConfig) !Response {
 		allow_redirect: config.allow_redirect
 		max_retries: config.max_retries
 		on_progress: config.on_progress
+		on_progress_body: config.on_progress_body
 		on_redirect: config.on_redirect
 		on_finish: config.on_finish
+		stop_copying_limit: config.stop_copying_limit
+		stop_receiving_limit: config.stop_receiving_limit
 	}
-	res := req.do()!
-	return res
+	return req
+}
+
+// TODO: @[noinline] attribute is used for temporary fix the 'get_text()' intermittent segfault / nil value when compiling with GCC 13.2.x and -prod option ( Issue #20506 )
+// fetch sends an HTTP request to the `url` with the given method and configuration.
+@[noinline]
+pub fn fetch(config FetchConfig) !Response {
+	req := prepare(config)!
+	return req.do()!
 }
 
 // get_text sends an HTTP GET request to the given `url` and returns the text content of the response.
