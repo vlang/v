@@ -8,6 +8,11 @@ import v.ast
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
 	c.inside_assign = true
+	if node.attr.name != '' {
+		c.assign_stmt_attr = node.attr.name
+	} else {
+		c.assign_stmt_attr = ''
+	}
 	c.expected_type = ast.none_type // TODO: a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type

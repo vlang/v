@@ -33,6 +33,10 @@ fn (mut c Checker) warn(s string, pos token.Pos) {
 }
 
 fn (mut c Checker) warn_alloc(s string, pos token.Pos) {
+	if c.assign_stmt_attr == 'freed' {
+		return
+	}
+
 	if !c.is_builtin_mod && c.mod !in ['strings', 'math', 'math.bits', 'builtin', 'strconv'] {
 		c.warn('allocation (${s})', pos)
 	}

@@ -135,6 +135,7 @@ mut:
 	orm_table_fields  map[string][]ast.StructField // known table structs
 	//
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
+	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {

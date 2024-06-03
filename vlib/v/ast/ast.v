@@ -1312,6 +1312,7 @@ pub mut:
 	is_volatile   bool // for disabling variable access optimisations (needed for hardware drivers)
 	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
+	attr          Attr
 }
 
 // `expr as Ident`
