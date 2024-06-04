@@ -1068,53 +1068,56 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					verror('missing fkey attribute')
 				}
 				sub := node.sub_structs[field.typ]
-				mut where_expr := sub.where_expr as ast.InfixExpr
-				mut left_where_expr := where_expr.left as ast.Ident
-				mut right_where_expr := where_expr.right as ast.Ident
-				left_where_expr.name = fkey
-				right_where_expr.name = tmp
-				where_expr.left = left_where_expr
-				where_expr.right = ast.SelectorExpr{
-					pos: right_where_expr.pos
-					field_name: primary_field.name
-					is_mut: false
-					expr: right_where_expr
-					expr_type: (right_where_expr.info as ast.IdentVar).typ
-					typ: (right_where_expr.info as ast.IdentVar).typ
-					scope: unsafe { nil }
-				}
-				mut sql_expr_select_array := ast.SqlExpr{
-					typ: field.typ.set_flag(.result)
-					is_count: sub.is_count
-					db_expr: sub.db_expr
-					has_where: sub.has_where
-					has_offset: sub.has_offset
-					offset_expr: sub.offset_expr
-					has_order: sub.has_order
-					order_expr: sub.order_expr
-					has_desc: sub.has_desc
-					is_array: true
-					is_generated: true
-					pos: sub.pos
-					has_limit: sub.has_limit
-					limit_expr: sub.limit_expr
-					table_expr: sub.table_expr
-					fields: sub.fields
-					where_expr: where_expr
-				}
+				if sub.has_where {
+					mut where_expr := sub.where_expr as ast.InfixExpr
+					mut left_where_expr := where_expr.left as ast.Ident
+					mut right_where_expr := where_expr.right as ast.Ident
+					left_where_expr.name = fkey
+					right_where_expr.name = tmp
+					where_expr.left = left_where_expr
+					where_expr.right = ast.SelectorExpr{
+						pos: right_where_expr.pos
+						field_name: primary_field.name
+						is_mut: false
+						expr: right_where_expr
+						expr_type: (right_where_expr.info as ast.IdentVar).typ
+						typ: (right_where_expr.info as ast.IdentVar).typ
+						scope: unsafe { nil }
+					}
 
-				sub_result_var := g.new_tmp_var()
-				sub_result_c_typ := g.typ(sub.typ)
-				g.writeln('${sub_result_c_typ} ${sub_result_var};')
-				g.write_orm_select(sql_expr_select_array, connection_var_name, sub_result_var)
-				g.writeln('if (!${sub_result_var}.is_error) {')
-				if field.typ.has_flag(.option) {
-					g.writeln('\t${field_var}.state = 0;')
-					g.writeln('\t*(${g.base_type(field.typ)}*)${field_var}.data = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
-				} else {
-					g.writeln('\t${field_var} = *(${unwrapped_c_typ}*)${sub_result_var}.data;')
+					mut sql_expr_select_array := ast.SqlExpr{
+						typ: field.typ.set_flag(.result)
+						is_count: sub.is_count
+						db_expr: sub.db_expr
+						has_where: sub.has_where
+						has_offset: sub.has_offset
+						offset_expr: sub.offset_expr
+						has_order: sub.has_order
+						order_expr: sub.order_expr
+						has_desc: sub.has_desc
+						is_array: true
+						is_generated: true
+						pos: sub.pos
+						has_limit: sub.has_limit
+						limit_expr: sub.limit_expr
+						table_expr: sub.table_expr
+						fields: sub.fields
+						where_expr: where_expr
+					}
+
+					sub_result_var := g.new_tmp_var()
+					sub_result_c_typ := g.typ(sub.typ)
+					g.writeln('${sub_result_c_typ} ${sub_result_var};')
+					g.write_orm_select(sql_expr_select_array, connection_var_name, sub_result_var)
+					g.writeln('if (!${sub_result_var}.is_error) {')
+					if field.typ.has_flag(.option) {
+						g.writeln('\t${field_var}.state = 0;')
+						g.writeln('\t*(${g.base_type(field.typ)}*)${field_var}.data = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
+					} else {
+						g.writeln('\t${field_var} = *(${unwrapped_c_typ}*)${sub_result_var}.data;')
+					}
+					g.writeln('}')
 				}
-				g.writeln('}')
 			} else if field.typ.has_flag(.option) {
 				prim_var := g.new_tmp_var()
 				g.writeln('orm__Primitive *${prim_var} = &${array_get_call_code};')
