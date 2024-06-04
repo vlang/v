@@ -1340,23 +1340,22 @@ pub fn (s string) index_u8(c u8) int {
 
 // index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
 // It returns -1, if `c` is not found.
-@[direct_array_access]
+@[deprecated: 'use `.last_index_u8(c u8)` instead']
+@[deprecated_after: '2024-06-30']
+@[inline]
 pub fn (s string) index_u8_last(c u8) int {
+	return s.last_index_u8(c)
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
-		if unsafe { s.str[i] == c } {
+		if s[i] == c {
 			return i
 		}
 	}
 	return -1
-}
-
-// last_index_u8 returns the index of the last occurrence of byte `c` if found in the string.
-// It returns -1, if the byte `c` is not found.
-@[deprecated: 'use `.index_u8_last(c u8)` instead']
-@[deprecated_after: '2023-12-18']
-@[inline]
-pub fn (s string) last_index_u8(c u8) int {
-	return s.index_u8_last(c)
 }
 
 // count returns the number of occurrences of `substr` in the string.
