@@ -252,12 +252,11 @@ fn test_split_any() {
 	assert a[4] == '5'
 	s = '12131415'
 	a = s.split_any('2345')
-	assert a.len == 5
+	assert a.len == 4
 	assert a[0] == '1'
 	assert a[1] == '1'
 	assert a[2] == '1'
 	assert a[3] == '1'
-	assert a[4] == ''
 	s = 'a,b,c'
 	a = s.split_any('],')
 	assert a.len == 3

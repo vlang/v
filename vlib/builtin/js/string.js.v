@@ -112,8 +112,15 @@ pub fn (s string) split_any(delim string) []string {
 		return res
 	})
 	_ := tmparr
+
 	mut arr := []string{}
 	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
+
+	// FIXME: ugly hack to handle edge case where the last character in the string is
+	// one of the delimiters to match V behavior
+	#if (s.len > 0 && pattern.str.includes(s.str[s.len - 1])) {
+	arr.pop()
+	#}
 
 	return arr
 }
