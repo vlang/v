@@ -34,9 +34,13 @@ fn init_settings() VpmSettings {
 	is_ci := os.getenv('CI') != ''
 
 	mut logger := &log.Log{}
-	if dbg_env != '0' {
+	if (dbg_env != '0' && !is_ci) || (is_ci && dbg_env !in ['', '0']) {
+		// Enable logging if `VPM_DEBUG=0` wasn't explicitly set outside CI runs.
+		// Still, allow it to be explicitly enabled in CI runs.
 		logger.set_level(.debug)
-		if dbg_env == '' && !is_ci {
+		if dbg_env == '' {
+			// Log to cache file by default.
+			// In case of `VPM_DEBUG=1|true`, keep the logger's regular stdout output path.
 			os.mkdir_all(os.join_path(vmodules_path, 'cache'), mode: 0o700) or { panic(err) }
 			logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
 		}
