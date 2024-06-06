@@ -28,7 +28,7 @@ pub:
 pub struct CompareTextOptions {
 	CompareOptions
 pub:
-	base_name string = 'base'
+	base_name   string = 'base'
 	target_name string = 'target'
 }
 
