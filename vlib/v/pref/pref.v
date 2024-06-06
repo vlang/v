@@ -970,6 +970,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					// Allow for `v doc -comments file.v`
 					continue
 				}
+				if command_idx == 0 && i == 0 {
+					break
+				}
 				err_detail := if command == '' { '' } else { ' for command `${command}`' }
 				eprintln_exit('Unknown argument `${arg}`${err_detail}')
 			}
