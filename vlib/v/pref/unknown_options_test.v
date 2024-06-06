@@ -28,8 +28,7 @@ fn test_unknown_option_flags_with_run() {
 
 	res_run_no_o_unknown_before_run := os.execute('${os.quoted_path(@VEXE)} --an-unknown-option run examples/hello_world.v ')
 	assert res_run_no_o_unknown_before_run.exit_code == 1, res_run_no_o_unknown_before_run.output
-	assert res_run_no_o_unknown_before_run.output.starts_with('Unknown argument')
-	assert res_run_no_o_unknown_before_run.output.contains('--an-unknown-option')
+	assert res_run_no_o_unknown_before_run.output.contains('v: unknown option `--an-unknown-option`')
 	assert !os.exists(tfile)
 
 	res_run_no_o := os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')

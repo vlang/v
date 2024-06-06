@@ -52,7 +52,7 @@ fn test_v_cmds_and_flags() {
 	assert too_many_targets_res.output.trim_space() == 'Too many targets. Specify just one target: <target.v|target_directory>.'
 
 	unknown_arg_res := os.execute('${vexe} -xyz')
-	assert unknown_arg_res.output.trim_space() == 'Unknown argument `-xyz`'
+	assert unknown_arg_res.output.contains('v: unknown option `-xyz`'), unknown_arg_res.output
 
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
