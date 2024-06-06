@@ -24,6 +24,14 @@ pub:
 	env_overwrite_var ?string = 'VDIFF_CMD'
 }
 
+@[params]
+pub struct CompareTextOptions {
+	CompareOptions
+pub:
+	base_name string = 'base'
+	target_name string = 'target'
+}
+
 // Default options for `diff` and `colordiff`.
 // Short `diff` args are supported more widely (e.g. on OpenBSD, ref. https://man.openbsd.org/diff.1).
 // `-d -a -U 2` ^= `--minimal --text --unified=2`
@@ -79,15 +87,15 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 }
 
 // compare_text returns a string displaying the differences between two strings.
-pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
+pub fn compare_text(text1 string, text2 string, opts CompareTextOptions) !string {
 	ctime := time.sys_mono_now()
 	tmp_dir := os.join_path_single(os.vtmp_dir(), ctime.str())
 	os.mkdir(tmp_dir)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
-	path1 := os.join_path_single(tmp_dir, 'text1.txt')
-	path2 := os.join_path_single(tmp_dir, 'text2.txt')
+	path1 := os.join_path_single(tmp_dir, opts.base_name)
+	path2 := os.join_path_single(tmp_dir, opts.target_name)
 	// When comparing strings and not files, prevent `\ No newline at end of file` in the output.
 	if !text1.ends_with('\n') || !text2.ends_with('\n') {
 		os.write_file(path1, text1 + '\n')!
@@ -96,7 +104,7 @@ pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
 		os.write_file(path1, text1)!
 		os.write_file(path2, text2)!
 	}
-	return compare_files(path1, path2, opts)!
+	return compare_files(path1, path2, opts.CompareOptions)!
 }
 
 fn (opts CompareOptions) find_tool() !(DiffTool, string) {
