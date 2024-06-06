@@ -8,14 +8,14 @@ fn test_unknown_option_flags_no_run() {
 
 	res1 := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} examples/hello_world.v --an-unknown-option')
 	assert res1.exit_code == 1, res1.output
-	assert res1.output.starts_with('Unknown argument')
-	assert res1.output.contains('--an-unknown-option')
+	assert res1.output.starts_with('Unknown argument'), res1.output
+	assert res1.output.contains('--an-unknown-option'), res1.output
 	assert !os.exists(tfile)
 
 	res2 := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(tfile)} --an-unknown-option examples/hello_world.v')
 	assert res2.exit_code == 1, res2.output
-	assert res2.output.starts_with('Unknown argument')
-	assert res2.output.contains('--an-unknown-option')
+	assert res2.output.starts_with('Unknown argument'), res2.output
+	assert res2.output.contains('--an-unknown-option'), res2.output
 	assert !os.exists(tfile)
 }
 
@@ -28,7 +28,7 @@ fn test_unknown_option_flags_with_run() {
 
 	res_run_no_o_unknown_before_run := os.execute('${os.quoted_path(@VEXE)} --an-unknown-option run examples/hello_world.v ')
 	assert res_run_no_o_unknown_before_run.exit_code == 1, res_run_no_o_unknown_before_run.output
-	assert res_run_no_o_unknown_before_run.output.contains('v: unknown option `--an-unknown-option`')
+	assert res_run_no_o_unknown_before_run.output.contains('v: unknown option `--an-unknown-option`'), res_run_no_o_unknown_before_run.output
 	assert !os.exists(tfile)
 
 	res_run_no_o := os.execute('${os.quoted_path(@VEXE)} run examples/hello_world.v --an-unknown-option')
