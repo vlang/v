@@ -969,10 +969,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					// But detect unknown arguments when building them. E.g.: `v hello_world.v -opt`.
 					continue
 				}
-				if command == 'doc' {
-					// Allow for `v doc -comments file.v`
-					continue
-				}
 				err_detail := if command == '' { '' } else { ' for command `${command}`' }
 				eprintln_exit('Unknown argument `${arg}`${err_detail}')
 			}
