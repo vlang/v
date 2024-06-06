@@ -962,7 +962,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				if command_idx < i && (res.is_vsh || (is_source_file(command) && command in known_external_commands)) {
+				if command_idx < i && (res.is_vsh || (is_source_file(command)
+					&& command in known_external_commands)) {
 					// When running programs, let them be responsible for the arguments passed to them.
 					// E.g.: `script.vsh cmd -opt` or `v run hello_world.v -opt`.
 					// But detect unknown arguments when building them. E.g.: `v hello_world.v -opt`.
