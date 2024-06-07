@@ -964,9 +964,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				if command_idx < i && (res.is_vsh || (is_source_file(command)
 					&& command in known_external_commands)) {
-					if is_source_file(command) && os.is_dir(command) {
-						eprintln('Found `${command}` directory the in the working directory.\nUse `v ${command}/` to target it instead of running the V command.')
-					}
 					// When running programs, let them be responsible for the arguments passed to them.
 					// E.g.: `script.vsh cmd -opt` or `v run hello_world.v -opt`.
 					// But detect unknown arguments when building them. E.g.: `v hello_world.v -opt`.
