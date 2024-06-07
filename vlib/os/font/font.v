@@ -28,6 +28,10 @@ pub fn default() string {
 		return env_font
 	}
 	$if windows {
+		if os.exists("C:\\Windows\\Fonts\\segoeui.ttf") {
+			debug_font_println('Using font "C:\\Windows\\Fonts\\segoeui.ttf"')
+			return "C:\\Windows\\Fonts\\segoeui.ttf"
+		}
 		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
 		return 'C:\\Windows\\Fonts\\arial.ttf'
 	}
