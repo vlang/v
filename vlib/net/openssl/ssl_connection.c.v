@@ -242,7 +242,7 @@ fn (mut s SSLConn) complete_connect() ! {
 		}
 		res := C.SSL_get_verify_result(voidptr(s.ssl))
 		if res != C.X509_V_OK {
-			return error('SSL handshake failed')
+			return error('SSL handshake failed (OpenSSL SSL_get_verify_result = ${res})')
 		}
 	}
 }

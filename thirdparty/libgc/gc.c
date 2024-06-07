@@ -7241,7 +7241,7 @@ GC_EXTERN GC_bool GC_print_back_height;
 # define GC_auto_incremental (GC_incremental && !GC_manual_vdb)
   GC_INNER void GC_dirty_inner(const void *p); /* does not require locking */
 # define GC_dirty(p) (GC_manual_vdb ? GC_dirty_inner(p) : (void)0)
-# define REACHABLE_AFTER_DIRTY(p) GC_reachable_here(p)
+# define REACHABLE_AFTER_DIRTY(p) GC_noop1(p) //GC_reachable_here(p)
 #endif /* !NO_MANUAL_VDB */
 
 #ifdef GC_DISABLE_INCREMENTAL
