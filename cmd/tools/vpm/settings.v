@@ -29,16 +29,18 @@ fn init_settings() VpmSettings {
 	cmds := cmdline.only_non_options(args)
 
 	vmodules_path := os.vmodules_dir()
-	no_inc_env := os.getenv('VPM_NO_INCREMENT')
-	dbg_env := os.getenv('VPM_DEBUG')
+	is_no_inc := os.getenv('VPM_NO_INCREMENT') != ''
+	is_dbg := os.getenv('VPM_DEBUG') != ''
+	is_ci := os.getenv('CI') != ''
 
 	mut logger := &log.Log{}
-	if dbg_env != '0' {
+	if is_dbg {
 		logger.set_level(.debug)
-		if dbg_env == '' {
-			os.mkdir_all(os.join_path(vmodules_path, 'cache'), mode: 0o700) or { panic(err) }
-			logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
-		}
+	}
+	if !is_ci && !is_dbg {
+		// Log by default:
+		os.mkdir_all(os.join_path(vmodules_path, 'cache'), mode: 0o700) or { panic(err) }
+		logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
 	}
 
 	return VpmSettings{
@@ -50,7 +52,7 @@ fn init_settings() VpmSettings {
 		vcs: if '--hg' in opts { .hg } else { .git }
 		vmodules_path: vmodules_path
 		tmp_path: os.join_path(os.vtmp_dir(), 'vpm_modules')
-		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
+		no_dl_count_increment: is_ci || is_no_inc
 		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''
 		logger: logger
 	}
