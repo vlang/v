@@ -107,6 +107,13 @@ fn test_compare_string() {
 	assert res.contains('-abc'), res
 	assert res.contains('+abcd'), res
 	assert !res.contains('No newline at end of file'), res
+	// Default base and target name.
+	assert res.match_glob("*---*base*"), res
+	assert res.match_glob("*+++*target*"), res
+	// Custom base and target name.
+	res = diff.compare_text('abc', 'abcd', tool: .diff, base_name: 'old.v', target_name: 'new.v')!
+	assert res.match_glob("*---*old.v*"), res
+	assert res.match_glob("*+++*new.v*"), res
 }
 
 fn test_coloring() {
