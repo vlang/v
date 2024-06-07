@@ -1269,37 +1269,49 @@ does not alter the parent:
 
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
-mut b := a[2..4]
-b[0] = 7 // `b[0]` is referring to `a[2]`
-println(a) // `[0, 1, 7, 3, 4, 5]`
+
+// Create a slice, that reuses the *same memory* as the parent array
+// initially, without doing a new allocation:
+mut b := unsafe { a[2..4] } // the contents of `b`, reuses the memory, used by the contents of `a`.
+
+b[0] = 7 // Note that `b[0]` and `a[2]` refer to *the same element* in memory.
+println(a) // `[0, 1, 7, 3, 4, 5]` - changing `b[0]` above, changed `a[2]` too.
+
+// the content of `b` will get reallocated, to have room for the `9` element:
 b << 9
-// `b` has been reallocated and is now independent from `a`
-println(a) // `[0, 1, 7, 3, 4, 5]` - no change
-println(b) // `[7, 3, 9]`
+// The content of `b`, is now reallocated, and fully independent from the content of `a`.
+
+println(a) // `[0, 1, 7, 3, 4, 5]` - no change, since the content of `b` was reallocated,
+// to a larger block, before the appending.
+
+println(b) // `[7, 3, 9]` - the contents of `b`, after the reallocation, and appending of the `9`.
 ```
 
-Appending to the parent array may or may not make it independent from its child slices.
-The behaviour depends on the parent's capacity and is predictable:
+Appending to the parent array, may or may not make it independent from its child slices.
+The behaviour depends on the *parent's capacity* and is predictable:
 
 ```v
 mut a := []int{len: 5, cap: 6, init: 2}
-mut b := unsafe { a[1..4] }
+mut b := unsafe { a[1..4] } // the contents of `b` uses part of the same memory, that is used by `a` too
+
 a << 3
-// no reallocation - fits in `cap`
-b[2] = 13 // `a[3]` is modified
+// still no reallocation of `a`, since `a.len` still fits in `a.cap`
+b[2] = 13 // `a[3]` is modified, through the slice `b`.
+
 a << 4
-// a has been reallocated and is now independent from `b` (`cap` was exceeded)
+// the content of `a` has been reallocated now, and is independent from `b` (`cap` was exceeded by `len`)
 b[1] = 3 // no change in `a`
+
 println(a) // `[2, 2, 2, 13, 2, 3, 4]`
 println(b) // `[2, 3, 13]`
 ```
 
-You can call .clone() on the slice, if you do want to have an independent copy right away:
+You can call .clone() on the slice, if you *do* want to have an independent copy right away:
 
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 mut b := a[2..4].clone()
-b[0] = 7 // Note: `b[0]` is NOT referring to `a[2]`, as it would have been, without the .clone()
+b[0] = 7 // Note: `b[0]` is NOT referring to `a[2]`, as it would have been, without the `.clone()`
 println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
