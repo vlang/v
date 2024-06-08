@@ -232,6 +232,51 @@ fn test_split() {
 	assert vals[1] == ''
 }
 
+fn test_split_any() {
+	mut s := 'aaa'
+	mut a := s.split_any('')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'a'
+	assert a[2] == 'a'
+	s = ''
+	a = s.split_any('')
+	assert a.len == 0
+	s = '12131415'
+	a = s.split_any('1')
+	assert a.len == 5
+	assert a[0] == ''
+	assert a[1] == '2'
+	assert a[2] == '3'
+	assert a[3] == '4'
+	assert a[4] == '5'
+	s = '12131415'
+	a = s.split_any('2345')
+	assert a.len == 4
+	assert a[0] == '1'
+	assert a[1] == '1'
+	assert a[2] == '1'
+	assert a[3] == '1'
+	s = 'a,b,c'
+	a = s.split_any('],')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'b'
+	assert a[2] == 'c'
+	s = 'a]b]c'
+	a = s.split_any('],')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'b'
+	assert a[2] == 'c'
+	s = 'a]b]c'
+	a = s.split_any('],\\')
+	assert a.len == 3
+	assert a[0] == 'a'
+	assert a[1] == 'b'
+	assert a[2] == 'c'
+}
+
 /*
 fn test_trim_space() {
 	a := ' a '

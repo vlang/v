@@ -85,6 +85,46 @@ pub fn (s string) split(dot string) []string {
 	return arr
 }
 
+pub fn (s string) split_any(delim string) []string {
+	if delim.len == 0 {
+		return s.split(delim)
+	}
+
+	mut pattern := delim
+
+	// we use a regex with a bracket expression to match any of the characters in delim
+	// so we need to prevent the caller from escaping the regex
+	// to do this we escape any `]`, and remove all `\` while adding an escaped `\\`
+	// back if the original string contained any
+	if pattern.contains('\\') {
+		pattern = pattern.replace('\\', '')
+		pattern = '${pattern}\\\\'
+	}
+	pattern = pattern.replace(']', '\\]')
+
+	mut regexp := JS.RegExp{}
+	#regexp = new RegExp('[' + pattern.str + ']', 'g')
+
+	tmparr := s.str.split(regexp).map(fn (it JS.Any) JS.Any {
+		res := ''
+		#res.str = it
+
+		return res
+	})
+	_ := tmparr
+
+	mut arr := []string{}
+	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
+
+	// FIXME: ugly hack to handle edge case where the last character in the string is
+	// one of the delimiters to match V behavior
+	#if (s.len > 0 && pattern.str.includes(s.str[s.len - 1])) {
+	arr.pop()
+	#}
+
+	return arr
+}
+
 pub fn (s string) bytes() []u8 {
 	sep := ''
 	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
