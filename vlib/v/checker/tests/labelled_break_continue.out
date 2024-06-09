@@ -26,10 +26,3 @@ vlib/v/checker/tests/labelled_break_continue.vv:16:10: error: invalid label name
       |                   ~~~~~
    17 |         }
    18 |     }
-vlib/v/checker/tests/labelled_break_continue.vv:21:11: error: nesting of labelled `for` loops is not supported
-   19 |     // check nested loops (not supported ATM)
-   20 |     L3: for ;; i++ {
-   21 |         L4: for {
-      |                 ^
-   22 |             if i < 17 {continue L3}
-   23 |             else {break L3}
