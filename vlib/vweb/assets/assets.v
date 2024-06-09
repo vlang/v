@@ -3,7 +3,6 @@ module assets
 // this module provides an AssetManager for combining
 // and caching javascript & css.
 import os
-import time
 import crypto.md5
 
 const unknown_asset_type_error = 'vweb.assets: unknown asset type'
@@ -21,7 +20,7 @@ pub mut:
 
 struct Asset {
 	file_path     string
-	last_modified time.Time
+	last_modified i64
 mut:
 	include_name string
 }
@@ -131,8 +130,8 @@ fn (am AssetManager) get_cache_key(asset_type string) string {
 	mut latest_modified := i64(0)
 	for asset in am.get_assets(asset_type) {
 		files_salt += asset.file_path
-		if asset.last_modified.unix() > latest_modified {
-			latest_modified = asset.last_modified.unix()
+		if asset.last_modified > latest_modified {
+			latest_modified = asset.last_modified
 		}
 	}
 	hash := md5.sum(files_salt.bytes()).hex()
@@ -182,11 +181,7 @@ pub fn (mut am AssetManager) add(asset_type string, file string) bool {
 	}
 	asset := Asset{
 		file_path: file
-		last_modified: unsafe {
-			time.Time{
-				unix: os.file_last_mod_unix(file)
-			}
-		}
+		last_modified: os.file_last_mod_unix(file)
 	}
 	if asset_type == 'css' {
 		am.css << asset

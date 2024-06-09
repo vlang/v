@@ -1631,13 +1631,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		is_used_outside := sym.mod != c.mod
 		if is_used_outside && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
-			if unwrapped_sym.kind == .struct_ && unwrapped_sym.name == 'time.Time' {
-				c.add_error_detail('this will become an error after 2024-05-31')
-				c.warn('field `${unwrapped_sym.name}.${field_name}` is not public, use `${node.expr}.unix()` instead',
-					node.pos)
-			} else {
-				c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
-			}
+			c.error('field `${unwrapped_sym.name}.${field_name}` is not public', node.pos)
 		}
 		field_sym := c.table.sym(field.typ)
 		if field.is_deprecated && is_used_outside {

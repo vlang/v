@@ -1,15 +1,14 @@
 import x.json2.decoder2 as json
 import time
 
-const fixed_time = time.Time{
+const fixed_time = time.new(
 	year: 2022
 	month: 3
 	day: 11
 	hour: 13
 	minute: 54
 	second: 25
-	// unix: 1647006865
-}
+)
 
 type StringAlias = string
 type BoolAlias = bool
