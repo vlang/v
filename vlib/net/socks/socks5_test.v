@@ -1,7 +1,5 @@
 module socks
 
-import net
-
 fn ipv4_socks() ! {
 	mut v := socks5_dial('127.0.0.1:9150', '1.1.1.1:80', '', '')!
 	assert v != unsafe { nil }
