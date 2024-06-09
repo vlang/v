@@ -51,10 +51,15 @@ enum Select {
 	except
 }
 
+// close closes the ssl connection and does cleanup
+pub fn (mut s SSLConn) close() ! {
+	s.shutdown()!
+}
+
 // shutdown closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) shutdown() ! {
 	$if trace_ssl ? {
-		eprintln(@METHOD)
+		eprintln(@METHODclose)
 	}
 
 	if s.ssl != 0 {
@@ -245,6 +250,11 @@ fn (mut s SSLConn) complete_connect() ! {
 			return error('SSL handshake failed (OpenSSL SSL_get_verify_result = ${res})')
 		}
 	}
+}
+
+// addr retrieves the local ip address and port number for this connection
+pub fn (s &SSLConn) addr() !net.Addr {
+	return net.addr_from_socket_handle(s.handle)
 }
 
 // peer_addr retrieves the ip address and port number used by the peer

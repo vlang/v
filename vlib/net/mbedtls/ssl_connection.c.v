@@ -244,6 +244,11 @@ enum Select {
 	except
 }
 
+// close terminates the ssl connection and does cleanup
+pub fn (mut s SSLConn) close() ! {
+	s.shutdown()!
+}
+
 // shutdown terminates the ssl connection and does cleanup
 pub fn (mut s SSLConn) shutdown() ! {
 	$if trace_ssl ? {
@@ -405,6 +410,11 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	}
 
 	s.opened = true
+}
+
+// addr retrieves the local ip address and port number for this connection
+pub fn (s &SSLConn) addr() !net.Addr {
+	return net.addr_from_socket_handle(s.handle)
 }
 
 // peer_addr retrieves the ip address and port number used by the peer
