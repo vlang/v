@@ -105,7 +105,7 @@ mut:
 	cur_orm_ts                       ast.TypeSymbol
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
-	loop_label                       string     // set when inside a labelled for loop
+	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
 	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
@@ -183,7 +183,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_sql = false
 	c.cur_orm_ts = ast.TypeSymbol{}
 	c.prevent_sum_type_unwrapping_once = false
-	c.loop_label = ''
+	c.loop_labels = []
 	c.using_new_err_struct = false
 	c.inside_selector_expr = false
 	c.inside_interface_deref = false
@@ -2015,16 +2015,15 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 }
 
 @[inline]
-fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
+fn (mut c Checker) check_loop_labels(label string, pos token.Pos) {
 	if label == '' {
-		// ignore
 		return
 	}
-	if c.loop_label.len != 0 {
-		c.error('nesting of labelled `for` loops is not supported', pos)
+	if label in c.loop_labels {
+		c.error('the loop label was already defined before', pos)
 		return
 	}
-	c.loop_label = label
+	c.loop_labels << label
 }
 
 fn (mut c Checker) stmt(mut node ast.Stmt) {
@@ -2231,7 +2230,7 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 		}
 	}
 	if node.label.len > 0 {
-		if node.label != c.loop_label {
+		if node.label !in c.loop_labels {
 			c.error('invalid label name `${node.label}`', node.pos)
 		}
 	}
