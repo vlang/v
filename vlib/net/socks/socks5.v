@@ -18,7 +18,9 @@ const auth_user_password = u8(2)
 // socks5_dial create new instance of &net.TcpConn
 pub fn socks5_dial(proxy_url string, host string, username string, password string) !&net.TcpConn {
 	mut con := net.dial_tcp(proxy_url)!
-	return handshake(mut con, host, username, password)!
+	socks_conn_as_interface := handshake(mut con, host, username, password)!
+	socks_conn := socks_conn_as_interface as net.TcpConn
+	return &socks_conn
 }
 
 // socks5_ssl_dial create new instance of &ssl.SSLConn
@@ -35,7 +37,36 @@ pub fn socks5_ssl_dial(proxy_url string, host string, username string, password 
 	return ssl_conn
 }
 
-fn handshake(mut con net.TcpConn, host string, username string, password string) !&net.TcpConn {
+// SOCKS5Dialer implements the IDialer interface initiating connections through
+// a SOCKS5 proxy.
+pub struct SOCKS5Dialer {
+pub:
+	dialer        net.IDialer
+	proxy_address string
+	username      string
+	password      string
+}
+
+// new_socks5_dialer creates a dialer that will use a SOCKS5 proxy server to
+// initiate connections. An underlying dialer is required to initiate the
+// connection to the proxy server. Most users should use either
+// net.default_tcp_dialer or ssl.create_ssl_dialer.
+pub fn new_socks5_dialer(base net.IDialer, proxy_address string, username string, password string) net.IDialer {
+	return &SOCKS5Dialer{
+		dialer: base
+		proxy_address: proxy_address
+		username: username
+		password: password
+	}
+}
+
+// dial initiates a new connection through the SOCKS5 proxy.
+pub fn (sd SOCKS5Dialer) dial(address string) !net.IConn {
+	mut conn := sd.dialer.dial(sd.proxy_address)!
+	return handshake(mut conn, address, sd.username, sd.password)!
+}
+
+fn handshake(mut con net.IConn, host string, username string, password string) !net.IConn {
 	mut v := [socks.socks_version5, 1]
 	if username.len > 0 {
 		v << socks.auth_user_password
