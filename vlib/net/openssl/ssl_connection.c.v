@@ -59,7 +59,7 @@ pub fn (mut s SSLConn) close() ! {
 // shutdown closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) shutdown() ! {
 	$if trace_ssl ? {
-		eprintln(@METHODclose)
+		eprintln(@METHOD)
 	}
 
 	if s.ssl != 0 {
