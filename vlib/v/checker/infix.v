@@ -435,7 +435,25 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.check_div_mod_by_zero(node.right, node.op)
 				}
 
-				return_type = promoted_type
+				left_sym = c.table.sym(unwrapped_left_type)
+				right_sym = c.table.sym(unwrapped_right_type)
+				if left_sym.info is ast.Alias
+					&& c.table.sym(left_sym.info.parent_type).is_primitive() {
+					if left_sym.has_method(node.op.str()) {
+						if method := left_sym.find_method(node.op.str()) {
+							return_type = method.return_type
+						}
+					}
+				} else if right_sym.info is ast.Alias
+					&& c.table.sym(right_sym.info.parent_type).is_primitive() {
+					if right_sym.has_method(node.op.str()) {
+						if method := left_sym.find_method(node.op.str()) {
+							return_type = method.return_type
+						}
+					}
+				} else {
+					return_type = promoted_type
+				}
 			}
 		}
 		.gt, .lt, .ge, .le {
