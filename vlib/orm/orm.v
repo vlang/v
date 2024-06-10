@@ -63,6 +63,7 @@ pub enum OperationKind {
 	ge // >=
 	le // <=
 	orm_like // LIKE
+	orm_ilike // ILIKE
 	is_null // IS NULL
 	is_not_null // IS NOT NULL
 }
@@ -101,6 +102,7 @@ fn (kind OperationKind) to_str() string {
 		.ge { '>=' }
 		.le { '<=' }
 		.orm_like { 'LIKE' }
+		.orm_ilike { 'ILIKE' }
 		.is_null { 'IS NULL' }
 		.is_not_null { 'IS NOT NULL' }
 	}

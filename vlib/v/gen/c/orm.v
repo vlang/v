@@ -747,6 +747,9 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 				.key_like {
 					'orm__OperationKind__orm_like'
 				}
+				.key_ilike {
+					'orm__OperationKind__orm_ilike'
+				}
 				.key_is {
 					'orm__OperationKind__is_null'
 				}

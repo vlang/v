@@ -842,11 +842,17 @@ fn (mut p Parser) process_custom_orm_operators() {
 	}
 
 	is_like_operator := p.tok.kind == .name && p.tok.lit == 'like'
+	is_ilike_operator := p.tok.kind == .name && p.tok.lit == 'ilike'
 
 	if is_like_operator {
 		p.tok = token.Token{
 			...p.tok
 			kind: .key_like
+		}
+	} else if is_ilike_operator {
+		p.tok = token.Token{
+			...p.tok
+			kind: .key_ilike
 		}
 	}
 }

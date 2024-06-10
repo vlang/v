@@ -522,6 +522,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			return c.check_like_operator(node)
 		}
+		.key_ilike {
+			node.promoted_type = ast.bool_type
+
+			return c.check_like_operator(node)
+		}
 		.left_shift {
 			if left_final_sym.kind == .array
 				|| c.table.sym(c.unwrap_generic(left_type)).kind == .array {
