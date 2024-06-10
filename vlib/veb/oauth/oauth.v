@@ -9,6 +9,7 @@ pub enum TokenPostType {
 }
 
 pub struct Context {
+pub:
 	token_url       string
 	client_id       string
 	client_secret   string
