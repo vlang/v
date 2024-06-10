@@ -6956,7 +6956,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 							&& g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
-								&& expr_stmt.expr is ast.CallExpr
+								&& expr_stmt.expr is ast.CallExpr&& (expr_stmt.expr as ast.CallExpr).return_type.has_option_or_result()
 								&& g.cur_fn.return_type.has_option_or_result()
 								&& return_type.has_option_or_result()
 								&& expr_stmt.expr.or_block.kind == .absent {
