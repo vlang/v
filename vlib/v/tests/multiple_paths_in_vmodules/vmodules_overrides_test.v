@@ -30,6 +30,7 @@ fn test_compiling_with_vmodules_works() {
 	os.chdir(vroot) or {}
 	vmpaths := ['path1', 'path2', 'path3'].map(os.join_path(basepath, it))
 	os.setenv('VMODULES', vmpaths.join(os.path_delimiter), true)
+	dump(os.getenv('VMODULES'))
 	dump(cmd)
 	res := os.execute(cmd)
 	assert res.exit_code == 0, res.output

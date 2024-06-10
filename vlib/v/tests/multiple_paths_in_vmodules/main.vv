@@ -4,6 +4,6 @@ import zzz
 
 fn main() {
 	all := [xxx.f(), yyy.f(), zzz.f()]
-    println(all)
-    assert all == ['x','y','z']
+	println(all)
+	assert all == ['x', 'y', 'z']
 }
