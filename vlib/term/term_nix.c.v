@@ -1,7 +1,6 @@
 module term
 
 import os
-import strings
 import term.termios
 
 #include <sys/ioctl.h>
@@ -201,8 +200,7 @@ pub fn graphics_num_colors() u16 {
 	print('\e[?1;1;0S')
 	flush_stdout()
 
-	mut sb := strings.new_builder(6)
-	defer { unsafe { sb.free() } }
+	mut buf := []u8{cap: 20}
 	for {
 		w := unsafe { C.getchar() }
 		if w < 0 {
@@ -210,10 +208,10 @@ pub fn graphics_num_colors() u16 {
 		} else if w == `S` {
 			break
 		} else if w == `;` {
-			sb.clear()
+			buf.clear()
 		} else {
-			sb.write_byte(u8(w))
+			buf << u8(w)
 		}
 	}
-	return sb.str().u16()
+	return buf.bytestr().u16()
 }

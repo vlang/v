@@ -18,5 +18,7 @@ fn main() {
 		// Prints a 128x128 pixels V logo
 		bytes := os.read_bytes(os.resource_abs_path('assets/v.six'))!
 		println(bytes.bytestr())
+		dump(term.supports_sixel())
+		dump(term.graphics_num_colors())
 	}
 }
