@@ -27,7 +27,7 @@ Use the `-prod` flag when building for production.
 
 ## Getting Started
 
-To start, you must import the module `x.veb` and define a structure which will
+To start, you must import the module `veb` and define a structure which will
 represent your app and a structure which will represent the context of a request.
 These structures must be declared with the `pub` keyword.
 
