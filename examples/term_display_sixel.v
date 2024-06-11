@@ -16,7 +16,7 @@ fn main() {
 #1!14@
 \e\\')
 		// Prints a 128x128 pixels V logo
-		bytes := os.read_bytes(os.resource_abs_path('../assets/v.six'))!
+		bytes := os.read_bytes(os.resource_abs_path('assets/v.six'))!
 		println(bytes.bytestr())
 	}
 }
