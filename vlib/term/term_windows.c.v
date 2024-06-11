@@ -132,3 +132,26 @@ pub fn clear() bool {
 	C.SetConsoleCursorPosition(hconsole, csbi.dwCursorPosition)
 	return true
 }
+
+// supports_sixel returns `true` if the terminal supports Sixel graphics
+//
+// For more info on the sixel format:
+// See https://en.wikipedia.org/wiki/Sixel
+// See https://www.digiater.nl/openvms/decus/vax90b1/krypton-nasa/all-about-sixels.text
+// For more info on terminal support:
+// See https://www.arewesixelyet.com
+pub fn supports_sixel() bool {
+	// According to (2024) https://www.arewesixelyet.com/#windows-console there's no support
+	return false
+}
+
+// graphics_num_colors returns the number of color registers the terminal
+// graphic attribute is set to use. This can be useful to know if the terminal
+// is configured to support Sixel graphics.
+//
+// See "CSI ? Pi ; Pa ; Pv S" from https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+pub fn graphics_num_colors() u16 {
+	// Since this call is related to sixel terminal graphics and Windows Console and Terminal
+	// does not have support for querying the graphics setup this call returns 0
+	return 0
+}
