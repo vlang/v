@@ -149,23 +149,23 @@ pub fn supports_sixel() bool {
 	print('\e[c')
 	flush_stdout()
 
-	// Terminal answers with a "Report Device Code" in the format `\e[<code><N>c`
+	// Terminal answers with a "Report Device Code" in the format `\e[<code>`
 	mut buf := []u8{cap: 20}
-
 	for {
 		w := unsafe { C.getchar() }
 		if w < 0 {
 			return false
+		} else if w == `c` {
+			break
 		} else {
 			buf << u8(w)
 		}
-
-		if w == `c` {
-			break
-		}
 	}
-	// returns `true` if the last digit before the ending `c` is a literal "4"
-	return 52 in buf
+	if buf.len == 0 {
+		return false
+	}
+	// returns `true` if the last digit (before the ending `c`) is a literal "4"
+	return buf.last() == 52
 }
 
 // graphics_num_colors returns the number of color registers the terminal
