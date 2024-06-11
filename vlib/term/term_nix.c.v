@@ -151,6 +151,7 @@ pub fn supports_sixel() bool {
 
 	// Terminal answers with a "Report Device Code" in the format `\e[<code>`
 	mut buf := []u8{cap: 20}
+
 	for {
 		w := unsafe { C.getchar() }
 		if w < 0 {
@@ -161,11 +162,8 @@ pub fn supports_sixel() bool {
 			buf << u8(w)
 		}
 	}
-	if buf.len == 0 {
-		return false
-	}
-	// returns `true` if the last digit (before the ending `c`) is a literal "4"
-	return buf.last() == 52
+	// returns `true` if the digit literal "4" is found anywhere before the ending `c`.
+	return 52 in buf
 }
 
 // graphics_num_colors returns the number of color registers the terminal
