@@ -451,7 +451,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							return_type = method.return_type
 						}
 					}
-				} else {
+				}
+				return_sym := c.table.sym(return_type)
+				if return_sym.info !is ast.Alias {
 					return_type = promoted_type
 				}
 			}
