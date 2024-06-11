@@ -149,8 +149,7 @@ pub fn supports_sixel() bool {
 	flush_stdout()
 
 	// Terminal answers with a "Report Device Code" in the format `\e[<code>`
-	mut buf := []u8{cap: 20}
-
+	mut buf := []u8{cap: 64} // xterm's output can be long
 	for {
 		w := unsafe { C.getchar() }
 		if w < 0 {
@@ -161,8 +160,9 @@ pub fn supports_sixel() bool {
 			buf << u8(w)
 		}
 	}
-	// returns `true` if the digit literal "4" is found anywhere before the ending `c`.
-	return 52 in buf
+	sa := buf.bytestr().all_after('?').split(';')
+	// returns `true` if the digit literal "4" is found in a "slot" in the response, before the ending `c`.
+	return '4' in sa
 }
 
 // graphics_num_colors returns the number of color registers the terminal
