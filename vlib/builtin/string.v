@@ -1653,7 +1653,7 @@ pub fn (s string) find_between(start string, end string) string {
 	val := s[start_pos + start.len..]
 	end_pos := val.index_(end)
 	if end_pos == -1 {
-		return val
+		return ''
 	}
 	return val[..end_pos]
 }
