@@ -31,8 +31,8 @@ fn test_alias_primitive_operator_overloading() {
 
 	e := a * b
 	f := a.mul(b)
-	assert typeof(c).name == 'Alias'
-	assert typeof(d).name == 'Alias'
+	assert typeof(e).name == 'Alias'
+	assert typeof(f).name == 'Alias'
 }
 
 type AF_ARRAY = voidptr
