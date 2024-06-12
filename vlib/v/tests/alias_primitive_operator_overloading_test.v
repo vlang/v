@@ -68,4 +68,3 @@ fn test_alias_voidptr_operator_overloading() {
 	assert typeof(c).name == 'AF_ARRAY'
 	assert typeof(y).name == 'AF_ARRAY'
 }
-
