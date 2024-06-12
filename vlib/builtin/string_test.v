@@ -44,6 +44,8 @@ fn test_ends_with() {
 fn test_between() {
 	s := 'hello [man] how you doing'
 	assert s.find_between('[', ']') == 'man'
+	assert s.find_between('[','A') == ''
+	assert s.find_between('',']') == ''
 }
 
 fn test_compare() {
