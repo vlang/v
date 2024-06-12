@@ -447,7 +447,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if right_sym.info is ast.Alias
 					&& c.table.sym(right_sym.info.parent_type).is_primitive() {
 					if right_sym.has_method(node.op.str()) {
-						if method := left_sym.find_method(node.op.str()) {
+						if method := right_sym.find_method(node.op.str()) {
 							return_type = method.return_type
 						}
 					}
