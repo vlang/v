@@ -1,7 +1,7 @@
 vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods should have exactly 1 argument
     9 | }
    10 | 
-   11 | fn (u User) + () {
+   11 | fn (u User) % () {
       | ~~~~~~~~~~~~~~~~
    12 | }
    13 |
@@ -68,7 +68,7 @@ vlib/v/checker/tests/method_op_err.vv:38:5: error: operator %= not defined on le
       |     ^
    39 |     u += User{2, 3}
    40 | }
-vlib/v/checker/tests/method_op_err.vv:38:7: error: undefined operation `User` % `User`
+vlib/v/checker/tests/method_op_err.vv:38:7: error: operator `%` must return `User` to be used as an assignment operator
    36 |    _ = u
    37 |     u += 12
    38 |     u %= User{1, 3}
