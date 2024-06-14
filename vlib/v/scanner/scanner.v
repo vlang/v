@@ -872,6 +872,12 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				}
 			}
 			`&` {
+				if nextc == `&` {
+					if s.look_ahead(2) == `=` {
+						s.pos += 2
+						return s.new_token(.boolean_and_assign, '', 3)
+					}
+				}
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.and_assign, '', 2)
@@ -885,6 +891,10 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			}
 			`|` {
 				if nextc == `|` {
+					if s.look_ahead(2) == `=` {
+						s.pos += 2
+						return s.new_token(.boolean_or_assign, '', 3)
+					}
 					s.pos++
 					return s.new_token(.logical_or, '', 2)
 				}

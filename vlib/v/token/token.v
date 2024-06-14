@@ -67,6 +67,8 @@ pub enum Kind {
 	right_shift_assign // <<=
 	left_shift_assign // >>=
 	unsigned_right_shift_assign // >>>=
+	boolean_and_assign // &&=
+	boolean_or_assign // ||=
 	lcbr // {
 	rcbr // }
 	lpar // (
@@ -186,7 +188,7 @@ pub enum AtKind {
 
 pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
 	.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
-	.unsigned_right_shift_assign]
+	.unsigned_right_shift_assign, .boolean_and_assign, .boolean_or_assign]
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
 	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@VMODHASH',
@@ -261,6 +263,8 @@ fn build_token_str() []string {
 	s[Kind.right_shift_assign] = '>>='
 	s[Kind.unsigned_right_shift_assign] = '>>>='
 	s[Kind.left_shift_assign] = '<<='
+	s[Kind.boolean_or_assign] = '||='
+	s[Kind.boolean_and_assign] = '&&='
 	s[Kind.lcbr] = '{'
 	s[Kind.rcbr] = '}'
 	s[Kind.lpar] = '('
@@ -468,6 +472,8 @@ pub fn build_precedences() []Precedence {
 	p[Kind.unsigned_right_shift_assign] = .assign
 	p[Kind.mult_assign] = .assign
 	p[Kind.xor_assign] = .assign
+	p[Kind.boolean_or_assign] = .assign
+	p[Kind.boolean_and_assign] = .assign
 	p[Kind.key_in] = .in_as
 	p[Kind.not_in] = .in_as
 	p[Kind.key_as] = .in_as
@@ -583,6 +589,8 @@ pub fn kind_to_string(k Kind) string {
 		.right_shift_assign { 'right_shift_assign' }
 		.left_shift_assign { 'left_shift_assign' }
 		.unsigned_right_shift_assign { 'unsigned_right_shift_assign' }
+		.boolean_and_assign { 'boolean_and_assign' }
+		.boolean_or_assign { 'boolean_or_assign' }
 		.lcbr { 'lcbr' }
 		.rcbr { 'rcbr' }
 		.lpar { 'lpar' }
@@ -707,6 +715,8 @@ pub fn kind_from_string(s string) !Kind {
 		'right_shift_assign' { .right_shift_assign }
 		'left_shift_assign' { .left_shift_assign }
 		'unsigned_right_shift_assign' { .unsigned_right_shift_assign }
+		'boolean_and_assign' { .boolean_and_assign }
+		'boolean_or_assign' { .boolean_or_assign }
 		'lcbr' { .lcbr }
 		'rcbr' { .rcbr }
 		'lpar' { .lpar }
@@ -793,6 +803,8 @@ pub fn assign_op_to_infix_op(op Kind) Kind {
 		.right_shift_assign { .right_shift }
 		.unsigned_right_shift_assign { .unsigned_right_shift }
 		.left_shift_assign { .left_shift }
+		.boolean_and_assign { .and }
+		.boolean_or_assign { .logical_or }
 		else { ._end_ }
 	}
 }
