@@ -673,6 +673,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						right.pos())
 				}
 			}
+			.boolean_and_assign, .boolean_or_assign {
+				if c.table.final_sym(left_type_unwrapped).kind != .bool {
+					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
+						left.pos())
+				} else if c.table.final_sym(right_type_unwrapped).kind != .bool {
+					c.error('operator ${node.op.str()} not defined on right operand type `${right_sym.name}`',
+						right.pos())
+				}
+			}
 			.unsigned_right_shift_assign {
 				if node.left.len != 1 || node.right.len != 1 {
 					c.error('unsupported operation: unable to lower expression for unsigned shift assignment.',

@@ -535,6 +535,28 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					op_overloaded = true
 				}
 			}
+
+			if left_sym.kind == .bool && right_sym.kind == .bool
+				&& node.op in [.boolean_or_assign, .boolean_and_assign] {
+				extracted_op := match node.op {
+					.boolean_or_assign {
+						'||'
+					}
+					.boolean_and_assign {
+						'&&'
+					}
+					else {
+						'unknown op'
+					}
+				}
+				g.expr(left)
+				g.write(' = ')
+				g.expr(left)
+				g.write(' ${extracted_op} ')
+				g.expr(val)
+				g.writeln(';')
+				return
+			}
 			if right_sym.info is ast.FnType && is_decl {
 				if is_inside_ternary {
 					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
