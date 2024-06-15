@@ -237,6 +237,8 @@ pub mut:
 	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
 	// temp
 	// use_64_int bool
+	// forwards compatibility settings:
+	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 }
 
 pub struct LineInfo {
@@ -608,6 +610,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-no-preludes' {
 				res.no_preludes = true
 				res.build_options << arg
+			}
+			'-no-relaxed-gcc14' {
+				res.relaxed_gcc14 = false
 			}
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(args[i..], arg, '-')
