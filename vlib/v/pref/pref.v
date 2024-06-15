@@ -193,6 +193,8 @@ pub mut:
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
+	// -compile_value key=value
+	compile_compile_values map[string]string
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
@@ -823,6 +825,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} "${res.ldflags.trim_space()}"'
 				i++
 			}
+			'-cv', '-compile-value' {
+				if compile_value := args[i..][1] {
+					res.parse_compile_value(compile_value)
+				}
+				i++
+			}
 			'-d', '-define' {
 				if define := args[i..][1] {
 					res.parse_define(define)
@@ -1168,6 +1176,15 @@ pub fn cc_from_string(s string) CompilerType {
 		cc.contains('++') { .cplusplus }
 		else { .gcc }
 	}
+}
+
+fn (mut prefs Preferences) parse_compile_value(define string) {
+	define_parts := define.split('=')
+	if define_parts.len == 2 {
+		prefs.compile_compile_values[define_parts[0]] = define_parts[1]
+		return
+	}
+	eprintln_exit('V error: Define argument value missing for ${define}.')
 }
 
 fn (mut prefs Preferences) parse_define(define string) {

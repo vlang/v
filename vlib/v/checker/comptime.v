@@ -29,6 +29,18 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
+	if node.is_compile_value {
+		arg := node.args[0] or {
+			c.error('\$compile_value takes two arguments', node.pos)
+			return ast.void_type
+		}
+		typ := arg.expr.get_pure_type()
+		value := c.pref.compile_compile_values[node.args_var] or { arg.str() }
+		node.compile_value = value
+		node.result_type = typ
+
+		return typ
+	}
 	if node.is_embed {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
