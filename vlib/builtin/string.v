@@ -2606,3 +2606,101 @@ pub fn (name string) match_glob(pattern string) bool {
 pub fn (s string) is_ascii() bool {
 	return !s.bytes().any(it < u8(` `) || it > u8(`~`))
 }
+
+// camel_to_snake convert string from camelCase to snake_case
+// Example: assert 'Abcd'.camel_to_snake() == 'abcd'
+// Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
+// Example: assert 'BBaa'.camel_to_snake() == 'b_baa'
+// Example: assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+@[direct_array_access]
+pub fn (s string) camel_to_snake() string {
+	mut i := 0
+	mut idx := 0
+	if s.len == 0 {
+		return ''
+	}
+	mut prev_is_upper := false
+	mut prev_char := ` `
+	mut c := `_`
+	mut lower_c := `_`
+	mut c_is_upper := false
+	unsafe {
+		mut b := malloc_noscan(2 * s.len + 1)
+		for {
+			c = s.str[idx]
+			c_is_upper = c >= `A` && c <= `Z`
+			lower_c = if c_is_upper { c + 32 } else { c }
+			if i > 0 {
+				if prev_is_upper == false && c_is_upper {
+					// aB => a_b, if prev has `_`, then do not add `_`
+					if b[i - 1] != `_` {
+						b[i] = `_`
+						i++
+					}
+				} else if prev_is_upper && c_is_upper == false && c != `_` {
+					// Ba => _ba, if prev has `_`, then do not add `_`
+					if i > 1 {
+						if b[i - 2] != `_` {
+							prev_char = b[i - 1]
+							b[i - 1] = `_`
+							b[i] = prev_char
+							i++
+						}
+					}
+				}
+			}
+			b[i] = lower_c
+			prev_is_upper = c_is_upper
+			i++
+			idx++
+			if idx == s.len {
+				break
+			}
+		}
+		b[i] = 0
+		return tos(b, i)
+	}
+}
+
+// camel_to_snake convert string from snake_case to camelCase
+// Example: assert 'abcd'.snake_to_camel() == 'Abcd'
+// Example: assert 'ab_cd'.snake_to_camel() == 'AbCd'
+// Example: assert '_abcd'.snake_to_camel() == 'Abcd'
+// Example: assert '_abcd_'.snake_to_camel() == 'Abcd'
+@[direct_array_access]
+pub fn (s string) snake_to_camel() string {
+	mut i := 0
+	mut idx := 0
+	if s.len == 0 {
+		return ''
+	}
+	if s.len == 1 {
+		return s
+	}
+	mut need_upper := true
+	mut c := `_`
+	mut upper_c := `_`
+	unsafe {
+		mut b := malloc_noscan(s.len + 1)
+		for {
+			c = s[idx]
+			upper_c = if c >= `a` && c <= `z` { c - 32 } else { c }
+			if c == `_` {
+				need_upper = true
+			} else if need_upper {
+				b[i] = upper_c
+				i++
+				need_upper = false
+			} else {
+				b[i] = c
+				i++
+			}
+			idx++
+			if idx == s.len {
+				break
+			}
+		}
+		b[i] = 0
+		return tos(b, i)
+	}
+}
