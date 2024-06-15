@@ -2662,7 +2662,7 @@ pub fn (s string) camel_to_snake() string {
 	}
 }
 
-// camel_to_snake convert string from snake_case to camelCase
+// snake_to_camel convert string from snake_case to camelCase
 // Example: assert 'abcd'.snake_to_camel() == 'Abcd'
 // Example: assert 'ab_cd'.snake_to_camel() == 'AbCd'
 // Example: assert '_abcd'.snake_to_camel() == 'Abcd'
