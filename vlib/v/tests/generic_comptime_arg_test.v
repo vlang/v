@@ -37,7 +37,7 @@ fn decode_struct[T](doc toml.Any, typ &T) T {
 	return res
 }
 
-fn main() {
+fn test_main() {
 	toml_str := 'name = "John"
 	child1 = { name = "abc" }
 	child2 = { age = 5 }'
