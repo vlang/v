@@ -759,10 +759,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		.and, .logical_or {
 			if !c.pref.translated && !c.file.is_translated {
-				if node.left_type != ast.bool_type_idx {
+				if left_final_sym.kind != .bool {
 					c.error('left operand for `${node.op}` is not a boolean', node.left.pos())
 				}
-				if node.right_type != ast.bool_type_idx {
+				if right_final_sym.kind != .bool {
 					c.error('right operand for `${node.op}` is not a boolean', node.right.pos())
 				}
 			}
