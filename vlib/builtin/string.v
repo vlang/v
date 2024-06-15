@@ -2614,32 +2614,31 @@ pub fn (s string) is_ascii() bool {
 // Example: assert 'aa_BB'.camel_to_snake() == 'aa_bb'
 @[direct_array_access]
 pub fn (s string) camel_to_snake() string {
-	mut i := 0
-	mut idx := 0
 	if s.len == 0 {
 		return ''
 	}
 	mut prev_is_upper := false
 	mut prev_char := ` `
-	mut c := `_`
 	mut lower_c := `_`
 	mut c_is_upper := false
-	unsafe {
-		mut b := malloc_noscan(2 * s.len + 1)
-		for {
-			c = s.str[idx]
-			c_is_upper = c >= `A` && c <= `Z`
-			lower_c = if c_is_upper { c + 32 } else { c }
-			if i > 0 {
-				if prev_is_upper == false && c_is_upper {
-					// aB => a_b, if prev has `_`, then do not add `_`
+	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
+	mut i := 0
+	for c in s {
+		c_is_upper = c >= `A` && c <= `Z`
+		lower_c = if c_is_upper { c + 32 } else { c }
+		if i > 0 {
+			if prev_is_upper == false && c_is_upper {
+				// aB => a_b, if prev has `_`, then do not add `_`
+				unsafe {
 					if b[i - 1] != `_` {
 						b[i] = `_`
 						i++
 					}
-				} else if prev_is_upper && c_is_upper == false && c != `_` {
-					// Ba => _ba, if prev has `_`, then do not add `_`
-					if i > 1 {
+				}
+			} else if prev_is_upper && c_is_upper == false && c != `_` {
+				// Ba => _ba, if prev has `_`, then do not add `_`
+				if i > 1 {
+					unsafe {
 						if b[i - 2] != `_` {
 							prev_char = b[i - 1]
 							b[i - 1] = `_`
@@ -2649,17 +2648,17 @@ pub fn (s string) camel_to_snake() string {
 					}
 				}
 			}
-			b[i] = lower_c
-			prev_is_upper = c_is_upper
-			i++
-			idx++
-			if idx == s.len {
-				break
-			}
 		}
-		b[i] = 0
-		return tos(b, i)
+		unsafe {
+			b[i] = lower_c
+		}
+		prev_is_upper = c_is_upper
+		i++
 	}
+	unsafe {
+		b[i] = 0
+	}
+	return unsafe { tos(b, i) }
 }
 
 // snake_to_camel convert string from snake_case to camelCase
@@ -2669,8 +2668,6 @@ pub fn (s string) camel_to_snake() string {
 // Example: assert '_abcd_'.snake_to_camel() == 'Abcd'
 @[direct_array_access]
 pub fn (s string) snake_to_camel() string {
-	mut i := 0
-	mut idx := 0
 	if s.len == 0 {
 		return ''
 	}
@@ -2678,29 +2675,28 @@ pub fn (s string) snake_to_camel() string {
 		return s
 	}
 	mut need_upper := true
-	mut c := `_`
 	mut upper_c := `_`
-	unsafe {
-		mut b := malloc_noscan(s.len + 1)
-		for {
-			c = s[idx]
-			upper_c = if c >= `a` && c <= `z` { c - 32 } else { c }
-			if c == `_` {
-				need_upper = true
-			} else if need_upper {
+	mut b := unsafe { malloc_noscan(s.len + 1) }
+	mut i := 0
+	for c in s {
+		upper_c = if c >= `a` && c <= `z` { c - 32 } else { c }
+		if c == `_` {
+			need_upper = true
+		} else if need_upper {
+			unsafe {
 				b[i] = upper_c
-				i++
-				need_upper = false
-			} else {
+			}
+			i++
+			need_upper = false
+		} else {
+			unsafe {
 				b[i] = c
-				i++
 			}
-			idx++
-			if idx == s.len {
-				break
-			}
+			i++
 		}
-		b[i] = 0
-		return tos(b, i)
 	}
+	unsafe {
+		b[i] = 0
+	}
+	return unsafe { tos(b, i) }
 }
