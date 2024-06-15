@@ -1,40 +1,61 @@
 name: Other CI
 
 on:
+  workflow_dispatch:
   push:
     paths-ignore:
       - '**.md'
+      - '**.yml'
+      - '!**/other_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
+      - '**.yml'
+      - '!**/other_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: build-other-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  no-gpl-by-accident:
+  prevent-gpl-licenses:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
-      - name: No GPL licensed code, should be added accidentally
+      - name: Checkout V ${{ github.head_ref }}
+        uses: actions/checkout@v4
+        with:
+          path: v
+      - name: Checkout V master
+        uses: actions/checkout@v4
+        with:
+          repository: vlang/v
+          path: vmaster
+      - name: Detect potentially added GPL licensed code
         run: |
-          ! grep -r --exclude="*.yml" "a GPL license" .
+          gpl_search_cmd="grep 'GPL' -r --exclude-dir=.git --exclude=*.yml --exclude=*.md --exclude=*.vv --exclude=*_test.v ."
+          cd vmaster
+          eval $gpl_search_cmd > ../gpl_res_vmaster
+          cd ../v
+          eval $gpl_search_cmd > ../gpl_res_vnew
+          cd ..
+          diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
 
   code-formatting:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
-        run: make -j4
+        run: make -j4 && ./v symlink
       - name: v test-cleancode
         run: ./v test-cleancode
       - name: v test-fmt
@@ -42,19 +63,18 @@ jobs:
 
   performance-regressions:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
-        run: make -j4
+        run: make -j4 && ./v symlink
       - name: Clone & Build previous vmaster/v
         run: |
-          git clone --depth=1 https://github.com/vlang/v vmaster/
+          ./v retry -- git clone --depth=1 https://github.com/vlang/v vmaster/
           (cd vmaster; make -j4)
       - name: V versions
         run: ./v version && ./vmaster/v version
@@ -67,34 +87,32 @@ jobs:
 
   misc-tooling:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 10
+      - name: Build v
+        run: make -j4 && ./v symlink
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y g++-9 g++-11
-
-      - name: Build v
-        run: make
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev xfonts-75dpi xfonts-base
+          ./v retry -- sudo apt install --quiet -y g++-9 g++-10
 
       - name: g++-9 version
         run: g++-9 --version
       - name: V self compilation with g++ and -std=c++11
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
 
-      - name: g++-11 version
-        run: g++-11 --version
+      - name: g++-10 version
+        run: g++-10 --version
       - name: V self compilation with g++ and -std=c++20
-        run: ./v -cc g++-11 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-11 -no-std -cflags -std=c++20 -o v3 cmd/v
+        run: ./v -cc g++-10 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-10 -no-std -cflags -std=c++20 -o v3 cmd/v
 
       # NB: this does not mean it runs, but at least keeps it from regressing
       - name: Ensure V can be compiled with -autofree
@@ -102,32 +120,20 @@ jobs:
 
       - name: Shader examples can be built
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/6b84ea387a323db9e8e17f5abed2b254a6e409fe/bin/linux/sokol-shdc
-          chmod +x ./sokol-shdc
-          for f in examples/sokol/02_cubes_glsl/cube_glsl \
-              examples/sokol/03_march_tracing_glsl/rt_glsl \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_march \
-              examples/sokol/05_instancing_glsl/rt_glsl_instancing \
-              examples/sokol/06_obj_viewer/gouraud \
-              ; do \
-              echo "compiling shader $f.glsl ..."; \
-              ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
-          done
+          .github/workflows/compile_shaders_in_examples.sh
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v3
-      - name: Install zzuf
-        run: sudo apt install -qq zzuf
+      - uses: actions/checkout@v4
       - name: Build local v
         run: |
-          make -j4
+          make -j4 && ./v symlink
           ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
+      - name: Install zzuf
+        run: ./v retry -- sudo apt install -qq zzuf
       - name: Run test-parser
         run: |
           ./v test-parser --show_source --linear examples/hello_world.v

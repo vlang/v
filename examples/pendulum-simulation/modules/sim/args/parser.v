@@ -11,6 +11,7 @@ const max_parallel_workers = runtime.nr_jobs()
 
 @[params]
 pub struct ParserSettings {
+pub:
 	sequential    bool
 	img           bool
 	extra_workers int
@@ -140,7 +141,6 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 		grid: grid
 		workers: get_workers(workers, extra_workers)
 	}
-
 	sim.log('${args}')
 
 	return args
@@ -148,11 +148,5 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 
 @[inline]
 fn get_workers(workers int, extra_workers int) int {
-	result := if workers + extra_workers <= args.max_parallel_workers {
-		workers
-	} else {
-		args.max_parallel_workers - extra_workers
-	}
-
-	return math.max(1, result)
+	return math.max(1, workers + extra_workers)
 }

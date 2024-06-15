@@ -12,7 +12,7 @@ pub fn vwasm_heap_base() voidptr {
 }
 
 // vwasm_heap_size returns the size of the main wasm memory in pages.
-// Analagous to the `memory.size` instruction.
+// Analogous to the `memory.size` instruction.
 pub fn vwasm_memory_size() int {
 	mut rval := 0
 	asm wasm {
@@ -24,7 +24,7 @@ pub fn vwasm_memory_size() int {
 }
 
 // vwasm_memory_grow grows the main wasm memory by `size` pages.
-// Analagous to the `memory.grow` instruction.
+// Analogous to the `memory.grow` instruction.
 pub fn vwasm_memory_grow(size int) int {
 	mut rval := 0
 	asm wasm {

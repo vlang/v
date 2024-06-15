@@ -15,6 +15,7 @@ const default_paths = [
 	'/usr/share/pkgconfig',
 	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
 	'/usr/local/libdata/pkgconfig', // FreeBSD
+	'/usr/libdata/pkgconfig', // FreeBSD
 	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 ]
 const version = '0.3.3'
@@ -241,9 +242,10 @@ fn (mut pc PkgConfig) load_paths() {
 	// Allow for full custom user control over the default paths too, through
 	// setting `PKG_CONFIG_PATH_DEFAULTS` to a list of search paths, separated
 	// by `:`.
+	split_c := $if windows { ';' } $else { ':' }
 	config_path_override := os.getenv('PKG_CONFIG_PATH_DEFAULTS')
 	if config_path_override != '' {
-		for path in config_path_override.split(':') {
+		for path in config_path_override.split(split_c) {
 			pc.add_path(path)
 		}
 	} else {
@@ -253,12 +255,12 @@ fn (mut pc PkgConfig) load_paths() {
 			}
 		}
 	}
-	for path in pc.options.path.split(':') {
+	for path in pc.options.path.split(split_c) {
 		pc.add_path(path)
 	}
 	env_var := os.getenv('PKG_CONFIG_PATH')
 	if env_var != '' {
-		env_paths := env_var.trim_space().split(':')
+		env_paths := env_var.trim_space().split(split_c)
 		for path in env_paths {
 			pc.add_path(path)
 		}

@@ -21,7 +21,7 @@ fn test_return_err_var() {
 }
 
 fn test_str() {
-	assert '${foo()}' == 'Result(1)'
+	assert '${foo() or { 3 }}' == '1'
 }
 
 fn result_void(err bool) ! {
@@ -75,7 +75,7 @@ fn test_unsafe_return_error() {
 }
 
 fn return_reference_type(path string) !&string {
-	if path.len == 0 {
+	if path == '' {
 		return error('vfopen called with ""')
 	}
 	str := ''
@@ -104,11 +104,13 @@ fn test_err_with_code() {
 		assert false
 		_ := w
 	} else {
-		assert err.msg() == 'hi; code: 137'
+		assert err.str() == 'hi; code: 137'
+		assert err.msg() == 'hi'
 		assert err.code() == 137
 	}
 	v := res_err_with_code(56) or {
-		assert err.msg() == 'hi; code: 56'
+		assert err.str() == 'hi; code: 56'
+		assert err.msg() == 'hi'
 		assert err.code() == 56
 		return
 	}

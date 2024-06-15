@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -62,7 +62,7 @@ fn executable_fallback() string {
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
-			if foundpath.len > 0 {
+			if foundpath != '' {
 				exepath = foundpath
 			}
 		}
@@ -121,6 +121,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 
 @[params]
 pub struct MvParams {
+pub:
 	overwrite bool = true
 }
 
@@ -153,6 +154,18 @@ pub fn read_lines(path string) ![]string {
 	return res
 }
 
+// write_lines writes the given array of `lines` to `path`.
+// The lines are separated by `\n` .
+pub fn write_lines(path string, lines []string) ! {
+	mut f := create(path)!
+	defer {
+		f.close()
+	}
+	for line in lines {
+		f.writeln(line)!
+	}
+}
+
 // sigint_to_signal_name will translate `si` signal integer code to it's string code representation.
 pub fn sigint_to_signal_name(si int) string {
 	// POSIX signals:
@@ -173,7 +186,7 @@ pub fn sigint_to_signal_name(si int) string {
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
-			// TODO dependent on platform
+			// TODO: dependent on platform
 			// works only on x86/ARM/most others
 			10 { // , 30, 16
 				return 'SIGUSR1'
@@ -274,7 +287,7 @@ pub fn dir(opath string) string {
 	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
-	pos := path.index_last(path_separator) or { return '.' }
+	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
@@ -296,10 +309,10 @@ pub fn base(opath string) string {
 	}
 	if path.ends_with(path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.index_last(path_separator) or { return path2.clone() }
+		pos := path2.last_index(path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.index_last(path_separator) or { return path.clone() }
+	pos := path.last_index(path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 
@@ -339,7 +352,7 @@ pub fn get_line() string {
 	return str.trim_right('\n')
 }
 
-// get_lines returns an array of strings read from from stdin.
+// get_lines returns an array of strings read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines() []string {
 	mut line := ''
@@ -355,7 +368,7 @@ pub fn get_lines() []string {
 	return inputstr
 }
 
-// get_lines_joined returns a string of the values read from from stdin.
+// get_lines_joined returns a string of the values read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines_joined() string {
 	mut line := ''
@@ -390,7 +403,7 @@ pub fn get_raw_lines_joined() string {
 	return res
 }
 
-// user_os returns current user operating system name.
+// user_os returns the current user's operating system name.
 pub fn user_os() string {
 	$if linux {
 		return 'linux'
@@ -443,7 +456,7 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
-// user_names returns an array of the name of every user on the system.
+// user_names returns an array containing the names of all users on the system.
 pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
@@ -465,7 +478,7 @@ pub fn user_names() ![]string {
 	}
 }
 
-// home_dir returns path to the user's home directory.
+// home_dir returns the path to the current user's home directory.
 pub fn home_dir() string {
 	$if windows {
 		return getenv('USERPROFILE')
@@ -490,8 +503,8 @@ pub fn expand_tilde_to_home(path string) string {
 	return path
 }
 
-// write_file writes `text` data to the file in `path`.
-// If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
+// write_file writes `text` data to a file with the given `path`.
+// If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
 	mut f := create(path)!
 	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
@@ -510,15 +523,15 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
-// find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
-// the absolute path of the executable if found
-pub fn find_abs_path_of_executable(exepath string) !string {
-	if exepath == '' {
-		return error('expected non empty `exepath`')
+// find_abs_path_of_executable searches the environment PATH for the
+// absolute path of the given executable name.
+pub fn find_abs_path_of_executable(exe_name string) !string {
+	if exe_name == '' {
+		return error('expected non empty `exe_name`')
 	}
 
 	for suffix in executable_suffixes {
-		fexepath := exepath + suffix
+		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return real_path(fexepath)
 		}
@@ -555,6 +568,8 @@ pub fn is_file(path string) bool {
 
 // join_path joins any number of path elements into a single path, separating
 // them with a platform-specific path_separator. Empty elements are ignored.
+// Windows platform output will rewrite forward slashes to backslash.
+// Consider looking at the unit tests in os_test.v for semi-formal API.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
@@ -574,13 +589,10 @@ pub fn join_path(base string, dirs ...string) string {
 			sb.write_string(d)
 		}
 	}
+	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
-	if sbase == '' {
+	if base == '' {
 		res = res.trim_left(path_separator)
-	}
-	if res.contains('/./') {
-		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
-		res = res.replace('/./', '/')
 	}
 	return res
 }
@@ -599,15 +611,58 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	if base != '' {
-		sb.write_string(sbase)
+	sb.write_string(sbase)
+	if elem != '' {
 		sb.write_string(path_separator)
+		sb.write_string(elem)
 	}
-	sb.write_string(elem)
-	return sb.str()
+	normalize_path_in_builder(mut sb)
+	mut res := sb.str()
+	if base == '' {
+		res = res.trim_left(path_separator)
+	}
+	return res
+}
+
+@[direct_array_access]
+fn normalize_path_in_builder(mut sb strings.Builder) {
+	mut fs := `\\`
+	mut rs := `/`
+	$if windows {
+		fs = `/`
+		rs = `\\`
+	}
+	for idx in 0 .. sb.len {
+		unsafe {
+			if sb[idx] == fs {
+				sb[idx] = rs
+			}
+		}
+	}
+	for idx in 0 .. sb.len - 3 {
+		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
+			unsafe {
+				// let `/foo/./bar.txt` become `/foo/bar.txt` in place
+				for j := idx + 1; j < sb.len - 2; j++ {
+					sb[j] = sb[j + 2]
+				}
+				sb.len -= 2
+			}
+		}
+		if sb[idx] == rs && sb[idx + 1] == rs {
+			unsafe {
+				// let `/foo//bar.txt` become `/foo/bar.txt` in place
+				for j := idx + 1; j < sb.len - 1; j++ {
+					sb[j] = sb[j + 1]
+				}
+				sb.len -= 1
+			}
+		}
+	}
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string) []string {
 	mut res := []string{}
 	impl_walk_ext(path, ext, mut res)
@@ -637,8 +692,9 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 // When a file is encountered, it will call the callback `f` with current file as argument.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
-	if path.len == 0 {
+	if path == '' {
 		return
 	}
 	if !is_dir(path) {
@@ -674,8 +730,9 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // and the path to the file in its second parameter.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
-	if path.len == 0 {
+	if path == '' {
 		return
 	}
 	if !is_dir(path) {
@@ -714,6 +771,7 @@ pub fn log(s string) {
 
 @[params]
 pub struct MkdirParams {
+pub:
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 
@@ -738,6 +796,21 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 	}
 }
 
+fn create_folder_when_it_does_not_exist(path string) {
+	if is_dir(path) || is_link(path) {
+		return
+	}
+	mkdir_all(path, mode: 0o700) or {
+		if is_dir(path) || is_link(path) {
+			// A race had been won, and the `path` folder had been created,
+			// by another concurrent V executable, since the folder now exists,
+			// but it did not right before ... we will just use it too.
+			return
+		}
+		panic(err)
+	}
+}
+
 // cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
 pub fn cache_dir() string {
 	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
@@ -748,16 +821,12 @@ pub fn cache_dir() string {
 	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
 	// or empty, a default equal to $HOME/.cache should be used.
 	xdg_cache_home := getenv('XDG_CACHE_HOME')
-	if xdg_cache_home != '' {
-		if !is_dir(xdg_cache_home) && !is_link(xdg_cache_home) {
-			mkdir_all(xdg_cache_home, mode: 0o700) or { panic(err) }
-		}
-		return xdg_cache_home
+	cdir := if xdg_cache_home.len > 0 {
+		xdg_cache_home
+	} else {
+		join_path_single(home_dir(), '.cache')
 	}
-	cdir := join_path_single(home_dir(), '.cache')
-	if !is_dir(cdir) && !is_link(cdir) {
-		mkdir(cdir) or { panic(err) }
-	}
+	create_folder_when_it_does_not_exist(cdir)
 	return cdir
 }
 
@@ -766,7 +835,7 @@ pub fn temp_dir() string {
 	mut path := getenv('TMPDIR')
 	$if windows {
 		if path == '' {
-			// TODO see Qt's implementation?
+			// TODO: see Qt's implementation?
 			// https://doc.qt.io/qt-5/qdir.html#tempPath
 			// https://github.com/qt/qtbase/blob/e164d61ca8263fc4b46fdd916e1ea77c7dd2b735/src/corelib/io/qfilesystemengine_win.cpp#L1275
 			path = getenv('TEMP')
@@ -784,7 +853,7 @@ pub fn temp_dir() string {
 		return '/tmp'
 	}
 	$if android {
-		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
+		// TODO: test+use '/data/local/tmp' on Android before using cache_dir()
 		if path == '' {
 			path = cache_dir()
 		}
@@ -803,14 +872,12 @@ pub fn temp_dir() string {
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {
+		create_folder_when_it_does_not_exist(vtmp)
 		return vtmp
 	}
 	uid := getuid()
 	vtmp = join_path_single(temp_dir(), 'v_${uid}')
-	if !exists(vtmp) || !is_dir(vtmp) {
-		// create a new directory, that is private to the user:
-		mkdir_all(vtmp, mode: 0o700) or { panic(err) }
-	}
+	create_folder_when_it_does_not_exist(vtmp)
 	setenv('VTMP', vtmp, true)
 	return vtmp
 }
@@ -964,4 +1031,20 @@ pub fn config_dir() !string {
 		}
 	}
 	return error('Cannot find config directory')
+}
+
+// Stat struct modeled on POSIX
+pub struct Stat {
+pub:
+	dev   u64 // ID of device containing file
+	inode u64 // Inode number
+	mode  u32 // File type and user/group/world permission bits
+	nlink u64 // Number of hard links to file
+	uid   u32 // Owner user ID
+	gid   u32 // Owner group ID
+	rdev  u64 // Device ID (if special file)
+	size  u64 // Total size in bytes
+	atime i64 // Last access (seconds since UNIX epoch)
+	mtime i64 // Last modified (seconds since UNIX epoch)
+	ctime i64 // Last status change (seconds since UNIX epoch)
 }

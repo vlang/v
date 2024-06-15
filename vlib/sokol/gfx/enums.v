@@ -47,6 +47,7 @@ pub enum PixelFormat as u32 {
 	bgra8
 	rgb10a2
 	rg11b10f
+	rgb9e5
 	//
 	rg32ui
 	rg32si
@@ -61,12 +62,15 @@ pub enum PixelFormat as u32 {
 	rgba32si
 	rgba32f
 	//
+	//
+	//
 	depth
 	depth_stencil
 	//
 	bc1_rgba
 	bc2_rgba
 	bc3_rgba
+	bc3_srgba
 	bc4_r
 	bc4_rsn
 	bc5_rg
@@ -74,17 +78,21 @@ pub enum PixelFormat as u32 {
 	bc6h_rgbf
 	bc6h_rgbuf
 	bc7_rgba
-	pvrtc_rgb_2bpp
-	pvrtc_rgb_4bpp
-	pvrtc_rgba_2bpp
-	pvrtc_rgba_4bpp
+	bc7_srgba
+	pvrtc_rgb_2bpp // deprecated
+	pvrtc_rgb_4bpp // deprecated
+	pvrtc_rgba_2bpp // deprecated
+	pvrtc_rgba_4bpp // deprecated
 	etc2_rgb8
+	etc2_srgb8
 	etc2_rgb8a1
 	etc2_rgba8
+	etc2_srgb8a8
 	etc2_rg11
 	etc2_rg11sn
 	//
-	rgb9e5
+	astc_4x4_rgba
+	astc_4x4_srgba
 	//
 	_num
 	_force_u32      = 0x7FFFFFFF

@@ -32,7 +32,7 @@ mut:
 	symbol_name      string
 	platform         doc.Platform
 	run_examples     bool // `-run-examples` will run all `// Example: assert mod.abc() == y` comments in the processed modules
-	// The options below are useful for generating a more stable HMTL, that is easier to regression test:
+	// The options below are useful for generating a more stable HTML, that is easier to regression test:
 	html_only_contents bool // `-html-only-contents` will produce only the content of any given page, without styling tags etc.
 	html_no_vhash      bool // `-html-no-vhash` will remove the version hash from the generated html
 	html_no_assets     bool // `-html-no-assets` will not include CSS and JS asset tags in the generated html
@@ -49,7 +49,7 @@ fn main() {
 	}
 	args := os.args[2..].clone()
 	cfg := parse_arguments(args)
-	if cfg.input_path.len == 0 {
+	if cfg.input_path == '' {
 		eprintln('vdoc: No input path found.')
 		exit(1)
 	}
@@ -172,7 +172,7 @@ fn parse_arguments(args []string) Config {
 				cfg.is_verbose = true
 			}
 			else {
-				if cfg.input_path.len < 1 {
+				if cfg.input_path == '' {
 					cfg.input_path = arg
 				} else if !cfg.is_multi {
 					// Symbol name filtering should not be enabled

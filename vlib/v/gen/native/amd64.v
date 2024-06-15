@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -79,11 +79,13 @@ enum Amd64SetOp {
 
 @[params]
 struct AvailableAmd64Register {
+pub:
 	available Amd64Register
 }
 
 @[params]
 struct Amd64RegisterOption {
+pub:
 	reg    Amd64Register    = Amd64Register.rax
 	ssereg Amd64SSERegister = Amd64SSERegister.xmm0
 }
@@ -1074,7 +1076,7 @@ pub fn (mut c Amd64) pop(reg Amd64Register) {
 pub fn (mut c Amd64) sub8(reg Amd64Register, val i32) {
 	c.g.write8(0x48)
 	c.g.write8(0x83)
-	c.g.write8(0xe8 + i32(reg)) // TODO rax is different?
+	c.g.write8(0xe8 + i32(reg)) // TODO: rax is different?
 	c.g.write8(val)
 	c.g.println('sub8 ${reg},${int(val).hex2()}')
 }
@@ -2217,7 +2219,7 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, n
 			} else {
 				c.g.n_error('only integers and idents can be used as indexes')
 			}
-			// TODO check if out of bounds access
+			// TODO: check if out of bounds access
 			c.mov_reg_to_var(ident, Amd64Register.eax)
 		}
 	}*/
@@ -2383,7 +2385,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 		for i, expr in node.exprs {
 			offset := c.g.structs[typ.idx()].offsets[i]
 			c.g.expr(expr)
-			// TODO expr not on rax
+			// TODO: expr not on rax
 			c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: ts.mr_info().types[i])
 		}
 		// store the multi return struct value
@@ -2461,7 +2463,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 		for i, expr in node.right {
 			offset := multi_return.offsets[i]
 			c.g.expr(expr)
-			// TODO expr not on rax
+			// TODO: expr not on rax
 			c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: node.right_types[i])
 		}
 		// store the multi return struct value
@@ -2736,7 +2738,7 @@ fn (mut c Amd64) prefix_expr(node ast.PrefixExpr) {
 		.not {
 			c.g.expr(node.right)
 			c.cmp_zero(Amd64Register.rax)
-			// TODO mov_extend_reg
+			// TODO: mov_extend_reg
 			c.mov64(Amd64Register.rax, 0)
 			c.cset(.e)
 		}
@@ -2773,7 +2775,7 @@ fn (mut c Amd64) fp_infix_expr(node ast.InfixExpr, left_type ast.Type) {
 		}
 		.gt, .lt, .ge, .le {
 			c.cmp_sse(.xmm0, .xmm1, left_type)
-			// TODO mov_extend_reg
+			// TODO: mov_extend_reg
 			c.mov64(Amd64Register.rax, 0)
 			c.cset(match node.op {
 				.gt { .a }
@@ -2853,7 +2855,7 @@ fn (mut c Amd64) infix_expr(node ast.InfixExpr) {
 	match node.op {
 		.eq, .ne, .gt, .lt, .ge, .le {
 			c.cmp_reg(.rax, .rdx)
-			// TODO mov_extend_reg
+			// TODO: mov_extend_reg
 			c.mov64(Amd64Register.rax, 0)
 			c.cset_op(node.op)
 		}
@@ -3341,7 +3343,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 						if f.has_default_expr && !init.init_fields.map(it.name).contains(f.name) {
 							offset := c.g.structs[typ.idx()].offsets[i]
 							c.g.expr(f.default_expr)
-							// TODO expr not on rax
+							// TODO: expr not on rax
 							c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: f.typ)
 						}
 					}
@@ -3355,7 +3357,7 @@ fn (mut c Amd64) init_struct(var Var, init ast.StructInit) {
 				offset := c.g.structs[typ.idx()].offsets[field.i]
 
 				c.g.expr(f.expr)
-				// TODO expr not on rax
+				// TODO: expr not on rax
 				c.mov_reg_to_var(var, Amd64Register.rax, offset: offset, typ: field.typ)
 			}
 		}
@@ -3998,7 +4000,7 @@ fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
 			if c.g.get_type_size(expr.typ) == 8 && !expr.typ.is_signed() {
 				label1 := c.g.labels.new_label()
 				label2 := c.g.labels.new_label()
-				// TODO constant
+				// TODO: constant
 				c.movabs(Amd64Register.rdx, i64(u64(0x4000000000000000)))
 				match c.g.get_type_size(expr.expr_type) {
 					4 {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -44,19 +44,15 @@ fn test_vlib_fmt() {
 			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
 			continue
 		}
-		table := ast.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref)
-		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
+		mut table := ast.new_table()
+		file_ast := parser.parse_file(ipath, mut table, .parse_comments, fpref)
+		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
-			if diff_cmd == '' {
-				eprintln('>> sorry, but no working "diff" CLI command can be found')
-				continue
-			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
-			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
-			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
+			os.write_file(vfmt_result_file, result_ocontent)!
+			println(diff.compare_files(opath, vfmt_result_file) or { err.msg() })
 			continue
 		}
 		fmt_bench.ok()

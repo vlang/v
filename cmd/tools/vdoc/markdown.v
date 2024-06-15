@@ -4,17 +4,19 @@ import strings
 import v.doc
 
 fn (vd VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
+	cfg := vd.cfg
 	mut hw := strings.new_builder(200)
 	mut cw := strings.new_builder(200)
-	hw.writeln('# ${d.head.content}\n')
-	if d.head.comments.len > 0 {
+	hw.writeln('# ${d.head.content}')
+	if d.head.comments.len > 0 && cfg.include_comments {
 		comments := if vd.cfg.include_examples {
 			d.head.merge_comments()
 		} else {
 			d.head.merge_comments_without_examples()
 		}
-		hw.writeln('${comments}\n')
+		hw.writeln('${comments}')
 	}
+	hw.writeln('\n')
 	if with_toc {
 		hw.writeln('## Contents')
 	}
@@ -25,14 +27,17 @@ fn (vd VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
 }
 
 fn (vd VDoc) write_markdown_content(contents []doc.DocNode, mut cw strings.Builder, mut hw strings.Builder, indent int, with_toc bool) {
+	cfg := vd.cfg
 	for cn in contents {
-		if with_toc && cn.name.len > 0 {
+		if with_toc && cn.name != '' {
 			hw.writeln(' '.repeat(2 * indent) + '- [${slug(cn.name)}](#${cn.name})')
 			cw.writeln('## ${cn.name}')
 		}
 		if cn.content.len > 0 {
-			comments := cn.merge_comments_without_examples()
-			cw.writeln('```v\n${cn.content}\n```\n${comments}\n')
+			if cn.comments.len > 0 && cfg.include_comments {
+				comments := cn.merge_comments_without_examples()
+				cw.writeln('```v\n${cn.content}\n```\n${comments}\n')
+			}
 			// Write examples if any found
 			examples := cn.examples()
 			if vd.cfg.include_examples && examples.len > 0 {

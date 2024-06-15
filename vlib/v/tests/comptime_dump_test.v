@@ -42,7 +42,7 @@ fn test_main() {
 		dump(f)
 		dump(f.name)
 		c += 1
-		assert typeof(f).name == 'StructAttribute'
+		assert typeof(f).name == 'VAttribute'
 	}
 	assert c == 8
 }

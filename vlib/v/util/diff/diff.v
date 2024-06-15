@@ -1,94 +1,228 @@
+@[has_globals]
 module diff
 
 import os
 import time
 
-// iterates through a list of known diff cli commands
-// and returns it with basic options
+pub enum DiffTool {
+	auto
+	diff // core package on Unix-like systems.
+	colordiff // `diff` wrapper.
+	delta // viewer for git and diff output.
+	// fc // built-in tool on windows. // TODO: enable when its command output can be read.
+}
+
+@[params]
+pub struct CompareOptions {
+pub:
+	tool DiffTool
+	// Custom args used with the diff command.
+	args string
+	// Sets the environment variable whose value can overwrite a diff command passed to a compare function.
+	// It also enables the use of commands that are not in the list of known diff tools.
+	// Set it to `none` to disable it.
+	env_overwrite_var ?string = 'VDIFF_CMD'
+}
+
+// Default options for `diff` and `colordiff`.
+// Short `diff` args are supported more widely (e.g. on OpenBSD, ref. https://man.openbsd.org/diff.1).
+// `-d -a -U 2` ^= `--minimal --text --unified=2`
+const default_diff_args = $if openbsd || freebsd { '-d -a -U 2' } $else { '-d -a -U 2 -F "fn "' }
+const known_diff_tool_defaults = {
+	// When searching for an automatically available diff tool, the tools are searched in this order.
+	DiffTool.delta: ''
+	.colordiff:     default_diff_args
+	.diff:          default_diff_args
+	// .fc:        '/lnt'
+}
+
+// List of detected diff tools.
+__global cache_of_available_tools = []DiffTool{}
+
+// Allows public checking for the available tools and prevents repeated searches
+// when using compare functions with automatic diff tool detection.
+pub fn available_tools() []DiffTool {
+	if cache_of_available_tools.len == 0 {
+		cache_of_available_tools = find_working_diff_tools()
+	}
+	return cache_of_available_tools
+}
+
+// compare_files returns a string displaying the differences between two files.
+pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
+	p1, p2 := os.quoted_path(os.real_path(path1)), os.quoted_path(os.real_path(path2))
+	if v := opts.env_overwrite_var {
+		env_cmd := os.getenv(v)
+		if env_cmd != '' {
+			tool, args := env_cmd.split_once(' ') or { env_cmd, opts.args }
+			os.find_abs_path_of_executable(tool) or {
+				return error('error: failed to find comparison command `${tool}`')
+			}
+			return run_tool('${tool} ${args} ${p1} ${p2}', @LOCATION)
+		}
+	}
+	tool, cmd := opts.find_tool()!
+	mut args := opts.args
+	if args == '' {
+		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
+		if opts.tool == .diff {
+			// Ensure that the diff command supports the color option.
+			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
+			// might not include additional diffutils by default.
+			res := run_tool('${cmd} ${args} --color=always ${p1} ${p2}', @LOCATION)
+			if !res.contains('unrecognized option') {
+				return res
+			}
+		}
+	}
+	return run_tool('${cmd} ${args} ${p1} ${p2}', @LOCATION)
+}
+
+// compare_text returns a string displaying the differences between two strings.
+pub fn compare_text(text1 string, text2 string, opts CompareOptions) !string {
+	ctime := time.sys_mono_now()
+	tmp_dir := os.join_path_single(os.vtmp_dir(), ctime.str())
+	os.mkdir(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	path1 := os.join_path_single(tmp_dir, 'text1.txt')
+	path2 := os.join_path_single(tmp_dir, 'text2.txt')
+	// When comparing strings and not files, prevent `\ No newline at end of file` in the output.
+	if !text1.ends_with('\n') || !text2.ends_with('\n') {
+		os.write_file(path1, text1 + '\n')!
+		os.write_file(path2, text2 + '\n')!
+	} else {
+		os.write_file(path1, text1)!
+		os.write_file(path2, text2)!
+	}
+	return compare_files(path1, path2, opts)!
+}
+
+fn (opts CompareOptions) find_tool() !(DiffTool, string) {
+	tool := if opts.tool == .auto {
+		auto_tool := available_tools()[0] or {
+			return error('error: failed to find comparison command')
+		}
+
+		auto_tool
+	} else {
+		opts.tool
+	}
+	cmd := tool.cmd()
+	if opts.tool == .auto {
+		// At this point it was already ensured that the automatically detected tool is available.
+		return tool, cmd
+	}
+	os.find_abs_path_of_executable(cmd) or {
+		return error('error: failed to find comparison command `${cmd}`')
+	}
+	return tool, cmd
+}
+
+// Returns a list of programmatically-compatible known diff tools. Its result is intended to be stored
+// in a constant to prevent repeated searches when compare functions with automatic diff tool detection
+// are used. Using a public constant will also allow for external checking of available tools.
+fn find_working_diff_tools() []DiffTool {
+	mut tools := []DiffTool{}
+	for tool in diff.known_diff_tool_defaults.keys() {
+		cmd := tool.cmd()
+		os.find_abs_path_of_executable(cmd) or { continue }
+		if tool == .delta {
+			// Sanity check that the `delta` executable is actually the diff tool.
+			res := os.execute_opt('${cmd} --help') or { continue }
+			help_desc := res.output.trim_space().all_before('\n')
+			if !help_desc.contains('diff') {
+				dbg('delta does not appear to be the diff tool `${help_desc}`', @LOCATION)
+				continue
+			}
+		}
+		tools << tool
+	}
+	return tools
+}
+
+fn (dt DiffTool) cmd() string {
+	cmd := dt.str()
+	return $if windows { '${cmd}.exe' } $else { cmd }
+}
+
+fn run_tool(cmd string, dbg_location string) string {
+	dbg('cmd=`${cmd}`', dbg_location)
+	res := os.execute(cmd)
+	dbg('res=`${res}`', dbg_location)
+	return res.output.trim_right('\r\n')
+}
+
+// find_working_diff_command returns the first available command from a list of known diff cli tools.
+@[deprecated_after: '2024-06-30']
+@[deprecated]
 pub fn find_working_diff_command() !string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
 	if env_difftool != '' {
+		os.find_abs_path_of_executable(env_difftool) or {
+			return error('could not find specified VDIFF_TOOL `${env_difftool}`')
+		}
 		return '${env_difftool} ${env_diffopts}'
 	}
-	mut known_diff_tools := []string{}
-	if env_difftool.len > 0 {
-		known_diff_tools << env_difftool
+	known_diff_tools := ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
+		'code', 'code.cmd'] // NOTE: code.cmd is the Windows variant of the `code` cli tool
+	mut diff_cmd := ''
+	for cmd in known_diff_tools {
+		os.find_abs_path_of_executable(cmd) or { continue }
+		diff_cmd = cmd
+		break
 	}
-	known_diff_tools << ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
-		'code', 'code.cmd']
-	// NOTE: code.cmd is the Windows variant of the `code` cli tool
-	for diffcmd in known_diff_tools {
-		if diffcmd == 'opendiff' { // opendiff has no `--version` option
-			if opendiff_exists() {
-				return diffcmd
-			}
-			continue
-		}
-		$if freebsd {
-			if diffcmd == 'diff' { // FreeBSD diff has no `--version` option
-				return diffcmd
-			}
-		}
-
-		p := os.execute('${diffcmd} --version')
-		if p.exit_code < 0 {
-			continue
-		}
-		if p.exit_code == 127 && diffcmd == env_difftool {
-			// user setup is wonky, fix it
-			return error('could not find specified VDIFF_TOOL ${diffcmd}')
-		}
-		if p.exit_code == 0 { // success
-			if diffcmd in ['code', 'code.cmd'] {
-				// there is no guarantee that the env opts exist
-				// or include `-d`, so (harmlessly) add it
-				return '${diffcmd} ${env_diffopts} -d'
-			}
-			return '${diffcmd} ${env_diffopts}'
-		}
+	if diff_cmd == '' {
+		return error('No working "diff" command found')
 	}
-	return error('No working "diff" command found')
+	if diff_cmd in ['code', 'code.cmd'] {
+		// Make sure the diff flag `-d` is included in any case.
+		return '${diff_cmd} ${env_diffopts} -d'
+	}
+	// Don't add spaces to the cmd if there are no `env_diffopts`.
+	return if env_diffopts != '' { '${diff_cmd} ${env_diffopts}' } else { diff_cmd }
 }
 
-// determine if the FileMerge opendiff tool is available
-fn opendiff_exists() bool {
-	o := os.execute('opendiff')
-	if o.exit_code < 0 {
-		return false
-	}
-	if o.exit_code == 1 { // failed (expected), but found (i.e. not 127)
-		if o.output.contains('too few arguments') { // got some expected output
-			return true
+// color_compare_files returns a colored diff between two files.
+@[deprecated: 'use `compare_files` instead']
+@[deprecated_after: '2024-06-30']
+pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
+	tool := diff_cmd.all_before(' ')
+	os.find_abs_path_of_executable(tool) or { return 'comparison command: `${tool}` not found' }
+	p1, p2 := os.quoted_path(os.real_path(path1)), os.quoted_path(os.real_path(path2))
+	if tool == 'diff' {
+		// Ensure that the diff command supports the color option.
+		// E.g., some BSD installations do not include `diffutils` as a core package alongside `diff`.
+		res := os.execute('${diff_cmd} --color=always ${diff.default_diff_args} ${p1} ${p2}')
+		if !res.output.starts_with('diff: unrecognized option') {
+			return res.output.trim_right('\r\n')
 		}
 	}
-	return false
+	cmd := '${diff_cmd} ${diff.default_diff_args} ${p1} ${p2}'
+	return os.execute(cmd).output.trim_right('\r\n')
 }
 
-pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
-	if diff_cmd != '' {
-		mut full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
-		$if freebsd {
-			full_cmd = '${diff_cmd} --minimal --text --unified=2  ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
-		}
-		x := os.execute(full_cmd)
-		if x.exit_code < 0 {
-			return 'comparison command: `${full_cmd}` not found'
-		}
-		return x.output.trim_right('\r\n')
-	}
-	return ''
-}
-
+// color_compare_strings returns a colored diff between two strings.
+@[deprecated: 'use `compare_text` instead']
+@[deprecated_after: '2024-06-30']
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
-	cdir := os.join_path_single(os.cache_dir(), unique_prefix)
-	os.mkdir(cdir) or {}
+	tmp_dir := os.join_path_single(os.vtmp_dir(), unique_prefix)
+	os.mkdir(tmp_dir) or {}
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
 	ctime := time.sys_mono_now()
-	e_file := os.join_path_single(cdir, '${ctime}.expected.txt')
-	f_file := os.join_path_single(cdir, '${ctime}.found.txt')
+	e_file := os.join_path_single(tmp_dir, '${ctime}.expected.txt')
+	f_file := os.join_path_single(tmp_dir, '${ctime}.found.txt')
 	os.write_file(e_file, expected) or { panic(err) }
 	os.write_file(f_file, found) or { panic(err) }
 	res := color_compare_files(diff_cmd, e_file, f_file)
-	os.rmdir_all(cdir) or {}
 	return res
+}
+
+@[if vdiff_debug ?]
+fn dbg(msg string, location string) {
+	println('[DIFF DEBUG] ${location}: ${msg}')
 }

@@ -6,6 +6,18 @@ import strings
 #include <process.h>
 #include <sys/utime.h>
 
+// path_separator is the platform specific separator string, used between the folders
+// and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
+pub const path_separator = '\\'
+
+// path_delimiter is the platform specific delimiter string, used between the paths
+// in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
+pub const path_delimiter = ';'
+
+// path_devnull is a platform-specific file path of the null device.
+// It is '/dev/null' on POSIX, and r'\\.\nul' on Windows.
+pub const path_devnull = r'\\.\nul'
+
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
@@ -15,9 +27,6 @@ fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 fn C._getpid() int
 
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']
-
-pub const path_separator = '\\'
-pub const path_delimiter = ';'
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
@@ -153,7 +162,7 @@ pub fn utime(path string, actime int, modtime int) ! {
 }
 
 pub fn ls(path string) ![]string {
-	if path.len == 0 {
+	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut find_file_data := Win32finddata{}
@@ -230,7 +239,7 @@ pub fn get_module_filename(handle HANDLE) !string {
 			}
 		}
 	}
-	panic('this should be unreachable') // TODO remove unreachable after loop
+	panic('this should be unreachable') // TODO: remove unreachable after loop
 }
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-FormatMessageWa#parameters

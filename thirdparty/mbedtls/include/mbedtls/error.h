@@ -26,11 +26,6 @@
 
 #include <stddef.h>
 
-#if ( defined(__ARMCC_VERSION) || defined(_MSC_VER) ) && \
-    !defined(inline) && !defined(__cplusplus)
-#define inline __inline
-#endif
-
 /**
  * Error code layout.
  *
@@ -82,6 +77,7 @@
  * POLY1305  3                  0x0057-0x005B
  * CHACHAPOLY 2 0x0054-0x0056
  * PLATFORM  2  0x0070-0x0072
+ * LMS       5  0x0011-0x0019
  *
  * High-level module nr (3 bits - 0x0...-0x7...)
  * Name      ID  Nr of Errors
@@ -95,6 +91,7 @@
  * ECP       4   10 (Started from top)
  * MD        5   5
  * HKDF      5   1 (Started from top)
+ * PKCS7     5   12 (Started from 0x5300)
  * SSL       5   2 (Started from 0x5F00)
  * CIPHER    6   8 (Started from 0x6080)
  * SSL       6   22 (Started from top, plus 0x6000)

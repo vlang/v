@@ -75,6 +75,7 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 pub struct C.fd_set {}
 
 pub struct C.timeval {
+pub:
 	tv_sec  u64
 	tv_usec u64
 }

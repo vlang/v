@@ -15,6 +15,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	mut name := node.cname
 	mut expr_type := node.expr_type
 
+	if node.expr is ast.CallExpr {
+		g.inside_dump_fn = true
+		defer {
+			g.inside_dump_fn = false
+		}
+	}
+
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
 		// generic func with recursion rewrite node.expr_type
 		if node.expr is ast.Ident {
@@ -76,8 +83,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	g.write(')')
-	if (g.inside_assign || g.expected_fixed_arr) && !expr_type.has_flag(.option)
-		&& g.table.type_kind(expr_type) == .array_fixed {
+	if (g.inside_assign || g.expected_fixed_arr) && !expr_type.has_option_or_result()
+		&& g.table.final_sym(expr_type).kind == .array_fixed {
 		g.write('.ret_arr')
 	}
 }
@@ -121,7 +128,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
-		} else if !typ.has_flag(.option) && dump_sym.is_array_fixed() {
+		} else if !typ.has_option_or_result() && dump_sym.is_array_fixed() {
 			match dump_sym.kind {
 				.array_fixed {
 					if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
@@ -174,11 +181,21 @@ fn (mut g Gen) dump_expr_definitions() {
 				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
 					'\tstring_free(&value);')
 			} else {
-				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+				prefix := if dump_sym.is_c_struct() {
+					c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+				} else {
+					deref
+				}
+				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${prefix}dump_arg);',
 					'\tstring_free(&value);')
 			}
 		} else {
-			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
+			prefix := if dump_sym.is_c_struct() {
+				c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+			} else {
+				deref
+			}
+			surrounder.add('\tstring value = ${to_string_fn_name}(${prefix}dump_arg);',
 				'\tstring_free(&value);')
 		}
 		surrounder.add('
@@ -210,8 +227,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret {
 			tmp_var := g.new_tmp_var()
-			dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
-			dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			if typ.is_ptr() {
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.typ(typ.set_nr_muls(0))}, {0});')
+				dump_fns.writeln('\tmemcpy(${tmp_var}->ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			} else {
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
+				dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			}
 			dump_fns.writeln('\treturn ${tmp_var};')
 		} else {
 			dump_fns.writeln('\treturn dump_arg;')

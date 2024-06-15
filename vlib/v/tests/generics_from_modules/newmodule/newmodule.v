@@ -1,7 +1,7 @@
 module newmodule
 
 pub struct Params[T] {
-mut:
+pub mut:
 	a []T
 	b int
 	c T

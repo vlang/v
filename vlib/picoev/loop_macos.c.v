@@ -51,13 +51,15 @@ pub fn create_kqueue_loop(id int) !&KqueueLoop {
 // ev_set sets a new `kevent` with file descriptor `index`
 @[inline]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
-	// vfmt off
-	filter := i16(
-		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
-			|
-		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
-	)
-	// vfmt on
+	mut filter := 0
+	if events & picoev_read != 0 {
+		filter |= C.EVFILT_READ
+	}
+	if events & picoev_write != 0 {
+		filter |= C.EVFILT_WRITE
+	}
+	filter = i16(filter)
+
 	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0,
 		0)
 }
@@ -156,9 +158,9 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 }
 
 @[direct_array_access]
-fn (mut pv Picoev) poll_once(max_wait int) int {
+fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 	ts := C.timespec{
-		tv_sec: max_wait
+		tv_sec: max_wait_in_sec
 		tv_nsec: 0
 	}
 

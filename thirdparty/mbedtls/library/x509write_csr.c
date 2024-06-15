@@ -36,6 +36,7 @@
 #include "psa/crypto.h"
 #include "mbedtls/psa_util.h"
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
+#include "hash_info.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -44,13 +45,7 @@
 #include "mbedtls/pem.h"
 #endif
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#include <stdlib.h>
-#define mbedtls_calloc    calloc
-#define mbedtls_free      free
-#endif
 
 void mbedtls_x509write_csr_init( mbedtls_x509write_csr *ctx )
 {
@@ -144,13 +139,13 @@ static int x509write_csr_der_internal( mbedtls_x509write_csr *ctx,
     const char *sig_oid;
     size_t sig_oid_len = 0;
     unsigned char *c, *c2;
-    unsigned char hash[64];
+    unsigned char hash[MBEDTLS_HASH_MAX_SIZE];
     size_t pub_len = 0, sig_and_oid_len = 0, sig_len;
     size_t len = 0;
     mbedtls_pk_type_t pk_alg;
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
     size_t hash_len;
-    psa_algorithm_t hash_alg = mbedtls_psa_translate_md( ctx->md_alg );
+    psa_algorithm_t hash_alg = mbedtls_hash_info_psa_from_md( ctx->md_alg );
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
     /* Write the CSR backwards starting from the end of buf */

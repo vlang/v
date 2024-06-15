@@ -175,6 +175,11 @@ pub fn (u Uint256) mul_128(v Uint128) Uint256 {
 
 // quo_rem - untested
 pub fn (u Uint256) quo_rem(v Uint256) (Uint256, Uint256) {
+	if v.hi.is_zero() && v.lo.hi == 0 {
+		q, r := u.quo_rem_64(v.lo.lo)
+		return q, uint256_from_64(r)
+	}
+
 	if v.hi.is_zero() {
 		q, r := u.quo_rem_128(v.lo)
 		return q, uint256_from_128(r)
@@ -212,6 +217,8 @@ pub fn (u Uint256) quo_rem_128(v Uint128) (Uint256, Uint128) {
 pub fn (u Uint256) quo_rem_64(v u64) (Uint256, u64) {
 	mut q := Uint256{}
 	mut r := u64(0)
+	q.hi.hi, r = bits.div_64(r, u.hi.hi, v)
+	q.hi.lo, r = bits.div_64(r, u.hi.lo, v)
 	q.lo.hi, r = bits.div_64(r, u.lo.hi, v)
 	q.lo.lo, r = bits.div_64(r, u.lo.lo, v)
 	return q, r
@@ -380,11 +387,19 @@ pub fn (u_ Uint256) str() string {
 }
 
 // uint256_from_dec_str creates a new `unsigned.Uint256` from the given string if possible
+// The `_` character is allowed as a separator.
 pub fn uint256_from_dec_str(value string) !Uint256 {
 	mut res := unsigned.uint256_zero
-	for b_ in value.bytes() {
-		b := b_ - '0'.bytes()[0]
+	underscore := `_`
+
+	for b_ in value {
+		b := b_ - `0`
 		if b > 9 {
+			// allow _ as a separator in decimal strings
+			if b_ == underscore {
+				continue
+			}
+
 			return error('invalid character "${b}"')
 		}
 
@@ -419,4 +434,9 @@ pub fn (u Uint256) - (v Uint256) Uint256 {
 // * -> returns u * v
 pub fn (u Uint256) * (v Uint256) Uint256 {
 	return u.mul(v)
+}
+
+// < -> returns true if u < v
+pub fn (u Uint256) < (v Uint256) bool {
+	return u.cmp(v) == -1
 }

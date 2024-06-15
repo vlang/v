@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -146,7 +146,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.option) || expected.has_flag(.result) {
+	if expected.has_option_or_result() {
 		sym := c.table.sym(got)
 		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
 			&& expected.has_flag(.option))
@@ -154,7 +154,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			&& expected.has_flag(.result)) {
 			// IError
 			return true
-		} else if !c.check_basic(got, expected.clear_flags(.option, .result)) {
+		} else if !c.check_basic(got, expected.clear_option_and_result()) {
 			return false
 		}
 	}
@@ -225,8 +225,19 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	} else {
+		if expected.has_flag(.option) {
+			got_is_ptr := got.is_ptr()
+				|| (arg.expr is ast.Ident && (arg.expr as ast.Ident).is_mut())
+				|| arg.expr is ast.None
+			if (expected.is_ptr() && !got_is_ptr) || (!expected.is_ptr() && got.is_ptr()) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+			}
+		}
+
 		exp_sym_idx := c.table.sym(expected).idx
 		got_sym_idx := c.table.sym(got).idx
+
 		if expected.is_ptr() && got.is_ptr() && exp_sym_idx != got_sym_idx
 			&& exp_sym_idx in [ast.u8_type_idx, ast.byteptr_type_idx]
 			&& got_sym_idx !in [ast.u8_type_idx, ast.byteptr_type_idx] {
@@ -234,7 +245,8 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 		}
 
-		if !expected.has_flag(.option) && got.has_flag(.option) && (arg.expr !is ast.Ident
+		if !expected.has_flag(.option) && got.has_flag(.option)
+			&& (!(arg.expr is ast.Ident || arg.expr is ast.ComptimeSelector)
 			|| (arg.expr is ast.Ident && c.comptime.get_ct_type_var(arg.expr) != .field_var)) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first')
@@ -415,7 +427,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 
 fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol, exp_type_sym &ast.TypeSymbol) bool {
 	if c.pref.translated {
-		// TODO too open
+		// TODO: too open
 		return true
 	}
 	got_info := got_type_sym.info as ast.FnType
@@ -436,6 +448,12 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
+	// The check for sumtype in c.check_basic() in the previous step is only for its variant to be subsumed
+	// So we need to do a second, more rigorous check of the return value being sumtype.
+	if c.table.final_sym(exp_fn.return_type).kind == .sum_type
+		&& got_fn.return_type.idx() != exp_fn.return_type.idx() {
+		return false
+	}
 	for i, got_arg in got_fn.params {
 		exp_arg := exp_fn.params[i]
 		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
@@ -448,7 +466,7 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			if exp_fn.name.len == 0 {
+			if exp_fn.name == '' {
 				c.add_error_detail('expected argument ${i + 1} to be ${exp_arg_pointedness}, but the passed argument ${
 					i + 1} is ${got_arg_pointedness}')
 			} else {
@@ -527,10 +545,11 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			// a negative value, the resulting value is implementation-defined (ID).
 			left_sym_final := c.table.final_sym(left_type)
 			left_type_final := ast.Type(left_sym_final.idx)
-			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
-				&& c.is_generated) {
-				c.note('shifting a value from a signed type `${left_sym_final.name}` can change the sign',
-					node.left.pos())
+			if !(c.is_generated || c.inside_unsafe || c.file.is_translated || c.pref.translated) {
+				if node.op == .left_shift && left_type_final.is_signed() {
+					c.note('shifting a value from a signed type `${left_sym_final.name}` can change the sign',
+						node.left.pos())
+				}
 			}
 			if node.ct_right_value_evaled {
 				if node.ct_right_value !is ast.EmptyExpr {
@@ -1079,4 +1098,41 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
+}
+
+// is_contains_any_kind_of_pointer check that the type and submember types(arrays, fixed arrays, maps, struct fields, and so on)
+// contain pointer types.
+fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_types []ast.Type) bool {
+	if typ.is_any_kind_of_pointer() {
+		return true
+	}
+	if typ in checked_types {
+		return false
+	}
+	checked_types << typ
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Array, ast.ArrayFixed {
+			return c.is_contains_any_kind_of_pointer(sym.info.elem_type, mut checked_types)
+		}
+		ast.Map {
+			return c.is_contains_any_kind_of_pointer(sym.info.value_type, mut checked_types)
+		}
+		ast.Alias {
+			return c.is_contains_any_kind_of_pointer(sym.info.parent_type, mut checked_types)
+		}
+		ast.Struct {
+			if sym.kind == .struct_ && sym.language == .v {
+				fields := c.table.struct_fields(sym)
+				for field in fields {
+					ret := c.is_contains_any_kind_of_pointer(field.typ, mut checked_types)
+					if ret {
+						return true
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }

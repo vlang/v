@@ -20,6 +20,10 @@ fn main() {
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
+	vpm_log_header('vpm start')
+	defer {
+		vpm_log_header('vpm exit')
+	}
 	params := cmdline.only_non_options(os.args[1..])
 	vpm_log(@FILE_LINE, @FN, 'params: ${params}')
 	if params.len < 1 {
@@ -95,9 +99,9 @@ fn vpm_remove(query []string) {
 	}
 	for m in query {
 		final_module_path := get_path_of_existing_module(m) or { continue }
-		println('Removing module "${m}" ...')
+		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
-		os.rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
+		rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
 		// Delete author directory if it is empty.
 		author := m.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
@@ -106,7 +110,7 @@ fn vpm_remove(query []string) {
 		}
 		if os.is_dir_empty(author_dir) {
 			verbose_println('Removing author folder ${author_dir}')
-			os.rmdir(author_dir) or { vpm_error(err.msg(), verbose: true) }
+			rmdir_all(author_dir) or { vpm_error(err.msg(), verbose: true) }
 		}
 	}
 }

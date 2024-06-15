@@ -1,3 +1,4 @@
+//@[deprecated: '`x.vweb` is now `veb`. The module is no longer experimental.']
 module vweb
 
 import io
@@ -29,8 +30,7 @@ pub fn no_result() Result {
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
 pub const headers_close = http.new_custom_header_from_map({
-	'Server':                           'VWeb'
-	http.CommonHeader.connection.str(): 'close'
+	'Server': 'VWeb'
 }) or { panic('should never fail') }
 
 pub const http_302 = http.new_response(
@@ -51,6 +51,15 @@ pub const http_400 = http.new_response(
 pub const http_404 = http.new_response(
 	status: .not_found
 	body: '404 Not Found'
+	header: http.new_header(
+		key: .content_type
+		value: 'text/plain'
+	).join(headers_close)
+)
+
+pub const http_408 = http.new_response(
+	status: .request_timeout
+	body: '408 Request Timeout'
 	header: http.new_header(
 		key: .content_type
 		value: 'text/plain'
@@ -178,16 +187,18 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 				return error('error parsing method attributes: ${err}')
 			}
 
-			routes[method.name] = Route{
+			mut route := Route{
 				methods: http_methods
 				path: route_path
 				host: host
 			}
 
 			$if A is MiddlewareApp {
-				routes[method.name].middlewares = app.Middleware.get_handlers_for_route[X](route_path)
-				routes[method.name].after_middlewares = app.Middleware.get_handlers_for_route_after[X](route_path)
+				route.middlewares = app.Middleware.get_handlers_for_route[X](route_path)
+				route.after_middlewares = app.Middleware.get_handlers_for_route_after[X](route_path)
 			}
+
+			routes[method.name] = route
 		}
 	}
 	return routes
@@ -200,6 +211,7 @@ pub fn run[A, X](mut global_app A, port int) {
 
 @[params]
 pub struct RunParams {
+pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	family               net.AddrFamily = .ip6
 	host                 string
@@ -210,10 +222,11 @@ pub struct RunParams {
 
 struct FileResponse {
 pub mut:
-	open  bool
-	file  os.File
-	total i64
-	pos   i64
+	open              bool
+	file              os.File
+	total             i64
+	pos               i64
+	should_close_conn bool
 }
 
 // close the open file and reset the struct to its default values
@@ -222,13 +235,15 @@ pub fn (mut fr FileResponse) done() {
 	fr.file.close()
 	fr.total = 0
 	fr.pos = 0
+	fr.should_close_conn = false
 }
 
 struct StringResponse {
 pub mut:
-	open bool
-	str  string
-	pos  i64
+	open              bool
+	str               string
+	pos               i64
+	should_close_conn bool
 }
 
 // free the current string and reset the struct to its default values
@@ -236,6 +251,7 @@ pub mut:
 pub fn (mut sr StringResponse) done() {
 	sr.open = false
 	sr.pos = 0
+	sr.should_close_conn = false
 	unsafe { sr.str.free() }
 }
 
@@ -256,6 +272,18 @@ mut:
 	string_responses    []StringResponse
 }
 
+// reset request parameters for `fd`:
+// reset content-length index and the http request
+pub fn (mut params RequestParams) request_done(fd int) {
+	params.incomplete_requests[fd] = http.Request{}
+	params.idx[fd] = 0
+}
+
+interface BeforeAcceptApp {
+mut:
+	before_accept_loop()
+}
+
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 @[direct_array_access; manualfree]
@@ -268,7 +296,8 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
 
 	if params.show_startup_message {
-		println('[Vweb] Running app on http://localhost:${params.port}/')
+		host := if params.host == '' { 'localhost' } else { params.host }
+		println('[Vweb] Running app on http://${host}:${params.port}/')
 	}
 	flush_stdout()
 
@@ -296,7 +325,11 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		timeout_secs: params.timeout_in_seconds
 		family: params.family
 		host: params.host
-	)
+	)!
+
+	$if A is BeforeAcceptApp {
+		global_app.before_accept_loop()
+	}
 
 	// Forever accept every connection that comes
 	pico.serve()
@@ -306,7 +339,13 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 	mut params := unsafe { &RequestParams(pv.user_data) }
 
-	if events == picoev.picoev_write {
+	if events == picoev.picoev_timeout {
+		$if trace_picoev_callback ? {
+			eprintln('> request timeout on file descriptor ${fd}')
+		}
+
+		handle_timeout(mut pv, mut params, fd)
+	} else if events == picoev.picoev_write {
 		$if trace_picoev_callback ? {
 			eprintln('> write event on file descriptor ${fd}')
 		}
@@ -316,16 +355,36 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 		} else if params.string_responses[fd].open {
 			handle_write_string(mut pv, mut params, fd)
 		} else {
-			// this should never happen
-			eprintln('[vweb] error: write event on connection should be closed')
+			// This should never happen, but it does on pages, that refer to static resources,
+			// in folders, added with `mount_static_folder_at`. See also
+			// https://github.com/vlang/edu-platform/blob/0c203f0384cf24f917f9a7c9bb150f8d64aca00f/main.v#L92
+			$if debug_ev_callback ? {
+				eprintln('[vweb] error: write event on connection should be closed')
+			}
 			pv.close_conn(fd)
 		}
-	} else {
+	} else if events == picoev.picoev_read {
 		$if trace_picoev_callback ? {
 			eprintln('> read event on file descriptor ${fd}')
 		}
 		handle_read[A, X](mut pv, mut params, fd)
+	} else {
+		// should never happen
+		eprintln('[vweb] error: invalid picoev event ${events}')
 	}
+}
+
+fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
+	mut conn := &net.TcpConn{
+		sock: net.tcp_socket_from_handle_raw(fd)
+		handle: fd
+		is_blocking: false
+	}
+
+	fast_send_resp(mut conn, vweb.http_408) or {}
+	pv.close_conn(fd)
+
+	params.request_done(fd)
 }
 
 // handle_write_file reads data from a file and sends that data over the socket.
@@ -333,36 +392,42 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut bytes_to_write := int(params.file_responses[fd].total - params.file_responses[fd].pos)
 
-	if bytes_to_write > vweb.max_write {
-		bytes_to_write = vweb.max_write
-	}
-	data := unsafe { malloc(bytes_to_write) }
-	defer {
-		unsafe { free(data) }
+	$if linux || freebsd {
+		bytes_written := sendfile(fd, params.file_responses[fd].file.fd, bytes_to_write)
+		params.file_responses[fd].pos += bytes_written
+	} $else {
+		if bytes_to_write > vweb.max_write {
+			bytes_to_write = vweb.max_write
+		}
+
+		data := unsafe { malloc(bytes_to_write) }
+		defer {
+			unsafe { free(data) }
+		}
+
+		mut conn := &net.TcpConn{
+			sock: net.tcp_socket_from_handle_raw(fd)
+			handle: fd
+			is_blocking: false
+		}
+
+		params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
+			params.file_responses[fd].done()
+			pv.close_conn(fd)
+			return
+		}
+		actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
+			params.file_responses[fd].done()
+			pv.close_conn(fd)
+			return
+		}
+		params.file_responses[fd].pos += actual_written
 	}
 
-	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
-		is_blocking: false
-	}
-
-	// TODO: use `sendfile` in linux for optimizations (?)
-	params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
-		params.file_responses[fd].done()
-		pv.close_conn(fd)
-		return
-	}
-	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
-		params.file_responses[fd].done()
-		pv.close_conn(fd)
-		return
-	}
-	params.file_responses[fd].pos += actual_written
 	if params.file_responses[fd].pos == params.file_responses[fd].total {
 		// file is done writing
 		params.file_responses[fd].done()
-		pv.close_conn(fd)
+		handle_complete_request(params.file_responses[fd].should_close_conn, mut pv, fd)
 		return
 	}
 }
@@ -394,6 +459,8 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		// done writing
 		params.string_responses[fd].done()
 		pv.close_conn(fd)
+		handle_complete_request(params.string_responses[fd].should_close_conn, mut pv,
+			fd)
 		return
 	}
 }
@@ -401,7 +468,7 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 // handle_read reads data from the connection and if the request is complete
 // it calls `handle_route` and closes the connection.
 // If the request is not complete it stores the incomplete request in `params`
-// and the conenction stays open until it is ready to read again
+// and the connection stays open until it is ready to read again
 @[direct_array_access; manualfree]
 fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut conn := &net.TcpConn{
@@ -421,7 +488,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	// take the previous incomplete request
 	mut req := params.incomplete_requests[fd]
 
-	// check if there is an incomplete request for this file desriptor
+	// check if there is an incomplete request for this file descriptor
 	if params.idx[fd] == 0 {
 		// set the read and write timeout according to picoev settings when the
 		// connection is first encountered
@@ -431,9 +498,11 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		// request header first
 		req = http.parse_request_head(mut reader) or {
 			// Prevents errors from being thrown when BufferedReader is empty
-			if err.msg() != 'none' {
+			if err !is io.Eof {
 				eprintln('[vweb] error parsing request: ${err}')
 			}
+			// the buffered reader was empty meaning that the client probably
+			// closed the connection.
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
 			return
@@ -507,9 +576,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 
 	defer {
-		// reset content-length index, the http request and close the connection
-		params.incomplete_requests[fd] = http.Request{}
-		params.idx[fd] = 0
+		params.request_done(fd)
 	}
 
 	if completed_context := handle_request[A, X](mut conn, req, params) {
@@ -517,7 +584,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			// the connection should be kept open, but removed from the picoev loop.
 			// This way vweb can continue handling other connections and the user can
 			// keep the connection open indefinitely
-			pv.del(fd)
+			pv.delete(fd)
 			return
 		}
 
@@ -534,7 +601,8 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 				// See Context.send_file for why we use max_read instead of max_write.
 				if completed_context.res.body.len < vweb.max_read {
 					fast_send_resp(mut conn, completed_context.res) or {}
-					pv.close_conn(fd)
+					handle_complete_request(completed_context.client_wants_to_close, mut
+						pv, fd)
 				} else {
 					params.string_responses[fd].open = true
 					params.string_responses[fd].str = completed_context.res.body
@@ -545,7 +613,8 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 						// should not happen
 						params.string_responses[fd].done()
 						fast_send_resp(mut conn, vweb.http_500) or {}
-						pv.close_conn(fd)
+						handle_complete_request(completed_context.client_wants_to_close, mut
+							pv, fd)
 						return
 					}
 					// no errors we can send the HTTP headers
@@ -582,11 +651,20 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			}
 		}
 	} else {
+		// invalid request headers/data
 		pv.close_conn(fd)
 	}
 }
 
-fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?Context {
+// close the connection when `should_close` is true.
+@[inline]
+fn handle_complete_request(should_close bool, mut pv picoev.Picoev, fd int) {
+	if should_close {
+		pv.close_conn(fd)
+	}
+}
+
+fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?&Context {
 	mut global_app := unsafe { &A(params.global_app) }
 
 	// TODO: change this variable to include the total wait time over each network cycle
@@ -618,13 +696,21 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	host, _ := urllib.split_host_port(host_with_port)
 
 	// Create Context with request data
-	mut ctx := Context{
+	mut ctx := &Context{
 		req: req
 		page_gen_start: page_gen_start
 		conn: conn
 		query: query
 		form: form
 		files: files
+	}
+
+	if connection_header := req.header.get(.connection) {
+		// A client that does not support persistent connections MUST send the
+		// "close" connection option in every request message.
+		if connection_header.to_lower() == 'close' {
+			ctx.client_wants_to_close = true
+		}
 	}
 
 	$if A is StaticApp {
@@ -645,8 +731,8 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	user_context.Context = ctx
 
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
-
-	return user_context.Context
+	// we need to explicitly tell the V compiler to return a reference
+	return &user_context.Context
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
@@ -702,7 +788,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	// first execute before_request
-	user_context.before_request()
+	$if A is HasBeforeRequest {
+		app.before_request()
+	}
+	// user_context.before_request()
 	if user_context.Context.done {
 		return
 	}
@@ -737,6 +826,8 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 				// Skip if the host does not match or is empty
 				if route.host == '' || route.host == host {
+					can_have_data_args := user_context.Context.req.method == .post
+						|| user_context.Context.req.method == .get
 					// Route immediate matches first
 					// For example URL `/register` matches route `/:user`, but `fn register()`
 					// should be called first.
@@ -749,12 +840,19 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 						}
 
-						if user_context.Context.req.method == .post && method.args.len > 1 {
-							// Populate method args with form values
+						if method.args.len > 1 && can_have_data_args {
+							// Populate method args with form or query values
 							mut args := []string{cap: method.args.len + 1}
-							for param in method.args[1..] {
-								args << user_context.Context.form[param.name]
+							data := if user_context.Context.req.method == .get {
+								user_context.Context.query
+							} else {
+								user_context.Context.form
 							}
+
+							for param in method.args[1..] {
+								args << data[param.name]
+							}
+
 							app.$method(mut user_context, args)
 						} else {
 							app.$method(mut user_context)
@@ -770,7 +868,24 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 						}
 
-						app.$method(mut user_context)
+						if method.args.len > 1 && can_have_data_args {
+							// Populate method args with form or query values
+							mut args := []string{cap: method.args.len + 1}
+
+							data := if user_context.Context.req.method == .get {
+								user_context.Context.query
+							} else {
+								user_context.Context.form
+							}
+
+							for param in method.args[1..] {
+								args << data[param.name]
+							}
+
+							app.$method(mut user_context, args)
+						} else {
+							app.$method(mut user_context)
+						}
 						return
 					}
 
@@ -813,7 +928,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	if url_words.len == route_words.len {
 		for i in 0 .. url_words.len {
 			if route_words[i].starts_with(':') {
-				// We found a path paramater
+				// We found a path parameter
 				params << url_words[i]
 			} else if route_words[i] != url_words[i] {
 				// This url does not match the route
@@ -830,7 +945,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 
 	for i in 0 .. route_words.len - 1 {
 		if route_words[i].starts_with(':') {
-			// We found a path paramater
+			// We found a path parameter
 			params << url_words[i]
 		} else if route_words[i] != url_words[i] {
 			// This url does not match the route
@@ -846,13 +961,27 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 @[manualfree]
 fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
-	static_file := app.static_files[url.path] or { return false }
+	mut asked_path := url.path
+	base_path := os.base(asked_path)
+
+	if !base_path.contains('.') && !asked_path.ends_with('/') {
+		asked_path += '/'
+	}
+
+	if asked_path.ends_with('/') {
+		if app.static_files[asked_path + 'index.html'] != '' {
+			asked_path += 'index.html'
+		} else if app.static_files[asked_path + 'index.htm'] != '' {
+			asked_path += 'index.htm'
+		}
+	}
+	static_file := app.static_files[asked_path] or { return false }
 
 	// StaticHandler ensures that the mime type exists on either the App or in vweb
 	ext := os.file_ext(static_file)
 	mut mime_type := app.static_mime_types[ext] or { vweb.mime_types[ext] }
 
-	static_host := app.static_hosts[url.path] or { '' }
+	static_host := app.static_hosts[asked_path] or { '' }
 	if static_file == '' || mime_type == '' {
 		return false
 	}
@@ -915,4 +1044,10 @@ fn fast_send_resp_header(mut conn net.TcpConn, resp http.Response) ! {
 fn fast_send_resp(mut conn net.TcpConn, resp http.Response) ! {
 	fast_send_resp_header(mut conn, resp)!
 	send_string(mut conn, resp.body)!
+}
+
+// Set s to the form error
+pub fn (mut ctx Context) error(s string) {
+	eprintln('[vweb] Context.error: ${s}')
+	ctx.form_error = s
 }

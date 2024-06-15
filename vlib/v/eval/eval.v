@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module eval
@@ -51,6 +51,7 @@ pub fn (mut e Eval) run(expression string, args ...Object) ![]Object {
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
+pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	table                  &ast.Table = unsafe { nil }

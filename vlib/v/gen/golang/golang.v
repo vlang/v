@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module golang
@@ -12,9 +12,9 @@ import os
 const bs = '\\'
 
 pub struct Gen {
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table &ast.Table        = unsafe { nil }
-	pref  &pref.Preferences = unsafe { nil }
+	table &ast.Table = unsafe { nil }
 	// is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -45,7 +45,7 @@ pub mut:
 	nlines             int
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
 		pref: pref_
@@ -92,7 +92,7 @@ pub fn (mut f Gen) write(s string) {
 }
 
 pub fn (mut f Gen) writeln(s string) {
-	if f.indent > 0 && f.empty_line && s.len > 0 {
+	if f.indent > 0 && f.empty_line && s != '' {
 		f.write_indent()
 	}
 	f.out.writeln(s)
@@ -126,6 +126,7 @@ pub fn (mut f Gen) wrap_long_line(penalty_idx int, add_indent bool) bool {
 
 @[params]
 pub struct RemoveNewLineConfig {
+pub:
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
 
@@ -278,7 +279,7 @@ pub fn (mut f Gen) imports(imports []ast.Import) {
 
 	for imp in imports {
 		if imp.mod !in f.used_imports {
-			// TODO bring back once only unused imports are removed
+			// TODO: bring back once only unused imports are removed
 			// continue
 		}
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
@@ -425,6 +426,7 @@ pub fn (mut f Gen) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}

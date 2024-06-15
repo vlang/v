@@ -5,12 +5,14 @@ import strconv
 
 @[params]
 pub struct EscapeConfig {
+pub:
 	quote bool = true
 }
 
 @[params]
 pub struct UnescapeConfig {
 	EscapeConfig
+pub:
 	all bool
 }
 

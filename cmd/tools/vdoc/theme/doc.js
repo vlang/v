@@ -1,5 +1,5 @@
 (function () {
-	const docnav = document.querySelector('.doc-nav');
+	const docnav = document.querySelector('header.doc-nav');
 	const active = docnav.querySelector('li.active');
 	active?.scrollIntoView({ block: 'center', inline: 'nearest' });
 	setupMobileToggle();
@@ -12,6 +12,9 @@
 function setupScrollSpy() {
 	const mainContent = document.querySelector('#main-content');
 	const toc = mainContent.querySelector('.doc-toc');
+	if (!toc) {
+		return;
+	}
 	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
 	let lastActive = null;
@@ -62,7 +65,7 @@ function setupScrollSpy() {
 
 function setupMobileToggle() {
 	document.getElementById('toggle-menu').addEventListener('click', () => {
-		const docNav = document.querySelector('.doc-nav');
+		const docNav = document.querySelector('header.doc-nav');
 		const isHidden = docNav.classList.contains('hidden');
 		docNav.classList.toggle('hidden');
 		const search = docNav.querySelector('.search');
@@ -90,10 +93,9 @@ function setupDarkMode() {
 }
 
 function setupSearch() {
-	const searchInput = document.getElementById('search');
 	const onInputChange = debounce((e) => {
 		const searchValue = e.target.value.toLowerCase();
-		const docNav = document.querySelector('.doc-nav');
+		const docNav = document.querySelector('header.doc-nav');
 		const menu = docNav.querySelector('.content');
 		const search = docNav.querySelector('.search');
 		if (searchValue === '') {
@@ -160,13 +162,30 @@ function setupSearch() {
 			});
 		}
 	});
-	searchInput.addEventListener('input', onInputChange);
+	const searchInput = document.querySelector('#search input');
+	const url = document.location.toString();
+	if (url.includes('?')) {
+		const query =
+			url
+				.split('?')
+				.slice(1)
+				.filter((p) => p.startsWith('q='))
+				.map((p) => p.replace(/^q=/, ''))[0] || '';
+		if (query) {
+			searchInput.value = query;
+			searchInput.focus();
+			onInputChange({ target: { value: query } });
+		}
+	}
+	const searchInputDiv = document.getElementById('search');
+	searchInputDiv.addEventListener('input', onInputChange);
 	setupSearchKeymaps();
 }
 
 function setupSearchKeymaps() {
 	const searchInput = document.querySelector('#search input');
 	const mainContent = document.querySelector('#main-content');
+	const docnav = document.querySelector('header.doc-nav');
 	// Keyboard shortcut indicator
 	const searchKeys = document.createElement('div');
 	const modifierKeyPrefix = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
@@ -226,6 +245,7 @@ function setupSearchKeymaps() {
 				}
 				break;
 			default:
+				docnav.scroll(0, 0);
 				selectedIdx = -1;
 		}
 	});

@@ -11,6 +11,12 @@ const exit_after = time.second * 10
 
 pub struct App {
 	vweb.StaticHandler
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
 }
 
 pub fn (mut app App) index(mut ctx Context) vweb.Result {
@@ -28,27 +34,31 @@ pub struct Context {
 
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
-	spawn run_app_test()
-
-	// app startup time
-	time.sleep(time.second * 2)
-
 	spawn fn () {
 		time.sleep(exit_after)
 		assert true == false, 'timeout reached!'
 		exit(1)
 	}()
+
+	run_app_test()
 }
 
 fn run_app_test() {
 	mut app := &App{}
 	if _ := app.handle_static('testdata', true) {
-		assert true == false, 'should throw unkown mime type error'
+		assert true == false, 'should throw unknown mime type error'
 	} else {
-		assert err.msg().starts_with('unkown MIME type for file extension ".what"'), 'throws error on unkown mime type'
+		assert err.msg().starts_with('unknown MIME type for file extension ".what"'), 'throws error on unknown mime type'
 	}
 
 	app.static_mime_types['.what'] = vweb.mime_types['.txt']
+
+	if _ := app.handle_static('not_found', true) {
+		assert false, 'should throw directory not found error'
+	} else {
+		assert err.msg().starts_with('directory `not_found` does not exist') == true
+	}
+
 	app.handle_static('testdata', true) or { panic(err) }
 
 	if _ := app.mount_static_folder_at('testdata', 'static') {
@@ -60,14 +70,14 @@ fn run_app_test() {
 	if _ := app.mount_static_folder_at('not_found', '/static') {
 		assert true == false, 'should throw mount path does not exist error'
 	} else {
-		assert err.msg() == 'directory "not_found" does not exist'
+		assert err.msg().starts_with('directory `not_found` does not exist') == true
 	}
 
 	app.mount_static_folder_at('testdata', '/static') or { panic(err) }
 
-	vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
-		panic('could not start vweb app')
-	}
+	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	// app startup time
+	_ := <-app.started
 }
 
 fn test_static_root() {
@@ -84,12 +94,23 @@ fn test_scans_subdirs() {
 	assert x.body == 'sub'
 }
 
+fn test_index_subdirs() {
+	x := http.get('${localserver}/sub_folder/')!
+	y := http.get('${localserver}/sub.folder/sub_folder')!
+
+	assert x.status() == .ok
+	assert x.body.trim_space() == 'OK'
+
+	assert y.status() == .ok
+	assert y.body.trim_space() == 'OK'
+}
+
 fn test_custom_mime_types() {
-	x := http.get('${localserver}/unkown_mime.what')!
+	x := http.get('${localserver}/unknown_mime.what')!
 
 	assert x.status() == .ok
 	assert x.header.get(.content_type)! == vweb.mime_types['.txt']
-	assert x.body == 'unkown_mime'
+	assert x.body.trim_space() == 'unknown_mime'
 }
 
 fn test_custom_folder_mount() {

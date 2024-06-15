@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -60,7 +60,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 			$if trace_skip_unused_roots ? {
 				println('>>>> ${fn_name} uses: ')
 			}
-			w.fn_decl(mut w.all_fns[fn_name])
+			unsafe { w.fn_decl(mut w.all_fns[fn_name]) }
 		}
 	}
 }
@@ -91,7 +91,7 @@ pub fn (mut w Walker) mark_markused_consts() {
 
 pub fn (mut w Walker) mark_markused_globals() {
 	for gkey, mut globalfield in w.all_globals {
-		if globalfield.is_markused {
+		if globalfield.is_markused || globalfield.is_exported {
 			w.mark_global_as_used(gkey)
 		}
 	}
@@ -101,6 +101,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
@@ -227,7 +228,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyExpr {
-			// TODO make sure this doesn't happen
+			// TODO: make sure this doesn't happen
 			// panic('Walker: EmptyExpr')
 		}
 		ast.ComptimeType {}
@@ -516,6 +517,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		return
 	}
 	w.mark_fn_as_used(fn_name)
+	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
+		&& !node.receiver_concrete_type.has_flag(.generic) {
+		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
+		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
+		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
+		w.used_fns[fkey] = true
+	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
 		if !node.is_method || node.receiver_type == stmt.receiver.typ {

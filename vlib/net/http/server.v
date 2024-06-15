@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -23,12 +23,14 @@ mut:
 	handle(Request) Response
 }
 
+pub const default_server_port = 9009
+
 pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string = ':8080' // change to ':8080' when port is removed
-	port               int = 8080             @[deprecated: 'use addr']
+	addr               string = ':${http.default_server_port}'
+	port               int = http.default_server_port             @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
@@ -53,7 +55,7 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// remove when s.port is removed
 	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != 8080 {
+	if addr.len > 1 && s.port != http.default_server_port {
 		s.addr = '${addr[0]}:${s.port}'
 	}
 
@@ -61,15 +63,10 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
-	mut listening_address := s.addr.clone()
 	if l.family() == net.AddrFamily.unspec {
-		if listening_address == ':0' {
-			listening_address = 'localhost:0'
-		}
-		mut listen_family := net.AddrFamily.ip
-		//		$if !windows {
-		//			listen_family = net.AddrFamily.ip6
-		//		}
+		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
+		listen_family := net.AddrFamily.ip
+		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
 		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
@@ -84,7 +81,6 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// Create tcp connection channel
 	ch := chan &net.TcpConn{cap: s.pool_channel_slots}
-
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
@@ -101,14 +97,10 @@ pub fn (mut s Server) listen_and_serve() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	for {
-		// break if we have a stop signal
-		if s.state != .running {
-			break
-		}
+	for s.state == .running {
 		mut conn := s.listener.accept() or {
 			if err.code() == net.err_timed_out_code {
-				// just skip network timeouts, they are normal
+				// Skip network timeouts, they are normal
 				continue
 			}
 			eprintln('accept() failed, reason: ${err}; skipping')

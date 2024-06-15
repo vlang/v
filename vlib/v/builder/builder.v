@@ -89,8 +89,8 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 }
 
 pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
-	b.parsed_files << parser.parse_text(code, '', b.table, .skip_comments, b.pref)
+	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
+	b.parsed_files << parser.parse_text(code, '', mut b.table, .skip_comments, b.pref)
 	b.parse_imports()
 
 	if b.pref.only_check_syntax {
@@ -109,7 +109,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ! {
 	util.timing_start('PARSE')
 
 	util.timing_start('Builder.front_stages.parse_files')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
 	timers.show('Builder.front_stages.parse_files')
 
 	b.parse_imports()
@@ -144,7 +144,7 @@ pub fn (mut b Builder) middle_stages() ! {
 	//
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
-		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+		markused.mark_used(mut b.table, mut b.pref, b.parsed_files)
 	}
 	if b.pref.show_callgraph {
 		callgraph.show(mut b.table, b.pref, b.parsed_files)
@@ -169,7 +169,7 @@ pub fn (mut b Builder) parse_imports() {
 	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
-	// TODO (joe): decide if this is correct solution.
+	// TODO: (joe): decide if this is correct solution.
 	// in the case of building a module, the actual module files
 	// are passed via cmd line, so they have already been parsed
 	// by this stage. note that if one files from a module was
@@ -222,7 +222,7 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table, b.pref)
+			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
 			for file in parsed_files {
 				mut name := file.mod.name
 				if name == '' {
@@ -315,7 +315,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 		if p.mod.name !in builtins {
 			deps << 'builtin'
 			if b.pref.backend == .c {
-				// TODO JavaScript backend doesn't handle os for now
+				// TODO: JavaScript backend doesn't handle os for now
 				// os import libraries so we exclude anything which could cause a loop
 				// git grep import vlib/os | cut -f2 -d: | cut -f2 -d" " | sort -u
 				// dl, os, os.cmdline, os.filelock, os.notify, strings, strings.textscanner, term.termios, time
@@ -497,8 +497,8 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 
 	if b.pref.check_only {
-		for file in b.parsed_files {
-			if !b.pref.skip_warnings {
+		if !b.pref.skip_notes {
+			for file in b.parsed_files {
 				for err in file.notices {
 					kind := if b.pref.is_verbose {
 						'${err.reporter} notice #${b.nr_notices}:'
@@ -521,8 +521,8 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			}
 		}
 
-		for file in b.parsed_files {
-			if !b.pref.skip_warnings {
+		if !b.pref.skip_warnings {
+			for file in b.parsed_files {
 				for err in file.warnings {
 					kind := if b.pref.is_verbose {
 						'${err.reporter} warning #${b.nr_warnings}:'
@@ -547,7 +547,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	if b.pref.is_verbose && b.checker.nr_notices > 1 {
 		println('${b.checker.nr_notices} notices')
 	}
-	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
+	if b.checker.nr_notices > 0 && !b.pref.skip_notes {
 		for err in b.checker.notices {
 			kind := if b.pref.is_verbose {
 				'${err.reporter} notice #${b.checker.nr_notices}:'

@@ -243,3 +243,58 @@ fn test_cross_var_assign_with_inherited() {
 	}
 	f()
 }
+
+// for issue 20498
+// test array / string / map as closure params with -autofree
+fn get_func_that_contains_closure() fn () {
+	arr := [1, 2, 3]
+	str := '${'a'}bcabc' // alloc on heap
+	m := {
+		'key1': 'abcabc'
+		'key2': 'abcabc'
+	}
+	return fn [arr, str, m] () {
+		assert arr == [1, 2, 3]
+		assert str == 'abcabc'
+		assert m == {
+			'key1': 'abcabc'
+			'key2': 'abcabc'
+		}
+	}
+}
+
+fn test_array_string_and_map_as_closure_params_with_autofree() {
+	func := get_func_that_contains_closure()
+	func()
+	assert true
+}
+
+// for issue 20208
+// phenomenon: cgen fails when the closure arg is auto_heap and is not reference.
+@[heap]
+struct Abc {
+	value int
+}
+
+@[heap]
+struct Container {
+	abc &Abc = unsafe { nil }
+}
+
+fn (mut c Container) m() fn () {
+	mut cr := &c
+	assert voidptr(c.abc) == voidptr(cr.abc)
+	f := fn [mut cr] () {
+		assert cr.abc.value == 1234
+	}
+	return f
+}
+
+fn test_auto_heap_var_and_non_ptr_as_closure_arg() {
+	mut c := &Container{
+		abc: &Abc{1234}
+	}
+	f := c.m()
+	f()
+	assert true
+}

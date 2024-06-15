@@ -1,6 +1,6 @@
 module strconv
 
-// Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+// Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -117,7 +117,7 @@ enum ParserState {
 }
 
 // parser tries to parse the given string into a number
-// NOTE: #TOFIX need one char after the last char of the number
+// FIXME: need one char after the last char of the number
 @[direct_array_access]
 fn parser(s string) (ParserState, PrepNumber) {
 	mut digx := 0

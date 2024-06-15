@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module golang
@@ -111,7 +111,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') && !name.starts_with('JS.') {
-		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
+		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO: f.type_to_str?
 	}
 	if name == 'void' {
 		name = ''

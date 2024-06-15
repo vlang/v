@@ -1,6 +1,11 @@
 import db.mysql
 
 fn test_mysql() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
 	config := mysql.Config{
 		host: '127.0.0.1'
 		port: 3306
@@ -16,7 +21,8 @@ fn test_mysql() {
 
 	response = db.exec('create table if not exists users (
                         id INT PRIMARY KEY AUTO_INCREMENT,
-                        username TEXT
+                        username TEXT,
+						last_name TEXT NULL DEFAULT NULL
                       )')!
 	assert response == []mysql.Row{}
 
@@ -48,36 +54,36 @@ fn test_mysql() {
 		'jackson',
 	])!
 	assert response[0] == mysql.Row{
-		vals: ['1', 'jackson']
+		vals: ['1', 'jackson', '']
 	}
 
 	response = db.exec_param_many('select * from users where username = ? and id = ?',
 		['bailey', '3'])!
 	assert response[0] == mysql.Row{
-		vals: ['3', 'bailey']
+		vals: ['3', 'bailey', '']
 	}
 
 	response = db.exec_param_many('select * from users', [''])!
 	assert response == [
 		mysql.Row{
-			vals: ['1', 'jackson']
+			vals: ['1', 'jackson', '']
 		},
 		mysql.Row{
-			vals: ['2', 'shannon']
+			vals: ['2', 'shannon', '']
 		},
 		mysql.Row{
-			vals: ['3', 'bailey']
+			vals: ['3', 'bailey', '']
 		},
 		mysql.Row{
-			vals: ['4', 'blaze']
+			vals: ['4', 'blaze', '']
 		},
 		mysql.Row{
-			vals: ['5', 'Hi']
+			vals: ['5', 'Hi', '']
 		},
 	]
 
 	response = db.exec_param('select * from users where username = ?', 'blaze')!
 	assert response[0] == mysql.Row{
-		vals: ['4', 'blaze']
+		vals: ['4', 'blaze', '']
 	}
 }

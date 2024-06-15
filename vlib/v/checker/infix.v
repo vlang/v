@@ -1,7 +1,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.token
 
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
@@ -127,7 +126,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		} else if node.op in [.plus, .minus] {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
-				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
+				if !c.pref.translated && !c.file.is_translated {
+					c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
+				}
 			}
 			if (left_type == ast.voidptr_type || left_type == ast.nil_type) && !c.pref.translated {
 				c.error('`${node.op}` cannot be used with `voidptr`', left_pos)
@@ -163,10 +164,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
 			if node.left is ast.CallExpr && node.left.or_block.stmts.len > 0 {
-				c.check_expr_opt_call(node.left, left_type)
+				c.check_expr_option_or_result_call(node.left, left_type)
 			}
 			if node.right is ast.CallExpr && node.right.or_block.stmts.len > 0 {
-				c.check_expr_opt_call(node.right, right_type)
+				c.check_expr_option_or_result_call(node.right, right_type)
 			}
 			if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
 				is_left_type_signed := left_type in ast.signed_integer_type_idxs
@@ -187,7 +188,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					ls, _ := c.table.type_size(left_type)
 					rs, _ := c.table.type_size(right_type)
 					// prevent e.g. `u32 == i16` but not `u16 == i32` as max_u16 fits in i32
-					// TODO u32 == i32, change < to <=
+					// TODO: u32 == i32, change < to <=
 					if !c.pref.translated && ((is_left_type_signed && ls < rs)
 						|| (is_right_type_signed && rs < ls)) {
 						lt := c.table.sym(left_type).name
@@ -263,14 +264,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			left_sym = c.table.sym(unwrapped_left_type)
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
-			if mut right_sym.info is ast.Alias && right_sym.info.language != .c
+			if mut right_sym.info is ast.Alias && (right_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
-				&& c.table.sym(right_sym.info.parent_type).is_primitive() {
+				&& (c.table.sym(right_sym.info.parent_type).is_primitive()
+				|| c.table.sym(right_sym.info.parent_type).kind == .enum_)) {
 				right_sym = c.table.sym(right_sym.info.parent_type)
 			}
-			if mut left_sym.info is ast.Alias && left_sym.info.language != .c
+			if mut left_sym.info is ast.Alias && (left_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
-				&& c.table.sym(left_sym.info.parent_type).is_primitive() {
+				&& (c.table.sym(left_sym.info.parent_type).is_primitive()
+				|| c.table.sym(left_sym.info.parent_type).kind == .enum_)) {
 				left_sym = c.table.sym(left_sym.info.parent_type)
 			}
 
@@ -286,8 +289,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						return_type = left_type
 					}
-				} else if left_final_sym.has_method(node.op.str()) {
-					if method := left_final_sym.find_method(node.op.str()) {
+				} else if left_final_sym.has_method_with_generic_parent(node.op.str()) {
+					if method := left_final_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -328,6 +331,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							left_right_pos)
 					}
 				}
+			}
+
+			if ((unwrapped_left_type.is_ptr() && !node.left.is_auto_deref_var())
+				|| (unwrapped_right_type.is_ptr() && !node.right.is_auto_deref_var()))
+				&& node.op !in [.plus, .minus] {
+				c.error('infix `${node.op}` is not defined for pointer values', left_right_pos)
 			}
 
 			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
@@ -397,7 +406,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
-				} else if promoted_type.has_flag(.option) || promoted_type.has_flag(.result) {
+				} else if promoted_type.has_option_or_result() {
 					s := c.table.type_to_str(promoted_type)
 					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
 				} else if promoted_type.is_float() {
@@ -448,7 +457,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if left_name == right_name {
 						if !(node.op == .lt && c.pref.translated) {
 							// Allow `&Foo < &Foo` in translated code.
-							// TODO maybe in unsafe as well?
+							// TODO: maybe in unsafe as well?
 							c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 								left_right_pos)
 						}
@@ -525,10 +534,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 				// `array << elm`
-				c.check_expr_opt_call(node.right, right_type)
+				c.check_expr_option_or_result_call(node.right, right_type)
 				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
+				if !left_value_type.has_flag(.option) && right_type.has_flag(.option) {
+					c.error('unwrapped Option cannot be used in an infix expression',
+						node.pos)
+				}
 				if left_value_sym.kind == .interface_ {
 					if right_final_sym.kind != .array {
 						// []Animal << Cat
@@ -648,6 +661,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				ast.None {
 					ast.none_type_idx
 				}
+				ast.Ident {
+					if right_expr.name == c.comptime.comptime_for_variant_var {
+						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
+					} else {
+						c.error('invalid type `${right_expr}`', right_expr.pos)
+						ast.Type(0)
+					}
+				}
 				else {
 					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
@@ -667,7 +688,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if typ != ast.none_type_idx {
 						c.error('`${op}` can only be used to test for none in sql', node.pos)
 					}
-				} else if left_sym.kind !in [.interface_, .sum_type] {
+				} else if left_sym.kind !in [.interface_, .sum_type]
+					&& !c.comptime.is_comptime_var(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types',
 						node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
@@ -690,7 +712,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				chan_info := left_sym.chan_info()
 				elem_type := chan_info.elem_type
 				if !c.check_types(right_type, elem_type) {
-					c.error('cannot push `${right_sym.name}` on `${left_sym.name}`', right_pos)
+					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+						right_pos)
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
@@ -698,6 +721,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
+						right_pos)
+				} else if right_type.is_ptr() != elem_type.is_ptr() {
+					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
 						right_pos)
 				}
 				c.stmts_ending_with_expression(mut node.or_block.stmts)
@@ -725,21 +751,33 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+	// Do an ambiguous expression check for << >> and &, since they all have the same precedence (unlike in C)
+	if !c.is_builtin_mod && node.op in [.amp, .left_shift, .right_shift] {
+		if !c.mod.starts_with('math') { // TODO fix all warnings in math
+			if mut node.left is ast.InfixExpr {
+				if node.left.op != node.op && node.left.op in [.amp, .left_shift, .right_shift] {
+					// for example: `(a << b) & c` instead of `a << b & c`
+					c.note('ambiguous expression. use `()` to ensure correct order of operations',
+						node.pos)
+				}
+			}
+		}
+	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == ast.bool_type && node.op !in [.eq, .ne, .logical_or, .and] {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			node.pos)
 	} else if left_type == ast.string_type && node.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
-		// TODO broken !in
+		// TODO: broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			node.pos)
 	} else if left_sym.kind == .enum_ && right_sym.kind == .enum_ && !eq_ne {
 		left_enum := left_sym.info as ast.Enum
 		right_enum := right_sym.info as ast.Enum
 		if left_enum.is_flag && right_enum.is_flag {
-			// `[flag]` tagged enums are a special case that allow also `|` and `&` binary operators
-			if node.op !in [.pipe, .amp] {
-				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
+			// `@[flag]` tagged enums are a special case that allow also `|` and `&` binary operators
+			if node.op !in [.pipe, .amp, .xor, .bit_not] {
+				c.error('only `==`, `!=`, `|`, `&`, `^` and `~` are defined on `@[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					node.pos)
 			}
 		} else if !c.pref.translated && !c.file.is_translated && !left_type.has_flag(.generic)
@@ -756,7 +794,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	} else if c.table.type_kind(right_type) == .sum_type && !eq_ne {
 		c.error('cannot use operator `${node.op}` with `${right_sym.name}`', node.pos)
 	}
-	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
+	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_option := left_type.has_flag(.option)
 	right_is_option := right_type.has_flag(.option)
 	if left_is_option || right_is_option {
@@ -811,6 +849,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_right_pos)
 			}
 		}
+	}
+	if node.op == .plus && c.pref.warn_about_allocs && left_type == ast.string_type_idx
+		&& right_type == ast.string_type_idx {
+		c.warn_alloc('string concatenation', node.pos)
 	}
 	/*
 	if (node.left is ast.InfixExpr && node.left.op == .inc) ||

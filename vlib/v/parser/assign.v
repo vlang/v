@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -225,6 +225,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
 						is_stack_obj: p.inside_for
+					}
+					if p.prev_tok.kind == .string {
+						v.typ = ast.string_type_idx
+					} else if p.prev_tok.kind == .rsbr {
+						v.typ = ast.array_type_idx
 					}
 					if p.pref.autofree {
 						r0 := right[0]

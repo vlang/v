@@ -1,11 +1,10 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import os
 import v.ast
-import v.pref
 import v.token
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
@@ -92,7 +91,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 	return ast.HashStmt{
 		mod: p.mod
-		source_file: p.file_name
+		source_file: p.file_path
 		val: val
 		kind: kind
 		main: main_str
@@ -110,7 +109,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
-		if name != 'vweb' {
+		if name != 'vweb' && name != 'veb' {
 			p.error(error_msg)
 			return err_node
 		}
@@ -282,7 +281,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	// the tmpl inherits all parent scopes. previous functionality was just to
 	// inherit the scope from which the comptime call was made and no parents.
 	// this is much simpler and allows access to globals. can be changed if needed.
-	mut file := parse_comptime(tmpl_path, v_code, p.table, p.pref, p.scope)
+	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
 	return ast.ComptimeCall{
 		scope: unsafe { nil }
@@ -311,8 +310,8 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
 	mut typ := ast.void_type
-	if p.tok.lit[0].is_capital() {
-		typ = p.parse_any_type(lang, false, false, false)
+	if p.tok.lit[0].is_capital() || p.tok.lit in p.imports {
+		typ = p.parse_any_type(lang, false, true, false)
 	} else {
 		expr = p.ident(lang)
 		p.mark_var_as_used((expr as ast.Ident).name)
@@ -322,6 +321,9 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	for_val := p.check_name()
 	mut kind := ast.ComptimeForKind.methods
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	match for_val {
 		'methods' {
 			p.scope.register(ast.Var{
@@ -357,7 +359,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		'attributes' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('StructAttribute')
+				typ: p.table.find_type_idx('VAttribute')
 				pos: var_pos
 			})
 			kind = .attributes
@@ -370,7 +372,6 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	}
 	spos := p.tok.pos()
 	stmts := p.parse_block()
-	p.close_scope()
 	return ast.ComptimeFor{
 		val_var: val_var
 		stmts: stmts
@@ -401,6 +402,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VEXE' { token.AtKind.vexe_path }
 		'@VEXEROOT' { token.AtKind.vexeroot_path }
 		'@VMODROOT' { token.AtKind.vmodroot_path }
+		'@VMODHASH' { token.AtKind.vmod_hash }
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}

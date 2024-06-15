@@ -147,7 +147,7 @@ pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if node.language == .js && g.pref.os == .wasi {
 		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
 	}
-	if node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+	if node.return_type.has_option_or_result() {
 		g.v_error('interop functions must not return option or result', node.pos)
 	}
 
@@ -320,7 +320,7 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	// stack pointer is perfectly acceptable.
 	//
 	if g.stack_frame != 0 {
-		prolouge := g.func.patch_pos()
+		prologue := g.func.patch_pos()
 		{
 			g.func.global_get(g.sp())
 			g.func.i32_const(i32(g.stack_frame))
@@ -332,7 +332,7 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 				g.func.local_set(g.bp())
 			}
 		}
-		g.func.patch(func_start, prolouge)
+		g.func.patch(func_start, prologue)
 		if !g.is_leaf_function {
 			g.func.global_get(g.sp())
 			g.func.i32_const(i32(g.stack_frame))
@@ -558,7 +558,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	}
 
 	if node.language in [.js, .wasm] {
-		cfn_attrs := g.table.fns[node.name].attrs
+		cfn_attrs := unsafe { g.table.fns[node.name].attrs }
 
 		short_name := if node.language == .js {
 			node.name.all_after_last('JS.')
@@ -1283,7 +1283,7 @@ pub fn (mut g Gen) calculate_enum_fields() {
 	}
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref.Preferences) {
 	stack_top := w_pref.wasm_stack_top
 	mut g := &Gen{
 		table: table

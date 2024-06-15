@@ -47,6 +47,7 @@ fn fix_windows_path(path string) string {
 }
 
 // open_file tries to open or create a file with custom flags and permissions.
+@[noinline]
 pub fn open_file(path string, mode string, options ...int) !File {
 	mut flags := 0
 	mut seek_to_end := false
@@ -281,20 +282,7 @@ pub fn (mut f File) writeln(s string) !int {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	/*
-	$if linux {
-		$if !android {
-			snl := s + '\n'
-			C.syscall(sys_write, f.fd, snl.str, snl.len)
-			return
-		}
-	}
-	*/
-	// TODO perf
-	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
-	if written == 0 && s.len != 0 {
-		return error('0 bytes written')
-	}
+	written := f.write_string(s)!
 	x := C.fputs(c'\n', f.cfile)
 	if x < 0 {
 		return error('could not add newline')
@@ -449,10 +437,18 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []u8 {
 	return arr[0..nreadbytes]
 }
 
-// read_bytes_into_newline reads from the beginning of the file into the provided buffer.
-// Each consecutive call on the same file continues reading where it previously ended.
-// A read call is either stopped, if the buffer is full, a newline was read or EOF.
+// read_bytes_into_newline reads from the current position of the file into the provided buffer.
+@[deprecated: 'use read_bytes_with_newline instead']
+@[deprecated_after: '2024-05-04']
 pub fn (f &File) read_bytes_into_newline(mut buf []u8) !int {
+	return f.read_bytes_with_newline(mut buf)
+}
+
+// read_bytes_with_newline reads from the current position of the file into the provided buffer.
+// Each consecutive call on the same file, continues reading, from where it previously ended.
+// A read call is either stopped, if the buffer is full, a newline was read or EOF.
+// On EOF, the method returns 0. The methods will also return any IO error encountered.
+pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 	if buf.len == 0 {
 		return error(@FN + ': `buf.len` == 0')
 	}
@@ -750,7 +746,7 @@ pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	}
 }
 
-// TODO `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
+// TODO: `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
 // write_raw writes a single instance of type `T`
 pub fn (mut f File) write_raw[T](t &T) ! {

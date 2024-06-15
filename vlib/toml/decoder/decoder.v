@@ -14,6 +14,7 @@ const utf8_max = 0x10FFFF
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {
+pub:
 	scanner &scanner.Scanner = unsafe { nil }
 }
 
@@ -74,7 +75,7 @@ fn (d Decoder) decode_number(mut n ast.Number) ! {
 pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	// Setup a scanner in stack memory for easier navigation.
 	mut eat_whitespace := false
-	// TODO use string builder
+	// TODO: use string builder
 	mut decoded_s := ''
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
@@ -85,13 +86,8 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	mut s := scanner.new_simple_text(q.text)!
 	q.text = q.text.replace('\\"', '"')
 
-	for {
-		ch := s.next()
-		if ch == scanner.end_of_text {
-			break
-		}
+	for ch := s.next(); ch != scanner.end_of_text; ch = s.next() {
 		ch_byte := u8(ch)
-
 		if eat_whitespace && ch_byte.is_space() {
 			continue
 		}
@@ -101,53 +97,44 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 			ch_next := s.at()
 			ch_next_byte := u8(ch_next)
 
-			if ch_next == `\\` {
-				decoded_s += ch_next_byte.ascii_str()
-				s.next()
-				continue
-			}
-
 			if q.is_multiline {
 				if ch_next_byte.is_space() {
 					eat_whitespace = true
 					continue
 				}
 			}
-
-			if ch_next == `"` {
-				decoded_s += '"'
-				s.next()
-				continue
-			}
-
-			if ch_next == `n` {
-				decoded_s += '\n'
-				s.next()
-				continue
-			}
-
-			if ch_next == `t` {
-				decoded_s += '\t'
-				s.next()
-				continue
-			}
-
-			if ch_next == `b` {
-				decoded_s += '\b'
-				s.next()
-				continue
-			}
-
-			if ch_next == `r` {
-				decoded_s += '\r'
-				s.next()
-				continue
-			}
-
-			if ch_next == `f` {
-				decoded_s += '\f'
-				s.next()
-				continue
+			match rune(ch_next) {
+				`\\`, `"` {
+					decoded_s += ch_next_byte.ascii_str()
+					s.next()
+					continue
+				}
+				`n` {
+					decoded_s += '\n'
+					s.next()
+					continue
+				}
+				`t` {
+					decoded_s += '\t'
+					s.next()
+					continue
+				}
+				`b` {
+					decoded_s += '\b'
+					s.next()
+					continue
+				}
+				`r` {
+					decoded_s += '\r'
+					s.next()
+					continue
+				}
+				`f` {
+					decoded_s += '\f'
+					s.next()
+					continue
+				}
+				else {}
 			}
 
 			escape := ch_byte.ascii_str() + ch_next_byte.ascii_str()
@@ -170,7 +157,6 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 					if slen <= s.remaining() {
 						pos := s.state().pos
 						sequence := s.text[pos..pos + slen + 1]
-
 						decoded, unicode_val, sequence_length = decode_unicode_escape(sequence) or {
 							decoded_s += escape
 							continue

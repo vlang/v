@@ -1,0 +1,4 @@
+type ResultInt = !i32 | !i64
+
+fn main() {
+}

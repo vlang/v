@@ -59,7 +59,7 @@ pub fn load_texture(file_name string) (gfx.Image, gfx.Sampler) {
 	buffer := read_bytes_from_file(file_name)
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buffer.data, buffer.len) or {
-		eprintln('Texure file: [${file_name}] ERROR!')
+		eprintln('Texture file: [${file_name}] ERROR!')
 		exit(0)
 	}
 	sg_img, sg_smp := create_texture(int(img.width), int(img.height), img.data)
@@ -77,9 +77,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	res.material = obj_part.part[in_part[0]].material
 
 	// vertex buffer
-	mut vert_buffer_desc := gfx.BufferDesc{
-		label: 0
-	}
+	mut vert_buffer_desc := gfx.BufferDesc{}
 	unsafe { vmemset(&vert_buffer_desc, 0, int(sizeof(vert_buffer_desc))) }
 
 	vert_buffer_desc.size = usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
@@ -93,9 +91,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	// index buffer
-	mut index_buffer_desc := gfx.BufferDesc{
-		label: 0
-	}
+	mut index_buffer_desc := gfx.BufferDesc{}
 	unsafe { vmemset(&index_buffer_desc, 0, int(sizeof(index_buffer_desc))) }
 
 	index_buffer_desc.size = usize(obj_buf.ibuf.len * int(sizeof(u32)))

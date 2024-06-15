@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -34,9 +34,13 @@ fn main() {
 		elog('fast_job end')
 	}
 
-	if !os.exists('website') {
-		println('cloning the website repo...')
-		os.system('git clone --filter=blob:none git@github.com:/vlang/website.git')
+	if !os.exists('fast.vlang.io/') {
+		println('cloning the fast.vlang.io/ repo...')
+		os.system('git clone git@github.com:/vlang/website.git fast.vlang.io/')
+	}
+	if !os.exists('docs.vlang.io') {
+		println('cloning the docs.vlang.io/ repo...')
+		os.system('git clone git@github.com:/vlang/docs.git docs.vlang.io/')
 	}
 	for {
 		elog('------------------- Checking for updates ... -------------------')

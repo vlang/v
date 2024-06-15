@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -218,7 +218,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
-	// TODO this really needs to be exposed somehow
+	// TODO: this really needs to be exposed somehow
 	client.write(s.bytes())!
 	$if trace_http_request ? {
 		eprintln('> ${s}')
@@ -388,6 +388,7 @@ pub:
 
 pub struct UnexpectedExtraAttributeError {
 	Error
+pub:
 	attributes []string
 }
 

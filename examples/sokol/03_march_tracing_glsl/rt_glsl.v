@@ -24,8 +24,7 @@ import time
 
 // GLSL Include and functions
 
-#flag -I @VMODROOT/.
-#include "rt_glsl.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/rt_glsl.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.rt_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
@@ -315,8 +314,6 @@ fn draw_cube_glsl(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
 		load_action: .clear
@@ -330,7 +327,8 @@ fn frame(mut app App) {
 
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := sapp.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	// glsl cube
 	draw_cube_glsl(app)
@@ -409,15 +407,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
@@ -429,7 +420,6 @@ fn main() {
 		init_fn: my_init
 		event_fn: my_event_manager
 	)
-
 	app.ticks = time.ticks()
 	app.gg.run()
 }

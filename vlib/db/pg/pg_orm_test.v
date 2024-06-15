@@ -36,6 +36,11 @@ struct TestDefaultAttribute {
 }
 
 fn test_pg_orm() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
 	mut db := pg.connect(
 		host: 'localhost'
 		user: 'postgres'
@@ -51,17 +56,17 @@ fn test_pg_orm() {
 		orm.TableField{
 			name: 'id'
 			typ: typeof[string]().idx
-			is_time: false
+			//			is_time: false
 			default_val: ''
 			is_arr: false
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 					has_arg: false
 					arg: ''
 					kind: .plain
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					arg: 'serial'
@@ -72,7 +77,7 @@ fn test_pg_orm() {
 		orm.TableField{
 			name: 'name'
 			typ: typeof[string]().idx
-			is_time: false
+			//			is_time: false
 			default_val: ''
 			is_arr: false
 			attrs: []
@@ -80,7 +85,7 @@ fn test_pg_orm() {
 		orm.TableField{
 			name: 'age'
 			typ: typeof[i64]().idx
-			is_time: false
+			//			is_time: false
 			default_val: ''
 			is_arr: false
 			attrs: []
@@ -152,7 +157,8 @@ fn test_pg_orm() {
 	information_schema_custom_sql := ['integer', 'text', 'character varying',
 		'timestamp without time zone', 'uuid']
 	for data_type in result_custom_sql {
-		information_schema_data_types_results << data_type.vals[0]
+		x := data_type.vals[0]!
+		information_schema_data_types_results << x?
 	}
 
 	sql db {
@@ -217,7 +223,8 @@ fn test_pg_orm() {
 	mut information_schema_defaults_results := []string{}
 
 	for defaults in result_defaults {
-		information_schema_defaults_results << defaults.vals[0]
+		x := defaults.vals[0]!
+		information_schema_defaults_results << x?
 	}
 	sql db {
 		drop table TestDefaultAttribute

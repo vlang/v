@@ -42,7 +42,7 @@ const yaml_value_exceptions = [
 
 const jq = os.find_abs_path_of_executable('jq') or { '' }
 const python = os.find_abs_path_of_executable('python') or { '' }
-const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'iarna')
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_iarna')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -69,14 +69,14 @@ fn run(args []string) !string {
 // test_iarna_toml_spec_tests run though 'testdata/iarna/toml-test/*' if found.
 fn test_iarna_toml_spec_tests() {
 	this_file := @FILE
-	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna', 'toml-test')
+	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna')
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'values'), '.toml')
 		println('Testing ${valid_test_files.len} valid TOML files...')
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
-			mut relative := valid_test_file.all_after('toml-test').trim_left(os.path_separator)
+			mut relative := valid_test_file.all_after('iarna').trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
@@ -120,7 +120,7 @@ fn test_iarna_toml_spec_tests() {
 			valid = 0
 			e = 0
 			for i, valid_test_file in valid_test_files {
-				mut relative := valid_test_file.all_after('toml-test').trim_left(os.path_separator)
+				mut relative := valid_test_file.all_after('iarna').trim_left(os.path_separator)
 				$if windows {
 					relative = relative.replace('/', '\\')
 				}
@@ -229,7 +229,7 @@ fn test_iarna_toml_spec_tests() {
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
-			mut relative := invalid_test_file.all_after('toml-test').trim_left(os.path_separator)
+			mut relative := invalid_test_file.all_after('iarna').trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
@@ -367,7 +367,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				if skip_value_map {
 					return '-9223372036854775808'

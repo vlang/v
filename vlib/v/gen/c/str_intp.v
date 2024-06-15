@@ -1,7 +1,7 @@
 /*
 str_intp.v
 
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -13,7 +13,7 @@ import v.ast
 import v.util
 
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
-	if ftyp.has_flag(.option) || ftyp.has_flag(.result) {
+	if ftyp.has_option_or_result() {
 		return `s`
 	} else if typ.is_float() {
 		return `g`
@@ -38,7 +38,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
 			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
-			|| ftyp.has_flag(.option) || ftyp.has_flag(.result) || sym.has_method('str') {
+			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -61,7 +61,6 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	mut remove_tail_zeros := false
 	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str
-	g.write('/*${fspec} ${sym}*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {
 		upper_case = true
@@ -168,7 +167,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	typ_sym := g.table.sym(typ)
 	if typ == ast.string_type && g.comptime.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
-			g.write('vweb__filter(')
+			g.write('${g.vweb_filter_fn_name}(')
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
@@ -262,14 +261,18 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write(' str_intp(${node.vals.len}, ')
+	g.write(' str_intp(')
+	g.write(node.vals.len.str())
+	g.write(', ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
-		mut escaped_val := util.smart_quote(val, false)
+		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
-			g.write('{_SLIT("${escaped_val}"), ')
+			g.write('{_SLIT("')
+			g.write(escaped_val)
+			g.write('"), ')
 		} else {
 			g.write('{_SLIT0, ')
 		}
@@ -281,7 +284,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i, fmts)
-		g.write('0x${ft_u64.hex()}, {.d_${ft_str} = ')
+		g.write('0x')
+		g.write(ft_u64.hex())
+		g.write(', {.d_')
+		g.write(ft_str)
+		g.write(' = ')
 
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {

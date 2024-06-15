@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -8,15 +8,17 @@ module time
 #include <errno.h>
 
 pub struct C.tm {
-	tm_sec   int
-	tm_min   int
-	tm_hour  int
-	tm_mday  int
-	tm_mon   int
-	tm_year  int
-	tm_wday  int
-	tm_yday  int
-	tm_isdst int
+pub mut:
+	tm_sec    int
+	tm_min    int
+	tm_hour   int
+	tm_mday   int
+	tm_mon    int
+	tm_year   int
+	tm_wday   int
+	tm_yday   int
+	tm_isdst  int
+	tm_gmtoff int
 }
 
 fn C.timegm(&C.tm) C.time_t
@@ -35,13 +37,14 @@ pub fn (t Time) local() Time {
 		return t
 	}
 	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&t.unix), &loc_tm)
+	t_ := t.unix()
+	C.localtime_r(voidptr(&t_), &loc_tm)
 	return convert_ctime(loc_tm, t.nanosecond)
 }
 
 // in most systems, these are __quad_t, which is an i64
 pub struct C.timespec {
-mut:
+pub mut:
 	tv_sec  i64
 	tv_nsec i64
 }

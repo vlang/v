@@ -214,7 +214,7 @@ fn test_match_sumtype_multiple_types() {
 	match l {
 		Alfa, Bravo {
 			assert l.char == `a`
-			// TODO make methods work
+			// TODO: make methods work
 			// assert l.letter() == `a`
 		}
 		Charlie {

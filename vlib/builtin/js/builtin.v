@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -32,12 +32,12 @@ pub fn (err IError) str() string {
 			err.msg()
 		}
 		MessageError {
-			err.msg()
+			err.str()
 		}
 		else {
 			// >> Hack to allow old style custom error implementations
 			// TODO: remove once deprecation period for `IError` methods has ended
-			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between them
+			old_error_style := unsafe { voidptr(&err.msg.str) != voidptr(&err.code.str) } // if fields are not defined (new style) they don't have an offset between them
 			if old_error_style {
 				'${err.type_name()}: ${err.msg}'
 			} else {
@@ -66,6 +66,11 @@ struct MessageError {
 pub:
 	msg  string
 	code int
+}
+
+// str returns the message and code of the MessageError
+pub fn (err MessageError) str() string {
+	return err.msg
 }
 
 // msg returns the message of the MessageError

@@ -8,8 +8,12 @@ import v.scanner
 import term
 
 const skip_tests = os.getenv_opt('SKIP_TESTS') or { '' }.bool()
+const comments_mode = scanner.CommentsMode.from(os.getenv('SCANNER_MODE')) or {
+	scanner.CommentsMode.skip_comments
+}
 
 fn main() {
+	dump(comments_mode)
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
 		lst_path := files[0].all_after('@')
@@ -51,7 +55,7 @@ fn process_files(files []string) ! {
 		}
 		total_files++
 		// do not measure the scanning, but only the parsing:
-		mut p := new_parser(f, .skip_comments, table, pref_)
+		mut p := new_parser(f, comments_mode, table, pref_)
 		///
 		sw.restart()
 		ast_file := p.parse()
@@ -75,7 +79,6 @@ fn process_files(files []string) ! {
 fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
 	mut p := &parser.Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		comments_mode: comments_mode
 		table: table
 		pref: pref_
 		scope: &ast.Scope{

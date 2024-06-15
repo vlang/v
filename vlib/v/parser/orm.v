@@ -1,10 +1,12 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import v.ast
 
+// select from User
+// insert user into User returning id
 fn (mut p Parser) sql_expr() ast.Expr {
 	tmp_inside_match := p.inside_match
 	p.inside_orm = true
@@ -16,12 +18,32 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
 	p.check(.lcbr)
-	p.check(.key_select)
-	is_count := p.check_name() == 'count'
+	// p.check(.key_select)
+	is_select := p.tok.kind == .key_select
+	is_insert := p.tok.lit == 'insert'
+	if !is_select && !is_insert {
+		p.error('expected "select" or "insert" in an ORM expression')
+	}
+	p.next()
+	// kind := if is_select { ast.SqlExprKind.select_ } else { ast.SqlExprKind.insert }
+	mut inserted_var := ''
+	mut is_count := false
+	if is_insert {
+		inserted_var = p.check_name()
+		into := p.check_name()
+		if into != 'into' {
+			p.error('expecting `into`')
+		}
+	} else if is_select {
+		is_count = p.check_name() == 'count'
+	}
 	mut typ := ast.void_type
 
 	if is_count {
-		p.check_name() // from
+		n := p.check_name() // from
+		if n != 'from' {
+			p.error('expecting "from" in a "select count" ORM statement')
+		}
 	}
 
 	table_pos := p.tok.pos()
@@ -90,6 +112,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 	return ast.SqlExpr{
 		is_count: is_count
+		is_insert: is_insert
 		typ: typ.set_flag(.result)
 		or_expr: or_expr
 		db_expr: db_expr
@@ -104,6 +127,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_desc: has_desc
 		is_array: if is_count { false } else { true }
 		is_generated: false
+		inserted_var: inserted_var
 		pos: pos.extend(p.prev_tok.pos())
 		table_expr: ast.TypeNode{
 			typ: table_type
@@ -114,6 +138,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
+// delete
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut pos := p.tok.pos()
 	p.inside_orm = true
@@ -133,6 +158,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut lines := []ast.SqlStmtLine{}
 
 	for p.tok.kind != .rcbr {
+		if p.tok.kind == .eof {
+			p.unexpected_with_pos(pos, got: 'eof, while parsing an SQL statement')
+			return ast.SqlStmt{}
+		}
 		lines << p.parse_sql_stmt_line()
 	}
 
@@ -266,11 +295,23 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	} else if kind == .update {
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
+
+		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
+			[])
+		if where_expr_result is ast.NodeError {
+			return ast.SqlStmtLine{}
+		}
 	} else if kind == .delete {
 		table_pos = p.tok.pos()
 		table_type = p.parse_type()
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
+
+		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
+			[])
+		if where_expr_result is ast.NodeError {
+			return ast.SqlStmtLine{}
+		}
 	}
 	return ast.SqlStmtLine{
 		table_expr: ast.TypeNode{

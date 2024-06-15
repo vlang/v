@@ -44,11 +44,6 @@
 #include "psa/crypto.h"
 #endif
 
-#if ( defined(__ARMCC_VERSION) || defined(_MSC_VER) ) && \
-    !defined(inline) && !defined(__cplusplus)
-#define inline __inline
-#endif
-
 /** Memory allocation failed. */
 #define MBEDTLS_ERR_PK_ALLOC_FAILED        -0x3F80
 /** Type mismatch, eg attempt to encrypt with an ECDSA key */

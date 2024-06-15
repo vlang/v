@@ -4968,20 +4968,36 @@ static FILE *mz_fopen(const char *pFilename, const char *pMode) {
   WCHAR *wFilename = mz_utf8z_to_widechar(pFilename);
   WCHAR *wMode = mz_utf8z_to_widechar(pMode);
   FILE *pFile = NULL;
+#ifdef ZIP_ENABLE_SHARABLE_FILE_OPEN
+  pFile = _wfopen(wFilename, wMode);
+#else
   errno_t err = _wfopen_s(&pFile, wFilename, wMode);
+#endif
   free(wFilename);
   free(wMode);
+#ifdef ZIP_ENABLE_SHARABLE_FILE_OPEN
+  return pFile;
+#else
   return err ? NULL : pFile;
+#endif
 }
 
 static FILE *mz_freopen(const char *pPath, const char *pMode, FILE *pStream) {
   WCHAR *wPath = mz_utf8z_to_widechar(pPath);
   WCHAR *wMode = mz_utf8z_to_widechar(pMode);
   FILE *pFile = NULL;
+#ifdef ZIP_ENABLE_SHARABLE_FILE_OPEN
+  pFile = _wfreopen(wPath, wMode, pStream);
+#else
   errno_t err = _wfreopen_s(&pFile, wPath, wMode, pStream);
+#endif
   free(wPath);
   free(wMode);
+#ifdef ZIP_ENABLE_SHARABLE_FILE_OPEN
+  return pFile;
+#else
   return err ? NULL : pFile;
+#endif
 }
 
 static int mz_stat64(const char *path, struct __stat64 *buffer) {
@@ -4999,7 +5015,11 @@ static int mz_mkdir(const char *pDirname) {
 }
 
 #ifndef MINIZ_NO_TIME
-#include <sys/utime.h>
+#if (defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+   #include <utime.h>
+#else
+   #include <sys/utime.h>
+#endif
 #endif
 #define MZ_FOPEN mz_fopen
 #define MZ_FCLOSE fclose
@@ -5016,7 +5036,11 @@ static int mz_mkdir(const char *pDirname) {
 
 #elif defined(__MINGW32__) || defined(__WATCOMC__)
 #ifndef MINIZ_NO_TIME
-#include <sys/utime.h>
+#if (defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+   #include <utime.h>
+#else
+   #include <sys/utime.h>
+#endif
 #endif
 #define MZ_FOPEN(f, m) fopen(f, m)
 #define MZ_FCLOSE fclose
@@ -5033,7 +5057,11 @@ static int mz_mkdir(const char *pDirname) {
 
 #elif defined(__TINYC__)
 #ifndef MINIZ_NO_TIME
-#include <sys/utime.h>
+#if (defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+   #include <utime.h>
+#else
+   #include <sys/utime.h>
+#endif
 #endif
 #define MZ_FOPEN(f, m) fopen(f, m)
 #define MZ_FCLOSE fclose

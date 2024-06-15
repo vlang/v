@@ -17,7 +17,7 @@ fn test_mut() {
 	mut numbers := [1, 2, 3]
 	foo(7, mut numbers)
 	assert numbers.len == 3
-	// TODO bring back once << works with mutable args
+	// TODO: bring back once << works with mutable args
 	// assert numbers.len == 4
 	// assert numbers[0] == 7
 	// assert numbers[3] == 4

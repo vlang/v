@@ -9,8 +9,17 @@ import strings
 #include <sys/types.h>
 #include <utime.h>
 
+// path_separator is the platform specific separator string, used between the folders
+// and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
+
+// path_delimiter is the platform specific delimiter string, used between the paths
+// in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
 pub const path_delimiter = ':'
+
+// path_devnull is a platform-specific file path of the null device.
+// It is '/dev/null' on POSIX, and r'\\.\nul' on Windows.
+pub const path_devnull = '/dev/null'
 
 const executable_suffixes = ['']
 
@@ -52,9 +61,9 @@ pub const s_iwoth = 0o0002 // Write by others
 
 pub const s_ixoth = 0o0001
 
-fn C.utime(&char, voidptr) int
+fn C.utime(&char, &C.utimbuf) int
 
-fn C.uname(name voidptr) int
+fn C.uname(name &C.utsname) int
 
 fn C.symlink(&char, &char) int
 
@@ -163,7 +172,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(os.path_separator)
-	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
+	cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
 	mut subdirs := [cwd]
 	for i := 0; i < steps.len; i++ {
 		step := steps[i]
@@ -205,8 +214,8 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 }
 
 pub fn utime(path string, actime int, modtime int) ! {
-	mut u := C.utimbuf{actime, modtime}
-	if C.utime(&char(path.str), voidptr(&u)) != 0 {
+	u := C.utimbuf{actime, modtime}
+	if C.utime(&char(path.str), &u) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
@@ -229,10 +238,8 @@ pub fn utime(path string, actime int, modtime int) ! {
 // See also https://pubs.opengroup.org/onlinepubs/7908799/xsh/sysutsname.h.html
 pub fn uname() Uname {
 	mut u := Uname{}
-	utsize := sizeof(C.utsname)
 	unsafe {
-		x := malloc_noscan(int(utsize))
-		d := &C.utsname(x)
+		d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
 		if C.uname(d) == 0 {
 			u.sysname = cstring_to_vstring(d.sysname)
 			u.nodename = cstring_to_vstring(d.nodename)
@@ -248,7 +255,7 @@ pub fn uname() Uname {
 pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
-	mut buf := unsafe { &char(malloc_noscan(size)) }
+	buf := unsafe { &char(malloc_noscan(size)) }
 	if C.gethostname(buf, size) == 0 {
 		hstnme = unsafe { cstring_to_vstring(buf) }
 		unsafe { free(buf) }
@@ -273,8 +280,21 @@ fn init_os_args(argc int, argv &&u8) []string {
 	return args_
 }
 
+// ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
+// See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
+// Example: https://github.com/vlang/v/blob/master/examples/readdir.v
+// ```
+//   entries := os.ls(os.home_dir()) or { [] }
+//   for entry in entries {
+//     if os.is_dir(os.join_path(os.home_dir(), entry)) {
+//       println('dir: $entry')
+//     } else {
+//       println('file: $entry')
+//     }
+//   }
+// ```
 pub fn ls(path string) ![]string {
-	if path.len == 0 {
+	if path == '' {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut res := []string{cap: 50}
@@ -317,10 +337,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 // execute starts the specified command, waits for it to complete, and returns its output.
 @[manualfree]
 pub fn execute(cmd string) Result {
-	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
-	// }
-	pcmd := if cmd.contains('2>') { cmd.clone() } else { '${cmd} 2>&1' }
+	pcmd := 'exec 2>&1;${cmd}'
 	defer {
 		unsafe { pcmd.free() }
 	}
@@ -497,18 +514,15 @@ pub fn getegid() int {
 
 // Turns the given bit on or off, depending on the `enable` parameter
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
-	mut s := C.stat{}
 	mut new_mode := u32(0)
-	path := &char(path_s.str)
-	unsafe {
-		C.stat(path, &s)
-		new_mode = s.st_mode
+	if s := stat(path_s) {
+		new_mode = s.mode
 	}
 	match enable {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
 	}
-	C.chmod(path, int(new_mode))
+	C.chmod(&char(path_s.str), int(new_mode))
 }
 
 // get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example

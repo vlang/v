@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module token
@@ -176,6 +176,7 @@ pub enum AtKind {
 	v_current_hash
 	vmod_file
 	vmodroot_path
+	vmod_hash
 	vroot_path // obsolete
 	vexeroot_path
 	file_path_line_nr
@@ -187,8 +188,8 @@ pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assig
 	.unsigned_right_shift_assign]
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@FILE_LINE',
-	'@LOCATION']
+	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@VMODHASH',
+	'@FILE_LINE', '@LOCATION']
 
 pub const token_str = build_token_str()
 
@@ -213,7 +214,7 @@ fn build_keys() map[string]Kind {
 	return res
 }
 
-// TODO remove once we have `enum Kind { name('name') if('if') ... }`
+// TODO: remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
 	mut s := []string{len: int(Kind._end_)}
 	s[Kind.unknown] = 'unknown'

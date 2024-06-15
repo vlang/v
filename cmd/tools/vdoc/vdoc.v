@@ -51,12 +51,16 @@ struct ParallelDoc {
 fn (vd &VDoc) gen_json(d doc.Doc) string {
 	cfg := vd.cfg
 	mut jw := strings.new_builder(200)
-	comments := if cfg.include_examples {
-		d.head.merge_comments()
-	} else {
-		d.head.merge_comments_without_examples()
+	jw.write_string('{"module_name":"${d.head.name}",')
+	if d.head.comments.len > 0 && cfg.include_comments {
+		comments := if cfg.include_examples {
+			d.head.merge_comments()
+		} else {
+			d.head.merge_comments_without_examples()
+		}
+		jw.write_string('"description":"${escape(comments)}",')
 	}
-	jw.write_string('{"module_name":"${d.head.name}","description":"${escape(comments)}","contents":')
+	jw.write_string('"contents":')
 	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
 	jw.write_string(',"generator":"vdoc","time_generated":"${d.time_generated.str()}"}')
 	return jw.str()
@@ -67,9 +71,9 @@ fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
 		content_arr := d.head.content.split(' ')
-		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}')
 	} else {
-		pw.writeln('${d.head.content}\n')
+		pw.writeln('${d.head.content}')
 	}
 	if cfg.include_comments {
 		comments := if cfg.include_examples {
@@ -81,6 +85,7 @@ fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 			pw.writeln(indent(comments))
 		}
 	}
+	pw.writeln('')
 	vd.write_plaintext_content(d.contents.arr(), mut pw)
 	return pw.str()
 }
@@ -239,7 +244,7 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
 	mut err_msg := err.msg()
 	if err.code() == 1 {
-		mod_list := get_modules_list(cfg.input_path, []string{})
+		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
 			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
@@ -255,7 +260,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		path: cfg.output_path
 		typ: cfg.output_type
 	}
-	if out.path.len == 0 {
+	if out.path == '' {
 		if cfg.output_type == .unset {
 			out.typ = .ansi
 		} else {
@@ -302,14 +307,21 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [
-			cfg.input_path,
-		] }
+	dirs := if cfg.is_multi { get_modules(cfg.input_path) } else { [cfg.input_path] }
 	for dirpath in dirs {
 		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
-			vd.emit_generate_err(err)
-			exit(1)
+			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
+			if os.exists(os.join_path(dirpath, 'src')) {
+				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform,
+					cfg.symbol_name) or {
+					vd.emit_generate_err(err)
+					exit(1)
+				}
+			} else {
+				vd.emit_generate_err(err)
+				exit(1)
+			}
 		}
 		if dcs.contents.len == 0 {
 			continue
@@ -343,7 +355,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	vd.vprintln('Rendering docs...')
-	if out.path.len == 0 || out.path == 'stdout' || out.path == '-' {
+	if out.path == '' || out.path == 'stdout' || out.path == '-' {
 		if out.typ == .html {
 			vd.render_static_html(out)
 		}
@@ -366,7 +378,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			out.path = os.real_path('.')
 		}
 		if cfg.is_multi {
-			out.path = os.join_path(out.path, '_docs')
+			out.path = if cfg.input_path == out.path {
+				os.join_path(out.path, '_docs')
+			} else {
+				out.path
+			}
 			if !os.exists(out.path) {
 				os.mkdir(out.path) or { panic(err) }
 			} else {

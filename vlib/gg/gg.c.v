@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 
 module gg
@@ -6,7 +6,6 @@ module gg
 import os
 import os.font
 import gx
-import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
@@ -52,7 +51,6 @@ pub struct Config {
 pub:
 	width         int
 	height        int
-	use_ortho     bool // unused, still here just for backwards compatibility
 	retina        bool
 	resizable     bool
 	user_data     voidptr
@@ -105,6 +103,9 @@ pub:
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	//
+	min_width  int
+	min_height int
 }
 
 @[heap]
@@ -406,6 +407,8 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			}
 		}
 		.resized {
+			ctx.scale = dpi_scale()
+			ctx.ft.scale = ctx.scale
 			if ctx.config.resized_fn != unsafe { nil } {
 				ctx.config.resized_fn(e, ctx.config.user_data)
 			}
@@ -441,6 +444,16 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 
 //---- public methods
 
+// start creates a new context and runs it right away.
+// It is a convenient way to start short/throwaway gg based prototypes,
+// that do not need to keep and update their own state, like simple
+// animations/visualisations that depend only on the time, or the ctx.frame counter.
+// Use gg.new_context() for more complex ones.
+pub fn start(cfg Config) {
+	mut ctx := new_context(cfg)
+	ctx.run()
+}
+
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
 	mut ctx := &Context{
@@ -465,6 +478,8 @@ pub fn new_context(cfg Config) &Context {
 			high_dpi: true
 			fullscreen: cfg.fullscreen
 			__v_native_render: cfg.native_rendering
+			min_width: cfg.min_width
+			min_height: cfg.min_height
 			// drag&drop
 			enable_dragndrop: cfg.enable_dragndrop
 			max_dropped_files: cfg.max_dropped_files
@@ -497,8 +512,8 @@ pub fn (ctx &Context) quit() {
 
 // set_bg_color sets the color of the window background to `c`.
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
-	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0,
-		f32(c.a) / 255.0)
+	ctx.clear_pass = gfx.create_clear_pass_action(f32(c.r) / 255.0, f32(c.g) / 255.0,
+		f32(c.b) / 255.0, f32(c.a) / 255.0)
 }
 
 // Resize the context's Window
@@ -530,6 +545,7 @@ pub enum EndEnum {
 
 @[params]
 pub struct EndOptions {
+pub:
 	how EndEnum
 }
 
@@ -552,6 +568,10 @@ const dontcare_pass = gfx.PassAction{
 			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 	]!
+}
+
+pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
+	return sapp.create_default_pass(action)
 }
 
 // end finishes all the drawing for the context ctx.
@@ -580,14 +600,15 @@ pub fn (ctx &Context) end(options EndOptions) {
 			ctx.show_fps()
 		}
 	}
-	match options.how {
+	pass := match options.how {
 		.clear {
-			gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
+			create_default_pass(ctx.clear_pass)
 		}
 		.passthru {
-			gfx.begin_default_pass(gg.dontcare_pass, sapp.width(), sapp.height())
+			create_default_pass(gg.dontcare_pass)
 		}
 	}
+	gfx.begin_pass(pass)
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
@@ -712,7 +733,7 @@ pub fn screen_size() Size {
 			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}
-	// TODO linux, etc
+	// TODO: linux, etc
 	return Size{}
 }
 

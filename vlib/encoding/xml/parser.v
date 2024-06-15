@@ -179,7 +179,7 @@ fn parse_entity(contents string) !(DTDEntity, string) {
 	entity_contents := contents[xml.entity_len..entity_end]
 
 	name := entity_contents.trim_left(' \t\n').all_before(' ')
-	if name.len == 0 {
+	if name == '' {
 		return error('Entity is missing name.')
 	}
 	value := entity_contents.all_after_first(name).trim_space().trim('"\'')
@@ -221,7 +221,7 @@ fn parse_element(contents string) !(DTDElement, string) {
 	}
 
 	name := element_contents[name_span.start..name_span.end].trim_left(' \t\n')
-	if name.len == 0 {
+	if name == '' {
 		return error('Element is missing name.')
 	}
 	definition_string := element_contents.all_after_first(name).trim_space().trim('"\'')

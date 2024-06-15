@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -194,7 +194,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_arr_eq(')
 				if left.typ.is_ptr() && !left.typ.has_flag(.shared_f) {
-					g.write('*'.repeat(left.typ.nr_muls()))
+					if node.left !is ast.ArrayInit {
+						g.write('*'.repeat(left.typ.nr_muls()))
+					}
 				}
 				g.expr(node.left)
 				if left.typ.has_flag(.shared_f) {
@@ -202,7 +204,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write(', ')
 				if right.typ.is_ptr() && !right.typ.has_flag(.shared_f) {
-					g.write('*'.repeat(right.typ.nr_muls()))
+					if node.right !is ast.ArrayInit {
+						g.write('*'.repeat(right.typ.nr_muls()))
+					}
 				}
 				g.expr(node.right)
 				if right.typ.has_flag(.shared_f) {
@@ -518,7 +522,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 						expr: node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
+					g.write('(')
 					g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+					g.write(')')
 					return
 				}
 			} else if elem_type_.sym.kind == .interface_ {
@@ -528,11 +534,15 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 					expr: node.left
 					expr_type: ast.mktyp(node.left_type)
 				}
+				g.write('(')
 				g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+				g.write(')')
 				return
 			}
 		}
+		g.write('(')
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
+		g.write(')')
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
@@ -597,17 +607,23 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 						expr: node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
+					g.write('(')
 					g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+					g.write(')')
 					return
 				}
 			}
 		}
+		g.write('(')
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
+		g.write(')')
 	} else if right.unaliased_sym.kind == .string {
+		g.write('(')
 		g.write('string_contains(')
 		g.expr(node.right)
 		g.write(', ')
 		g.expr(node.left)
+		g.write(')')
 		g.write(')')
 	}
 }
@@ -661,7 +677,11 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.sym(node.left_type)
+	mut left_sym := if g.comptime.is_comptime_var(node.left) {
+		g.table.sym(g.unwrap_generic(g.comptime.get_comptime_var_type(node.left)))
+	} else {
+		g.table.sym(node.left_type)
+	}
 	is_aggregate := left_sym.kind == .aggregate
 	if is_aggregate {
 		parent_left_type := (left_sym.info as ast.Aggregate).sum_type
@@ -708,6 +728,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	}
 	if node.right is ast.None {
 		g.write('${ast.none_type.idx()} /* none */')
+	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
+		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
+			ast.void_type
+		}
+		g.write('${int(variant_idx)}')
 	} else {
 		g.expr(node.right)
 	}
@@ -759,9 +784,16 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		if left.sym.has_method(node.op.str()) {
 			method = left.sym.find_method(node.op.str()) or { ast.Fn{} }
 			method_name = left.sym.cname + '_' + util.replace_op(node.op.str())
-		} else if left.unaliased_sym.has_method(node.op.str()) {
-			method = left.unaliased_sym.find_method(node.op.str()) or { ast.Fn{} }
+		} else if left.unaliased_sym.has_method_with_generic_parent(node.op.str()) {
+			method = left.unaliased_sym.find_method_with_generic_parent(node.op.str()) or {
+				ast.Fn{}
+			}
 			method_name = left.unaliased_sym.cname + '_' + util.replace_op(node.op.str())
+			if left.unaliased_sym.info is ast.Struct
+				&& left.unaliased_sym.info.generic_types.len > 0 {
+				method_name = g.generic_fn_name(left.unaliased_sym.info.concrete_types,
+					method_name)
+			}
 		} else {
 			g.gen_plain_infix_expr(node)
 			return
@@ -786,6 +818,12 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			g.op_arg(node.right, method.params[1].typ, right.typ)
 		}
 		g.write(')')
+
+		if left.typ != 0 && !left.typ.has_option_or_result()
+			&& g.table.final_sym(left.typ).kind == .array_fixed {
+			// it's non-option fixed array, requires accessing .ret_arr member to get the array
+			g.write('.ret_arr')
+		}
 	}
 }
 
@@ -1021,10 +1059,12 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
-	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
+	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr] {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
+		g.write('(')
 		g.expr(node.left)
+		g.write(')')
 		g.inside_opt_or_res = old_inside_opt_or_res
 		g.write('.state')
 	} else {

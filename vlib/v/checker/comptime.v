@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -84,7 +84,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
 	}
 	if node.is_vweb {
-		// TODO assoc parser bug
+		// TODO: assoc parser bug
 		save_cur_fn := c.table.cur_fn
 		pref_ := *c.pref
 		pref2 := &pref.Preferences{
@@ -217,7 +217,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		c.unwrap_generic(node.typ)
 	} else {
 		node.typ = c.expr(mut node.expr)
-		node.typ
+		c.unwrap_generic(node.typ)
 	}
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
@@ -402,6 +402,9 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			if expr.typ == ast.i64_type {
 				return cast_expr_value.i64() or { return none }
 			}
+			if expr.typ == ast.int_type {
+				return cast_expr_value.i64() or { return none }
+			}
 			//
 			if expr.typ == ast.u8_type {
 				return cast_expr_value.u8() or { return none }
@@ -568,6 +571,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 
 fn (mut c Checker) verify_vweb_params_for_method(node ast.Fn) (bool, int, int) {
 	margs := node.params.len - 1 // first arg is the receiver/this
+	// if node.attrs.len == 0 || (node.attrs.len == 1 && node.attrs[0].name == 'post') {
 	if node.attrs.len == 0 {
 		// allow non custom routed methods, with 1:1 mapping
 		return true, -1, margs
@@ -577,7 +581,7 @@ fn (mut c Checker) verify_vweb_params_for_method(node ast.Fn) (bool, int, int) {
 			param_sym := c.table.final_sym(param.typ)
 			if !(param_sym.is_string() || param_sym.is_number() || param_sym.is_float()
 				|| param_sym.kind == .bool) {
-				c.error('invalid type `${param_sym.name}` for parameter `${param.name}` in vweb app method `${node.name}`',
+				c.error('invalid type `${param_sym.name}` for parameter `${param.name}` in vweb app method `${node.name}` (only strings, numbers, and bools are allowed)',
 					param.pos)
 			}
 		}
@@ -814,7 +818,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 							}
 						}
 					} else {
-						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
+						c.error('invalid `\$if` condition: ${cond.left.type_name()}',
 							cond.pos)
 					}
 				}
@@ -878,7 +882,11 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					else { return .unknown }
 				}
 			} else if cname in ast.valid_comptime_if_cpu_features {
-				return .unknown
+				match cname {
+					'x64' { return if c.pref.m64 { .eval } else { .skip } }
+					'x32' { return if !c.pref.m64 { .eval } else { .skip } }
+					else { return .unknown }
+				}
 			} else if cname in ast.valid_comptime_if_other {
 				match cname {
 					'apk' {
@@ -913,6 +921,9 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					}
 					'no_bounds_checking' {
 						return if cname in c.pref.compile_defines_all { .eval } else { .skip }
+					}
+					'autofree' {
+						return if c.pref.autofree { .eval } else { .skip }
 					}
 					'freestanding' {
 						return if c.pref.is_bare && !c.pref.output_cross_c { .eval } else { .skip }
@@ -1012,4 +1023,28 @@ fn (mut c Checker) pop_comptime_info() {
 	c.comptime.comptime_for_method_var = old.comptime_for_method_var
 	c.comptime.comptime_for_method = old.comptime_for_method
 	c.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
+}
+
+fn overflows_i8(val i64) bool {
+	return val > max_i8 || val < min_i8
+}
+
+fn overflows_i16(val i64) bool {
+	return val > max_i16 || val < min_i16
+}
+
+fn overflows_i32(val i64) bool {
+	return val > max_i32 || val < min_i32
+}
+
+fn overflows_u8(val i64) bool {
+	return val > max_u8 || val < min_u8
+}
+
+fn overflows_u16(val i64) bool {
+	return val > max_u16 || val < min_u16
+}
+
+fn overflows_u32(val i64) bool {
+	return val > max_u32 || val < min_u32
 }

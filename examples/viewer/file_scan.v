@@ -139,7 +139,7 @@ fn (item_list Item_list) get_file_path() string {
 	if item_list.lst.len <= 0 || item_list.n_item <= 0 {
 		return ''
 	}
-	if item_list.lst[item_list.item_index].path.len > 0 {
+	if item_list.lst[item_list.item_index].path != '' {
 		return '${item_list.lst[item_list.item_index].path}${item_list.path_sep}${item_list.lst[item_list.item_index].name}'
 	}
 	return item_list.lst[item_list.item_index].name

@@ -19,6 +19,7 @@ const utf8_max = 0x10FFFF
 
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
+pub:
 	scanner &scanner.Scanner = unsafe { nil }
 }
 
@@ -510,7 +511,7 @@ fn validate_utf8_codepoint_string(str string) ! {
 		return error('Unicode code point `${str}` is outside the valid Unicode scalar value ranges.')
 	}
 	// Check if the Unicode value is actually in the valid Unicode scalar value ranges.
-	// TODO should probably be transferred / implemented in `utf8.validate(...)` also?
+	// TODO: should probably be transferred / implemented in `utf8.validate(...)` also?
 	if !((int_val >= 0x0000 && int_val <= 0xD7FF) || (int_val >= 0xE000 && int_val <= 0x10FFFF)) {
 		return error('Unicode code point `${str}` is not a valid Unicode scalar value.')
 	}
@@ -535,7 +536,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ! {
 		return error('Unicode escape sequence `${esc_unicode}` should be at least ${hex_digits_len} in length.')
 	}
 	sequence = sequence[..hex_digits_len]
-	// TODO not enforced in BurnSushi testsuite??
+	// TODO: not enforced in BurnSushi testsuite??
 	// if !sequence.is_upper() {
 	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
 	//}

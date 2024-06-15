@@ -152,7 +152,7 @@ pub fn (mut c StreamConn) read(mut buf []u8) !int {
 
 // read_deadline returns the read deadline
 pub fn (mut c StreamConn) read_deadline() !time.Time {
-	if c.read_deadline.unix == 0 {
+	if c.read_deadline.unix() == 0 {
 		return c.read_deadline
 	}
 	return error('none')
@@ -165,7 +165,7 @@ pub fn (mut c StreamConn) set_read_deadline(deadline time.Time) {
 
 // write_deadline returns the write deadline
 pub fn (mut c StreamConn) write_deadline() !time.Time {
-	if c.write_deadline.unix == 0 {
+	if c.write_deadline.unix() == 0 {
 		return c.write_deadline
 	}
 	return error('none')
@@ -191,7 +191,7 @@ pub fn (c &StreamConn) write_timeout() time.Duration {
 	return c.write_timeout
 }
 
-// set_write_timout sets the write timeout
+// set_write_timeout sets the write timeout
 pub fn (mut c StreamConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }
@@ -224,6 +224,7 @@ mut:
 
 @[params]
 pub struct ListenOptions {
+pub:
 	backlog int = 128
 }
 
@@ -296,7 +297,7 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 
 // accept_deadline returns the deadline until a new client is accepted
 pub fn (l &StreamListener) accept_deadline() !time.Time {
-	if l.accept_deadline.unix != 0 {
+	if l.accept_deadline.unix() != 0 {
 		return l.accept_deadline
 	}
 	return error('no deadline')
@@ -374,13 +375,8 @@ fn new_stream_socket(socket_path string) !StreamSocket {
 		eprintln('    new_unix_socket | s.handle: ${s.handle:6}')
 	}
 
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			net.socket_error(C.ioctlsocket(handle, net.fionbio, &t))!
-		} $else {
-			net.socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK))!
-		}
+	$if net_nonblocking_sockets ? {
+		net.set_blocking(handle, false)!
 	}
 	return s
 }
@@ -428,9 +424,8 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 	addr := addrs[0]
 	// cast to the correct type
 	alen := addr.len()
-	eprintln(addr)
 
-	$if !net_blocking_sockets ? {
+	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
 			C.photon_connect(s.handle, voidptr(&addr), alen, unix.unix_default_read_timeout)
 		} $else {
@@ -487,13 +482,8 @@ pub fn stream_socket_from_handle(sockfd int) !&StreamSocket {
 		eprintln('    stream_socket_from_handle | s.handle: ${s.handle:6}')
 	}
 
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			net.socket_error(C.ioctlsocket(sockfd, net.fionbio, &t))!
-		} $else {
-			net.socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))!
-		}
+	$if net_nonblocking_sockets ? {
+		net.set_blocking(sockfd, false)!
 	}
 	return s
 }

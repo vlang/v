@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -271,7 +271,21 @@ fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 
 fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
-	// TODO pre-allocate n slots
+	// TODO: pre-allocate n slots
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
+	for _ in 0 .. n {
+		unsafe {
+			out.set(pkey, pval)
+			pkey = pkey + key_bytes
+			pval = pval + value_bytes
+		}
+	}
+	return out
+}
+
+fn new_map_update_init(update &map, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+	mut out := unsafe { update.clone() }
 	mut pkey := &u8(keys)
 	mut pval := &u8(values)
 	for _ in 0 .. n {

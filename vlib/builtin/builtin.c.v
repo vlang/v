@@ -1,7 +1,7 @@
 @[has_globals]
 module builtin
 
-type FnExitCb = fn ()
+pub type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
 fn C.strerror(int) &char
@@ -30,6 +30,23 @@ fn v_segmentation_fault_handler(signal_number int) {
 @[noreturn]
 pub fn exit(code int) {
 	C.exit(code)
+}
+
+// at_exit registers a fn callback, that will be called at normal process termination.
+// It returns an error, if the registration was not successful.
+// The registered callback functions, will be called either via exit/1,
+// or via return from the main program, in the reverse order of their registration.
+// The same fn may be registered multiple times.
+// Each callback fn will called once for each registration.
+pub fn at_exit(cb FnExitCb) ! {
+	$if freestanding {
+		return error('at_exit not implemented with -freestanding')
+	} $else {
+		res := C.atexit(cb)
+		if res != 0 {
+			return error_with_code('at_exit failed', res)
+		}
+	}
 }
 
 // panic_debug private function that V uses for panics, -cg/-g is passed
@@ -223,6 +240,30 @@ pub fn flush_stderr() {
 	}
 }
 
+// unbuffer_stdout will turn off the default buffering done for stdout.
+// It will affect all consequent print and println calls, effectively making them behave like
+// eprint and eprintln do. It is useful for programs, that want to produce progress bars, without
+// cluttering your code with a flush_stdout() call after every print() call. It is also useful for
+// programs (sensors), that produce small chunks of output, that you want to be able to process
+// immediately.
+// Note 1: if used, *it should be called at the start of your program*, before using
+// print or println().
+// Note 2: most libc implementations, have logic that use line buffering for stdout, when the output
+// stream is connected to an interactive device, like a terminal, and otherwise fully buffer it,
+// which is good for the output performance for programs that can produce a lot of output (like
+// filters, or cat etc), but bad for latency. Normally, it is usually what you want, so it is the
+// default for V programs too.
+// See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
+// See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
+pub fn unbuffer_stdout() {
+	$if freestanding {
+		not_implemented := 'unbuffer_stdout is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		unsafe { C.setbuf(C.stdout, 0) }
+	}
+}
+
 // print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 @[manualfree]
 pub fn print(s string) {
@@ -243,6 +284,9 @@ pub fn print(s string) {
 pub fn println(s string) {
 	if s.str == 0 {
 		println('println(NIL)')
+		return
+	}
+	$if noprintln ? {
 		return
 	}
 	$if android && !termux {
@@ -322,16 +366,9 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -365,16 +402,9 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_noscan(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -424,16 +454,9 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_uncollectable(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -560,14 +583,10 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
 	}
+	vplayground_mlimit(n)
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
-		$if vplayground ? {
-			if n > 10000 {
-				panic('allocating more than 10 KB is not allowed in the playground')
-			}
-		}
 		if n < 0 {
 			panic('calloc_noscan(${n} < 0)')
 		}
@@ -700,3 +719,13 @@ __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+@[if vplayground ?]
+fn vplayground_mlimit(n isize) {
+	if n > 10000 {
+		panic('allocating more than 10 KB at once is not allowed in the V playground')
+	}
+	if total_m > 50 * 1024 * 1024 {
+		panic('allocating more than 50 MB is not allowed in the V playground')
+	}
+}

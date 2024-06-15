@@ -5,14 +5,14 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
-// TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
+// TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
 	$if arm64 {
 		eprintln('>> skipping testing on ARM for now')
 		return
 	}
-	$if freebsd {
-		eprintln('>> skipping testing on FreeBSD for now')
+	$if freebsd || openbsd {
+		eprintln('>> skipping testing on FreeBSD/OpenBSD for now')
 		return
 	}
 	mut bench := benchmark.new_benchmark()
@@ -21,7 +21,7 @@ fn test_native() {
 	dir := os.join_path(vroot, 'vlib', 'v', 'gen', 'native', 'tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'native')
+	wrkdir := os.join_path(os.vtmp_dir(), 'native_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {
 		os.rmdir_all(wrkdir) or {}

@@ -1,15 +1,13 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
 import v.ast
-import v.pref
 
 // error_type_name returns a proper type name reference for error messages
 // ? => Option type
 // ! => Result type
 // others => type `name`
-@[inline]
 fn (mut c Checker) error_type_name(exp_type ast.Type) string {
 	return if exp_type == ast.void_type.set_flag(.result) {
 		'Result type'
@@ -20,16 +18,26 @@ fn (mut c Checker) error_type_name(exp_type ast.Type) string {
 	}
 }
 
+@[inline]
+fn (mut c Checker) error_unaliased_type_name(exp_type ast.Type) string {
+	return c.error_type_name(c.table.unaliased_type(exp_type))
+}
+
 // TODO: non deferred
 fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
 		return
 	}
+	prev_inside_return := c.inside_return
+	c.inside_return = true
+	defer {
+		c.inside_return = prev_inside_return
+	}
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {
 		unaliased_type := c.table.unaliased_type(expected_type)
-		if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+		if unaliased_type.has_option_or_result() {
 			expected_type = unaliased_type
 		}
 	}
@@ -130,6 +138,21 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
 		c.error('Option and Result types have been split, use `?` to return none', node.pos)
 	}
+	expected_fn_return_type_has_option := c.table.cur_fn.return_type.has_flag(.option)
+	expected_fn_return_type_has_result := c.table.cur_fn.return_type.has_flag(.result)
+	if exp_is_option && expected_fn_return_type_has_result {
+		if got_types_0_idx == ast.none_type_idx {
+			c.error('cannot use `none` as ${c.error_type_name(c.table.unaliased_type(c.table.cur_fn.return_type))} in return argument',
+				node.pos)
+			return
+		}
+		return
+	}
+	if exp_is_result && expected_fn_return_type_has_option {
+		c.error('expecting to return a ?Type, but you are returning ${c.error_type_name(expected_type)} instead',
+			node.pos)
+		return
+	}
 	if (exp_is_option
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
@@ -171,8 +194,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 		got_type := c.unwrap_generic(got_types[i])
-		if got_type.has_flag(.option)
-			&& got_type.clear_flag(.option) != exp_type.clear_flag(.option) {
+		if got_type.has_flag(.option) && (!exp_type.has_flag(.option)
+			|| got_type.clear_flag(.option) != exp_type.clear_flag(.option)) {
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)

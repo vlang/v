@@ -1,0 +1,121 @@
+name: Tools CI
+
+on:
+  push:
+    paths:
+      - 'cmd/**'
+      - '!cmd/tools/vpm/**'
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - '!**.md'
+      - '**/tools_ci.yml'
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - '!cmd/tools/vpm/**'
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - '!**.md'
+      - '**/tools_ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        cc: [tcc, gcc, clang]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+      - name: Code in cmd/ is formatted
+        run: ./v fmt -verify cmd/
+      - name: Test
+        run: ./v test-self cmd
+      - name: Test (-cstrict)
+        if: ${{ matrix.cc != 'tcc' }}
+        run: ./v -W -cstrict test-self cmd
+      - name: Test sanitized
+        if: ${{ matrix.cc != 'tcc' }}
+        run: |
+          if [[ ${{ matrix.cc }} == "clang" ]]; then
+            cmd="./v -cc clang -cflags -fsanitize=undefined test-self cmd"
+            echo $cmd && $cmd
+            cmd="./v -cc clang -cflags -fsanitize=memory test-self cmd"
+            echo $cmd && $cmd
+          else
+            # TODO: enable thread sanitizer after switching to ubuntu-22.04. Ref. https://github.com/orgs/community/discussions/63391
+            # cmd="./v -cc gcc -cflags -fsanitize=thread test-self cmd"
+            # echo $cmd && $cmd
+            cmd="./v -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self cmd/tools"
+            echo $cmd && $cmd
+            # cmd="./v -cc gcc -cflags -fsanitize=kernel-address test-self cmd"
+            # echo $cmd && $cmd
+          fi
+
+  macos:
+    runs-on: macos-12
+    strategy:
+      matrix:
+        cc: [clang]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
+      - name: Test
+        run: ./v test-self cmd
+      - name: Test (-cstrict)
+        run: ./v -W -cstrict test-self cmd
+
+  windows:
+    runs-on: windows-2019
+    strategy:
+      matrix:
+        cc: [tcc, gcc, msvc]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+      - name: Test
+        run: ./v test-self cmd
+      - name: Test (-cstrict)
+        if: ${{ matrix.cc == 'msvc' }}
+        run: ./v -W -cstrict test-self cmd
+
+  ubuntu-docker-musl:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Test
+        run: ./v test-self cmd
+      - name: Test (-cstrict)
+        run: ./v -W -cstrict test-self cmd

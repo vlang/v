@@ -6,11 +6,11 @@ features.
 ## Features
 
 - **Very fast** performance of C on the web.
+- **Templates are precompiled** all errors are visible at compilation time, not at runtime.
+- **Middleware** functionality similar to other big frameworks.
+- **Controllers** to split up your apps logic.
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
   dependencies.
-- **Templates are precompiled** all errors are visible at compilation time, not at runtime.
-- **Middleware** functionality similair to other big frameworks.
-- **Controllers** to split up your apps logic.
 
 ## Quick Start
 
@@ -27,11 +27,12 @@ Use the `-prod` flag when building for production.
 
 ## Getting Started
 
-To start, you must import the module `x.vweb` and define a structure which will 
+To start, you must import the module `x.vweb` and define a structure which will
 represent your app and a structure which will represent the context of a request.
 These structures must be declared with the `pub` keyword.
 
 **Example:**
+
 ```v
 module main
 
@@ -56,7 +57,7 @@ pub mut:
 pub struct App {
 pub:
 	// In the app struct we store data that should be accessible by all endpoints.
-	// For example a database or configuration values.
+	// For example, a database or configuration values.
 	secret_key string
 }
 
@@ -77,7 +78,7 @@ fn main() {
 You can use the `App` struct for data you want to keep during the lifetime of your program,
 or for data that you want to share between different routes.
 
-A new `Context` struct is created every time a request is received, 
+A new `Context` struct is created every time a request is received,
 so it can contain different data for each request.
 
 ## Defining endpoints
@@ -87,6 +88,7 @@ For routing you can either use auto-mapping of function names or specify the pat
 The function expects a parameter of your Context type and a response of the type `vweb.Result`.
 
 **Example:**
+
 ```v ignore
 // This endpoint can be accessed via http://server:port/hello
 pub fn (app &App) hello(mut ctx Context) vweb.Result {
@@ -122,7 +124,7 @@ pub fn (app &App) create_product(mut ctx Context) vweb.Result {
 }
 ```
 
-By default endpoints are marked as GET requests only. It is also possible to
+By default, endpoints are marked as GET requests only. It is also possible to
 add multiple HTTP verbs per endpoint.
 
 **Example:**
@@ -143,7 +145,7 @@ pub fn (app &App) login(mut ctx Context) vweb.Result {
 		} else {
 			// we receive a POST request, so we want to explicitly tell the browser
 			// to send a GET request to the profile page.
-			return ctx.redirect('/profile', .see_other)
+			return ctx.redirect('/profile')
 		}
 	}
 }
@@ -181,11 +183,11 @@ If we visit http://localhost:port/hello/vaesel we would see the text `Hello vaes
 
 ### Routes with Parameter Arrays
 
-If you want multiple parameters in your route and if you want to parse the parameters 
-yourself, or you want a wildcard route, you can add `...`  after the `:` and name,
+If you want multiple parameters in your route and if you want to parse the parameters
+yourself, or you want a wildcard route, you can add `...` after the `:` and name,
 e.g. `@['/:path...']`.
 
-This will match all routes after `'/'`. For example the url `/path/to/test` would give
+This will match all routes after `'/'`. For example, the url `/path/to/test` would give
 `path = '/path/to/test'`.
 
 ```v ignore
@@ -202,11 +204,12 @@ You have direct access to query values by accessing the `query` field on your co
 You are also able to access any formdata or files that were sent
 with the request with the fields `.form` and `.files` respectively.
 
-In the following example, visiting http://localhost:port/user?name=Vweb we 
-will see the text `Hello Vweb!`. And if we access the route without the `name` parameter,
-http://localhost:port/user, we will see the text `no user was found`, 
+In the following example, visiting http://localhost:port/user?name=vweb we
+will see the text `Hello vweb!`. And if we access the route without the `name` parameter,
+http://localhost:port/user, we will see the text `no user was found`,
 
 **Example:**
+
 ```v ignore
 @['/user'; get]
 pub fn (app &App) get_user_by_id(mut ctx Context) vweb.Result {
@@ -220,6 +223,7 @@ pub fn (app &App) get_user_by_id(mut ctx Context) vweb.Result {
 ```
 
 ### Host
+
 To restrict an endpoint to a specific host, you can use the `host` attribute
 followed by a colon `:` and the host name. You can test the Host feature locally
 by adding a host to the "hosts" file of your device.
@@ -249,9 +253,10 @@ host in one app struct.
 
 ### Route Matching Order
 
-Vweb will match routes in the order that you define endpoints.
+vweb will match routes in the order that you define endpoints.
 
 **Example:**
+
 ```v ignore
 @['/:path']
 pub fn (app &App) with_parameter(mut ctx Context, path string) vweb.Result {
@@ -265,18 +270,18 @@ pub fn (app &App) normal(mut ctx Context) vweb.Result {
 ```
 
 In this example we defined an endpoint with a parameter first. If we access our app
-on the url http://localhost:port/normal we will not see `from normal`, but 
+on the url http://localhost:port/normal we will not see `from normal`, but
 `from with_parameter, path: "normal"`.
 
 ### Custom not found page
 
-You can implement a `not_found` endpoint that is called when a request is made and no
+You can implement a `not_found` endpoint that is called when a request is made, and no
 matching route is found to replace the default HTTP 404 not found page. This route
 has to be defined on our Context struct.
 
 **Example:**
 
-``` v ignore
+```v ignore
 pub fn (mut ctx Context) not_found() vweb.Result {
 	// set HTTP status 404
 	ctx.res.set_status(.not_found)
@@ -284,15 +289,16 @@ pub fn (mut ctx Context) not_found() vweb.Result {
 }
 ```
 
-## Static files
+## Static files and website
 
-Vweb also provides a way of handling static files. We can mount a folder at the root
+vweb also provides a way of handling static files. We can mount a folder at the root
 of our web app, or at a custom route. To start using static files we have to embed
 `vweb.StaticHandler` on our app struct.
 
 **Example:**
 
 Let's say you have the following file structure:
+
 ```
 .
 ├── static/
@@ -303,14 +309,15 @@ Let's say you have the following file structure:
 └── main.v
 ```
 
-If we want all the documents inside the `static` sub-directory to be publicly accessible we can
+If we want all the documents inside the `static` sub-directory to be publicly accessible, we can
 use `handle_static`.
 
 > **Note:**
 > vweb will recursively search the folder you mount; all the files inside that folder
 > will be publicly available.
 
-*main.v*
+_main.v_
+
 ```v
 module main
 
@@ -333,7 +340,7 @@ fn main() {
 }
 ```
 
-If we start the app with `v run main.v` we can access our `main.css` file at 
+If we start the app with `v run main.v` we can access our `main.css` file at
 http://localhost:8080/static/css/main.css
 
 ### Mounting folders at specific locations
@@ -343,15 +350,23 @@ to mount the static folder at the root of our app: everything inside the `static
 is available at `/`.
 
 **Example:**
+
 ```v ignore
 // change the second argument to `true` to mount a folder at the app root
 app.handle_static('static', true)!
 ```
-We can now access `main.css` directly at http://localhost:8080/css/main.css
+
+We can now access `main.css` directly at http://localhost:8080/css/main.css.
+
+If a request is made to the root of a static folder, vweb will look for an
+`index.html` or `ìndex.htm` file and serve it if available.
+Thus, it's also a good way to host a complete website.
+An example is available [here](/examples/vweb/static_website).
 
 It is also possible to mount the `static` folder at a custom path.
 
 **Example:**
+
 ```v ignore
 // mount the folder 'static' at path '/public', the path has to start with '/'
 app.mount_static_folder_at('static', '/public')
@@ -359,34 +374,50 @@ app.mount_static_folder_at('static', '/public')
 
 If we run our app the `main.css` file is available at http://localhost:8080/public/main.css
 
+### Adding a single static asset
+
+If you don't want to mount an entire folder, but only a single file, you can use `serve_static`.
+
+**Example:**
+
+```v ignore
+// serve the `main.css` file at '/path/main.css'
+app.serve_static('/path/main.css',  'static/css/main.css')!
+```
+
 ### Dealing with MIME types
 
-By default vweb will map the extension of a file to a MIME type. If any of your static file's
+By default, vweb will map the extension of a file to a MIME type. If any of your static file's
 extensions do not have a default MIME type in vweb, vweb will throw an error and you
 have to add your MIME type to `.static_mime_types` yourself.
 
 **Example:**
 
 Let's say you have the following file structure:
+
 ```
 .
 ├── static/
 │   └── file.what
 └── main.v
 ```
+
 ```v ignore
 app.handle_static('static', true)!
 ```
+
 This code will throw an error, because vweb has no default MIME type for a `.what` file extension.
+
 ```
-unkown MIME type for file extension ".what"
+unknown MIME type for file extension ".what"
 ```
+
 To fix this we have to provide a MIME type for the `.what` file extension:
+
 ```v ignore
 app.static_mime_types['.what'] = 'txt/plain'
 app.handle_static('static', true)!
 ```
-
 
 ## Middleware
 
@@ -398,6 +429,7 @@ To use vweb's middleware we have to embed `vweb.Middleware` on our app struct an
 the type of which context struct should be used.
 
 **Example:**
+
 ```v ignore
 pub struct App {
 	vweb.Middleware[Context]
@@ -406,11 +438,12 @@ pub struct App {
 
 ### Use case
 
-We could, for example, get the cookies for an HTTP request and check if the user has already 
+We could, for example, get the cookies for an HTTP request and check if the user has already
 accepted our cookie policy. Let's modify our Context struct to store whether the user has
 accepted our policy or not.
 
 **Example:**
+
 ```v ignore
 pub struct Context {
 	vweb.Context
@@ -422,10 +455,11 @@ pub mut:
 In vweb middleware functions take a `mut` parameter with the type of your context struct
 and must return `bool`. We have full access to modify our Context struct!
 
-The return value indicates to vweb whether it can continue or has to stop. If we send a 
+The return value indicates to vweb whether it can continue or has to stop. If we send a
 response to the client in a middleware function vweb has to stop, so we return `false`.
 
 **Example:**
+
 ```v ignore
 pub fn check_cookie_policy(mut ctx Context) bool {
 	// get the cookie
@@ -442,6 +476,7 @@ pub fn check_cookie_policy(mut ctx Context) bool {
 We can check this value in an endpoint and return a different response.
 
 **Example:**
+
 ```v ignore
 @['/only-cookies']
 pub fn (app &App) only_cookie_route(mut ctx Context) vweb.Result {
@@ -458,6 +493,7 @@ function as middleware for our app. We must do this after the app is created and
 app is started.
 
 **Example:**
+
 ```v ignore
 fn main() {
 	mut app := &App{}
@@ -472,11 +508,12 @@ fn main() {
 
 ### Types of middleware
 
-In the previous example we used so called "global" middleware. This type of middleware 
+In the previous example we used so called "global" middleware. This type of middleware
 applies to every endpoint defined on our app struct; global. It is also possible
 to register middleware for only a certain route(s).
 
 **Example:**
+
 ```v ignore
 // register middleware only for the route '/auth'
 app.route_use('/auth', handler: auth_middleware)
@@ -490,11 +527,12 @@ app.route_use('/user/:path...')
 
 ### Evaluation moment
 
-By default the registered middleware functions are executed *before* a method on your
+By default, the registered middleware functions are executed *before* a method on your
 app struct is called. You can also change this behaviour to execute middleware functions
 *after* a method on your app struct is called, but before the response is sent!
 
 **Example:**
+
 ```v ignore
 pub fn modify_headers(mut ctx Context) bool {
 	// add Content-Language: 'en-US' header to each response
@@ -502,6 +540,7 @@ pub fn modify_headers(mut ctx Context) bool {
 	return true
 }
 ```
+
 ```v ignore
 app.use(handler: modify_headers, after: true)
 ```
@@ -515,7 +554,7 @@ Anything you can do in "before" middleware, you can do in "after" middleware.
 
 ### Evaluation order
 
-Vweb will handle requests in the following order:
+vweb will handle requests in the following order:
 
 1. Execute global "before" middleware
 2. Execute "before" middleware that matches the requested route
@@ -523,8 +562,8 @@ Vweb will handle requests in the following order:
 4. Execute global "after" middleware
 5. Execute "after" middleware that matches the requested route
 
-In each step, except for step `3`, vweb will evaluate the middleware in the order that 
-they are registered; when you call `app.use` or `app.route_use`. 
+In each step, except for step `3`, vweb will evaluate the middleware in the order that
+they are registered; when you call `app.use` or `app.route_use`.
 
 ### Early exit
 
@@ -532,6 +571,7 @@ If any middleware sends a response (and thus must return `false`) vweb will not 
 other middleware, or the endpoint method, and immediately send the response.
 
 **Example:**
+
 ```v ignore
 pub fn early_exit(mut ctx Context) bool {
 	ctx.text('early exit')
@@ -544,6 +584,7 @@ pub fn logger(mut ctx Context) bool {
 	return true
 }
 ```
+
 ```v ignore
 app.use(handler: early_exit)
 app.use(handler: logger)
@@ -554,15 +595,16 @@ Because we register `early_exit` before `logger` our logging middleware will nev
 ## Controllers
 
 Controllers can be used to split up your app logic so you are able to have one struct
-per "route group".  E.g. a struct `Admin` for urls starting with `'/admin'` and a struct `Foo`
-for urls starting with `'/foo'`. 
+per "route group". E.g. a struct `Admin` for urls starting with `'/admin'` and a struct `Foo`
+for urls starting with `'/foo'`.
 
 To use controllers we have to embed `vweb.Controller` on
 our app struct and when we register a controller we also have to specify
-what the type of the context struct will be. That means that is is possible
+what the type of the context struct will be. That means that it is possible
 to have a different context struct for each controller and the main app struct.
 
 **Example:**
+
 ```v
 module main
 
@@ -622,12 +664,13 @@ pub fn (app &Admin) path(mut ctx Context) vweb.Result {
     return ctx.text('Admin')
 }
 ```
-When we registerted the controller with 
-`app.register_controller[Admin, Context]('/admin', mut admin_app)!` 
+
+When we registered the controller with
+`app.register_controller[Admin, Context]('/admin', mut admin_app)!`
 we told vweb that the namespace of that controller is `'/admin'` so in this example we would
 see the text "Admin" if we navigate to the url `'/admin/path'`.
 
-Vweb doesn't support duplicate routes, so if we add the following
+vweb doesn't support duplicate routes, so if we add the following
 route to the example the code will produce an error.
 
 ```v ignore
@@ -636,6 +679,7 @@ pub fn (app &App) admin_path(mut ctx Context) vweb.Result {
     return ctx.text('Admin overwrite')
 }
 ```
+
 There will be an error, because the controller `Admin` handles all routes starting with
 `'/admin'`: the endpoint `admin_path` is unreachable.
 
@@ -645,6 +689,7 @@ You can also set a host for a controller. All requests coming to that host will 
 by the controller.
 
 **Example:**
+
 ```v ignore
 struct Example {}
 
@@ -653,6 +698,7 @@ pub fn (app &Example) index(mut ctx Context) vweb.Result {
 	return ctx.text('Example')
 }
 ```
+
 ```v ignore
 mut example_app := &Example{}
 // set the controllers hostname to 'example.com' and handle all routes starting with '/',
@@ -664,7 +710,7 @@ app.register_controller[Example, Context]('example.com', '/', mut example_app)!
 
 vweb has a number of utility methods that make it easier to handle requests and send responses.
 These methods are available on `vweb.Context` and directly on your own context struct if you
-embed `vweb.Context`. Below are some of te most used methods, look at the 
+embed `vweb.Context`. Below are some of the most used methods, look at the
 [standard library documentation](https://modules.vlang.io/) to see them all.
 
 ### Request methods
@@ -674,6 +720,7 @@ You can directly access the HTTP request on the `.req` field.
 #### Get request headers
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	content_length := ctx.get_header(.content_length) or { '0' }
@@ -686,6 +733,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 #### Get a cookie
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	cookie_val := ctx.get_cookie('token') or { '' }
@@ -695,7 +743,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 
 ### Response methods
 
-You can directly modify the HTTP response by changing the `res` field, 
+You can directly modify the HTTP response by changing the `res` field,
 which is of the type `http.Response`.
 
 #### Send response with different MIME types
@@ -715,6 +763,7 @@ ctx.json(User{
 #### Sending files
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) file_response(mut ctx Context) vweb.Result {
 	// send the file 'image.png' in folder 'data' to the user
@@ -725,6 +774,7 @@ pub fn (app &App) file_response(mut ctx Context) vweb.Result {
 #### Set response headers
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	ctx.set_header(.accept, 'text/html')
@@ -737,6 +787,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 #### Set a cookie
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	ctx.set_cookie(http.Cookie{
@@ -753,6 +804,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 #### Redirect
 
 You must pass the type of redirect to vweb:
+
 - `moved_permanently` HTTP code 301
 - `found` HTTP code 302
 - `see_other` HTTP code 303
@@ -763,16 +815,17 @@ You must pass the type of redirect to vweb:
 
 If you want to change the request method, for example when you receive a post request and
 want to redirect to another page via a GET request, you should use `see_other`. If you want
-the HTTP method to stay the same you should use `found` generally speaking.
+the HTTP method to stay the same, you should use `found` generally speaking.
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	token := ctx.get_cookie('token') or { '' }
 	if token == '' {
 		// redirect the user to '/login' if the 'token' cookie is not set
 		// we explicitly tell the browser to send a GET request
-		return ctx.redirect('/login', .see_other)
+		return ctx.redirect('/login', typ: .see_other)
 	} else {
 		return ctx.text('Welcome!')
 	}
@@ -782,6 +835,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 #### Sending error responses
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) login(mut ctx Context) vweb.Result {
 	if username := ctx.form['username'] {
@@ -798,7 +852,7 @@ error with a message.
 
 ## Advanced usage
 
-If you need more controll over the TCP connection with a client, for example when 
+If you need more control over the TCP connection with a client, for example when
 you want to keep the connection open. You can call `ctx.takeover_conn`.
 
 When this function is called you are free to do anything you want with the TCP
@@ -807,15 +861,16 @@ sending a response over the connection and closing it.
 
 ### Empty Result
 
-Sometimes you want to send the response in another thread, for example when using 
+Sometimes you want to send the response in another thread, for example when using
 [Server Sent Events](sse/README.md). When you are sure that a response will be sent
-over the TCP connection you can return `vweb.no_result()`. This function does nothinng
-and returns an empty `vweb.Result` struct, letting vweb know that we sent a response ourself.
+over the TCP connection you can return `vweb.no_result()`. This function does nothing
+and returns an empty `vweb.Result` struct, letting vweb know that we sent a response ourselves.
 
 > **Note:**
 > It is important to call `ctx.takeover_conn` before you spawn a thread
 
 **Example:**
+
 ```v
 module main
 
@@ -841,7 +896,7 @@ pub fn (app &App) long_response(mut ctx Context) vweb.Result {
 	// if we don't the whole web server will block for 10 seconds,
 	// since vweb is singlethreaded
 	spawn handle_connection(mut ctx.conn)
-	// we will send a custom response ourself, so we can safely return an empty result
+	// we will send a custom response ourselves, so we can safely return an empty result
 	return vweb.no_result()
 }
 

@@ -34,8 +34,8 @@ mut:
 	init_flag   bool
 	frame_count int
 
-	mouse_x    int = -1
-	mouse_y    int = -1
+	mouse_x    int = 903
+	mouse_y    int = 638
 	mouse_down bool
 	// glsl
 	cube_pip_glsl gfx.Pipeline
@@ -48,15 +48,14 @@ mut:
 	// instances
 	inst_pos [num_inst]m4.Vec4
 	// camera
-	camera_x f32
-	camera_z f32
+	camera_x f32 = -8
+	camera_z f32 = 47
 }
 
 /******************************************************************************
 * GLSL Include and functions
 ******************************************************************************/
-#flag -I @VMODROOT/.
-#include "rt_glsl_instancing.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/rt_glsl_instancing.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.instancing_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
@@ -389,8 +388,6 @@ fn draw_end_glsl(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
 		load_action: .clear
@@ -403,7 +400,8 @@ fn frame(mut app App) {
 	}
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := gg.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	draw_start_glsl(app)
 	draw_cube_glsl_i(mut app)
@@ -490,17 +488,11 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 			else {}
 		}
 	}
+	eprintln('>> app.camera_x: ${app.camera_x} , app.camera_z: ${app.camera_z}, app.mouse_x: ${app.mouse_x}, app.mouse_y: ${app.mouse_y}')
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	// vfmt off
 	app.gg = gg.new_context(
 		width:         win_width
@@ -514,7 +506,6 @@ fn main() {
 		event_fn:      my_event_manager
 	)
 	// vfmt on
-
 	app.ticks = time.ticks()
 	app.gg.run()
 }

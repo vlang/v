@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -21,12 +21,12 @@ struct FormatOptions {
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
-	is_all     bool
 	is_debug   bool
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
 	is_worker  bool // true *only* in the worker processes. Note: workers can crash.
 	is_backup  bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
+	in_process bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
@@ -49,12 +49,12 @@ fn main() {
 		is_w: '-w' in args
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
-		is_all: '-all' in args || '--all' in args
 		is_worker: '-worker' in args
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
 		is_backup: '-backup' in args
+		in_process: '-inprocess' in args
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -99,8 +99,20 @@ fn main() {
 		}
 	}
 	mut errors := 0
+	mut has_internal_error := false
+	mut prefs := setup_preferences()
 	for file in files {
 		fpath := os.real_path(file)
+		if foptions.is_verify && foptions.in_process {
+			// For a small amount of files, it is faster to process
+			// everything directly in the same process, single threaded,
+			// when vfmt is compiled with `-gc none`:
+			if !foptions.verify_file(prefs, fpath) {
+				println("${file} is not vfmt'ed")
+				errors++
+			}
+			continue
+		}
 		mut worker_command_array := cli_args_no_files.clone()
 		worker_command_array << ['-worker', util.quote_path(fpath)]
 		worker_cmd := worker_command_array.join(' ')
@@ -111,6 +123,8 @@ fn main() {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
 				eprintln('Internal vfmt error while formatting file: ${file}.')
+				has_internal_error = true
+				continue
 			}
 			errors++
 			continue
@@ -129,27 +143,36 @@ fn main() {
 		}
 		errors++
 	}
+	ecode := if has_internal_error { 5 } else { 0 }
 	if errors > 0 {
-		eprintln('Encountered a total of: ${errors} errors.')
-		if foptions.is_noerror {
-			exit(0)
+		if !foptions.is_diff {
+			eprintln('Encountered a total of: ${errors} formatting errors.')
 		}
-		if foptions.is_verify {
-			exit(1)
+		match true {
+			foptions.is_noerror { exit(0 + ecode) }
+			foptions.is_verify { exit(1 + ecode) }
+			foptions.is_c { exit(2 + ecode) }
+			else { exit(1 + ecode) }
 		}
-		if foptions.is_c {
-			exit(2)
-		}
-		exit(1)
 	}
+	exit(ecode)
 }
 
-fn setup_preferences_and_table() (&pref.Preferences, &ast.Table) {
-	table := ast.new_table()
+fn (foptions &FormatOptions) verify_file(prefs &pref.Preferences, fpath string) bool {
+	fcontent := foptions.formated_content_from_file(prefs, fpath)
+	content := os.read_file(fpath) or { return false }
+	return fcontent == content
+}
+
+fn setup_preferences() &pref.Preferences {
 	mut prefs := pref.new_preferences()
 	prefs.is_fmt = true
 	prefs.skip_warnings = true
-	return prefs, table
+	return prefs
+}
+
+fn setup_preferences_and_table() (&pref.Preferences, &ast.Table) {
+	return setup_preferences(), ast.new_table()
 }
 
 fn (foptions &FormatOptions) vlog(msg string) {
@@ -158,12 +181,19 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
+fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) string {
+	mut table := ast.new_table()
+	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
+	return formated_content
+}
+
 fn (foptions &FormatOptions) format_file(file string) {
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
-	prefs, table := setup_preferences_and_table()
-	file_ast := parser.parse_file(file, table, .parse_comments, prefs)
+	prefs, mut table := setup_preferences_and_table()
+	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_${file_name}')
@@ -174,11 +204,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 
 fn (foptions &FormatOptions) format_pipe() {
 	foptions.vlog('vfmt2 running fmt.fmt over stdin')
-	prefs, table := setup_preferences_and_table()
+	prefs, mut table := setup_preferences_and_table()
 	input_text := os.get_raw_lines_joined()
-	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs)
+	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug, source_text: input_text)
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		source_text: input_text
+	)
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
@@ -197,21 +229,8 @@ fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('  is_script: ${compiler_params.is_script} ')
 }
 
-fn (mut foptions FormatOptions) find_diff_cmd() string {
-	if foptions.diff_cmd != '' {
-		return foptions.diff_cmd
-	}
-	if foptions.is_verify || foptions.is_diff {
-		foptions.diff_cmd = diff.find_working_diff_command() or {
-			eprintln(err)
-			exit(1)
-		}
-	}
-	return foptions.diff_cmd
-}
-
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
-	if formatted_file_path.len == 0 {
+	if formatted_file_path == '' {
 		return
 	}
 	fc := os.read_file(file) or {
@@ -227,13 +246,8 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		if !is_formatted_different {
 			return
 		}
-		diff_cmd := foptions.find_diff_cmd()
-		foptions.vlog('Using diff command: ${diff_cmd}')
-		diff_ := diff.color_compare_files(diff_cmd, file, formatted_file_path)
-		if diff_.len > 0 {
-			println(diff_)
-		}
-		return
+		println(diff.compare_files(file, formatted_file_path)!)
+		return error('')
 	}
 	if foptions.is_verify {
 		if !is_formatted_different {
@@ -280,76 +294,19 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 	flush_stdout()
 }
 
-fn (f FormatOptions) str() string {
-	return
-		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
-		' is_all: ${f.is_all}, is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
-		' is_verify: ${f.is_verify}" }'
-}
-
-fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
-	mut mod_name := 'main'
-	mut is_module_file := false
-	flines := read_source_lines(file) or { return mod_name, is_module_file }
-	for fline in flines {
-		line := fline.trim_space()
-		if line.starts_with('module ') {
-			if !line.starts_with('module main') {
-				is_module_file = true
-				mod_name = line.replace('module ', ' ').trim_space()
-			}
-			break
-		}
-	}
-	return mod_name, is_module_file
-}
-
 fn read_source_lines(file string) ![]string {
 	source_lines := os.read_lines(file) or { return error('can not read ${file}') }
 	return source_lines
 }
 
-fn get_compile_name_of_potential_v_project(file string) string {
-	// This function get_compile_name_of_potential_v_project returns:
-	// a) the file's folder, if file is part of a v project
-	// b) the file itself, if the file is a standalone v program
-	pfolder := os.real_path(os.dir(file))
-	// a .v project has many 'module main' files in one folder
-	// if there is only one .v file, then it must be a standalone
-	all_files_in_pfolder := os.ls(pfolder) or { panic(err) }
-	mut vfiles := []string{}
-	for f in all_files_in_pfolder {
-		vf := os.join_path(pfolder, f)
-		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
-			continue
-		}
-		vfiles << vf
-	}
-	if vfiles.len == 1 {
-		return file
-	}
-	// /////////////////////////////////////////////////////////////
-	// At this point, we know there are many .v files in the folder
-	// We will have to read them all, and if there are more than one
-	// containing `fn main` then the folder contains multiple standalone
-	// v programs. If only one contains `fn main` then the folder is
-	// a project folder, that should be compiled with `v pfolder`.
-	mut main_fns := 0
-	for f in vfiles {
-		slines := read_source_lines(f) or { panic(err) }
-		for line in slines {
-			if line.contains('fn main()') {
-				main_fns++
-				if main_fns > 1 {
-					return file
-				}
-			}
-		}
-	}
-	return pfolder
-}
-
 @[noreturn]
 fn verror(s string) {
 	util.verror('vfmt error', s)
+}
+
+fn (f FormatOptions) str() string {
+	return
+		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
+		' is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
+		' is_verify: ${f.is_verify}" }'
 }

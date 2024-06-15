@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
@@ -16,7 +16,9 @@ pub:
 	font_bold   int
 	font_mono   int
 	font_italic int
-	scale       f32 = 1.0
+pub mut:
+	fonts_map map[string]int // for storing custom fonts, provided via cfg.family in draw_text()
+	scale     f32 = 1.0
 }
 
 fn new_ft(c FTConfig) ?&FT {
@@ -123,7 +125,22 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
-	if cfg.bold {
+	if cfg.family != '' {
+		// println('set text cfg family=${cfg.family}')
+		mut f := ctx.ft.fonts_map[cfg.family]
+		if f == 0 {
+			// No such font in the cache yet, create it
+			bytes := os.read_bytes(cfg.family) or {
+				debug_font_println('failed to load font "${cfg.family}"')
+				return
+			}
+			f = ctx.ft.fons.add_font_mem(cfg.family, bytes, false)
+			unsafe {
+				ctx.ft.fonts_map[cfg.family] = f
+			}
+		}
+		ctx.ft.fons.set_font(f)
+	} else if cfg.bold {
 		ctx.ft.fons.set_font(ctx.ft.font_bold)
 	} else if cfg.mono {
 		ctx.ft.fons.set_font(ctx.ft.font_mono)
@@ -149,6 +166,7 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 
 @[params]
 pub struct DrawTextParams {
+pub:
 	x    int
 	y    int
 	text string
@@ -175,7 +193,7 @@ pub fn (ctx &Context) draw_text2(p DrawTextParams) {
 		bold: p.bold
 		mono: p.mono
 		italic: p.italic
-	}) // TODO perf once it's the only function to draw text
+	}) // TODO: perf once it's the only function to draw text
 }
 
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
@@ -185,6 +203,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 		if ctx.native_rendering {
 			if cfg.align == gx.align_right {
 				width := ctx.text_width(text_)
+				// println('draw text ctx.height = ${ctx.height}')
 				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
 				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
@@ -196,7 +215,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 		eprintln('gg: draw_text(): font not initialized')
 		return
 	}
-	// text := text_.trim_space() // TODO remove/optimize
+	// text := text_.trim_space() // TODO: remove/optimize
 	// mut text := text_
 	// if text.contains('\t') {
 	// text = text.replace('\t', '    ')
@@ -232,7 +251,7 @@ pub fn (ctx &Context) text_width(s string) int {
 	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
-			ctx.text_width('i') // TODO fix this in fontstash?
+			ctx.text_width('i') // TODO: fix this in fontstash?
 	}
 	res := int((buf[2] - buf[0]) / ctx.scale)
 	// println('TW "$s" = $res')

@@ -92,7 +92,9 @@ pub enum SQLDialect {
 
 fn (kind OperationKind) to_str() string {
 	str := match kind {
-		.neq { '!=' }
+		// While most SQL databases support "!=" for not equal, "<>" is the standard
+		// operator.
+		.neq { '<>' }
 		.eq { '=' }
 		.gt { '>' }
 		.lt { '<' }
@@ -150,7 +152,7 @@ pub:
 	typ         int
 	nullable    bool
 	default_val string
-	attrs       []StructAttribute
+	attrs       []VAttribute
 	is_arr      bool
 }
 
@@ -506,12 +508,13 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
 						}
 						if attr.arg.contains('(') {
-							ref_table, ref_field := attr.arg.split_once('(')
-							if !ref_field.ends_with(')') {
-								return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+							if ref_table, ref_field := attr.arg.split_once('(') {
+								if !ref_field.ends_with(')') {
+									return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+								}
+								references_table = ref_table
+								references_field = ref_field[..ref_field.len - 1]
 							}
-							references_table = ref_table
-							references_field = ref_field[..ref_field.len - 1]
 						} else {
 							references_table = attr.arg
 							references_field = 'id'

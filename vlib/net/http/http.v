@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -90,6 +90,16 @@ pub fn post_form(url string, data map[string]string) !Response {
 	)
 }
 
+pub fn post_form_with_cookies(url string, data map[string]string, cookies map[string]string) !Response {
+	return fetch(
+		method: .post
+		url: url
+		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
+		data: url_encode_form_data(data)
+		cookies: cookies
+	)
+}
+
 @[params]
 pub struct PostMultipartFormConfig {
 pub mut:
@@ -143,7 +153,9 @@ pub fn delete(url string) !Response {
 	return fetch(method: .delete, url: url)
 }
 
+// TODO: @[noinline] attribute is used for temporary fix the 'get_text()' intermittent segfault / nil value when compiling with GCC 13.2.x and -prod option ( Issue #20506 )
 // fetch sends an HTTP request to the `url` with the given method and configuration.
+@[noinline]
 pub fn fetch(config FetchConfig) !Response {
 	if config.url == '' {
 		return error('http.fetch: empty url')

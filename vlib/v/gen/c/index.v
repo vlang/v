@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -49,7 +49,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 			}
 		} else if sym.info is ast.Aggregate
-			&& sym.info.types.filter(g.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+			&& sym.info.types.all(g.table.type_kind(it) in [.array, .array_fixed, .string, .map]) {
 			// treating sumtype of array types
 			unwrapped_got_type := sym.info.types[g.aggregate_type_idx]
 			g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })
@@ -324,7 +324,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, elem_type)
 			}
-			g.write('\n${cur_line}*(${elem_type_str}*)${tmp_opt}.data')
+			g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
 		}
 	}
 }

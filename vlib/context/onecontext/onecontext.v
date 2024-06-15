@@ -43,13 +43,13 @@ pub fn (octx OneContext) deadline() ?time.Time {
 
 	for ctx in octx.ctxs {
 		if deadline := ctx.deadline() {
-			if min.unix_time() == 0 || deadline < min {
+			if min.unix() == 0 || deadline < min {
 				min = deadline
 			}
 		}
 	}
 
-	if min.unix_time() == 0 {
+	if min.unix() == 0 {
 		return none
 	}
 

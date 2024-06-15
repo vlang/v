@@ -1,7 +1,7 @@
 /*
 regex 1.0 alpha
 
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 */
@@ -20,7 +20,7 @@ pub fn regex_base(pattern string) (RE, int, int) {
 	// init regex
 	mut re := RE{}
 	re.prog = []Token{len: pattern.len + 1} // max program length, can not be longer then the pattern
-	re.cc = []CharClass{len: pattern.len} // can not be more char class the the length of the pattern
+	re.cc = []CharClass{len: pattern.len} // can not be more char class the length of the pattern
 	re.group_csave_flag = false // enable continuos group saving
 	re.group_max_nested = pattern.len >> 1 // set max 128 group nested
 	re.group_max = pattern.len >> 1 // we can't have more groups than the half of the pattern legth
@@ -472,7 +472,7 @@ fn (re RE) parsed_replace_string(in_txt string, repl string) string {
 }
 
 // replace return a string where the matches are replaced with the repl_str string,
-// this function support use groups in the replace string
+// this function supports groups in the replace string
 pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	mut i := 0
 	mut res := strings.new_builder(in_txt.len)

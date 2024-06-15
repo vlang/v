@@ -4,7 +4,7 @@ module strconv
 
 f32 to string
 
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -32,8 +32,6 @@ const ten_pow_table_32 = [
 	u32(10000000),
 	u32(100000000),
 	u32(1000000000),
-	u32(10000000000),
-	u32(100000000000),
 ]!
 
 //=============================================================================

@@ -11,7 +11,7 @@ on:
       - '**/cmd/tools/vpm/**'
 
 concurrency:
-  group: vpm-ci-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Windows'
         run: cd vlang && ./make.bat && ./v doctor
       - name: Cache V
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}
@@ -56,13 +56,15 @@ jobs:
             cc: msvc
           - os: macos-12
             cc: clang
+          - os: macos-14
+            cc: clang
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
       VFLAGS: -cc ${{ matrix.cc }} -d network
     steps:
       - name: Restore V cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}

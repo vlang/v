@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File) {
+pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
@@ -80,6 +80,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			string_idx_str + '.trim',
 			string_idx_str + '.substr',
 			string_idx_str + '.substr_ni',
+			string_idx_str + '.substr_with_check',
 			string_idx_str + '.at',
 			string_idx_str + '.at_with_check',
 			string_idx_str + '.index_kmp',
@@ -304,33 +305,8 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 		}
 	}
 
-	// handle vweb magic router methods:
-	typ_vweb_result := table.find_type_idx('vweb.Result')
-	if typ_vweb_result != 0 {
-		all_fn_root_names << 'vweb.filter'
-		typ_vweb_context := ast.Type(table.find_type_idx('vweb.Context')).set_nr_muls(1)
-		all_fn_root_names << '${int(typ_vweb_context)}.html'
-		for vgt in table.used_vweb_types {
-			sym_app := table.sym(vgt)
-			for m in sym_app.methods {
-				mut skip := true
-				if m.name == 'before_request' {
-					// TODO: handle expansion of method calls in generic functions in a more universal way
-					skip = false
-				}
-				if m.return_type == typ_vweb_result {
-					skip = false
-				}
-				//
-				if skip {
-					continue
-				}
-				pvgt := vgt.set_nr_muls(1)
-				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-				all_fn_root_names << '${int(pvgt)}.${m.name}'
-			}
-		}
-	}
+	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
+	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
 
 	// handle ORM drivers:
 	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
@@ -367,7 +343,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 	walker.mark_root_fns(all_fn_root_names)
 
 	if walker.n_asserts > 0 {
-		walker.fn_decl(mut all_fns['__print_assert_failure'])
+		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }
 	}
 	if table.used_maps > 0 {
 		for k, mut mfn in all_fns {
@@ -463,4 +439,33 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 		}
 	}
 	return all_fns, all_consts, all_globals
+}
+
+fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string, context_name string) {
+	// handle vweb magic router methods:
+	result_type_idx := table.find_type_idx(result_name)
+	if result_type_idx != 0 {
+		all_fn_root_names << filter_name
+		typ_vweb_context := ast.Type(table.find_type_idx(context_name)).set_nr_muls(1)
+		all_fn_root_names << '${int(typ_vweb_context)}.html'
+		for vgt in table.used_vweb_types {
+			sym_app := table.sym(vgt)
+			for m in sym_app.methods {
+				mut skip := true
+				if m.name == 'before_request' {
+					// TODO: handle expansion of method calls in generic functions in a more universal way
+					skip = false
+				}
+				if m.return_type == result_type_idx {
+					skip = false
+				}
+				if skip {
+					continue
+				}
+				pvgt := vgt.set_nr_muls(1)
+				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+				all_fn_root_names << '${int(pvgt)}.${m.name}'
+			}
+		}
+	}
 }

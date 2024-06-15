@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -439,7 +439,7 @@ pub fn (x Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${x.typname}(${x.expr.str()})'
+			return '${global_table.type_to_str(x.typ)}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
@@ -531,6 +531,9 @@ pub fn (x Expr) str() string {
 				mv := x.vals[ik].str()
 				pairs << '${kv}: ${mv}'
 			}
+			if x.has_update_expr {
+				return 'map{ ...${x.update_expr} ${pairs.join(' ')} }'
+			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
 		Nil {
@@ -606,7 +609,8 @@ pub fn (x Expr) str() string {
 			return "'${x.val}'"
 		}
 		TypeNode {
-			return 'TypeNode(${global_table.type_str(x.typ)})'
+			opt_prefix := if x.typ.has_flag(.option) { '?' } else { '' }
+			return 'TypeNode(${opt_prefix}${global_table.type_str(x.typ)})'
 		}
 		TypeOf {
 			if x.is_type {

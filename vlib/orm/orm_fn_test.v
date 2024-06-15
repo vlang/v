@@ -156,10 +156,10 @@ fn test_orm_table_gen() {
 			default_val: '10'
 			nullable: true
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					arg: 'serial'
@@ -188,10 +188,10 @@ fn test_orm_table_gen() {
 			nullable: true
 			default_val: '10'
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					arg: 'serial'
@@ -220,10 +220,10 @@ fn test_orm_table_gen() {
 			nullable: true
 			default_val: '10'
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					arg: 'serial'
@@ -235,7 +235,7 @@ fn test_orm_table_gen() {
 			name: 'test'
 			typ: typeof[string]().idx
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'unique'
 				},
 			]
@@ -255,10 +255,10 @@ fn test_orm_table_gen() {
 			nullable: true
 			default_val: '10'
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					arg: 'serial'
@@ -271,7 +271,7 @@ fn test_orm_table_gen() {
 			typ: typeof[string]().idx
 			nullable: true
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'unique'
 					has_arg: true
 					arg: 'test'
@@ -285,7 +285,7 @@ fn test_orm_table_gen() {
 			nullable: true
 			default_val: '6754'
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'unique'
 					has_arg: true
 					arg: 'test'

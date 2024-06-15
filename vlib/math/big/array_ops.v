@@ -199,9 +199,7 @@ fn divide_digit_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut 
 	// a < b => q, r = 0, a
 	if cmp_result < 0 {
 		quotient.clear()
-		for index in 0 .. operand_a.len {
-			remainder << operand_a[index]
-		}
+		remainder << operand_a
 		return
 	}
 	if operand_b.len == 1 {

@@ -75,12 +75,27 @@ fn test_logger_mutable_reference() {
 	println(@FN + ' end')
 }
 
+fn test_log_mutable_short_tag() {
+	println(@FN + ' start')
+	mut l := Log{}
+	l.set_level(.info)
+	l.set_short_tag(true)
+	log_mutable_statements(mut l)
+	assert true
+	println(@FN + ' end')
+}
+
 fn test_level_from_tag() ? {
 	assert level_from_tag('INFO')? == .info
 	assert level_from_tag('FATAL')? == .fatal
 	assert level_from_tag('WARN')? == .warn
 	assert level_from_tag('ERROR')? == .error
 	assert level_from_tag('DEBUG')? == .debug
+	assert level_from_tag('I')? == .info
+	assert level_from_tag('F')? == .fatal
+	assert level_from_tag('W')? == .warn
+	assert level_from_tag('E')? == .error
+	assert level_from_tag('D')? == .debug
 
 	invalid := ['', 'FOO', 'nope']
 
@@ -103,4 +118,21 @@ fn test_target_from_label() ? {
 		target_from_label(value) or { passed = true }
 		assert passed
 	}
+}
+
+fn test_log_time_format() {
+	println(@FN + ' start')
+	mut l := Log{}
+	l.set_level(.info)
+	l.set_time_format(.tf_rfc3339_nano)
+	assert TimeFormat.tf_rfc3339_nano == l.get_time_format()
+	l.info('${@FN} rfc3339_nano == YYYY-MM-DDTHH:mm:ss.123456789Z')
+	l.set_time_format(.tf_ymmdd)
+	assert TimeFormat.tf_ymmdd == l.get_time_format()
+	l.info('${@FN} ymmdd == YYYY-MM-DD')
+	l.set_custom_time_format('MMMM Do YY N kk:mm:ss A')
+	assert TimeFormat.tf_custom_format == l.get_time_format()
+	l.info('${@FN} custom like January 1st 22 AD 13:45:33 PM')
+	assert true
+	println(@FN + ' end')
 }

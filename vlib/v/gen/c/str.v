@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -8,9 +8,13 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"${escaped_val}"')
+		g.write('"')
+		g.write(escaped_val)
+		g.write('"')
 	} else {
-		g.write('_SLIT("${escaped_val}")')
+		g.write('_SLIT("')
+		g.write(escaped_val)
+		g.write('")')
 	}
 }
 
@@ -111,12 +115,28 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
+		temp_var_needed := expr is ast.CallExpr && expr.return_type.is_ptr()
+		mut tmp_var := ''
+		if temp_var_needed {
+			tmp_var = g.new_tmp_var()
+			ret_typ := g.typ(exp_typ)
+			line := g.go_before_last_stmt().trim_space()
+			g.empty_line = true
+			g.write('${ret_typ} ${tmp_var} = ')
+			g.expr(expr)
+			g.writeln(';')
+			g.write(line)
+		}
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
 			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
-				g.expr(expr)
+				if temp_var_needed {
+					g.write(tmp_var)
+				} else {
+					g.expr(expr)
+				}
 				g.write('.data')
 				g.write(') ? _SLIT("Option(&nil)") : ')
 			} else {
@@ -125,13 +145,18 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				defer {
 					g.inside_interface_deref = inside_interface_deref_old
 				}
-				g.expr(expr)
+				if temp_var_needed {
+					g.write(tmp_var)
+				} else {
+					g.expr(expr)
+				}
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
-		g.write('${str_fn_name}(')
+		g.write(str_fn_name)
+		g.write('(')
 		if str_method_expects_ptr && !is_ptr {
-			if is_dump_expr {
+			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.typ(typ)}, ')
 				defer {
 					g.write(')')
@@ -142,7 +167,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
-			g.write('*'.repeat(typ.nr_muls()))
+			if sym.is_c_struct() {
+				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
+			} else {
+				g.write('*'.repeat(typ.nr_muls()))
+			}
+		} else if sym.is_c_struct() {
+			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -155,7 +186,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if unwrap_option {
 			g.expr(expr)
 		} else {
-			g.expr_with_cast(expr, typ, typ)
+			if temp_var_needed {
+				g.write(tmp_var)
+			} else {
+				g.expr_with_cast(expr, typ, typ)
+			}
 		}
 
 		if is_shared {
@@ -175,6 +210,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
+			} else {
+				if sym.is_c_struct() {
+					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
+				}
 			}
 			g.expr_with_cast(expr, typ, typ)
 		} else if typ.has_flag(.option) {

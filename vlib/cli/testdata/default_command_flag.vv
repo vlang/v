@@ -1,0 +1,13 @@
+import cli { Command, CommandFlag }
+
+fn main() {
+	mut cmd := Command{
+		version: '0.1.0'
+		defaults: struct {
+			help: CommandFlag{true, false}
+			version: CommandFlag{false, true}
+			man: false
+		}
+	}
+	cmd.parse([''])
+}

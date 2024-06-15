@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module cflag
@@ -33,7 +33,7 @@ pub fn (cf &CFlag) eval() string {
 			if remainder.starts_with(cflag.fexisting_literal) {
 				sparams := remainder[cflag.fexisting_literal.len + 1..].all_before(')')
 				i += sparams.len + cflag.fexisting_literal.len + 1
-				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim(' \'"'))
+				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim('\t \'"'))
 				// mut found_spath := ''
 				for spath in svalues {
 					if os.exists(spath) {
@@ -59,7 +59,7 @@ pub fn (cf &CFlag) format() string {
 	} else {
 		value = cf.eval()
 	}
-	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
+	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value != '' {
 		return '${cf.name}${value}'.trim_space()
 	}
 	// convert to absolute path

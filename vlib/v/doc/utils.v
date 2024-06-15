@@ -18,7 +18,7 @@ pub fn merge_comments(comments []ast.Comment) string {
 
 // ast_comment_to_doc_comment converts an `ast.Comment` node type to a `DocComment`
 pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
-	text := ast_node.text // TODO .trim_left('\x01') // BUG why are this byte here in the first place?
+	text := ast_node.text // TODO: .trim_left('\x01') // BUG why are this byte here in the first place?
 	return DocComment{
 		text: text
 		is_multi: ast_node.is_multi
@@ -62,30 +62,40 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	}
 	mut comment := ''
 	mut next_on_newline := true
+	mut is_codeblock := false
+	mut trimmed_indent := ''
 	for cmt in doc_comments.reverse() {
-		mut is_codeblock := false
 		line_loop: for line in cmt.split_into_lines() {
-			l := line.trim_left('\x01').trim_space()
-			if is_codeblock {
-				comment += l + '\n'
+			l_normalized := line.trim_left('\x01')
+			l := l_normalized.trim_space()
+			last_ends_with_lb := comment.ends_with('\n')
+			if l == '' {
+				comment += if last_ends_with_lb { '\n' } else { '\n\n' }
+				next_on_newline = true
 				continue
 			}
-			if l.starts_with('```') {
-				if !is_codeblock {
+			has_codeblock_quote := l.starts_with('```')
+			if is_codeblock {
+				comment += l_normalized.trim_string_left(trimmed_indent) + '\n'
+				if has_codeblock_quote {
+					is_codeblock = !is_codeblock
+				}
+				continue
+			}
+			if has_codeblock_quote {
+				if !is_codeblock && !last_ends_with_lb {
 					comment += '\n'
 				}
 				comment += l + '\n'
 				is_codeblock = !is_codeblock
+				trimmed_indent = l_normalized.all_before(l)
 				next_on_newline = true
 				continue
 			}
-			if l == '' {
-				comment += if comment.ends_with('\n') { '\n' } else { '\n\n' }
-				next_on_newline = true
-				continue
-			}
+			is_list := l.len > 1 && ((l[1] == ` ` && l[0] in [`-`, `*`, `+`])
+				|| (l.len > 2 && l[2] == ` ` && l[1] == `.` && l[0].is_digit()))
 			line_before_spaces := l.before(' ')
-			if (l.starts_with('|') && l.ends_with('|')) || l.starts_with('- ')
+			if is_list || (l.starts_with('|') && l.ends_with('|'))
 				|| (l.starts_with('#') && line_before_spaces.count('#') == line_before_spaces.len) {
 				comment += l + '\n'
 				next_on_newline = true

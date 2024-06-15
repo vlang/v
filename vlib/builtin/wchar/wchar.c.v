@@ -30,7 +30,11 @@ pub fn (a Character) == (b Character) bool {
 // to_rune creates a V rune, given a Character
 @[inline]
 pub fn (c Character) to_rune() rune {
-	return unsafe { *(&rune(&c)) }
+	$if windows {
+		return unsafe { *(&rune(&c)) } & 0xFFFF
+	} $else {
+		return unsafe { *(&rune(&c)) }
+	}
 }
 
 // from_rune creates a Character, given a V rune

@@ -24,7 +24,7 @@ fn (mut g Gen) past_tmp_var_new() PastTmpVar {
 fn (mut g Gen) past_tmp_var_from_var_name(var_name string) PastTmpVar {
 	mut tmp_var := g.new_tmp_var()
 	mut s := ''
-	if var_name.len != 0 {
+	if var_name != '' {
 		tmp_var = var_name
 	} else {
 		s = g.go_before_last_stmt()

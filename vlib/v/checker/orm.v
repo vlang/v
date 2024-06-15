@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -45,6 +45,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	mut primary_field := ast.StructField{}
 
 	for field in fields {
+		field_typ, field_sym := c.get_non_array_type(field.typ)
+		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+			|| c.check_recursive_structs(field_sym, table_sym.name)) {
+			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
+			return ast.void_type
+		}
+
 		if field.attrs.contains('primary') {
 			if has_primary {
 				c.orm_error('a struct can only have one primary key', field.pos)
@@ -183,8 +190,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			'offset')
 	}
 	c.expr(mut node.db_expr)
+	if node.is_insert {
+		node.typ = ast.int_type
+	}
 
 	c.check_orm_or_expr(mut node)
+
+	if node.is_insert {
+		return ast.int_type
+	}
 
 	return node.typ.clear_flag(.result)
 }
@@ -266,6 +280,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
+		field_typ, field_sym := c.get_non_array_type(field.typ)
+		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+			|| c.check_recursive_structs(field_sym, table_sym.name)) {
+			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
+			return ast.void_type
+		}
+
 		// Delete an uninitialized struct from fields and skip adding the current field
 		// to sub structs to skip inserting an empty struct in the related table.
 		if c.check_field_of_inserting_struct_is_uninitialized(node, field.name) {
@@ -662,7 +683,8 @@ fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.T
 // get_orm_non_primitive_fields filters the table fields by selecting only
 // non-primitive fields such as arrays and structs.
 fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.StructField {
-	return fields.filter(fn [c] (field ast.StructField) bool {
+	mut res := []ast.StructField{}
+	for field in fields {
 		type_with_no_option_flag := field.typ.clear_flag(.option)
 		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct_
 		is_array := c.table.sym(type_with_no_option_flag).kind == .array
@@ -670,8 +692,11 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct_
 		is_time := c.table.get_type_name(type_with_no_option_flag) == 'time.Time'
 
-		return (is_struct || is_array_with_struct_elements) && !is_time
-	})
+		if (is_struct || is_array_with_struct_elements) && !is_time {
+			res << field
+		}
+	}
+	return res
 }
 
 // walkingdevel: Now I don't think it's a good solution
@@ -717,4 +742,34 @@ fn (c &Checker) orm_get_field_pos(expr &ast.Expr) token.Pos {
 		pos = expr.pos()
 	}
 	return pos
+}
+
+// check_recursive_structs returns true if type is struct and has any child or nested child with the type of the given struct name,
+// array elements are all checked.
+fn (mut c Checker) check_recursive_structs(ts &ast.TypeSymbol, struct_name string) bool {
+	if ts.info is ast.Struct {
+		for field in ts.info.fields {
+			_, field_sym := c.get_non_array_type(field.typ)
+			if field_sym.kind == .struct_ && field_sym.name == struct_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// returns the final non-array type by recursively retrieving the element type of an array type,
+// if the input type is not an array, it is returned directly.
+fn (mut c Checker) get_non_array_type(typ_ ast.Type) (ast.Type, &ast.TypeSymbol) {
+	mut typ := typ_
+	mut sym := c.table.sym(typ)
+	for {
+		if sym.kind == .array {
+			typ = sym.array_info().elem_type
+			sym = c.table.sym(typ)
+		} else {
+			break
+		}
+	}
+	return typ, sym
 }

@@ -20,7 +20,7 @@ named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or
 The '.exe' suffix is added automatically, when writing a Windows executable.
 By default, the executable is stored in the same directory as the compiled source code.
 
-The -o flag forces V to write the resulting executable or object to the d output file or directory,
+The -o flag forces V to write the resulting executable or object to the output file or directory,
 instead of the default behavior described in the last two paragraphs.
 
 You can put common options inside an environment variable named VFLAGS, so that
@@ -149,6 +149,12 @@ NB: the build flags are shared with the run command too:
   -profile-no-inline
     Skip [inline] functions when profiling.
 
+  -skip-running
+    Skip the automatic running of a _test.v or .vsh file. Useful for debugging and testing.
+    V's testing program `v test` uses that option, to measure and report independently the
+    duration of each _test.v comptime, and then the duration of its runtime.
+    Note: the same effect can be achieved by setting the environment variable VNORUN to 1.
+
   -skip-unused
     Skip generating C/JS code for functions, that are provably not used by your project.
     This speeds up compilation, and reduces the generated output size.
@@ -213,6 +219,12 @@ NB: the build flags are shared with the run command too:
     `v -d time_parsing -d time_checking -d time_cgening -d time_v self`
     The instrumented version will print detailed timing stats while processing
     each .v file.
+
+  -n
+    Hide all notices.
+
+  -N
+    Treat *all V notices* as errors.
 
   -w
     Hide all warnings.

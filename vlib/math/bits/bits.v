@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module bits
@@ -21,11 +21,6 @@ const m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
 const m3 = u64(0x00ff00ff00ff00ff) // etc.
 
 const m4 = u64(0x0000ffff0000ffff)
-
-// TODO: this consts should be taken from int.v
-// save importing math mod just for these
-const max_u32 = u32(4294967295)
-const max_u64 = u64(18446744073709551615)
 
 // --- LeadingZeros ---
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
@@ -129,9 +124,9 @@ pub fn ones_count_64(x u64) int {
 	// Per "Hacker's Delight", the first line can be simplified
 	// more, but it saves at best one instruction, so we leave
 	// it alone for clarity.
-	mut y := (x >> u64(1) & (bits.m0 & bits.max_u64)) + (x & (bits.m0 & bits.max_u64))
-	y = (y >> u64(2) & (bits.m1 & bits.max_u64)) + (y & (bits.m1 & bits.max_u64))
-	y = ((y >> 4) + y) & (bits.m2 & bits.max_u64)
+	mut y := (x >> u64(1) & (bits.m0 & max_u64)) + (x & (bits.m0 & max_u64))
+	y = (y >> u64(2) & (bits.m1 & max_u64)) + (y & (bits.m1 & max_u64))
+	y = ((y >> 4) + y) & (bits.m2 & max_u64)
 	y += y >> 8
 	y += y >> 16
 	y += y >> 32
@@ -200,18 +195,18 @@ pub fn reverse_16(x u16) u16 {
 // reverse_32 returns the value of x with its bits in reversed order.
 @[inline]
 pub fn reverse_32(x u32) u32 {
-	mut y := ((x >> u32(1) & (bits.m0 & bits.max_u32)) | ((x & (bits.m0 & bits.max_u32)) << 1))
-	y = ((y >> u32(2) & (bits.m1 & bits.max_u32)) | ((y & (bits.m1 & bits.max_u32)) << u32(2)))
-	y = ((y >> u32(4) & (bits.m2 & bits.max_u32)) | ((y & (bits.m2 & bits.max_u32)) << u32(4)))
+	mut y := ((x >> u32(1) & (bits.m0 & max_u32)) | ((x & (bits.m0 & max_u32)) << 1))
+	y = ((y >> u32(2) & (bits.m1 & max_u32)) | ((y & (bits.m1 & max_u32)) << u32(2)))
+	y = ((y >> u32(4) & (bits.m2 & max_u32)) | ((y & (bits.m2 & max_u32)) << u32(4)))
 	return reverse_bytes_32(u32(y))
 }
 
 // reverse_64 returns the value of x with its bits in reversed order.
 @[inline]
 pub fn reverse_64(x u64) u64 {
-	mut y := ((x >> u64(1) & (bits.m0 & bits.max_u64)) | ((x & (bits.m0 & bits.max_u64)) << 1))
-	y = ((y >> u64(2) & (bits.m1 & bits.max_u64)) | ((y & (bits.m1 & bits.max_u64)) << 2))
-	y = ((y >> u64(4) & (bits.m2 & bits.max_u64)) | ((y & (bits.m2 & bits.max_u64)) << 4))
+	mut y := ((x >> u64(1) & (bits.m0 & max_u64)) | ((x & (bits.m0 & max_u64)) << 1))
+	y = ((y >> u64(2) & (bits.m1 & max_u64)) | ((y & (bits.m1 & max_u64)) << 2))
+	y = ((y >> u64(4) & (bits.m2 & max_u64)) | ((y & (bits.m2 & max_u64)) << 4))
 	return reverse_bytes_64(y)
 }
 
@@ -229,7 +224,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_32(x u32) u32 {
-	y := ((x >> u32(8) & (bits.m3 & bits.max_u32)) | ((x & (bits.m3 & bits.max_u32)) << u32(8)))
+	y := ((x >> u32(8) & (bits.m3 & max_u32)) | ((x & (bits.m3 & max_u32)) << u32(8)))
 	return u32((y >> 16) | (y << 16))
 }
 
@@ -238,8 +233,8 @@ pub fn reverse_bytes_32(x u32) u32 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_64(x u64) u64 {
-	mut y := ((x >> u64(8) & (bits.m3 & bits.max_u64)) | ((x & (bits.m3 & bits.max_u64)) << u64(8)))
-	y = ((y >> u64(16) & (bits.m4 & bits.max_u64)) | ((y & (bits.m4 & bits.max_u64)) << u64(16)))
+	mut y := ((x >> u64(8) & (bits.m3 & max_u64)) | ((x & (bits.m3 & max_u64)) << u64(8)))
+	y = ((y >> u64(16) & (bits.m4 & max_u64)) | ((y & (bits.m4 & max_u64)) << u64(16)))
 	return (y >> 32) | (y << 32)
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -48,7 +48,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 			}
 		}
 	} $else {
-		// todo look into librarys dirs
+		// TODO: look into librarys dirs
 		return SystemDll{
 			name: dll
 		}

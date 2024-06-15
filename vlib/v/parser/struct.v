@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -248,7 +248,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					return ast.StructDecl{}
 				}
 				field_pos = field_start_pos.extend(p.prev_tok.pos())
-				if typ.has_flag(.option) || typ.has_flag(.result) {
+				if typ.has_option_or_result() {
 					option_pos = p.peek_token(-2).pos()
 				}
 			}
@@ -632,8 +632,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			mut_pos = fields.len
 		}
 		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.is_next_to(p.tok) {
-			p.error_with_pos("no need to add generic type names in generic interface's method",
-				p.peek_tok.pos())
+			if generic_types.len == 0 {
+				p.error_with_pos('non-generic interface `${interface_name}` cannot define a generic method',
+					p.peek_tok.pos())
+			} else {
+				p.error_with_pos("no need to add generic type names in generic interface's method",
+					p.peek_tok.pos())
+			}
 			return ast.InterfaceDecl{}
 		}
 		mut comments := p.eat_comments()
@@ -650,7 +655,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			params_t, _, is_variadic := p.fn_params() // TODO merge ast.Param and ast.Arg to avoid this
+			params_t, _, is_variadic := p.fn_params() // TODO: merge ast.Param and ast.Arg to avoid this
 			mut params := [
 				ast.Param{
 					name: 'x'
@@ -665,7 +670,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				short_name: name
 				mod: p.mod
 				params: params
-				file: p.file_name
+				file: p.file_path
 				return_type: ast.void_type
 				is_variadic: is_variadic
 				is_pub: true
@@ -702,7 +707,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			mut type_pos := p.tok.pos()
 			field_typ := p.parse_type()
 			type_pos = type_pos.extend(p.prev_tok.pos())
-			comments << p.eat_comments(same_line: true)
+			comments << p.eat_comments()
 			fields << ast.StructField{
 				name: field_name
 				pos: field_pos

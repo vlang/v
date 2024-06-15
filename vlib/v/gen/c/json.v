@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -75,10 +75,17 @@ fn (mut g Gen) gen_jsons() {
 				g.set_current_pos_as_last_stmt_pos()
 				pos := g.out.len
 				g.write(init_styp)
+				if utyp.is_ptr() {
+					ptr_styp := g.typ(utyp.set_nr_muls(utyp.nr_muls() - 1))
+					g.write('HEAP(${ptr_styp}, ')
+				}
 				g.expr(ast.Expr(ast.StructInit{
-					typ: utyp
+					typ: utyp.set_nr_muls(0)
 					typ_str: styp
 				}))
+				if utyp.is_ptr() {
+					g.write(')')
+				}
 				init_styp = g.out.cut_to(pos).trim_space()
 			}
 		}
@@ -673,7 +680,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				is_option_field := field.typ.has_flag(.option)
 				if field.typ.has_flag(.option) {
 					gen_js_get_opt(js_dec_name(field_type), field_type, styp, tmp, name, mut
-						dec, true)
+						dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp} && !cJSON_IsNull(jsonroot_${tmp})) {')
 				} else {
 					gen_js_get(styp, tmp, name, mut dec, is_required)
@@ -895,20 +902,26 @@ fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, n
 }
 
 fn js_enc_name(typ string) string {
-	suffix := typ.replace('*', '_ptr')
+	mut suffix := typ.replace('*', '_ptr')
+	if typ == 'i32' {
+		suffix = typ.replace('i32', 'int')
+	}
 	name := 'json__encode_${suffix}'
 	return util.no_dots(name)
 }
 
 fn js_dec_name(typ string) string {
-	suffix := typ.replace('*', '_ptr')
+	mut suffix := typ.replace('*', '_ptr')
+	if typ == 'i32' {
+		suffix = typ.replace('i32', 'int')
+	}
 	name := 'json__decode_${suffix}'
 	return util.no_dots(name)
 }
 
 fn is_js_prim(typ string) bool {
-	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'byte']
+	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'u8',
+		'u16', 'u32', 'u64', 'byte']
 }
 
 fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size int, ret_styp string) string {

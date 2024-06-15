@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -26,7 +26,7 @@ pub fn parse_rfc3339(s string) !Time {
 	// Check if sn is date only
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
 		year, month, day := parse_iso8601_date(sn)!
-		t = new_time(Time{
+		t = new(Time{
 			year: year
 			month: month
 			day: day
@@ -37,7 +37,7 @@ pub fn parse_rfc3339(s string) !Time {
 	if !parts[0].contains('-') && parts[0].contains(':') {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])!
-		t = new_time(Time{
+		t = new(Time{
 			hour: hour_
 			minute: minute_
 			second: second_
@@ -119,7 +119,7 @@ pub fn parse(s string) !Time {
 	if isecond > 59 || isecond < 0 {
 		return error_invalid_time(8, 'seconds must be between 0 and 60')
 	}
-	res := new_time(Time{
+	res := new(Time{
 		year: iyear
 		month: imonth
 		day: iday
@@ -176,7 +176,7 @@ pub fn parse_iso8601(s string) !Time {
 	if parts.len == 2 {
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
 	}
-	mut t := new_time(
+	mut t := new(
 		year: year
 		month: month
 		day: day

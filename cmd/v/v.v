@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -23,14 +23,17 @@ const external_tools = [
 	'check-md',
 	'complete',
 	'compress',
+	'cover',
 	'doc',
 	'doctor',
+	'download',
 	'fmt',
 	'gret',
 	'ls',
 	'missdoc',
 	'repl',
 	'repeat',
+	'retry',
 	'self',
 	'setup-freetype',
 	'shader',

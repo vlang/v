@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -100,7 +100,20 @@ fn repl_help() {
 	|Ctrl-C, Ctrl-D, exit   Exits the REPL.
 	|clear                  Clears the screen.
 	|pin                    Pins the entered program to the top.
+	|!sh [COMMAND]          Execute on REPL shell commands.
 '.strip_margin())
+}
+
+fn run_shell(command string) {
+	if command.len >= 2 && command[0..2] == 'cd' {
+		command_splited := command.split(' ')
+		assert command_splited.len >= 2
+		dir := command_splited[command_splited.len - 1]
+
+		os.chdir(dir) or { eprintln('`${command}` failed, err: ${err}') }
+	} else {
+		os.system(command)
+	}
 }
 
 fn (mut r Repl) checks() bool {
@@ -361,6 +374,12 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			repl_help()
 			continue
 		}
+
+		if r.line.len > 4 && r.line[0..3] == '!sh' {
+			run_shell(r.line[4..r.line.len])
+			continue
+		}
+
 		if r.line.contains(':=') && r.line.contains('fn(') {
 			r.in_func = true
 			r.functions_name << r.line.all_before(':= fn(').trim_space()
@@ -458,23 +477,13 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			} else if temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
 			} else {
-				for i, l in r.lines {
-					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
-						r.lines.delete(i)
-						break
-					}
-				}
 				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
 			if s.exit_code == 0 {
-				for r.temp_lines.len > 0 {
-					if !r.temp_lines[0].starts_with('print') {
-						r.lines << r.temp_lines[0]
-					}
-					r.temp_lines.delete(0)
-				}
+				r.lines << r.temp_lines
+				r.temp_lines.clear()
 				if r.line.starts_with('import ') {
 					r.parse_import(r.line)
 				} else if r.line.starts_with('#include ') {
@@ -581,7 +590,7 @@ fn repl_run_vfile(file string) !os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: ${file}')
 	}
-	s := os.execute('${os.quoted_path(vexe)} -repl run ${os.quoted_path(file)}')
+	s := os.execute('${os.quoted_path(vexe)} -message-limit 1 -repl run ${os.quoted_path(file)}')
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

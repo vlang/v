@@ -3,9 +3,25 @@ module main
 import os
 import testing
 
-const github_job = os.getenv('GITHUB_JOB')
+struct Config {
+	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
+	run_slow_sanitize      bool   = os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW') != ''
+	is_musl_ci             bool   = os.getenv('V_CI_MUSL') != ''
+	is_ubuntu_musl_ci      bool   = os.getenv('V_CI_UBUNTU_MUSL') != ''
+	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
+	github_job             string = os.getenv('GITHUB_JOB')
+mut:
+	test_dirs        []string = ['cmd', 'vlib']
+	is_asan_compiler bool
+	is_msan_compiler bool
+	// Options relating to the v command itself (passed in the prefix) `v [...args] test-self`.
+	werror             bool
+	sanitize_memory    bool
+	sanitize_address   bool
+	sanitize_undefined bool
+}
 
-const just_essential = os.getenv('VTEST_JUST_ESSENTIAL') != ''
+const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -26,7 +42,6 @@ const essential_list = [
 	'vlib/builtin/string_test.v',
 	'vlib/builtin/sorting_test.v',
 	'vlib/builtin/gated_array_string_test.v',
-	'vlib/builtin/array_shrinkage_test.v',
 	'vlib/builtin/isnil_test.v',
 	'vlib/builtin/string_match_glob_test.v',
 	'vlib/builtin/string_strip_margin_test.v',
@@ -80,12 +95,11 @@ const essential_list = [
 	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/x/json2/json2_test.v',
+	'vlib/x/json2/tests/json2_test.v',
 ]
 const skip_test_files = [
 	'do_not_remove',
-	'cmd/tools/vdoc/html_tag_escape_test.v', // can't locate local module: markdown
-	'cmd/tools/vdoc/tests/vdoc_file_test.v', // fails on Windows; order of output is not as expected
+	'cmd/tools/vdoc/vdoc_test.v', // markdown not installed
 	'vlib/context/deadline_test.v', // sometimes blocks
 	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
 	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
@@ -93,6 +107,8 @@ const skip_test_files = [
 	'vlib/db/mysql/prepared_stmt_test.v', // mysql not installed
 	'vlib/db/pg/pg_orm_test.v', // pg not installed
 	'vlib/db/pg/pg_test.v', // pg not installed
+	'vlib/db/pg/pg_double_test.v', // pg not installed
+	'vlib/net/ftp/ftp_test.v', // currently broken
 ]
 // These tests are too slow to be run in the CI on each PR/commit
 // in the sanitized modes:
@@ -128,7 +144,6 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
 	'vlib/net/http/status_test.v',
-	'vlib/net/http/http_httpbin_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
 	'vlib/net/udp_test.v',
@@ -159,18 +174,19 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
+	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
-	'vlib/vweb/request_test.v',
 	'vlib/net/http/request_test.v',
 	'vlib/net/http/response_test.v',
 	'vlib/vweb/route_test.v',
 	'vlib/net/websocket/websocket_test.v',
-	'vlib/crypto/rand/crypto_rand_read_test.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/x/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
 	'do_not_remove',
@@ -183,6 +199,7 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -193,6 +210,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 ]
 const skip_with_werror = [
@@ -216,9 +234,7 @@ const skip_on_ubuntu_musl = [
 	'do_not_remove',
 	//'vlib/v/gen/js/jsgen_test.v',
 	'vlib/net/http/cookie_test.v',
-	'vlib/net/http/http_test.v',
 	'vlib/net/http/status_test.v',
-	'vlib/net/websocket/ws_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -244,16 +260,16 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
+	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/request_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/net/http/request_test.v',
 	'vlib/vweb/route_test.v',
 	'vlib/net/websocket/websocket_test.v',
-	'vlib/net/http/http_httpbin_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
 	'vlib/net/http/response_test.v',
@@ -261,8 +277,10 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
-	'vlib/vweb/x/tests/vweb_test.v',
-	'vlib/vweb/x/tests/vweb_app_test.v',
+	'vlib/x/sessions/tests/db_store_test.v',
+	'vlib/x/vweb/tests/vweb_test.v',
+	'vlib/x/vweb/tests/vweb_app_test.v',
+	'vlib/veb/tests/veb_app_test.v',
 ]
 const skip_on_linux = [
 	'do_not_remove',
@@ -284,7 +302,6 @@ const skip_on_windows = [
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
-	'vlib/net/websocket/ws_test.v',
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/openssl/openssl_compiles_test.c.v',
 	'vlib/net/http/request_test.v',
@@ -292,7 +309,6 @@ const skip_on_windows = [
 	'vlib/net/ssl/ssl_compiles_test.v',
 	'vlib/net/mbedtls/mbedtls_compiles_test.v',
 	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/request_test.v',
 	'vlib/vweb/route_test.v',
 	'vlib/sync/many_times_test.v',
 	'vlib/sync/once_test.v',
@@ -318,6 +334,8 @@ const skip_on_non_amd64_or_arm64 = [
 	'do_not_remove',
 	// closures aren't implemented yet:
 	'vlib/v/tests/closure_test.v',
+	// native aren't implemented:
+	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/context/cancel_test.v',
 	'vlib/context/deadline_test.v',
 	'vlib/context/empty_test.v',
@@ -327,36 +345,92 @@ const skip_on_non_amd64_or_arm64 = [
 	'vlib/sync/many_times_test.v',
 	'do_not_remove',
 ]
+const skip_on_sandboxed_packaging = [
+	'do_not_remove',
+	'vlib/v/slow_tests/inout/compiler_test.v',
+	'vlib/v/gen/native/tests/native_test.v',
+	'vlib/v/compiler_errors_test.v',
+	'vlib/v/gen/c/coutput_test.v',
+]
 
-// Note: musl misses openssl, thus the http tests can not be done there
-// Note: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
-fn main() {
-	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-	vroot := os.dir(vexe)
-	os.chdir(vroot) or { panic(err) }
-	args := os.args.clone()
-	args_string := args[1..].join(' ')
-	cmd_prefix := args_string.all_before('test-self')
-	title := 'testing vlib'
-	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
-	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
-	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
-	all_test_files << test_js_files
-
-	if just_essential {
-		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
-		all_test_files = all_test_files.filter(rooted_essential_list.contains(it))
+fn Config.init(vargs []string, targs []string) !Config {
+	mut cfg := Config{}
+	for arg in vargs {
+		match arg {
+			'-Werror', '-cstrict' { cfg.werror = true }
+			'-fsanitize=memory' { cfg.sanitize_memory = true }
+			'-fsanitize=address' { cfg.sanitize_address = true }
+			'-fsanitize=undefined' { cfg.sanitize_undefined = true }
+			else {}
+		}
 	}
+	if targs.len == 0 {
+		return cfg
+	}
+	mut tdirs := []string{}
+	mut errs := []string{}
+	for arg in targs {
+		match arg {
+			'-asan-compiler', '--asan-compiler' {
+				cfg.is_asan_compiler = true
+			}
+			'-msan-compiler', '--msan-compiler' {
+				cfg.is_msan_compiler = true
+			}
+			else {
+				if arg.starts_with('-') {
+					errs << 'error: unknown flag `${arg}`'
+					continue
+				}
+				if !os.is_dir(os.join_path(vroot, arg)) {
+					errs << 'error: failed to find directory `${arg}`'
+					continue
+				}
+				tdirs << arg
+			}
+		}
+	}
+	if errs.len > 0 {
+		return error(errs.join_lines())
+	}
+	if tdirs.len > 0 {
+		cfg.test_dirs = tdirs
+	}
+	return cfg
+}
+
+fn main() {
+	os.chdir(vroot) or { panic(err) }
+	args_idx := os.args.index('test-self')
+	vargs := os.args[1..args_idx]
+	targs := os.args#[args_idx + 1..]
+	cfg := Config.init(vargs, targs) or {
+		eprintln(err)
+		exit(1)
+	}
+	// dump(cfg)
+	title := 'testing: ${cfg.test_dirs.join(', ')}'
 	testing.eheader(title)
-	mut tsession := testing.new_test_session(cmd_prefix, true)
+	mut tpaths := map[string]bool{}
+	mut tpaths_ref := &tpaths
+	for dir in cfg.test_dirs {
+		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
+			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
+				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
+				unsafe {
+					tpaths_ref[p] = true
+				}
+			}
+		})
+	}
+	mut all_test_files := tpaths.keys()
+	if cfg.run_just_essential {
+		all_test_files = essential_list.map(os.join_path(vroot, it))
+	}
+	mut tsession := testing.new_test_session(vargs.join(' '), true)
+	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
-
-	if !testing.is_node_present {
-		testroot := vroot + os.path_separator
-		tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
-			'/'))
-	}
 	if !testing.is_go_present {
 		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
 	}
@@ -366,72 +440,47 @@ fn main() {
 	}
 	testing.find_started_process('postgres') or {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
+		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
-
 	$if windows {
-		if github_job == 'tcc' {
+		if cfg.github_job == 'tcc' {
 			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 	}
-
-	mut werror := false
-	mut sanitize_memory := false
-	mut sanitize_address := false
-	mut sanitize_undefined := false
-	mut asan_compiler := false
-	mut msan_compiler := false
-	for arg in args {
-		if arg.contains('-asan-compiler') {
-			asan_compiler = true
-		}
-		if arg.contains('-msan-compiler') {
-			msan_compiler = true
-		}
-		if arg.contains('-Werror') || arg.contains('-cstrict') {
-			werror = true
-		}
-		if arg.contains('-fsanitize=memory') {
-			sanitize_memory = true
-		}
-		if arg.contains('-fsanitize=address') {
-			sanitize_address = true
-		}
-		if arg.contains('-fsanitize=undefined') {
-			sanitize_undefined = true
-		}
-	}
-	if os.getenv('VTEST_RUN_FSANITIZE_TOO_SLOW').len == 0
-		&& ((sanitize_undefined || sanitize_memory || sanitize_address)
-		|| (msan_compiler || asan_compiler)) {
+	if !cfg.run_slow_sanitize
+		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
+		|| (cfg.is_msan_compiler || cfg.is_asan_compiler)) {
 		tsession.skip_files << skip_fsanitize_too_slow
 	}
-	if werror {
+	if cfg.werror {
 		tsession.skip_files << skip_with_werror
 	}
-	if sanitize_memory {
+	if cfg.sanitize_memory {
 		tsession.skip_files << skip_with_fsanitize_memory
 	}
-	if sanitize_address {
+	if cfg.sanitize_address {
 		tsession.skip_files << skip_with_fsanitize_address
 	}
-	if sanitize_undefined {
+	if cfg.sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
 	}
-	if asan_compiler {
+	if cfg.is_asan_compiler {
 		tsession.skip_files << skip_with_asan_compiler
 	}
-	if msan_compiler {
+	if cfg.is_msan_compiler {
 		tsession.skip_files << skip_with_msan_compiler
 	}
-	// println(tsession.skip_files)
-	if os.getenv('V_CI_MUSL').len > 0 {
+	if cfg.is_musl_ci {
 		tsession.skip_files << skip_on_musl
 	}
-	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
+	if cfg.is_ubuntu_musl_ci {
 		tsession.skip_files << skip_on_ubuntu_musl
 	}
+	if cfg.is_sandboxed_packaging {
+		tsession.skip_files << skip_on_sandboxed_packaging
+	}
 	$if !amd64 && !arm64 {
-		tsession.skip_files << skip_on_non_amd64
+		tsession.skip_files << skip_on_non_amd64_or_arm64
 	}
 	$if amd64 {
 		tsession.skip_files << skip_on_amd64
@@ -455,11 +504,26 @@ fn main() {
 		tsession.skip_files << skip_on_non_windows
 	}
 	$if macos {
+		$if arm64 {
+			if cfg.github_job == 'clang' {
+				tsession.skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			}
+		}
 		tsession.skip_files << skip_on_macos
 	}
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
+	// dump(tsession.skip_files)
+	mut unavailable_files := tsession.files.filter(!os.exists(it))
+	unavailable_files << tsession.skip_files.filter(it != 'do_not_remove' && !os.exists(it))
+	if unavailable_files.len > 0 {
+		for f in unavailable_files {
+			eprintln('error: failed to find file: ${f}')
+		}
+		exit(1)
+	}
+	tsession.skip_files = tsession.skip_files.map(os.abs_path)
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {

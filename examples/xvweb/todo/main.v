@@ -6,6 +6,7 @@ module main
 
 import x.vweb
 import db.sqlite
+import os
 import time
 
 struct Todo {
@@ -39,9 +40,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 	todos := sql app.db {
 		select from Todo
 	} or { return ctx.server_error('could not fetch todos from database!') }
-
-	// TODO: use $vweb.html()
-	return ctx.html($tmpl('templates/index.html'))
+	return $vweb.html()
 }
 
 // This method will only handle POST requests to the index page
@@ -51,7 +50,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 	// we could also access the name field by doing `name := ctx.form['name']`
 
 	// validate input field
-	if name.len == 0 {
+	if name == '' {
 		// set a form error
 		ctx.form_error = 'You must fill in all the fields!'
 		// send a HTTP 400 response code indicating that the form fields are incorrect
@@ -70,7 +69,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 	// insert the todo into our database
 	sql app.db {
 		insert todo into Todo
-	} or { return ctx.server_error('could not insert a new TODO in the datbase') }
+	} or { return ctx.server_error('could not insert a new TODO in the database') }
 
 	ctx.created_todo = true
 
@@ -96,7 +95,7 @@ pub fn (app &App) complete_todo(mut ctx Context, id int) vweb.Result {
 	} or { return ctx.server_error('could not update TODO') }
 
 	// redirect client to the home page and tell the browser to sent a GET request
-	return ctx.redirect('/', .see_other)
+	return ctx.redirect('/', typ: .see_other)
 }
 
 @['/todo/:id/delete'; post]
@@ -123,11 +122,12 @@ pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
 	} or { return ctx.server_error('could not delete TODO') }
 
 	// redirect client to the home page and tell the browser to sent a GET request
-	return ctx.redirect('/', .see_other)
+	return ctx.redirect('/', typ: .see_other)
 }
 
 fn main() {
-	// create a new App instance with a connection to the datbase
+	os.chdir(os.dir(@FILE))!
+	// create a new App instance with a connection to the database
 	mut app := &App{
 		db: sqlite.connect('todo.db')!
 	}

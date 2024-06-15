@@ -7,21 +7,23 @@ name: Docs CI
 on:
   push:
     paths-ignore:
-      - "**.yml"
+      - '**.yml'
+      - '!**/docs_ci.yml'
   pull_request:
     paths-ignore:
-      - "**.yml"
+      - '**.yml'
+      - '!**/docs_ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check-markdown:
     runs-on: ubuntu-20.04
-    if: >
-      github.event_name != 'push'
-      || github.event.ref == 'refs/heads/master'
-      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
         run: make
       - name: Check markdown line length & code examples
@@ -31,23 +33,19 @@ jobs:
 
   report-missing-fn-doc:
     runs-on: ubuntu-20.04
-    if: >
-      github.event_name != 'push'
-      || github.event.ref == 'refs/heads/master'
-      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 5
     env:
       MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
         run: make
 
       - name: Checkout previous v
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: vlang/v
-          ref: master   # important
+          ref: master # important
           path: pv
 
       - name: Check against parent commit

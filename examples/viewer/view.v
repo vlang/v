@@ -16,7 +16,7 @@ import sokol.gfx
 import sokol.sgl
 import sokol.sapp
 import stbi
-import szip
+import compress.szip
 import strings
 
 // Help text
@@ -56,15 +56,14 @@ enum Viewer_state {
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { nil }
-	pip_viewer  sgl.Pipeline
-	texture     gfx.Image
-	sampler     gfx.Sampler
-	init_flag   bool
-	frame_count int
-	mouse_x     int = -1
-	mouse_y     int = -1
-	scroll_y    int
+	gg         &gg.Context = unsafe { nil }
+	pip_viewer sgl.Pipeline
+	texture    gfx.Image
+	sampler    gfx.Sampler
+	init_flag  bool
+	mouse_x    int = -1
+	mouse_y    int = -1
+	scroll_y   int
 
 	state Viewer_state = .scanning
 	// translation
@@ -222,7 +221,7 @@ fn (mut app App) read_bytes(path string) bool {
 pub fn read_bytes_from_file(file_path string) []u8 {
 	mut buffer := []u8{}
 	buffer = os.read_bytes(file_path) or {
-		eprintln('ERROR: Texure file: [${file_path}] NOT FOUND.')
+		eprintln('ERROR: Texture file: [${file_path}] NOT FOUND.')
 		exit(0)
 	}
 	return buffer
@@ -297,7 +296,7 @@ pub fn load_image(mut app App) {
 	}
 
 	file_path := app.item_list.get_file_path()
-	if file_path.len > 0 {
+	if file_path != '' {
 		// println("${app.item_list.lst[app.item_list.item_index]} $file_path ${app.item_list.lst.len}")
 		app.texture, app.sampler, app.img_w, app.img_h = app.load_texture_from_file(file_path)
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
@@ -563,7 +562,6 @@ fn frame(mut app App) {
 	}
 
 	app.gg.end()
-	app.frame_count++
 }
 
 // draw readable text
@@ -801,10 +799,10 @@ fn main() {
 
 	// App init
 	mut app := &App{
-		gg: 0
+		gg: unsafe { nil }
 		// zip fields
-		zip: 0
-		item_list: 0
+		zip: unsafe { nil }
+		item_list: unsafe { nil }
 	}
 
 	app.state = .scanning

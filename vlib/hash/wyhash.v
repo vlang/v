@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // currently the C version performs slightly better
 // because it uses 128 bit int when available and
 // branch prediction hints. the C version will be
-// removed once the perfomance is matched.
+// removed once the performance is matched.
 // you can test performance by running:
 // `v run cmd/tools/bench/wyhash.v`
 // try running with and without the `-prod` flag

@@ -1,45 +1,50 @@
 name: Build Vinix
 
 on:
+  workflow_call:
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
   push:
     branches:
       - master
     paths-ignore:
-      - "**.md"
-      - "**.yml"
+      - '**.md'
+      - '**.yml'
+      - '!**/vinix_ci.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   vinix-build:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 10
-    env:
-      VFLAGS: -gc none
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v symlink
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install build-essential meson -y
-
-      - name: Build V
-        run: make
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install build-essential meson -y
 
       - name: Clone current Vinix
-        run: git clone https://github.com/vlang/vinix.git
+        run: ./v retry -- git clone https://github.com/vlang/vinix.git
+
+      - name: Download Vinix kernel dependencies
+        run: cd vinix/kernel && ./get-deps
 
       - name: Attempt to build the Vinix kernel (debug)
-        run: cd vinix/kernel && make PROD=false CFLAGS="-D__vinix__ -O2 -g -pipe" V="../../v" && make clean
+        run: cd vinix/kernel && make PROD=false KCFLAGS="-D__vinix__ -O2 -g -pipe" KV="../../v" && make clean
 
       - name: Attempt to build the Vinix kernel (prod)
-        run: cd vinix/kernel && make PROD=true CFLAGS="-D__vinix__ -O2 -g -pipe" V="../../v" && make clean
+        run: cd vinix/kernel && make PROD=true  KCFLAGS="-D__vinix__ -O2 -g -pipe" KV="../../v" && make clean
 
       - name: Attempt to build the util-vinix (debug)
-        run: cd vinix/util-vinix && make PROD=false V="$(realpath ../../v)" VFLAGS="-os vinix -gc none" CFLAGS="-D__vinix__ -O2 -g -pipe" && make clean
+        run: cd vinix/util-vinix && make PROD=false V="$(realpath ../../v)" VFLAGS="-os vinix -gc none" KCFLAGS="-D__vinix__ -O2 -g -pipe" && make clean
 
       - name: Attempt to build the util-vinix (prod)
-        run: cd vinix/util-vinix && make PROD=true V="$(realpath ../../v)" VFLAGS="-os vinix -gc none" CFLAGS="-D__vinix__ -O2 -g -pipe" && make clean
+        run: cd vinix/util-vinix && make PROD=true V="$(realpath ../../v)" VFLAGS="-os vinix -gc none" KCFLAGS="-D__vinix__ -O2 -g -pipe" && make clean

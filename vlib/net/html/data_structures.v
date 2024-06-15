@@ -1,6 +1,6 @@
 module html
 
-const null_element = int(0x80000000)
+const null_element = int(-1)
 
 struct Stack {
 mut:

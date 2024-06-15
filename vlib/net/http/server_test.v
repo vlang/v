@@ -112,8 +112,6 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	return r
 }
 
-const cport = 18197
-
 fn test_server_custom_handler() {
 	log.warn('${@FN} started')
 	defer {
@@ -123,7 +121,7 @@ fn test_server_custom_handler() {
 	mut server := &http.Server{
 		accept_timeout: atimeout
 		handler: handler
-		port: cport
+		addr: ':18197'
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
@@ -226,7 +224,7 @@ fn test_my_counting_handler_on_random_port() {
 	}
 	mut server := &http.Server{
 		show_startup_message: false
-		port: 0
+		addr: ''
 		accept_timeout: atimeout
 		handler: MyCountingHandler{}
 		on_running: fn (mut server http.Server) {

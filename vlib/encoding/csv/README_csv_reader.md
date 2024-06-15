@@ -42,6 +42,7 @@ Using these structs, it is possible to change the behavior of the CSV Reader.
 The config struct is as follows:
 ```v ignore
 pub struct SequentialReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed by scr_buf as source of data
 	file_path    string
@@ -128,6 +129,7 @@ Using these structs, it is possible to change the behavior of the CSV Reader.
 The config struct is as follows:
 ```v ignore
 pub struct RandomAccessReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string

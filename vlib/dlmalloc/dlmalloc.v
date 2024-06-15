@@ -199,12 +199,13 @@ fn overhead_for(c &Chunk) usize {
 	}
 }
 
-// In order for dlmalloc to efficently manage memory, it needs a way to communicate with the underlying platform.
+// In order for dlmalloc to efficiently manage memory, it needs a way to communicate with the underlying platform.
 // This `Allocator` type provides an interface for this communication.
 //
 //
 // Why not `interface?` Interfaces require memory allocation so it is simpler to pass a struct.
 pub struct Allocator {
+pub:
 	alloc            fn (voidptr, usize) (voidptr, usize, u32) = unsafe { nil }
 	remap            fn (voidptr, voidptr, usize, usize, bool) voidptr = unsafe { nil }
 	free_part        fn (voidptr, voidptr, usize, usize) bool = unsafe { nil }
@@ -459,7 +460,7 @@ fn (dl &Dlmalloc) compute_tree_index(size usize) u32 {
 		return dlmalloc.n_tree_bins - 1
 	} else {
 		k := sizeof(usize) * 8 - 1 - usize_leading_zeros(x)
-		return u32((k << 1) + (size >> (k + dlmalloc.tree_bin_shift - 1) & 1))
+		return u32((k << 1) + ((size >> (k + dlmalloc.tree_bin_shift - 1)) & 1))
 	}
 }
 
@@ -954,7 +955,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 
 				// todo(playXE): Find out why in the world this part of code does not work in
 				// some programs (esp. x.json2). Theoretically disabling this path just
-				// makes fragmentation a little worser but nothing really bad should happen
+				// makes fragmentation a little worse but nothing really bad should happen
 				if false && smallbits != 0 {
 					leftbits := (smallbits << idx) & left_bits(1 << idx)
 					leastbit := least_bit(leftbits)
@@ -1047,7 +1048,8 @@ fn (mut dl Dlmalloc) init_bins() {
 
 @[unsafe]
 fn (mut dl Dlmalloc) init_top(ptr &Chunk, size_ usize) {
-	offset := align_offset_usize(ptr.to_mem())
+	pmem := ptr.to_mem()
+	offset := align_offset_usize(usize(pmem))
 	mut p := ptr.plus_offset(offset)
 
 	size := size_ - offset
@@ -1300,7 +1302,8 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 		ssize := pad_request(sizeof(Segment))
 		mut offset := ssize + sizeof(usize) * 4 + malloc_alignment() - 1
 		rawsp := voidptr(usize(old_end) - offset)
-		offset = align_offset_usize((&Chunk(rawsp)).to_mem())
+		pmem := (&Chunk(rawsp)).to_mem()
+		offset = align_offset_usize(usize(pmem))
 		asp := voidptr(usize(rawsp) + offset)
 		csp := if asp < voidptr(usize(old_top) + min_chunk_size()) { old_top } else { asp }
 		mut sp := &Chunk(csp)

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -8,17 +8,17 @@ import v.ast
 import v.util
 import v.pref
 
+const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending on the penalty
+const max_len = break_points[break_points.len - 1]
 const bs = '\\'
-
-// when to break a line depending on the penalty
-const max_len = [0, 35, 60, 85, 93, 100]
 
 @[minify]
 pub struct Fmt {
+pub:
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	file               ast.File
-	table              &ast.Table        = unsafe { nil }
-	pref               &pref.Preferences = unsafe { nil }
+	table              &ast.Table = unsafe { nil }
 	is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -32,15 +32,14 @@ pub mut:
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
-	auto_imports       []string          // automatically inserted imports that the user forgot to specify
-	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string          // to remove unused imports
-	import_syms_used   map[string]bool   // to remove unused import symbols.
+	import_pos         int // position of the imports in the resulting string
+	auto_imports       map[string]bool   // potentially hidden imports(`sync` when using channels) and preludes(when embedding files)
+	used_imports       map[string]bool   // to remove unused imports
+	import_syms_used   map[string]bool   // to remove unused import symbols
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
-	single_line_fields bool   // should struct fields be on a single line
-	it_name            string // the name to replace `it` with
+	single_line_fields bool // should struct fields be on a single line
 	in_lambda_depth    int
 	inside_const       bool
 	inside_unsafe      bool
@@ -57,10 +56,11 @@ pub mut:
 
 @[params]
 pub struct FmtOptions {
+pub:
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
@@ -71,12 +71,12 @@ pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bo
 	}
 	f.source_text = options.source_text
 	f.process_file_imports(file)
-	f.set_current_module_name('main')
-	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
+	// Compensate for indent increase of toplevel stmts done in `f.stmts()`.
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
-	f.imports(f.file.imports) // now that we have all autoimports, handle them
+	// Format after file import symbols are processed.
+	f.imports(f.file.imports)
 	res := f.out.str().trim_space() + '\n'
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
@@ -88,14 +88,41 @@ pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bo
 		}
 		return res
 	}
-	source_for_imports := res[..f.import_pos] + f.out_imports.str()
-	source_after_imports := res[f.import_pos..]
-	return source_for_imports + source_after_imports
+	mut import_start_pos := f.import_pos
+	if f.import_pos == 0 && file.stmts.len > 1 {
+		// Check shebang.
+		stmt := file.stmts[1]
+		if stmt is ast.ExprStmt && stmt.expr is ast.Comment
+			&& (stmt.expr as ast.Comment).text.starts_with('#!') {
+			import_start_pos = stmt.pos.len
+		}
+	}
+	return res[..import_start_pos] + f.out_imports.str() + res[import_start_pos..]
 }
+
+/*
+// vfmt has a special type_to_str which calls Table.type_to_str, but does extra work.
+// Having it here and not in Table saves cpu cycles when not running the compiler in vfmt mode.
+pub fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[string]string) string {
+	mut s := f.table.type_to_str_using_aliases(typ, import_aliases)
+	if s.contains('Result') {
+		println('${s}')
+	}
+	if s.starts_with('x.vweb') {
+		s = s.replace_once('x.vweb', 'veb.')
+	}
+	return s
+}
+
+pub fn (f &Fmt) type_to_str(typ ast.Type) string {
+	return f.table.type_to_str(typ)
+}
+*/
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
+		f.mod2alias[imp.mod.all_after('${file.mod.name}.')] = imp.alias
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.${sym.name}'] = sym.name
 			f.mod2alias['${imp.mod.all_after_last('.')}.${sym.name}'] = sym.name
@@ -106,7 +133,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.import_syms_used[sym.name] = false
 		}
 	}
-	f.auto_imports = file.auto_imports
+	for mod in f.file.auto_imports {
+		f.auto_imports[mod] = true
+	}
 }
 
 //=== Basic buffer write operations ===//
@@ -121,7 +150,7 @@ pub fn (mut f Fmt) write(s string) {
 }
 
 pub fn (mut f Fmt) writeln(s string) {
-	if f.indent > 0 && f.empty_line && s.len > 0 {
+	if f.indent > 0 && f.empty_line && s != '' {
 		f.write_indent()
 	}
 	f.out.writeln(s)
@@ -138,7 +167,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= fmt.break_points[penalty_idx] {
 		return false
 	}
 	if f.out.last() == ` ` {
@@ -158,6 +187,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 
 @[params]
 pub struct RemoveNewLineConfig {
+pub:
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
 
@@ -303,25 +333,22 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 		}
 		else {}
 	}
-	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
+	// `Type[T]` -> `Type` || `[]thread Type` -> `Type`.
+	name := sym.name.all_before('[').all_after(' ')
 	f.mark_import_as_used(name)
 }
 
-// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
 pub fn (mut f Fmt) mark_import_as_used(name string) {
 	parts := name.split('.')
-	last := parts.last()
-	if last in f.import_syms_used {
-		f.import_syms_used[last] = true
+	sym := parts.last()
+	if sym in f.import_syms_used {
+		f.import_syms_used[sym] = true
 	}
 	if parts.len == 1 {
 		return
 	}
-	mod := parts[0..parts.len - 1].join('.')
-	if mod in f.used_imports {
-		return
-	}
-	f.used_imports << mod
+	mod := parts[..parts.len - 1].join('.')
+	f.used_imports[mod] = true
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
@@ -329,56 +356,50 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		return
 	}
 	f.did_imports = true
-	mut num_imports := 0
-	mut already_imported := map[string]bool{}
-
+	mut processed_imports := map[string]bool{}
 	for imp in imports {
-		if imp.mod !in f.used_imports {
-			// TODO bring back once only unused imports are removed
-			// continue
-		}
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
+			// Skip hidden imports like preludes.
 			continue
 		}
-		import_text := 'import ${f.imp_stmt_str(imp)}'
-		if already_imported[import_text] {
+		imp_stmt := f.imp_stmt_str(imp)
+		if imp_stmt in processed_imports {
+			// Skip duplicates.
+			f.import_comments(imp.next_comments)
 			continue
 		}
-		already_imported[import_text] = true
-
+		processed_imports[imp_stmt] = true
 		if !f.format_state.is_vfmt_on {
-			import_original_source_lines := f.get_source_lines()#[imp.pos.line_nr..
-				imp.pos.last_line + 1].join('\n')
-			f.out_imports.writeln(import_original_source_lines)
-			// NOTE: imp.comments are on the *same line*, so they are already included in import_original_source_lines
+			original_imp_line := f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
+			// Same line comments(`imp.comments`) are included in the `original_imp_line`.
+			f.out_imports.writeln(original_imp_line)
 			f.import_comments(imp.next_comments)
 		} else {
-			f.out_imports.writeln(import_text)
+			f.out_imports.writeln('import ${imp_stmt}')
 			f.import_comments(imp.comments, same_line: true)
 			f.import_comments(imp.next_comments)
 		}
-		num_imports++
 	}
-	if num_imports > 0 {
+	if processed_imports.len > 0 {
 		f.out_imports.writeln('')
 	}
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
-	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
-	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
+	// Format / remove unused selective import symbols
+	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
+	has_alias := imp.alias != imp.source_name.all_after_last('.')
+	mut suffix := if has_alias { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
-		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
+		suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
 			' { ' + syms.join(', ') + ' }'
 		} else {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${normalized_mod}${imp_alias_suffix}'
+	return '${imp.source_name}${suffix}'
 }
 
 //=== Node helpers ===//
@@ -512,6 +533,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.ConstDecl {
 			f.const_decl(node)
+		}
+		ast.DebuggerStmt {
+			f.debugger_stmt(node)
 		}
 		ast.DeferStmt {
 			f.defer_stmt(node)
@@ -874,6 +898,10 @@ pub fn (mut f Fmt) block(node ast.Block) {
 	f.writeln('}')
 }
 
+pub fn (mut f Fmt) debugger_stmt(node ast.DebuggerStmt) {
+	f.writeln('\$dbg;')
+}
+
 pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {
 	f.writeln(node.str())
 }
@@ -914,9 +942,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		}
 	}
 	f.inside_const = true
-	defer {
-		f.inside_const = false
-	}
+	defer { f.inside_const = false }
 	if !node.is_block {
 		f.write('const ')
 	}
@@ -951,13 +977,13 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		if node.is_block && fidx < node.fields.len - 1 && node.fields.len > 1 {
 			// old style grouped consts, converted to the new style ungrouped const
 			f.writeln('')
-		} else {
+		} else if node.end_comments.len > 0 {
 			// Write out single line comments after const expr if present
 			// E.g.: `const x = 1 // <comment>`
-			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
+			if node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
-			f.comments(node.end_comments, same_line: true)
+			f.comments(node.end_comments, same_line: true, has_nl: false)
 		}
 		prev_field = field
 	}
@@ -965,13 +991,30 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	f.writeln('')
 }
 
-pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
-	f.write('defer {')
-	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-		f.writeln('')
+fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
+	f.write('defer ')
+	if node.stmts.len == 0 {
+		f.writeln('{}')
+	} else if node.stmts.len == 1 && node.pos.line_nr == node.pos.last_line
+		&& stmt_is_single_line(node.stmts[0]) {
+		f.write('{ ')
+		// the control stmts (return/break/continue...) print a newline inside them,
+		// so, since this'll all be on one line, trim any possible whitespace
+		str := f.node_str(node.stmts[0]).trim_space()
+		// single_line := ' defer { ${str} }'
+		// if single_line.len + f.line_len <= fmt.max_len {
+		// f.write(single_line)
+		// return
+		//}
+		f.write(str)
+
+		// f.stmt(node.stmts[0])
+		f.writeln(' }')
+	} else {
+		f.writeln('{')
 		f.stmts(node.stmts)
+		f.writeln('}')
 	}
-	f.writeln('}')
 }
 
 pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
@@ -988,7 +1031,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		f.write('pub ')
 	}
 	mut name := node.name.after('.')
-	if node.typ != ast.int_type {
+	if node.typ != ast.int_type && node.typ != ast.invalid_type_idx {
 		senum_type := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 		name += ' as ${senum_type}'
 	}
@@ -1069,10 +1112,8 @@ pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
 fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	prev_fn_scope := f.fn_scope
 	f.fn_scope = node.scope
-	defer {
-		f.fn_scope = prev_fn_scope
-	}
-	if node.language == .v {
+	defer { f.fn_scope = prev_fn_scope }
+	if node.language == .v || (node.is_method && node.language == .js) {
 		if !node.no_body {
 			f.write(' {')
 			pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
@@ -1394,11 +1435,17 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_align
 
 pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
+	for cmt in field.comments {
+		match true {
+			cmt.pos.pos < field.pos.pos { pre_cmts << cmt }
+			cmt.pos.line_nr > field.pos.last_line { next_line_cmts << cmt }
+			else { end_cmts << cmt }
+		}
+	}
 	before_len := f.line_len
-	if before_comments.len > 0 {
-		f.comments(before_comments, level: .indent)
+	if pre_cmts.len > 0 {
+		f.comments(pre_cmts, level: .indent)
 	}
 	comments_len := f.line_len - before_len
 
@@ -1417,11 +1464,13 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo)
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(ft)
 	}
-
-	if end_comments.len > 0 {
-		f.comments(end_comments, level: .indent)
+	if end_cmts.len > 0 {
+		f.comments(end_cmts, level: .indent)
 	} else {
 		f.writeln('')
+	}
+	if next_line_cmts.len > 0 {
+		f.comments(next_line_cmts, level: .indent)
 	}
 	f.mark_types_import_as_used(field.typ)
 }
@@ -1498,7 +1547,7 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
-		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
 
 	f.mark_types_import_as_used(node.table_expr.typ)
@@ -1656,7 +1705,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in variants {
 		// 3 = length of ' = ' or ' | '
 		line_length += 3 + variant.name.len
-		if line_length > fmt.max_len.last() || (variant.id != node.variants.len - 1
+		if line_length > fmt.max_len || (variant.id != node.variants.len - 1
 			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
 			is_multiline = true
@@ -1691,7 +1740,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	if node.exprs.len == 0 && node.typ != 0 && node.typ != ast.void_type {
 		// `x := []string{}`
 		f.mark_types_import_as_used(node.typ)
-		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		if node.alias_type != ast.void_type {
+			f.write(f.table.type_to_str_using_aliases(node.alias_type, f.mod2alias))
+		} else {
+			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		}
 		f.write('{')
 		if node.has_len {
 			f.write('len: ')
@@ -1759,7 +1812,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.pos().len > fmt.max_len[3]
+					|| f.line_len + expr.pos().len > fmt.break_points[3]
 			}
 		}
 		mut line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1781,7 +1834,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
 			mut estr := ''
-			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len.last() {
+			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len {
 				if inc_indent {
 					estr = f.node_str(expr)
 				}
@@ -1927,20 +1980,20 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any'] {
 			f.in_lambda_depth++
-			defer {
-				f.in_lambda_depth--
-			}
+			defer { f.in_lambda_depth-- }
 		}
 		if node.left is ast.Ident {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
-			// TODO fetch all available modules
+			// TODO: fetch all available modules
 			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
 				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
+					source_name: node.left.name
 					mod: node.left.name
 					alias: node.left.name
 				}
+				f.used_imports[node.left.name] = true
 			}
 		}
 		f.expr(node.left)
@@ -1996,7 +2049,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 				name = 'JS.' + name
 			}
 			f.write(name)
-			f.mark_import_as_used(name)
+			f.mark_types_import_as_used(concrete_type)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
@@ -2204,9 +2257,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		}
 	}
 	f.write_language_prefix(node.language)
-	if node.name == 'it' && f.it_name != '' && f.in_lambda_depth == 0 { // allow `it` in lambdas
-		f.write(f.it_name)
-	} else if node.kind == .blank_ident {
+	if node.kind == .blank_ident {
 		f.write('_')
 	} else {
 		mut is_local := false
@@ -2221,18 +2272,14 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			// This makes it clear that a module const is being used
 			// (since V's consts are no longer ALL_CAP).
 			// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
-			mod := f.cur_mod
-			full_name := mod + '.' + node.name
-			if obj := f.file.global_scope.find(full_name) {
+			if obj := f.file.global_scope.find('${f.cur_mod}.${node.name}') {
 				if obj is ast.ConstField {
 					// "v.fmt.foo" => "fmt.foo"
-					vals := full_name.split('.')
-					mod_prefix := vals[vals.len - 2]
-					const_name := vals.last()
-					if mod_prefix == 'main' {
+					const_name := node.name.all_after_last('.')
+					if f.cur_mod == 'main' {
 						f.write(const_name)
 					} else {
-						short := mod_prefix + '.' + const_name
+						short := '${f.cur_mod.all_after_last('.')}.${const_name}'
 						f.write(short)
 						f.mark_import_as_used(short)
 					}
@@ -2334,7 +2381,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		}
 		// When a single line if is really long, write it again as multiline,
 		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > fmt.max_len.last() && !f.buffering {
+		if is_ternary && f.line_len > fmt.max_len && !f.buffering {
 			is_ternary = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
@@ -2459,7 +2506,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > fmt.max_len.last() {
+		if !f.single_line_if && f.line_len > fmt.max_len {
 			is_cond := node.op in [.and, .logical_or]
 			f.wrap_infix(start_pos, start_len, is_cond)
 		}
@@ -2524,12 +2571,10 @@ const wsinfix_depth_max = 10
 
 fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
 	f.wsinfix_depth++
-	defer {
-		f.wsinfix_depth--
-	}
+	defer { f.wsinfix_depth-- }
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		if f.line_len + c.len < fmt.max_len[penalties[i]] {
+		if f.line_len + c.len < fmt.break_points[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
 			}
@@ -2542,7 +2587,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				f.write(c)
 				continue
 			}
-			if final_len > fmt.max_len.last() && is_paren_expr {
+			if final_len > fmt.max_len && is_paren_expr {
 				conds, pens := split_up_infix(c, true, is_cond)
 				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
@@ -2624,11 +2669,12 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 }
 
 pub fn (mut f Fmt) map_init(node ast.MapInit) {
-	if node.keys.len == 0 {
+	if node.keys.len == 0 && !node.has_update_expr {
 		if node.typ > ast.void_type {
 			sym := f.table.sym(node.typ)
 			info := sym.info as ast.Map
 			f.mark_types_import_as_used(info.key_type)
+			f.mark_types_import_as_used(info.value_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}
 		if node.pos.line_nr == node.pos.last_line {
@@ -2643,6 +2689,15 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	f.writeln('{')
 	f.indent++
 	f.comments(node.pre_cmnts)
+	if node.has_update_expr {
+		f.write('...')
+		f.expr(node.update_expr)
+		f.comments(node.update_expr_comments,
+			prev_line: node.update_expr_pos.last_line
+			has_nl: false
+		)
+		f.writeln('')
+	}
 	mut max_field_len := 0
 	mut skeys := []string{}
 	for key in node.keys {
@@ -2673,7 +2728,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		f.is_mbranch_expr = true
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
-			if f.line_len + estr.len + 2 > fmt.max_len[5] {
+			if f.line_len + estr.len + 2 > fmt.max_len {
 				f.remove_new_line()
 				f.writeln('')
 			}
@@ -2715,9 +2770,6 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	f.write('match ')
 	f.expr(node.cond)
-	if node.cond is ast.Ident {
-		f.it_name = node.cond.name
-	}
 	f.writeln(' {')
 	f.indent++
 	f.comments(node.comments)
@@ -2748,7 +2800,6 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	}
 	f.indent--
 	f.write('}')
-	f.it_name = ''
 }
 
 pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
@@ -2772,7 +2823,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { ${str} }'
-				if single_line.len + f.line_len <= fmt.max_len.last() {
+				if single_line.len + f.line_len <= fmt.max_len {
 					f.write(single_line)
 					return
 				}
@@ -2950,11 +3001,15 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
-	f.write('\tselect ')
+	if node.is_insert {
+		f.write('\tinsert ')
+	} else {
+		f.write('\tselect ')
+	}
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
-		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
 	if node.is_count {
 		f.write('count ')
@@ -2966,7 +3021,11 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			}
 		}
 	}
-	f.write('from ${table_name}')
+	if node.is_insert {
+		f.write('${node.inserted_var} into ${table_name}')
+	} else {
+		f.write('from ${table_name}')
+	}
 	if node.has_where {
 		f.write(' where ')
 		f.expr(node.where_expr)

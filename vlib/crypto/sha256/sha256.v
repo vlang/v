@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Package sha256 implements the SHA224 and SHA256 hash algorithms as defined
@@ -201,7 +201,13 @@ fn (mut d Digest) checksum_internal() []u8 {
 @[deprecated: 'checksum() will be changed to a private method, use sum() instead']
 @[deprecated_after: '2024-04-30']
 pub fn (mut d Digest) checksum() []u8 {
-	return d.checksum_internal()
+	out := d.checksum_internal()
+	// if this digest has `size224` length, return the correct `size224` checksum
+	if d.is224 {
+		return out[0..sha256.size224]
+	}
+	// otherwise, returns a normal size
+	return out
 }
 
 // sum returns the SHA256 checksum of the bytes in `data`.

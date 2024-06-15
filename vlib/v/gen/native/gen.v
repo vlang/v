@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -231,6 +231,7 @@ struct GlobalVar {}
 
 @[params]
 struct VarConfig {
+pub:
 	offset i32      // offset from the variable
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
@@ -297,26 +298,19 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	match arch {
 		.arm64 {
-			return Arm64{
-				g: 0
-			}
+			return Arm64{}
 		}
 		.amd64 {
 			return Amd64{
-				g: 0
 				fn_arg_registers: amd64_get_call_regs(target_os)
 				fn_arg_sse_registers: amd64_get_call_sseregs(target_os)
 			}
 		}
 		._auto {
 			$if amd64 {
-				return Amd64{
-					g: 0
-				}
+				return Amd64{}
 			} $else $if arm64 {
-				return Arm64{
-					g: 0
-				}
+				return Arm64{}
 			} $else {
 				eprintln('-native only have amd64 and arm64 codegens')
 				exit(1)
@@ -327,7 +321,7 @@ fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	return error('unsupported architecture')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.Preferences) (int, int) {
 	exe_name := if pref_.os == .windows && !out_name.ends_with('.exe') {
 		out_name + '.exe'
 	} else {
@@ -344,7 +338,6 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
-		labels: 0
 		structs: []Struct{len: table.type_symbols.len}
 		eval: eval.new_eval(table, pref_)
 	}
@@ -378,10 +371,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 		pref: p
 		out_name: out_name
 		table: ast.new_table()
-		code_gen: Amd64{
-			g: 0
-		}
-		labels: 0
+		code_gen: Amd64{}
 	}
 	g.code_gen.g = &mut g
 	return &mut g
@@ -705,7 +695,7 @@ fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
 
 // get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
-	// TODO type flags
+	// TODO: type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
 		return g.code_gen.address_size()
@@ -1165,7 +1155,7 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	for i, expr in node.vals {
 		offset := g.structs[typ.idx()].offsets[i]
 		g.expr(expr)
-		// TODO expr not on rax
+		// TODO: expr not on rax
 		g.code_gen.mov_reg_to_var(var, main_reg,
 			offset: offset
 			typ: ts.mr_info().types[i]

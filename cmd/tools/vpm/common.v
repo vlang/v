@@ -6,7 +6,6 @@ import net.urllib
 import v.vmod
 import json
 import term
-import log
 
 struct ModuleVpmInfo {
 	// id           int
@@ -241,8 +240,13 @@ fn verbose_println(msg string) {
 	}
 }
 
+fn vpm_log_header(txt string) {
+	divider := '='.repeat(40 - txt.len / 2)
+	settings.logger.debug('\n${divider} ${txt} ${divider}\n')
+}
+
 fn vpm_log(line string, func string, msg string) {
-	log.debug('${line} | (${func}) ${msg}')
+	settings.logger.debug('${line} | (${func}) ${msg}')
 }
 
 fn vpm_error(msg string, opts ErrorOptions) {
@@ -251,13 +255,13 @@ fn vpm_error(msg string, opts ErrorOptions) {
 	}
 	eprintln(term.ecolorize(term.red, 'error: ') + msg)
 	if opts.details.len > 0 && settings.is_verbose {
-		eprint(term.ecolorize(term.blue, 'details: '))
+		eprint(term.ecolorize(term.cyan, 'details: '))
 		padding := ' '.repeat('details: '.len)
 		for i, line in opts.details.split_into_lines() {
 			if i > 0 {
 				eprint(padding)
 			}
-			eprintln(term.ecolorize(term.blue, line))
+			eprintln(term.ecolorize(term.cyan, line))
 		}
 	}
 }
@@ -265,13 +269,13 @@ fn vpm_error(msg string, opts ErrorOptions) {
 fn vpm_warn(msg string, opts ErrorOptions) {
 	eprintln(term.ecolorize(term.yellow, 'warning: ') + msg)
 	if opts.details.len > 0 {
-		eprint(term.ecolorize(term.blue, 'details: '))
+		eprint(term.ecolorize(term.cyan, 'details: '))
 		padding := ' '.repeat('details: '.len)
 		for i, line in opts.details.split_into_lines() {
 			if i > 0 {
 				eprint(padding)
 			}
-			eprintln(term.ecolorize(term.blue, line))
+			eprintln(term.ecolorize(term.cyan, line))
 		}
 	}
 }
@@ -290,4 +294,13 @@ fn fmt_mod_path(path string) string {
 
 fn at_version(version string) string {
 	return if version != '' { '@${version}' } else { '' }
+}
+
+// FIXME: Workaround for failing `rmdir` commands on Windows.
+fn rmdir_all(path string) ! {
+	$if windows {
+		os.execute_opt('rd /s /q ${path}')!
+	} $else {
+		os.rmdir_all(path)!
+	}
 }

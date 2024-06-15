@@ -36,13 +36,7 @@
 #include "psa/internal_trusted_storage.h"
 #endif
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#include <stdlib.h>
-#define mbedtls_calloc   calloc
-#define mbedtls_free     free
-#endif
 
 
 

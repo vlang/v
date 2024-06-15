@@ -56,7 +56,7 @@ pub fn (mut sh StaticHandler) handle_static(directory_path string, root bool) !b
 // ```
 pub fn (mut sh StaticHandler) host_handle_static(host string, directory_path string, root bool) !bool {
 	if !os.exists(directory_path) {
-		return false
+		return error('directory `${directory_path}` does not exist. The directory should be relative to the current working directory: ${os.getwd()}')
 	}
 	dir_path := directory_path.trim_space().trim_right('/')
 	mut mount_path := ''
@@ -81,10 +81,10 @@ pub fn (mut sh StaticHandler) mount_static_folder_at(directory_path string, moun
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://localhost/assets/main.css .
 pub fn (mut sh StaticHandler) host_mount_static_folder_at(host string, directory_path string, mount_path string) !bool {
-	if mount_path.len < 1 || mount_path[0] != `/` {
+	if mount_path == '' || mount_path[0] != `/` {
 		return error('invalid mount path! The path should start with `/`')
 	} else if !os.exists(directory_path) {
-		return error('directory "${directory_path}" does not exist')
+		return error('directory `${directory_path}` does not exist. The directory should be relative to the current working directory: ${os.getwd()}')
 	}
 
 	dir_path := directory_path.trim_right('/')
@@ -108,7 +108,7 @@ pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_pa
 
 	// Rudimentary guard against adding files not in mime_types.
 	if ext !in sh.static_mime_types && ext !in mime_types {
-		return error('unkown MIME type for file extension "${ext}". You can register your MIME type in `app.static_mime_types`')
+		return error('unknown MIME type for file extension "${ext}". You can register your MIME type in `app.static_mime_types`')
 	}
 	sh.static_files[url] = file_path
 	sh.static_hosts[url] = host

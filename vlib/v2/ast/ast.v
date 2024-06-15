@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Joe Conigliaro. All rights reserved.
+// Copyright (c) 2020-2024 Joe Conigliaro. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -81,7 +81,7 @@ pub type Stmt = AsmStmt
 // pub type Decl = ConstDecl | EnumDecl | FnDecl | GlobalDecl
 // 	| InterfaceDecl | StructDecl | TypeDecl
 
-// TOOD: (re)implement nested sumtype like TS (was removed from v)
+// TODO: (re)implement nested sumtype like TS (was removed from v)
 // currently need to cast to type in parser.type. Should I leave like
 // this or add these directly to Expr until nesting is implemented?
 pub type Type = AnonStructType
@@ -121,7 +121,7 @@ pub fn (t Type) name() string {
 	}
 }
 
-// TODO: fix this, shouldbe only what is needed
+// TODO: fix this, should be only what is needed
 pub fn (expr Expr) name() string {
 	return match expr {
 		AsCastExpr {

@@ -97,18 +97,13 @@ fn (mut g JsGen) write_tests_definitions() {
 	g.definitions.writeln('globalThis.g_test_fails = 0;')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string {
+pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
 		table: table
 		pref: pref_
-		fn_decl: 0
 		empty_line: true
-		doc: 0
-		ns: 0
 		enable_doc: true
-		file: 0
-		sourcemap: 0
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
@@ -251,7 +246,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 		out += 'const loadRoutine = async () => {\n'
 		for mod, functions in g.wasm_import {
 			if g.pref.backend == .js_browser {
-				out += '\nawait fetch("${mod}").then(respone => respone.arrayBuffer()).then(bytes => '
+				out += '\nawait fetch("${mod}").then(resp => resp.arrayBuffer()).then(bytes => '
 				out += 'WebAssembly.instantiate(bytes,'
 				exports := g.wasm_export[mod]
 				out += '{ imports: { \n'
@@ -398,11 +393,11 @@ fn (g &JsGen) get_all_test_function_names() []string {
 		}
 	}
 	mut all_tfuncs := []string{}
-	if tsuite_begin.len > 0 {
+	if tsuite_begin != '' {
 		all_tfuncs << tsuite_begin
 	}
 	all_tfuncs << tfuncs
-	if tsuite_end.len > 0 {
+	if tsuite_end != '' {
 		all_tfuncs << tsuite_end
 	}
 	return all_tfuncs
@@ -441,7 +436,7 @@ pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 					// Found struct method, store it to be generated along with the class.
 					mut class_name := g.table.get_type_name(stmt.receiver.typ)
 					// Workaround until `map[key] << val` works.
-					mut arr := g.method_fn_decls[class_name]
+					mut arr := unsafe { g.method_fn_decls[class_name] }
 					arr << stmt
 					g.method_fn_decls[class_name] = arr
 				}
@@ -473,7 +468,7 @@ pub fn (mut g JsGen) init() {
 		g.definitions.writeln('}')
 
 		g.definitions.writeln('const \$os = {')
-		g.definitions.writeln('  endianess: "LE",')
+		g.definitions.writeln('  endianness: "LE",')
 		g.definitions.writeln('}')
 	} else {
 		g.definitions.writeln('const \$os = require("os");')
@@ -668,6 +663,7 @@ fn (mut g JsGen) stmt_no_semi(node_ ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			g.defer_stmts << node
 		}
@@ -775,6 +771,7 @@ fn (mut g JsGen) stmt(node_ ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			g.defer_stmts << node
 		}
@@ -945,7 +942,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			g.gen_if_expr(node)
 		}
 		ast.IfGuardExpr {
-			// TODO no options yet
+			// TODO: no options yet
 		}
 		ast.IndexExpr {
 			g.gen_index_expr(node)
@@ -2047,7 +2044,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			}
 		}
 	}
-	fns := g.method_fn_decls[name]
+	fns := unsafe { g.method_fn_decls[name] }
 	// gen toString method
 	fn_names := fns.map(it.name)
 	if 'toString' !in fn_names {
@@ -2221,8 +2218,8 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	if node.kind == .blank_ident || name in ['', '_'] {
 		name = g.new_tmp_var()
 	}
-	// TODO `is`
-	// TODO handle options
+	// TODO: `is`
+	// TODO: handle options
 	g.write(name)
 
 	// TODO: Generate .val for basic types
@@ -2267,7 +2264,7 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 		if branch.is_else || (node.is_expr && is_last && tmp_var.len == 0) {
 			if node.branches.len > 1 {
 				if is_expr && tmp_var.len == 0 {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
@@ -2977,7 +2974,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('))')
 		}
 	} else {
-		// TODO Does this cover all cases?
+		// TODO: Does this cover all cases?
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')

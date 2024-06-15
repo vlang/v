@@ -2,7 +2,6 @@ module builder
 
 import os
 import time
-import v.pref
 import v.util
 import v.cflag
 
@@ -25,8 +24,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) !string {
 	$if windows {
 		unsafe {
 			for version in versions {
-				required_bytes := u32(0) // TODO mut
-				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
+				required_bytes := u32(0) // TODO: mut
+				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, voidptr(&required_bytes))
 				length := required_bytes / 2
 				if result != 0 {
 					continue
@@ -39,7 +38,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) !string {
 				//
 				else {
 				}
-				result2 := C.RegQueryValueEx(key, version.to_wide(), 0, 0, value, &alloc_length)
+				result2 := C.RegQueryValueEx(key, version.to_wide(), 0, 0, voidptr(value),
+					voidptr(&alloc_length))
 				if result2 != 0 {
 					continue
 				}
@@ -86,7 +86,7 @@ fn find_windows_kit_root_by_reg(target_arch string) !WindowsKit {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
 		rc := C.RegOpenKeyEx(builder.hkey_local_machine, path.to_wide(), 0, builder.key_query_value | builder.key_wow64_32key | builder.key_enumerate_sub_keys,
-			&root_key)
+			voidptr(&root_key))
 
 		if rc != 0 {
 			return error('Unable to open root key')

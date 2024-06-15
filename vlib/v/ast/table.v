@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 @[has_globals]
@@ -24,6 +24,7 @@ pub mut:
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
 	interfaces         map[int]InterfaceDecl
+	sumtypes           map[int]SumTypeDecl
 	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt             bool
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
@@ -51,7 +52,7 @@ pub mut:
 }
 
 // used by vls to avoid leaks
-// TODO remove manual memory management
+// TODO: remove manual memory management
 @[unsafe]
 pub fn (mut t Table) free() {
 	unsafe {
@@ -137,7 +138,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 			sig += 'mut '
 		}
 		// Note: arg name is only added for fmt, else it would causes errors with generics
-		if t.is_fmt && arg.name.len > 0 {
+		if t.is_fmt && arg.name != '' {
 			sig += '${arg.name} '
 		}
 		arg_type_sym := t.sym(arg.typ)
@@ -222,6 +223,10 @@ pub fn (mut t Table) register_interface(idecl InterfaceDecl) {
 	t.interfaces[idecl.typ] = idecl
 }
 
+pub fn (mut t Table) register_sumtype(sumtyp SumTypeDecl) {
+	t.sumtypes[sumtyp.typ] = sumtyp
+}
+
 pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// returns a method index, stored in the ast.FnDecl
 	// for faster lookup in the checker's fn_decl method
@@ -284,6 +289,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 
 @[params]
 pub struct GetEmbedsOptions {
+pub:
 	preceding []Type
 }
 
@@ -531,7 +537,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 					return field
 				}
 				// mut info := ts.info as SumType
-				// TODO a more detailed error so that it's easier to fix?
+				// TODO: a more detailed error so that it's easier to fix?
 				return error('field `${name}` does not exist or have the same type in all sumtype variants')
 			}
 			else {}
@@ -670,9 +676,10 @@ pub fn (t &Table) sym_by_idx(idx int) &TypeSymbol {
 	return t.type_symbols[idx]
 }
 
+@[direct_array_access]
 pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	idx := typ.idx()
-	if idx > 0 {
+	if idx > 0 && idx < t.type_symbols.len {
 		return t.type_symbols[idx]
 	}
 	// this should never happen
@@ -682,10 +689,10 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 }
 
 // final_sym follows aliases until it gets to a "real" Type
-@[inline]
+@[direct_array_access]
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
-	if idx > 0 {
+	if idx > 0 && idx < t.type_symbols.len {
 		cur_sym := t.type_symbols[idx]
 		if cur_sym.info is Alias {
 			idx = cur_sym.info.parent_type.idx()
@@ -1190,13 +1197,13 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 }
 
 pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool) int {
-	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
-	cname := if f.name.len == 0 {
+	name := if f.name == '' { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
+	cname := if f.name == '' {
 		'anon_fn_${t.fn_type_signature(f)}'
 	} else {
 		util.no_dots(f.name.clone()).replace_each(ast.fn_type_escape_seq)
 	}
-	anon := f.name.len == 0 || is_anon
+	anon := f.name == '' || is_anon
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx
@@ -1323,7 +1330,8 @@ fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, 
 
 fn (t &Table) sumtype_check_variant_in_type(parent_info SumType, variant Type, is_as bool) bool {
 	for v in parent_info.variants {
-		if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
+		if v.idx() == variant.idx() && variant.has_flag(.option) == v.has_flag(.option)
+			&& (!is_as || v.nr_muls() == variant.nr_muls()) {
 			return true
 		}
 	}
@@ -1489,7 +1497,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		return false
 	}
 	if mut inter_sym.info is Interface {
-		attrs := t.interfaces[inter_typ].attrs
+		attrs := unsafe { t.interfaces[inter_typ].attrs }
 		for attr in attrs {
 			if attr.name == 'single_impl' {
 				return false
@@ -1533,7 +1541,8 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		if typ != voidptr_type && typ != nil_type && !inter_sym.info.types.contains(typ) {
+		if typ != voidptr_type && typ != nil_type && typ != none_type
+			&& !inter_sym.info.types.contains(typ) {
 			inter_sym.info.types << typ
 		}
 		if !inter_sym.info.types.contains(voidptr_type) {
@@ -1542,6 +1551,23 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		return true
 	}
 	return false
+}
+
+pub fn (mut t Table) resolve_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) string {
+	if index := fn_name.index('__static__') {
+		if index > 0 {
+			generic_name := fn_name[0..index]
+			valid_generic := util.is_generic_type_name(generic_name)
+				&& generic_name in generic_names
+			if valid_generic {
+				name_type := Type(t.find_type_idx(generic_name)).set_flag(.generic)
+				if typ := t.resolve_generic_to_concrete(name_type, generic_names, concrete_types) {
+					return '${t.type_to_str(typ)}${fn_name[index..]}'
+				}
+			}
+		}
+	}
+	return fn_name
 }
 
 // resolve_generic_to_concrete resolves generics to real types T => int.
@@ -2418,6 +2444,11 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 		PrefixExpr {
 			names << t.dependent_names_in_expr(expr.right)
 		}
+		StringInterLiteral {
+			for inter_expr in expr.exprs {
+				names << t.dependent_names_in_expr(inter_expr)
+			}
+		}
 		SelectorExpr {
 			names << t.dependent_names_in_expr(expr.expr)
 		}
@@ -2484,4 +2515,39 @@ pub fn (t &Table) get_array_dims(arr Array) (int, Type) {
 		elem_sym = t.sym(elem_type)
 	}
 	return dims, elem_type
+}
+
+pub fn (t &Table) get_trace_fn_name(cur_fn FnDecl, node CallExpr) (string, string) {
+	generic_name := node.concrete_types.map(t.type_to_str(it)).join('_')
+	hash_fn := '_v__trace__${cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
+	fn_name := if node.concrete_types.len > 0 {
+		'${node.name}_T_${generic_name}'
+	} else {
+		node.name
+	}
+	return hash_fn, fn_name
+}
+
+// get_attrs retrieve the attribrutes from the type symbol
+pub fn (t &Table) get_attrs(sym TypeSymbol) []Attr {
+	match sym.info {
+		Enum {
+			return t.enum_decls[sym.name].attrs
+		}
+		Struct {
+			return sym.info.attrs
+		}
+		FnType {
+			return sym.info.func.attrs
+		}
+		Interface {
+			return unsafe { t.interfaces[sym.idx].attrs }
+		}
+		SumType {
+			return unsafe { t.sumtypes[sym.idx].attrs }
+		}
+		else {
+			return []
+		}
+	}
 }

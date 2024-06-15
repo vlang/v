@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -320,7 +320,7 @@ fn (mut g Game) get_tetro() {
 	// g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
-// TODO mut
+// TODO: mut
 fn (mut g Game) drop_tetro() {
 	for i in 0 .. tetro_size {
 		tetro := g.tetro[i]

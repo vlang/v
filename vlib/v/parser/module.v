@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -33,6 +33,12 @@ fn (mut p Parser) register_used_import(alias string) {
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
 	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	for alias, mod in p.imports {
+		if mod == short_import_name {
+			p.register_used_import(alias)
+			return
+		}
+	}
 	p.register_used_import(short_import_name)
 }
 
@@ -41,6 +47,7 @@ fn (mut p Parser) register_auto_import(alias string) {
 		p.imports[alias] = alias
 		p.table.imports << alias
 		node := ast.Import{
+			source_name: alias
 			pos: p.tok.pos()
 			mod: alias
 			alias: alias

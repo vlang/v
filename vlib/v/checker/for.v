@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -51,18 +51,15 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
 			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
-		} else if typ_idx in ast.float_type_idxs || high_type_idx in ast.float_type_idxs {
-			c.error('range type can not be float', node.cond.pos())
-		} else if typ_idx == ast.bool_type_idx || high_type_idx == ast.bool_type_idx {
-			c.error('range type can not be bool', node.cond.pos())
-		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
-			c.error('range type can not be string', node.cond.pos())
-		} else if typ_idx == ast.none_type_idx || high_type_idx == ast.none_type_idx {
-			c.error('range type can not be none', node.cond.pos())
 		} else if c.table.final_sym(typ).kind == .multi_return
 			&& c.table.final_sym(high_type).kind == .multi_return {
 			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
-				node.cond.pos())
+				node.cond.pos().extend(node.high.pos()))
+		} else if typ_idx !in ast.integer_type_idxs {
+			c.error('range type can only be an integer type', node.cond.pos().extend(node.high.pos()))
+		} else if high_type.has_option_or_result() {
+			c.error('the `high` value in a `for x in low..high {` loop, cannot be Result or Option',
+				node.high.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
@@ -126,7 +123,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
-			mut val_type := next_fn.return_type.clear_flags(.option, .result)
+			mut val_type := next_fn.return_type.clear_option_and_result()
 			if node.val_is_mut {
 				val_type = val_type.ref()
 			}
@@ -205,8 +202,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			mut value_type := c.table.value_type(typ)
 			if sym.kind == .string {
 				value_type = ast.u8_type
-			} else if sym.kind == .aggregate
-				&& (sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+			} else if sym.kind == .aggregate&& (sym.info as ast.Aggregate).types.all(c.table.type_kind(it) in [.array, .array_fixed, .string, .map]) {
 				value_type = c.table.value_type((sym.info as ast.Aggregate).types[0])
 			}
 			if value_type == ast.void_type || typ.has_flag(.result) {
@@ -285,7 +281,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 			if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
 				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface_] {
 					c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-						node.scope)
+						node.scope, false)
 				}
 			}
 		}

@@ -209,7 +209,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 		}
 	}
 	if n == 0 && !has_plus {
-		return '${s}' // TODO `return s` once an autofree bug is fixed
+		return '${s}' // TODO: `return s` once an autofree bug is fixed
 	}
 	if s.len < 2 * n {
 		return error(error_msg('unescape: invalid escape sequence', ''))
@@ -512,7 +512,8 @@ fn parse_url(rawurl string, via_request bool) !URL {
 				''))
 		}
 	}
-	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
+	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//')
+		&& rest.len > 2 {
 		authority, r := split(rest[2..], `/`, false)
 		rest = r
 		a := parse_authority(authority)!
@@ -528,45 +529,31 @@ fn parse_url(rawurl string, via_request bool) !URL {
 }
 
 struct ParseAuthorityRes {
-	user &Userinfo = unsafe { nil }
+	user &Userinfo
 	host string
 }
 
 fn parse_authority(authority string) !ParseAuthorityRes {
 	i := authority.index_u8_last(`@`)
-	mut host := ''
-	mut zuser := user('')
-	if i < 0 {
-		h := parse_host(authority)!
-		host = h
-	} else {
-		h := parse_host(authority[i + 1..])!
-		host = h
-	}
 	if i < 0 {
 		return ParseAuthorityRes{
-			host: host
-			user: zuser
+			host: parse_host(authority)!
+			user: user('')
 		}
 	}
-	mut userinfo := authority[..i]
-	if !valid_userinfo(userinfo) {
+	raw_user, raw_host := authority[..i], authority[i + 1..]
+	if !valid_userinfo(raw_user) {
 		return error(error_msg('parse_authority: invalid userinfo', ''))
 	}
-	if !userinfo.contains(':') {
-		u := unescape(userinfo, .encode_user_password)!
-		userinfo = u
-		zuser = user(userinfo)
+	host := parse_host(raw_host)!
+	name, pwd := split(raw_user, `:`, true)
+	auth := if pwd != '' {
+		user_password(unescape(name, .encode_user_password)!, unescape(pwd, .encode_user_password)!)
 	} else {
-		mut username, mut password := split(userinfo, `:`, true)
-		u := unescape(username, .encode_user_password)!
-		username = u
-		p := unescape(password, .encode_user_password)!
-		password = p
-		zuser = user_password(username, password)
+		user(unescape(name, .encode_user_password)!)
 	}
 	return ParseAuthorityRes{
-		user: zuser
+		user: auth
 		host: host
 	}
 }
@@ -577,7 +564,7 @@ fn parse_host(host string) !string {
 	if host.len > 0 && host[0] == `[` {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.index_u8_last(`]`)
+		i := host.index_u8_last(`]`)
 		if i == -1 {
 			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
@@ -593,9 +580,9 @@ fn parse_host(host string) !string {
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
 		if zone := host[..i].index('%25') {
-			host1 := unescape(host[..zone], .encode_host) or { return err.msg() }
-			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg() }
-			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
+			host1 := unescape(host[..zone], .encode_host)!
+			host2 := unescape(host[zone..i], .encode_zone)!
+			host3 := unescape(host[i..], .encode_host)!
 			return host1 + host2 + host3
 		}
 	} else {
@@ -608,10 +595,8 @@ fn parse_host(host string) !string {
 			}
 		}
 	}
-	h := unescape(host, .encode_host) or { return err.msg() }
+	h := unescape(host, .encode_host)!
 	return h
-	// host = h
-	// return host
 }
 
 // set_path sets the path and raw_path fields of the URL based on the provided
@@ -750,7 +735,7 @@ pub fn (u URL) str() string {
 			// path reference.
 			i := path.index_u8(`:`)
 			if i > -1 {
-				// TODO remove this when autofree handles tmp
+				// TODO: remove this when autofree handles tmp
 				// expressions like this
 				if i > -1 && path[..i].index_u8(`/`) == -1 {
 					buf.write_string('./')

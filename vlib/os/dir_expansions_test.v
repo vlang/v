@@ -23,7 +23,7 @@ fn test_ensure_folder_is_writable() {
 
 fn test_expand_tilde_to_home() {
 	os.setenv('HOME', '/tmp/home/folder', true)
-	os.setenv('USERPROFILE', '/tmp/home/folder', true)
+	os.setenv('USERPROFILE', r'\tmp\home\folder', true)
 	//
 	home_test := os.join_path(os.home_dir(), 'test', 'tilde', 'expansion')
 	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde',

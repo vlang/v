@@ -2,7 +2,7 @@ module stats
 
 import math
 
-// freq calculates the Measure of Occurance
+// freq calculates the Measure of Occurrence
 // Frequency of a given number
 // Based on
 // https://www.mathsisfun.com/data/frequency-distribution.html
@@ -79,7 +79,7 @@ pub fn median[T](sorted_data []T) T {
 	}
 }
 
-// mode calculates the highest occuring value of the given input array
+// mode calculates the highest occurring value of the given input array
 // Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mode[T](data []T) T {

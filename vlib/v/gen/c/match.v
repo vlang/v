@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -8,7 +8,7 @@ import v.ast
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
 		if g.table.sym(node.return_type).kind in [.sum_type, .multi_return]
-			|| node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+			|| node.return_type.has_option_or_result() {
 			return true
 		}
 		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
@@ -81,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} /*A*/ ${cond_var} = ')
+		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -100,7 +100,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 				func_decl = '${def} = &${g.typ(node.return_type)};'
 			}
 		}
-		if func_decl.len > 0 {
+		if func_decl != '' {
 			g.writeln(func_decl) // func, anon func declaration
 		} else {
 			g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
@@ -169,7 +169,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	dot_or_ptr := g.dot_or_ptr(node.cond_type)
-	use_ternary := is_expr && tmp_var.len == 0
+	use_ternary := is_expr && tmp_var == ''
 	cond_sym := g.table.sym(node.cond_type)
 	for j, branch in node.branches {
 		mut sumtype_index := 0
@@ -179,11 +179,11 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.writeln('else {')
 				}
 			} else {
@@ -191,7 +191,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if use_ternary {
 						g.write(' : ')
 					} else {
-						g.write_v_source_line_info(branch.pos)
+						g.write_v_source_line_info(branch)
 						g.write('else ')
 					}
 				}
@@ -201,7 +201,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if j == 0 && sumtype_index == 0 {
 						g.empty_line = true
 					}
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
 				g.write(cond_var)
@@ -417,18 +417,20 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-	type_sym := g.table.sym(node.cond_type)
-	use_ternary := is_expr && tmp_var.len == 0
+	type_sym := g.table.final_sym(node.cond_type)
+	use_ternary := is_expr && tmp_var == ''
+	mut reset_if := false
+	mut has_goto := false
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
 		if branch.is_else || (use_ternary && is_last) {
 			if node.branches.len > 1 {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
+					g.write_v_source_line_info(branch)
 					g.writeln('else {')
 				}
 			}
@@ -438,8 +440,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' : ')
 				} else {
 					g.writeln('')
-					g.write_v_source_line_info(branch.pos)
-					g.write('else ')
+					g.write_v_source_line_info(branch)
+					if !reset_if {
+						g.write('else ')
+					} else {
+						reset_if = false
+					}
 				}
 			}
 			if use_ternary {
@@ -448,9 +454,10 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if j == 0 {
 					g.writeln('')
 				}
-				g.write_v_source_line_info(branch.pos)
+				g.write_v_source_line_info(branch)
 				g.write('if (')
 			}
+			reset_if = branch.exprs.any(g.match_must_reset_if(it))
 			for i, expr in branch.exprs {
 				if i > 0 {
 					g.write(' || ')
@@ -532,7 +539,33 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
-			g.write('}')
+			if reset_if {
+				has_goto = true
+				g.writeln('\tgoto end_block_${node.pos.line_nr};')
+				g.writeln('}')
+				g.set_current_pos_as_last_stmt_pos()
+			} else {
+				g.write('}')
+			}
+		}
+	}
+	if has_goto {
+		g.writeln('end_block_${node.pos.line_nr}: {}')
+		g.set_current_pos_as_last_stmt_pos()
+	}
+}
+
+// match_must_reset_if checks if codegen must break the if-elseif sequence in another if expr
+fn (mut g Gen) match_must_reset_if(node ast.Expr) bool {
+	return match node {
+		ast.CallExpr {
+			node.or_block.kind != .absent
+		}
+		ast.InfixExpr {
+			g.match_must_reset_if(node.left) || g.match_must_reset_if(node.right)
+		}
+		else {
+			false
 		}
 	}
 }

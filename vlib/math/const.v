@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module math
@@ -39,24 +39,70 @@ pub const max_f64 = 1.797693134862315708145274237317043567981e+308 // 2**1023 * 
 
 pub const smallest_non_zero_f64 = 4.940656458412465441765687928682213723651e-324
 
-@[deprecated: 'use built-in constants instead (e.g. min_i8 instead of math.min_i8)']
+@[deprecated: 'use built-in constant `min_i8` instead']
 @[deprecated_after: '2023-12-31']
 pub const min_i8 = i8(-128)
+
+@[deprecated: 'use built-in constant `max_i8` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_i8 = i8(127)
+
+@[deprecated: 'use built-in constant `min_i16` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_i16 = i16(-32768)
+
+@[deprecated: 'use built-in constant `max_i16` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_i16 = i16(32767)
+
+@[deprecated: 'use built-in constant `min_i32` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_i32 = i32(-2147483648)
+
+@[deprecated: 'use built-in constant `max_i32` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_i32 = i32(2147483647)
+
 // -9223372036854775808 is wrong, because C compilers parse literal values
 // without sign first, and 9223372036854775808 overflows i64, hence the
 // consecutive subtraction by 1
+
+@[deprecated: 'use built-in constant `min_i64` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_i64 = i64(-9223372036854775807 - 1)
+
+@[deprecated: 'use built-in constant `max_i64` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_i64 = i64(9223372036854775807)
+
+@[deprecated: 'use built-in constant `min_u8` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_u8 = u8(0)
+
+@[deprecated: 'use built-in constant `max_u8` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_u8 = u8(255)
+
+@[deprecated: 'use built-in constant `min_u16` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_u16 = u16(0)
+
+@[deprecated: 'use built-in constant `max_u16` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_u16 = u16(65535)
+
+@[deprecated: 'use built-in constant `min_u32` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_u32 = u32(0)
+
+@[deprecated: 'use built-in constant `max_u32` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_u32 = u32(4294967295)
+
+@[deprecated: 'use built-in constant `min_u64` instead']
+@[deprecated_after: '2023-12-31']
 pub const min_u64 = u64(0)
+
+@[deprecated: 'use built-in constant `max_u64` instead']
+@[deprecated_after: '2023-12-31']
 pub const max_u64 = u64(18446744073709551615)

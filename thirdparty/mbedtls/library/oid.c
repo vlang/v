@@ -27,14 +27,12 @@
 #include "mbedtls/rsa.h"
 #include "mbedtls/error.h"
 
+#include "mbedtls/legacy_or_psa.h"
+
 #include <stdio.h>
 #include <string.h>
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#define mbedtls_snprintf snprintf
-#endif
 
 /*
  * Macro to automatically add the size of #define'd OIDs
@@ -327,7 +325,6 @@ FN_OID_TYPED_FROM_ASN1(mbedtls_oid_descriptor_t, certificate_policies, oid_certi
 FN_OID_GET_ATTR1(mbedtls_oid_get_certificate_policies, mbedtls_oid_descriptor_t, certificate_policies, const char *, description)
 #endif /* MBEDTLS_X509_REMOVE_INFO */
 
-#if defined(MBEDTLS_MD_C)
 /*
  * For SignatureAlgorithmIdentifier
  */
@@ -340,80 +337,80 @@ typedef struct {
 static const oid_sig_alg_t oid_sig_alg[] =
 {
 #if defined(MBEDTLS_RSA_C)
-#if defined(MBEDTLS_MD5_C)
+#if defined(MBEDTLS_HAS_ALG_MD5_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_PKCS1_MD5,        "md5WithRSAEncryption",     "RSA with MD5" ),
         MBEDTLS_MD_MD5,      MBEDTLS_PK_RSA,
     },
-#endif /* MBEDTLS_MD5_C */
-#if defined(MBEDTLS_SHA1_C)
+#endif /* MBEDTLS_HAS_ALG_MD5_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_PKCS1_SHA1,       "sha-1WithRSAEncryption",   "RSA with SHA1" ),
         MBEDTLS_MD_SHA1,     MBEDTLS_PK_RSA,
     },
-#endif /* MBEDTLS_SHA1_C */
-#if defined(MBEDTLS_SHA224_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_224_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_PKCS1_SHA224,     "sha224WithRSAEncryption",  "RSA with SHA-224" ),
         MBEDTLS_MD_SHA224,   MBEDTLS_PK_RSA,
     },
-#endif
-#if defined(MBEDTLS_SHA256_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_224_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_PKCS1_SHA256,     "sha256WithRSAEncryption",  "RSA with SHA-256" ),
         MBEDTLS_MD_SHA256,   MBEDTLS_PK_RSA,
     },
-#endif /* MBEDTLS_SHA256_C */
-#if defined(MBEDTLS_SHA384_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_PKCS1_SHA384,     "sha384WithRSAEncryption",  "RSA with SHA-384" ),
         MBEDTLS_MD_SHA384,   MBEDTLS_PK_RSA,
     },
-#endif /* MBEDTLS_SHA384_C */
-#if defined(MBEDTLS_SHA512_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_PKCS1_SHA512,     "sha512WithRSAEncryption",  "RSA with SHA-512" ),
         MBEDTLS_MD_SHA512,   MBEDTLS_PK_RSA,
     },
-#endif /* MBEDTLS_SHA512_C */
-#if defined(MBEDTLS_SHA1_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_RSA_SHA_OBS,      "sha-1WithRSAEncryption",   "RSA with SHA1" ),
         MBEDTLS_MD_SHA1,     MBEDTLS_PK_RSA,
     },
-#endif /* MBEDTLS_SHA1_C */
+#endif /* MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA */
 #endif /* MBEDTLS_RSA_C */
 #if defined(MBEDTLS_ECDSA_C)
-#if defined(MBEDTLS_SHA1_C)
+#if defined(MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_ECDSA_SHA1,       "ecdsa-with-SHA1",      "ECDSA with SHA1" ),
         MBEDTLS_MD_SHA1,     MBEDTLS_PK_ECDSA,
     },
-#endif /* MBEDTLS_SHA1_C */
-#if defined(MBEDTLS_SHA224_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_224_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_ECDSA_SHA224,     "ecdsa-with-SHA224",    "ECDSA with SHA224" ),
         MBEDTLS_MD_SHA224,   MBEDTLS_PK_ECDSA,
     },
 #endif
-#if defined(MBEDTLS_SHA256_C)
+#if defined(MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_ECDSA_SHA256,     "ecdsa-with-SHA256",    "ECDSA with SHA256" ),
         MBEDTLS_MD_SHA256,   MBEDTLS_PK_ECDSA,
     },
-#endif /* MBEDTLS_SHA256_C */
-#if defined(MBEDTLS_SHA384_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_ECDSA_SHA384,     "ecdsa-with-SHA384",    "ECDSA with SHA384" ),
         MBEDTLS_MD_SHA384,   MBEDTLS_PK_ECDSA,
     },
-#endif /* MBEDTLS_SHA384_C */
-#if defined(MBEDTLS_SHA512_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_ECDSA_SHA512,     "ecdsa-with-SHA512",    "ECDSA with SHA512" ),
         MBEDTLS_MD_SHA512,   MBEDTLS_PK_ECDSA,
     },
-#endif /* MBEDTLS_SHA512_C */
+#endif /* MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA */
 #endif /* MBEDTLS_ECDSA_C */
 #if defined(MBEDTLS_RSA_C)
     {
@@ -435,7 +432,6 @@ FN_OID_GET_DESCRIPTOR_ATTR1(mbedtls_oid_get_sig_alg_desc, oid_sig_alg_t, sig_alg
 
 FN_OID_GET_ATTR2(mbedtls_oid_get_sig_alg, oid_sig_alg_t, sig_alg, mbedtls_md_type_t, md_alg, mbedtls_pk_type_t, pk_alg)
 FN_OID_GET_OID_BY_ATTR2(mbedtls_oid_get_oid_by_sig_alg, oid_sig_alg_t, oid_sig_alg, mbedtls_pk_type_t, pk_alg, mbedtls_md_type_t, md_alg)
-#endif /* MBEDTLS_MD_C */
 
 /*
  * For PublicKeyInfo (PKCS1, RFC 5480)
@@ -586,7 +582,6 @@ FN_OID_TYPED_FROM_ASN1(oid_cipher_alg_t, cipher_alg, oid_cipher_alg)
 FN_OID_GET_ATTR1(mbedtls_oid_get_cipher_alg, oid_cipher_alg_t, cipher_alg, mbedtls_cipher_type_t, cipher_alg)
 #endif /* MBEDTLS_CIPHER_C */
 
-#if defined(MBEDTLS_MD_C)
 /*
  * For digestAlgorithm
  */
@@ -597,48 +592,48 @@ typedef struct {
 
 static const oid_md_alg_t oid_md_alg[] =
 {
-#if defined(MBEDTLS_MD5_C)
+#if defined(MBEDTLS_HAS_ALG_MD5_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_MD5,       "id-md5",       "MD5" ),
         MBEDTLS_MD_MD5,
     },
-#endif /* MBEDTLS_MD5_C */
-#if defined(MBEDTLS_SHA1_C)
+#endif
+#if defined(MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_SHA1,      "id-sha1",      "SHA-1" ),
         MBEDTLS_MD_SHA1,
     },
-#endif /* MBEDTLS_SHA1_C */
-#if defined(MBEDTLS_SHA224_C)
+#endif
+#if defined(MBEDTLS_HAS_ALG_SHA_224_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_SHA224,    "id-sha224",    "SHA-224" ),
         MBEDTLS_MD_SHA224,
     },
 #endif
-#if defined(MBEDTLS_SHA256_C)
+#if defined(MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_SHA256,    "id-sha256",    "SHA-256" ),
         MBEDTLS_MD_SHA256,
     },
-#endif /* MBEDTLS_SHA256_C */
-#if defined(MBEDTLS_SHA384_C)
+#endif
+#if defined(MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_SHA384,    "id-sha384",    "SHA-384" ),
         MBEDTLS_MD_SHA384,
     },
-#endif /* MBEDTLS_SHA384_C */
-#if defined(MBEDTLS_SHA512_C)
+#endif
+#if defined(MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_SHA512,    "id-sha512",    "SHA-512" ),
         MBEDTLS_MD_SHA512,
     },
-#endif /* MBEDTLS_SHA512_C */
-#if defined(MBEDTLS_RIPEMD160_C)
+#endif
+#if defined(MBEDTLS_HAS_ALG_RIPEMD160_VIA_LOWLEVEL_OR_PSA)
     {
      OID_DESCRIPTOR( MBEDTLS_OID_DIGEST_ALG_RIPEMD160, "id-ripemd160", "RIPEMD-160" ),
         MBEDTLS_MD_RIPEMD160,
     },
-#endif /* MBEDTLS_RIPEMD160_C */
+#endif
     {
         NULL_OID_DESCRIPTOR,
         MBEDTLS_MD_NONE,
@@ -659,36 +654,36 @@ typedef struct {
 
 static const oid_md_hmac_t oid_md_hmac[] =
 {
-#if defined(MBEDTLS_SHA1_C)
+#if defined(MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_HMAC_SHA1,      "hmacSHA1",      "HMAC-SHA-1" ),
         MBEDTLS_MD_SHA1,
     },
-#endif /* MBEDTLS_SHA1_C */
-#if defined(MBEDTLS_SHA224_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_1_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_224_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_HMAC_SHA224,    "hmacSHA224",    "HMAC-SHA-224" ),
         MBEDTLS_MD_SHA224,
     },
 #endif
-#if defined(MBEDTLS_SHA256_C)
+#if defined(MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_HMAC_SHA256,    "hmacSHA256",    "HMAC-SHA-256" ),
         MBEDTLS_MD_SHA256,
     },
-#endif /* MBEDTLS_SHA256_C */
-#if defined(MBEDTLS_SHA384_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_256_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_HMAC_SHA384,    "hmacSHA384",    "HMAC-SHA-384" ),
         MBEDTLS_MD_SHA384,
     },
-#endif /* MBEDTLS_SHA384_C */
-#if defined(MBEDTLS_SHA512_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_384_VIA_LOWLEVEL_OR_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA)
     {
         OID_DESCRIPTOR( MBEDTLS_OID_HMAC_SHA512,    "hmacSHA512",    "HMAC-SHA-512" ),
         MBEDTLS_MD_SHA512,
     },
-#endif /* MBEDTLS_SHA512_C */
+#endif /* MBEDTLS_HAS_ALG_SHA_512_VIA_LOWLEVEL_OR_PSA */
     {
         NULL_OID_DESCRIPTOR,
         MBEDTLS_MD_NONE,
@@ -697,7 +692,6 @@ static const oid_md_hmac_t oid_md_hmac[] =
 
 FN_OID_TYPED_FROM_ASN1(oid_md_hmac_t, md_hmac, oid_md_hmac)
 FN_OID_GET_ATTR1(mbedtls_oid_get_md_hmac, oid_md_hmac_t, md_hmac, mbedtls_md_type_t, md_hmac)
-#endif /* MBEDTLS_MD_C */
 
 #if defined(MBEDTLS_PKCS12_C)
 /*

@@ -40,3 +40,26 @@ fn test_reopen() {
 
 	os.rmdir_all(lfolder) or {}
 }
+
+fn test_set_always_flush() {
+	lfolder := os.join_path(os.vtmp_dir(), rand.ulid())
+	lpath1 := os.join_path(lfolder, 'current.log')
+	os.mkdir_all(lfolder)!
+	defer {
+		os.rmdir_all(lfolder) or {}
+	}
+	dump(lfolder)
+	mut l := log.Log{}
+	l.set_level(.info)
+	l.set_full_logpath(lpath1)
+	l.set_always_flush(true)
+	l.warn('one warning')
+	l.info('one info message')
+	l.error('one error')
+	l.close()
+	lcontent1 := os.read_file(lpath1)!
+	assert lcontent1.len > 0
+	assert lcontent1.contains('one warning')
+	assert lcontent1.contains('one error')
+	assert lcontent1.contains('one info message')
+}

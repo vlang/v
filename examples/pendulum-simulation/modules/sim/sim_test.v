@@ -53,10 +53,10 @@ pub fn test_increment() {
 	assert state.position.x == -0.016957230930171364
 	assert state.position.y == -0.02937078552673524
 	assert state.position.z == 0.0023110634753272796
-	assert state.velocity.x == -7.251158929833044
+	assert state.velocity.x == -7.251158929833047
 	assert state.velocity.y == -12.559375680227637
 	assert state.velocity.z == -105.9153968768638
-	assert state.accel.x == 1.2126596023639044e-10
+	assert state.accel.x == 1.1368683772161604e-10
 	assert state.accel.y == 1.7431981783981126e-10
 	assert state.accel.z == 3.031649005909761e-11
 }

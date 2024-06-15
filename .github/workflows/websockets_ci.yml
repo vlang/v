@@ -3,34 +3,45 @@ name: Websockets CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/websockets_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
+      - '**.yml'
+      - '!**/websockets_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   websocket_tests:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: sudo apt-get install --quiet -y libssl-dev
+      - uses: actions/checkout@v4
       - name: Build v
         run: |
           echo $VFLAGS
           sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
-          make -j4
+          make -j4 && ./v symlink
           ./v -g -o v cmd/v
+      - name: Install dependencies
+        run: v retry -- sudo apt install --quiet -y libssl-dev
       - name: v doctor
         run: ./v doctor
       - name: Run websockets tests
         run: ./v -g test vlib/net/websocket/
 
-  ## Autobahn integrations tests
+      ## Autobahn integrations tests
       - name: Run autobahn services
         run: docker-compose -f ${{github.workspace}}/vlib/net/websocket/tests/autobahn/docker-compose.yml up -d
 
@@ -60,32 +71,31 @@ jobs:
         run: docker exec autobahn_server_wss "python" "/check_results.py"
 
       - name: Publish all reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: full report
           path: ${{github.workspace}}/reports
 
       - name: Publish report client
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: client
           path: ${{github.workspace}}/reports/clients/index.html
 
       - name: Publish report server
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: server
           path: ${{github.workspace}}/reports/servers/index.html
 
       - name: Publish all reports WSS
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: full report wss
           path: ${{github.workspace}}/reports_wss
 
       - name: Publish report client wss
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: client wss
           path: ${{github.workspace}}/reports_wss/clients/index.html
-

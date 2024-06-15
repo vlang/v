@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -10,6 +10,10 @@ import v.pref
 import v.comptime
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
+	is_interface_field := g.table.sym(node.left_type).kind == .interface_
+	if is_interface_field {
+		g.write('*(')
+	}
 	g.expr(node.left)
 	if node.left_type.is_ptr() {
 		g.write('->')
@@ -23,11 +27,17 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 				&& node.field_expr.field_name == 'name' {
 				_, field_name := g.comptime.get_comptime_selector_var_type(node)
 				g.write(c_name(field_name))
+				if is_interface_field {
+					g.write(')')
+				}
 				return
 			}
 		}
 	}
 	g.expr(node.field_expr)
+	if is_interface_field {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
@@ -59,25 +69,49 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			cur_line = g.go_before_last_stmt()
 		}
 
+		ret_sym := g.table.sym(g.fn_decl.return_type)
+		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
+		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
+		is_veb := ret_sym.cname == 'veb__Result'
+
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
-				// insert stmts from vweb_tmpl fn
 				if stmt.name.starts_with('main.vweb_tmpl') {
 					if is_html {
 						g.inside_vweb_tmpl = true
+						if is_veb {
+							g.vweb_filter_fn_name = 'veb__filter'
+						} else if is_x_vweb {
+							g.vweb_filter_fn_name = 'x__vweb__filter'
+						} else {
+							g.vweb_filter_fn_name = 'vweb__filter'
+						}
 					}
+					// insert stmts from vweb_tmpl fn
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
+					//
 					g.inside_vweb_tmpl = false
+					g.vweb_filter_fn_name = ''
 					break
 				}
 			}
 		}
 
-		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		if is_html {
-			// return vweb html template
-			app_name := g.fn_decl.params[0].name
-			g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name}); strings__Builder_free(&sb_${fn_name}); string_free(&_tmpl_res_${fn_name});')
+			// return a vweb or x.vweb html template
+			if is_veb {
+				ctx_name := g.fn_decl.params[1].name
+				g.writeln('veb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
+			} else if is_x_vweb {
+				ctx_name := g.fn_decl.params[1].name
+				g.writeln('x__vweb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
+			} else {
+				// old vweb:
+				app_name := g.fn_decl.params[0].name
+				g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name});')
+			}
+			g.writeln('strings__Builder_free(&sb_${fn_name});')
+			g.writeln('string_free(&_tmpl_res_${fn_name});')
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
@@ -112,8 +146,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			false
 		}
-		mut has_decompose := !m.is_variadic
-			&& node.args.filter(it.expr is ast.ArrayDecompose).len > 0
+		mut has_decompose := !m.is_variadic && node.args.any(it.expr is ast.ArrayDecompose)
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			if g.inside_call {
@@ -132,8 +165,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 
-		if !g.inside_call && node.or_block.kind != .block
-			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
@@ -194,12 +226,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
-		if !g.inside_call && node.or_block.kind != .block
-			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
 			g.write('.data)')
 		}
-		if node.or_block.kind != .absent
-			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if node.or_block.kind != .absent && m.return_type.has_option_or_result() {
 			if !g.inside_assign {
 				cur_line := g.go_before_last_stmt()
 				tmp_var := g.new_tmp_var()
@@ -286,7 +316,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		}
 	}
 	tmp_var := g.new_tmp_var()
-	is_opt_or_result := node.typ.has_flag(.option) || node.typ.has_flag(.result)
+	is_opt_or_result := node.typ.has_option_or_result()
 	line := if node.is_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
@@ -399,7 +429,11 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 	match cond {
 		ast.Ident {
-			return g.unwrap_generic(cond.obj.typ)
+			return if g.comptime.is_comptime_var(cond) {
+				g.unwrap_generic(g.comptime.get_comptime_var_type(cond))
+			} else {
+				g.unwrap_generic(cond.obj.typ)
+			}
 		}
 		ast.TypeNode {
 			return g.unwrap_generic(cond.typ)
@@ -448,7 +482,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 		}
 		ast.PostfixExpr {
 			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
-				verror(err.msg())
+				verror(err.str())
 				return false, true
 			}
 			g.write('defined(${ifdef})')
@@ -488,11 +522,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							got_sym := g.table.sym(got_type)
 
 							if got_sym.kind == .interface_ && got_sym.info is ast.Interface {
-								is_true := g.table.does_type_implement_interface(exp_type,
-									got_type)
+								is_true := exp_type.has_flag(.option) == got_type.has_flag(.option)
+									&& g.table.does_type_implement_interface(exp_type, got_type)
 								if cond.op == .key_is {
 									if is_true {
-										g.write('1')
+										g.write('1 && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 									} else {
 										g.write('0')
 									}
@@ -517,7 +551,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.eq, .ne {
-					// TODO Implement `$if method.args.len == 1`
+					// TODO: Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr && (g.comptime.comptime_for_field_var.len > 0
 						|| g.comptime.comptime_for_method.len > 0) {
 						if cond.right is ast.StringLiteral {
@@ -874,7 +908,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				if sym.info.vals.len > 0 {
 					g.writeln('\tEnumData ${node.val_var} = {0};')
 				}
+				g.push_new_comptime_info()
 				for val in sym.info.vals {
+					g.comptime.comptime_for_enum_var = node.val_var
+					g.comptime.type_map['${node.val_var}.typ'] = node.typ
+
 					g.writeln('/* enum vals ${i} */ {')
 					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
 					g.write('\t${node.val_var}.value = ')
@@ -896,14 +934,15 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.writeln('}')
 					i++
 				}
+				g.pop_comptime_info()
 			}
 		}
 	} else if node.kind == .attributes {
-		if sym.info is ast.Struct {
-			if sym.info.attrs.len > 0 {
-				g.writeln('\tStructAttribute ${node.val_var} = {0};')
-			}
-			for attr in sym.info.attrs {
+		attrs := g.table.get_attrs(sym)
+		if attrs.len > 0 {
+			g.writeln('\tVAttribute ${node.val_var} = {0};')
+
+			for attr in attrs {
 				g.writeln('/* attribute ${i} */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("${attr.name}");')
 				g.writeln('\t${node.val_var}.has_arg = ${attr.has_arg};')
@@ -922,11 +961,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.comptime.inside_comptime_for = true
 			g.push_new_comptime_info()
 			for variant in sym.info.variants {
-				g.comptime.comptime_for_field_var = node.val_var
+				g.comptime.comptime_for_variant_var = node.val_var
 				g.comptime.type_map['${node.val_var}.typ'] = variant
 
 				g.writeln('/* variant ${i} */ {')
-				g.writeln('\t${node.val_var}.typ = ${variant.idx()};')
+				g.writeln('\t${node.val_var}.typ = ${int(variant)};')
 				g.stmts(node.stmts)
 				g.writeln('}')
 				i++
@@ -1064,6 +1103,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		}
 		'freestanding' {
 			return '_VFREESTANDING'
+		}
+		'autofree' {
+			return '_VAUTOFREE'
 		}
 		// architectures:
 		'amd64' {

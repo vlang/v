@@ -17,7 +17,7 @@ fn shrink_tail_zeros(mut a []u32) {
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are already allocated but of length 0
 fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-	// tranform back to Integers (on the stack without allocation)
+	// transform back to Integers (on the stack without allocation)
 	a := Integer{
 		signum: 1
 		digits: operand_a
@@ -114,8 +114,8 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 
 	// thanks to the base cases we can pass zero-length arrays to the mult func
 	half := imax(operand_a.len, operand_b.len) / 2
-	a_l := operand_a[0..half]
-	a_h := operand_a[half..]
+	a_l := unsafe { operand_a[0..half] }
+	a_h := unsafe { operand_a[half..] }
 	mut b_l := []u32{}
 	mut b_h := []u32{}
 	if half <= operand_b.len {
@@ -169,15 +169,15 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 
 	// Slices of a and b
 	a0 := Integer{
-		digits: operand_a[0..k]
+		digits: unsafe { operand_a[0..k] }
 		signum: 1
 	}
 	a1 := Integer{
-		digits: operand_a[k..k2]
+		digits: unsafe { operand_a[k..k2] }
 		signum: 1
 	}
 	a2 := Integer{
-		digits: operand_a[k2..]
+		digits: unsafe { operand_a[k2..] }
 		signum: 1
 	}
 

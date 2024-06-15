@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module term
@@ -44,14 +44,14 @@ pub fn bg_rgb(r int, g int, b int, msg string) string {
 // For example, `rgb(255, 'hi')` returns the `'hi'` string in
 // blue color, which is `(0, 0, 255)` in RGB.
 pub fn hex(hex int, msg string) string {
-	return format_rgb(hex >> 16, hex >> 8 & 0xFF, hex & 0xFF, msg, '38', '39')
+	return format_rgb(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF, msg, '38', '39')
 }
 
 // hex returns the `msg` with the background in the specified `hex` color
 // For example, `bg_rgb(255, 'hi')` returns the `'hi'` string in
 // a background of blue color, which is `(0, 0, 255)` in RGB.
 pub fn bg_hex(hex int, msg string) string {
-	return format_rgb(hex >> 16, hex >> 8 & 0xFF, hex & 0xFF, msg, '48', '49')
+	return format_rgb(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF, msg, '48', '49')
 }
 
 // reset resets all formatting for `msg`.

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module math
@@ -53,6 +53,7 @@ pub fn angle_diff(radian_a f64, radian_b f64) f64 {
 
 @[params]
 pub struct DigitParams {
+pub:
 	base    int = 10
 	reverse bool
 }

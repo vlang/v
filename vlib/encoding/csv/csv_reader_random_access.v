@@ -80,6 +80,7 @@ pub mut:
 
 @[params]
 pub struct RandomAccessReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
@@ -252,7 +253,7 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := i64(0)
-			for i1 <= read_bytes_count {
+			for i1 < read_bytes_count {
 				// println("loop char: ${*&u8(p1):c}")
 				// manage quote char
 				if *p1 == cr.quote {
@@ -344,6 +345,7 @@ pub fn (mut cr RandomAccessReader) get_row(y int) ![]string {
 
 @[params]
 pub struct GetCellConfig {
+pub:
 	x int
 	y int
 }
@@ -444,6 +446,7 @@ pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
 ******************************************************************************/
 @[params]
 pub struct GetHeaderConf {
+pub:
 	header_row int // row where to inspect the header
 }
 
@@ -529,7 +532,7 @@ pub fn (mut cr RandomAccessReader) rows_count() !i64 {
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := 0
-			for i1 <= read_bytes_count {
+			for i1 < read_bytes_count {
 				if *p1 == cr.end_line {
 					count++
 				}

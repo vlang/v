@@ -1,0 +1,21 @@
+import cli { Command, Flag }
+
+mut cmd := Command{
+	name: 'cli'
+	description: 'An example of the cli library.'
+	version: '1.0.0'
+}
+mut greet_cmd := Command{
+	name: 'greet'
+	description: 'Prints greeting in different languages.'
+	usage: '<name>'
+	required_args: 1
+}
+greet_cmd.add_flag(Flag{
+	flag: .string_array
+	name: 'fun'
+	description: '\'{"uri":"mqtt://broker.emqx.io:1883","topic":"test_emq/1","filters":[{"producer_id":0,"trace_group":2,"string_id":3001},{"string_id":3002}]}\''
+})
+cmd.add_command(greet_cmd)
+cmd.setup()
+cmd.parse(['cli', 'greet', '-help'])

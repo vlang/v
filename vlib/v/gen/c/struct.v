@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -45,10 +45,16 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
 	mut is_anon := false
+	mut is_array_fixed_struct_init := false // return T{} where T is fixed array
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
 	is_array := sym.kind in [.array_fixed, .array]
+	if sym.kind == .array_fixed {
+		arr_info := sym.array_fixed_info()
+		is_array_fixed_struct_init = g.inside_return
+			&& g.table.final_sym(arr_info.elem_type).kind == .struct_
+	}
 
 	// detect if we need type casting on msvc initialization
 	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
@@ -80,7 +86,27 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('&(${basetyp}){')
 		}
 	} else if node.typ.has_flag(.option) {
-		g.write('(${g.base_type(node.typ)}){')
+		tmp_var := g.new_tmp_var()
+		s := g.go_before_last_stmt()
+		g.empty_line = true
+
+		base_styp := g.typ(node.typ.clear_option_and_result())
+		g.writeln('${styp} ${tmp_var} = {0};')
+
+		if node.init_fields.len > 0 {
+			g.write('_option_ok(&(${base_styp}[]) { ')
+		} else {
+			g.write('_option_none(&(${base_styp}[]) { ')
+		}
+		g.struct_init(ast.StructInit{
+			...node
+			typ: node.typ.clear_option_and_result()
+		})
+		g.writeln('}, &${tmp_var}, sizeof(${base_styp}));')
+		g.empty_line = false
+		g.write(s)
+		g.write(tmp_var)
+		return
 	} else if g.inside_cinit {
 		if is_multiline {
 			g.writeln('{')
@@ -89,11 +115,14 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	} else {
 		// alias to pointer type
-		if g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr() {
+		if (g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr())
+			|| (node.typ.has_flag(.generic) && g.unwrap_generic(node.typ).is_ptr()) {
 			g.write('&')
 		}
 		if is_array || const_msvc_init {
-			g.write('{')
+			if !is_array_fixed_struct_init {
+				g.write('{')
+			}
 		} else if is_multiline {
 			g.writeln('(${styp}){')
 		} else {
@@ -302,6 +331,23 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			initialized = true
 		}
 		g.is_shared = old_is_shared
+	} else if is_array_fixed_struct_init {
+		arr_info := sym.array_fixed_info()
+
+		save_inside_array_fixed_struct := g.inside_array_fixed_struct
+		g.inside_array_fixed_struct = is_array_fixed_struct_init
+		defer {
+			g.inside_array_fixed_struct = save_inside_array_fixed_struct
+		}
+
+		g.fixed_array_init(ast.ArrayInit{
+			pos: node.pos
+			is_fixed: true
+			typ: g.unwrap_generic(node.typ)
+			exprs: [ast.empty_expr]
+			elem_type: arr_info.elem_type
+		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
+		initialized = true
 	}
 	if is_multiline {
 		g.indent--
@@ -315,7 +361,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 
-	g.write('}')
+	if !is_array_fixed_struct_init {
+		g.write('}')
+	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
@@ -440,7 +488,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 			g.typedefs.writeln('typedef struct ${name} ${name};')
 		}
 	}
-	// TODO avoid buffer manip
+	// TODO: avoid buffer manip
 	start_pos := g.type_definitions.len
 
 	mut pre_pragma := ''
@@ -580,7 +628,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		g.type_definitions.write_string(';')
 	}
 	g.type_definitions.writeln('')
-	if post_pragma.len > 0 {
+	if post_pragma != '' {
 		g.type_definitions.writeln(post_pragma)
 	}
 }
@@ -592,7 +640,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 		g.write('/*clone1*/')
-		if g.gen_clone_assignment(sfield.expr, sfield.typ, false) {
+		if g.gen_clone_assignment(sfield.typ, sfield.expr, sfield.typ, false) {
 			cloned = true
 		}
 	}
@@ -600,9 +648,15 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		inside_cast_in_heap := g.inside_cast_in_heap
 		g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
-		if field_type_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
-			info := field_type_sym.info as ast.ArrayFixed
-			g.fixed_array_var_init(sfield.expr, info.size)
+		field_unwrap_sym := g.table.sym(g.unwrap_generic(sfield.typ))
+		if field_unwrap_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
+			info := field_unwrap_sym.info as ast.ArrayFixed
+			g.fixed_array_var_init(g.expr_string(sfield.expr), sfield.expr.is_auto_deref_var(),
+				info.elem_type, info.size)
+		} else if field_unwrap_sym.kind == .array_fixed && sfield.expr is ast.CallExpr {
+			info := field_unwrap_sym.info as ast.ArrayFixed
+			tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
+			g.fixed_array_var_init(tmp_var, false, info.elem_type, info.size)
 		} else {
 			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type
 				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))

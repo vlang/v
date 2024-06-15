@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module log
@@ -52,4 +52,9 @@ pub fn info(s string) {
 // debug logs a `debug` message, using the default Logger instance
 pub fn debug(s string) {
 	default_logger.debug(s)
+}
+
+// set_always_flush called with true, will make the log flush after every single .fatal(), .error(), .warn(), .info(), .debug() call.
+pub fn set_always_flush(should_flush_on_every_message bool) {
+	default_logger.set_always_flush(should_flush_on_every_message)
 }

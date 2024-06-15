@@ -85,7 +85,7 @@ pub fn merge[T](a []T, b []T) []T {
 	mut ia := 0
 	mut ib := 0
 	mut j := 0
-	// TODO efficient approach to merge_desc where: a[ia] >= b[ib]
+	// TODO: efficient approach to merge_desc where: a[ia] >= b[ib]
 	for ia < a.len && ib < b.len {
 		if a[ia] <= b[ib] {
 			m[j] = a[ia]
@@ -182,6 +182,7 @@ pub fn chunk[T](array []T, size int) [][]T {
 }
 
 pub struct WindowAttribute {
+pub:
 	size int
 	step int = 1
 }

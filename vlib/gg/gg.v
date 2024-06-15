@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 
 module gg
@@ -26,6 +26,7 @@ pub type FNUnClick = fn (x f32, y f32, button MouseButton, data voidptr)
 pub type FNChar = fn (c u32, data voidptr)
 
 pub struct PenConfig {
+pub:
 	color     gx.Color
 	line_type PenLineType = .solid
 	thickness int = 1

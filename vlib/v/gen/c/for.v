@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -235,7 +235,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		mut cond_var := ''
 		if (node.cond is ast.Ident && !node.cond_type.has_flag(.option))
-			|| node.cond is ast.SelectorExpr {
+			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
@@ -435,7 +435,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
-		receiver_styp := g.typ(receiver_typ)
+		receiver_styp := g.cc_type(receiver_typ, false)
 		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.info is ast.Struct {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -7,6 +7,7 @@ module time
 // #include <sysinfoapi.h>
 
 pub struct C.tm {
+pub mut:
 	tm_year int
 	tm_mon  int
 	tm_mday int
@@ -16,6 +17,7 @@ pub struct C.tm {
 }
 
 pub struct C._FILETIME {
+pub mut:
 	dwLowDateTime  u32
 	dwHighDateTime u32
 }
@@ -48,6 +50,7 @@ const start_local_time = local_as_unix_time()
 
 // in most systems, these are __quad_t, which is an i64
 pub struct C.timespec {
+pub:
 	tv_sec  i64
 	tv_nsec i64
 }
@@ -119,7 +122,7 @@ pub fn (t Time) local() Time {
 		minute: st_local.minute
 		second: st_local.second // These are the same
 		nanosecond: int(st_local.millisecond) * 1_000_000
-		unix: st_local.unix_time()
+		unix: st_local.unix()
 	}
 	return t_local
 }
@@ -142,7 +145,7 @@ fn win_now() Time {
 		minute: st_local.minute
 		second: st_local.second
 		nanosecond: int(st_local.millisecond) * 1_000_000
-		unix: st_local.unix_time()
+		unix: st_local.unix()
 		is_local: true
 	}
 	return t
@@ -164,14 +167,20 @@ fn win_utc() Time {
 		minute: st_utc.minute
 		second: st_utc.second
 		nanosecond: int(st_utc.millisecond) * 1_000_000
-		unix: st_utc.unix_time()
+		unix: st_utc.unix()
 		is_local: false
 	}
 	return t
 }
 
 // unix_time returns Unix time.
+@[deprecated: 'use `st.unix()` instead']
 fn (st SystemTime) unix_time() i64 {
+	return st.unix()
+}
+
+// unix returns Unix time.
+fn (st SystemTime) unix() i64 {
 	tt := C.tm{
 		tm_sec: st.second
 		tm_min: st.minute

@@ -1,4 +1,4 @@
-import v.checker.tests.module_with_structs_with_deprecated_fields as m
+import v.checker.tests.module_with_deprecated_structs as m
 
 struct Abc {
 mut:

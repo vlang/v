@@ -107,7 +107,7 @@ fn (mut p Parser) parse_module(m string) {
 			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
 				details: err.msg()
 			)
-			os.rmdir_all(tmp_path) or {}
+			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
 		}
@@ -162,7 +162,7 @@ fn (mut p Parser) parse_module(m string) {
 			if resp := http.head('${info.url}/issues/new') {
 				if resp.status_code == 200 {
 					issue_tmpl_url := '${info.url}/issues/new?title=Missing%20Manifest&body=${info.name}%20is%20missing%20a%20manifest,%20please%20consider%20adding%20a%20v.mod%20file%20with%20the%20modules%20metadata.'
-					details = 'Help to ensure future-compatibility by adding a `v.mod` file or opening an issue at:\n`${issue_tmpl_url}`'
+					details = 'Please help us ensure future-compatibility, by adding a `v.mod` file or opening an issue at:\n`${issue_tmpl_url}`'
 				}
 			}
 			vpm_warn('`${info.name}` is missing a manifest file.', details: details)
@@ -216,12 +216,7 @@ fn get_tmp_path(relative_path string) !string {
 	if os.exists(tmp_path) {
 		// It's unlikely that the tmp_path already exists, but it might
 		// occur if vpm was canceled during an installation or update.
-		$if windows {
-			// FIXME: Workaround for failing `rmdir` commands on Windows.
-			os.execute_opt('rd /s /q ${tmp_path}')!
-		} $else {
-			os.rmdir_all(tmp_path)!
-		}
+		rmdir_all(tmp_path)!
 	}
 	return tmp_path
 }

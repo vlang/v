@@ -9,6 +9,8 @@ on:
       - 'doc/**'
       - 'examples/**'
       - 'tutorials/**'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
       - '**.md'
@@ -17,14 +19,15 @@ on:
       - 'doc/**'
       - 'examples/**'
       - 'tutorials/**'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: build-c2v-apps-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-doom:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-12]
@@ -34,22 +37,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Install C2V
         run: |
-          v install --git https://github.com/vlang/c2v
+          v retry -- v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
-            sudo apt update -y -qq
-            sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+            v retry -- sudo apt update -y -qq
+            v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           else
-            brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
+            v retry -- brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
           fi
       - name: Build original Chocolate Doom
         run: |
-          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
@@ -59,7 +62,6 @@ jobs:
           WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
 
   test-regression:
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     runs-on: ubuntu-20.04
     timeout-minutes: 20
     env:
@@ -70,15 +72,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v symlink -githubci
+        run: make -j4 && ./v symlink
       - name: Install C2V
         run: |
-          v install --git https://github.com/vlang/c2v
+          v retry -- v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
         run: |
-          sudo apt update -y -qq
-          sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+          v retry -- sudo apt update -y -qq
+          v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           # c2v / DOOM dependencies
           # vgret dependencies
           # imagemagick              : convert, mogrify, import
@@ -86,19 +88,19 @@ jobs:
           # openimageio-tools        : idiff
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
+          v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
         run: |
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
-          wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
+          v retry -- wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
           # Get imgur upload script
-          wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
+          v retry -- wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           chmod +x ./imgur.sh
           # Get regression images to test against
-          git clone https://github.com/Larpon/doom-regression-images
+          v retry -- git clone https://github.com/Larpon/doom-regression-images
       - name: Build original Chocolate Doom
         run: |
-          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
@@ -109,8 +111,8 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 800x600x24 -fbdir /var/tmp/ &
-          sleep 1; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
-          sleep 1; v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          sleep 2; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
+          sleep 5; v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
         run: |

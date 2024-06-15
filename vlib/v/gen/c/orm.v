@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -38,8 +38,32 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	result_c_typ := g.typ(node.typ)
 	g.writeln('${result_c_typ} ${result_var};')
 	g.write_orm_select(node, connection_var_name, result_var)
-	unwrapped_c_typ := g.typ(node.typ.clear_flags(.result))
+	unwrapped_c_typ := g.typ(node.typ.clear_flag(.result))
 	g.write('${left} *(${unwrapped_c_typ}*)${result_var}.data')
+}
+
+fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
+	left := g.go_before_last_stmt()
+	g.writeln('')
+	connection_var_name := g.new_tmp_var()
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
+	result_var_name := g.new_tmp_var()
+	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+
+	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
+	hack_stmt_line := ast.SqlStmtLine{
+		object_var: node.inserted_var
+		fields: node.fields
+		// sub_structs: node.sub_structs
+	}
+	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
+		node.or_expr)
+
+	g.write(left)
+	g.write('db__pg__DB_last_id(')
+	g.expr(node.db_expr)
+	g.write(');')
 }
 
 // sql_stmt writes C code that calls ORM functions for
@@ -69,6 +93,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 // as well as inserting and updating objects.
 // It is part of a multi-line query. For example, `create table User`
 fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name string, or_expr ast.OrExpr) {
+	g.sql_last_stmt_out_len = g.out.len
 	mut node := stmt_line
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
@@ -145,14 +170,14 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
 			g.writeln('.nullable = ${field.typ.has_flag(.option)},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
-			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(StructAttribute),')
+			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(VAttribute),')
 			g.indent++
 
 			if field.attrs.len > 0 {
-				g.write('_MOV((StructAttribute[${field.attrs.len}]){')
+				g.write('_MOV((VAttribute[${field.attrs.len}]){')
 				g.indent++
 				for attr in field.attrs {
-					g.write('(StructAttribute){')
+					g.write('(VAttribute){')
 					g.indent++
 					g.write(' .name = _SLIT("${attr.name}"),')
 					g.write(' .has_arg = ${attr.has_arg},')
@@ -272,6 +297,7 @@ fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connec
 // inserting a struct into a table, saving inserted `id` into a passed variable.
 fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_var_name string, table_name string, last_ids_arr string, res string, pid string, fkey string, or_expr ast.OrExpr) {
 	mut subs := []ast.SqlStmtLine{}
+
 	mut subs_unwrapped_c_typ := []string{}
 	mut arrs := []ast.SqlStmtLine{}
 	mut fkeys := []string{}
@@ -281,10 +307,11 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	for field in node.fields {
 		sym := g.table.sym(field.typ)
 		if sym.kind == .struct_ && sym.name != 'time.Time' {
-			subs << node.sub_structs[int(field.typ)]
+			subs << unsafe { node.sub_structs[int(field.typ)] }
 			unwrapped_c_typ := g.typ(field.typ.clear_flag(.option))
 			subs_unwrapped_c_typ << if field.typ.has_flag(.option) { unwrapped_c_typ } else { '' }
 		} else if sym.kind == .array {
+			// Handle foreign keys
 			if attr := field.attrs.find_first('fkey') {
 				fkeys << attr.arg
 			} else {
@@ -293,7 +320,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if field.typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			arrs << node.sub_structs[int(field.typ)]
+			arrs << unsafe { node.sub_structs[int(field.typ)] }
 			field_names << field.name
 		}
 	}
@@ -420,6 +447,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.writeln('}')
 	g.indent--
 	g.writeln(');')
+	// Validate main insertion success otherwise, handled and propagated error.
+	g.or_block(res, or_expr, ast.int_type.set_flag(.result))
 
 	if arrs.len > 0 {
 		mut id_name := g.new_tmp_var()
@@ -473,6 +502,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unsafe { fff.free() }
 			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
 				last_ids, res_, id_name, fkeys[i], or_expr)
+			// Validates sub insertion success otherwise, handled and propagated error.
+			g.or_block(res_, or_expr, ast.int_type.set_flag(.result))
 			g.indent--
 			g.writeln('}')
 		}
@@ -524,6 +555,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 // write_orm_primitive writes C code for casting expressions into a primitive type,
 // which will be used in low-level database libs.
 fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
+	if t == 0 {
+		verror('${g.file.path}:${expr.pos().line_nr + 1}: ORM: unknown type t == 0\nexpr: ${expr}\nlast SQL stmt:\n${g.out.after(g.sql_last_stmt_out_len)}')
+	}
 	mut sym := g.table.sym(t)
 	mut typ := sym.cname
 	if typ == 'orm__Primitive' {
@@ -809,6 +843,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	select_result_var_name := g.new_tmp_var()
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
+	escaped_table_name := cescape_nonascii(util.smart_quote(table_name, false))
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
 	g.writeln('// sql { select from `${table_name}` }')
@@ -817,7 +852,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('(orm__SelectConfig){')
 	g.indent++
-	g.writeln('.table = _SLIT("${table_name}"),')
+	g.writeln('.table = _SLIT("${escaped_table_name}"),')
 	g.writeln('.is_count = ${node.is_count},')
 	g.writeln('.has_where = ${node.has_where},')
 	g.writeln('.has_order = ${node.has_order},')

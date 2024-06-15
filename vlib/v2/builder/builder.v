@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Joe Conigliaro. All rights reserved.
+// Copyright (c) 2020-2024 Joe Conigliaro. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -67,5 +67,5 @@ fn (mut b Builder) gen_v_files() {
 }
 
 fn print_time(title string, time_d time.Duration) {
-	println(' * ${title}: ${time_d.milliseconds()}ms (${time_d.microseconds()}us)')
+	println(' * ${title}: ${time_d.milliseconds()}ms (${time_d.microseconds()}µs)')
 }

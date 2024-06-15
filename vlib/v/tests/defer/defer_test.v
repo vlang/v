@@ -78,7 +78,7 @@ fn test_defer_with_anon_fn() {
 	}()
 	x := fn () {
 		defer {
-			println('defered 2')
+			println('deferred 2')
 		}
 		return
 	}
@@ -179,12 +179,10 @@ fn test_defer_with_reserved_words() {
 fn test_defer_inside_comptime_if_else() {
 	$if false {
 	} $else {
-		defer {
-		}
+		defer {}
 	}
 	$if true {
-		defer {
-		}
+		defer {}
 	} $else {
 	}
 	assert true

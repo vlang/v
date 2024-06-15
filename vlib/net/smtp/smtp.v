@@ -11,6 +11,7 @@ import encoding.base64
 import strings
 import time
 import io
+import rand
 
 const recv_size = 128
 
@@ -46,14 +47,23 @@ pub mut:
 }
 
 pub struct Mail {
-	from      string
-	to        string
-	cc        string
-	bcc       string
-	date      time.Time = time.now()
-	subject   string
-	body_type BodyType
-	body      string
+pub:
+	from        string
+	to          string
+	cc          string
+	bcc         string
+	date        time.Time = time.now()
+	subject     string
+	body_type   BodyType
+	body        string
+	attachments []Attachment
+	boundary    string
+}
+
+pub struct Attachment {
+	filename string
+	bytes    []u8
+	cid      string
 }
 
 // new_client returns a new SMTP client and connects to it
@@ -107,6 +117,7 @@ pub fn (mut c Client) send(config Mail) ! {
 	c.send_body(Mail{
 		...config
 		from: from
+		boundary: rand.uuid_v4()
 	}) or { return error('Sending mail body failed') }
 }
 
@@ -241,16 +252,41 @@ fn (mut c Client) send_body(cfg Mail) ! {
 	} else {
 		sb.write_string('Subject: ${cfg.subject}\r\n')
 	}
-
+	if cfg.attachments.len > 0 {
+		sb.write_string('MIME-Version: 1.0\r\n')
+		sb.write_string('Content-Type: multipart/mixed; boundary="${cfg.boundary}"\r\n--${cfg.boundary}\r\n')
+	}
 	if is_html {
 		sb.write_string('Content-Type: text/html; charset=UTF-8\r\n')
 	} else {
 		sb.write_string('Content-Type: text/plain; charset=UTF-8\r\n')
 	}
-	sb.write_string('Content-Transfer-Encoding: base64')
-	sb.write_string('\r\n\r\n')
+	sb.write_string('Content-Transfer-Encoding: base64\r\n\r\n')
 	sb.write_string(base64.encode_str(cfg.body))
+	sb.write_string('\r\n')
+	if cfg.attachments.len > 0 {
+		sb.write_string('\r\n--${cfg.boundary}\r\n')
+		sb.write_string(cfg.attachments_to_string())
+	}
 	sb.write_string('\r\n.\r\n')
 	c.send_str(sb.str())!
 	c.expect_reply(.action_ok)!
+}
+
+fn (a &Attachment) to_string(boundary string) string {
+	crlf := '\r\n'
+	cid := if a.cid != '' {
+		'Content-ID: <${a.cid}>${crlf}'
+	} else {
+		''
+	}
+	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${a.filename}"${crlf}${crlf}${base64.encode(a.bytes)}${crlf}--${boundary}${crlf}'
+}
+
+fn (m &Mail) attachments_to_string() string {
+	mut res := ''
+	for a in m.attachments {
+		res += a.to_string(m.boundary)
+	}
+	return if res.len > 0 { res[..res.len - 2] } else { '' } + '\r\n'
 }

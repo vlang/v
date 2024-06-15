@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -151,10 +151,12 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		comments << p.eat_comments()
 		// arr_expr
+		p.inside_for_expr = true
 		cond := p.expr(0)
+		p.inside_for_expr = false
 		// 0 .. 10
 		// start := p.tok.lit.int()
-		// TODO use RangeExpr
+		// TODO: use RangeExpr
 		mut high_expr := ast.empty_expr
 		mut is_range := false
 		if p.tok.kind == .ellipsis {
@@ -171,7 +173,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_tmp: true
 				is_stack_obj: true
 			})
-			if key_var_name.len > 0 {
+			if key_var_name != '' {
 				return p.error_with_pos('cannot declare index variable with range `for`',
 					key_var_pos)
 			}

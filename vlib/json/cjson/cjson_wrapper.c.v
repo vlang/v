@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module cjson
@@ -27,8 +27,6 @@ pub:
 	// @string &char // The item's name string, if this item is the child of, or is in the list of subitems of an object
 	// TODO: `@string &char` from above does not work. It should be fixed, at least inside `struct C.`.
 }
-
-pub const used = 1
 
 pub type Node = C.cJSON
 

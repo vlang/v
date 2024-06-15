@@ -453,7 +453,7 @@
 
         sgl_set_context(ctx);
 
-    The currently active context will implicitely be used by most sokol-gl functions
+    The currently active context will implicitly be used by most sokol-gl functions
     which don't take an explicit context handle as argument.
 
     To switch back to the default context, pass the global constant SGL_DEFAULT_CONTEXT:
@@ -833,7 +833,7 @@ SOKOL_GL_API_DECL sgl_context sgl_get_context(void);
 SOKOL_GL_API_DECL sgl_context sgl_default_context(void);
 
 /* draw recorded commands (call inside a sokol-gfx render pass) */
-SOKOL_GL_API_DECL void sgl_draw();
+SOKOL_GL_API_DECL void sgl_draw(void);
 SOKOL_GL_API_DECL void sgl_context_draw(sgl_context ctx);
 SOKOL_GL_API_DECL void sgl_draw_layer(int layer_id);
 SOKOL_GL_API_DECL void sgl_context_draw_layer(sgl_context ctx, int layer_id);
@@ -2308,8 +2308,10 @@ typedef struct {
 #define _SGL_MAX_STACK_DEPTH (64)
 #define _SGL_DEFAULT_CONTEXT_POOL_SIZE (4)
 #define _SGL_DEFAULT_PIPELINE_POOL_SIZE (64)
-#define _SGL_DEFAULT_MAX_VERTICES (1<<16)
-#define _SGL_DEFAULT_MAX_COMMANDS (1<<14)
+// __v_ start
+#define _SGL_DEFAULT_MAX_VERTICES (1<<17)
+#define _SGL_DEFAULT_MAX_COMMANDS (1<<15)
+// __v_ end
 #define _SGL_SLOT_SHIFT (16)
 #define _SGL_MAX_POOL_SIZE (1<<_SGL_SLOT_SHIFT)
 #define _SGL_SLOT_MASK (_SGL_MAX_POOL_SIZE-1)

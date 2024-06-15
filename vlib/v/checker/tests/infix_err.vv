@@ -9,7 +9,7 @@ _ = f() + ''
 _ = f() + f()
 
 _ = 4 + g()
-_ = int(0) + g() // FIXME not detected
+_ = int(0) + g() // FIXME: not detected
 _ = g() + int(3)
 _ = g() + 3
 

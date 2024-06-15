@@ -83,7 +83,7 @@ fn v_test_vetting(vargs string) ! {
 	fmt_cmd, fmt_args := if is_fix {
 		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
 	} else {
-		'${os.quoted_path(vexe)} fmt -verify', 'fmt -verify'
+		'${os.quoted_path(vexe)} fmt -inprocess -verify', 'fmt -inprocess -verify'
 	}
 	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
 	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }

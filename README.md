@@ -4,7 +4,12 @@
 </p>
 <h1>The V Programming Language</h1>
 
-[vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+[vlang.io](https://vlang.io)
+| [Docs](https://github.com/vlang/v/blob/master/doc/docs.md)
+| [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md)
+| [Speed](https://fast.vlang.io/)
+| [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+
 </div>
 <div align="center" style="display:grid;place-items:center;">
 <!--
@@ -16,6 +21,7 @@
 [![Discord][DiscordBadge]][DiscordUrl]
 [![X][XBadge]][XUrl]
 [![Modules][ModulesBadge]][ModulesUrl]
+
 </div>
 
 ## Key Features of V
@@ -64,7 +70,7 @@ language, very similar to the way it is right now.
 
 --> **_(this is the preferred method)_**
 
-### Linux, macOS, Windows, *BSD, Solaris, WSL, etc.
+### Linux, macOS, Windows, \*BSD, Solaris, WSL, etc.
 
 Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
@@ -85,7 +91,7 @@ That should be it and you should find your V executable at `[path to V repo]/v`.
 
 Now you can try `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
-* *Trouble? Please see the note above and link to
+- *Trouble? Please see the note above and link to
   [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
   for help.*
 
@@ -151,7 +157,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 
 > [!NOTE]
 > There is no need to run `v symlink` more than once - v will still be available, even after
-> `v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
+> `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
 
 ### Void Linux
@@ -184,10 +190,26 @@ docker run --rm -it vlang:latest
 ```bash
 git clone https://github.com/vlang/v
 cd v
-docker build -t vlang --file=Dockerfile.alpine .
-docker run --rm -it vlang:latest
+docker build -t vlang_alpine - < Dockerfile.alpine
+alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
 ```
 
+Compiling *static* executables, ready to be copied to a server, that is running
+another linux distro, without dependencies:
+```bash
+with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress examples/http_server.v
+with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
+ls -la examples/http_server examples/hello_world
+file   examples/http_server examples/hello_world
+examples/http_server: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
+examples/hello_world: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
+```
+
+You should see something like this:
+```
+-rwxr-xr-x 1 root root  16612 May 27 17:07 examples/hello_world
+-rwxr-xr-x 1 root root 335308 May 27 17:07 examples/http_server
+```
 </details>
 
 ### Termux/Android
@@ -206,7 +228,7 @@ make
 ## Editor/IDE Plugins
 
 To bring IDE functions for the V programming languages to your editor, check out
-[v-analyzer](https://github.com/v-analyzer/v-analyzer). It provides a
+[v-analyzer](https://github.com/vlang/v-analyzer). It provides a
 [VS Code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
 and language server capabilities for other editors.
 
@@ -252,7 +274,7 @@ you will need additional development libraries for your system.
 
 | System              | Installation method                                                                                |
 |---------------------|----------------------------------------------------------------------------------------------------|
-| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev libgl-dev`                                                        |
+| Debian/Ubuntu based | `sudo apt install libxi-dev libxcursor-dev libgl-dev libasound2-dev`                               |
 | Fedora/RH/CentOS    | `sudo dnf install libXcursor-devel libXi-devel libX11-devel libglvnd-devel`                        |
 | NixOS               | add `xorg.libX11.dev xorg.libXcursor.dev xorg.libXi.dev libGL.dev` to `environment.systemPackages` |
 
@@ -366,8 +388,8 @@ section on our
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
 [PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpatrons&style=flat
-[SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
-[XBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=x&style=flat&logoColor=white&color=1da1f2
+[SponsorBadge]: https://img.shields.io/github/sponsors/medvednikov?style=flat&logo=github&logoColor=white
+[XBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=x&style=flat&logoColor=white
 [ModulesBadge]: https://img.shields.io/badge/modules-reference-027d9c?logo=v&logoColor=white&logoWidth=10
 
 [WorkflowUrl]: https://github.com/vlang/v/commits/master

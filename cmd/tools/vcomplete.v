@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -316,7 +316,7 @@ fn auto_complete(args []string) {
 	if args.len <= 1 || args[0] != 'complete' {
 		if args.len == 1 {
 			shell_path := os.getenv('SHELL')
-			if shell_path.len > 0 {
+			if shell_path != '' {
 				shell_name := os.file_name(shell_path).to_lower()
 				if shell_name in auto_complete_shells {
 					println(setup_for_shell(shell_name))
@@ -525,7 +525,7 @@ fn auto_complete_request(args []string) []string {
 				add_sep := if part == '~' { os.path_separator } else { '' }
 				part = part.replace_once('~', os.home_dir().trim_right(os.path_separator)) + add_sep
 			}
-			is_abs_path := part.starts_with(os.path_separator) // TODO Windows support for drive prefixes
+			is_abs_path := part.starts_with(os.path_separator) // TODO: Windows support for drive prefixes
 			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
 				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part

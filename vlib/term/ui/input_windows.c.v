@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2024 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 @[has_globals]
@@ -82,7 +82,7 @@ pub fn init(cfg Config) &Context {
 	}
 
 	ctx_ptr = ctx
-	C.atexit(restore_terminal_state)
+	at_exit(restore_terminal_state) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ctx_ptr

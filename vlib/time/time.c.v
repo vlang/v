@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -7,19 +7,16 @@ module time
 
 // C.timeval represents a C time value.
 pub struct C.timeval {
+pub:
 	tv_sec  u64
 	tv_usec u64
 }
 
-fn C.localtime(t &C.time_t) &C.tm
-fn C.localtime_r(t &C.time_t, tm &C.tm)
-
-// struct C.time_t {}
-
 type C.time_t = i64
 
 fn C.time(t &C.time_t) C.time_t
-
+fn C.localtime(t &C.time_t) &C.tm
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
@@ -60,7 +57,13 @@ pub fn utc() Time {
 }
 
 // new_time returns a time struct with the calculated Unix time.
+@[deprecated: 'use `new()` instead']
+@[deprecated_after: '2024-05-31']
 pub fn new_time(t Time) Time {
+	return time_with_unix(t)
+}
+
+fn time_with_unix(t Time) Time {
 	if t.unix != 0 {
 		return t
 	}
@@ -96,7 +99,7 @@ pub fn ticks() i64 {
 
 // str returns the time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
 pub fn (t Time) str() string {
-	// TODO Define common default format for
+	// TODO: Define common default format for
 	// `str` and `parse` and use it in both ways
 	return t.format_ss()
 }

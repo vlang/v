@@ -4,7 +4,7 @@ import time
 // tfolder will contain all the temporary files/subfolders made by
 // the different tests. It would be removed in testsuite_end(), so
 // individual os tests do not need to clean up after themselves.
-const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_tests')
 
 // os.args has to be *already initialized* with the program's argc/argv at this point
 // thus it can be used for other consts too:
@@ -465,11 +465,19 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	}
 }
 
-fn test_realpath_absolutepath_symlink() {
+fn handle_privilege_error(err IError) ! {
+	if err.msg().contains('required privilege is not held by the client') {
+		eprintln('skipping ${@METHOD} on windows, since the user is not administrator, err:\n    ${err}')
+		return err
+	}
+	panic(err)
+}
+
+fn test_realpath_absolutepath_symlink() ! {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
 	create_file(file_name)!
-	os.symlink(file_name, symlink_name)!
+	os.symlink(file_name, symlink_name) or { handle_privilege_error(err) or { return } }
 	rpath := os.real_path(symlink_name)
 	println(rpath)
 	assert os.is_abs_path(rpath)
@@ -491,7 +499,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	os.symlink(folder, symlink) or { panic(err) }
+	os.symlink(folder, symlink) or { handle_privilege_error(err) or { return } }
 	assert os.is_link(symlink)
 	$if windows {
 		os.rmdir(symlink) or { panic(err) }
@@ -511,7 +519,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
 	os.rm(symlink) or {}
 	os.rm(file) or {}
 	create_file(file)!
-	os.symlink(file, symlink) or { panic(err) }
+	os.symlink(file, symlink) or { handle_privilege_error(err) or { return } }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
 	os.rm(file) or { panic(err) }
@@ -557,7 +565,7 @@ fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 
 fn test_symlink() {
 	os.mkdir('symlink') or { panic(err) }
-	os.symlink('symlink', 'symlink2') or { panic(err) }
+	os.symlink('symlink', 'symlink2') or { handle_privilege_error(err) or { return } }
 	assert os.exists('symlink2')
 	// cleanup
 	os.rmdir('symlink') or { panic(err) }
@@ -606,19 +614,6 @@ fn test_file_ext() {
 	assert os.file_ext('\\.git\\') == ''
 }
 
-fn test_join() {
-	$if windows {
-		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
-		assert os.join_path('', 'f1', 'f2') == 'f1\\f2'
-		assert os.join_path('v', '', 'dir') == 'v\\dir'
-	} $else {
-		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
-		assert os.join_path('/foo/bar', './file.txt') == '/foo/bar/file.txt'
-		assert os.join_path('', 'f1', 'f2') == 'f1/f2'
-		assert os.join_path('v', '', 'dir') == 'v/dir'
-	}
-}
-
 fn test_rmdir_all() {
 	mut dirs := ['some/dir', 'some/.hidden/directory']
 	$if windows {
@@ -632,6 +627,16 @@ fn test_rmdir_all() {
 	}
 	os.rmdir_all('some') or { assert false }
 	assert !os.exists('some')
+}
+
+fn test_rmdir_not_exist() ! {
+	dir := 'non_existing_dir'
+	assert !os.exists(dir)
+	os.rmdir(dir) or {
+		// 0x00000002 is both ENOENT in POSIX and ERROR_FILE_NOT_FOUND in Win32 API
+		assert err.code() == 0x00000002
+	}
+	assert !os.exists(dir)
 }
 
 fn test_dir() {
@@ -851,8 +856,8 @@ fn test_utime() {
 		os.rm(filename) or { panic(err) }
 	}
 	f.write_string(hello) or { panic(err) }
-	atime := time.now().add_days(2).unix_time()
-	mtime := time.now().add_days(4).unix_time()
+	atime := time.now().add_days(2).unix()
+	mtime := time.now().add_days(4).unix()
 	os.utime(filename, int(atime), int(mtime)) or { panic(err) }
 	assert os.file_last_mod_unix(filename) == mtime
 }
@@ -887,6 +892,16 @@ fn test_execute_with_stderr_redirection() {
 	assert result2.exit_code == 1
 	assert result2.output == ''
 	assert os.exists(stderr_path)
+}
+
+fn test_execute_with_linefeeds() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	result := os.execute('true\n')
+	assert result.exit_code == 0
+	result2 := os.execute('false\n')
+	assert result2.exit_code == 1
 }
 
 fn test_command() {

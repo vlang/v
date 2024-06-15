@@ -95,7 +95,7 @@ fn test_encode_decode_sumtype() {
 	enc := json.encode(game)
 	// eprintln('Encoded Game: $enc')
 
-	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix_time()}}]}'
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix()}}]}'
 
 	dec := json.decode(SomeGame, enc)!
 	// eprintln('Decoded Game: $dec')
@@ -104,7 +104,7 @@ fn test_encode_decode_sumtype() {
 	assert game.player == dec.player
 	assert (game.other[2] as Animal) == .cat
 	assert dec.other[2] == Entity('cat')
-	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
+	assert (game.other[4] as time.Time).unix() == (dec.other[4] as time.Time).unix()
 }
 
 fn bar[T](payload string) !Bar { // ?T doesn't work currently
@@ -156,7 +156,7 @@ fn test_parse_user() {
 fn test_encode_decode_time() {
 	user := User2{
 		age: 25
-		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+		reg_date: time.new(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
 	}
 	s := json.encode(user)
 	// println(s)
@@ -324,7 +324,7 @@ fn test_nested_type() {
 		assert data2.users[key].last_name == user.last_name
 		assert data2.users[key].is_registered == user.is_registered
 		assert data2.users[key].typ == user.typ
-		// assert data2.users[key].pets == user.pets // TODO FIX
+		// assert data2.users[key].pets == user.pets // TODO: FIX
 	}
 	for k, v in data.extra {
 		for k2, v2 in v {

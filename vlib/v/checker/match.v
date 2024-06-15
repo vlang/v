@@ -29,7 +29,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
 	}
-	c.check_expr_opt_call(node.cond, cond_type)
+	c.check_expr_option_or_result_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
@@ -55,23 +55,27 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					branch.branch_pos)
 			}
 		}
+		if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
+			c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+				branch.pos)
+		}
+		if cond_type_sym.kind == .none_ {
+			c.error('`none` cannot be a match condition', node.pos)
+		}
 		// If the last statement is an expression, return its type
-		if branch.stmts.len > 0 {
+		if branch.stmts.len > 0 && node.is_expr {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
-				if node.is_expr {
-					c.expected_type = node.expected_type
-				}
-				expr_type := c.expr(mut stmt.expr)
-				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
-					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
-						branch.pos)
+				c.expected_type = node.expected_type
+				expr_type := if stmt.expr is ast.CallExpr {
+					stmt.typ
+				} else {
+					c.expr(mut stmt.expr)
 				}
 				stmt.typ = expr_type
 				if first_iteration {
-					if node.is_expr && (node.expected_type.has_flag(.option)
-						|| node.expected_type.has_flag(.result)
-						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
+					if node.expected_type.has_flag(.option) || node.expected_type.has_flag(.result)
+						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return] {
 						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
 						ret_type = node.expected_type
 					} else {
@@ -95,7 +99,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						infer_cast_type = stmt.expr.typ
 					}
 				} else {
-					if node.is_expr && ret_type.idx() != expr_type.idx() {
+					if ret_type.idx() != expr_type.idx() {
 						if (node.expected_type.has_flag(.option)
 							|| node.expected_type.has_flag(.result))
 							&& c.table.sym(stmt.typ).kind == .struct_
@@ -112,7 +116,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
 						}
 					}
-					if node.is_expr && stmt.typ != ast.error_type {
+					if stmt.typ != ast.error_type {
 						ret_sym := c.table.sym(ret_type)
 						stmt_sym := c.table.sym(stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface_]
@@ -205,7 +209,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				}
 			} else if stmt !in [ast.Return, ast.BranchStmt] {
-				if node.is_expr && ret_type != ast.void_type {
+				if ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
 				}
@@ -300,6 +304,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	cond_sym := c.table.sym(node.cond_type)
+	mut enum_ref_checked := false
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
@@ -317,7 +322,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
 					branch.pos)
 			}
-			if mut expr is ast.TypeNode && cond_sym.is_primitive() {
+			mut is_comptime := false
+			if c.comptime.inside_comptime_for {
+				// it is a compile-time field.typ checking
+				if mut node.cond is ast.SelectorExpr {
+					is_comptime = node.cond.expr_type == c.field_data_type
+						&& node.cond.field_name == 'typ'
+				}
+			}
+			if mut expr is ast.TypeNode && cond_sym.is_primitive() && !is_comptime {
 				c.error('matching by type can only be done for sum types, generics, interfaces, `${node.cond}` is none of those',
 					branch.pos)
 			}
@@ -385,6 +398,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				ast.EnumVal {
 					key = expr.val
+					if !enum_ref_checked {
+						enum_ref_checked = true
+						if node.cond_type.is_ptr() {
+							c.error('missing `*` dereferencing `${node.cond}` in match statement',
+								node.cond.pos())
+						}
+					}
 				}
 				else {
 					key = (*expr).str()
@@ -430,7 +450,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match alias type `${expect_str}` with `${expr_str}`',
 					expr.pos())
-			} else if !c.check_types(expr_type, node.cond_type) {
+			} else if !c.check_types(expr_type, node.cond_type) && !is_comptime {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
@@ -476,7 +496,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
-				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope)
+				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope,
+					false)
 			}
 		}
 	}
@@ -522,16 +543,27 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	}
+	if node.branches.len == 0 {
+		c.error('`match` must have at least two branches including `else`, or an exhaustive set of branches',
+			node.pos)
+		return
+	}
 	mut else_branch := node.branches.last()
-	mut has_else := else_branch.is_else
-	if !has_else {
-		for i, branch in node.branches {
-			if branch.is_else && i != node.branches.len - 1 {
-				c.error('`else` must be the last branch of `match`', branch.pos)
-				else_branch = branch
-				has_else = true
+	mut has_else, mut has_non_else := else_branch.is_else, !else_branch.is_else
+	for branch in node.branches[..node.branches.len - 1] {
+		if branch.is_else {
+			if has_else {
+				c.error('`match` can have only one `else` branch', branch.pos)
 			}
+			c.error('`else` must be the last branch of `match`', branch.pos)
+			else_branch = branch
+			has_else = true
+		} else {
+			has_non_else = true
 		}
+	}
+	if !has_non_else {
+		c.error('`match` must have at least one non `else` branch', else_branch.pos)
 	}
 	if is_exhaustive {
 		if has_else && !c.pref.translated && !c.file.is_translated {

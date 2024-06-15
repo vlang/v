@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module scanner
@@ -8,7 +8,6 @@ import strconv
 import v.token
 import v.pref
 import v.util
-import v.vet
 import v.errors
 import v.ast
 import v.mathutil
@@ -60,7 +59,6 @@ pub mut:
 	errors                      []errors.Error
 	warnings                    []errors.Warning
 	notices                     []errors.Notice
-	vet_errors                  []vet.Error
 	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
 }
 
@@ -589,9 +587,9 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 	s.scan_remaining_text()
 	s.tidx = 0
-	$if debugscanner ? {
+	$if trace_scanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit.len: ${t.lit.len:-5} | lit: `${t.lit}`')
 		}
 	}
 }
@@ -810,17 +808,9 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.chartoken, ident_char, ident_char.len + 2) // + two quotes
 			}
 			`(` {
-				// TODO `$if vet {` for performance
-				if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
-					s.vet_error('Looks like you are adding a space after `(`', .vfmt)
-				}
 				return s.new_token(.lpar, '', 1)
 			}
 			`)` {
-				// TODO `$if vet {` for performance
-				if s.pref.is_vet && s.text[s.pos - 1] == ` ` {
-					s.vet_error('Looks like you are adding a space before `)`', .vfmt)
-				}
 				return s.new_token(.rpar, '', 1)
 			}
 			`[` {
@@ -959,6 +949,16 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `!` {
 					// treat shebang line (#!) as a comment
 					comment := s.text[start - 1..s.pos].trim_space()
+					if s.line_nr != 1 {
+						comment_pos := token.Pos{
+							line_nr: s.line_nr - 1
+							len: comment.len
+							pos: start
+							col: s.current_column() - comment.len
+						}
+						s.error_with_pos('a shebang is only valid at the top of the file',
+							comment_pos)
+					}
 					// s.fgenln('// shebang line "$s.line_comment"')
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
@@ -1239,7 +1239,7 @@ pub fn (mut s Scanner) ident_string() string {
 			backslash_count++
 		}
 		// end of string
-		if c == s.quote && (is_raw || backslash_count % 2 == 0) {
+		if c == s.quote && (is_raw || backslash_count & 1 == 0) {
 			// handle '123\\' backslash at the end
 			break
 		}
@@ -1253,7 +1253,7 @@ pub fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Escape `\x` `\u` `\U`
-		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
+		if backslash_count & 1 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
 				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
@@ -1287,13 +1287,13 @@ pub fn (mut s Scanner) ident_string() string {
 				u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !is_escape_sequence(c) && !c.is_digit() {
+			if !is_escape_sequence(c) && !c.is_digit() && c != `\n` {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			if s.is_enclosed_inter {
 				s.is_nested_enclosed_inter = true
@@ -1306,7 +1306,7 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
@@ -1483,12 +1483,25 @@ fn trim_slash_line_break(s string) string {
 	mut start := 0
 	mut ret_str := s
 	for {
+		// find the position of the first `\` followed by a newline, after `start`:
 		idx := ret_str.index_after('\\\n', start)
-		if idx != -1 {
-			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
-			start = idx
-		} else {
+		if idx == -1 {
 			break
+		}
+		start = idx
+		// Here, ret_str[idx] is \, and ret_str[idx+1] is newline.
+		// Depending on the number of backslashes before the newline, we should either
+		// treat the last one and the whitespace after it as line-break, or just ignore it:
+		mut nbackslashes := 0
+		for eidx := idx; eidx >= 0 && ret_str[eidx] == `\\`; eidx-- {
+			nbackslashes++
+		}
+		// eprintln('>> start: ${start:-5} | nbackslashes: ${nbackslashes:-5} | ret_str: $ret_str')
+		if idx == 0 || (nbackslashes & 1) == 1 {
+			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
+		} else {
+			// ensure the loop will terminate, when we could not strip anything:
+			start++
 		}
 	}
 	return ret_str
@@ -1524,11 +1537,14 @@ pub fn (mut s Scanner) ident_char() string {
 	mut len := 0
 
 	// set flags for advanced escapes first
-	escaped_hex := s.expect('\\x', start + 1)
-	escaped_unicode_16 := s.expect('\\u', start + 1)
-	escaped_unicode_32 := s.expect('\\U', start + 1)
+	escaped_hex := s.expect('\\x', start + 1) && s.text.len > start + 3
+		&& s.text[start + 3].is_hex_digit()
+	escaped_unicode_16 := s.expect('\\u', start + 1) && s.text.len > start + 3
+		&& s.text[start + 3].is_hex_digit()
+	escaped_unicode_32 := s.expect('\\U', start + 1) && s.text.len > start + 3
+		&& s.text[start + 3].is_hex_digit()
 	escaped_octal := !escaped_hex && !escaped_unicode_16 && !escaped_unicode_32
-		&& s.expect('\\', start + 1)
+		&& s.expect('\\', start + 1) && s.text.len > start + 2 && s.text[start + 2].is_oct_digit()
 
 	// walk the string to get characters up to the next backtick
 	for {
@@ -1560,7 +1576,7 @@ pub fn (mut s Scanner) ident_char() string {
 		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605 or (32 bit unicode) \U00002605
 		// we don't handle binary escape codes in rune literals
 		orig := c
-		if c.len % 2 == 0
+		if c.len & 1 == 0
 			&& (escaped_hex || escaped_unicode_16 || escaped_unicode_32 || escaped_octal) {
 			if escaped_unicode_16 {
 				// there can only be one, so attempt to decode it now
@@ -1586,8 +1602,19 @@ pub fn (mut s Scanner) ident_char() string {
 
 		u := c.runes()
 		if u.len != 1 {
+			mut err_info := []string{cap: u.len}
+			mut i := 0
+			for i < u.len {
+				if u[i] != `\\` || i == u.len - 1 {
+					err_info << '`${u[i]}`'
+					i++
+					continue
+				}
+				err_info << '`\\${u[i + 1]}`'
+				i += 2
+			}
 			if escaped_hex || escaped_unicode_16 || escaped_unicode_32 {
-				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (escape sequence did not refer to a singular rune)',
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (escape sequence did not refer to a singular rune)',
 					lspos)
 			} else if u.len == 0 {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
@@ -1596,7 +1623,7 @@ pub fn (mut s Scanner) ident_char() string {
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
-				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (more than one character)',
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (more than one character)',
 					lspos)
 			}
 		}
@@ -1774,18 +1801,6 @@ pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 			details: details
 		}
 	}
-}
-
-fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
-	ve := vet.Error{
-		message: msg
-		file_path: s.file_path
-		pos: s.current_pos()
-		kind: .error
-		fix: fix
-		typ: .default
-	}
-	s.vet_errors << ve
 }
 
 fn (mut s Scanner) trace[T](fbase string, x &T) {

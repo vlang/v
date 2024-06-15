@@ -122,7 +122,7 @@ pub fn (mut c UdpConn) read(mut buf []u8) !(int, Addr) {
 }
 
 pub fn (c &UdpConn) read_deadline() !time.Time {
-	if c.read_deadline.unix == 0 {
+	if c.read_deadline.unix() == 0 {
 		return c.read_deadline
 	}
 	return error('none')
@@ -133,7 +133,7 @@ pub fn (mut c UdpConn) set_read_deadline(deadline time.Time) {
 }
 
 pub fn (c &UdpConn) write_deadline() !time.Time {
-	if c.write_deadline.unix == 0 {
+	if c.write_deadline.unix() == 0 {
 		return c.write_deadline
 	}
 	return error('none')
@@ -211,14 +211,8 @@ fn new_udp_socket(local_addr Addr) !&UdpSocket {
 		s.set_dualstack(true)!
 	}
 
-	$if !net_blocking_sockets ? {
-		// NOTE: refer to comments in tcp.v
-		$if windows {
-			t := u32(1) // true
-			socket_error(C.ioctlsocket(sockfd, fionbio, &t))!
-		} $else {
-			socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK))!
-		}
+	$if net_nonblocking_sockets ? {
+		set_blocking(sockfd, false)!
 	}
 
 	// cast to the correct type
@@ -258,7 +252,7 @@ fn new_udp_socket_for_remote(raddr Addr) !&UdpSocket {
 }
 
 pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ! {
-	// TODO reenable when this `in` operation works again
+	// TODO: reenable when this `in` operation works again
 	// if opt !in opts_can_set {
 	// 	return err_option_not_settable
 	// }

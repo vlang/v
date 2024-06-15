@@ -139,7 +139,7 @@ psa_status_t psa_find_se_slot_for_key(
     psa_se_drv_table_entry_t *driver,
     psa_key_slot_number_t *slot_number );
 
-/** Destoy a key in a secure element.
+/** Destroy a key in a secure element.
  *
  * This function calls the relevant driver method to destroy a key
  * and updates the driver's persistent data.

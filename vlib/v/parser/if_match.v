@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -212,6 +212,8 @@ fn (mut p Parser) is_only_array_type() bool {
 				next_kind := p.peek_token(i + 1).kind
 				if next_kind == .name {
 					return true
+				} else if next_kind == .question && p.peek_token(i + 2).kind == .name {
+					return true
 				} else if next_kind == .lsbr {
 					continue
 				} else {
@@ -223,9 +225,20 @@ fn (mut p Parser) is_only_array_type() bool {
 	return false
 }
 
+fn (mut p Parser) is_match_sumtype_type() bool {
+	is_option := p.tok.kind == .question
+	name_tok := if is_option { p.peek_tok } else { p.tok }
+	next_tok_kind := if is_option { p.peek_token(2).kind } else { p.peek_tok.kind }
+	next_next_tok := if is_option { p.peek_token(3) } else { p.peek_token(2) }
+
+	return name_tok.kind == .name && !(name_tok.lit == 'C' && next_tok_kind == .dot)
+		&& (((ast.builtin_type_names_matcher.matches(name_tok.lit) || name_tok.lit[0].is_capital())
+		&& next_tok_kind != .lpar) || (next_tok_kind == .dot && next_next_tok.lit.len > 0
+		&& next_next_tok.lit[0].is_capital()))
+}
+
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
-	mut else_count := 0
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
@@ -246,12 +259,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		mut is_else := false
 		if p.tok.kind == .key_else {
 			is_else = true
-			else_count += 1
 			p.next()
-		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
-			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
-			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type()
+		} else if p.is_match_sumtype_type() || p.is_only_array_type()
 			|| p.tok.kind == .key_fn
 			|| (p.tok.kind == .lsbr && p.peek_token(2).kind == .amp) {
 			mut types := []ast.Type{}
@@ -280,6 +289,12 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			}
 			is_sum_type = true
 		} else {
+			if p.tok.kind == .rcbr {
+				p.next()
+				return ast.MatchExpr{
+					pos: match_first_pos
+				}
+			}
 			// Expression match
 			for {
 				p.inside_match_case = true
@@ -341,12 +356,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else: is_else
 			post_comments: post_comments
 			scope: branch_scope
-		}
-		if is_else && branches.len == 1 {
-			p.error_with_pos('`match` must have at least one non `else` branch', pos)
-		}
-		if else_count > 1 {
-			p.error_with_pos('`match` can have only one `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

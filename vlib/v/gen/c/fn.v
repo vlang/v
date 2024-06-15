@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -69,7 +69,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	pos := g.out.len
 	should_bundle_module := util.should_bundle_module(node.mod)
 	if g.pref.build_mode == .build_module {
-		// TODO true for not just "builtin"
+		// TODO: true for not just "builtin"
 		// TODO: clean this up
 		mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
 		// for now dont skip generic functions as they are being marked as static
@@ -102,7 +102,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_main {
 		g.has_main = true
 	}
-	// TODO PERF remove this from here
+	// TODO: PERF remove this from here
 	is_backtrace := node.name.starts_with('backtrace')
 		&& node.name in ['backtrace_symbols', 'backtrace', 'backtrace_symbols_fd']
 	if is_backtrace {
@@ -129,7 +129,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 }
 
 fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
-	// TODO For some reason, build fails with autofree with this line
+	// TODO: For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
 	if node.language == .c {
@@ -199,7 +199,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.cur_fn = cur_fn_save
 	}
 	unsafe {
-		// TODO remove unsafe
+		// TODO: remove unsafe
 		g.cur_fn = node
 	}
 	fn_start_pos := g.out.len
@@ -212,7 +212,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.writeln(';')
 	}
 
-	g.write_v_source_line_info(node.pos)
+	g.write_v_source_line_info_stmt(node)
 	fn_attrs := g.write_fn_attrs(node.attrs)
 	// Live
 	is_livefn := node.attrs.contains('live')
@@ -228,9 +228,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
 	ret_sym := g.table.sym(g.unwrap_generic(node.return_type))
-	if node.return_type.has_flag(.generic) && ret_sym.kind == .array_fixed {
+	if node.return_type.has_flag(.generic) && !node.return_type.has_option_or_result()
+		&& ret_sym.kind == .array_fixed {
 		type_name = '_v_${type_name}'
-	} else if ret_sym.kind == .alias && !node.return_type.has_flag(.option) {
+	} else if ret_sym.kind == .alias && !node.return_type.has_option_or_result() {
 		unalias_typ := g.table.unaliased_type(node.return_type)
 		unalias_sym := g.table.sym(unalias_typ)
 		if unalias_sym.kind == .array_fixed {
@@ -272,6 +273,77 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.last_fn_c_name = last_fn_c_name_save
 	}
 	g.last_fn_c_name = impl_fn_name
+
+	if node.trace_fns.len > 0 {
+		for trace_fn, call_fn in node.trace_fns {
+			if trace_fn in g.trace_fn_definitions {
+				continue
+			}
+			trace_fn_ret_type := g.typ(call_fn.return_type)
+
+			g.write('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
+			g.definitions.write_string('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
+
+			if call_fn.is_fn_var {
+				sig := g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
+					call_fn.name)
+				g.write(sig)
+				g.definitions.write_string(sig)
+			} else {
+				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic)
+			}
+
+			g.writeln(') {')
+			g.definitions.write_string(');\n')
+
+			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
+			add_trace_hook := g.pref.is_trace
+				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
+			if g.pref.is_callstack {
+				if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
+					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+				} else {
+					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+				}
+			}
+			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__before_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
+				g.writeln('\t${c_name(call_fn.name)}(${orig_fn_args});')
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__after_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
+				if g.pref.is_callstack {
+					g.writeln('\tarray_pop((array*)&g_callstack);')
+				}
+			} else {
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__before_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
+				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}(${orig_fn_args});')
+				if g.pref.is_callstack {
+					g.writeln('\tarray_pop((array*)&g_callstack);')
+				}
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__after_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
+				g.writeln('\treturn ret;')
+			}
+			g.writeln('}')
+			g.writeln('')
+			g.trace_fn_definitions << trace_fn
+		}
+	}
+
 	//
 	if is_live_wrap {
 		if is_livemain {
@@ -279,8 +351,13 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.write('${type_name} no_impl_${name}(')
 		}
 		if is_liveshared {
-			g.definitions.write_string('${type_name} ${impl_fn_name}(')
-			g.write('${type_name} ${impl_fn_name}(')
+			if g.pref.os == .windows {
+				g.definitions.write_string('VV_EXPORTED_SYMBOL ${type_name} ${impl_fn_name}(')
+				g.write('VV_EXPORTED_SYMBOL ${type_name} ${impl_fn_name}(')
+			} else {
+				g.definitions.write_string('${type_name} ${impl_fn_name}(')
+				g.write('${type_name} ${impl_fn_name}(')
+			}
 		}
 	} else {
 		if !(node.is_pub || g.pref.is_debug) {
@@ -322,7 +399,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if node.params.len == 0 {
 		g.definitions.write_string('void')
 	}
-	g.definitions.writeln(');')
+	if attr := node.attrs.find_first('_linker_section') {
+		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
+	} else {
+		g.definitions.writeln(');')
+	}
 	g.writeln(') {')
 	if is_closure {
 		g.writeln('${cur_closure_ctx}* ${c.closure_ctx} = __CLOSURE_GET_DATA();')
@@ -503,13 +584,15 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	}
 	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
-	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
+	// TODO: in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
 	g.write('__closure_create(${fn_name}, (${ctx_struct}*) memdup_uncollectable(&(${ctx_struct}){')
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false
+		mut is_ptr := false
 		if obj := node.decl.scope.find(var.name) {
 			if obj is ast.Var {
+				is_ptr = obj.typ.is_ptr()
 				if obj.has_inherited {
 					has_inherited = true
 					var_sym := g.table.sym(var.typ)
@@ -533,8 +616,22 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					g.write('${var.name}[${i}],')
 				}
 				g.writeln('},')
+			} else if g.is_autofree && !var.is_mut && var_sym.info is ast.Array {
+				g.writeln('.${var.name} = array_clone(&${var.name}),')
+			} else if g.is_autofree && !var.is_mut && var_sym.kind == .string {
+				g.writeln('.${var.name} = string_clone(${var.name}),')
 			} else {
-				g.writeln('.${var.name} = ${var.name},')
+				mut is_auto_heap := false
+				if obj := node.decl.scope.parent.find(var.name) {
+					if obj is ast.Var {
+						is_auto_heap = !obj.is_stack_obj && obj.is_auto_heap
+					}
+				}
+				if is_auto_heap && !is_ptr {
+					g.writeln('.${var.name} = *${var.name},')
+				} else {
+					g.writeln('.${var.name} = ${var.name},')
+				}
 			}
 		}
 	}
@@ -628,6 +725,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
+			heap_promoted << false
 		} else {
 			mut heap_prom := false
 			if scope != unsafe { nil } {
@@ -701,6 +799,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.expr(node.left)
 			g.writeln(';')
 			g.write(line)
+			if g.out.last_n(1) != '\n' {
+				g.writeln('')
+			}
 			g.write(tmp_var)
 		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
@@ -765,7 +866,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		mut ret_typ := node.return_type
 		if g.table.sym(ret_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(ret_typ)
-			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+			if unaliased_type.has_option_or_result() {
 				ret_typ = unaliased_type
 			}
 		}
@@ -789,7 +890,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	}
 	if node.is_method && !node.is_field {
-		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0
+		if g.pref.experimental && node.args.len > 0 && node.name == 'writeln'
 			&& node.args[0].expr is ast.StringInterLiteral
 			&& g.table.sym(node.receiver_type).name == 'strings.Builder' {
 			g.string_inter_literal_sb_optimized(node)
@@ -801,11 +902,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		mut unwrapped_typ := node.return_type.clear_flags(.option, .result)
+		mut unwrapped_typ := node.return_type.clear_option_and_result()
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
-			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
-				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
+			if unaliased_type.has_option_or_result() {
+				unwrapped_typ = unaliased_type.clear_option_and_result()
 			}
 		}
 		mut unwrapped_styp := g.typ(unwrapped_typ)
@@ -820,8 +921,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			if !g.inside_const_opt_or_res {
 				if g.assign_ct_type != 0
 					&& node.or_block.kind in [.propagate_option, .propagate_result] {
-					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_flags(.option,
-						.result))
+					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_option_and_result())
+				}
+				if g.table.sym(node.return_type).kind == .array_fixed
+					&& unwrapped_styp.starts_with('_v_') {
+					unwrapped_styp = unwrapped_styp[3..]
 				}
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
@@ -876,6 +980,20 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 
 fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
 	match node.name {
+		'reserve' {
+			g.write('map_reserve(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(', ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return true
+		}
+		'free', 'clear' {
+			g.write('map_${node.name}(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(')')
+			return true
+		}
 		'delete' {
 			left_info := left_sym.info as ast.Map
 			elem_type_str := g.typ(left_info.key_type)
@@ -937,11 +1055,13 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool
 			g.gen_array_all(node)
 			return true
 		}
-		'delete', 'drop' {
+		'delete', 'drop', 'delete_last' {
 			g.write('array_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
-			g.write(', ')
-			g.expr(node.args[0].expr)
+			if node.name != 'delete_last' {
+				g.write(', ')
+				g.expr(node.args[0].expr)
+			}
 			g.write(')')
 			return true
 		}
@@ -996,6 +1116,9 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 					rec_type = cast_sym.info.types[g.aggregate_type_idx]
 				}
 				g.gen_expr_to_string(left_node, rec_type)
+				return true
+			} else if left_node.or_expr.kind == .propagate_option {
+				g.gen_expr_to_string(left_node, g.unwrap_generic(node.left_type))
 				return true
 			}
 		}
@@ -1089,6 +1212,18 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 									if param_sym.info.key_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
 										ctyp = ctyp.set_nr_muls(0)
 									}
+								} else {
+									key_is_generic := param_sym.info.key_type.has_flag(.generic)
+									if key_is_generic {
+										ctyp = g.unwrap_generic(arg_sym.info.key_type)
+									}
+									if param_sym.info.value_type.has_flag(.generic) {
+										if key_is_generic {
+											comptime_args[k] = ctyp
+											k++
+										}
+										ctyp = g.unwrap_generic(arg_sym.info.value_type)
+									}
 								}
 							}
 							comptime_args[k] = ctyp
@@ -1157,14 +1292,34 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 					if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
+				} else if mut call_arg.expr.right is ast.Ident {
+					mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr.right)
+					if ctyp != ast.void_type {
+						comptime_args[k] = ctyp
+						if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+							comptime_args[k] = comptime_args[k].set_nr_muls(0)
+						}
+					}
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				comptime_args[k] = g.comptime.comptime_for_field_type
 				arg_sym := g.table.final_sym(call_arg.typ)
-				param_typ_sym := g.table.sym(param_typ)
+				param_sym := g.table.sym(param_typ)
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
-					&& param_typ_sym.kind == .array {
+					&& param_sym.kind == .array {
 					comptime_args[k] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
+				} else if arg_sym.info is ast.Map && param_sym.info is ast.Map
+					&& param_typ.has_flag(.generic) {
+					key_is_generic := param_sym.info.key_type.has_flag(.generic)
+					if key_is_generic {
+						comptime_args[k] = g.unwrap_generic(arg_sym.info.key_type)
+					}
+					if param_sym.info.value_type.has_flag(.generic) {
+						if key_is_generic {
+							k++
+						}
+						comptime_args[k] = g.unwrap_generic(arg_sym.info.value_type)
+					}
 				}
 				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 					comptime_args[k] = comptime_args[k].set_nr_muls(0)
@@ -1229,10 +1384,14 @@ fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymb
 	if node.from_embed_types.len == 0 && node.left is ast.Ident {
 		if node.left.obj is ast.Var {
 			if node.left.obj.smartcasts.len > 0 {
-				unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
-				cast_sym := g.table.sym(unwrapped_rec_type)
-				if cast_sym.info is ast.Aggregate {
-					unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
+				if node.left.obj.ct_type_var == .smartcast {
+					unwrapped_rec_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.left))
+				} else {
+					unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+					cast_sym := g.table.sym(unwrapped_rec_type)
+					if cast_sym.info is ast.Aggregate {
+						unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
+					}
 				}
 			}
 		}
@@ -1359,7 +1518,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		g.get_free_method(rec_type)
 	}
-	mut has_cast := false
+	mut cast_n := 0
 
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
@@ -1367,7 +1526,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
-			has_cast = true
+			cast_n++
 			g.write('(*(${return_type_str}*)')
 		}
 	}
@@ -1457,7 +1616,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write('${name}${noscan}(')
 		} else {
-			g.write('${name}(')
+			if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
+				g.gen_trace_call(node, name)
+				g.write('(')
+			} else {
+				g.write('${name}(')
+			}
 		}
 	}
 	is_array_method_first_last_repeat := final_left_sym.kind == .array
@@ -1468,11 +1632,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
-		// TODO same logic in call_args()
+		// TODO: same logic in call_args()
 		if !is_range_slice {
 			if !node.left.is_lvalue() {
 				g.write('ADDR(${rec_cc_type}, ')
-				has_cast = true
+				cast_n++
 			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
 				&& left_type == node.receiver_type) {
 				g.write('&')
@@ -1579,8 +1743,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('->val')
 		}
 	}
-	if has_cast {
-		g.write(')')
+	if cast_n > 0 {
+		g.write(')'.repeat(cast_n))
 	}
 	is_variadic := node.expected_arg_types.len > 0
 		&& node.expected_arg_types.last().has_flag(.variadic)
@@ -1592,7 +1756,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(', ${array_depth}')
 	}
 	g.write(')')
-	if node.return_type != 0 && !node.return_type.has_flag(.option)
+	if node.return_type != 0 && !node.return_type.has_option_or_result()
 		&& g.table.final_sym(node.return_type).kind == .array_fixed {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
@@ -1637,6 +1801,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		is_selector_call = true
 	}
 	mut name := node.name
+	if index := node.name.index('__static__') {
+		// resolve static call T.name()
+		if index > 0 && g.cur_fn != unsafe { nil } {
+			name = g.table.resolve_generic_static_type_name(node.name, g.cur_fn.generic_names,
+				g.cur_concrete_types)
+		}
+	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
 	is_json_encode := name == 'json.encode'
@@ -1703,7 +1874,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
-			// TODO PERF fn lookup for each fn call in translated mode
+			// TODO: PERF fn lookup for each fn call in translated mode
 			if cattr := f.attrs.find_first('c') {
 				name = cattr.arg
 			}
@@ -1802,6 +1973,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							cast_sym := g.table.sym(typ)
 							if cast_sym.info is ast.Aggregate {
 								typ = cast_sym.info.types[g.aggregate_type_idx]
+							} else if expr.obj.ct_type_var == .smartcast {
+								typ = g.unwrap_generic(g.comptime.get_comptime_var_type(expr))
 							}
 						}
 						// handling println( var or { ... })
@@ -1829,11 +2002,17 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.call_args(node)
 			g.write(')')
 		} else if node.name.ends_with('__static__from_string') && !g.table.known_fn(node.name) {
-			if node.name !in g.str_fn_names {
-				g.gen_enum_static_from_string(node.name)
-				g.str_fn_names << node.name
+			mod_enum_name, idx := g.get_enum_type_idx_from_fn_name(node.name)
+			fn_mod := mod_enum_name.all_before_last('.')
+			full_fn_name := '${fn_mod}.${node.name}'
+			fn_name := util.no_dots(full_fn_name)
+			lock g.str_fn_names {
+				if fn_name !in g.str_fn_names {
+					g.gen_enum_static_from_string(fn_name, mod_enum_name, idx)
+					g.str_fn_names << fn_name
+				}
 			}
-			g.write('${util.no_dots(node.name)}(')
+			g.write('${fn_name}(')
 			g.call_args(node)
 			g.write(')')
 		} else {
@@ -1857,8 +2036,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						}
 						if obj.smartcasts.len > 0 && is_cast_needed {
 							for typ in obj.smartcasts {
-								sym := g.table.sym(typ)
-								g.write('(*(${sym.cname})(')
+								sym := g.table.sym(g.unwrap_generic(typ))
+								if obj.orig_type.has_flag(.option) && sym.kind == .function {
+									g.write('(*(${sym.cname}*)(')
+								} else {
+									g.write('(*(${sym.cname})(')
+								}
 							}
 							for i, typ in obj.smartcasts {
 								cast_sym := g.table.sym(g.unwrap_generic(typ))
@@ -1877,6 +2060,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								if cast_sym.info is ast.Aggregate {
 									sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 									g.write('${dot}_${sym.cname}')
+								} else if cast_sym.kind == .function
+									&& obj.orig_type.has_flag(.option) {
+									g.write('.data')
 								} else {
 									g.write('${dot}_${cast_sym.cname}')
 								}
@@ -1892,7 +2078,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if !is_fn_var {
-				g.write(g.get_ternary_name(name))
+				if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
+					g.gen_trace_call(node, name)
+					if node.is_fn_var {
+						return
+					}
+				} else {
+					g.write(g.get_ternary_name(name))
+				}
 			}
 			if is_interface_call {
 				g.write(')')
@@ -1922,7 +2115,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if name != '&' {
 				g.write(')')
 			}
-			if node.return_type != 0 && !node.return_type.has_flag(.option)
+			if node.return_type != 0 && !node.return_type.has_option_or_result()
 				&& g.table.final_sym(node.return_type).kind == .array_fixed {
 				// it's non-option fixed array, requires accessing .ret_arr member to get the array
 				g.write('.ret_arr')
@@ -1936,13 +2129,26 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	g.is_json_fn = false
 }
 
+// gen_trace_call generates call to the wrapper trace fn if the call is traceable
+fn (mut g Gen) gen_trace_call(node ast.CallExpr, name string) {
+	hash_fn, _ := g.table.get_trace_fn_name(g.cur_fn, node)
+	if _ := g.cur_fn.trace_fns[hash_fn] {
+		g.write(c_name(hash_fn))
+		if node.is_fn_var {
+			g.write('(${node.name})')
+		}
+	} else {
+		g.write(g.get_ternary_name(name))
+	}
+}
+
 fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0
 		&& !node.args[0].typ.has_flag(.option)
-		&& !node.args[0].typ.has_flag(.result) // TODO copy pasta checker.v
+		&& !node.args[0].typ.has_flag(.result) // TODO: copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}
@@ -2035,14 +2241,10 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		match mut obj {
 			ast.Var {
 				// if var.typ == 0 {
-				// // TODO why 0?
+				// // TODO: why 0?
 				// continue
 				// }
 				is_option := obj.typ.has_flag(.option)
-				if is_option {
-					// TODO: free options
-					continue
-				}
 				is_result := obj.typ.has_flag(.result)
 				if is_result {
 					// TODO: free results
@@ -2055,8 +2257,8 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 					// this means this tmp expr var has already been freed
 					continue
 				}
-				obj.is_used = true // TODO bug? sets all vars is_used to true
-				g.autofree_variable(obj)
+				obj.is_used = true // TODO: bug? sets all vars is_used to true
+				g.autofree_variable(obj, is_option)
 				// g.nr_vars_to_free--
 			}
 			else {}
@@ -2118,9 +2320,17 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
+		mut is_smartcast := false
 		if arg.expr is ast.Ident {
 			if arg.expr.obj is ast.Var {
-				if arg.expr.obj.smartcasts.len > 0 {
+				if i < node.expected_arg_types.len && node.expected_arg_types[i].has_flag(.generic)
+					&& arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
+					exp_option := node.expected_arg_types[i].has_flag(.option)
+					expected_types[i] = g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+					if !exp_option {
+						expected_types[i] = expected_types[i].clear_flag(.option)
+					}
+				} else if arg.expr.obj.smartcasts.len > 0 {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
 					if orig_sym.kind != .interface_ && (exp_sym.kind != .sum_type
@@ -2130,6 +2340,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						if cast_sym.info is ast.Aggregate {
 							expected_types[i] = cast_sym.info.types[g.aggregate_type_idx]
 						}
+						is_smartcast = true
 					}
 				}
 			}
@@ -2146,6 +2357,13 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				d_count++
 			}
 			continue
+		} else if arg.expr is ast.ComptimeSelector && i < node.expected_arg_types.len
+			&& node.expected_arg_types[i].has_flag(.generic) {
+			exp_option := node.expected_arg_types[i].has_flag(.option)
+			expected_types[i] = g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+			if !exp_option {
+				expected_types[i] = expected_types[i].clear_flag(.option)
+			}
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
@@ -2165,11 +2383,11 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*autofree arg*/' + name)
 				}
 			} else {
-				g.ref_or_deref_arg(arg, expected_types[i], node.language)
+				g.ref_or_deref_arg(arg, expected_types[i], node.language, is_smartcast)
 			}
 		} else {
 			if use_tmp_var_autofree {
-				// TODO copypasta, move to an inline fn
+				// TODO: copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
 				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 				g.write('/*af arg2*/' + name)
@@ -2236,7 +2454,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					noscan := g.check_noscan(arr_info.elem_type)
 					g.write('new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 					for j in arg_nr .. args.len {
-						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
+						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+							false)
 						if j < args.len - 1 {
 							g.write(', ')
 						}
@@ -2263,7 +2482,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		expected_type := node.expected_arg_types[i]
 		typ := g.table.sym(expected_type).cname
 		g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
-		g.ref_or_deref_arg(arg, expected_type, node.language)
+		g.ref_or_deref_arg(arg, expected_type, node.language, false)
 		g.writeln(';')
 	}
 	g.empty_line = false
@@ -2280,8 +2499,12 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 }
 
 @[inline]
-fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_typ := g.unwrap_generic(arg.typ)
+fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
+	arg_typ := if arg.expr is ast.ComptimeSelector {
+		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+	} else {
+		g.unwrap_generic(arg.typ)
+	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
 	arg_is_ptr := arg_typ.is_any_kind_of_pointer()
@@ -2347,6 +2570,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					}
 					if atype.has_flag(.generic) || arg.expr is ast.StructInit {
 						g.write('(voidptr)&/*qq*/')
+					} else if arg.expr is ast.None {
+						g.expr_with_opt(arg.expr, arg_typ, expected_type)
+						return
 					} else {
 						needs_closing = true
 						if arg_typ_sym.kind in [.sum_type, .interface_] {
@@ -2390,8 +2616,19 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('(${g.typ(arg.expr.typ)})')
 			}
 		}
+	} else if arg.expr is ast.ComptimeSelector && arg_typ.has_flag(.option)
+		&& !expected_type.has_flag(.option) {
+		// allow to pass val.$(filed.name) where T is expected, doing automatic unwrap in this case
+		styp := g.base_type(arg_typ)
+		g.write('*(${styp}*)')
+		g.expr_with_cast(arg.expr, arg_typ, expected_type)
+		g.write('.data')
+		return
 	}
+	// check if the argument must be dereferenced or not
+	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	g.arg_no_auto_deref = false
 	if needs_closing {
 		g.write(')')
 	}

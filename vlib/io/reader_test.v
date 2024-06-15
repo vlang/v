@@ -38,13 +38,13 @@ fn test_read_all_huge() {
 	assert res == '123'.repeat(100000).bytes()
 }
 
-struct StringReader {
+struct StringReaderTest {
 	text string
 mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []u8) !int {
+fn (mut s StringReaderTest) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
 		return Eof{}
 	}
@@ -55,9 +55,9 @@ fn (mut s StringReader) read(mut buf []u8) !int {
 
 const newline_count = 100000
 
-fn test_stringreader() {
+fn test_stringreadertest() {
 	text := '12345\n'.repeat(io.newline_count)
-	mut s := StringReader{
+	mut s := StringReaderTest{
 		text: text
 	}
 	mut r := new_buffered_reader(reader: s)
@@ -80,9 +80,9 @@ fn test_stringreader() {
 	}
 }
 
-fn test_stringreader2() {
+fn test_stringreadertest2() {
 	text := '12345\r\n'.repeat(io.newline_count)
-	mut s := StringReader{
+	mut s := StringReaderTest{
 		text: text
 	}
 	mut r := new_buffered_reader(reader: s)
@@ -107,7 +107,7 @@ fn test_stringreader2() {
 
 fn test_leftover() {
 	text := 'This is a test\r\nNice try!'
-	mut s := StringReader{
+	mut s := StringReaderTest{
 		text: text
 	}
 	mut r := new_buffered_reader(reader: s)
@@ -129,7 +129,7 @@ fn test_leftover() {
 
 fn test_totalread_read() {
 	text := 'Some testing text'
-	mut s := StringReader{
+	mut s := StringReaderTest{
 		text: text
 	}
 	mut r := new_buffered_reader(reader: s)
@@ -145,7 +145,7 @@ fn test_totalread_read() {
 
 fn test_totalread_readline() {
 	text := 'Some testing text\nmore_enters'
-	mut s := StringReader{
+	mut s := StringReaderTest{
 		text: text
 	}
 	mut r := new_buffered_reader(reader: s)
@@ -160,4 +160,27 @@ fn test_totalread_readline() {
 	}
 
 	assert r.total_read == text.len
+}
+
+fn test_read_line_until_zero_terminated() {
+	text := 'This is a test\0Nice try!\0'
+	mut s := StringReaderTest{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s)
+	line1 := r.read_line(delim: `\0`) or {
+		assert false
+		panic('bad')
+	}
+	assert line1 == 'This is a test'
+	line2 := r.read_line(delim: `\0`) or {
+		assert false
+		panic('bad')
+	}
+	assert line2 == 'Nice try!'
+	if _ := r.read_line(delim: `\0`) {
+		assert false
+		panic('bad')
+	}
+	assert r.end_of_stream()
 }

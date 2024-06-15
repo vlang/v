@@ -100,7 +100,7 @@ fn (mut parser Parser) generate_tag() {
 	if parser.lexical_attributes.open_tag {
 		return
 	}
-	if parser.lexical_attributes.current_tag.name.len > 0
+	if parser.lexical_attributes.current_tag.name != ''
 		|| parser.lexical_attributes.current_tag.content.len > 0 {
 		parser.tags << parser.lexical_attributes.current_tag
 	}

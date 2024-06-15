@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -156,7 +156,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 		len: len
 		cap: cap_
 	}
-	// TODO Write all memory functions (like memcpy) in V
+	// TODO: Write all memory functions (like memcpy) in V
 	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
 	return arr
 }

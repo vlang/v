@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 @[has_globals]
@@ -48,9 +48,12 @@ const enable_wrap_at_eol_output = 2
 const evable_virtual_terminal_processing = 4
 
 fn builtin_init() {
+	$if !gc_warn_on_stderr ? {
+		gc_set_warn_proc(internal_gc_warn_proc_none)
+	}
 	g_original_codepage = C.GetConsoleOutputCP()
 	C.SetConsoleOutputCP(cp_utf8)
-	C.atexit(restore_codepage)
+	at_exit(restore_codepage) or {}
 	if is_terminal(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(std_output_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
 		C.SetConsoleMode(C.GetStdHandle(std_error_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
@@ -64,7 +67,7 @@ fn builtin_init() {
 	}
 }
 
-// TODO copypaste from os
+// TODO: copypaste from os
 // we want to be able to use this here without having to `import os`
 struct ExceptionRecord {
 pub:

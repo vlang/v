@@ -1,10 +1,9 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import v.ast
-import v.vet
 import v.token
 
 fn (mut p Parser) expr(precedence int) ast.Expr {
@@ -52,6 +51,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.tok.pos())
 			} else if p.tok.kind == .question && p.peek_tok.kind == .amp {
 				node = p.prefix_expr()
+			} else if p.inside_for_expr && p.tok.kind == .name && p.tok.lit[0].is_capital()
+				&& p.peek_tok.kind == .lcbr && p.peek_token(2).kind in [.rcbr, .name] {
+				node = p.struct_init(p.mod + '.' + p.tok.lit, .normal, false)
 			} else {
 				if p.inside_comptime_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
@@ -218,10 +220,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 						pos: pos
 					}
 				} else {
-					node = p.array_init(false)
+					node = p.array_init(false, ast.void_type)
 				}
 			} else {
-				node = p.array_init(false)
+				node = p.array_init(false, ast.void_type)
 			}
 		}
 		.key_none {
@@ -251,8 +253,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				expr := p.expr(0)
 				p.check(.rpar)
 				if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
-					p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
-						spos)
+					if !p.inside_unsafe {
+						p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+							spos)
+					}
 				}
 				node = ast.TypeOf{
 					is_type: false
@@ -418,7 +422,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					args := p.call_args()
 					p.check(.rpar)
 					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+					mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 					mut or_pos := p.tok.pos()
 					if p.tok.kind == .key_orelse {
 						// `foo() or {}``
@@ -581,8 +585,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
-						p.tok.pos())
+					if !p.pref.translated && !p.is_translated {
+						p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
+							p.tok.pos())
+					}
 				}
 			}
 
@@ -615,7 +621,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
-			is_c2v_prefix := p.peek_tok.kind == .dollar
+			is_c2v_prefix := p.peek_tok.kind == .dollar && p.peek_tok.is_next_to(p.tok)
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
@@ -626,7 +632,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				p.next()
 			}
 			p.next()
-			// return node // TODO bring back, only allow ++/-- in exprs in translated code
+			// return node // TODO: bring back, only allow ++/-- in exprs in translated code
 		} else {
 			return node
 		}
@@ -668,15 +674,21 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.inside_in_array = true
 	}
 
+	right_op_pos := p.tok.pos()
 	right = p.expr(precedence)
+	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
+		mut right_expr := right.right
+		for mut right_expr is ast.ParExpr {
+			right_expr = right_expr.expr
+		}
+		if right.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && right_expr.is_pure_literal() {
+			p.error_with_pos('invalid expression: unexpected token `${op}`', right_op_pos)
+		}
+	}
 	if is_key_in {
 		p.inside_in_array = false
 	}
 	p.expecting_type = prev_expecting_type
-	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && right.exprs.len == 1 {
-		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt,
-			.default)
-	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
@@ -710,7 +722,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 }
 
 fn (p &Parser) fileis(s string) bool {
-	return p.file_name.contains(s)
+	return p.file_path.contains(s)
 }
 
 fn (mut p Parser) prefix_expr() ast.Expr {
@@ -892,7 +904,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	e := p.expr(0)
 	pos_end := p.tok.pos()
 	return ast.LambdaExpr{
-		pos: pos
+		pos: pos.extend(e.pos())
 		pos_expr: pos_expr
 		pos_end: pos_end
 		params: params

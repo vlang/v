@@ -32,16 +32,16 @@ import time
 
 @[table: 'foos']
 struct Foo {
-    id          int         [primary; sql: serial]
+    id          int         @[primary; sql: serial]
     name        string
-    created_at  time.Time   [default: 'CURRENT_TIME]
-    updated_at  ?string     [sql_type: 'TIMESTAMP]
+    created_at  time.Time   @[default: 'CURRENT_TIME']
+    updated_at  ?string     @[sql_type: 'TIMESTAMP']
     deleted_at  ?time.Time
-    children    []Child     [fkey: 'parent_id']
+    children    []Child     @[fkey: 'parent_id']
 }
 
 struct Child {
-    id        int    [primary; sql: serial]
+    id        int    @[primary; sql: serial]
     parent_id int
     name      string
 }
@@ -81,16 +81,21 @@ foo := Foo{
     ]
 }
 
-sql db {
+foo_id := sql db {
     insert foo into Foo
 }!
 ```
+
+If the `id` field is marked as `serial` and `primary`, the insert expression
+returns the database ID of the newly added object. Getting an ID of a newly
+added DB row is often useful.
 
 When inserting, `[sql: serial]` fields, and fields with a `[default: 'raw_sql']`
 attribute are not sent to the database when the value being sent is the default
 for the V struct field (e.g., 0 int, or an empty string).  This allows the
 database to insert default values for auto-increment fields and where you have
 specified a default.
+
 
 ### Update
 
@@ -131,9 +136,9 @@ result := sql db {
 import db.pg
 
 struct Member {
-	id         string [default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
+	id         string @[default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
 	name       string
-	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
 fn main() {

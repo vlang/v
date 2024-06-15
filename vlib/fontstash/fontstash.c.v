@@ -21,8 +21,6 @@ $if windows {
 pub type Context = C.FONScontext
 
 //#flag -lfreetype
-// TODO: fontstash.used_import is used to keep v from warning about unused imports
-pub const used_import = 1
 pub const invalid = C.FONS_INVALID
 
 // create_internal returns a fontstash Context allocated on the heap.
@@ -234,7 +232,7 @@ pub fn (s &Context) vert_metrics(ascender &f32, descender &f32, lineh &f32) {
 	C.fonsVertMetrics(s, ascender, descender, lineh)
 }
 
-// text_iter_init initalizes the text iterator `iter`.
+// text_iter_init initializes the text iterator `iter`.
 @[inline]
 pub fn (s &Context) text_iter_init(iter &C.FONStextIter, x f32, y f32, str &char, end &char) int {
 	return C.fonsTextIterInit(s, iter, x, y, str, end)

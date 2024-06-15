@@ -31,7 +31,7 @@ fn test_formatted_string_interpolation() {
 	assert si__left == '23        '
 }
 
-fn test_excape_dollar_in_string() {
+fn test_escape_dollar_in_string() {
 	i := 42
 	assert '(${i})' == '(42)'
 	assert '(\$i)'.contains('i') && !'(\$i)'.contains('42')
@@ -225,4 +225,11 @@ fn test_contains_zero_characters() {
 	str = '${str}\x00${str}'
 	assert str.len == 7
 	assert str == 'abc\0abc'
+}
+
+// for issue: 20432
+// non-ascii escape was lost
+fn test_interpo_non_ascii_characters() {
+	hello := '你好'
+	assert '${hello},世界！' == '你好,世界！'
 }

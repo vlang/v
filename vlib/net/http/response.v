@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -117,6 +117,7 @@ pub fn (mut r Response) set_version(v Version) {
 }
 
 pub struct ResponseConfig {
+pub:
 	version Version = .v1_1
 	status  Status  = .ok
 	header  Header
@@ -130,7 +131,7 @@ pub fn new_response(conf ResponseConfig) Response {
 		body: conf.body
 		header: conf.header
 	}
-	if resp.body.len > 0 && !resp.header.contains(.content_length) {
+	if resp.body != '' && !resp.header.contains(.content_length) {
 		resp.header.add(.content_length, resp.body.len.str())
 	}
 	resp.set_status(conf.status)

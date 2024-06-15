@@ -1,11 +1,10 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
 import gx
-import sokol
-import sokol.sgl
 import math
+import sokol.sgl
 
 // draw_pixel draws one pixel on the screen.
 //
@@ -54,6 +53,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
 			// Make the line more clear on hi dpi screens: draw a rectangle
+			// TODO this is broken if the line's x1 != x2
 			mut width := math.abs(x2 - x)
 			mut height := math.abs(y2 - y)
 			if width == 0 {
@@ -226,6 +226,7 @@ pub enum PaintStyle {
 
 @[params]
 pub struct DrawRectParams {
+pub:
 	x          f32
 	y          f32
 	w          f32
@@ -540,6 +541,13 @@ fn radius_to_segments(r f32) int {
 // `radius` defines the radius of the circle.
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			C.darwin_draw_circle_empty(x - radius + 1, ctx.height - (y + radius + 3),
+				radius, c)
+			return
+		}
+	}
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}

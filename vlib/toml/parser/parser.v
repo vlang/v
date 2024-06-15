@@ -271,7 +271,7 @@ fn (p Parser) build_abs_dotted_key(key DottedKey) DottedKey {
 }
 
 // todo_msvc_astring2dkey worksaround a MSVC compile error.
-// TODO remove.
+// TODO: remove.
 fn todo_msvc_astring2dkey(s []string) DottedKey {
 	return s
 }
@@ -1489,7 +1489,7 @@ pub fn (mut p Parser) time() !ast.Time {
 	lit += p.tok.lit
 	p.check(.number)!
 	lit += p.tok.lit
-	// TODO does TOML even have optional seconds?
+	// TODO: does TOML even have optional seconds?
 	// if p.peek_tok.kind == .colon {
 	p.check(.colon)!
 	lit += p.tok.lit

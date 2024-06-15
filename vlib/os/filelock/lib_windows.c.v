@@ -1,14 +1,12 @@
 module filelock
 
-import time
-
 fn C.DeleteFileW(&u16) bool
 fn C.CreateFileW(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
 fn C.CloseHandle(voidptr) bool
 
 pub fn (mut l FileLock) unlink() {
 	if l.fd != -1 {
-		C.CloseHandle(l.fd)
+		C.CloseHandle(voidptr(l.fd))
 		l.fd = -1
 	}
 	t_wide := l.name.to_wide()
@@ -23,29 +21,7 @@ pub fn (mut l FileLock) acquire() ! {
 	if fd == -1 {
 		return error_with_code('cannot create lock file ${l.name}', -1)
 	}
-	l.fd = fd
-}
-
-pub fn (mut l FileLock) release() bool {
-	if l.fd != -1 {
-		C.CloseHandle(l.fd)
-		l.fd = -1
-		t_wide := l.name.to_wide()
-		C.DeleteFileW(t_wide)
-		return true
-	}
-	return false
-}
-
-pub fn (mut l FileLock) wait_acquire(s int) bool {
-	fin := time.now().add(s)
-	for time.now() < fin {
-		if l.try_acquire() {
-			return true
-		}
-		time.sleep(1 * time.millisecond)
-	}
-	return false
+	l.fd = int(fd)
 }
 
 fn open(f string) voidptr {
@@ -65,6 +41,6 @@ pub fn (mut l FileLock) try_acquire() bool {
 	if fd == -1 {
 		return false
 	}
-	l.fd = fd
+	l.fd = int(fd)
 	return true
 }

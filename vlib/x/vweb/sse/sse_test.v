@@ -1,3 +1,4 @@
+// vtest retry: 3
 import x.vweb
 import x.vweb.sse
 import time
@@ -11,7 +12,14 @@ pub struct Context {
 	vweb.Context
 }
 
-pub struct App {}
+pub struct App {
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
+}
 
 fn (app &App) sse(mut ctx Context) vweb.Result {
 	ctx.takeover_conn()
@@ -31,15 +39,15 @@ fn handle_sse_conn(mut ctx Context) {
 
 fn testsuite_begin() {
 	mut app := &App{}
-
-	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip)
-	// app startup time
-	time.sleep(time.second * 2)
 	spawn fn () {
 		time.sleep(exit_after)
 		assert true == false, 'timeout reached!'
 		exit(1)
 	}()
+
+	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip)
+	// app startup time
+	_ := <-app.started
 }
 
 fn test_sse() ! {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -31,7 +31,6 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 							fixed_size = const_field.expr.val.int()
 							size_unresolved = false
 						} else if mut const_field.expr is ast.InfixExpr {
-							// QUESTION: this should most likely no be done in the parser, right?
 							mut t := transformer.new_transformer_with_table(p.table, p.pref)
 							folded_expr := t.infix_expr(mut const_field.expr)
 
@@ -74,10 +73,8 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			// error is handled by parse_type
 			return 0
 		}
-		// TODO:
-		// For now, when a const variable or expression is temporarily unavailable to evaluate,
-		// only pending struct fields are deferred.
-		if fixed_size <= 0 && (!p.inside_struct_field_decl || !size_unresolved) {
+		// has been explicitly resolved, but size is 0
+		if fixed_size <= 0 && !size_unresolved {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
@@ -143,6 +140,12 @@ fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	p.check(.rsbr)
+	if p.tok.kind == .lsbr {
+		if p.peek_tok.kind !in [.rsbr, .number] {
+			p.error_with_pos('maps can only have a single key', p.peek_tok.pos())
+			return 0
+		}
+	}
 	value_type := p.parse_type()
 	if value_type.idx() == 0 {
 		// error is reported in parse_type
@@ -317,14 +320,19 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 		is_method: false
 		attrs: p.attrs
 	}
-	if has_generic && generic_types.len == 0 && name.len > 0 {
+	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 			fn_type_pos)
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
+	already_exists := p.table.find_type_idx(name) != 0
 	idx := p.table.find_or_register_fn_type(func, false, has_decl)
+	if already_exists && p.table.sym_by_idx(idx).kind != .function {
+		p.error_with_pos('cannot register fn `${name}`, another type with this name exists',
+			fn_type_pos)
+	}
 	if has_generic {
 		return ast.new_type(idx).set_flag(.generic)
 	}
@@ -434,6 +442,7 @@ fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 			pos: type_pos
 			end_comments: end_comments
 		}
+
 		if p.tok.kind != .pipe {
 			break
 		}
@@ -531,6 +540,13 @@ fn (mut p Parser) parse_type() ast.Type {
 		if is_option && sym.info is ast.SumType && sym.info.is_anon {
 			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}
+
+		if is_option && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
+			alias_type_str := p.table.type_to_str(typ)
+			parent_type_str := p.table.type_to_str(sym.info.parent_type)
+			p.error_with_pos('cannot use double options like `?${parent_type_str}`, `?${alias_type_str}` is a double option. use `${alias_type_str}` instead',
+				option_pos.extend(p.prev_tok.pos()))
+		}
 	}
 	if is_option {
 		typ = typ.set_flag(.option)
@@ -579,11 +595,15 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		for p.peek_tok.kind == .dot {
 			mod_pos = mod_pos.extend(p.tok.pos())
 			mod_last_part = p.tok.lit
+			if p.tok.lit[0].is_capital() {
+				// it's a type name, should break loop
+				break
+			}
 			mod += '.${mod_last_part}'
 			p.next()
 			p.check(.dot)
 		}
-		if !p.known_import(mod) && !p.pref.is_fmt {
+		if mod != p.mod && !p.known_import(mod) && !p.pref.is_fmt {
 			mut msg := 'unknown module `${mod}`'
 			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
 				msg += '; did you mean `${mod_last_part}`?'
@@ -594,13 +614,13 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		if mod in p.imports {
 			p.register_used_import(mod)
 			mod = p.imports[mod]
+			if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
+				p.error('imported types must start with a capital letter')
+				return 0
+			}
 		}
 		// prefix with full module
 		name = '${mod}.${p.tok.lit}'
-		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
-			p.error('imported types must start with a capital letter')
-			return 0
-		}
 	} else if p.expr_mod != '' && !p.inside_generic_params {
 		// p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
@@ -703,9 +723,6 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 						ret = ast.int_literal_type
 					}
 					'any' {
-						if p.file_backend_mode != .js && p.mod != 'builtin' {
-							p.error('cannot use `any` type here')
-						}
 						ret = ast.any_type
 					}
 					else {

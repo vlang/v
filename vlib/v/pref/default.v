@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -110,6 +110,14 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	if p.output_cross_c {
+		// avoid linking any GC related code, since the target may not have an usable GC system
+		p.gc_mode = .no_gc
+		p.use_cache = false
+		p.skip_unused = false
+		p.parse_define('no_backtrace') // the target may not have usable backtrace() and backtrace_symbols()
+		p.parse_define('cross') // TODO: remove when `$if cross {` works
+	}
 	if p.gc_mode == .unknown {
 		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
 			p.gc_mode = .no_gc
@@ -242,7 +250,7 @@ pub fn default_tcc_compiler() string {
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
-	// TODO fix $if after 'string'
+	// TODO: fix $if after 'string'
 	$if windows {
 		p.ccompiler = 'gcc'
 		return
@@ -298,18 +306,38 @@ pub fn vexe_path() string {
 	return real_vexe_path
 }
 
+pub fn (p &Preferences) vcross_linker_name() string {
+	vlname := os.getenv('VCROSS_LINKER_NAME')
+	if vlname != '' {
+		return vlname
+	}
+	$if macos {
+		return '/opt/homebrew/opt/llvm/bin/ld.lld'
+	}
+	$if windows {
+		return 'ld.lld.exe'
+	}
+	return 'ld.lld'
+}
+
 pub fn (p &Preferences) vcross_compiler_name() string {
 	vccname := os.getenv('VCROSS_COMPILER_NAME')
 	if vccname != '' {
 		return vccname
 	}
 	if p.os == .windows {
+		if p.os == .freebsd {
+			return 'clang'
+		}
 		if p.m64 {
 			return 'x86_64-w64-mingw32-gcc'
 		}
 		return 'i686-w64-mingw32-gcc'
 	}
 	if p.os == .linux {
+		return 'clang'
+	}
+	if p.os == .freebsd {
 		return 'clang'
 	}
 	if p.os == .wasm32_emscripten {
@@ -319,7 +347,7 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 		return 'emcc'
 	}
 	if p.backend == .c && !p.out_name.ends_with('.c') {
-		eprintln('Note: V can only cross compile to windows and linux for now by default.')
+		eprintln('Note: V can only cross compile to Windows and Linux for now by default.')
 		eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')
 		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: ${p.os} .')
 	}

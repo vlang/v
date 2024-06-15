@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -11,7 +11,7 @@ import os
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
-	mut is_static_type_method := language == .v && name.len > 0 && name[0].is_capital()
+	mut is_static_type_method := language == .v && name != '' && name[0].is_capital()
 		&& p.tok.kind == .dot
 	if is_static_type_method {
 		p.check(.dot)
@@ -23,7 +23,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		'JS.${name}'
 	} else if language == .wasm {
 		'WASM.${name}'
-	} else if mod.len > 0 {
+	} else if mod != '' {
 		'${mod}.${name}'
 	} else {
 		name
@@ -52,10 +52,25 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	}
 	p.check(.lpar)
 	args := p.call_args()
+	if p.tok.kind != .rpar {
+		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
+		if args.len < params.len && p.prev_tok.kind != .comma {
+			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`,`')
+		} else if args.len > params.len {
+			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
+			pos := token.Pos{
+				...ok_arg_pos
+				col: ok_arg_pos.col + ok_arg_pos.len
+			}
+			p.unexpected_with_pos(pos.extend(p.tok.pos()), expecting: '`)`')
+		} else {
+			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`)`')
+		}
+	}
 	last_pos := p.tok.pos()
-	p.check(.rpar)
+	p.next()
 	mut pos := first_pos.extend(last_pos)
-	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
@@ -104,11 +119,9 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		p.inside_call_args = prev_inside_call_args
 	}
 	mut args := []ast.CallArg{}
-	start_pos := p.tok.pos()
-	for p.tok.kind != .rpar {
+	for p.tok.kind != .rpar && p.tok.kind != .comma {
 		if p.tok.kind == .eof {
-			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
-			return []
+			return args
 		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
@@ -149,8 +162,8 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			comments: comments
 			pos: pos
 		}
-		if p.tok.kind != .rpar {
-			p.check(.comma)
+		if p.tok.kind == .comma {
+			p.next()
 		}
 	}
 	return args
@@ -249,6 +262,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	comments << p.eat_comments()
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	language_tok_pos := p.tok.pos()
 	mut language := p.parse_language()
 	p.fn_language = language
@@ -294,7 +310,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		mut check_name := ''
-		// TODO high order fn
+		// TODO: high order fn
 		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
 		if is_static_type_method {
@@ -375,11 +391,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if is_method && rec.typ.has_flag(.generic) {
 		sym := p.table.sym(rec.typ)
 		if sym.info is ast.Struct {
+			decl_generic_names := p.types_to_names(sym.info.generic_types, p.tok.pos(),
+				'sym.info.generic_types') or { return ast.FnDecl{
+				scope: unsafe { nil }
+			} }
 			fn_generic_names := generic_names.clone()
-			generic_names = p.types_to_names(sym.info.generic_types, p.tok.pos(), 'sym.info.generic_types') or {
-				return ast.FnDecl{
-					scope: unsafe { nil }
-				}
+			generic_names = p.table.generic_type_names(rec.typ)
+			if decl_generic_names.len != generic_names.len {
+				plural := if decl_generic_names.len == 1 { '' } else { 's' }
+				p.error_with_pos('expected ${decl_generic_names.len} generic parameter${plural}, got ${generic_names.len}',
+					rec.type_pos)
 			}
 			for gname in fn_generic_names {
 				if gname !in generic_names {
@@ -508,7 +529,7 @@ run them via `v file.v` instead',
 			//
 			no_body: no_body
 			mod: p.mod
-			file: p.file_name
+			file: p.file_path
 			pos: start_pos
 			language: language
 		})
@@ -559,7 +580,7 @@ run them via `v file.v` instead',
 			//
 			no_body: no_body
 			mod: p.mod
-			file: p.file_name
+			file: p.file_path
 			pos: start_pos
 			language: language
 		})
@@ -569,7 +590,7 @@ run them via `v file.v` instead',
 	mut stmts := []ast.Stmt{}
 	body_start_pos := p.tok.pos()
 	if p.tok.kind == .lcbr {
-		if language != .v && language != .js {
+		if language != .v && !(language == .js && type_sym.info is ast.Interface) {
 			p.error_with_pos('interop functions cannot have a body', body_start_pos)
 		}
 		p.inside_fn = true
@@ -629,7 +650,7 @@ run them via `v file.v` instead',
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		name_pos: name_pos
 		body_pos: body_start_pos
-		file: p.file_name
+		file: p.file_path
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		scope: p.scope
 		label_names: p.label_names
@@ -640,7 +661,6 @@ run them via `v file.v` instead',
 		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
-	p.close_scope()
 	return fn_decl
 }
 
@@ -762,7 +782,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	_, generic_names := p.parse_generic_types()
 	params, _, is_variadic := p.fn_params()
 	for param in params {
-		if param.name.len == 0 && p.table.sym(param.typ).kind != .placeholder {
+		if param.name == '' && p.table.sym(param.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', param.pos)
 		}
 		if param.name in inherited_vars_name {
@@ -843,7 +863,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_anon: true
 			no_body: no_body
 			pos: pos.extend(p.prev_tok.pos())
-			file: p.file_name
+			file: p.file_path
 			scope: p.scope
 			label_names: label_names
 		}
@@ -871,7 +891,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
 		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
-	// TODO copy paste, merge 2 branches
+	// TODO: copy paste, merge 2 branches
 	if types_only {
 		mut param_no := 1
 		for p.tok.kind != .rpar {
@@ -905,6 +925,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if is_mut {
 				if !param_type.has_flag(.generic) {
+					if is_variadic {
+						p.error_with_pos('variadic arguments cannot be `mut`, `shared` or `atomic`',
+							pos)
+					}
 					if is_shared {
 						p.check_fn_shared_arguments(param_type, pos)
 					} else if is_atomic {
@@ -980,7 +1004,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			name := p.check_name()
 			comments << p.eat_comments()
 			mut param_names := [name]
-			if name.len > 0 && p.fn_language == .v && name[0].is_capital() {
+			if name != '' && p.fn_language == .v && name[0].is_capital() {
 				p.error_with_pos('parameter name must not begin with upper case letter (`${param_names[0]}`)',
 					p.prev_tok.pos())
 			}
@@ -998,7 +1022,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				type_pos << p.tok.pos()
 			}
 			if p.tok.kind == .key_mut {
-				// TODO remove old syntax
+				// TODO: remove old syntax
 				if !p.pref.is_fmt {
 					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.pos())
 				}
@@ -1020,6 +1044,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
+					if is_variadic {
+						p.error_with_pos('variadic arguments cannot be `mut`, `shared` or `atomic`',
+							pos)
+					}
 					if is_shared {
 						p.check_fn_shared_arguments(typ, pos)
 					} else if is_atomic {
@@ -1129,7 +1157,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
 		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
-		// FIXME is_shared & is_atomic aren't used further
+		// FIXME: is_shared & is_atomic aren't used further
 		if is_mut {
 			p.next()
 		}

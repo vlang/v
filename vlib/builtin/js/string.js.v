@@ -287,7 +287,7 @@ pub fn (s string) u8() u64 {
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
 @[direct_array_access]
 pub fn (s string) trim_right(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 
@@ -317,7 +317,7 @@ pub fn (s string) trim_right(cutset string) string {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 @[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos := 0
@@ -438,7 +438,7 @@ pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-// sort_by_len sorts the the string array by each string's `.len` length.
+// sort_by_len sorts the string array by each string's `.len` length.
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
@@ -749,21 +749,20 @@ fn (s string) index_last_(p string) int {
 	return -1
 }
 
-// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[deprecated: 'use `.last_index(needle string)` instead']
 pub fn (s string) index_last(needle string) ?int {
+	return s.last_index(needle)
+}
+
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
 	return idx
-}
-
-// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
-@[deprecated: 'use `.index_last(needle string)` instead']
-@[deprecated_after: '2023-12-18']
-@[inline]
-pub fn (s string) last_index(needle string) ?int {
-	return s.index_last(needle)
 }
 
 pub fn (s string) trim_space() string {
@@ -925,7 +924,7 @@ pub fn (s string) reverse() string {
 }
 
 pub fn (s string) trim(cutset string) string {
-	if s.len < 1 || cutset.len < 1 {
+	if s == '' || cutset == '' {
 		return s.clone()
 	}
 	mut pos_left := 0

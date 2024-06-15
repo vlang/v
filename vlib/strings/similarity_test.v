@@ -10,4 +10,5 @@ fn test_levenshtein_distance() {
 	assert strings.levenshtein_distance('hugs', 'shrugs') == 2
 	assert strings.levenshtein_distance('broom', 'shroom') == 2
 	assert strings.levenshtein_distance('flomax', 'volmax') == 3
+	assert strings.levenshtein_distance('ab', 'cd') == 2
 }

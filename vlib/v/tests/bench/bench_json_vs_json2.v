@@ -5,8 +5,10 @@ import time
 import benchmark
 
 // recommendations:
-// MAX_ITERATIONS=90_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
-// MAX_ITERATIONS=90_000 ./v -no-bounds-checking -prod -cc clang-15 crun vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && MAX_ITERATIONS=100_000 ./v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && ./v -gc boehm_leak -o testcase_leak -prod vlib/v/tests/bench/bench_json_vs_json2.v && ./testcase_leak 2>leaks.txt
+// ./v wipe-cache && ./v -prod vlib/v/tests/bench/bench_json_vs_json2.v -o b_out && valgrind --track-origins=yes ./b_out
 
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
@@ -77,7 +79,7 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 			return error('json.decode ${p}')
 		}
 	}
-	b.measure('json.decode')
+	b.measure('json.decode\n')
 
 	measure_json_encode_old_vs_new(json.decode(Person, s)!)!
 }
@@ -85,14 +87,46 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
 	dump('👈')
+
+	big_multiple_type_string := '✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t'
+	println('✔な🐈\t = ${big_multiple_type_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_multiple_type_string})!
+
+	big_emoji_string := '🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀'
+	println('🐈🐟🐧🐀💀 = ${big_emoji_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_emoji_string})!
+
+	big_no_ancii_string := 'ひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがな'
+	println('ひらがな = ${big_no_ancii_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_no_ancii_string})!
+
+	big_string := 'jhsbhjhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdhjhsbh jhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdh'
+
+	println('big string length = ${big_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_string})!
+
+	println('empty string')
 	measure_json_encode_old_vs_new(StructType[string]{})!
+
+	println('empty time.Time')
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
+	println('time.utc()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.utc()})!
+	println('time.now()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.now()})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
+	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!
-	measure_json_encode_old_vs_new(StructType[bool]{})!
+	measure_json_encode_old_vs_new(StructType[bool]{false})!
+
+	println('empty array')
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
+
+	println('array with 10 elements [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]')
+	measure_json_encode_old_vs_new(StructType[[]int]{[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]})!
 	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} })!
 	measure_json_encode_old_vs_new(StructType[Enum]{})!
+	measure_json_encode_old_vs_new(StructType[SumTypes]{1})!
 }
 
 fn benchmark_measure_encode_by_alias_type() ! {
@@ -124,7 +158,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[string]')
+	b.measure(' json.decode StructType[string]\n')
 
 	vb := '{"val": true}'
 	for _ in 0 .. max_iterations {
@@ -140,7 +174,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[bool]')
+	b.measure(' json.decode StructType[bool]\n')
 
 	v0 := '{"val": 0}'
 	for _ in 0 .. max_iterations {
@@ -156,7 +190,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[int]')
+	b.measure(' json.decode StructType[int]\n')
 
 	vt := '{"val": "2015-01-06 15:47:32"}'
 	for _ in 0 .. max_iterations {
@@ -172,7 +206,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json2.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[time.Time]')
+	b.measure(' json.decode StructType[time.Time]\n')
 }
 
 fn measure_json_encode_old_vs_new[T](val T) ! {
@@ -191,5 +225,5 @@ fn measure_json_encode_old_vs_new[T](val T) ! {
 			return error('json.encode ${e}')
 		}
 	}
-	b.measure(' json.encode ${typename}')
+	b.measure(' json.encode ${typename}\n')
 }

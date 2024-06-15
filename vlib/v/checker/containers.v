@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -7,6 +7,10 @@ import v.token
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
+	unwrap_elem_type := c.unwrap_generic(node.elem_type)
+	if c.pref.warn_about_allocs {
+		c.warn_alloc('array initialization', node.pos)
+	}
 	// `x := []string{}` (the type was set in the parser)
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
@@ -72,21 +76,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.check_array_init_default_expr(mut node)
 		}
 		if node.has_len {
-			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(mut node.len_expr))
+			len_typ := c.check_expr_option_or_result_call(node.len_expr, c.expr(mut node.len_expr))
 			if len_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
 			}
-			if node.has_len && !node.has_init {
-				elem_type_sym := c.table.sym(node.elem_type)
-				if elem_type_sym.kind == .interface_ {
-					c.error('cannot instantiate an array of interfaces without also giving a default `init:` value',
-						node.len_expr.pos())
+			// check &int{}, interface, sum_type initialized
+			if !node.has_init {
+				c.check_elements_initialized(unwrap_elem_type) or {
+					c.warn('${err.msg()}, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)',
+						node.pos)
 				}
 			}
-			c.ensure_sumtype_array_has_default_value(node)
 		}
 		if node.has_cap {
-			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(mut node.cap_expr))
+			cap_typ := c.check_expr_option_or_result_call(node.cap_expr, c.expr(mut node.cap_expr))
 			if cap_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
 			}
@@ -97,26 +100,21 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.error('generic struct cannot be used in non-generic function', node.pos)
 		}
 
-		// `&int{}` check
-		if node.has_len && !c.check_elements_ref_containers_initialized(node.elem_type) {
-			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
-				node.pos)
-		}
 		// `&Struct{} check
 		if node.has_len {
-			c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
+			c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 		}
 		return node.typ
 	}
 
 	if node.is_fixed {
-		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
-		if !c.is_builtin_mod && !c.check_elements_ref_containers_initialized(node.elem_type) {
-			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
-				node.pos)
+		if !c.is_builtin_mod {
+			c.check_elements_initialized(unwrap_elem_type) or {
+				c.warn('fixed ${err.msg()} (unless inside `unsafe`)', node.pos)
+			}
 		}
-		c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
+		c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 	}
 	// `a = []`
 	if node.exprs.len == 0 {
@@ -137,7 +135,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flags(.option, .result)
+		}.clear_option_and_result()
 	}
 	// `[1,2,3]`
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -156,7 +154,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			typ := c.check_expr_opt_call(expr, c.expr(mut expr))
+			typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
 			}
@@ -217,6 +215,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.check_expected(typ, elem_type) or {
 					c.error('invalid array element: ${err.msg()}', expr.pos())
 				}
+				if !elem_type.has_flag(.option)
+					&& (typ.has_flag(.option) || typ.idx() == ast.none_type_idx) {
+					typ_str, elem_type_str := c.get_string_names_of(typ, elem_type)
+					if typ.idx() == ast.none_type_idx {
+						c.error('cannot use `${typ_str}` as `${elem_type_str}`', expr.pos())
+					} else {
+						c.error('cannot use `${typ_str}` as `${elem_type_str}`, it must be unwrapped first',
+							expr.pos())
+					}
+				} else if elem_type.has_flag(.option) && !typ.has_flag(.option)
+					&& typ.idx() != ast.none_type_idx && !expr.is_pure_literal() {
+					typ_str, elem_type_str := c.get_string_names_of(typ, elem_type)
+					c.error('cannot use `${typ_str}` as `${elem_type_str}`', expr.pos())
+				}
 			}
 		}
 		if node.is_fixed {
@@ -238,88 +250,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		node.elem_type = elem_type
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
 		// `[50]u8`
-		mut fixed_size := i64(0)
-		mut init_expr := node.exprs[0]
-		c.expr(mut init_expr)
-		match mut init_expr {
-			ast.IntegerLiteral {
-				fixed_size = init_expr.val.int()
-			}
-			ast.CastExpr {
-				if !init_expr.typ.is_pure_int() {
-					c.error('only integer types are allowed', init_expr.pos)
-				}
-				match mut init_expr.expr {
-					ast.IntegerLiteral {
-						fixed_size = init_expr.expr.val.int()
-					}
-					ast.EnumVal {
-						if val := c.table.find_enum_field_val(init_expr.expr.enum_name,
-							init_expr.expr.val)
-						{
-							fixed_size = val
-						}
-					}
-					else {}
-				}
-			}
-			ast.EnumVal {
-				c.error('${init_expr.enum_name}.${init_expr.val} has to be casted to integer to be used as size',
-					init_expr.pos)
-			}
-			ast.Ident {
-				if mut init_expr.obj is ast.ConstField {
-					if mut init_expr.obj.expr is ast.EnumVal {
-						c.error('${init_expr.obj.expr.enum_name}.${init_expr.obj.expr.val} has to be casted to integer to be used as size',
-							init_expr.pos)
-					}
-					if mut init_expr.obj.expr is ast.CastExpr {
-						if !init_expr.obj.expr.typ.is_pure_int() {
-							c.error('only integer types are allowed', init_expr.pos)
-						}
-						if init_expr.obj.expr.expr is ast.IntegerLiteral {
-							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
-								0)
-							{
-								fixed_size = comptime_value.i64() or { fixed_size }
-							}
-						}
-						if init_expr.obj.expr.expr is ast.InfixExpr {
-							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
-								0)
-							{
-								fixed_size = comptime_value.i64() or { fixed_size }
-							}
-						}
-					}
-					if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr,
-						0)
-					{
-						fixed_size = comptime_value.i64() or { fixed_size }
-					}
-				} else {
-					c.error('non-constant array bound `${init_expr.name}`', init_expr.pos)
-				}
-			}
-			ast.InfixExpr {
-				if comptime_value := c.eval_comptime_const_expr(init_expr, 0) {
-					fixed_size = comptime_value.i64() or { fixed_size }
-				}
-			}
-			else {
-				c.error('fixed array size cannot use non-constant value', init_expr.pos())
-			}
-		}
-		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
-				init_expr.pos())
-		}
-		idx := c.table.find_or_register_array_fixed(node.elem_type, int(fixed_size), init_expr,
-			false)
-		if node.elem_type.has_flag(.generic) {
-			node.typ = ast.new_type(idx).set_flag(.generic)
-		} else {
-			node.typ = ast.new_type(idx)
+		sym := c.table.sym(node.typ)
+		if sym.info !is ast.ArrayFixed
+			|| c.array_fixed_has_unresolved_size(sym.info as ast.ArrayFixed) {
+			mut size_expr := node.exprs[0]
+			node.typ = c.eval_array_fixed_sizes(mut size_expr, 0, node.elem_type)
+			node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
 		}
 		if node.has_init {
 			c.check_array_init_default_expr(mut node)
@@ -330,7 +266,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
-	init_typ := c.check_expr_opt_call(init_expr, c.expr(mut init_expr))
+	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
 	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
@@ -351,20 +287,134 @@ fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, po
 	}
 }
 
-fn (mut c Checker) ensure_sumtype_array_has_default_value(node ast.ArrayInit) {
-	sym := c.table.sym(node.elem_type)
-	if sym.kind == .sum_type && !node.has_init {
-		c.error('cannot initialize sum type array without default value', node.pos)
+// When the fixed array has multiple dimensions, it needs to be evaluated recursively.
+// `[const]int`, `[const][3]int`, `[3][const]int`, `[const + 1][3][const]int`...
+fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem_type ast.Type) ast.Type {
+	elem_sym := c.table.sym(elem_type)
+	elem_info := elem_sym.info
+
+	new_elem_typ := if elem_sym.kind == .array_fixed {
+		mut info := elem_info as ast.ArrayFixed
+		mut elem_size_expr := unsafe { info.size_expr }
+		c.eval_array_fixed_sizes(mut elem_size_expr, info.size, info.elem_type)
+	} else {
+		elem_type
 	}
+
+	mut fixed_size := i64(size)
+	if fixed_size <= 0 {
+		c.expr(mut size_expr)
+		match mut size_expr {
+			ast.IntegerLiteral {
+				fixed_size = size_expr.val.int()
+			}
+			ast.CastExpr {
+				if !size_expr.typ.is_pure_int() {
+					c.error('only integer types are allowed', size_expr.pos)
+				}
+				match mut size_expr.expr {
+					ast.IntegerLiteral {
+						fixed_size = size_expr.expr.val.int()
+					}
+					ast.EnumVal {
+						if val := c.table.find_enum_field_val(size_expr.expr.enum_name,
+							size_expr.expr.val)
+						{
+							fixed_size = val
+						}
+					}
+					else {}
+				}
+			}
+			ast.EnumVal {
+				c.error('${size_expr.enum_name}.${size_expr.val} has to be casted to integer to be used as size',
+					size_expr.pos)
+			}
+			ast.Ident {
+				if mut size_expr.obj is ast.ConstField {
+					if mut size_expr.obj.expr is ast.EnumVal {
+						c.error('${size_expr.obj.expr.enum_name}.${size_expr.obj.expr.val} has to be casted to integer to be used as size',
+							size_expr.pos)
+					}
+					if mut size_expr.obj.expr is ast.CastExpr {
+						if !size_expr.obj.expr.typ.is_pure_int() {
+							c.error('only integer types are allowed', size_expr.pos)
+						}
+						if size_expr.obj.expr.expr is ast.IntegerLiteral {
+							if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
+						if size_expr.obj.expr.expr is ast.InfixExpr {
+							if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
+					}
+					if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr,
+						0)
+					{
+						fixed_size = comptime_value.i64() or { fixed_size }
+					}
+				} else {
+					c.error('non-constant array bound `${size_expr.name}`', size_expr.pos)
+				}
+			}
+			ast.InfixExpr {
+				if comptime_value := c.eval_comptime_const_expr(size_expr, 0) {
+					fixed_size = comptime_value.i64() or { fixed_size }
+				}
+			}
+			else {
+				c.error('fixed array size cannot use non-constant value', size_expr.pos())
+			}
+		}
+		if fixed_size <= 0 {
+			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
+				size_expr.pos())
+		}
+	}
+
+	idx := c.table.find_or_register_array_fixed(new_elem_typ, int(fixed_size), size_expr,
+		false)
+	return if elem_type.has_flag(.generic) {
+		ast.new_type(idx).set_flag(.generic)
+	} else {
+		ast.new_type(idx)
+	}
+}
+
+fn (mut c Checker) array_fixed_has_unresolved_size(info &ast.ArrayFixed) bool {
+	if info.size <= 0 {
+		return true
+	}
+	mut elem_type := info.elem_type
+	mut elem_sym := c.table.sym(elem_type)
+	for {
+		if mut elem_sym.info is ast.ArrayFixed {
+			if elem_sym.info.size <= 0 {
+				return true
+			}
+			elem_type = elem_sym.info.elem_type
+			elem_sym = c.table.sym(elem_type)
+		} else {
+			break
+		}
+	}
+	return false
 }
 
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `map = {}`
-	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
+	if node.keys.len == 0 && node.vals.len == 0 && !node.has_update_expr && node.typ == 0 {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flags(.option, .result)
+			node.typ = c.expected_type.clear_option_and_result()
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
@@ -408,90 +458,107 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		return node.typ
 	}
 
-	if node.keys.len > 0 && node.vals.len > 0 {
-		mut key0_type := ast.void_type
-		mut val0_type := ast.void_type
+	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
+		mut map_type := ast.void_type
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg
 			&& c.expected_type.has_flag(.generic))
 		if use_expected_type {
-			sym := c.table.sym(c.expected_type)
+			map_type = c.expected_type
+		}
+		if node.has_update_expr {
+			update_type := c.expr(mut node.update_expr)
+			if map_type != ast.void_type {
+				if update_type != map_type {
+					msg := c.expected_msg(update_type, map_type)
+					c.error('invalid map update: ${msg}', node.update_expr_pos)
+				}
+			} else if c.table.sym(update_type).kind != .map {
+				c.error('invalid map update: non-map type', node.update_expr_pos)
+			} else {
+				map_type = update_type
+			}
+		}
+
+		mut map_key_type := ast.void_type
+		mut map_val_type := ast.void_type
+		if map_type != ast.void_type {
+			sym := c.table.sym(map_type)
 			info := sym.map_info()
-			key0_type = c.unwrap_generic(info.key_type)
-			val0_type = c.unwrap_generic(info.value_type)
-		} else {
+			map_key_type = info.key_type
+			map_val_type = info.value_type
+		} else if node.keys.len > 0 {
 			// `{'age': 20}`
 			mut key_ := node.keys[0]
-			key0_type = ast.mktyp(c.expr(mut key_))
+			map_key_type = ast.mktyp(c.expr(mut key_))
 			if node.keys[0].is_auto_deref_var() {
-				key0_type = key0_type.deref()
+				map_key_type = map_key_type.deref()
 			}
 			mut val_ := node.vals[0]
-			val0_type = ast.mktyp(c.expr(mut val_))
+			map_val_type = ast.mktyp(c.expr(mut val_))
 			if node.vals[0].is_auto_deref_var() {
-				val0_type = val0_type.deref()
+				map_val_type = map_val_type.deref()
 			}
-			node.val_types << val0_type
+			node.val_types << map_val_type
+			if node.keys.len == 1 && map_val_type == ast.none_type {
+				c.error('map value cannot be only `none`', node.vals[0].pos())
+			}
 		}
-		key0_type = c.unwrap_generic(key0_type)
-		val0_type = c.unwrap_generic(val0_type)
-		map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
-		node.typ = map_type
-		node.key_type = key0_type
-		node.value_type = val0_type
-		map_value_sym := c.table.sym(node.value_type)
+		map_key_type = c.unwrap_generic(map_key_type)
+		map_val_type = c.unwrap_generic(map_val_type)
+
+		node.typ = ast.new_type(c.table.find_or_register_map(map_key_type, map_val_type))
+		node.key_type = map_key_type
+		node.value_type = map_val_type
+
+		map_value_sym := c.table.sym(map_val_type)
 		expecting_interface_map := map_value_sym.kind == .interface_
-		//
 		mut same_key_type := true
-
-		if node.keys.len == 1 && val0_type == ast.none_type {
-			c.error('map value cannot be only `none`', node.vals[0].pos())
-		}
-
 		for i, mut key in node.keys {
-			if i == 0 && !use_expected_type {
-				continue
+			if i == 0 && map_type == ast.void_type {
+				continue // skip first key/value if we processed them above
 			}
 			mut val := node.vals[i]
-			c.expected_type = key0_type
+			c.expected_type = map_key_type
 			key_type := c.expr(mut key)
-			c.expected_type = val0_type
+			c.expected_type = map_val_type
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
-			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
-				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
-				msg := c.expected_msg(key_type, key0_type)
+			if !c.check_types(key_type, map_key_type)
+				|| (i == 0 && key_type.is_number() && map_key_type.is_number()
+				&& map_key_type != ast.mktyp(key_type)) {
+				msg := c.expected_msg(key_type, map_key_type)
 				c.error('invalid map key: ${msg}', key.pos())
 				same_key_type = false
 			}
 			if expecting_interface_map {
-				if val_type == node.value_type {
+				if val_type == map_val_type {
 					continue
 				}
 				if val_type_sym.kind == .struct_
-					&& c.type_implements(val_type, node.value_type, val.pos()) {
+					&& c.type_implements(val_type, map_val_type, val.pos()) {
 					node.vals[i] = ast.CastExpr{
 						expr: val
-						typname: c.table.get_type_name(node.value_type)
-						typ: node.value_type
+						typname: c.table.get_type_name(map_val_type)
+						typ: map_val_type
 						expr_type: val_type
 						pos: val.pos()
 					}
 					continue
 				} else {
-					msg := c.expected_msg(val_type, node.value_type)
+					msg := c.expected_msg(val_type, map_val_type)
 					c.error('invalid map value: ${msg}', val.pos())
 				}
 			}
-			if val_type == ast.none_type && val0_type.has_flag(.option) {
+			if val_type == ast.none_type && map_val_type.has_flag(.option) {
 				continue
 			}
-			if !c.check_types(val_type, val0_type)
-				|| val0_type.has_flag(.option) != val_type.has_flag(.option)
-				|| (i == 0 && val_type.is_number() && val0_type.is_number()
-				&& val0_type != ast.mktyp(val_type)) {
-				msg := c.expected_msg(val_type, val0_type)
+			if !c.check_types(val_type, map_val_type)
+				|| map_val_type.has_flag(.option) != val_type.has_flag(.option)
+				|| (i == 0 && val_type.is_number() && map_val_type.is_number()
+				&& map_val_type != ast.mktyp(val_type)) {
+				msg := c.expected_msg(val_type, map_val_type)
 				c.error('invalid map value: ${msg}', val.pos())
 			}
 		}
@@ -500,7 +567,6 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
-		return map_type
 	}
 	return node.typ
 }
@@ -574,42 +640,50 @@ fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol,
 	}
 }
 
-// check the element, and its children for ref uninitialized containers
-fn (mut c Checker) check_elements_ref_containers_initialized(typ ast.Type) bool {
+const err_ref_uninitialized = error('arrays of references need to be initialized right away')
+const err_interface_uninitialized = error('arrays of interfaces need to be initialized right away')
+const err_sumtype_uninitialized = error('arrays of sumtypes need to be initialized right away')
+
+// check the element, and its children for `ref/interface/sumtype` initialized
+fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 	if typ == 0 || c.inside_unsafe {
-		return true
+		return
 	}
 	if typ.is_any_kind_of_pointer() {
-		return false
+		if !c.pref.translated && !c.file.is_translated {
+			return checker.err_ref_uninitialized
+		} else {
+			return
+		}
 	}
 	sym := c.table.sym(typ)
+	if sym.kind == .interface_ {
+		return checker.err_interface_uninitialized
+	} else if sym.kind == .sum_type {
+		return checker.err_sumtype_uninitialized
+	}
+
 	match sym.info {
 		ast.Array {
 			elem_type := sym.info.elem_type
-			if elem_type.is_any_kind_of_pointer() {
-				return false
-			}
-			return c.check_elements_ref_containers_initialized(elem_type)
+			return c.check_elements_initialized(elem_type)
 		}
 		ast.ArrayFixed {
 			elem_type := sym.info.elem_type
-			if elem_type.is_any_kind_of_pointer() && !c.is_builtin_mod {
-				return false
+			if !c.is_builtin_mod {
+				return c.check_elements_initialized(elem_type)
 			}
-			return c.check_elements_ref_containers_initialized(elem_type)
 		}
 		ast.Map {
 			value_type := sym.info.value_type
-			if value_type.is_any_kind_of_pointer() && !c.is_builtin_mod {
-				return false
+			if !c.is_builtin_mod {
+				return c.check_elements_initialized(value_type)
 			}
-			return c.check_elements_ref_containers_initialized(value_type)
 		}
 		ast.Alias {
 			parent_type := sym.info.parent_type
-			return c.check_elements_ref_containers_initialized(parent_type)
+			return c.check_elements_initialized(parent_type)
 		}
 		else {}
 	}
-	return true
 }

@@ -215,7 +215,7 @@ see also `v help build`.
       installing it), you can also tell V to use it instead of its own copy,
       by adding `-d dynamic_boehm` to the command line while compiling your program.
 
-      On Debian you can use `sudo apt-get install libgc-dev`.
+      On Debian you can use `sudo apt install libgc-dev`.
 
       On macOS, you can install it, using homebrew (https://homebrew.sh/)
       with `brew install libgc`.

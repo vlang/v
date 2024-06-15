@@ -1,4 +1,5 @@
 import os
+import time
 
 const vexe = os.getenv('VEXE')
 
@@ -9,7 +10,61 @@ fn test_vexe_exists() {
 	assert os.is_file(vexe)
 }
 
+fn test_v_profile_works_when_interrupted() {
+	println(@FN)
+	$if windows {
+		if os.getenv('VTEST_RUN_PROFILE_INTERRUPTION').int() == 0 {
+			eprintln('> skipping ${@FN} on windows for now, since reading the output blocks currently')
+			return
+		}
+	}
+	sfile := 'vlib/v/slow_tests/profile/profile_test_interrupted.v'
+	program_source := os.join_path(vroot, sfile)
+	pid := os.getpid()
+	program_exe := os.join_path(os.cache_dir(), 'profile_test_interrupted_pid_${pid}.exe')
+	program_profile := os.join_path(os.cache_dir(), 'profile_test_interrupted_pid_${pid}.profile')
+	os.rm(program_exe) or {}
+	os.rm(program_profile) or {}
+	os.chdir(vroot) or {}
+	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(program_exe)} -profile ${os.quoted_path(program_profile)} ${os.quoted_path(program_source)}'
+	eprintln('> compiling cmd: ${compile_cmd}')
+	compilation_result := os.execute(compile_cmd)
+	assert compilation_result.exit_code == 0, compilation_result.output
+	eprintln('> compiled ${program_exe}')
+	mut p := os.new_process(program_exe)
+	p.set_redirect_stdio()
+	p.run()
+	eprintln('> started  ${program_exe} at: ${time.now().format_ss_micro()}')
+	mut lines := []string{}
+	for p.is_alive() && lines.len < 5 {
+		if data := p.pipe_read(.stdout) {
+			lines << data.trim_space().split_into_lines()
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	dump(lines)
+	assert lines.len > 4, lines.str()
+	assert lines.contains('0003 iteration'), lines.str()
+	eprintln('> stopping ${program_exe} at: ${time.now().format_ss_micro()}...')
+	p.signal_term()
+	eprintln('> waiting ${program_exe}')
+	p.wait()
+	eprintln('> closing ${program_exe}')
+	p.close()
+	assert p.code == 130
+	assert p.status == .closed
+	eprintln('> reading profile_content from ${program_profile} ...')
+	profile_content := os.read_file(program_profile)!
+	assert profile_content.contains('str_intp')
+	assert profile_content.contains('println')
+	assert profile_content.contains('time__sleep')
+	assert profile_content.contains('main__main')
+	// dump(profile_content)
+	eprintln('-'.repeat(120))
+}
+
 fn test_v_profile_works() {
+	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_1.v'
 	validate_output(@FN, '', sfile, {
 		'os__init_os_args': 1
@@ -20,6 +75,7 @@ fn test_v_profile_works() {
 }
 
 fn test_v_profile_on_off_api_works() {
+	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_2.v'
 	res_lines := validate_output(@FN, '', sfile, {
 		'builtin_init': 1
@@ -37,6 +93,7 @@ fn test_v_profile_on_off_api_works() {
 }
 
 fn test_v_profile_fns_option_works() {
+	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_3.v'
 	validate_output(@FN, '-profile-fns println', sfile, {
 		'main__main': -1

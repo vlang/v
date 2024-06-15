@@ -162,7 +162,7 @@ fn (mut g JsGen) gen_copy_for_struct(info ast.Struct, styp string, copy_fn_name 
 	fn_builder.writeln('\tlet $tmp = new ${styp}({});')
 	for field in info.fields {
 		println(field)
-		if field.name.len == 0 {
+		if field.name == '' {
 
 		} else {
 			mut shall_copy := true

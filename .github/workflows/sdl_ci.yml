@@ -1,43 +1,54 @@
 name: sdl CI
 
 on:
+  workflow_dispatch:
   push:
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/sdl_ci.yml'
+      - '!**.md'
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
+    paths:
+      - 'vlib/**'
+      - 'thirdparty/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vshader.v'
+      - '**/sdl_ci.yml'
+      - '!**.md'
 
 concurrency:
-  group: sdl-ci-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
         run: make && sudo ./v symlink
 
+      - name: Install dependencies
+        run: |
+          v retry 'sudo apt update'
+          v retry 'sudo apt install -y libsdl2-dev libsdl2-ttf-dev'
+          v retry 'sudo apt install -y libsdl2-mixer-dev libsdl2-image-dev'
+
       - name: Clone sdl into .vmodules
         run: |
-          git clone --depth 1 https://github.com/vlang/sdl
+          v retry 'git clone --filter=blob:none https://github.com/vlang/sdl'
           cd sdl
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/sdl
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev
-          sudo apt-get install --quiet -y libsdl2-mixer-dev libsdl2-image-dev
+      - name: Ensure SDL setup works
+        run: ./v ~/.vmodules/sdl/setup.vsh
 
       - name: Run tests
         run: ./v test sdl
@@ -49,3 +60,13 @@ jobs:
         run: |
           v shader sdl/examples/sdl_opengl_and_sokol
           v should-compile-all sdl/examples/
+          ~/.vmodules/sdl/examples/versions/main
+
+      - name: Check SDL works, when installed through vpm
+        run: |
+          rm -rf sdl/
+          rm -rf ~/.vmodules/sdl
+          v retry 'v install sdl'
+          ls -la ~/.vmodules/sdl/
+          v ~/.vmodules/sdl/setup.vsh
+          v run ~/.vmodules/sdl/examples/versions

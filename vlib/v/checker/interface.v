@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -303,10 +303,16 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					}
 					for i, iparam in imethod.params {
 						param := method.params[i] or { ast.Param{} }
-						if iparam.typ.has_flag(.generic) {
+						mut need_inferred_type := false
+						if !iparam.typ.has_flag(.generic) && iparam.typ == param.typ
+							&& imethod.return_type == method.return_type
+							&& imethod.name == method.name {
+							need_inferred_type = true
+						}
+						if iparam.typ.has_flag(.generic) || need_inferred_type {
 							param_sym := c.table.sym(iparam.typ)
 							arg_sym := c.table.sym(param.typ)
-							if c.table.get_type_name(iparam.typ) == gt_name {
+							if c.table.get_type_name(iparam.typ) == gt_name || need_inferred_type {
 								inferred_type = param.typ
 							} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type

@@ -1,0 +1,11 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on * option_unwrap in ${test_file}:4\r\n"
+expect "${test_file}:4 vdbg> "
+send "p a\n"
+expect "a = Option(123) (?int)"
+send "p b\n"
+expect "b = 123 (int)"
+send "q\n"
+expect eof

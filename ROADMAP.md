@@ -33,26 +33,27 @@
 ## [Version 0.5]
 
 - [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
-- [ ] Parallel parser
-- [ ] Parallel checker
+- [x] Parallel parser
+- [x] Parallel checker
 - [ ] Parallel C compilation
 - [ ] Direct C/C++ interop without generating wrappers
 - [ ] `recover()` from panics
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default
-- [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
+- [x] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes
 - [ ] `arr.first() or { }` like `arr[0] or { }`
 - [ ] ORM migrations
+- [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
 
 ## [Version 1.0]
 
 - [ ] Cross compilation of C
 - [ ] Big remaining bugs fixed
 - [ ] More powerful comptime
-- [ ] Constrains for generics
+- [ ] Constraints for generics
 - [ ] Coroutines on Windows
 - [ ] Autofree memory management option ready for production
 - [ ] C2V supporting entire C99 standard

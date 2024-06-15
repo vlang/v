@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -100,23 +100,23 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			}
 			else {}
 		}
-		end_pos := field.pos.pos + field.pos.len
-		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-		between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
-		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
+		mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
+		for cmt in field.comments {
+			match true {
+				cmt.pos.pos < field.pos.pos { pre_cmts << cmt }
+				cmt.pos.line_nr > field.pos.last_line { next_line_cmts << cmt }
+				else { end_cmts << cmt }
+			}
+		}
 		// Handle comments before the field
-		f.comments_before_field(before_comments)
+		f.comments_before_field(pre_cmts)
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 		f.write('\t${volatile_prefix}${field.name} ')
-		// Handle comments between field name and type
-		before_len := f.line_len
-		f.comments(between_comments, has_nl: false)
-		comments_len := f.line_len - before_len
 		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
 			field_align_i++
 		}
 		field_align := field_aligns[field_align_i]
-		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
+		f.write(strings.repeat(` `, field_align.max_len - field.name.len))
 		// Handle anon structs recursively
 		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
 			f.write(field_types[i])
@@ -153,24 +153,24 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
 			f.single_line_attrs(field.attrs, same_line: true)
 		}
-		// Handle comments after field type
-		if after_type_comments.len > 0 {
-			if after_type_comments[0].pos.line_nr > field.pos.line_nr {
-				f.writeln('')
-			} else {
-				if !field.has_default_expr {
-					if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
-						comment_align_i++
-					}
-					align := comment_aligns[comment_align_i]
-					pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
-					f.write(strings.repeat(` `, pad_len))
+		// Handle comments at the end of the line
+		if end_cmts.len > 0 {
+			if !field.has_default_expr {
+				if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
+					comment_align_i++
 				}
-				f.write(' ')
+				align := comment_aligns[comment_align_i]
+				pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
+				f.write(strings.repeat(` `, pad_len))
 			}
-			f.comments(after_type_comments, level: .indent)
+			f.write(' ')
+			f.comments(end_cmts, level: .indent)
 		} else {
 			f.writeln('')
+		}
+		// Handle comments on the next lines
+		if next_line_cmts.len > 0 {
+			f.comments(next_line_cmts, level: .indent)
 		}
 	}
 	if is_anon || node.end_comments.len > 0 {
@@ -234,7 +234,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	sym_name := f.table.sym(node.typ).name
 	// f.write('<old name: $type_sym.name>')
 	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
-		f.no_cur_mod(f.short_module(sym_name)) // TODO f.type_to_str?
+		f.no_cur_mod(f.short_module(sym_name)) // TODO: f.type_to_str?
 	} else {
 		sym_name
 	}
@@ -329,8 +329,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.comments(init_field.next_comments, has_nl: true, level: .keep)
 				if single_line_fields && (init_field.comments.len > 0
 					|| init_field.next_comments.len > 0
-					|| !expr_is_single_line(init_field.expr)
-					|| f.line_len > max_len.last()) {
+					|| !expr_is_single_line(init_field.expr) || f.line_len > max_len) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start

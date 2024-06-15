@@ -1,8 +1,8 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// TODO Windows version needs to be implemented.
+// TODO: Windows version needs to be implemented.
 // Will serve as more advanced input method
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //

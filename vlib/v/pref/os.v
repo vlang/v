@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -86,6 +86,9 @@ pub fn os_from_string(os_str string) !OS {
 		'serenity' {
 			return .serenity
 		}
+		'qnx' {
+			return .qnx
+		}
 		'plan9' {
 			return .plan9
 		}
@@ -122,18 +125,6 @@ pub fn os_from_string(os_str string) !OS {
 			return .wasi
 		}
 		else {
-			// handle deprecated names:
-			match os_str {
-				'wasm32-emscripten' {
-					eprintln('Please use `-os wasm32_emscripten` instead.')
-					return .wasm32_emscripten
-				}
-				'wasm32-wasi' {
-					eprintln('Please use `-os wasm32_wasi` instead.')
-					return .wasm32_wasi
-				}
-				else {}
-			}
 			return error('bad OS ${os_str}')
 		}
 	}

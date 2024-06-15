@@ -4,32 +4,72 @@ module sapp
 import sokol.gfx
 import sokol.memory
 
-pub const used_import = gfx.used_import
-
 // Android needs a global reference to `g_desc`
 __global g_desc C.sapp_desc
 
 pub fn create_desc() gfx.Desc {
-	metal_desc := gfx.MetalContextDesc{
-		device: metal_get_device()
-		renderpass_descriptor_cb: metal_get_renderpass_descriptor
-		drawable_cb: metal_get_drawable
-	}
-	d3d11_desc := gfx.D3D11ContextDesc{
-		device: d3d11_get_device()
-		device_context: d3d11_get_device_context()
-		render_target_view_cb: d3d11_get_render_target_view
-		depth_stencil_view_cb: d3d11_get_depth_stencil_view
-	}
-
 	return gfx.Desc{
-		context: gfx.ContextDesc{
-			metal: metal_desc
-			d3d11: d3d11_desc
-			color_format: .bgra8
-		}
+		environment: glue_environment()
 		image_pool_size: 1000
 	}
+}
+
+// create_default_pass creates a default `gfx.Pass` compatible with `sapp` and `sokol.gfx.begin_pass/1`.
+pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
+	return gfx.Pass{
+		action: action
+		swapchain: glue_swapchain()
+	}
+}
+
+// glue_environment returns a `gfx.Environment` compatible for use with `sapp` specific `gfx.Pass`es.
+// The retuned `gfx.Environment` can be used when rendering via `sapp`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+pub fn glue_environment() gfx.Environment {
+	mut env := gfx.Environment{}
+	unsafe { vmemset(&env, 0, int(sizeof(env))) }
+	env.defaults.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.@none }
+	env.defaults.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.@none }
+	env.defaults.sample_count = sample_count()
+	$if macos && !darwin_sokol_glcore33 ? {
+		env.metal.device = metal_get_device()
+	}
+	// if windows and dx3d11
+	// env.d3d11.device = d3d11_get_device()
+	// env.d3d11.device_context = d3d11_get_device_context()
+	// if webgpu
+	// env.wgpu.device = wgpu_get_device()
+	return env
+}
+
+// glue_swapchain returns a `gfx.Swapchain` compatible for use with `sapp` specific display/rendering `gfx.Pass`es.
+// The retuned `gfx.Swapchain` can be used when rendering via `sapp`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+pub fn glue_swapchain() gfx.Swapchain {
+	mut swapchain := gfx.Swapchain{}
+	unsafe { vmemset(&swapchain, 0, int(sizeof(swapchain))) }
+	swapchain.width = width()
+	swapchain.height = height()
+	swapchain.sample_count = sample_count()
+	swapchain.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.@none }
+	swapchain.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.@none }
+	$if macos && !darwin_sokol_glcore33 ? {
+		swapchain.metal.current_drawable = metal_get_current_drawable()
+		swapchain.metal.depth_stencil_texture = metal_get_depth_stencil_texture()
+		swapchain.metal.msaa_color_texture = metal_get_msaa_color_texture()
+	}
+	// if windows and dx3d11
+	// swapchain.d3d11.render_view = d3d11_get_render_view()
+	// swapchain.d3d11.resolve_view = d3d11_get_resolve_view()
+	// swapchain.d3d11.depth_stencil_view = d3d11_get_depth_stencil_view()
+	// if webgpu
+	// swapchain.wgpu.render_view = wgpu_get_render_view()
+	// swapchain.wgpu.resolve_view = wgpu_get_resolve_view()
+	// swapchain.wgpu.depth_stencil_view = wgpu_get_depth_stencil_view()
+	$else {
+		swapchain.gl.framebuffer = gl_get_framebuffer()
+	}
+	return swapchain
 }
 
 // returns true after sokol-app has been initialized
@@ -144,7 +184,7 @@ pub fn cancel_quit() {
 	C.sapp_cancel_quit()
 }
 
-// intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUSTED)
+// initiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUESTED)
 @[inline]
 pub fn quit() {
 	C.sapp_quit()
@@ -210,16 +250,19 @@ pub fn metal_get_device() voidptr {
 	return voidptr(C.sapp_metal_get_device())
 }
 
-// Metal: get ARC-bridged pointer to this frame's renderpass descriptor
-@[inline]
-pub fn metal_get_renderpass_descriptor() voidptr {
-	return voidptr(C.sapp_metal_get_renderpass_descriptor())
+// Metal: get ARC-bridged pointer to current drawable
+pub fn metal_get_current_drawable() voidptr {
+	return C.sapp_metal_get_current_drawable()
 }
 
-// Metal: get ARC-bridged pointer to current drawable
-@[inline]
-pub fn metal_get_drawable() voidptr {
-	return voidptr(C.sapp_metal_get_drawable())
+// Metal: get bridged pointer to MTKView's depth-stencil texture of type MTLTexture
+pub fn metal_get_depth_stencil_texture() voidptr {
+	return C.sapp_metal_get_depth_stencil_texture()
+}
+
+// Metal: get bridged pointer to MTKView's msaa-color-texture of type MTLTexture (may be null)
+pub fn metal_get_msaa_color_texture() voidptr {
+	return C.sapp_metal_get_msaa_color_texture()
 }
 
 // macOS: get ARC-bridged pointer to macOS NSWindow
@@ -246,10 +289,16 @@ pub fn d3d11_get_device_context() voidptr {
 	return voidptr(C.sapp_d3d11_get_device_context())
 }
 
-// D3D11: get pointer to ID3D11RenderTargetView object
+// D3D11: get pointer to ID3D11RenderView object
 @[inline]
-pub fn d3d11_get_render_target_view() voidptr {
-	return voidptr(C.sapp_d3d11_get_render_target_view())
+pub fn d3d11_get_render_view() voidptr {
+	return voidptr(C.sapp_d3d11_get_render_view())
+}
+
+// D3D11: get pointer ID3D11RenderTargetView object for msaa-resolve (may return null)
+@[inline]
+pub fn d3d11_get_resolve_view() voidptr {
+	return C.sapp_d3d11_get_resolve_view()
 }
 
 // D3D11: get pointer to ID3D11DepthStencilView
@@ -262,6 +311,32 @@ pub fn d3d11_get_depth_stencil_view() voidptr {
 @[inline]
 pub fn win32_get_hwnd() voidptr {
 	return voidptr(C.sapp_win32_get_hwnd())
+}
+
+// WebGPU: get WGPUDevice handle
+pub fn wgpu_get_device() voidptr {
+	return C.sapp_wgpu_get_device()
+}
+
+// WebGPU: get swapchain's WGPUTextureView handle for rendering
+pub fn wgpu_get_render_view() voidptr {
+	return C.sapp_wgpu_get_render_view()
+}
+
+// WebGPU: get swapchain's MSAA-resolve WGPUTextureView (may return null)
+pub fn wgpu_get_resolve_view() voidptr {
+	return C.sapp_wgpu_get_resolve_view()
+}
+
+// WebGPU: get swapchain's WGPUTextureView for the depth-stencil surface
+pub fn wgpu_get_depth_stencil_view() voidptr {
+	return C.sapp_wgpu_get_depth_stencil_view()
+}
+
+// GL: get framebuffer object
+@[inline]
+pub fn gl_get_framebuffer() u32 {
+	return C.sapp_gl_get_framebuffer()
 }
 
 // Android: get native activity handle

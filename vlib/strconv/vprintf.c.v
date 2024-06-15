@@ -1,5 +1,5 @@
 /*=============================================================================
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2024 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -22,7 +22,7 @@ enum Char_parse_state {
 	reset_params
 }
 
-// v_printf prints a sprintf-like formated `string` to the terminal.
+// v_printf prints a sprintf-like formatted `string` to the terminal.
 // The format string `str` can be constructed at runtime.
 // Note, that this function is unsafe.
 // In most cases, you are better off using V's string interpolation,
@@ -32,7 +32,7 @@ pub fn v_printf(str string, pt ...voidptr) {
 	print(unsafe { v_sprintf(str, ...pt) })
 }
 
-// v_sprintf returns a sprintf-like formated `string`.
+// v_sprintf returns a sprintf-like formatted `string`.
 // The format string `str` can be constructed at runtime.
 // Note, that this function is unsafe.
 // In most cases, you are better off using V's string interpolation,
@@ -249,7 +249,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				// println("$ch1 $ch2")
 				match ch1 {
 					// h for 16 bit int
-					// hh fot 8 bit int
+					// hh for 8 bit int
 					`h` {
 						if ch2 == `h` {
 							v_sprintf_panic(p_index, pt.len)
@@ -316,7 +316,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				v_sprintf_panic(p_index, pt.len)
 				match ch1 {
 					// h for 16 bit unsigned int
-					// hh fot 8 bit unsigned int
+					// hh for 8 bit unsigned int
 					`h` {
 						if ch2 == `h` {
 							d1 = u64(unsafe { *(&u8(pt[p_index])) })

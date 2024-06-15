@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -18,6 +18,9 @@ pub mut:
 
 @[unsafe]
 pub fn (s &Scope) free() {
+	if s == unsafe { nil } {
+		return
+	}
 	unsafe {
 		s.objects.free()
 		s.struct_fields.free()
@@ -42,6 +45,9 @@ fn (s &Scope) dont_lookup_parent() bool {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
+	if s == unsafe { nil } {
+		return none
+	}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if name in sc.objects {
 			return unsafe { sc.objects[name] }
@@ -55,6 +61,9 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 
 // selector_expr:  name.field_name
 pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name string) ?ScopeStructField {
+	if s == unsafe { nil } {
+		return none
+	}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if field := sc.struct_fields[name] {
 			if field.struct_type == struct_type && field.name == field_name {
@@ -129,6 +138,14 @@ pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
 	}
 }
 
+pub fn (mut s Scope) update_smartcasts(name string, typ Type, is_unwrapped bool) {
+	mut obj := unsafe { s.objects[name] }
+	if mut obj is Var {
+		obj.smartcasts = [typ]
+		obj.is_unwrapped = is_unwrapped
+	}
+}
+
 // selector_expr:  name.field_name
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
 	if f := s.struct_fields[name] {
@@ -175,6 +192,23 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 	return s
 }
 
+// get_all_vars extracts all current scope vars
+pub fn (s &Scope) get_all_vars() []ScopeObject {
+	if s == unsafe { nil } {
+		return []
+	}
+	mut scope_vars := []ScopeObject{}
+	for sc := unsafe { s }; true; sc = sc.parent {
+		if sc.objects.len > 0 {
+			scope_vars << sc.objects.values().filter(|it| it is Var)
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+	return scope_vars
+}
+
 @[inline]
 pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
@@ -191,7 +225,7 @@ pub fn (s &Scope) has_inherited_vars() bool {
 	return false
 }
 
-pub fn (sc Scope) show(depth int, max_depth int) string {
+pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
 	for _ in 0 .. depth * 4 {
@@ -216,6 +250,6 @@ pub fn (sc Scope) show(depth int, max_depth int) string {
 	return out
 }
 
-pub fn (sc Scope) str() string {
+pub fn (sc &Scope) str() string {
 	return sc.show(0, 0)
 }
