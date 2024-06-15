@@ -1521,3 +1521,17 @@ fn test_contains_byte() {
 	assert 'abc abca'.contains_u8(` `)
 	assert !'abc abca'.contains_u8(`A`)
 }
+
+fn test_camel_to_snake() {
+	assert 'Abcd'.camel_to_snake() == 'abcd'
+	assert 'aaBB'.camel_to_snake() == 'aa_bb'
+	assert 'BBaa'.camel_to_snake() == 'b_baa'
+	assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+}
+
+fn test_snake_to_camel() {
+	assert 'abcd'.snake_to_camel() == 'Abcd'
+	assert 'ab_cd'.snake_to_camel() == 'AbCd'
+	assert '_abcd'.snake_to_camel() == 'Abcd'
+	assert '_abcd_'.snake_to_camel() == 'Abcd'
+}
