@@ -41,7 +41,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		typ := arg.expr.get_pure_type()
 		arg_as_string := arg.str().trim('`"\'')
-		value := c.pref.compile_compile_values[node.args_var] or { arg_as_string }
+		value := c.pref.compile_values[node.args_var] or { arg_as_string }
 		validate_type_string_is_pure_literal(typ, value) or {
 			c.error(err.msg(), node.pos)
 			return ast.void_type

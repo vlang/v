@@ -193,8 +193,7 @@ pub mut:
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
-	// -compile_value key=value
-	compile_compile_values map[string]string
+	compile_values      map[string]string // -compile_value key=value
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
@@ -1179,12 +1178,13 @@ pub fn cc_from_string(s string) CompilerType {
 }
 
 fn (mut prefs Preferences) parse_compile_value(define string) {
-	define_parts := define.split('=')
-	if define_parts.len == 2 {
-		prefs.compile_compile_values[define_parts[0]] = define_parts[1]
+	if !define.contains('=') {
+		eprintln_exit('V error: Define argument value missing for ${define}.')
 		return
 	}
-	eprintln_exit('V error: Define argument value missing for ${define}.')
+	name := define.all_before('=')
+	value := define.all_after_first('=')
+	prefs.compile_values[name] = value
 }
 
 fn (mut prefs Preferences) parse_define(define string) {
