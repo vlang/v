@@ -1,0 +1,7 @@
+fn main() {
+	val_str := $compile_value('key_str', 'value')
+	val_f64 := $compile_value('key_f64', 42.0)
+	val_int := $compile_value('key_int', 56)
+	val_bool := $compile_value('key_bool', false)
+	val_char := $compile_value('key_char', `f`)
+}

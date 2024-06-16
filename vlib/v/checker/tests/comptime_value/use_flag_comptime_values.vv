@@ -1,0 +1,15 @@
+// This file should pass if compiled/run with:
+// v -cv my_f64=2.0 -cv my_int=3 -cv my_string="a four" -cv my_bool=true -cv my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
+const my_f64 = $compile_value('my_f64', 1.0)
+const my_int = $compile_value('my_int', 2)
+const my_string = $compile_value('my_string', 'three')
+const my_bool = $compile_value('my_bool', false)
+const my_char = $compile_value('my_char', `f`)
+
+fn main() {
+	assert my_f64 == 2.0
+	assert my_int == 3
+	assert my_string == 'a four'
+	assert my_bool == true
+	assert my_char == `g`
+}

@@ -55,9 +55,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	if node.method_name == 'compile_value' {
 		// $compile_value('some_string',<default value>)
 		val := util.cescaped_path(node.compile_value)
-		// dump(node)
 		if node.result_type == ast.string_type {
 			g.write('_SLIT("${val}")')
+		} else if node.result_type == ast.char_type {
+			g.write("'${val}'")
 		} else {
 			g.write('${val}')
 		}

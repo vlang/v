@@ -1,0 +1,11 @@
+// TODO: support #flag -I $const('my_flag','flag_value')/xyz
+// TODO: support #include "$const('my_include','/usr/include')/stdio.h"
+
+const my_f64 = $compile_value('my_f64', 42.0)
+
+fn main() {
+  println(my_f64)
+	cv_bool := $compile_value('my_bool', false)
+  println(cv_bool)
+	println('done')
+}

@@ -1,0 +1,51 @@
+name: Time CI
+
+on:
+  push:
+    paths:
+      - 'vlib/**'
+      - '**/comptime_ci.yml'
+      - '!**.md'
+  pull_request:
+    paths:
+      - 'vlib/**'
+      - '**/comptime_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-comptime-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make
+      - name: Test -cv values
+        run: ./v -cv my_f64=2.0 -cv my_int=3 -cv my_string="a four" -cv my_bool=true -cv my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
+      - name: Test -compile-value values
+        run: ./v -compile-value my_f64=2.0 -compile-value my_int=3 -compile-value my_string="a four" -compile-value my_bool=true -compile-value my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
+
+  test-comptime-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make
+      - name: Test -cv values
+        run: ./v -cv my_f64=2.0 -cv my_int=3 -cv my_string="a four" -cv my_bool=true -cv my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
+      - name: Test -compile-value values
+        run: ./v -compile-value my_f64=2.0 -compile-value my_int=3 -compile-value my_string="a four" -compile-value my_bool=true -compile-value my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
+
+  test-time-windows:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: .\make.bat
+      - name: Test -cv values
+        run: ./v -cv my_f64=2.0 -cv my_int=3 -cv my_string="a four" -cv my_bool=true -cv my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
+      - name: Test -compile-value values
+        run: ./v -compile-value my_f64=2.0 -compile-value my_int=3 -compile-value my_string="a four" -compile-value my_bool=true -compile-value my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
