@@ -39,7 +39,7 @@ jobs:
       - name: Test -compile-value values
         run: ./v -compile-value my_f64=2.0 -compile-value my_int=3 -compile-value my_string="a four" -compile-value my_bool=true -compile-value my_char=g run vlib/v/checker/tests/comptime_value/use_flag_comptime_values.vv
 
-  test-time-windows:
+  test-comptime-windows:
     runs-on: windows-2019
     steps:
       - uses: actions/checkout@v4
