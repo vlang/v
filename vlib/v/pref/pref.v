@@ -826,6 +826,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cv', '-compile-value' {
 				if compile_value := args[i..][1] {
+					res.build_options << '-cv ${compile_value}'
 					res.parse_compile_value(compile_value)
 				}
 				i++
