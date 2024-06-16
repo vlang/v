@@ -535,8 +535,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					op_overloaded = true
 				}
 			}
-
-			if left_sym.kind == .bool && right_sym.kind == .bool
+			final_left_sym := g.table.final_sym(g.unwrap_generic(var_type))
+			final_right_sym := g.table.final_sym(unwrapped_val_type)
+			if final_left_sym.kind == .bool && final_right_sym.kind == .bool
 				&& node.op in [.boolean_or_assign, .boolean_and_assign] {
 				extracted_op := match node.op {
 					.boolean_or_assign {
