@@ -161,6 +161,7 @@ pub const mime_types = {
 	'.3gp':    'video/3gpp'
 	'.3g2':    'video/3gpp2'
 	'.7z':     'application/x-7z-compressed'
+	'.m3u8':   'application/vnd.apple.mpegurl'
 }
 
 pub const max_http_post_size = 1024 * 1024
