@@ -2187,11 +2187,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 				}
 			}
 			node.method_name == 'compile_value' {
-				if node.args_var.contains("'") {
-					f.write('\$${node.method_name}("${node.args_var}", ')
-				} else {
-					f.write("\$${node.method_name}('${node.args_var}', ")
-				}
+				f.write("\$compile_value('${node.args_var}', ")
 				f.expr(node.args[0].expr)
 				f.write(')')
 			}
