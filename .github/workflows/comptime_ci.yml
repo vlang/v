@@ -1,4 +1,4 @@
-name: Time CI
+name: Comptime CI
 
 on:
   push:
