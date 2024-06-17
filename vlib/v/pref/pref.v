@@ -193,7 +193,7 @@ pub mut:
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
-	compile_values      map[string]string // -compile_value key=value
+	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
@@ -822,13 +822,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-ldflags' {
 				res.ldflags += ' ' + cmdline.option(args[i..], '-ldflags', '')
 				res.build_options << '${arg} "${res.ldflags.trim_space()}"'
-				i++
-			}
-			'-cv', '-compile-value' {
-				if compile_value := args[i..][1] {
-					res.build_options << '-cv ${compile_value}'
-					res.parse_compile_value(compile_value)
-				}
 				i++
 			}
 			'-d', '-define' {

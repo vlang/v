@@ -2428,8 +2428,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				}
 				node.main = env
 			}
-			if flag.contains('\$compile_value(') {
-				c.error('\$compile_value is not supported in ${node.kind} yet', node.pos)
+			if flag.contains('\$d(') {
+				c.error('\$d() is not supported in ${node.kind} yet', node.pos)
 				return
 			}
 			flag_no_comment := flag.all_before('//').trim_space()
@@ -2515,8 +2515,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					return
 				}
 			}
-			if flag.contains('\$compile_value(') {
-				c.error('\$compile_value is not supported in ${node.kind} yet', node.pos)
+			if flag.contains('\$d(') {
+				c.error('\$d() is not supported in ${node.kind} yet', node.pos)
 				return
 			}
 			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {

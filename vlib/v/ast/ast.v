@@ -1920,8 +1920,8 @@ pub:
 	scope            &Scope = unsafe { nil }
 	is_vweb          bool
 	is_embed         bool // $embed_file(...)
-	is_env           bool // $env(...)
-	is_compile_value bool // $compile_value(...)
+	is_env           bool // $env(...) // TODO: deprecate after $d() is stable
+	is_compile_value bool // $d(...)
 	env_pos          token.Pos
 	is_pkgconfig     bool
 pub mut:

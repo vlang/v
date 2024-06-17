@@ -31,12 +31,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	if node.is_compile_value {
 		arg := node.args[0] or {
-			c.error('\$compile_value takes two arguments, a string and a primitive literal',
-				node.pos)
+			c.error('\$d() takes two arguments, a string and a primitive literal', node.pos)
 			return ast.void_type
 		}
 		if !arg.expr.is_pure_literal() {
-			c.error('-cv/-compile-value values can only be pure literals', node.pos)
+			c.error('-d values can only be pure literals', node.pos)
 			return ast.void_type
 		}
 		typ := arg.expr.get_pure_type()

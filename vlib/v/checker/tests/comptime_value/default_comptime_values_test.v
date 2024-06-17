@@ -1,8 +1,8 @@
-const my_f64 = $compile_value('my_f64', 1.0)
-const my_int = $compile_value('my_int', 2)
-const my_string = $compile_value('my_string', 'three')
-const my_bool = $compile_value('my_bool', false)
-const my_char = $compile_value('my_char', `f`)
+const my_f64 = $d('my_f64', 1.0)
+const my_int = $d('my_int', 2)
+const my_string = $d('my_string', 'three')
+const my_bool = $d('my_bool', false)
+const my_char = $d('my_char', `f`)
 
 fn test_default_compile_values() {
 	assert my_f64 == 1.0

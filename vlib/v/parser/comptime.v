@@ -8,7 +8,7 @@ import v.ast
 import v.token
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-	'compile_warn', 'compile_value', 'res']
+	'compile_warn', 'd', 'res']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
 	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'string']
 
@@ -106,7 +106,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$compile_value()` and `\$res()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' && name != 'veb' {
@@ -159,7 +159,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			method_name: method_name
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
-	} else if method_name == 'compile_value' {
+	} else if method_name == 'd' {
 		const_string := p.tok.lit
 		// const_name_pos := p.tok.pos()
 		p.check(.string)
