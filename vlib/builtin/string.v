@@ -2617,48 +2617,52 @@ pub fn (s string) camel_to_snake() string {
 	if s.len == 0 {
 		return ''
 	}
+	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
+	first_char := s[0]
+	lower_first_char :=  if first_char >= `A` && first_char <= `Z` { first_char + 32 } else { first_char }
+	unsafe {
+		b[0] = lower_first_char
+	}
+	mut prev_char := lower_first_char
 	mut prev_is_upper := false
-	mut prev_char := ` `
 	mut lower_c := `_`
 	mut c_is_upper := false
-	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
-	mut i := 0
-	for c in s {
+	mut pos := 1
+	for i in pos..s.len {
+		c := s[i]
 		c_is_upper = c >= `A` && c <= `Z`
 		lower_c = if c_is_upper { c + 32 } else { c }
-		if i > 0 {
 			if prev_is_upper == false && c_is_upper {
 				// aB => a_b, if prev has `_`, then do not add `_`
 				unsafe {
-					if b[i - 1] != `_` {
-						b[i] = `_`
-						i++
+					if b[pos - 1] != `_` {
+						b[pos] = `_`
+						pos++
 					}
 				}
 			} else if prev_is_upper && c_is_upper == false && c != `_` {
 				// Ba => _ba, if prev has `_`, then do not add `_`
-				if i > 1 {
+				if pos > 1 {
 					unsafe {
-						if b[i - 2] != `_` {
-							prev_char = b[i - 1]
-							b[i - 1] = `_`
-							b[i] = prev_char
-							i++
+						if b[pos - 2] != `_` {
+							prev_char = b[pos - 1]
+							b[pos - 1] = `_`
+							b[pos] = prev_char
+							pos++
 						}
 					}
 				}
 			}
-		}
 		unsafe {
-			b[i] = lower_c
+			b[pos] = lower_c
 		}
 		prev_is_upper = c_is_upper
-		i++
+		pos++
 	}
 	unsafe {
-		b[i] = 0
+		b[pos] = 0
 	}
-	return unsafe { tos(b, i) }
+	return unsafe { tos(b, pos) }
 }
 
 // snake_to_camel convert string from snake_case to camelCase
