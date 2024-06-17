@@ -1,5 +1,5 @@
 // This file should pass if compiled/run with:
-// vtest vflags: -cv my_f64=2.0 -cv my_int=3 -cv my_string="a four" -cv my_bool=true -cv my_char=g
+// vtest vflags: -d my_f64=2.0 -d my_int=3 -d my_string="a four" -d my_bool -d my_char=g
 const my_f64 = $compile_value('my_f64', 1.0)
 const my_int = $compile_value('my_int', 2)
 const my_string = $compile_value('my_string', 'three')

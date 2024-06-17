@@ -1189,38 +1189,26 @@ fn (mut prefs Preferences) parse_compile_value(define string) {
 }
 
 fn (mut prefs Preferences) parse_define(define string) {
-	define_parts := define.split('=')
-	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d ${define}'
 	}
-	if define_parts.len == 1 {
+	if !define.contains('=') {
+		prefs.compile_values[define] = 'true'
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
 		return
 	}
-	if define_parts.len == 2 {
-		prefs.compile_defines_all << define_parts[0]
-		match define_parts[1] {
-			'0' {}
-			'1' {
-				prefs.compile_defines << define_parts[0]
-			}
-			else {
-				eprintln_exit(
-					'V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-					' Expected `0` or `1`.')
-			}
+	dname := define.all_before('=')
+	dvalue := define.all_after_first('=')
+	prefs.compile_values[dname] = dvalue
+	prefs.compile_defines_all << dname
+	match dvalue {
+		'0' {}
+		'1' {
+			prefs.compile_defines << dname
 		}
-		return
+		else {}
 	}
-	eprintln_exit('V error: Unknown define argument: ${define}. Expected at most one `=`.')
-}
-
-fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
-	// if define_parts[0] == 'no_bounds_checking' {
-	// 	eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
-	// }
 }
 
 pub fn supported_test_runners_list() string {
