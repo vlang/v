@@ -6120,6 +6120,44 @@ V can bring in values at compile time from environment variables.
 `$env('ENV_VAR')` can also be used in top-level `#flag` and `#include` statements:
 `#flag linux -I $env('JAVA_HOME')/include`.
 
+#### `$d`
+
+```v
+module main
+
+const my_i64 = $d('my_i64', 1024)
+
+fn main() {
+	compile_time_value := $d('my_define', 'V rocks')
+	println(compile_time_value)
+  println(my_i64)
+}
+```
+
+V can bring in values at compile time from `-d ident=value` flag defines.
+If a flag is not provided via the command line, `$d` will return the default value
+provided as the *second* argument.
+
+Supported default values are the following *pure* literals:
+```v
+fn main() {
+	val_str := $d('id_str', 'value') // can be changed by providing `-d id_str="my id"`
+	val_f64 := $d('id_f64', 42.0) // can be changed by providing `-d id_f64=84.0`
+	val_i64 := $d('id_i64', 56) // can be changed by providing `-d id_i64=123`
+	val_bool := $d('id_bool', false) // can be changed by providing `-d id_bool=true`
+	val_char := $d('id_char', `f`) // can be changed by providing `-d id_char=v``
+	println(val_str)
+	println(val_f64)
+	println(val_i64)
+	println(val_bool)
+	println(rune(val_char))
+}
+```
+
+`$d('ident','value')` can also be used in top-level statements like `#flag` and `#include`:
+`#flag linux -I $d('my_include','/usr')/include`. The default value for `$d` when used in these
+statements should be literal `string`s.
+
 #### `$compile_error` and `$compile_warn`
 
 These two comptime functions are very useful for displaying custom errors/warnings during
