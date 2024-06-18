@@ -6122,6 +6122,17 @@ V can bring in values at compile time from environment variables.
 
 #### `$d`
 
+V can bring in values at compile time from `-d ident=value` flag defines, passed on
+the command line to the compiler. You can also pass `-d ident`, which will have the
+same meaning as passing `-d ident=true`.
+
+To get the value in your code, use: `$d('ident', default)`, where `default`
+can be `false` for booleans, `0` or `123` for i64 numbers, `0.0` or `113.0`
+for f64 numbers, `'a string'` for strings.
+
+When a flag is not provided via the command line, `$d()` will return the `default`
+value provided as the *second* argument.
+
 ```v
 module main
 
@@ -6146,11 +6157,7 @@ V rocks
 4096
 ```
 
-V can bring in values at compile time from `-d ident=value` flag defines.
-If a flag is not provided via the command line, `$d` will return the default value
-provided as the *second* argument.
-
-Supported default values are the following *pure* literals:
+Here is an example of how to use the default values, which have to be *pure* literals:
 ```v
 fn main() {
 	val_str := $d('id_str', 'value') // can be changed by providing `-d id_str="my id"`
@@ -6169,6 +6176,10 @@ fn main() {
 `$d('ident','value')` can also be used in top-level statements like `#flag` and `#include`:
 `#flag linux -I $d('my_include','/usr')/include`. The default value for `$d` when used in these
 statements should be literal `string`s.
+
+`$d('ident', false)` can also be used inside `$if $d('ident', false) {` statements,
+granting you the ability to selectively turn on/off certain sections of code, at compile
+time, without modifying your source code, or keeping different versions of it.
 
 #### `$compile_error` and `$compile_warn`
 
