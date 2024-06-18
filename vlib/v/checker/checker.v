@@ -2429,8 +2429,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.main = env
 			}
 			if flag.contains('\$d(') {
-				c.error('\$d() is not supported in ${node.kind} yet', node.pos)
-				return
+				d := util.resolve_d_value(c.pref.compile_values, flag) or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				node.main = d
 			}
 			flag_no_comment := flag.all_before('//').trim_space()
 			if node.kind == 'include' || node.kind == 'preinclude' {
@@ -2516,8 +2519,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				}
 			}
 			if flag.contains('\$d(') {
-				c.error('\$d() is not supported in ${node.kind} yet', node.pos)
-				return
+				flag = util.resolve_d_value(c.pref.compile_values, flag) or {
+					c.error(err.msg(), node.pos)
+					return
+				}
 			}
 			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 				if flag.contains(deprecated) {

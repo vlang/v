@@ -1,5 +1,5 @@
-// TODO: support #flag -I $d('my_flag','flag_value')/xyz
-// TODO: support #include "$d('my_include','/usr/include')/stdio.h"
+#flag -I $d('my_flag','flag_value')/xyz
+#include "$d('my_include','/usr/include')/stdio.h"
 
 const my_f64 = $d('my_f64', 42.0)
 

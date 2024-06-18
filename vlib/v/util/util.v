@@ -115,6 +115,70 @@ pub fn resolve_env_value(str string, check_for_presence bool) !string {
 	return rep
 }
 
+// resolve_d_value replaces all occurrences of `$d('ident','value')`
+// in `str` with either the default `'value'` param or a compile value passed via `-d ident=value`.
+pub fn resolve_d_value(compile_values map[string]string, str string) !string {
+	d_sig := "\$d('"
+	at := str.index(d_sig) or {
+		return error('no "${d_sig}' + '...\')" could be found in "${str}".')
+	}
+	mut all_parsed := d_sig
+	mut ch := u8(`.`)
+	mut d_ident := ''
+	mut i := 0
+	for i = at + d_sig.len; i < str.len && ch != `'`; i++ {
+		ch = u8(str[i])
+		all_parsed += ch.ascii_str()
+		if ch.is_letter() || ch.is_digit() || ch == `_` {
+			d_ident += ch.ascii_str()
+		} else {
+			if !(ch == `'`) {
+				if ch == `$` {
+					return error('cannot use string interpolation in compile time \$d() expression')
+				}
+				return error('invalid `\$d` identifier in "${str}", invalid character "${ch.ascii_str()}"')
+			}
+		}
+	}
+	if d_ident == '' {
+		return error('first argument of `\$d` must be a string identifier')
+	}
+
+	// at this point we should have a valid identifier in `d_ident`.
+	// Next we parse out the default string value
+
+	// advance past the `,` and the opening `'` in second argument, or ... eat whatever is there
+	all_parsed += u8(str[i]).ascii_str()
+	i++
+	all_parsed += u8(str[i]).ascii_str()
+	i++
+	// Rinse, repeat for the expected default value string
+	ch = u8(`.`)
+	mut d_default_value := ''
+	for ; i < str.len && ch != `'`; i++ {
+		ch = u8(str[i])
+		all_parsed += ch.ascii_str()
+		if !(ch == `'`) {
+			d_default_value += ch.ascii_str()
+		}
+		if ch == `$` {
+			return error('cannot use string interpolation in compile time \$d() expression')
+		}
+	}
+	if d_default_value == '' {
+		return error('second argument of `\$d` must be a string identifier')
+	}
+	// at this point we have the identifier and the default value.
+	// now we need to resolve which one to use from `compile_values`.
+	d_value := compile_values[d_ident] or { d_default_value }
+	// if more `$d()` calls remains, resolve those as well:
+	rep := str.replace_once(all_parsed + ')', d_value)
+	if rep.contains(d_sig) {
+		return resolve_d_value(compile_values, rep)
+	}
+	return rep
+}
+
 // launch_tool - starts a V tool in a separate process, passing it the `args`.
 // All V tools are located in the cmd/tools folder, in files or folders prefixed by
 // the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.
