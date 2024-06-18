@@ -35,6 +35,13 @@ a.out
 /vold.exe
 /vnew
 /vnew.exe
+/vprod
+/vprod_gcc
+/vprod_clang
+/vprod.exe
+/vprod_gcc.exe
+/vprod_clang.exe
+/vprod_msvc.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
