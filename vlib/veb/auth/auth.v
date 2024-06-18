@@ -89,5 +89,5 @@ pub fn compare_password_with_hash(plain_text_password string, salt string, hashe
 	// constant time comparison
 	// I know this is operating on the hex-encoded strings, but it's still constant time
 	// and better than not doing it at all
-	return hmac.compare_digest(digest.bytes(), hashed.bytes())
+	return hmac.equal(digest.bytes(), hashed.bytes())
 }
