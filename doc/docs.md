@@ -7758,7 +7758,7 @@ See also [V Types](#v-types).
 
 This lists operators for [primitive types](#primitive-types) only.
 
-```txt
+```v ignore
 +    sum                    integers, floats, strings
 -    difference             integers, floats
 *    product                integers, floats
