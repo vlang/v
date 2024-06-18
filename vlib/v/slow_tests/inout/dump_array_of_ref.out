@@ -1,0 +1,10 @@
+[vlib/v/slow_tests/inout/dump_array_of_ref.vv:6] parents: &[Balise{
+    a: 11
+}, Balise{
+    a: 22
+}]
+[vlib/v/slow_tests/inout/dump_array_of_ref.vv:10] stack: [&Balise{
+    a: 10
+}, &Balise{
+    a: 20
+}]
