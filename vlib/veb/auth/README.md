@@ -89,3 +89,12 @@ pub fn (mut app App) find_user_by_name(name string) ?User {
 	return User{}
 }
 ```
+
+## Security considerations
+
+`hash_password_with_salt` and related use `sha256` for hashing with a single iteration.
+This is not secure for production use, and you should use a more secure hashing algorithm and multiple iterations.
+
+See also:
+- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+
