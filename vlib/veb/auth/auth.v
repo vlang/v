@@ -5,6 +5,7 @@ module auth
 
 import rand
 import crypto.rand as crypto_rand
+import crypto.hmac
 import crypto.sha256
 
 const max_safe_unsigned_integer = u32(4_294_967_295)
@@ -84,5 +85,9 @@ pub fn hash_password_with_salt(plain_text_password string, salt string) string {
 }
 
 pub fn compare_password_with_hash(plain_text_password string, salt string, hashed string) bool {
-	return hash_password_with_salt(plain_text_password, salt) == hashed
+	digest := hash_password_with_salt(plain_text_password, salt)
+	// constant time comparison
+	// I know this is operating on the hex-encoded strings, but it's still constant time
+	// and better than not doing it at all
+	return hmac.equal(digest.bytes(), hashed.bytes())
 }
