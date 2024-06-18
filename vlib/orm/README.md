@@ -1,12 +1,12 @@
 # ORM
 
-V has a powerful, concise ORM baked in! Create tables, insert records, manage relationships, all regardless of the DB
-driver you decide to use.
+V has a powerful, concise ORM baked in! Create tables, insert records, manage relationships, all
+regardless of the DB driver you decide to use.
 
 ## Nullable
 
-For a nullable column, use an option field. If the field is non-option, the column will be defined with `NOT NULL` at 
-table creation.
+For a nullable column, use an option field. If the field is non-option, the column will be defined
+with `NOT NULL` at table creation.
 
 ```v ignore
 struct Foo {
@@ -60,8 +60,8 @@ struct Child {
 }
 ```
 
-To use the ORM, there is a special interface that lets you use the structs and V itself in queries. This interface
-takes the database instance as an argument.
+To use the ORM, there is a special interface that lets you use the structs and V itself in queries.
+This interface takes the database instance as an argument.
 
 ```v ignore
 import db.sqlite
@@ -194,10 +194,10 @@ sql db {
 
 ### time.Time Fields
 
-It's definitely useful to cast a field as `time.Time` so you can use V's built-in time functions; however,
-this is handled a bit differently than expected in the ORM. `time.Time` fields are created as integer columns
-in the database. Because of this, the usual time functions (`current_timestamp`, `NOW()`, etc) in SQL do not 
-work as defaults.
+It's definitely useful to cast a field as `time.Time` so you can use V's built-in time functions;
+however, this is handled a bit differently than expected in the ORM. `time.Time` fields are 
+created as integer columns in the database. Because of this, the usual time functions 
+(`current_timestamp`, `NOW()`, etc) in SQL do not work as defaults.
 
 ## Example
 
