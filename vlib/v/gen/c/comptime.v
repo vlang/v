@@ -690,7 +690,22 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return true, false
 		}
 		ast.ComptimeCall {
-			g.write('${pkg_exist}')
+			if cond.method_name == 'pkgconfig' {
+				g.write('${pkg_exist}')
+				return true, false
+			}
+			if cond.method_name == 'd' {
+				if cond.result_type == ast.bool_type {
+					if cond.compile_value == 'true' {
+						g.write('1')
+					} else {
+						g.write('0')
+					}
+				} else {
+					g.write('defined(CUSTOM_DEFINE_${cond.args_var})')
+				}
+				return true, false
+			}
 			return true, false
 		}
 		ast.SelectorExpr {

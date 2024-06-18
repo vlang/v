@@ -1025,6 +1025,16 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					return .skip
 				}
 				m.run() or { return .skip }
+				return .eval
+			}
+			if cond.is_compile_value {
+				t := c.expr(mut cond)
+				if t != ast.bool_type {
+					c.error('inside \$if, only \$d() expressions that return bool are allowed',
+						cond.pos)
+					return .skip
+				}
+				return .unknown // always fully generate the code for that branch
 			}
 			return .eval
 		}
