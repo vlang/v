@@ -114,6 +114,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							stmt.typ = ast.error_type
 						} else {
 							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+							if ret_type.is_number() && expr_type.is_number() && !c.inside_return {
+								ret_type = c.promote_num(ret_type, expr_type)
+							}
 						}
 					}
 					if stmt.typ != ast.error_type {
