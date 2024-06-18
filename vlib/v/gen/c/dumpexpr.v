@@ -55,7 +55,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		name = name[3..]
 	}
 	dump_fn_name := '_v_dump_expr_${name}' +
-		(if expr_type.is_ptr() { '_ptr'.repeat(expr_type.nr_muls()) } else { '' })
+		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')
@@ -156,7 +156,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			str_dumparg_ret_type = str_dumparg_type
 		}
 		dump_fn_name := '_v_dump_expr_${name}' +
-			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
+			(if is_ptr { '__ptr'.repeat(typ.nr_muls()) } else { '' })
 
 		// protect against duplicate declarations:
 		if dump_already_generated_fns[dump_fn_name] {

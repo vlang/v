@@ -1525,6 +1525,7 @@ fn test_contains_byte() {
 fn test_camel_to_snake() {
 	assert 'Abcd'.camel_to_snake() == 'abcd'
 	assert 'aaBB'.camel_to_snake() == 'aa_bb'
+	assert 'aaBbCcDD'.camel_to_snake() == 'aa_bb_cc_dd'
 	assert 'BBaa'.camel_to_snake() == 'b_baa'
 	assert 'aa_BB'.camel_to_snake() == 'aa_bb'
 }
@@ -1532,6 +1533,7 @@ fn test_camel_to_snake() {
 fn test_snake_to_camel() {
 	assert 'abcd'.snake_to_camel() == 'Abcd'
 	assert 'ab_cd'.snake_to_camel() == 'AbCd'
+	assert 'ab_cd_efg'.snake_to_camel() == 'AbCdEfg'
 	assert '_abcd'.snake_to_camel() == 'Abcd'
 	assert '_abcd_'.snake_to_camel() == 'Abcd'
 }

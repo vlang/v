@@ -1,0 +1,16 @@
+struct Balise {
+	a int
+}
+
+fn escape_tag(mut parents []Balise) {
+	dump(parents)
+	mut stack := []&Balise{}
+	stack << &Balise{10}
+	stack << &Balise{20}
+	dump(stack)
+}
+
+fn main() {
+	mut bal := [Balise{11}, Balise{22}]
+	escape_tag(mut bal)
+}

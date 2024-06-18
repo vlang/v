@@ -113,7 +113,7 @@ fn (a Aints) str() string {
 	baseline := '${avg} ± σ: ${tdev},'
 	tmin := term.colorize(term.bright_cyan, '${f64(a.imin) / 1000:5.1f}ms')
 	tmax := term.colorize(term.bright_blue, '${f64(a.imax) / 1000:5.1f}ms')
-	return '${baseline:-46s} ${tmin} … ${tmax}'
+	return '${baseline:-46s} ${tmin}…${tmax}'
 }
 
 fn flushed_print(s string) {
@@ -288,9 +288,10 @@ fn (mut context Context) show_diff_summary() {
 	mut first_cmd_percentage := f64(100.0)
 	mut first_marker := ''
 	if context.results.len == 1 {
-		context.show_summary_title('${term.colorize(term.yellow, context.results[0].cmd):-57s}\n${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs')
+		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${term.colorize(term.green,
+			context.results[0].cmd):-57s}')
 	} else {
-		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (`>` is the first cmd)')
+		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`).')
 		for i, r in context.results {
 			first_marker = ' '
 			cpercent := (r.atiming.average / base) * 100 - 100
@@ -298,12 +299,20 @@ fn (mut context Context) show_diff_summary() {
 				first_marker = bold('>')
 				first_cmd_percentage = cpercent
 			}
-			mut comparison := '==='
+			mut comparison := ''
 			if r.atiming.average != base {
-				comparison = '${cpercent:+7.1f}%'
+				comparison = '${cpercent:+6.1f}%'
 			}
-			println(' ${first_marker}${(i + 1):3} ${comparison:9} `${r.cmd}`')
-			println('                ${r.atiming}')
+			mut tcomparison := 'base        '
+			if r.atiming.average != base {
+				if r.atiming.average < base {
+					tcomparison = '${base / r.atiming.average:4.2f}x faster'
+				} else {
+					tcomparison = '${r.atiming.average / base:4.2f}x slower'
+				}
+			}
+			println(' ${first_marker}${(i + 1):3} ${comparison:7} ${tcomparison:5} ${r.atiming} `${term.colorize(term.green,
+				r.cmd)}`')
 		}
 	}
 	$if debugcontext ? {
@@ -387,6 +396,9 @@ fn (mut context Context) parse_options() ! {
 }
 
 fn main() {
+	// Make sure that we can measure various V executables
+	// without influencing them, by presetting VEXE
+	os.setenv('VEXE', '', true)
 	mut context := Context{}
 	context.parse_options()!
 	context.run()
