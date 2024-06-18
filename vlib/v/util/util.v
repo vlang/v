@@ -115,18 +115,19 @@ pub fn resolve_env_value(str string, check_for_presence bool) !string {
 	return rep
 }
 
+const d_sig = "\$d('"
+
 // resolve_d_value replaces all occurrences of `$d('ident','value')`
 // in `str` with either the default `'value'` param or a compile value passed via `-d ident=value`.
 pub fn resolve_d_value(compile_values map[string]string, str string) !string {
-	d_sig := "\$d('"
-	at := str.index(d_sig) or {
-		return error('no "${d_sig}' + '...\')" could be found in "${str}".')
+	at := str.index(util.d_sig) or {
+		return error('no "${util.d_sig}' + '...\')" could be found in "${str}".')
 	}
-	mut all_parsed := d_sig
+	mut all_parsed := util.d_sig
 	mut ch := u8(`.`)
 	mut d_ident := ''
 	mut i := 0
-	for i = at + d_sig.len; i < str.len && ch != `'`; i++ {
+	for i = at + util.d_sig.len; i < str.len && ch != `'`; i++ {
 		ch = u8(str[i])
 		all_parsed += ch.ascii_str()
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
@@ -173,7 +174,7 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	d_value := compile_values[d_ident] or { d_default_value }
 	// if more `$d()` calls remains, resolve those as well:
 	rep := str.replace_once(all_parsed + ')', d_value)
-	if rep.contains(d_sig) {
+	if rep.contains(util.d_sig) {
 		return resolve_d_value(compile_values, rep)
 	}
 	return rep
