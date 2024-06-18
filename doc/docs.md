@@ -6157,7 +6157,7 @@ fn main() {
 	val_f64 := $d('id_f64', 42.0) // can be changed by providing `-d id_f64=84.0`
 	val_i64 := $d('id_i64', 56) // can be changed by providing `-d id_i64=123`
 	val_bool := $d('id_bool', false) // can be changed by providing `-d id_bool=true`
-	val_char := $d('id_char', `f`) // can be changed by providing `-d id_char=v``
+	val_char := $d('id_char', `f`) // can be changed by providing `-d id_char=v`
 	println(val_str)
 	println(val_f64)
 	println(val_i64)
