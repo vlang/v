@@ -387,6 +387,9 @@ fn (mut context Context) parse_options() ! {
 }
 
 fn main() {
+	// Make sure that we can measure various V executables
+	// without influencing them, by presetting VEXE
+	os.setenv('VEXE', '', true)
 	mut context := Context{}
 	context.parse_options()!
 	context.run()
