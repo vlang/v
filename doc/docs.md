@@ -6128,10 +6128,22 @@ module main
 const my_i64 = $d('my_i64', 1024)
 
 fn main() {
-	compile_time_value := $d('my_define', 'V rocks')
+	compile_time_value := $d('my_string', 'V')
 	println(compile_time_value)
 	println(my_i64)
 }
+```
+
+Running the above with `v run .` will output:
+```
+V
+1024
+```
+
+Running the above with `v -d my_i64=4096 -d my_string="V rocks" run .` will output:
+```
+V rocks
+4096
 ```
 
 V can bring in values at compile time from `-d ident=value` flag defines.
