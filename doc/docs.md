@@ -6130,7 +6130,7 @@ const my_i64 = $d('my_i64', 1024)
 fn main() {
 	compile_time_value := $d('my_define', 'V rocks')
 	println(compile_time_value)
-  println(my_i64)
+	println(my_i64)
 }
 ```
 
