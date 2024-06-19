@@ -167,7 +167,7 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 		}
 	}
 	if d_default_value == '' {
-		return error('second argument of `\$d` must be a string identifier')
+		return error('second argument of `\$d` must be a pure literal')
 	}
 	// at this point we have the identifier and the default value.
 	// now we need to resolve which one to use from `compile_values`.
