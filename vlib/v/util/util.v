@@ -180,8 +180,8 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	return rep
 }
 
-@[inline]
 // is_escape_sequence returns `true` if `c` is considered a valid escape sequence denoter.
+@[inline]
 pub fn is_escape_sequence(c u8) bool {
 	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
 		`}`, `'`, `"`, `U`]
