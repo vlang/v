@@ -3900,7 +3900,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							c.error('undefined variable `${node.name}`', node.pos)
 						} else {
 							c.add_error_detail('use `fn [${node.name}] () {` instead of `fn () {`')
-							c.error('`${node.name}` must be explictly listed as inherited variable to be used inside a closure',
+							c.error('`${node.name}` must be explicitly listed as inherited variable to be used inside a closure',
 								node.pos)
 						}
 						return ast.void_type
