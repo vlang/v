@@ -1,0 +1,11 @@
+#flag -I $d('my_flag','flag_value')/xyz
+#include "@VMODROOT/$d('my_include','vlib/v')/tests/project_with_c_code/mod1/c/header.h"
+
+const my_f64 = $d('my_f64', 42.0)
+
+fn main() {
+	println(my_f64)
+	cv_bool := $d('my_bool', false)
+	println(cv_bool)
+	println('done')
+}

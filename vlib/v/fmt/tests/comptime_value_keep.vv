@@ -1,0 +1,7 @@
+fn main() {
+	val_str := $d('key_str', 'value')
+	val_f64 := $d('key_f64', 42.0)
+	val_int := $d('key_int', 56)
+	val_bool := $d('key_bool', false)
+	val_char := $d('key_char', `f`)
+}

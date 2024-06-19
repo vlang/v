@@ -1,3 +1,8 @@
+## V 0.4.7 (NEXT)
+
+#### Improvements in the language
+- comptime: add support for `-d ident=value` and retrieval in code via `$d('ident', <default value>)`.
+
 ## V 0.4.6
 *20 May 2024*
 

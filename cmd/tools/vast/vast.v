@@ -1019,6 +1019,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('result_type', t.type_node(node.result_type))
 	obj.add('scope', t.scope(node.scope))
 	obj.add_terse('env_value', t.string_node(node.env_value))
+	obj.add_terse('compile_value', t.string_node(node.compile_value))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('args', t.array_node_call_arg(node.args))
 	obj.add_terse('or_block', t.or_expr(node.or_block))

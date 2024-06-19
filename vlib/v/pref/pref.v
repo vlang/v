@@ -193,6 +193,7 @@ pub mut:
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
+	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
@@ -1170,39 +1171,37 @@ pub fn cc_from_string(s string) CompilerType {
 	}
 }
 
+fn (mut prefs Preferences) parse_compile_value(define string) {
+	if !define.contains('=') {
+		eprintln_exit('V error: Define argument value missing for ${define}.')
+		return
+	}
+	name := define.all_before('=')
+	value := define.all_after_first('=')
+	prefs.compile_values[name] = value
+}
+
 fn (mut prefs Preferences) parse_define(define string) {
-	define_parts := define.split('=')
-	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d ${define}'
 	}
-	if define_parts.len == 1 {
+	if !define.contains('=') {
+		prefs.compile_values[define] = 'true'
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
 		return
 	}
-	if define_parts.len == 2 {
-		prefs.compile_defines_all << define_parts[0]
-		match define_parts[1] {
-			'0' {}
-			'1' {
-				prefs.compile_defines << define_parts[0]
-			}
-			else {
-				eprintln_exit(
-					'V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-					' Expected `0` or `1`.')
-			}
+	dname := define.all_before('=')
+	dvalue := define.all_after_first('=')
+	prefs.compile_values[dname] = dvalue
+	prefs.compile_defines_all << dname
+	match dvalue {
+		'0' {}
+		'1' {
+			prefs.compile_defines << dname
 		}
-		return
+		else {}
 	}
-	eprintln_exit('V error: Unknown define argument: ${define}. Expected at most one `=`.')
-}
-
-fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
-	// if define_parts[0] == 'no_bounds_checking' {
-	// 	eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
-	// }
 }
 
 pub fn supported_test_runners_list() string {

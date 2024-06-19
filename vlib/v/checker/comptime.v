@@ -29,6 +29,26 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
+	if node.is_compile_value {
+		arg := node.args[0] or {
+			c.error('\$d() takes two arguments, a string and a primitive literal', node.pos)
+			return ast.void_type
+		}
+		if !arg.expr.is_pure_literal() {
+			c.error('-d values can only be pure literals', node.pos)
+			return ast.void_type
+		}
+		typ := arg.expr.get_pure_type()
+		arg_as_string := arg.str().trim('`"\'')
+		value := c.pref.compile_values[node.args_var] or { arg_as_string }
+		validate_type_string_is_pure_literal(typ, value) or {
+			c.error(err.msg(), node.pos)
+			return ast.void_type
+		}
+		node.compile_value = value
+		node.result_type = typ
+		return typ
+	}
 	if node.is_embed {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
@@ -569,6 +589,42 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 	return none
 }
 
+fn validate_type_string_is_pure_literal(typ ast.Type, str string) ! {
+	if typ == ast.bool_type {
+		if !(str == 'true' || str == 'false') {
+			return error('bool literal `true` or `false` expected, found "${str}"')
+		}
+	} else if typ == ast.char_type {
+		if str.starts_with('\\') {
+			if str.len <= 1 {
+				return error('empty escape sequence found')
+			}
+			if !is_escape_sequence(str[1]) {
+				return error('char literal escape sequence expected, found "${str}"')
+			}
+		} else if str.len != 1 {
+			return error('char literal expected, found "${str}"')
+		}
+	} else if typ == ast.f64_type {
+		if str.count('.') != 1 {
+			return error('f64 literal expected, found "${str}"')
+		}
+	} else if typ == ast.string_type {
+	} else if typ == ast.i64_type {
+		if !str.is_int() {
+			return error('i64 literal expected, found "${str}"')
+		}
+	} else {
+		return error('expected pure literal, found "${str}"')
+	}
+}
+
+@[inline]
+fn is_escape_sequence(c u8) bool {
+	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
+		`}`, `'`, `"`, `U`]
+}
+
 fn (mut c Checker) verify_vweb_params_for_method(node ast.Fn) (bool, int, int) {
 	margs := node.params.len - 1 // first arg is the receiver/this
 	// if node.attrs.len == 0 || (node.attrs.len == 1 && node.attrs[0].name == 'post') {
@@ -969,6 +1025,16 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					return .skip
 				}
 				m.run() or { return .skip }
+				return .eval
+			}
+			if cond.is_compile_value {
+				t := c.expr(mut cond)
+				if t != ast.bool_type {
+					c.error('inside \$if, only \$d() expressions that return bool are allowed',
+						cond.pos)
+					return .skip
+				}
+				return .unknown // always fully generate the code for that branch
 			}
 			return .eval
 		}

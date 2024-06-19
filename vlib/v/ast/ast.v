@@ -1913,26 +1913,28 @@ pub mut:
 @[minify]
 pub struct ComptimeCall {
 pub:
-	pos          token.Pos
-	has_parens   bool // if $() is used, for vfmt
-	method_name  string
-	method_pos   token.Pos
-	scope        &Scope = unsafe { nil }
-	is_vweb      bool
-	is_embed     bool
-	is_env       bool
-	env_pos      token.Pos
-	is_pkgconfig bool
+	pos              token.Pos
+	has_parens       bool // if $() is used, for vfmt
+	method_name      string
+	method_pos       token.Pos
+	scope            &Scope = unsafe { nil }
+	is_vweb          bool
+	is_embed         bool // $embed_file(...)
+	is_env           bool // $env(...) // TODO: deprecate after $d() is stable
+	is_compile_value bool // $d(...)
+	env_pos          token.Pos
+	is_pkgconfig     bool
 pub mut:
-	vweb_tmpl   File
-	left        Expr
-	left_type   Type
-	result_type Type
-	env_value   string
-	args_var    string
-	args        []CallArg
-	embed_file  EmbeddedFile
-	or_block    OrExpr
+	vweb_tmpl     File
+	left          Expr
+	left_type     Type
+	result_type   Type
+	env_value     string
+	compile_value string
+	args_var      string
+	args          []CallArg
+	embed_file    EmbeddedFile
+	or_block      OrExpr
 }
 
 pub struct None {
