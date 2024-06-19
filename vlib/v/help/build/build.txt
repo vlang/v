@@ -52,8 +52,11 @@ NB: the build flags are shared with the run command too:
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
-    If value is not provided, it is assumed to be set to `true`.
-    `value` should be `1` or `0` to indicate `true` and `false` respectively otherwise.
+    If `value` is not provided, it is assumed to be set to `true`.
+    `value` can be any pure literal like `32` (i64),`34.98` (f64), `false` (bool),
+    `v` (char) or `"V rocks"` (string). In V code you can use `value := $d('<flag>', <default value>)`
+    to retrieve the value assigned to `<flag>`.
+    If no flag identifier (or value) is assigned, `$d()` will return the passed `<default value>`.
 
   -g
     Compile the executable in debug mode, allowing code to be debugged more easily.
@@ -92,7 +95,7 @@ NB: the build flags are shared with the run command too:
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
     to fix them first.
-	  
+
   -no-bounds-checking
     Programs compiled with this option, will do no runtime checking of array access operations.
     Note that the performance impact of the bounds checking is usually below 3%, so in most
@@ -107,7 +110,7 @@ NB: the build flags are shared with the run command too:
       b) how much *nanoseconds in total* it took
       c) an average for each function (i.e. (b) / (a) )
       d) the function name
-         
+
     NB: you can also combine this command with `run` command.
         For example - `v -prof prof.txt run main.v`
 
@@ -176,7 +179,7 @@ NB: the build flags are shared with the run command too:
     Tell V to be quieter, and to not show many otherwise helpful messages, that only get in your
     way once you have read them a few dozen times. One example is the notice message, usually
     shown for `v -prod run file.v`, that says that -prod should not be used with run .
-    Note, this option *does not affect* errors/warnings/notices, just messages that V prints in 
+    Note, this option *does not affect* errors/warnings/notices, just messages that V prints in
     order to be more user friendly, in common situations, that are error prone for new users, and
     that just needlessly take vertical space, once you are well aware of them.
 
