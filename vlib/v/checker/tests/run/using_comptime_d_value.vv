@@ -8,4 +8,6 @@ fn main() {
 	cv_bool := $d('my_bool', false)
 	println(cv_bool)
 	println('done')
+	fsa := [$d('fixed_size', 4)]int{}
+	println(fsa)
 }

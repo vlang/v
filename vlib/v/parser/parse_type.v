@@ -25,6 +25,19 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 					fixed_size = size_expr.val.int()
 					size_unresolved = false
 				}
+				ast.ComptimeCall {
+					if size_expr.is_compile_value {
+						size_expr.resolve_compile_value(p.pref.compile_values) or {
+							p.error_with_pos(err.msg(), size_expr.pos)
+						}
+						if size_expr.result_type != ast.i64_type {
+							p.error_with_pos('value from \$d() can only be positive integers when used as fixed size',
+								size_expr.pos)
+						}
+						fixed_size = size_expr.compile_value.int()
+						size_unresolved = false
+					}
+				}
 				ast.Ident {
 					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
 						if mut const_field.expr is ast.IntegerLiteral {

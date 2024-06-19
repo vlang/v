@@ -30,24 +30,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return ast.string_type
 	}
 	if node.is_compile_value {
-		arg := node.args[0] or {
-			c.error('\$d() takes two arguments, a string and a primitive literal', node.pos)
-			return ast.void_type
-		}
-		if !arg.expr.is_pure_literal() {
-			c.error('-d values can only be pure literals', node.pos)
-			return ast.void_type
-		}
-		typ := arg.expr.get_pure_type()
-		arg_as_string := arg.str().trim('`"\'')
-		value := c.pref.compile_values[node.args_var] or { arg_as_string }
-		ast.validate_type_string_is_pure_literal(typ, value) or {
+		node.resolve_compile_value(c.pref.compile_values) or {
 			c.error(err.msg(), node.pos)
 			return ast.void_type
 		}
-		node.compile_value = value
-		node.result_type = typ
-		return typ
+		return node.result_type
 	}
 	if node.is_embed {
 		if node.args.len == 1 {
