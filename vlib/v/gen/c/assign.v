@@ -330,6 +330,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					styp = g.typ(return_type)
 				} else {
 					return_type = val.return_type
+					if g.assign_ct_type != 0 {
+						g.assign_ct_type = return_type
+					}
 				}
 			}
 			// TODO: no buffer fiddling

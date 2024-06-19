@@ -4606,8 +4606,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			info := typ_sym.info as ast.Map
 			c.expected_type = info.key_type
 			index_type := c.expr(mut node.index)
-			if !c.check_types(index_type, info.key_type) {
-				err := c.expected_msg(index_type, info.key_type)
+			if !c.check_types(index_type, c.unwrap_generic(info.key_type)) {
+				err := c.expected_msg(index_type, c.unwrap_generic(info.key_type))
 				c.error('invalid key: ${err}', node.pos)
 			}
 			value_sym := c.table.sym(info.value_type)
@@ -4920,7 +4920,8 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		return false
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
+	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod
+		&& c.mod != 'x.json2' {
 		c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
 			pos)
 		return false

@@ -307,6 +307,7 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 				} $else $if field.is_alias {
 				} $else $if field.is_map {
+					typ.$(field.name) = decode_map(typ.$(field.name), res[field.name]!.as_map())!
 				} $else {
 					return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 				}
@@ -331,6 +332,21 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
+}
+
+fn decode_map[K, V](_ map[K]V, res map[string]Any) !map[K]V {
+	mut ret := map[K]V{}
+
+	for k, _ in res {
+		$if V is $struct {
+			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+		} $else $if V is $map {
+			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+		} $else $if V is $sumtype {
+			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+		}
+	}
+	return ret
 }
 
 // decode - decodes provided JSON
