@@ -1297,7 +1297,7 @@ pub fn (mut s Scanner) ident_string() string {
 				u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !is_escape_sequence(c) && !c.is_digit() && c != `\n` {
+			if !util.is_escape_sequence(c) && !c.is_digit() && c != `\n` {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1517,12 +1517,6 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-@[inline]
-fn is_escape_sequence(c u8) bool {
-	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
-		`}`, `'`, `"`, `U`]
-}
-
 /// ident_char is called when a backtick "single-char" is parsed from the code
 /// it is needed because some runes (chars) are written with escape sequences
 /// the string it returns should be a standardized, simplified version of the character
@@ -1643,7 +1637,7 @@ pub fn (mut s Scanner) ident_char() string {
 		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
 	} else if c.len > len {
 		ch := c[c.len - 1]
-		if !is_escape_sequence(ch) && !ch.is_digit() {
+		if !util.is_escape_sequence(ch) && !ch.is_digit() {
 			s.error('`${ch.ascii_str()}` unknown escape sequence')
 		}
 	}

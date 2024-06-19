@@ -5,6 +5,7 @@ module ast
 
 import v.token
 import v.errors
+import v.util
 import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
@@ -2528,5 +2529,37 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 		else {
 			false
 		}
+	}
+}
+
+// validate_type_string_is_pure_literal returns `Error` if `str` can not be converted
+// to pure literal `typ` (`i64`, `f64`, `bool`, `char` or `string`).
+pub fn validate_type_string_is_pure_literal(typ Type, str string) ! {
+	if typ == bool_type {
+		if !(str == 'true' || str == 'false') {
+			return error('bool literal `true` or `false` expected, found "${str}"')
+		}
+	} else if typ == char_type {
+		if str.starts_with('\\') {
+			if str.len <= 1 {
+				return error('empty escape sequence found')
+			}
+			if !util.is_escape_sequence(str[1]) {
+				return error('char literal escape sequence expected, found "${str}"')
+			}
+		} else if str.len != 1 {
+			return error('char literal expected, found "${str}"')
+		}
+	} else if typ == f64_type {
+		if str.count('.') != 1 {
+			return error('f64 literal expected, found "${str}"')
+		}
+	} else if typ == string_type {
+	} else if typ == i64_type {
+		if !str.is_int() {
+			return error('i64 literal expected, found "${str}"')
+		}
+	} else {
+		return error('expected pure literal, found "${str}"')
 	}
 }
