@@ -10,4 +10,6 @@ fn test_default_compile_values() {
 	assert my_string == 'three'
 	assert my_bool == false
 	assert my_char == `f`
+	my_fixed_size_array := [$d('my_size', 4)]int{}
+	assert my_fixed_size_array.len == 4
 }

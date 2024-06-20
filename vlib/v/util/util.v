@@ -180,6 +180,13 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	return rep
 }
 
+// is_escape_sequence returns `true` if `c` is considered a valid escape sequence denoter.
+@[inline]
+pub fn is_escape_sequence(c u8) bool {
+	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
+		`}`, `'`, `"`, `U`]
+}
+
 // launch_tool - starts a V tool in a separate process, passing it the `args`.
 // All V tools are located in the cmd/tools folder, in files or folders prefixed by
 // the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.

@@ -308,6 +308,20 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 			ast.IntegerLiteral {
 				fixed_size = size_expr.val.int()
 			}
+			ast.ComptimeCall {
+				if size_expr.is_compile_value {
+					size_expr.resolve_compile_value(c.pref.compile_values) or {
+						c.error(err.msg(), size_expr.pos)
+					}
+					if size_expr.result_type != ast.i64_type {
+						c.error('value from \$d() can only be positive integers when used as fixed size',
+							size_expr.pos)
+					}
+					fixed_size = size_expr.compile_value.int()
+				} else {
+					c.error('only \$d() can be used for fixed size arrays', size_expr.pos)
+				}
+			}
 			ast.CastExpr {
 				if !size_expr.typ.is_pure_int() {
 					c.error('only integer types are allowed', size_expr.pos)

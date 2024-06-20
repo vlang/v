@@ -5,6 +5,7 @@ module ast
 
 import v.token
 import v.errors
+import v.util
 import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
@@ -1924,6 +1925,8 @@ pub:
 	is_compile_value bool // $d(...)
 	env_pos          token.Pos
 	is_pkgconfig     bool
+mut:
+	is_d_resolved bool
 pub mut:
 	vweb_tmpl     File
 	left          Expr
@@ -1935,6 +1938,31 @@ pub mut:
 	args          []CallArg
 	embed_file    EmbeddedFile
 	or_block      OrExpr
+}
+
+// resolve_compile_value resolves the value and return type of `$d()` calls.
+// The result is stored in fields `compile_value` and `result_type`.
+// The argument `compile_values` is expected to be the `Preferences.compile_values` field.
+pub fn (mut cc ComptimeCall) resolve_compile_value(compile_values map[string]string) ! {
+	if cc.is_d_resolved {
+		return
+	}
+	if !cc.is_compile_value {
+		return error('ComptimeCall is not \$d()')
+	}
+	arg := cc.args[0] or {
+		return error('\$d() takes two arguments, a string and a primitive literal')
+	}
+	if !arg.expr.is_pure_literal() {
+		return error('\$d() values can only be pure literals')
+	}
+	typ := arg.expr.get_pure_type()
+	arg_as_string := arg.str().trim('`"\'')
+	value := compile_values[cc.args_var] or { arg_as_string }
+	validate_type_string_is_pure_literal(typ, value) or { return error(err.msg()) }
+	cc.compile_value = value
+	cc.result_type = typ
+	cc.is_d_resolved = true
 }
 
 pub struct None {
@@ -2528,5 +2556,37 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 		else {
 			false
 		}
+	}
+}
+
+// validate_type_string_is_pure_literal returns `Error` if `str` can not be converted
+// to pure literal `typ` (`i64`, `f64`, `bool`, `char` or `string`).
+pub fn validate_type_string_is_pure_literal(typ Type, str string) ! {
+	if typ == bool_type {
+		if !(str == 'true' || str == 'false') {
+			return error('bool literal `true` or `false` expected, found "${str}"')
+		}
+	} else if typ == char_type {
+		if str.starts_with('\\') {
+			if str.len <= 1 {
+				return error('empty escape sequence found')
+			}
+			if !util.is_escape_sequence(str[1]) {
+				return error('char literal escape sequence expected, found "${str}"')
+			}
+		} else if str.len != 1 {
+			return error('char literal expected, found "${str}"')
+		}
+	} else if typ == f64_type {
+		if str.count('.') != 1 {
+			return error('f64 literal expected, found "${str}"')
+		}
+	} else if typ == string_type {
+	} else if typ == i64_type {
+		if !str.is_int() {
+			return error('i64 literal expected, found "${str}"')
+		}
+	} else {
+		return error('expected pure literal, found "${str}"')
 	}
 }
