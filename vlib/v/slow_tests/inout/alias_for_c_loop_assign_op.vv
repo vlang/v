@@ -1,0 +1,10 @@
+type Float = f32
+
+fn main() {
+	min_value := Float(1)
+	max_value := Float(10)
+	step := Float(1)
+	for n := min_value; n <= max_value; n += step {
+		println('${n}')
+	}
+}

@@ -520,7 +520,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.expr(left)
 					g.write(' ${extracted_op} ')
 					g.expr(val)
-					g.write(';')
+					if !g.inside_for_c_stmt {
+						g.write(';')
+					}
 					return
 				} else {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
