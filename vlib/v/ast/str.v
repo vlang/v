@@ -207,7 +207,13 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 			f.write_string('}')
 		} else {
-			mut s := t.type_to_str(param.typ.clear_flag(.shared_f))
+			param_typ := if param.is_mut && !(param.typ.is_int_valptr()
+				|| param.typ.has_flag(.option)) {
+				param.typ.deref()
+			} else {
+				param.typ
+			}
+			mut s := t.type_to_str(param_typ.clear_flag(.shared_f))
 			if param.is_mut {
 				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v) {
