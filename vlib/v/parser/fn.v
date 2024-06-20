@@ -943,7 +943,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
 					return []ast.Param{}, false, false
 				}
-				if param_type.is_int_valptr() || param_type.has_flag(.option) {
+				if param_type.is_int_valptr() || param_type.is_bool()
+					|| param_type.has_flag(.option) || p.pref.translated || p.is_translated {
 					param_type = param_type.set_nr_muls(1)
 				} else {
 					param_type = param_type.ref()
@@ -1063,7 +1064,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 						pos)
 					return []ast.Param{}, false, false
 				}
-				if typ.is_int_valptr() || typ.has_flag(.option) {
+				if typ.is_int_valptr() || typ.is_bool() || typ.has_flag(.option)
+					|| p.pref.translated || p.is_translated {
 					typ = typ.set_nr_muls(1)
 				} else {
 					typ = typ.ref()
