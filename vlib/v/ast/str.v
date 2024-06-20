@@ -207,19 +207,14 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 			f.write_string('}')
 		} else {
-			param_typ := if param.is_mut && !(param.typ.is_int_valptr()
-				|| param.typ.has_flag(.option)) {
-				param.typ.deref()
-			} else {
-				param.typ
+			mut s := t.type_to_str(param.typ.clear_flag(.shared_f))
+			if param.is_mut {
+				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
+					|| node.language != .v || !(param.typ.is_int_valptr()
+					|| param.typ.has_flag(.option))) {
+					s = s[1..]
+				}
 			}
-			mut s := t.type_to_str(param_typ.clear_flag(.shared_f))
-			// if param.is_mut {
-			// 	if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
-			// 		|| node.language != .v) {
-			// 		s = s[1..]
-			// 	}
-			// }
 			s = util.no_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
 			if should_add_type {
