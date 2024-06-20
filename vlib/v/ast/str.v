@@ -211,7 +211,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			if param.is_mut {
 				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v || !(param.typ.is_int_valptr()
-					|| param.typ.has_flag(.option))) {
+					|| param.typ.is_bool() || param.typ.has_flag(.option))) {
 					s = s[1..]
 				}
 			}
