@@ -1,7 +1,7 @@
 struct Thing {
 mut:
-	a int = 2
-	b int = 4
+	a  int = 2
+	b  int = 4
 	av int
 }
 
