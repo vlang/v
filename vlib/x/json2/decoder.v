@@ -134,6 +134,7 @@ pub fn fast_raw_decode(src string) !Any {
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
 	res := raw_decode(src)!.as_map()
+	dump(res)
 	return decode_struct[T](T{}, res)
 }
 
@@ -313,21 +314,6 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 				}
 			}
 		}
-	} $else $if T is $map {
-		for k, v in res {
-			// // TODO: make this work to decode types like `map[string]StructType[bool]`
-			// $if typeof(typ[k]).idx is string {
-			// 	typ[k] = v.str()
-			// } $else $if typeof(typ[k]).idx is $struct {
-
-			// }
-			match v {
-				string {
-					typ[k] = v.str()
-				}
-				else {}
-			}
-		}
 	} $else {
 		return error("The type `${T.name}` can't be decoded.")
 	}
@@ -337,13 +323,37 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 fn decode_map[K, V](_ map[K]V, res map[string]Any) !map[K]V {
 	mut ret := map[K]V{}
 
-	for k, _ in res {
+	for k, v in res {
 		$if V is $struct {
 			ret[k] = decode_struct(V{}, res[k]!.as_map())!
 		} $else $if V is $map {
-			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+			ret[k] = decode_map(V{}, res[k]!.as_map())!
 		} $else $if V is $sumtype {
 			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+		} $else $if V is $string {
+			ret[k] = v.str()
+		} $else $if V is int {
+			ret[k] = v.int()
+		} $else $if V is i64 {
+			ret[k] = v.i64()
+		} $else $if V is u64 {
+			ret[k] = v.u64()
+		} $else $if V is i32 {
+			ret[k] = v.i32()
+		} $else $if V is u32 {
+			ret[k] = v.u32()
+		} $else $if V is i16 {
+			ret[k] = v.i16()
+		} $else $if V is u16 {
+			ret[k] = v.u16()
+		} $else $if V is i8 {
+			ret[k] = v.i8()
+		} $else $if V is u8 {
+			ret[k] = v.u8()
+		} $else $if V is bool {
+			ret[k] = v.bool()
+		} $else {
+			dump(v)
 		}
 	}
 	return ret
