@@ -314,6 +314,21 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 				}
 			}
 		}
+	} $else $if T is $map {
+		for k, v in res {
+			// // TODO: make this work to decode types like `map[string]StructType[bool]`
+			// $if typeof(typ[k]).idx is string {
+			// 	typ[k] = v.str()
+			// } $else $if typeof(typ[k]).idx is $struct {
+
+			// }
+			match v {
+				string {
+					typ[k] = v.str()
+				}
+				else {}
+			}
+		}
 	} $else {
 		return error("The type `${T.name}` can't be decoded.")
 	}
