@@ -220,16 +220,10 @@ pub fn sum[T](array []T) !T {
 	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')
 	} else {
-		mut head := array[0]
-
+		mut head := 0
 		for i, e in array {
-			if i == 0 {
-				continue
-			} else {
-				head += e
-			}
+			head += e
 		}
-
 		return head
 	}
 }
@@ -243,7 +237,7 @@ pub fn reduce[T](array []T, reduce_op fn (acc T, elem T) T) !T {
 	if array.len == 0 {
 		return error('Cannot reduce array of nothing.')
 	} else {
-		mut value := array[0]
+		mut value := 0
 
 		for i, e in array {
 			if i == 0 {
