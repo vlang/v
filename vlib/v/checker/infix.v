@@ -203,6 +203,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface_] {
 						elem_type := right_final_sym.array_info().elem_type
+						if node.left.is_auto_deref_var() {
+							left_type = left_type.deref()
+						}
 						c.check_expected(left_type, elem_type) or {
 							c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
 								left_right_pos)
@@ -214,6 +217,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							}
 						} else {
 							elem_type := right_final_sym.array_info().elem_type
+							if node.left.is_auto_deref_var() {
+								left_type = left_type.deref()
+							}
 							c.check_expected(left_type, elem_type) or {
 								c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
 									left_right_pos)

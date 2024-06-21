@@ -943,11 +943,11 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
 					return []ast.Param{}, false, false
 				}
-				// if arg_type.is_ptr() {
-				// p.error('cannot mut')
-				// }
-				// arg_type = arg_type.ref()
-				param_type = param_type.set_nr_muls(1)
+				if param_type.is_ptr() && p.table.sym(param_type).kind == .struct_ {
+					param_type = param_type.ref()
+				} else {
+					param_type = param_type.set_nr_muls(1)
+				}
 				if is_shared {
 					param_type = param_type.set_flag(.shared_f)
 				}
@@ -1063,7 +1063,11 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 						pos)
 					return []ast.Param{}, false, false
 				}
-				typ = typ.set_nr_muls(1)
+				if typ.is_ptr() && p.table.sym(typ).kind == .struct_ {
+					typ = typ.ref()
+				} else {
+					typ = typ.set_nr_muls(1)
+				}
 				if is_shared {
 					typ = typ.set_flag(.shared_f)
 				}
