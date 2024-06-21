@@ -4,6 +4,7 @@
 module c
 
 import os
+import term
 import strings
 import hash.fnv1a
 import v.ast
@@ -7873,6 +7874,38 @@ fn (mut g Gen) trace[T](fbase string, x &T) {
 	if g.file.path_base == fbase {
 		println('> g.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
+}
+
+@[params]
+pub struct TraceLastLinesParams {
+pub:
+	nlines int = 2
+	msg    string
+}
+
+fn (mut g Gen) trace_last_lines(fbase string, params TraceLastLinesParams) {
+	if fbase != '' && g.file.path_base != fbase {
+		return
+	}
+	if params.nlines < 1 || params.nlines > 1000 {
+		return
+	}
+	if g.out.len == 0 {
+		return
+	}
+	mut lines := 1
+	mut i := g.out.len - 1
+	for ; i >= 0; i-- {
+		if g.out[i] == `\n` {
+			if lines == params.nlines {
+				break
+			}
+			lines++
+		}
+	}
+	println('> g.trace_last_lines g.out last ${params.nlines} lines, pos: ${i + 1} ... g.out.len: ${g.out.len} ${params.msg}')
+	println(term.colorize(term.green, g.out.after(i + 1)))
+	println('`'.repeat(80))
 }
 
 pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
