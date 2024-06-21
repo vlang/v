@@ -210,12 +210,8 @@ pub fn window[T](array []T, attr WindowAttribute) [][]T {
 	return windows
 }
 
-// sum up array, return nothing when array has no elements
-//
-// NOTICE: currently V has bug that cannot make sum function takes custom struct with + operator overloaded
-// which means you can only pass array of numbers for now.
-// TODO: Fix generic operator overloading detection issue.
-// Example: arrays.sum[int]([1, 2, 3, 4, 5])! // => 15
+// sum up array, return an error, when the array has no elements
+// Example: arrays.sum([1, 2, 3, 4, 5])! // => 15
 pub fn sum[T](array []T) !T {
 	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')

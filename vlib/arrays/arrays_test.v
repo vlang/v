@@ -156,14 +156,43 @@ fn test_window() {
 	assert window[int]([]int{}, size: 2) == [][]int{}
 }
 
-fn test_sum() {
-	x := [1, 2, 3, 4, 5]
+/////////////////////////////
+type MyAlias = i64
 
-	assert sum[int](x) or { 0 } == 15
-	assert sum[f64]([1.0, 2.5, 3.5, 4.0]) or { 0 } == 11.0
-	assert sum[int]([]int{}) or { 0 } == 0
+fn (a MyAlias) + (b MyAlias) MyAlias {
+	return MyAlias(i64(a) * 10 + i64(b) * 10)
 }
 
+struct MyStruct {
+	x int = 5
+}
+
+fn (a MyStruct) + (b MyStruct) MyStruct {
+	return MyStruct{
+		x: a.x + b.x
+	}
+}
+
+fn test_sum() {
+	assert sum([1, 2, 3, 4, 5]) or { 0 } == 15
+	assert sum([1.0, 2.5, 3.5, 4.0]) or { 0.0 } == 11.0
+	assert sum([]int{}) or { 0 } == 0
+	// test summing of a struct, with an overloaded + operator:
+	s := [MyStruct{
+		x: 30
+	}, MyStruct{
+		x: 20
+	}, MyStruct{
+		x: 10
+	}]
+	assert sum(s)! == MyStruct{
+		x: 60
+	}
+	// test summing of a number type alias with an overloaded + operator:
+	assert sum([MyAlias(5), MyAlias(7), MyAlias(3)])! == MyAlias((5 * 10 + 7 * 10) * 10 + 3 * 10)
+}
+
+/////////////////////////////
 fn test_reduce() {
 	x := [1, 2, 3, 4, 5]
 
