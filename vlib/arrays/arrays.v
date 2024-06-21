@@ -237,7 +237,7 @@ pub fn reduce[T](array []T, reduce_op fn (acc T, elem T) T) !T {
 	if array.len == 0 {
 		return error('Cannot reduce array of nothing.')
 	} else {
-		mut value := 0
+		mut value := array[0]
 
 		for i, e in array {
 			if i == 0 {
