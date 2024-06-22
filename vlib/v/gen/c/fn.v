@@ -1154,6 +1154,79 @@ fn (mut g Gen) get_gn_var_type(var ast.Ident) ast.Type {
 	return ast.void_type
 }
 
+// resolve_fn_return_type resolves the generic return type of fn
+fn (mut g Gen) resolve_fn_return_type(node ast.CallExpr) ast.Type {
+	if node.is_method {
+		if func := g.table.find_method(g.table.sym(node.left_type), node.name) {
+			if func.generic_names.len > 0 {
+				mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+				mut rec_len := 0
+				if node.left_type.has_flag(.generic) {
+					rec_sym := g.table.final_sym(g.unwrap_generic(node.left_type))
+					match rec_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							rec_len += rec_sym.info.generic_types.len
+						}
+						else {}
+					}
+				}
+
+				mut call_ := unsafe { node }
+				comptime_args := g.resolve_comptime_args(func, mut call_, concrete_types)
+				if concrete_types.len > 0 {
+					for k, v in comptime_args {
+						if (rec_len + k) < concrete_types.len {
+							if !node.concrete_types[k].has_flag(.generic) {
+								concrete_types[rec_len + k] = g.unwrap_generic(v)
+							}
+						}
+					}
+				}
+				if gen_type := g.table.resolve_generic_to_concrete(node.return_type_generic,
+					func.generic_names, concrete_types)
+				{
+					if !gen_type.has_flag(.generic) {
+						return if node.or_block.kind == .absent {
+							gen_type
+						} else {
+							gen_type.clear_option_and_result()
+						}
+					}
+				}
+			}
+		}
+	} else {
+		if func := g.table.find_fn(node.name) {
+			if func.generic_names.len > 0 {
+				mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+				mut call_ := unsafe { node }
+				comptime_args := g.resolve_comptime_args(func, mut call_, concrete_types)
+				if concrete_types.len > 0 {
+					for k, v in comptime_args {
+						if k < concrete_types.len {
+							if !node.concrete_types[k].has_flag(.generic) {
+								concrete_types[k] = g.unwrap_generic(v)
+							}
+						}
+					}
+				}
+				if gen_type := g.table.resolve_generic_to_concrete(node.return_type_generic,
+					func.generic_names, concrete_types)
+				{
+					if !gen_type.has_flag(.generic) {
+						return if node.or_block.kind == .absent {
+							gen_type
+						} else {
+							gen_type.clear_option_and_result()
+						}
+					}
+				}
+			}
+		}
+	}
+	return ast.void_type
+}
+
 fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	mut cparam_elem_info := array as ast.Array
 	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)

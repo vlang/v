@@ -55,10 +55,11 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 					node.obj.typ
 				}
 				.generic_var {
+					// generic var used on fn call assignment
 					if node.obj.smartcasts.len > 0 {
 						node.obj.smartcasts.last()
 					} else {
-						ct.type_map['${node.name}.${node.obj.pos.pos}.generic'] or { node.obj.typ }
+						ct.type_map['g.${node.name}.${node.obj.pos.pos}'] or { node.obj.typ }
 					}
 				}
 				.smartcast {
