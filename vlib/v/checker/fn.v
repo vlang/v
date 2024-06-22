@@ -2163,7 +2163,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	node.is_ctor_new = method.is_ctor_new
 	node.return_type = method.return_type
 	if method.return_type.has_flag(.generic) {
-		// node.return_type_generic = method.return_type
+		node.return_type_generic = method.return_type
 	}
 	if !method.is_pub && method.mod != c.mod {
 		// If a private method is called outside of the module
