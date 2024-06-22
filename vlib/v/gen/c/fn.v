@@ -1101,14 +1101,14 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
-			if left_node.obj.ct_type_var != .no_comptime {
+			if left_node.obj.ct_type_var !in [.no_comptime, .generic_var] {
 				rec_type = g.comptime.get_comptime_var_type(left_node)
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
-			} else if g.comptime.type_map.len > 0 {
-				rec_type = left_node.obj.typ
-				g.gen_expr_to_string(left_node, rec_type)
-				return true
+				// } else if g.comptime.type_map.len > 0 {
+				// 	rec_type = left_node.obj.typ
+				// 	g.gen_expr_to_string(left_node, rec_type)
+				// 	return true
 			} else if left_node.obj.smartcasts.len > 0 {
 				rec_type = g.unwrap_generic(left_node.obj.smartcasts.last())
 				cast_sym := g.table.sym(rec_type)
