@@ -342,7 +342,13 @@ pub fn (s string) replace_once(rep string, with string) string {
 	if idx == -1 {
 		return s.clone()
 	}
-	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
+	// return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
+	//
+	// Avoid an extra allocation here by using substr_unsafe
+	// string_plus copies from both strings via vmemcpy, so it's safe.
+	//
+	// return s.substr_unsafe(0, idx) + with + s.substr_unsafe(idx + rep.len, s.len)
+	return s.substr_unsafe(0, idx).plus_two(with, s.substr_unsafe(idx + rep.len, s.len))
 }
 
 const replace_stack_buffer_size = 10
@@ -796,6 +802,25 @@ fn (s string) + (a string) string {
 	unsafe {
 		vmemcpy(res.str, s.str, s.len)
 		vmemcpy(res.str + s.len, a.str, a.len)
+	}
+	unsafe {
+		res.str[new_len] = 0 // V strings are not null terminated, but just in case
+	}
+	return res
+}
+
+// for `s + s2 + s3`, an optimization (faster than string_plus(string_plus(s1, s2), s3))
+@[direct_array_access]
+fn (s string) plus_two(a string, b string) string {
+	new_len := a.len + b.len + s.len
+	mut res := string{
+		str: unsafe { malloc_noscan(new_len + 1) }
+		len: new_len
+	}
+	unsafe {
+		vmemcpy(res.str, s.str, s.len)
+		vmemcpy(res.str + s.len, a.str, a.len)
+		vmemcpy(res.str + s.len + a.len, b.str, b.len)
 	}
 	unsafe {
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
