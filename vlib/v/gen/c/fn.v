@@ -1310,15 +1310,18 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 					comptime_args[k] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 				} else if arg_sym.info is ast.Map && param_sym.info is ast.Map
 					&& param_typ.has_flag(.generic) {
-					key_is_generic := param_sym.info.key_type.has_flag(.generic)
-					if key_is_generic {
-						comptime_args[k] = g.unwrap_generic(arg_sym.info.key_type)
-					}
-					if param_sym.info.value_type.has_flag(.generic) {
+					comptime_sym := g.table.sym(comptime_args[k])
+					if comptime_sym.info is ast.Map {
+						key_is_generic := param_sym.info.key_type.has_flag(.generic)
 						if key_is_generic {
-							k++
+							comptime_args[k] = comptime_sym.info.key_type
 						}
-						comptime_args[k] = g.unwrap_generic(arg_sym.info.value_type)
+						if param_sym.info.value_type.has_flag(.generic) {
+							if key_is_generic {
+								k++
+							}
+							comptime_args[k] = comptime_sym.info.value_type
+						}
 					}
 				}
 				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {

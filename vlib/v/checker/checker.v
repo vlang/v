@@ -4619,8 +4619,9 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			info := typ_sym.info as ast.Map
 			c.expected_type = info.key_type
 			index_type := c.expr(mut node.index)
-			if !c.check_types(index_type, info.key_type) {
-				err := c.expected_msg(index_type, info.key_type)
+			key_type := c.unwrap_generic(info.key_type)
+			if !c.check_types(index_type, key_type) {
+				err := c.expected_msg(index_type, key_type)
 				c.error('invalid key: ${err}', node.pos)
 			}
 			value_sym := c.table.sym(info.value_type)
