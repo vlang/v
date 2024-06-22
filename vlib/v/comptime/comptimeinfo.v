@@ -53,6 +53,9 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 				// generic parameter from current function
 				node.obj.typ
 			}
+			.generic_var {
+				ct.type_map['${node.name}.${node.pos.pos}.generic'] or { node.obj.typ }
+			}
 			.smartcast {
 				ctyp := ct.type_map['${ct.comptime_for_variant_var}.typ'] or { node.obj.typ }
 				return if (node.obj as ast.Var).is_unwrapped {

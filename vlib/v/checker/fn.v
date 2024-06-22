@@ -1509,6 +1509,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	} else {
 		node.return_type = func.return_type
 	}
+	if func.return_type.has_flag(.generic) {
+		node.return_type_generic = func.return_type
+	}
 	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,

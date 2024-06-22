@@ -397,6 +397,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									&& right.expr is ast.ComptimeSelector {
 									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime.comptime_for_field_type
+								} else if mut right is ast.CallExpr {
+									if left.obj.ct_type_var == .no_comptime
+										&& right.return_type_generic.has_flag(.generic) {
+										left.obj.ct_type_var = .generic_var
+									}
 								}
 							}
 							ast.GlobalField {

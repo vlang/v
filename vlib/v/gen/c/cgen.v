@@ -4780,7 +4780,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs
-				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime] {
+				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime, .generic_var] {
 				comptime_type := g.comptime.get_comptime_var_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {

@@ -293,6 +293,43 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.assign_ct_type = var_type
 						}
 					}
+				} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
+					if val.return_type_generic != 0 && val.return_type_generic.has_flag(.generic) {
+						if val.is_method {
+						} else {
+							if func := g.table.find_fn(val.name) {
+								if func.generic_names.len > 0 {
+									mut concrete_types := val.concrete_types.map(g.unwrap_generic(it))
+									mut call_ := unsafe { val }
+									comptime_args := g.resolve_comptime_args(func, mut
+										call_, concrete_types)
+									if concrete_types.len > 0 {
+										for k, v in comptime_args {
+											if k < concrete_types.len {
+												if !val.concrete_types[k].has_flag(.generic) {
+													concrete_types[k] = g.unwrap_generic(v)
+												}
+											}
+										}
+									}
+									if gen_type := g.table.resolve_generic_to_concrete(val.return_type_generic,
+										func.generic_names, concrete_types)
+									{
+										if !gen_type.has_flag(.generic) {
+											var_type = if val.or_block.kind == .absent {
+												gen_type
+											} else {
+												gen_type.clear_option_and_result()
+											}
+											val_type = var_type
+											left.obj.typ = var_type
+											g.comptime.type_map['${left.name}.${left.pos.pos}.generic'] = var_type
+										}
+									}
+								}
+							}
+						}
+					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
 			}

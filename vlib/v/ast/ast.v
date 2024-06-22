@@ -774,6 +774,7 @@ pub mut:
 	receiver_type          Type // User / T, if receiver is generic, then cgen requires receiver_type to be T
 	receiver_concrete_type Type // if receiver_type is T, then receiver_concrete_type is concrete type, otherwise it is the same as receiver_type
 	return_type            Type
+	return_type_generic    Type
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
@@ -825,6 +826,7 @@ pub enum ComptimeVarKind {
 	value_var // map value from `for k,v in t.$(field.name)`
 	field_var // comptime field var `a := t.$(field.name)`
 	generic_param // generic fn parameter
+	generic_var // generic var
 	smartcast // smart cast when used in `is v` (when `v` is from $for .variants)
 }
 
