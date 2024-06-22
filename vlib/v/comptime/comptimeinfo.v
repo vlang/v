@@ -44,6 +44,12 @@ pub fn (mut ct ComptimeInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind 
 	}
 }
 
+@[inline]
+pub fn (mut ct ComptimeInfo) is_generic_param_var(node ast.Expr) bool {
+	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
+		&& (node.obj as ast.Var).ct_type_var == .generic_param
+}
+
 // get_comptime_var_type retrieves the actual type from a comptime related ast node
 @[inline]
 pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {

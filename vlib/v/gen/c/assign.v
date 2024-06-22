@@ -284,7 +284,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					g.assign_ct_type = var_type
 				} else if val is ast.IndexExpr {
-					if val.left is ast.Ident && g.is_generic_param_var(val.left) {
+					if val.left is ast.Ident && g.comptime.is_generic_param_var(val.left) {
 						ctyp := g.unwrap_generic(g.get_gn_var_type(val.left))
 						if ctyp != ast.void_type {
 							var_type = ctyp

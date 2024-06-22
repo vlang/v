@@ -1585,6 +1585,27 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 	}
 }
 
+// is_generic_expr checks if the expr relies on fn generic argument
+fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
+	return match node {
+		ast.Ident {
+			c.comptime.is_generic_param_var(node)
+		}
+		ast.IndexExpr {
+			c.comptime.is_generic_param_var(node.left)
+		}
+		ast.CallExpr {
+			node.args.any(c.comptime.is_generic_param_var(it.expr))
+		}
+		ast.SelectorExpr {
+			c.comptime.is_generic_param_var(node.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
