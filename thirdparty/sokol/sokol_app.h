@@ -3907,6 +3907,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 @implementation _sapp_macos_app_delegate
 - (void)applicationDidFinishLaunching:(NSNotification*)aNotification {
     _SOKOL_UNUSED(aNotification);
+
     _sapp_macos_init_cursors();
     if ((_sapp.window_width == 0) || (_sapp.window_height == 0)) {
         // use 4/5 of screen size as default size
@@ -4104,7 +4105,17 @@ keyEquivalent:@"v"];
     _sapp_macos_update_dimensions();
     [NSEvent setMouseCoalescingEnabled:NO];
 
+
     // __v_ start
+/*
+       NSApplicationPresentationOptions options = (NSApplicationPresentationAutoHideMenuBar |
+                                                NSApplicationPresentationAutoHideDock |
+                                                NSApplicationPresentationFullScreen |
+                                                NSApplicationPresentationHideDock);
+
+    [NSApp setPresentationOptions:options];
+   */
+
     //[NSEvent setMouseCoalescingEnabled:NO];
     // __v_ end
 }

@@ -2604,7 +2604,12 @@ pub fn (name string) match_glob(pattern string) bool {
 // is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
 @[inline]
 pub fn (s string) is_ascii() bool {
-	return !s.bytes().any(it < u8(` `) || it > u8(`~`))
+	for i := 0; i < s.len; i++ {
+		if s[i] < u8(` `) || s[i] > u8(`~`) {
+			return false
+		}
+	}
+	return true
 }
 
 // camel_to_snake convert string from camelCase to snake_case
