@@ -404,7 +404,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										&& right.return_type_generic != 0
 										&& right.return_type_generic.has_flag(.generic) {
 										left.obj.ct_type_var = .generic_var
-										// eprintln('>>> ${right.name} (.generic_var)')
 									}
 								}
 							}

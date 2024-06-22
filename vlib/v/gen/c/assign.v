@@ -296,6 +296,51 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
 					if val.return_type_generic != 0 && val.return_type_generic.has_flag(.generic) {
 						if val.is_method {
+							if func := g.table.find_method(g.table.sym(val.left_type),
+								val.name)
+							{
+								if func.generic_names.len > 0 {
+									mut concrete_types := val.concrete_types.map(g.unwrap_generic(it))
+									mut rec_len := 0
+									if val.left_type.has_flag(.generic) {
+										rec_sym := g.table.final_sym(g.unwrap_generic(val.left_type))
+										match rec_sym.info {
+											ast.Struct, ast.Interface, ast.SumType {
+												rec_len += rec_sym.info.generic_types.len
+											}
+											else {}
+										}
+									}
+
+									mut call_ := unsafe { val }
+									comptime_args := g.resolve_comptime_args(func, mut
+										call_, concrete_types)
+									if concrete_types.len > 0 {
+										for k, v in comptime_args {
+											if (rec_len + k) < concrete_types.len {
+												if !val.concrete_types[k].has_flag(.generic) {
+													concrete_types[rec_len + k] = g.unwrap_generic(v)
+												}
+											}
+										}
+									}
+									if gen_type := g.table.resolve_generic_to_concrete(val.return_type_generic,
+										func.generic_names, concrete_types)
+									{
+										if !gen_type.has_flag(.generic) {
+											var_type = if val.or_block.kind == .absent {
+												gen_type
+											} else {
+												gen_type.clear_option_and_result()
+											}
+											val_type = var_type
+											left.obj.typ = var_type
+											g.comptime.type_map['${left.name}.${left.obj.pos.pos}.generic'] = var_type
+											// eprintln('>>2 ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
+										}
+									}
+								}
+							}
 						} else {
 							if func := g.table.find_fn(val.name) {
 								if func.generic_names.len > 0 {
@@ -324,7 +369,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 											val_type = var_type
 											left.obj.typ = var_type
 											g.comptime.type_map['${left.name}.${left.obj.pos.pos}.generic'] = var_type
-											eprintln('>>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
+											// eprintln('>>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
 										}
 									}
 								}

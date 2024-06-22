@@ -1605,7 +1605,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 			param_typ := param.typ
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
-					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
+					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
 						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
@@ -2162,6 +2162,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	node.is_noreturn = method.is_noreturn
 	node.is_ctor_new = method.is_ctor_new
 	node.return_type = method.return_type
+	if method.return_type.has_flag(.generic) {
+		// node.return_type_generic = method.return_type
+	}
 	if !method.is_pub && method.mod != c.mod {
 		// If a private method is called outside of the module
 		// its receiver type is defined in, show an error.
