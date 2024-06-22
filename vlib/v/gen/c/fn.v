@@ -1101,7 +1101,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 		}
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
-			if left_node.obj.ct_type_var !in [.no_comptime, .generic_var] {
+			if left_node.obj.ct_type_var != .no_comptime {
 				rec_type = g.comptime.get_comptime_var_type(left_node)
 				g.gen_expr_to_string(left_node, rec_type)
 				return true

@@ -324,7 +324,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 											val_type = var_type
 											left.obj.typ = var_type
 											g.comptime.type_map['${left.name}.${left.obj.pos.pos}.generic'] = var_type
-											// eprintln('>>> ${func.name} > resolve ${left.name} to ${g.table.type_to_str(var_type)}')
+											eprintln('>>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
 										}
 									}
 								}
