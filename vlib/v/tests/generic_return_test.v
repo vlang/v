@@ -35,8 +35,6 @@ fn test_main() {
 		'def': 456
 	})
 	g([1, 2, 3])
-
-	// Uncommenting one of the lines below leads to a cgen error:
 	g({
 		123: 'ggg'
 		456: 'hhh'
