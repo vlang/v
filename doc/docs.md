@@ -7679,10 +7679,10 @@ sh('ls')
 
 Now you can either compile this like a normal V program and get an executable you can deploy and run
 anywhere:
-`v deploy.vsh && ./deploy`
+`v -skip-running deploy.vsh && ./deploy`
 
-Or just run it more like a traditional Bash script:
-`v run deploy.vsh`
+Or run it like a traditional Bash script:
+`v run deploy.vsh` (or simply just `v deploy.vsh`)
 
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
