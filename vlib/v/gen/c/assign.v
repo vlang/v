@@ -284,13 +284,24 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					g.assign_ct_type = var_type
 				} else if val is ast.IndexExpr {
-					if val.left is ast.Ident && g.is_generic_param_var(val.left) {
+					if val.left is ast.Ident && g.comptime.is_generic_param_var(val.left) {
 						ctyp := g.unwrap_generic(g.get_gn_var_type(val.left))
 						if ctyp != ast.void_type {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
 							g.assign_ct_type = var_type
+						}
+					}
+				} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
+					if val.return_type_generic != 0 && val.return_type_generic.has_flag(.generic) {
+						fn_ret_type := g.resolve_fn_return_type(val)
+						if fn_ret_type != ast.void_type {
+							var_type = fn_ret_type
+							val_type = var_type
+							left.obj.typ = var_type
+							g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+							// eprintln('>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
 						}
 					}
 				}

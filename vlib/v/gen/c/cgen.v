@@ -4721,12 +4721,6 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
-@[inline]
-pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
-		&& (node.obj as ast.Var).ct_type_var == .generic_param
-}
-
 fn (mut g Gen) get_const_name(node ast.Ident) string {
 	if g.pref.translated && !g.is_builtin_mod
 		&& !util.module_is_builtin(node.name.all_before_last('.')) {

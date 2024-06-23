@@ -1509,6 +1509,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	} else {
 		node.return_type = func.return_type
 	}
+	if func.return_type.has_flag(.generic) {
+		node.return_type_generic = func.return_type
+	}
 	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
@@ -1582,6 +1585,27 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 	}
 }
 
+// is_generic_expr checks if the expr relies on fn generic argument
+fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
+	return match node {
+		ast.Ident {
+			c.comptime.is_generic_param_var(node)
+		}
+		ast.IndexExpr {
+			c.comptime.is_generic_param_var(node.left)
+		}
+		ast.CallExpr {
+			node.args.any(c.comptime.is_generic_param_var(it.expr))
+		}
+		ast.SelectorExpr {
+			c.comptime.is_generic_param_var(node.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
@@ -1602,7 +1626,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 			param_typ := param.typ
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
-					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
+					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
 						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
@@ -2159,6 +2183,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	node.is_noreturn = method.is_noreturn
 	node.is_ctor_new = method.is_ctor_new
 	node.return_type = method.return_type
+	if method.return_type.has_flag(.generic) {
+		node.return_type_generic = method.return_type
+	}
 	if !method.is_pub && method.mod != c.mod {
 		// If a private method is called outside of the module
 		// its receiver type is defined in, show an error.
