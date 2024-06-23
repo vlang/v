@@ -4215,6 +4215,13 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	if mut expr is ast.Ident {
 		return c.find_definition(expr)
 	}
+	if mut expr is ast.ComptimeCall && expr.is_compile_value {
+		if expr.result_type == ast.bool_type {
+			return ast.BoolLiteral{
+				val: expr.compile_value.bool()
+			}
+		}
+	}
 	if !expr.is_pure_literal() {
 		return error('definition of `${name}` is unknown at compile time')
 	}
