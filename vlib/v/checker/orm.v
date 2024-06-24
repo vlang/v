@@ -626,7 +626,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 
 	if expr.or_expr.kind == .block {
 		c.expected_or_type = return_type.clear_flag(.result)
-		c.stmts_ending_with_expression(mut expr.or_expr.stmts)
+		c.stmts_ending_with_expression(mut expr.or_expr.stmts, c.expected_or_type)
 		c.expected_or_type = ast.void_type
 	}
 }

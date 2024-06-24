@@ -43,7 +43,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_without_return := 0
 	for mut branch in node.branches {
 		if node.is_expr {
-			c.stmts_ending_with_expression(mut branch.stmts)
+			c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 		} else {
 			c.stmts(mut branch.stmts)
 		}

@@ -123,7 +123,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			// check each arg expression
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
-		c.stmts_ending_with_expression(mut node.or_block.stmts)
+		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.comptime.get_comptime_var_type(node)
 	}
 	if node.method_name == 'res' {
