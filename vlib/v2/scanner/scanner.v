@@ -131,8 +131,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		for s.offset < s.src.len {
 			c3 := s.src[s.offset]
-			if (c3 >= `a` && c3 <= `z`) || (c3 >= `A` && c3 <= `Z`)
-				|| (c3 >= `0` && c3 <= `9`) || c3 == `_` {
+			if c3.is_alnum() || c3 == `_` {
 				s.offset++
 				continue
 			}

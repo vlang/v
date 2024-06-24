@@ -38,7 +38,7 @@ fn error_msg(message string, val string) string {
 // reserved characters correctly. See golang.org/issue/5684.
 fn should_escape(c u8, mode EncodingMode) bool {
 	// §2.3 Unreserved characters (alphanum)
-	if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) || (`0` <= c && c <= `9`) {
+	if c.is_alnum() {
 		return false
 	}
 	if mode == .encode_host || mode == .encode_zone {
@@ -388,9 +388,9 @@ fn (u &Userinfo) str() string {
 fn split_by_scheme(rawurl string) ![]string {
 	for i in 0 .. rawurl.len {
 		c := rawurl[i]
-		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
+		if c.is_letter() {
 			// do nothing
-		} else if (`0` <= c && c <= `9`) || (c == `+` || c == `-` || c == `.`) {
+		} else if c.is_digit() || c in [`+`, `-`, `.`] {
 			if i == 0 {
 				return ['', rawurl]
 			}
@@ -1016,13 +1016,7 @@ pub fn split_host_port(hostport string) (string, string) {
 // It doesn't validate pct-encoded. The caller does that via fn unescape.
 pub fn valid_userinfo(s string) bool {
 	for r in s {
-		if `A` <= r && r <= `Z` {
-			continue
-		}
-		if `a` <= r && r <= `z` {
-			continue
-		}
-		if `0` <= r && r <= `9` {
+		if r.is_alnum() {
 			continue
 		}
 		match r {
