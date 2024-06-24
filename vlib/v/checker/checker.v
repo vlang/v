@@ -3006,6 +3006,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				// string literal starts with "c": `C.printf(c'hello')`
 				return ast.u8_type.set_nr_muls(1)
 			}
+			if node.is_raw {
+				// raw strings don't need any sort of checking related to unicode
+				return ast.string_type
+			}
 			return c.string_lit(mut node)
 		}
 		ast.StringInterLiteral {
