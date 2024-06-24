@@ -420,7 +420,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if node.typ == ast.void_type {
 							// first branch of if expression
 							node.is_expr = true
-							node.typ = stmt.typ
+							if stmt.expr.is_auto_deref_var() {
+								node.typ = stmt.typ.deref()
+							} else {
+								node.typ = stmt.typ
+							}
 							continue
 						} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
 							if node.typ == ast.int_literal_type {
