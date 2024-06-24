@@ -337,6 +337,6 @@ fn in_both_mut_ref(mut arr []&Bar, mut bar &Bar) {
 
 fn test_in_both_mut_and_ref() {
 	mut arr := []&Bar{}
-	mut bar := Bar{}
-	in_both_mut_ref(mut &arr, mut &bar)
+	mut bar := &Bar{}
+	in_both_mut_ref(mut &arr, mut bar)
 }
