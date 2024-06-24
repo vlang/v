@@ -2589,6 +2589,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	mut needs_closing := false
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
+	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()
+		&& g.table.sym(arg_typ).kind == .struct_ && expected_type == arg_typ.ref() {
+		g.write('&/*mut*/')
+		g.expr(arg.expr)
+		return
 	} else if exp_is_ptr && !arg_is_ptr && !(arg_sym.kind == .alias
 		&& g.table.unaliased_type(arg_typ).is_pointer() && expected_type.is_pointer()) {
 		if arg.is_mut {
