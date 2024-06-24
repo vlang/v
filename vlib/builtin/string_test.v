@@ -1528,6 +1528,7 @@ fn test_camel_to_snake() {
 	assert 'aaBbCcDD'.camel_to_snake() == 'aa_bb_cc_dd'
 	assert 'BBaa'.camel_to_snake() == 'b_baa'
 	assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+	assert 'JVM_PUBLIC_ACC'.camel_to_snake() == 'jvm_public_acc'
 }
 
 fn test_snake_to_camel() {
