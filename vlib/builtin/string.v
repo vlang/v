@@ -2647,26 +2647,38 @@ pub fn (s string) camel_to_snake() string {
 	if s.len == 0 {
 		return ''
 	}
-	lower_first_char := if s[0] >= `A` && s[0] <= `Z` { s[0] + 32 } else { s[0] }
 	if s.len == 1 {
-		return lower_first_char.ascii_str()
+		return s.to_lower()
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
-	second_char := if s[1] >= `A` && s[1] <= `Z` { `_` } else { s[1] }
+	mut prev_is_upper := false
+	first_char, second_char := if s[0] >= `A` && s[0] <= `Z` {
+		lower_first_c := if s[0] >= `A` && s[0] <= `Z` { s[0] + 32 } else { s[0] }
+		lower_second_c := if s[1] >= `A` && s[1] <= `Z` {
+			prev_is_upper = true
+			s[1] + 32
+		} else {
+			s[1]
+		}
+		lower_first_c, lower_second_c
+	} else {
+		first_c := s[0]
+		second_c:= u8(if s[1] >= `A` && s[1] <= `Z` { `_` } else { s[1] })
+		first_c, second_c
+	}
 	unsafe {
-		b[0] = lower_first_char
+		b[0] = first_char
 		b[1] = second_char
 	}
+	mut pos := 2
 	mut prev_char := second_char
-	mut prev_is_upper := false
 	mut lower_c := `_`
 	mut c_is_upper := false
-	mut pos := 1
 	for i in pos .. s.len {
 		c := s[i]
 		c_is_upper = c >= `A` && c <= `Z`
 		lower_c = if c_is_upper { c + 32 } else { c }
-		if prev_is_upper == false && c_is_upper {
+		if !prev_is_upper && c_is_upper {
 			// aB => a_b, if prev has `_`, then do not add `_`
 			unsafe {
 				if b[pos - 1] != `_` {
@@ -2674,7 +2686,7 @@ pub fn (s string) camel_to_snake() string {
 					pos++
 				}
 			}
-		} else if prev_is_upper && c_is_upper == false && c != `_` {
+		} else if prev_is_upper && !c_is_upper && c != `_` {
 			// Ba => _ba, if prev has `_`, then do not add `_`
 			unsafe {
 				if b[pos - 2] != `_` {
