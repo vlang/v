@@ -2663,7 +2663,7 @@ pub fn (s string) camel_to_snake() string {
 		lower_first_c, lower_second_c
 	} else {
 		lower_first_c := s[0]
-		second_c := u8(if s[1] >= `A` && s[1] <= `Z` { `_` } else { s[1] })
+		second_c := if s[1] >= `A` && s[1] <= `Z` { u8(`_`) } else { s[1] }
 		lower_first_c, second_c
 	}
 	unsafe {
