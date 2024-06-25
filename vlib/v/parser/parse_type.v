@@ -315,6 +315,10 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 			has_generic = true
 			break
 		}
+		if p.table.sym(param.typ).name == name {
+			p.error_with_pos('`${name}` cannot be a parameter as it references the fntype',
+				param.type_pos)
+		}
 	}
 	mut return_type := ast.void_type
 	mut return_type_pos := token.Pos{}
@@ -344,6 +348,11 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 			fn_type_pos)
+	}
+
+	if p.table.sym(return_type).name == name {
+		p.error_with_pos('`${name}` cannot be a return type as it references the fntype',
+			return_type_pos)
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
