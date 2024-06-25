@@ -2051,8 +2051,6 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					&& (expr_typ.is_ptr() || expr is ast.LambdaExpr)))
 				// option ptr assignment simplification
 				if simple_assign {
-					println(g.table.type_kind(ret_typ))
-					println(expr)
 					g.write('${tmp_var} = ')
 				} else if expr_typ.has_flag(.option) && expr is ast.PrefixExpr
 					&& expr.right is ast.StructInit
