@@ -286,7 +286,9 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) !(int, bool) {
 				break
 			}
 			in0 := src[0]
-			src = src[1..]
+			unsafe {
+				src = src[1..]
+			}
 			if in0 == enc.padding_char && j >= 2 && src.len < 8 {
 				// We`ve reached the end and there`s padding
 				if src.len + j < 8 - 1 {
