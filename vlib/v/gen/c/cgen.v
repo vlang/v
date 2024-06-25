@@ -2048,9 +2048,11 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 					((expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
 					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option))
 					|| (expr_typ == ret_typ && !(expr_typ.has_option_or_result()
-					&& (expr_typ.is_ptr() || g.table.type_kind(ret_typ) == .placeholder)))
+					&& (expr_typ.is_ptr() || expr is ast.LambdaExpr)))
 				// option ptr assignment simplification
 				if simple_assign {
+					println(g.table.type_kind(ret_typ))
+					println(expr)
 					g.write('${tmp_var} = ')
 				} else if expr_typ.has_flag(.option) && expr is ast.PrefixExpr
 					&& expr.right is ast.StructInit
