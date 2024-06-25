@@ -1967,6 +1967,19 @@ pub fn (mut cc ComptimeCall) resolve_compile_value(compile_values map[string]str
 	cc.is_d_resolved = true
 }
 
+// expr_str returns the string representation of `ComptimeCall` for use with
+// `ast.Expr`'s `str()' method (used by e.g. vfmt).
+pub fn (cc ComptimeCall) expr_str() string {
+	mut str := 'ast.ComptimeCall'
+	if cc.is_compile_value {
+		arg := cc.args[0] or { return str }
+		if arg.expr.is_pure_literal() {
+			str = "\$${cc.method_name}('${cc.args_var}', ${arg})"
+		}
+	}
+	return str
+}
+
 pub struct None {
 pub:
 	pos token.Pos

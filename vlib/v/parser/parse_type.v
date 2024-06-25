@@ -13,7 +13,7 @@ const maximum_inline_sum_type_variants = 3
 fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
-	if p.tok.kind in [.number, .name] {
+	if p.tok.kind in [.number, .name, .dollar] {
 		mut fixed_size := 0
 		mut size_expr := p.expr(0)
 		mut size_unresolved := true
@@ -36,6 +36,9 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 						}
 						fixed_size = size_expr.compile_value.int()
 						size_unresolved = false
+					} else {
+						p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
+							size_expr.pos)
 					}
 				}
 				ast.Ident {
