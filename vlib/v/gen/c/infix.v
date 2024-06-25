@@ -695,6 +695,9 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 
 	cmp_op := if node.op == .key_is { '==' } else { '!=' }
 	g.write('(')
+	if node.left_type.nr_muls() > 1 {
+		g.write('*'.repeat(node.left_type.nr_muls() - 1))
+	}
 	if is_aggregate {
 		g.write('${node.left}')
 	} else {
