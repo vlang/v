@@ -662,7 +662,7 @@ pub fn (x Expr) str() string {
 			return 'ast.ChanInit'
 		}
 		ComptimeCall {
-			return 'ast.ComptimeCall'
+			return x.expr_str()
 		}
 		EmptyExpr {
 			return 'ast.EmptyExpr'
