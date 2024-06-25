@@ -2045,8 +2045,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				}
 			} else {
 				simple_assign =
-					(expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
-					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option)
+					((expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
+					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option))
+					|| (expr_typ == ret_typ && !(expr_typ.has_option_or_result()
+					&& (expr_typ.is_ptr() || expr is ast.LambdaExpr)))
 				// option ptr assignment simplification
 				if simple_assign {
 					g.write('${tmp_var} = ')
