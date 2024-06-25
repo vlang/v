@@ -239,7 +239,7 @@ fn (mut s Scanner) ident_name() string {
 	s.pos++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+		if c.is_alnum() || c == `_` {
 			s.pos++
 			continue
 		}

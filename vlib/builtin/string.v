@@ -1518,7 +1518,7 @@ pub fn (s string) to_lower() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
-			if s.str[i] >= `A` && s.str[i] <= `Z` {
+			if s.str[i].is_capital() {
 				b[i] = s.str[i] + 32
 			} else {
 				b[i] = s.str[i]
@@ -1637,7 +1637,7 @@ pub fn (s string) is_capital() bool {
 // Example: assert 'Hello. World.'.starts_with_capital() == true
 @[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
-	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+	if s.len == 0 || !s[0].is_capital() {
 		return false
 	}
 	return true
@@ -2043,7 +2043,7 @@ pub fn (c u8) is_digit() bool {
 // Example: assert u8(`F`).is_hex_digit() == true
 @[inline]
 pub fn (c u8) is_hex_digit() bool {
-	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
@@ -2652,9 +2652,9 @@ pub fn (s string) camel_to_snake() string {
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
 	mut prev_is_upper := false
-	first_char, second_char := if s[0] >= `A` && s[0] <= `Z` {
-		lower_first_c := if s[0] >= `A` && s[0] <= `Z` { s[0] + 32 } else { s[0] }
-		lower_second_c := if s[1] >= `A` && s[1] <= `Z` {
+	first_char, second_char := if s[0].is_capital() {
+		lower_first_c := s[0] + 32
+		lower_second_c := if s[1].is_capital() {
 			prev_is_upper = true
 			s[1] + 32
 		} else {
@@ -2663,7 +2663,7 @@ pub fn (s string) camel_to_snake() string {
 		lower_first_c, lower_second_c
 	} else {
 		lower_first_c := s[0]
-		second_c := if s[1] >= `A` && s[1] <= `Z` { u8(`_`) } else { s[1] }
+		second_c := if s[1].is_capital() { u8(`_`) } else { s[1] }
 		lower_first_c, second_c
 	}
 	unsafe {
@@ -2676,7 +2676,7 @@ pub fn (s string) camel_to_snake() string {
 	mut c_is_upper := false
 	for i in pos .. s.len {
 		c := s[i]
-		c_is_upper = c >= `A` && c <= `Z`
+		c_is_upper = c.is_capital()
 		lower_c = if c_is_upper { c + 32 } else { c }
 		if !prev_is_upper && c_is_upper {
 			// aB => a_b, if prev has `_`, then do not add `_`
