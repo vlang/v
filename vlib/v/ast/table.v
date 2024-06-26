@@ -1229,7 +1229,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
-		cname: util.no_dots(name)
+		cname: util.no_dots(name).replace_each(['&', ''])
 		language: language
 		mod: modname
 	}
