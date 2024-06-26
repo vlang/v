@@ -18,6 +18,7 @@ import v.comptime
 // prevent stack overflows by restricting too deep recursion:
 const expr_level_cutoff_limit = 40
 const stmt_level_cutoff_limit = 40
+const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
@@ -101,6 +102,7 @@ mut:
 	// increases for `x := optfn() or { statement_list3 }`;
 	// files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
+	type_level                       int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
@@ -4945,6 +4947,15 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	if typ == 0 {
 		c.error('unknown type', pos)
+		return false
+	}
+	c.type_level++
+	defer {
+		c.type_level--
+	}
+	if c.type_level > checker.type_level_cutoff_limit {
+		c.error('checker: too many levels of Checker.ensure_type_exists calls: ${c.type_level}, probably due to a self referencing type',
+			pos)
 		return false
 	}
 	sym := c.table.sym(typ)
