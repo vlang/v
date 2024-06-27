@@ -964,7 +964,7 @@ pub fn (ctx &Context) draw_cubic_bezier(points []f32, c gx.Color) {
 // The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
 // Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
 pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.Color) {
-	if steps <= 0 || points.len != 8 {
+	if steps <= 0 || steps >= 20000 || points.len != 8 {
 		return
 	}
 	if c.a != 255 {
