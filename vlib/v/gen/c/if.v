@@ -39,34 +39,21 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		return true
 	}
 	match expr {
-		ast.Ident {
-			return expr.or_expr.kind != .absent
-		}
-		ast.StringInterLiteral {
-			for e in expr.exprs {
-				if g.need_tmp_var_in_expr(e) {
+		ast.ArrayInit {
+			if g.need_tmp_var_in_expr(expr.len_expr) {
+				return true
+			}
+			if g.need_tmp_var_in_expr(expr.cap_expr) {
+				return true
+			}
+			if g.need_tmp_var_in_expr(expr.init_expr) {
+				return true
+			}
+			for elem_expr in expr.exprs {
+				if g.need_tmp_var_in_expr(elem_expr) {
 					return true
 				}
 			}
-		}
-		ast.IfExpr {
-			if g.need_tmp_var_in_if(expr) {
-				return true
-			}
-		}
-		ast.IfGuardExpr {
-			return true
-		}
-		ast.InfixExpr {
-			if g.need_tmp_var_in_expr(expr.left) {
-				return true
-			}
-			if g.need_tmp_var_in_expr(expr.right) {
-				return true
-			}
-		}
-		ast.MatchExpr {
-			return true
 		}
 		ast.CallExpr {
 			if expr.is_method {
@@ -90,9 +77,6 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		ast.CastExpr {
 			return g.need_tmp_var_in_expr(expr.expr)
 		}
-		ast.ParExpr {
-			return g.need_tmp_var_in_expr(expr.expr)
-		}
 		ast.ConcatExpr {
 			for val in expr.vals {
 				if val is ast.CallExpr {
@@ -102,6 +86,17 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.Ident {
+			return expr.or_expr.kind != .absent
+		}
+		ast.IfExpr {
+			if g.need_tmp_var_in_if(expr) {
+				return true
+			}
+		}
+		ast.IfGuardExpr {
+			return true
+		}
 		ast.IndexExpr {
 			if expr.or_expr.kind != .absent {
 				return true
@@ -110,20 +105,12 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				return true
 			}
 		}
-		ast.ArrayInit {
-			if g.need_tmp_var_in_expr(expr.len_expr) {
+		ast.InfixExpr {
+			if g.need_tmp_var_in_expr(expr.left) {
 				return true
 			}
-			if g.need_tmp_var_in_expr(expr.cap_expr) {
+			if g.need_tmp_var_in_expr(expr.right) {
 				return true
-			}
-			if g.need_tmp_var_in_expr(expr.init_expr) {
-				return true
-			}
-			for elem_expr in expr.exprs {
-				if g.need_tmp_var_in_expr(elem_expr) {
-					return true
-				}
 			}
 		}
 		ast.MapInit {
@@ -138,6 +125,28 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.MatchExpr {
+			return true
+		}
+		ast.ParExpr {
+			return g.need_tmp_var_in_expr(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.need_tmp_var_in_expr(expr.right)
+		}
+		ast.SelectorExpr {
+			if g.need_tmp_var_in_expr(expr.expr) {
+				return true
+			}
+			return expr.or_block.kind != .absent
+		}
+		ast.StringInterLiteral {
+			for e in expr.exprs {
+				if g.need_tmp_var_in_expr(e) {
+					return true
+				}
+			}
+		}
 		ast.StructInit {
 			if g.need_tmp_var_in_expr(expr.update_expr) {
 				return true
@@ -147,12 +156,6 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 					return true
 				}
 			}
-		}
-		ast.SelectorExpr {
-			if g.need_tmp_var_in_expr(expr.expr) {
-				return true
-			}
-			return expr.or_block.kind != .absent
 		}
 		else {}
 	}
