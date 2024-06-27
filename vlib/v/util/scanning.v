@@ -2,17 +2,17 @@ module util
 
 @[inline]
 pub fn is_name_char(c u8) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
+	return c.is_letter() || c == `_`
 }
 
 @[inline]
 pub fn is_func_char(c u8) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || (c >= `0` && c <= `9`)
+	return c.is_letter() || c == `_` || c.is_digit()
 }
 
 pub fn contains_capital(s string) bool {
 	for c in s {
-		if c >= `A` && c <= `Z` {
+		if c.is_capital() {
 			return true
 		}
 	}

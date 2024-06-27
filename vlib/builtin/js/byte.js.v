@@ -39,7 +39,7 @@ pub fn (c u8) is_digit() bool {
 // Example: assert u8(`F`) == true
 @[inline]
 pub fn (c u8) is_hex_digit() bool {
-	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.

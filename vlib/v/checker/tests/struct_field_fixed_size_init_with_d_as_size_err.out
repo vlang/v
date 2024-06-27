@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_field_fixed_size_init_with_d_as_size_err.vv:3:31: error: cannot initialize a fixed size array field that uses `$d()` as size quantifier since the size may change via -d
+    1 | struct Gin {
+    2 | mut:
+    3 |     juice [$d('amount', 4)]int = [1, 2, 3, 4]!
+      |                                  ~~~~~~~~~~~~~
+    4 | }
+    5 |

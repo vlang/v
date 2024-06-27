@@ -2045,8 +2045,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				}
 			} else {
 				simple_assign =
-					(expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
-					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option)
+					((expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
+					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option))
+					|| (expr_typ == ret_typ && !(expr_typ.has_option_or_result()
+					&& (expr_typ.is_ptr() || expr is ast.LambdaExpr)))
 				// option ptr assignment simplification
 				if simple_assign {
 					g.write('${tmp_var} = ')
@@ -4931,7 +4933,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 								if node.obj.is_inherited {
 									g.write(closure_ctx + '->')
 								}
-								g.write(name)
+								if node.obj.typ.nr_muls() > 1 {
+									g.write('(')
+									g.write('*'.repeat(node.obj.typ.nr_muls() - 1))
+									g.write(name)
+									g.write(')')
+								} else {
+									g.write(name)
+								}
 								if node.obj.orig_type.is_ptr() {
 									is_ptr = true
 								}

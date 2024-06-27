@@ -13,7 +13,7 @@ const maximum_inline_sum_type_variants = 3
 fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
-	if p.tok.kind in [.number, .name] {
+	if p.tok.kind in [.number, .name, .dollar] {
 		mut fixed_size := 0
 		mut size_expr := p.expr(0)
 		mut size_unresolved := true
@@ -36,6 +36,9 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 						}
 						fixed_size = size_expr.compile_value.int()
 						size_unresolved = false
+					} else {
+						p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
+							size_expr.pos)
 					}
 				}
 				ast.Ident {
@@ -312,6 +315,10 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 			has_generic = true
 			break
 		}
+		if p.table.sym(param.typ).name == name {
+			p.error_with_pos('`${name}` cannot be a parameter as it references the fntype',
+				param.type_pos)
+		}
 	}
 	mut return_type := ast.void_type
 	mut return_type_pos := token.Pos{}
@@ -341,6 +348,11 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 			fn_type_pos)
+	}
+
+	if p.table.sym(return_type).name == name {
+		p.error_with_pos('`${name}` cannot be a return type as it references the fntype',
+			return_type_pos)
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated

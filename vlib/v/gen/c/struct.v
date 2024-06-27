@@ -648,7 +648,8 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		inside_cast_in_heap := g.inside_cast_in_heap
 		g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
-		field_unwrap_sym := g.table.sym(g.unwrap_generic(sfield.typ))
+		field_unwrap_typ := g.unwrap_generic(sfield.typ)
+		field_unwrap_sym := g.table.sym(field_unwrap_typ)
 		if field_unwrap_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
 			info := field_unwrap_sym.info as ast.ArrayFixed
 			g.fixed_array_var_init(g.expr_string(sfield.expr), sfield.expr.is_auto_deref_var(),
@@ -658,21 +659,21 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
 			g.fixed_array_var_init(tmp_var, false, info.elem_type, info.size)
 		} else {
-			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type
+			if field_unwrap_typ != ast.voidptr_type && field_unwrap_typ != ast.nil_type
 				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
-				&& !sfield.expected_type.has_flag(.option) && !sfield.typ.is_any_kind_of_pointer()
-				&& !sfield.typ.is_number() {
+				&& !sfield.expected_type.has_flag(.option)
+				&& !field_unwrap_typ.is_any_kind_of_pointer() && !field_unwrap_typ.is_number() {
 				g.write('/* autoref */&')
 			}
 
-			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
-				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
-				g.expr_with_opt(sfield.expr, sfield.typ, sfield.expected_type)
+			if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
+				|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
+				g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
 			} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
-				g.expr_opt_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+				g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 			} else {
 				g.left_is_opt = true
-				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+				g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 			}
 		}
 		g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits

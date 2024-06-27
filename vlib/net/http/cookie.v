@@ -248,7 +248,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 	mut part_len := 0
 	for i, _ in s {
 		c := s[i]
-		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
+		if c.is_letter() {
 			// No '_' allowed here (in contrast to package net).
 			ok = true
 			part_len++

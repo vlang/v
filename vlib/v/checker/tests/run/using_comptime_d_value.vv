@@ -3,6 +3,10 @@
 
 const my_f64 = $d('my_f64', 42.0)
 
+struct StructFSAWithDSize {
+	fsa [$d('field_fsa_size', 10)]int
+}
+
 fn main() {
 	println(my_f64)
 	cv_bool := $d('my_bool', false)
@@ -10,4 +14,6 @@ fn main() {
 	println('done')
 	fsa := [$d('fixed_size', 4)]int{}
 	println(fsa)
+	s := StructFSAWithDSize{}
+	println(s.fsa)
 }
