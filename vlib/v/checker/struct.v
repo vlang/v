@@ -199,6 +199,15 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if !field.typ.has_flag(.option) && !field.typ.has_flag(.result) {
 					c.check_expr_option_or_result_call(field.default_expr, field.default_expr_typ)
 				}
+				if sym.info is ast.ArrayFixed && field.typ == field.default_expr_typ {
+					if sym.info.size_expr is ast.ComptimeCall {
+						// field [$d('x' ,2)]int = [1 ,2]!
+						if sym.info.size_expr.method_name == 'd' {
+							c.error('cannot initialize a fixed size array field that uses `\$d()` as size quantifier since the size may change via -d',
+								field.default_expr.pos())
+						}
+					}
+				}
 				interface_implemented := sym.kind == .interface_
 					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
 				c.check_expected(field.default_expr_typ, field.typ) or {
