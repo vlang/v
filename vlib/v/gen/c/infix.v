@@ -959,47 +959,7 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 
 // infix_expr_and_or_op generates code for `&&` and `||`
 fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
-	if node.right is ast.IfExpr {
-		// `b := a && if true { a = false ...} else {...}`
-		prev_inside_ternary := g.inside_ternary
-		g.inside_ternary = 0
-		if g.need_tmp_var_in_if(node.right) {
-			tmp := g.new_tmp_var()
-			cur_line := g.go_before_last_stmt().trim_space()
-			g.empty_line = true
-			g.write('bool ${tmp} = (')
-			g.expr(node.left)
-			g.writeln(');')
-			g.set_current_pos_as_last_stmt_pos()
-			g.write('${cur_line} ${tmp} ${node.op.str()} ')
-			g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
-			g.expr(node.right)
-			g.infix_left_var_name = ''
-			g.inside_ternary = prev_inside_ternary
-			return
-		}
-		g.inside_ternary = prev_inside_ternary
-	} else if node.right is ast.MatchExpr {
-		// `b := a && match true { true { a = false ...} else {...}}`
-		prev_inside_ternary := g.inside_ternary
-		g.inside_ternary = 0
-		if g.need_tmp_var_in_match(node.right) {
-			tmp := g.new_tmp_var()
-			cur_line := g.go_before_last_stmt().trim_space()
-			g.empty_line = true
-			g.write('bool ${tmp} = (')
-			g.expr(node.left)
-			g.writeln(');')
-			g.set_current_pos_as_last_stmt_pos()
-			g.write('${cur_line} ${tmp} ${node.op.str()} ')
-			g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
-			g.expr(node.right)
-			g.infix_left_var_name = ''
-			g.inside_ternary = prev_inside_ternary
-			return
-		}
-		g.inside_ternary = prev_inside_ternary
-	} else if g.need_tmp_var_in_array_call(node.right) {
+	if g.need_tmp_var_in_array_call(node.right) {
 		// `if a == 0 || arr.any(it.is_letter()) {...}`
 		tmp := g.new_tmp_var()
 		cur_line := g.go_before_last_stmt().trim_space()
@@ -1016,48 +976,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
 		g.expr(node.right)
 		g.infix_left_var_name = ''
-		return
-	} else if node.right is ast.CallExpr {
-		if node.right.or_block.kind != .absent {
-			prev_inside_ternary := g.inside_ternary
-			g.inside_ternary = 0
-			tmp := g.new_tmp_var()
-			cur_line := g.go_before_last_stmt().trim_space()
-			g.empty_line = true
-			g.write('bool ${tmp} = (')
-			g.expr(node.left)
-			g.writeln(');')
-			g.set_current_pos_as_last_stmt_pos()
-			g.write('${cur_line} ${tmp} ${node.op.str()} ')
-			g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
-			g.expr(node.right)
-			g.infix_left_var_name = ''
-			g.inside_ternary = prev_inside_ternary
-			return
-		}
-	} else if node.right is ast.PrefixExpr && g.inside_ternary == 0 {
-		prefix := node.right
-		if prefix.op == .not && prefix.right is ast.CallExpr {
-			call_expr := prefix.right as ast.CallExpr
-			if call_expr.or_block.kind != .absent {
-				prev_inside_ternary := g.inside_ternary
-				g.inside_ternary = 0
-				tmp := g.new_tmp_var()
-				cur_line := g.go_before_last_stmt().trim_space()
-				g.empty_line = true
-				g.write('bool ${tmp} = (')
-				g.expr(node.left)
-				g.writeln(');')
-				g.set_current_pos_as_last_stmt_pos()
-				g.write('${cur_line} ${tmp} ${node.op.str()} ')
-				g.infix_left_var_name = '!${tmp}'
-				g.expr(node.right)
-				g.infix_left_var_name = ''
-				g.inside_ternary = prev_inside_ternary
-				return
-			}
-		}
-	} else if node.right is ast.InfixExpr && g.need_tmp_var_in_expr(node.right) {
+	} else if g.need_tmp_var_in_expr(node.right) && g.inside_ternary == 0 {
 		prev_inside_ternary := g.inside_ternary
 		g.inside_ternary = 0
 		tmp := g.new_tmp_var()
@@ -1072,9 +991,9 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.infix_left_var_name = ''
 		g.inside_ternary = prev_inside_ternary
-		return
+	} else {
+		g.gen_plain_infix_expr(node)
 	}
-	g.gen_plain_infix_expr(node)
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
