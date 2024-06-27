@@ -218,10 +218,11 @@ mut:
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx  int
-	arg_no_auto_deref   bool   // smartcast must not be dereferenced
-	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
-	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
-	infix_left_var_name string // a && if expr
+	arg_no_auto_deref   bool     // smartcast must not be dereferenced
+	branch_parent_pos   int      // used in BranchStmt (continue/break) for autofree stop position
+	returned_var_name   string   // to detect that a var doesn't need to be freed since it's being returned
+	infix_left_var_name string   // a && if expr
+	curr_var_name       []string // curr var name on assignment
 	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
 	force_main_console  bool // true when [console] used on fn main()
@@ -4166,6 +4167,9 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	mut count := 1
 	outer: for _, obj in scope_vars {
 		if obj.name !in vars {
+			if obj.name in g.curr_var_name {
+				continue
+			}
 			if obj is ast.Var && g.check_var_scope(obj, node.pos.pos) {
 				keys.write_string('_SLIT("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
