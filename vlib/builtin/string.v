@@ -2662,9 +2662,13 @@ pub fn (s string) camel_to_snake() string {
 		}
 		lower_first_c, lower_second_c
 	} else {
-		lower_first_c := s[0]
-		second_c := if s[1].is_capital() { u8(`_`) } else { s[1] }
-		lower_first_c, second_c
+		first_c := s[0]
+		second_c := if s[1].is_capital() {
+			if first_c == `_` { s[1] + 32 } else { u8(`_`) }
+		} else {
+			s[1]
+		}
+		first_c, second_c
 	}
 	unsafe {
 		b[0] = first_char
