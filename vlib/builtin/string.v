@@ -2656,7 +2656,6 @@ pub fn (s string) camel_to_snake() string {
 	for i in 0 .. s.len {
 		c := s[i]
 		c_is_upper := c.is_capital()
-		lower_c := if c_is_upper { c + 32 } else { c }
 		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
 		if ((c_is_upper && !prev_is_upper)
 			|| (!c_is_upper && prev_is_upper && i > 1 && s[i - 2].is_capital())) && c != `_` {
@@ -2667,6 +2666,7 @@ pub fn (s string) camel_to_snake() string {
 				}
 			}
 		}
+		lower_c := if c_is_upper { c + 32 } else { c }
 		unsafe {
 			b[pos] = lower_c
 		}
