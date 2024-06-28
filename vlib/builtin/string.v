@@ -2651,52 +2651,18 @@ pub fn (s string) camel_to_snake() string {
 		return s.to_lower()
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
-	mut prev_is_upper := false
-	first_char, second_char := if s[0].is_capital() {
-		lower_first_c := s[0] + 32
-		lower_second_c := if s[1].is_capital() {
-			prev_is_upper = true
-			s[1] + 32
-		} else {
-			s[1]
-		}
-		lower_first_c, lower_second_c
-	} else {
-		first_c := s[0]
-		second_c := if s[1].is_capital() {
-			if first_c == `_` { s[1] + 32 } else { u8(`_`) }
-		} else {
-			s[1]
-		}
-		first_c, second_c
-	}
-	unsafe {
-		b[0] = first_char
-		b[1] = second_char
-	}
-	mut pos := 2
-	mut prev_char := second_char
-	mut lower_c := `_`
-	mut c_is_upper := false
-	for i in pos .. s.len {
+	mut prev_is_upper := s[0].is_capital()
+	mut pos := 0
+	for i in 0 .. s.len {
 		c := s[i]
-		c_is_upper = c.is_capital()
-		lower_c = if c_is_upper { c + 32 } else { c }
-		if !prev_is_upper && c_is_upper {
-			// aB => a_b, if prev has `_`, then do not add `_`
+		c_is_upper := c.is_capital()
+		lower_c := if c_is_upper { c + 32 } else { c }
+		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
+		if ((c_is_upper && !prev_is_upper)
+			|| (!c_is_upper && prev_is_upper && i > 1 && s[i - 2].is_capital())) && c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					b[pos] = `_`
-					pos++
-				}
-			}
-		} else if prev_is_upper && !c_is_upper && c != `_` {
-			// Ba => _ba, if prev has `_`, then do not add `_`
-			unsafe {
-				if b[pos - 2] != `_` {
-					prev_char = b[pos - 1]
-					b[pos - 1] = `_`
-					b[pos] = prev_char
 					pos++
 				}
 			}
