@@ -1,4 +1,4 @@
-vlib/v/checker/tests/deprecations_consts.vv:3:10: warning: const `math.max_i8` has been deprecated since 2023-12-31, it will be an error after 2024-06-28; use built-in constant `max_i8` instead
+vlib/v/checker/tests/deprecations_consts.vv:3:10: error: const `math.max_i8` has been deprecated since 2023-12-31; use built-in constant `max_i8` instead
     1 | import math
     2 | 
     3 | _ = math.max_i8
