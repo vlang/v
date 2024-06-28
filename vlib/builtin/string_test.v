@@ -1535,7 +1535,8 @@ fn test_camel_to_snake() {
 	assert 'JVM_PUBLIC_ACC'.camel_to_snake() == 'jvm_public_acc'
 	assert '_ISspace'.camel_to_snake() == '_is_space'
 	assert '_aBcd'.camel_to_snake() == '_a_bcd'
-	assert '_AbCDe'.camel_to_snake() == '_ab_cd_e'
+	assert '_a_Bcd'.camel_to_snake() == '_a_bcd'
+	assert '_AbCDe_'.camel_to_snake() == '_ab_cd_e_'
 }
 
 fn test_snake_to_camel() {

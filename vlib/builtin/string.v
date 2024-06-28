@@ -2654,14 +2654,20 @@ pub fn (s string) camel_to_snake() string {
 	// Rather than checking whether the iterator variable is > 1 inside the loop,
 	// handle the first two chars separately to reduce load.
 	mut pos := 2
-	mut prev_is_upper := s[1].is_capital()
+	mut prev_is_upper := false
 	unsafe {
 		if s[0].is_capital() {
 			b[0] = s[0] + 32
-			b[1] = if s[1].is_capital() { s[1] + 32 } else { s[1] }
+			b[1] = if s[1].is_capital() {
+				prev_is_upper = true
+				s[1] + 32
+			} else {
+				s[1]
+			}
 		} else {
 			b[0] = s[0]
 			if s[1].is_capital() {
+				prev_is_upper = true
 				if s[0] != `_` && s.len > 2 && !s[2].is_capital() {
 					b[1] = `_`
 					b[2] = s[1] + 32
