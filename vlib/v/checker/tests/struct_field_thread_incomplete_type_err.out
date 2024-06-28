@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_field_thread_incomplete_type_err.vv:2:4: error: `thread` needs to have a complete type like `thread int`, `thread []string`
+    1 | struct Str {
+    2 |     t thread
+      |       ~~~~~~
+    3 |     a [0xF]bool
+    4 | }

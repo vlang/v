@@ -189,6 +189,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						c.warn('byte is deprecated, use u8 instead', field.type_pos)
 					}
 				}
+				.thread {
+					thread_type := sym.thread_info().return_type
+					if c.table.sym(thread_type).kind == .void {
+						c.error('`thread` needs to have a complete type like `thread int`, `thread []string`',
+							field.type_pos)
+					}
+				}
 				else {
 					c.check_any_type(field.typ, sym, field.type_pos)
 				}
