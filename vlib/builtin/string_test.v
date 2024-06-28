@@ -1524,12 +1524,15 @@ fn test_contains_byte() {
 
 fn test_camel_to_snake() {
 	assert 'Abcd'.camel_to_snake() == 'abcd'
+	assert 'AAbb'.camel_to_snake() == 'aa_bb'
 	assert 'aaBB'.camel_to_snake() == 'aa_bb'
 	assert 'aaBbCcDD'.camel_to_snake() == 'aa_bb_cc_dd'
-	assert 'BBaa'.camel_to_snake() == 'b_baa'
+	assert 'AAbbCC'.camel_to_snake() == 'aa_bb_cc'
+	assert 'aaBBcc'.camel_to_snake() == 'aa_bb_cc'
 	assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+	assert 'aa__BB'.camel_to_snake() == 'aa__bb'
 	assert 'JVM_PUBLIC_ACC'.camel_to_snake() == 'jvm_public_acc'
-	assert '_ISspace'.camel_to_snake() == '_i_sspace'
+	assert '_ISspace'.camel_to_snake() == '_is_space'
 }
 
 fn test_snake_to_camel() {
