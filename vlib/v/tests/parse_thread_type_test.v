@@ -1,18 +1,18 @@
 struct Foo1 {
 	before_1 int
-	thr      thread
+	thr      thread int
 	after_1  int
 	after_2  int
 	after_3  int
 }
 
 struct Foo2 {
-	thr thread
+	thr thread int
 	a   ?int
 }
 
 struct Foo3 {
-	thrs []thread
+	thrs []thread f32
 	a    []int
 }
 
