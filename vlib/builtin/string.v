@@ -2651,14 +2651,35 @@ pub fn (s string) camel_to_snake() string {
 		return s.to_lower()
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
-	mut prev_is_upper := s[0].is_capital()
-	mut pos := 0
-	for i in 0 .. s.len {
+	// Rather than checking whether the iterator variable is > 1 inside the loop,
+	// handle the first two chars separately to reduce load.
+	mut pos := 2
+	mut prev_is_upper := s[1].is_capital()
+	unsafe {
+		if s[0].is_capital() {
+			b[0] = s[0] + 32
+			b[1] = if s[1].is_capital() { s[1] + 32 } else { s[1] }
+		} else {
+			b[0] = s[0]
+			if s[1].is_capital() {
+				if s[0] != `_` && s.len > 2 && !s[2].is_capital() {
+					b[1] = `_`
+					b[2] = s[1] + 32
+					pos = 3
+				} else {
+					b[1] = s[1] + 32
+				}
+			} else {
+				b[1] = s[1]
+			}
+		}
+	}
+	for i := 2; i < s.len; i++ {
 		c := s[i]
 		c_is_upper := c.is_capital()
 		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
 		if ((c_is_upper && !prev_is_upper)
-			|| (!c_is_upper && prev_is_upper && i > 1 && s[i - 2].is_capital())) && c != `_` {
+			|| (!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					b[pos] = `_`
