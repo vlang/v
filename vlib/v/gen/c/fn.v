@@ -1678,7 +1678,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
-		g.write('ptr_str(')
+		if left_type.is_int_valptr() {
+			g.write('ptr_str(')
+		} else {
+			g.gen_expr_to_string(node.left, left_type)
+			return
+		}
 	} else if node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str'
 		&& !left_sym.has_method('str') {
 		g.gen_expr_to_string(node.left, left_type)
