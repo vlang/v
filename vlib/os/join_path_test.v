@@ -26,7 +26,7 @@ fn test_join_path() {
 		assert os.join_path('foo/bar', './file.txt') == r'foo\bar\file.txt'
 		assert os.join_path('/opt/v', './x') == r'\opt\v\x'
 		assert os.join_path('v', 'foo/bar', 'dir') == r'v\foo\bar\dir'
-		assert os.join_path('v', 'foo/bar\\baz', '/dir') == r'\dir'
+		assert os.join_path('v', 'foo/bar\\baz', '/dir') == r'/dir'
 		assert os.join_path('C:', 'f1\\..', 'f2') == r'C:\f1\..\f2'
 	} $else {
 		assert os.join_path('./b', '') == './b'
