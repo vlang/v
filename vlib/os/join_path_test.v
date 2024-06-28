@@ -8,10 +8,10 @@ fn test_join_path() {
 	assert os.join_path('b', '') == 'b'
 	assert os.join_path('b') == 'b'
 	assert os.join_path('', '', './b') == 'b'
-	assert os.join_path('', '', '/b') == 'b'
+	assert os.join_path('', '', '/b') == '/b'
 	assert os.join_path('', '', 'b') == 'b'
 	assert os.join_path('', './b') == 'b'
-	assert os.join_path('', '/b') == 'b'
+	assert os.join_path('', '/b') == '/b'
 	assert os.join_path('', 'b') == 'b'
 	assert os.join_path('b', '') == 'b'
 	$if windows {
@@ -40,14 +40,14 @@ fn test_join_path() {
 		assert os.join_path('foo/bar', './file.txt') == 'foo/bar/file.txt'
 		assert os.join_path('/opt/v', './x') == '/opt/v/x'
 		assert os.join_path('/foo/bar', './.././file.txt') == '/foo/bar/../file.txt'
-		assert os.join_path('v', 'foo/bar\\baz', '/dir') == r'v/foo/bar/baz/dir'
+		assert os.join_path('v', 'foo/bar\\baz', '/dir') == '/dir'
 	}
 }
 
 fn test_join_path_single() {
 	assert os.join_path_single('', '') == ''
 	assert os.join_path_single('', './b') == 'b'
-	assert os.join_path_single('', '/b') == 'b'
+	assert os.join_path_single('', '/b') == '/b'
 	assert os.join_path_single('', 'b') == 'b'
 	assert os.join_path_single('b', '') == 'b'
 	$if windows {

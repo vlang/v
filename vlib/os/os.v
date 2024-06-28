@@ -585,6 +585,9 @@ pub fn join_path(base string, dirs ...string) string {
 	sb.write_string(sbase)
 	for d in dirs {
 		if d != '' {
+			if is_abs_path(d) {
+				return d
+			}
 			sb.write_string(path_separator)
 			sb.write_string(d)
 		}
@@ -613,6 +616,9 @@ pub fn join_path_single(base string, elem string) string {
 	}
 	sb.write_string(sbase)
 	if elem != '' {
+		if is_abs_path(elem) {
+			return elem
+		}
 		sb.write_string(path_separator)
 		sb.write_string(elem)
 	}
