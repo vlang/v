@@ -2651,56 +2651,49 @@ pub fn (s string) camel_to_snake() string {
 		return s.to_lower()
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
-	mut prev_is_upper := false
-	first_char, second_char := if s[0].is_capital() {
-		lower_first_c := s[0] + 32
-		lower_second_c := if s[1].is_capital() {
-			prev_is_upper = true
-			s[1] + 32
-		} else {
-			s[1]
-		}
-		lower_first_c, lower_second_c
-	} else {
-		first_c := s[0]
-		second_c := if s[1].is_capital() {
-			if first_c == `_` { s[1] + 32 } else { u8(`_`) }
-		} else {
-			s[1]
-		}
-		first_c, second_c
-	}
-	unsafe {
-		b[0] = first_char
-		b[1] = second_char
-	}
+	// Rather than checking whether the iterator variable is > 1 inside the loop,
+	// handle the first two chars separately to reduce load.
 	mut pos := 2
-	mut prev_char := second_char
-	mut lower_c := `_`
-	mut c_is_upper := false
-	for i in pos .. s.len {
+	mut prev_is_upper := false
+	unsafe {
+		if s[0].is_capital() {
+			b[0] = s[0] + 32
+			b[1] = if s[1].is_capital() {
+				prev_is_upper = true
+				s[1] + 32
+			} else {
+				s[1]
+			}
+		} else {
+			b[0] = s[0]
+			if s[1].is_capital() {
+				prev_is_upper = true
+				if s[0] != `_` && s.len > 2 && !s[2].is_capital() {
+					b[1] = `_`
+					b[2] = s[1] + 32
+					pos = 3
+				} else {
+					b[1] = s[1] + 32
+				}
+			} else {
+				b[1] = s[1]
+			}
+		}
+	}
+	for i := 2; i < s.len; i++ {
 		c := s[i]
-		c_is_upper = c.is_capital()
-		lower_c = if c_is_upper { c + 32 } else { c }
-		if !prev_is_upper && c_is_upper {
-			// aB => a_b, if prev has `_`, then do not add `_`
+		c_is_upper := c.is_capital()
+		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
+		if ((c_is_upper && !prev_is_upper)
+			|| (!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && c != `_` {
 			unsafe {
 				if b[pos - 1] != `_` {
 					b[pos] = `_`
 					pos++
 				}
 			}
-		} else if prev_is_upper && !c_is_upper && c != `_` {
-			// Ba => _ba, if prev has `_`, then do not add `_`
-			unsafe {
-				if b[pos - 2] != `_` {
-					prev_char = b[pos - 1]
-					b[pos - 1] = `_`
-					b[pos] = prev_char
-					pos++
-				}
-			}
 		}
+		lower_c := if c_is_upper { c + 32 } else { c }
 		unsafe {
 			b[pos] = lower_c
 		}
