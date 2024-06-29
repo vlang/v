@@ -8,7 +8,7 @@ pub mut:
 	rem  T
 }
 
-// div_truncated returns the truncated version of the result of dividing numer to denom
+// divide_truncated returns the truncated version of the result of dividing numer to denom
 pub fn divide_truncated[T](numer T, denom T) DivResult[T] {
 	return DivResult[T]{
 		quot: numer / denom
@@ -16,7 +16,7 @@ pub fn divide_truncated[T](numer T, denom T) DivResult[T] {
 	}
 }
 
-// div_truncated returns the Euclidean version of the result of dividing numer to denom
+// divide_euclid returns the Euclidean version of the result of dividing numer to denom
 pub fn divide_euclid[T](numer T, denom T) DivResult[T] {
 	mut q := numer / denom
 	mut r := numer % denom
@@ -35,7 +35,7 @@ pub fn divide_euclid[T](numer T, denom T) DivResult[T] {
 	}
 }
 
-// div_truncated returns the floored version of the result of dividing numer to denom
+// divide_floored returns the floored version of the result of dividing numer to denom
 pub fn divide_floored[T](numer T, denom T) DivResult[T] {
 	mut q := numer / denom
 	mut r := numer % denom
@@ -54,12 +54,12 @@ pub fn modulo_truncated[T](numer T, denom T) T {
 	return numer % denom
 }
 
-// modulo_truncated returns the Euclidean remainder of dividing numer to denom
+// modulo_euclid returns the Euclidean remainder of dividing numer to denom
 pub fn modulo_euclid[T](numer T, denom T) T {
 	return divide_euclid(numer, denom).rem
 }
 
-// modulo_truncated returns the floored remainder of dividing numer to denom
+// modulo_floored returns the floored remainder of dividing numer to denom
 pub fn modulo_floored[T](numer T, denom T) T {
 	return divide_floored(numer, denom).rem
 }
