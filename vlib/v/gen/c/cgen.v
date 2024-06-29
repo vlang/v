@@ -2393,7 +2393,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 		g.get_sumtype_variant_name(exp_, exp_sym)
 	}
 	// fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
-	fn_name := '${g.get_sumtype_variant_name(got_, got_sym)}_to_sumtype_${cname}/*KEK*/'
+	fn_name := '${g.get_sumtype_variant_name(got_, got_sym)}_to_sumtype_${cname}'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
