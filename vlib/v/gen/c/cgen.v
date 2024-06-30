@@ -4291,7 +4291,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
-	if g.pref.ccompiler == 'msvc' {
+	if g.is_cc_msvc {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
 		g.enum_typedefs.writeln('')
@@ -6274,6 +6274,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' && should_init {
 				def_builder.write_string(' = {0}')
+			} else if default_initializer == '{EMPTY_STRUCT_INITIALIZATION}' && should_init {
+				init = '\tmemcpy(${field.name}, (${styp}){${g.type_default(field.typ)}}, sizeof(${styp})); // global'
 			} else {
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {
 					init = '\t${field.name} = *(${styp}*)&((${styp}[]){${g.type_default(field.typ)}}[0]); // global'
@@ -7157,7 +7159,13 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		.string {
 			return '(string){.str=(byteptr)"", .is_lit=1}'
 		}
-		.interface_, .sum_type, .array_fixed, .multi_return, .thread {
+		.array_fixed {
+			if g.pref.ccompiler_type == .clang && sym.is_empty_struct_array() {
+				return '{EMPTY_STRUCT_INITIALIZATION}'
+			}
+			return '{0}'
+		}
+		.interface_, .sum_type, .multi_return, .thread {
 			return '{0}'
 		}
 		.alias {
