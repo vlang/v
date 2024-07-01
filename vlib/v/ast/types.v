@@ -925,6 +925,16 @@ pub fn (t &ArrayFixed) is_compatible(t2 ArrayFixed) bool {
 	return t.size == t2.size && t.elem_type == t2.elem_type
 }
 
+pub fn (t &TypeSymbol) is_empty_struct_array() bool {
+	if t.info is ArrayFixed {
+		elem_sym := global_table.final_sym(t.info.elem_type)
+		if elem_sym.info is Struct {
+			return elem_sym.info.fields.len == 0
+		}
+	}
+	return false
+}
+
 pub fn (t &TypeSymbol) is_array_fixed() bool {
 	if t.info is ArrayFixed {
 		return true
