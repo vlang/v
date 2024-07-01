@@ -1,0 +1,8 @@
+vlib/v/checker/tests/non_nil_array_with_nil_element_err.vv:1:23: error: cannot have `unsafe { nil }` inside a `string` array
+    1 | const spnames = ['f', unsafe { nil }]!
+      |                       ~~~~~~
+    2 | const spnames1 = [unsafe { nil }, 'f']!
+vlib/v/checker/tests/non_nil_array_with_nil_element_err.vv:2:35: error: cannot have `string` inside a `voidptr` array
+    1 | const spnames = ['f', unsafe { nil }]!
+    2 | const spnames1 = [unsafe { nil }, 'f']!
+      |                                   ~~~
