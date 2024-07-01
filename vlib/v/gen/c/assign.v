@@ -209,6 +209,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if node.left_types.len < node.left.len {
 		g.checker_bug('node.left_types.len < node.left.len', node.pos)
 	}
+	last_curr_var_name := g.curr_var_name.clone()
+	g.curr_var_name = []
+	defer {
+		g.curr_var_name = last_curr_var_name
+	}
 
 	for i, mut left in node.left {
 		mut is_auto_heap := false
@@ -224,6 +229,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
 		if mut left is ast.Ident {
 			ident = left
+			g.curr_var_name << ident.name
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = left.kind == .blank_ident
