@@ -554,10 +554,16 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					c.error('unknown struct: ${type_sym.name}', node.pos)
 					return ast.void_type
 				}
-				if sym.kind == .struct_ {
-					info = sym.info as ast.Struct
-				} else {
-					c.error('alias type name: ${sym.name} is not struct type', node.pos)
+				match sym.kind {
+					.struct_ {
+						info = sym.info as ast.Struct
+					}
+					.array, .array_fixed {
+						// we do allow []int{}, [10]int{}
+					}
+					else {
+						c.error('alias type name: ${sym.name} is not struct type', node.pos)
+					}
 				}
 			} else {
 				info = type_sym.info as ast.Struct

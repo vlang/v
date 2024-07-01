@@ -3833,7 +3833,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	sym := g.table.final_sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	is_as_cast := node.expr is ast.AsCast
 	if is_as_cast {

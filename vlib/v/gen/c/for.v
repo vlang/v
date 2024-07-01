@@ -307,7 +307,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		cond_sym := g.table.sym(node.cond_type)
+		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
 		g.writeln('for (int ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
 		if node.val_var != '_' {
