@@ -1,26 +1,26 @@
 vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:8: warning: module 'mod' is imported but never used
     1 | module main
-    2 |
+    2 | 
     3 | import mod { MyEnum, MyStruct }
       |        ~~~
-    4 |
+    4 | 
     5 | fn main() {
 vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:14: error: module `mod` type `MyEnum` is private
     1 | module main
-    2 |
+    2 | 
     3 | import mod { MyEnum, MyStruct }
       |              ~~~~~~
-    4 |
+    4 | 
     5 | fn main() {
 vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:7: error: module `mod` type `mod.MyEnum` is private
-    4 |
+    4 | 
     5 | fn main() {
     6 |     _ := MyEnum.from_string('item1')
       |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     7 |     _ := MyStruct.from_string('item1')
     8 | }
-vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:4: error: assignment mismatch: 1 variable(s) but `MyEnum.from_string()` returns 0 value(s)
-    4 |
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:4: error: assignment mismatch: 1 variable but `MyEnum.from_string()` returns 0 values
+    4 | 
     5 | fn main() {
     6 |     _ := MyEnum.from_string('item1')
       |       ~~
@@ -32,7 +32,7 @@ vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:7: 
     7 |     _ := MyStruct.from_string('item1')
       |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     8 | }
-vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:4: error: assignment mismatch: 1 variable(s) but `MyStruct.from_string()` returns 0 value(s)
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:4: error: assignment mismatch: 1 variable but `MyStruct.from_string()` returns 0 values
     5 | fn main() {
     6 |     _ := MyEnum.from_string('item1')
     7 |     _ := MyStruct.from_string('item1')

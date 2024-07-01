@@ -140,6 +140,15 @@ fn test_little_endian_u64_at() {
 		0, 0, 0, 0], 1) != u64(0xf8a29e217f9f8e8f)
 }
 
+fn test_little_endian_f32_at() {
+	assert little_endian_f32_at([u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+		1) == f32(0)
+	/*
+	assert little_endian_f32_at([u8(0), 5, 4, 9, 1, 7, 3, 6, 8, 0, 0, 0, 0, 0, 0, 0],
+		1).eq_epsilon(0.00000000000000000000000000000000002516)
+		*/
+}
+
 fn test_little_endian_u64_end() {
 	assert little_endian_u64_end([u8(1), 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]) == u64(0)
 	assert little_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 5, 4, 9, 1, 7, 3, 6, 8]) == u64(0x0806030701090405)
