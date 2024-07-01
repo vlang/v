@@ -52,7 +52,16 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				node.right_types = right_type_sym.mr_info().types
 				right_len = node.right_types.len
 			} else if right_type == ast.void_type {
-				right_len = 0
+				if mut right is ast.IfExpr {
+					last_branch := right.branches.last()
+					last_stmts := last_branch.stmts.filter(it is ast.ExprStmt)
+					if last_stmts.any((it as ast.ExprStmt).typ.has_flag(.generic)) {
+						right_len = last_branch.stmts.len
+						node.right_types = last_stmts.map((it as ast.ExprStmt).typ)
+					}
+				} else {
+					right_len = 0
+				}
 			}
 		}
 		if mut right is ast.InfixExpr {
