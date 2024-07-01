@@ -550,7 +550,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			for i in 0 .. expr.branches.len {
 				mut branch := expr.branches[i]
 				if !expr.has_else || i < expr.branches.len - 1 {
-					if c.comptime_if_branch(mut branch.cond, branch.pos) == .eval {
+					if c.comptime_if_cond(mut branch.cond, branch.pos) == .eval {
 						last_stmt := branch.stmts.last()
 						if last_stmt is ast.ExprStmt {
 							return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
@@ -665,7 +665,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	node.ct_skip = if c.comptime_if_branch(mut node.ct_expr, node.pos) == .skip {
+	node.ct_skip = if c.comptime_if_cond(mut node.ct_expr, node.pos) == .skip {
 		true
 	} else {
 		false
@@ -681,9 +681,9 @@ enum ComptimeBranchSkipState {
 	unknown
 }
 
-// comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
+// comptime_if_cond checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
+fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
 	mut should_record_ident := false
 	mut is_user_ident := false
 	mut ident_name := ''
@@ -702,13 +702,13 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 			return if cond.val { .eval } else { .skip }
 		}
 		ast.ParExpr {
-			return c.comptime_if_branch(mut cond.expr, pos)
+			return c.comptime_if_cond(mut cond.expr, pos)
 		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-			reversed := c.comptime_if_branch(mut cond.right, cond.pos)
+			reversed := c.comptime_if_cond(mut cond.right, cond.pos)
 			return if reversed == .eval {
 				.skip
 			} else if reversed == .skip {
@@ -732,16 +732,16 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 		ast.InfixExpr {
 			match cond.op {
 				.and {
-					l := c.comptime_if_branch(mut cond.left, cond.pos)
-					r := c.comptime_if_branch(mut cond.right, cond.pos)
+					l := c.comptime_if_cond(mut cond.left, cond.pos)
+					r := c.comptime_if_cond(mut cond.right, cond.pos)
 					if l == .unknown || r == .unknown {
 						return .unknown
 					}
 					return if l == .eval && r == .eval { .eval } else { .skip }
 				}
 				.logical_or {
-					l := c.comptime_if_branch(mut cond.left, cond.pos)
-					r := c.comptime_if_branch(mut cond.right, cond.pos)
+					l := c.comptime_if_cond(mut cond.left, cond.pos)
+					r := c.comptime_if_cond(mut cond.right, cond.pos)
 					if l == .unknown || r == .unknown {
 						return .unknown
 					}
