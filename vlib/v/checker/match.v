@@ -291,10 +291,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 		}
 	}
 	if mut expr is ast.Ident {
-		has_expr_mod_in_name := expr.name.contains('.')
-		expr_name := if has_expr_mod_in_name { expr.name } else { '${expr.mod}.${expr.name}' }
-
-		if mut obj := c.table.global_scope.find_const(expr_name) {
+		if mut obj := c.table.global_scope.find_const(expr.full_name()) {
 			if obj.typ == 0 {
 				obj.typ = c.expr(mut obj.expr)
 			}

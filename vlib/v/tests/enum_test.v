@@ -172,3 +172,20 @@ fn test_enum_variant_and_method_name_clash() {
 	x := Bar.baz
 	println(x)
 }
+
+const base = 600000
+
+enum EnumWithExpressions {
+	aa
+	bb = base
+	cc
+	dd = base + 10
+	ee = base * 99 - 4
+}
+
+fn test_enum_variant_with_value_based_on_const_expression() {
+	assert int(EnumWithExpressions.bb) == base
+	assert int(EnumWithExpressions.cc) == base + 1
+	assert int(EnumWithExpressions.dd) == 600010
+	assert int(EnumWithExpressions.ee) == 59399996
+}
