@@ -151,3 +151,11 @@ pub fn little_endian_put_u64_at(mut b []u8, v u64, o int) {
 pub fn little_endian_put_u64_end(mut b []u8, v u64) {
 	little_endian_put_u64_at(mut b, v, b.len - 8)
 }
+
+@[direct_array_access; inline]
+pub fn little_endian_f32_at(b []u8, o int) f32 {
+	_ = b[o] // bounds check
+	_ = b[o + 3] // bounds check
+	u := u32(b[o]) | (u32(b[o + 1]) << u32(8)) | (u32(b[o + 2]) << u32(16)) | (u32(b[o + 3]) << u32(24))
+	return *(&f32(&u))
+}
