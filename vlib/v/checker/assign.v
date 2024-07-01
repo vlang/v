@@ -87,7 +87,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				// If it's a void type, it's an unknown variable, already had an error earlier.
 				return
 			}
-			c.error('assignment mismatch: ${node.left.len} variable(s) but `${right_first.get_name()}()` returns ${right_len} value(s)',
+			str_variables := if node.left.len == 1 { 'variable' } else { 'variables' }
+			str_values := if right_len == 1 { 'value' } else { 'values' }
+			c.error('assignment mismatch: ${node.left.len} ${str_variables} but `${right_first.get_name()}()` returns ${right_len} ${str_values}',
 				node.pos)
 		} else if mut right_first is ast.ParExpr {
 			mut right_next := right_first
@@ -105,7 +107,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		} else {
-			c.error('assignment mismatch: ${node.left.len} variable(s) ${right_len} value(s)',
+			str_variables := if node.left.len == 1 { 'variable' } else { 'variables' }
+			str_values := if right_len == 1 { 'value' } else { 'values' }
+			c.error('assignment mismatch: ${node.left.len} ${str_variables} ${right_len} ${str_values}',
 				node.pos)
 		}
 		return

@@ -5,7 +5,7 @@ vlib/v/checker/tests/void_fn_as_value.vv:5:7: error: unknown function: x
       |          ~~~~~~~~~~
     6 |     mut b := 'abcdef'
     7 |     _ = b
-vlib/v/checker/tests/void_fn_as_value.vv:5:4: error: assignment mismatch: 1 variable(s) but `x()` returns 0 value(s)
+vlib/v/checker/tests/void_fn_as_value.vv:5:4: error: assignment mismatch: 1 variable but `x()` returns 0 values
     3 | fn main() {
     4 |     mut a := 'aa'
     5 |     a += x('a','b')
