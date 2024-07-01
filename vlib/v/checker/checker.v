@@ -1536,8 +1536,9 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	field_name := node.field_name
-	sym := c.table.final_sym(typ)
-	if (typ.has_flag(.variadic) || sym.kind == .array_fixed) && field_name == 'len' {
+	sym := c.table.sym(typ)
+	final_sym := c.table.final_sym(typ)
+	if (typ.has_flag(.variadic) || final_sym.kind == .array_fixed) && field_name == 'len' {
 		node.typ = ast.int_type
 		return ast.int_type
 	}
@@ -2824,9 +2825,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			}
 
 			unwrapped_expr_type := c.unwrap_generic(node.expr_type)
-			tsym := c.table.final_sym(unwrapped_expr_type)
-			if tsym.kind == .array_fixed {
-				info := tsym.info as ast.ArrayFixed
+			tsym := c.table.sym(unwrapped_expr_type)
+			tsym_final := c.table.final_sym(unwrapped_expr_type)
+			if tsym_final.kind == .array_fixed {
+				info := tsym_final.info as ast.ArrayFixed
 				if !info.is_fn_ret {
 					// for dumping fixed array we must register the fixed array struct to return from function
 					c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
