@@ -7160,7 +7160,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			return '(string){.str=(byteptr)"", .is_lit=1}'
 		}
 		.array_fixed {
-			if g.pref.ccompiler_type == .clang && sym.is_empty_struct_array() {
+			if sym.is_empty_struct_array() {
 				return '{EMPTY_STRUCT_INITIALIZATION}'
 			}
 			return '{0}'
