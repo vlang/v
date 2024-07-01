@@ -117,7 +117,16 @@ fn abs64(x i64) u64 {
 //---------------------------------------
 
 // convert from data format to compact u64
-pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
+pub fn get_str_intp_u64_format(
+	fmt_type StrIntpType,
+	in_width int,
+	in_precision int,
+	in_tail_zeros bool,
+	in_sign bool,
+	in_pad_ch u8,
+	in_base int,
+	in_upper_case bool
+) u64 {
 	width := if in_width != 0 { abs64(in_width) } else { u64(0) }
 	align := if in_width > 0 { u64(1 << 5) } else { u64(0) } // two bit 0 .left 1 .right, for now we use only one
 	upper_case := if in_upper_case { u64(1 << 7) } else { u64(0) }
@@ -134,7 +143,16 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 }
 
 // convert from data format to compact u32
-pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
+pub fn get_str_intp_u32_format(
+	fmt_type StrIntpType,
+	in_width int,
+	in_precision int,
+	in_tail_zeros bool,
+	in_sign bool,
+	in_pad_ch u8,
+	in_base int,
+	in_upper_case bool
+) u32 {
 	width := if in_width != 0 { abs64(in_width) } else { u32(0) }
 	align := if in_width > 0 { u32(1 << 5) } else { u32(0) } // two bit 0 .left 1 .right, for now we use only one
 	upper_case := if in_upper_case { u32(1 << 7) } else { u32(0) }

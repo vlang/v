@@ -73,7 +73,14 @@ fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_e
 	}
 }
 
-fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
+fn new_map_noscan_key_value(
+	key_bytes int,
+	value_bytes int,
+	hash_fn MapHashFn,
+	key_eq_fn MapEqFn,
+	clone_fn MapCloneFn,
+	free_fn MapFreeFn
+) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
@@ -95,7 +102,17 @@ fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 	}
 }
 
-fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+fn new_map_init_noscan_key(
+	hash_fn MapHashFn,
+	key_eq_fn MapEqFn,
+	clone_fn MapCloneFn,
+	free_fn MapFreeFn,
+	n int,
+	key_bytes int,
+	value_bytes int,
+	keys voidptr,
+	values voidptr
+) map {
 	mut out := new_map_noscan_key(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO: pre-allocate n slots
@@ -111,7 +128,17 @@ fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapClo
 	return out
 }
 
-fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+fn new_map_init_noscan_value(
+	hash_fn MapHashFn,
+	key_eq_fn MapEqFn,
+	clone_fn MapCloneFn,
+	free_fn MapFreeFn,
+	n int,
+	key_bytes int,
+	value_bytes int,
+	keys voidptr,
+	values voidptr
+) map {
 	mut out := new_map_noscan_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO: pre-allocate n slots
@@ -127,7 +154,17 @@ fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapC
 	return out
 }
 
-fn new_map_init_noscan_key_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+fn new_map_init_noscan_key_value(
+	hash_fn MapHashFn,
+	key_eq_fn MapEqFn,
+	clone_fn MapCloneFn,
+	free_fn MapFreeFn,
+	n int,
+	key_bytes int,
+	value_bytes int,
+	keys voidptr,
+	values voidptr
+) map {
 	mut out := new_map_noscan_key_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO: pre-allocate n slots

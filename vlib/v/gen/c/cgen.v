@@ -2492,7 +2492,15 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	g.auto_fn_definitions << sb.str()
 }
 
-fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_is_fn bool, got_styp string) {
+fn (mut g Gen) call_cfn_for_casting_expr(
+	fname string,
+	expr ast.Expr,
+	exp_is_ptr bool,
+	exp_styp string,
+	got_is_ptr bool,
+	got_is_fn bool,
+	got_styp string
+) {
 	mut rparen_n := 1
 	if exp_is_ptr {
 		g.write('HEAP(${exp_styp}, ')

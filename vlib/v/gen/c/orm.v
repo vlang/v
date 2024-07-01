@@ -221,7 +221,13 @@ fn (mut g Gen) write_orm_drop_table(table_name string, connection_var_name strin
 }
 
 // write_orm_insert writes C code that calls ORM functions for inserting structs into a table.
-fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, or_expr &ast.OrExpr) {
+fn (mut g Gen) write_orm_insert(
+	node &ast.SqlStmtLine,
+	table_name string,
+	connection_var_name string,
+	result_var_name string,
+	or_expr &ast.OrExpr
+) {
 	last_ids_variable_name := g.new_tmp_var()
 
 	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
@@ -295,7 +301,16 @@ fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connec
 
 // write_orm_insert_with_last_ids writes C code that calls ORM functions for
 // inserting a struct into a table, saving inserted `id` into a passed variable.
-fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_var_name string, table_name string, last_ids_arr string, res string, pid string, fkey string, or_expr ast.OrExpr) {
+fn (mut g Gen) write_orm_insert_with_last_ids(
+	node ast.SqlStmtLine,
+	connection_var_name string,
+	table_name string,
+	last_ids_arr string,
+	res string,
+	pid string,
+	fkey string,
+	or_expr ast.OrExpr
+) {
 	mut subs := []ast.SqlStmtLine{}
 
 	mut subs_unwrapped_c_typ := []string{}
@@ -719,7 +734,14 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 }
 
 // write_orm_where_expr writes C code that generates expression which is used in the `QueryData`.
-fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut parentheses [][]int, mut kinds []string, mut data []ast.Expr, mut is_and []bool) {
+fn (mut g Gen) write_orm_where_expr(
+	expr ast.Expr,
+	mut fields []string,
+	mut parentheses [][]int,
+	mut kinds []string,
+	mut data []ast.Expr,
+	mut is_and []bool
+) {
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left

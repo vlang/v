@@ -84,11 +84,11 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a, false)
 	return f.str()
 }
 
-pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string) string {
+pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, need_wrap bool) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -132,11 +132,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a, need_wrap)
 	return f.str()
 }
 
-fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string, need_wrap bool) {
 	mut add_para_types := true
 	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
@@ -188,6 +188,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		if is_wrap_needed {
 			f.write_string('\t')
 		}
+		if need_wrap {
+			f.write_string('\n\t')
+		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
 		}
@@ -228,10 +231,18 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 		}
 		if !is_last_param {
-			f.write_string(', ')
+			if need_wrap {
+				f.write_string(',')
+			} else {
+				f.write_string(', ')
+			}
 		}
 	}
-	f.write_string(')')
+	if need_wrap {
+		f.write_string('\n)')
+	} else {
+		f.write_string(')')
+	}
 	if node.return_type != void_type {
 		sreturn_type := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
 		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)

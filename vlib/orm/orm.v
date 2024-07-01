@@ -207,7 +207,17 @@ pub interface Connection {
 // num - Stmt uses nums at prepared statements (? or ?1)
 // qm - Character for prepared statement (qm for question mark, as in sqlite)
 // start_pos - When num is true, it's the start position of the counter
-pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
+pub fn orm_stmt_gen(
+	sql_dialect SQLDialect,
+	table string,
+	q string,
+	kind StmtKind,
+	num bool,
+	qm string,
+	start_pos int,
+	data QueryData,
+	where QueryData
+) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
 	mut data_fields := []string{}
@@ -432,7 +442,15 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 // fields - See TableField
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
-pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string, alternative bool) !string {
+pub fn orm_table_gen(
+	table string,
+	q string,
+	defaults bool,
+	def_unique_len int,
+	fields []TableField,
+	sql_from_v fn (int) !string,
+	alternative bool
+) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table}${q} ('
 
 	if alternative {

@@ -237,9 +237,25 @@ fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
-fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
+fn C.CreateFile(
+	lpFilename &u16,
+	dwDesiredAccess u32,
+	dwShareMode u32,
+	lpSecurityAttributes &u16,
+	dwCreationDisposition u32,
+	dwFlagsAndAttributes u32,
+	hTemplateFile voidptr
+) voidptr
 
-fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
+fn C.CreateFileW(
+	lpFilename &u16,
+	dwDesiredAccess u32,
+	dwShareMode u32,
+	lpSecurityAttributes &u16,
+	dwCreationDisposition u32,
+	dwFlagsAndAttributes u32,
+	hTemplateFile voidptr
+) voidptr
 
 fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
 
@@ -258,7 +274,18 @@ fn C.SendMessageTimeout() isize
 
 fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) isize
 
-fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
+fn C.CreateProcessW(
+	lpApplicationName &u16,
+	lpCommandLine &u16,
+	lpProcessAttributes voidptr,
+	lpThreadAttributes voidptr,
+	bInheritHandles bool,
+	dwCreationFlags u32,
+	lpEnvironment voidptr,
+	lpCurrentDirectory &u16,
+	lpStartupInfo voidptr,
+	lpProcessInformation voidptr
+) bool
 
 fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
 
@@ -302,7 +329,16 @@ fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMult
 
 fn C.wcslen(str voidptr) usize
 
-fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr &char, cbMultiByte int, lpDefaultChar &char, lpUsedDefaultChar &int) int
+fn C.WideCharToMultiByte(
+	codePage u32,
+	dwFlags u32,
+	lpWideCharStr &u16,
+	cchWideChar int,
+	lpMultiByteStr &char,
+	cbMultiByte int,
+	lpDefaultChar &char,
+	lpUsedDefaultChar &int
+) int
 
 fn C._wstat(path &u16, buffer &C._stat) int
 
