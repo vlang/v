@@ -59,7 +59,8 @@ fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom,
 fn C.XSync(d &C.Display, discard int) int
 
 fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int,
-	req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&u8) int
+	req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64,
+	prop_return &&u8) int
 
 fn C.XDeleteProperty(d &C.Display, w Window, property Atom) int
 

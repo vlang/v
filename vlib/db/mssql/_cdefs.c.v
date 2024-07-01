@@ -12,7 +12,8 @@ fn C.SQLSetConnectAttr(connection_handle C.SQLHDBC, attribute C.SQLINTEGER, valu
 	string_length C.SQLINTEGER) C.SQLRETURN
 
 fn C.SQLDriverConnect(hdbc C.SQLHDBC, hwnd C.SQLHWND, sz_conn_str_in &C.SQLCHAR, cb_conn_str_in C.SQLSMALLINT,
-	sz_conn_str_out &C.SQLCHAR, cb_conn_str_out_max C.SQLSMALLINT, pcb_conn_str_out &C.SQLSMALLINT, f_driver_completion C.SQLUSMALLINT) C.SQLRETURN
+	sz_conn_str_out &C.SQLCHAR, cb_conn_str_out_max C.SQLSMALLINT, pcb_conn_str_out &C.SQLSMALLINT,
+	f_driver_completion C.SQLUSMALLINT) C.SQLRETURN
 
 fn C.SQLDisconnect(connection_handle C.SQLHDBC) C.SQLRETURN
 

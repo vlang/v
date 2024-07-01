@@ -48,6 +48,8 @@ mut:
 }
 
 pub interface JS.DOMMatrix {
+	JS.DOMMatrix
+	JS.DOMMatrix
 	is2D       JS.Boolean
 	isIdentity JS.Boolean
 	flipX() JS.DOMMatrix
@@ -57,7 +59,7 @@ pub interface JS.DOMMatrix {
 	rotate(rotX JS.Number, rotY JS.Number, rotZ JS.Number) JS.DOMMatrix
 	rotateAxisAngle(x JS.Number, y JS.Number, z JS.Number, angle JS.Number) JS.DOMMatrix
 	scale(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number,
-	originZ JS.Number) JS.DOMMatrix
+	originZ JS.Number)
 	scale3d(scale JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
 	skewX(sx JS.Number) JS.DOMMatrix
 	skewY(sy JS.Number) JS.DOMMatrix
@@ -70,7 +72,7 @@ pub interface JS.DOMMatrix {
 	rotateSelf(rotX JS.Number, rotY JS.Number, rotZ JS.Number) JS.DOMMatrix
 	scale3dSelf(scale JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
 	scaleSelf(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number,
-	originZ JS.Number) JS.DOMMatrix
+	originZ JS.Number)
 	toString() JS.String
 mut:
 	a   JS.Number
@@ -439,6 +441,7 @@ mut:
 pub type FillStyle = JS.CanvasGradient | JS.CanvasPattern | JS.String
 
 pub interface JS.CanvasRenderingContext2D {
+	JS.CanvasGradient
 	canvas JS.HTMLCanvasElement
 	beginPath()
 	clip(path JS.Path2D, fillRule JS.String)
@@ -448,7 +451,7 @@ pub interface JS.CanvasRenderingContext2D {
 	stoke(path JS.Path2D)
 	createLinearGradient(x0 JS.Number, y0 JS.Number, x1 JS.Number, y1 JS.Number) JS.CanvasGradient
 	createRadialGradient(x0 JS.Number, y0 JS.Number, r0 JS.Number, x1 JS.Number, y1 JS.Number,
-	r1 JS.Number) JS.CanvasGradient
+	r1 JS.Number)
 	createPattern(image JS.CanvasImageSource, repetition JS.String) ?JS.CanvasPattern
 	arc(x JS.Number, y JS.Number, radius JS.Number, startAngle JS.Number, endAngle JS.Number,
 	counterclockwise JS.Boolean)

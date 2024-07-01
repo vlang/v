@@ -1972,7 +1972,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 }
 
 fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool,
-	is_multi_allowed bool, styp string, pos token.Pos, mut useen []u64, umin u64, umax u64, mut iseen []i64, imin i64, imax i64) {
+	is_multi_allowed bool, styp string, pos token.Pos, mut useen []u64, umin u64, umax u64, mut iseen []i64,
+	imin i64, imax i64) {
 	mut overflows := false
 	mut uval := u64(0)
 	mut ival := i64(0)

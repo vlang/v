@@ -523,7 +523,8 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 // The function returns the rendered immediately, without waiting for the cache to be created or updated.
 //
 fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRequest, last_template_mod i64,
-	unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap, current_content_checksum string, tmpl_type TemplateType) string {
+	unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap,
+	current_content_checksum string, tmpl_type TemplateType) string {
 	// Control if cache delay expiration is correctly set. See the function itself for more details.
 	check_if_cache_delay_iscorrect(cache_delay_expiration, tmpl_name) or {
 		eprintln(err)
@@ -1040,7 +1041,8 @@ fn check_if_cache_delay_iscorrect(cde i64, tmpl_name string) ! {
 // to decide whether to create a new cache, update an existing or delivered a valid cache content.
 //
 fn (mut tm DynamicTemplateManager) cache_request_route(is_cache_exist bool, neg_cache_delay_expiration i64,
-	last_template_mod i64, test_current_template_mod i64, cache_del_exp i64, gen_at i64, c_time i64, content_checksum string, current_content_checksum string) (CacheRequest, i64) {
+	last_template_mod i64, test_current_template_mod i64, cache_del_exp i64, gen_at i64, c_time i64,
+	content_checksum string, current_content_checksum string) (CacheRequest, i64) {
 	if !is_cache_exist || neg_cache_delay_expiration == -1 {
 		// Require cache creation
 		unique_ts := get_current_unix_micro_timestamp()
