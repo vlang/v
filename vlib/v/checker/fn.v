@@ -1819,6 +1819,19 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 }
 
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
+	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
+	mut left_expr := node.left
+	for mut left_expr is ast.ParExpr {
+		left_expr = left_expr.expr
+	}
+	if mut left_expr is ast.IfExpr {
+		if left_expr.branches.len > 0 && left_expr.has_else {
+			mut last_stmt := left_expr.branches[0].stmts.last()
+			if mut last_stmt is ast.ExprStmt {
+				c.expected_type = c.expr(mut last_stmt.expr)
+			}
+		}
+	}
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
 		c.error('cannot call a method using an invalid expression', node.pos)
