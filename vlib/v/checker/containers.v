@@ -205,14 +205,16 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					c.error('cannot have non-pointer of type `${c.table.type_to_str(typ)}` in a pointer array of type `${c.table.type_to_str(elem_type)}`',
 						expr.pos())
 				}
-				if elem_type != ast.nil_type && typ.idx() == ast.nil_type_idx {
-					c.error('cannot have `unsafe { nil }` inside a `${c.table.type_to_str(elem_type)}` array',
-						expr.pos())
-				}
+				if !c.inside_unsafe {
+					if elem_type != ast.nil_type && typ.idx() == ast.nil_type_idx {
+						c.error('cannot have `unsafe { nil }` inside a `${c.table.type_to_str(elem_type)}` array',
+							expr.pos())
+					}
 
-				if elem_type == ast.nil_type && typ.idx() != ast.nil_type_idx {
-					c.error('cannot have `${c.table.type_to_str(typ)}` inside a `${c.table.type_to_str(elem_type)}` array',
-						expr.pos())
+					if elem_type == ast.nil_type && typ.idx() != ast.nil_type_idx {
+						c.error('cannot have `${c.table.type_to_str(typ)}` inside a `${c.table.type_to_str(elem_type)}` array',
+							expr.pos())
+					}
 				}
 			}
 			if expr !is ast.TypeNode {
