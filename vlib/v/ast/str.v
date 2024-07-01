@@ -162,6 +162,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 	}
 	f.write_string('(')
+	mut has_wrapped := false
 	for i, param in node.params {
 		// skip receiver
 		if node.is_method && i == 0 {
@@ -228,7 +229,12 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 		}
 		if !is_last_param {
-			f.write_string(', ')
+			if f.len > 90 && !has_wrapped {
+				f.write_string(',\n\t')
+				has_wrapped = true
+			} else {
+				f.write_string(', ')
+			}
 		}
 	}
 	f.write_string(')')

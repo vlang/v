@@ -54,7 +54,8 @@ fn test_check_aliasing_twoargs() {
 	}
 }
 
-fn check_aliasing_twoargs(f fn (mut v Scalar, x Scalar, y Scalar) Scalar, mut v Scalar, x Scalar, y Scalar) bool {
+fn check_aliasing_twoargs(f fn (mut v Scalar, x Scalar, y Scalar) Scalar, mut v Scalar, x Scalar,
+	y Scalar) bool {
 	x1, y1, mut v1 := x, y, Scalar{}
 
 	// Calculate a reference f(x, y) without aliasing.

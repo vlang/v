@@ -262,7 +262,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	}
 }
 
-fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol) {
+fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string,
+	cond_fsym ast.TypeSymbol) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
 	cname := '${cond_fsym.cname}__'
 

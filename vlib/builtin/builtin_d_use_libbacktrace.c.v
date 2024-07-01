@@ -14,8 +14,10 @@ type BacktraceErrorCallback = fn (data voidptr, msg &char, errnum int) voidptr
 
 type BacktraceFullCallback = fn (data voidptr, pc voidptr, filename &char, lineno int, func &char) &int
 
-fn C.backtrace_create_state(filename &char, threaded int, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
-fn C.backtrace_full(state &C.backtrace_state, skip int, cb BacktraceFullCallback, err_cb BacktraceErrorCallback, data voidptr) int
+fn C.backtrace_create_state(filename &char, threaded int, error_callback BacktraceErrorCallback,
+	data voidptr) &C.backtrace_state
+fn C.backtrace_full(state &C.backtrace_state, skip int, cb BacktraceFullCallback, err_cb BacktraceErrorCallback,
+	data voidptr) int
 
 __global bt_state = init_bt_state()
 

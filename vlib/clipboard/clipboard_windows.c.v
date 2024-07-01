@@ -24,7 +24,8 @@ fn C.RegisterClassEx(class &WndClassEx) int
 
 fn C.GetClipboardOwner() C.HWND
 
-fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
+fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int,
+	nWidth int, nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
 
 // fn C.MultiByteToWideChar(CodePage u32, dw_flags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()

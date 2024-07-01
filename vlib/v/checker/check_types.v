@@ -194,7 +194,8 @@ fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param a
 	return true
 }
 
-fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language, arg ast.CallArg) ! {
+fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, language ast.Language,
+	arg ast.CallArg) ! {
 	if got == 0 {
 		return error('unexpected 0 type')
 	}
@@ -599,7 +600,8 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 	return left_type
 }
 
-fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
+fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind,
+	right_kind ast.Kind) ast.Type {
 	if left_type == right_type && left_kind == .alias && right_kind == .alias {
 		return left_type
 	}

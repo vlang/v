@@ -137,7 +137,8 @@ fn C.PQnfields(const_res &C.PGresult) int
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams int, const_paramTypes &int, const_paramValues &char, const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams int, const_paramTypes &int, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
 
 fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes int) int
 

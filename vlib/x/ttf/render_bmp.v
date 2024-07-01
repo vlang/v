@@ -394,7 +394,8 @@ pub fn (mut bmp BitMap) box(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) {
 	bmp.line(in_x0, in_y0, in_x0, in_y1, c)
 }
 
-pub fn (mut bmp BitMap) quadratic(in_x0 int, in_y0 int, in_x1 int, in_y1 int, in_cx int, in_cy int, c u32) {
+pub fn (mut bmp BitMap) quadratic(in_x0 int, in_y0 int, in_x1 int, in_y1 int, in_cx int, in_cy int,
+	c u32) {
 	/*
 	x0 := int(in_x0 * bmp.scale)
 	x1 := int(in_x1 * bmp.scale)

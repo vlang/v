@@ -35,7 +35,8 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
 		path: path
-		handler: fn [mut global_app, path, routes, controllers_sorted] [A, X](ctx &Context, mut url urllib.URL, host string) &Context {
+		handler: fn [mut global_app, path, routes, controllers_sorted] [A, X](ctx &Context, mut url urllib.URL,
+	host string) &Context {
 			// transform the url
 			url.path = url.path.all_after_first(path)
 

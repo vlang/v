@@ -1409,7 +1409,8 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.writeln('}\n')
 }
 
-pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_aligns []AlignInfo, mut comment_aligns []AlignInfo, mut default_expr_aligns []AlignInfo, mut field_types []string) {
+pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_aligns []AlignInfo,
+	mut comment_aligns []AlignInfo, mut default_expr_aligns []AlignInfo, mut field_types []string) {
 	// Calculate the alignments first
 	for i, field in fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
@@ -2577,7 +2578,8 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 
 const wsinfix_depth_max = 10
 
-fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
+fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool,
+	is_cond bool) {
 	f.wsinfix_depth++
 	defer { f.wsinfix_depth-- }
 	for i, cnd in conditions {

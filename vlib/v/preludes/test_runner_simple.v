@@ -67,7 +67,8 @@ fn (mut runner SimpleTestRunner) fn_fail() {
 	eprintln('>>> fail ${runner.fname}')
 }
 
-fn (mut runner SimpleTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+fn (mut runner SimpleTestRunner) fn_error(line_nr int, file string, mod string, fn_name string,
+	errmsg string) {
 	eprintln('>>> SimpleTestRunner fn_error ${runner.fname}, line_nr: ${line_nr}, file: ${file}, mod: ${mod}, fn_name: ${fn_name}, errmsg: ${errmsg}')
 }
 

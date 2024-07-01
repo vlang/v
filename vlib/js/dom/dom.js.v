@@ -56,7 +56,8 @@ pub interface JS.DOMMatrix {
 	multiply(other JS.DOMMatrix) JS.DOMMatrix
 	rotate(rotX JS.Number, rotY JS.Number, rotZ JS.Number) JS.DOMMatrix
 	rotateAxisAngle(x JS.Number, y JS.Number, z JS.Number, angle JS.Number) JS.DOMMatrix
-	scale(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
+	scale(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number,
+	originZ JS.Number) JS.DOMMatrix
 	scale3d(scale JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
 	skewX(sx JS.Number) JS.DOMMatrix
 	skewY(sy JS.Number) JS.DOMMatrix
@@ -68,7 +69,8 @@ pub interface JS.DOMMatrix {
 	rotateFromVectorSelf(x JS.Number, y JS.Number) JS.DOMMatrix
 	rotateSelf(rotX JS.Number, rotY JS.Number, rotZ JS.Number) JS.DOMMatrix
 	scale3dSelf(scale JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
-	scaleSelf(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
+	scaleSelf(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number,
+	originZ JS.Number) JS.DOMMatrix
 	toString() JS.String
 mut:
 	a   JS.Number
@@ -445,13 +447,17 @@ pub interface JS.CanvasRenderingContext2D {
 	isPointInStroke(path JS.Path2D, x JS.Number, y JS.Number) JS.Boolean
 	stoke(path JS.Path2D)
 	createLinearGradient(x0 JS.Number, y0 JS.Number, x1 JS.Number, y1 JS.Number) JS.CanvasGradient
-	createRadialGradient(x0 JS.Number, y0 JS.Number, r0 JS.Number, x1 JS.Number, y1 JS.Number, r1 JS.Number) JS.CanvasGradient
+	createRadialGradient(x0 JS.Number, y0 JS.Number, r0 JS.Number, x1 JS.Number, y1 JS.Number,
+	r1 JS.Number) JS.CanvasGradient
 	createPattern(image JS.CanvasImageSource, repetition JS.String) ?JS.CanvasPattern
-	arc(x JS.Number, y JS.Number, radius JS.Number, startAngle JS.Number, endAngle JS.Number, counterclockwise JS.Boolean)
+	arc(x JS.Number, y JS.Number, radius JS.Number, startAngle JS.Number, endAngle JS.Number,
+	counterclockwise JS.Boolean)
 	arcTo(x1 JS.Number, y1 JS.Number, x2 JS.Number, y2 JS.Number, radius JS.Number)
-	bezierCurveTo(cp1x JS.Number, cp1y JS.Number, cp2x JS.Number, cp2y JS.Number, x JS.Number, y JS.Number)
+	bezierCurveTo(cp1x JS.Number, cp1y JS.Number, cp2x JS.Number, cp2y JS.Number, x JS.Number,
+	y JS.Number)
 	closePath()
-	ellipse(x JS.Number, y JS.Number, radiusX JS.Number, radiusY JS.Number, rotation JS.Number, startAngle JS.Number, endAngle JS.Number, counterclockwise JS.Boolean)
+	ellipse(x JS.Number, y JS.Number, radiusX JS.Number, radiusY JS.Number, rotation JS.Number,
+	startAngle JS.Number, endAngle JS.Number, counterclockwise JS.Boolean)
 	lineTo(x JS.Number, y JS.Number)
 	moveTo(x JS.Number, y JS.Number)
 	quadraticCurveTo(cpx JS.Number, cpy JS.Number, x JS.Number, y JS.Number)
@@ -671,8 +677,10 @@ pub interface JS.WebGLRenderingContext {
 	enableVertexAttribArray(index JS.Number)
 	finish()
 	flush()
-	framebufferRenderbuffer(target JS.Number, attachment JS.Number, renderbuffertarget JS.Number, renderbuffer JS.WebGLRenderbuffer)
-	framebufferTexture2D(target JS.Number, attachment JS.Number, textarget JS.Number, texture JS.WebGLTexture, level JS.Number)
+	framebufferRenderbuffer(target JS.Number, attachment JS.Number, renderbuffertarget JS.Number,
+	renderbuffer JS.WebGLRenderbuffer)
+	framebufferTexture2D(target JS.Number, attachment JS.Number, textarget JS.Number, texture JS.WebGLTexture,
+	level JS.Number)
 	frontFace(mode JS.Number)
 	generateMipmap(target JS.Number)
 	getError() JS.Number
@@ -683,7 +691,8 @@ pub interface JS.WebGLRenderingContext {
 	bufferData(target JS.Number, data JS.TypedArray, usage JS.Number)
 	shaderSource(shader JS.WebGLShader, source JS.String)
 	getShaderParameter(shader JS.WebGLShader, pname JS.Number) JS.Any
-	vertexAttribPointer(index JS.Number, size JS.Number, typ JS.Number, normalized JS.Boolean, stride JS.Number, offset JS.Number)
+	vertexAttribPointer(index JS.Number, size JS.Number, typ JS.Number, normalized JS.Boolean,
+	stride JS.Number, offset JS.Number)
 	getAttribLocation(program JS.WebGLProgram, name JS.String) JS.Number
 	useProgram(program JS.WebGLProgram)
 	getUniformLocation(program JS.WebGLProgram, name JS.String) ?JS.WebGLUniformLocation
@@ -720,10 +729,14 @@ pub interface JS.WebGLRenderingContext {
 	vertexAttrib4f(index JS.Number, x JS.Number, y JS.Number, z JS.Number, w JS.Number)
 	vertexAttrib4fv(index JS.Number, x JS.Number, y JS.Number, z JS.Number, w JS.Number, values JS.Array)
 	bufferSubData(target JS.Number, offset JS.Number, data JS.TypedArray)
-	compressedTexImage2D(target JS.Number, level JS.Number, internalformat JS.Number, width JS.Number, height JS.Number, border JS.Number, data JS.TypedArray)
-	compressedTexSubImage2D(target JS.Number, level JS.Number, xoffset JS.Number, yoffset JS.Number, width JS.Number, height JS.Number, format JS.Number, data JS.TypedArray)
-	readPixels(x JS.Number, y JS.Number, width JS.Number, height JS.Number, format JS.Number, typ JS.Number, border JS.Number, pixels JS.TypedArray)
-	texImage2D(target JS.Number, level JS.Number, internalformat JS.Number, format JS.Number, source JS.Node)
+	compressedTexImage2D(target JS.Number, level JS.Number, internalformat JS.Number, width JS.Number,
+	height JS.Number, border JS.Number, data JS.TypedArray)
+	compressedTexSubImage2D(target JS.Number, level JS.Number, xoffset JS.Number, yoffset JS.Number,
+	width JS.Number, height JS.Number, format JS.Number, data JS.TypedArray)
+	readPixels(x JS.Number, y JS.Number, width JS.Number, height JS.Number, format JS.Number,
+	typ JS.Number, border JS.Number, pixels JS.TypedArray)
+	texImage2D(target JS.Number, level JS.Number, internalformat JS.Number, format JS.Number,
+	source JS.Node)
 }
 
 pub interface JS.WebGL2RenderingContext {

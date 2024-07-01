@@ -6,7 +6,8 @@ import os
 import v.pref
 
 @[if trace_util_qualify ?]
-fn trace_qualify(callfn string, mod string, file_path string, kind_res string, result string, detail string) {
+fn trace_qualify(callfn string, mod string, file_path string, kind_res string, result string,
+	detail string) {
 	eprintln('> ${callfn:15}: ${mod:-18} | file_path: ${file_path:-71} | => ${kind_res:14}: ${result:-18} ; ${detail}')
 }
 

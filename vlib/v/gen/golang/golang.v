@@ -1818,7 +1818,8 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 
 const wsinfix_depth_max = 10
 
-fn (mut f Gen) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
+fn (mut f Gen) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool,
+	is_cond bool) {
 	f.wsinfix_depth++
 	defer {
 		f.wsinfix_depth--

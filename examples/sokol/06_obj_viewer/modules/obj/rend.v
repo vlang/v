@@ -70,7 +70,8 @@ pub fn load_texture(file_name string) (gfx.Image, gfx.Sampler) {
 /******************************************************************************
 * Pipeline
 ******************************************************************************/
-pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, texture gfx.Image, sampler gfx.Sampler) Render_data {
+pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, texture gfx.Image,
+	sampler gfx.Sampler) Render_data {
 	mut res := Render_data{}
 	obj_buf := obj_part.get_buffer(in_part)
 	res.n_vert = obj_buf.n_vertex

@@ -343,7 +343,8 @@ fn raw_callback(fd int, events int, context voidptr) {
 	}
 }
 
-fn default_error_callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response, error IError) {
+fn default_error_callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response,
+	error IError) {
 	eprintln('picoev: ${error}')
 	res.end()
 }

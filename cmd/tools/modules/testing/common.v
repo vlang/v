@@ -125,7 +125,8 @@ fn (mut ts TestSession) append_message(kind MessageKind, msg string, mtc Message
 	}
 }
 
-fn (mut ts TestSession) append_message_with_duration(kind MessageKind, msg string, d time.Duration, mtc MessageThreadContext) {
+fn (mut ts TestSession) append_message_with_duration(kind MessageKind, msg string, d time.Duration,
+	mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
 		file: mtc.file
 		flow_id: mtc.flow_id

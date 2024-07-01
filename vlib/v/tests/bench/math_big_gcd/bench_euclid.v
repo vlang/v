@@ -218,7 +218,8 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 	return true
 }
 
-fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps PrimeSet) bool, mut clocks Clocks) bool {
+fn bench_euclid_vs_binary(test_config PrimeCfg, heap bool, predicate_fn fn (ps PrimeSet) bool,
+	mut clocks Clocks) bool {
 	testprimes := prime.random_set(test_config) or { panic(err) }
 
 	// validate the test-data

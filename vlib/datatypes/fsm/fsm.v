@@ -47,7 +47,8 @@ pub fn (mut s StateMachine) get_state() string {
 	return s.current_state
 }
 
-pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn, exit EventHandlerFn) {
+pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn,
+	exit EventHandlerFn) {
 	s.states[name] = State{
 		entry_handler: entry
 		run_handler: run

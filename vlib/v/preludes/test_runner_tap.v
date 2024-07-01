@@ -92,7 +92,8 @@ fn (mut runner TAPTestRunner) fn_fail() {
 	runner.fn_fails++
 }
 
-fn (mut runner TAPTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+fn (mut runner TAPTestRunner) fn_error(line_nr int, file string, mod string, fn_name string,
+	errmsg string) {
 	flush_println('# test function propagated error: ${runner.fname}, line_nr: ${line_nr}, file: ${file}, mod: ${mod}, fn_name: ${fn_name}, errmsg: ${errmsg}')
 }
 

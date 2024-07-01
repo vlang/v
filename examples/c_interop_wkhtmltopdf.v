@@ -29,19 +29,22 @@ fn C.wkhtmltopdf_create_global_settings() &C.wkhtmltopdf_global_settings
 
 fn C.wkhtmltopdf_destroy_global_settings(global_settings &C.wkhtmltopdf_global_settings)
 
-fn C.wkhtmltopdf_set_global_setting(global_settings &C.wkhtmltopdf_global_settings, name &char, value &char) bool
+fn C.wkhtmltopdf_set_global_setting(global_settings &C.wkhtmltopdf_global_settings, name &char,
+	value &char) bool
 
 fn C.wkhtmltopdf_create_object_settings() &C.wkhtmltopdf_object_settings
 
 fn C.wkhtmltopdf_destroy_object_settings(object_settings &C.wkhtmltopdf_object_settings)
 
-fn C.wkhtmltopdf_set_object_setting(object_settings &C.wkhtmltopdf_object_settings, name &char, value &char) bool
+fn C.wkhtmltopdf_set_object_setting(object_settings &C.wkhtmltopdf_object_settings, name &char,
+	value &char) bool
 
 fn C.wkhtmltopdf_create_converter(global_settings &C.wkhtmltopdf_global_settings) &C.wkhtmltopdf_converter
 
 fn C.wkhtmltopdf_destroy_converter(converter &C.wkhtmltopdf_converter)
 
-fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings &C.wkhtmltopdf_object_settings, data &char)
+fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings &C.wkhtmltopdf_object_settings,
+	data &char)
 
 fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) bool
 

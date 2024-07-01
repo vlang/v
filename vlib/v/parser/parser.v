@@ -138,7 +138,8 @@ pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stm
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ &pref.Preferences, mut scope ast.Scope) &ast.File {
+pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ &pref.Preferences,
+	mut scope ast.Scope) &ast.File {
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
@@ -156,7 +157,8 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 	return res
 }
 
-pub fn parse_text(text string, path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
+pub fn parse_text(text string, path string, mut table ast.Table, comments_mode scanner.CommentsMode,
+	pref_ &pref.Preferences) &ast.File {
 	$if trace_parse_text ? {
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}

@@ -300,7 +300,8 @@ mut:
 	size  i64 // Symbol size.
 }
 
-fn (mut g Gen) create_symbol_table_section(str_name string, info u8, bind u8, other i8, value i64, size i64, shndx i16) SymbolTableSection {
+fn (mut g Gen) create_symbol_table_section(str_name string, info u8, bind u8, other i8, value i64,
+	size i64, shndx i16) SymbolTableSection {
 	return SymbolTableSection{
 		str_name: str_name
 		info: i8(info | bind << 4)
@@ -442,7 +443,8 @@ mut:
 	data   SectionData = DynSymSection{}
 }
 
-fn (mut g Gen) create_section(name string, typ i32, link i32, info i32, addralign i64, entsize i64, data SectionData) Section {
+fn (mut g Gen) create_section(name string, typ i32, link i32, info i32, addralign i64, entsize i64,
+	data SectionData) Section {
 	return Section{
 		name: name
 		header: SectionHeader{

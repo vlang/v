@@ -511,7 +511,8 @@ pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType,
+	idx int, existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
 	g.expr(curr.cond, ast.bool_type)

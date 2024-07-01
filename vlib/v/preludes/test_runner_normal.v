@@ -90,7 +90,8 @@ fn (mut runner NormalTestRunner) fn_fail() {
 	runner.fn_fails++
 }
 
-fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string,
+	errmsg string) {
 	filepath := if runner.use_relative_paths { file.clone() } else { os.real_path(file) }
 	mut final_filepath := filepath + ':${line_nr}:'
 	if runner.use_color {

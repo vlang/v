@@ -786,7 +786,8 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 	fn_builder.writeln('}')
 }
 
-fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
+fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, fn_name string,
+	field_name string) string {
 	has_custom_str, expects_ptr, _ := sym.str_method_info()
 	if sym.kind == .enum_ {
 		return '${fn_name}(it.${g.js_name(field_name)})'

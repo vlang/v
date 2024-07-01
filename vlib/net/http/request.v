@@ -283,7 +283,8 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 // abstract over reading the whole content from TCP or SSL connections:
 type FnReceiveChunk = fn (con voidptr, buf &u8, bufsize int) !int
 
-fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
+fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr,
+	receive_chunk_cb FnReceiveChunk) ! {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0

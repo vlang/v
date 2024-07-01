@@ -929,14 +929,16 @@ fn (mut c Checker) check_like_operator(node &ast.InfixExpr) ast.Type {
 	return node.promoted_type
 }
 
-fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {
+fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type,
+	pos token.Pos) {
 	left_name := c.table.type_to_str(left_type)
 	right_name := c.table.type_to_str(right_type)
 	c.error('invalid operator `${op}` to `${left_name}` and `${right_name}`', pos)
 }
 
 // `if node is ast.Ident && node.is_mut { ... }` -> `if node is ast.Ident && (node as ast.Ident).is_mut { ... }`
-fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
+fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type,
+	to_type ast.Type) {
 	if '${right}' == from_expr.str() {
 		right = ast.AsCast{
 			typ: to_type

@@ -120,7 +120,8 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 	return exp_typ
 }
 
-pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident, ptype ast.Type) {
+pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident,
+	ptype ast.Type) {
 	if mut v := node.scope.find(pident.name) {
 		if mut v is ast.Var {
 			v.is_arg = true
@@ -135,7 +136,8 @@ pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mu
 	}
 }
 
-pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
+pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type,
+	mut expr ast.LambdaExpr) {
 	is_auto_rec := param_type.is_ptr()
 	mut expected_fn := ast.Fn{
 		params: [
@@ -157,7 +159,8 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 	c.lambda_expr(mut expr, expected_fn_type)
 }
 
-pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
+pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return_type ast.Type,
+	mut expr ast.LambdaExpr) {
 	mut expected_fn := ast.Fn{
 		params: [
 			ast.Param{

@@ -51,7 +51,8 @@ fn C.sgl_translate(x f32, y f32, z f32)
 fn C.sgl_frustum(l f32, r f32, b f32, t f32, n f32, f f32)
 fn C.sgl_ortho(l f32, r f32, b f32, t f32, n f32, f f32)
 fn C.sgl_perspective(fov_y f32, aspect f32, z_near f32, z_far f32)
-fn C.sgl_lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, center_z f32, up_x f32, up_y f32, up_z f32)
+fn C.sgl_lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, center_z f32, up_x f32,
+	up_y f32, up_z f32)
 fn C.sgl_push_matrix()
 fn C.sgl_pop_matrix()
 

@@ -8,7 +8,8 @@ import v.live
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
 @[markused]
-pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
+pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr,
+	live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
 	mut so_extension := dl.dl_ext

@@ -80,7 +80,8 @@ pub fn (mut sh StaticHandler) mount_static_folder_at(directory_path string, moun
 // For example: suppose you have called .host_mount_static_folder_at('localhost', '/var/share/myassets', '/assets'),
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://localhost/assets/main.css .
-pub fn (mut sh StaticHandler) host_mount_static_folder_at(host string, directory_path string, mount_path string) !bool {
+pub fn (mut sh StaticHandler) host_mount_static_folder_at(host string, directory_path string,
+	mount_path string) !bool {
 	if mount_path == '' || mount_path[0] != `/` {
 		return error('invalid mount path! The path should start with `/`')
 	} else if !os.exists(directory_path) {

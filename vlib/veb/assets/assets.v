@@ -129,7 +129,8 @@ pub fn (mut am AssetManager) add(asset_type AssetType, file_path string, include
 	}
 }
 
-fn (mut am AssetManager) minify_and_cache(asset_type AssetType, file_path string, last_modified i64, include_name string) !(string, bool) {
+fn (mut am AssetManager) minify_and_cache(asset_type AssetType, file_path string, last_modified i64,
+	include_name string) !(string, bool) {
 	if asset_type == .all {
 		return error('cannot minify asset of type "all"')
 	}

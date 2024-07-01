@@ -19,7 +19,8 @@ pub mut:
 }
 
 // create returns a new configurable root node for the tree.
-pub fn (mut q Quadtree) create(x f64, y f64, width f64, height f64, capacity int, depth int, level int) Quadtree {
+pub fn (mut q Quadtree) create(x f64, y f64, width f64, height f64, capacity int, depth int,
+	level int) Quadtree {
 	return Quadtree{
 		perimeter: AABB{
 			x: x

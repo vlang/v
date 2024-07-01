@@ -55,7 +55,8 @@ fn main() {
 	v_test_vetting(pass_args)!
 }
 
-fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
+fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string,
+	slist []string) testing.TestSession {
 	os.chdir(vroot) or {}
 	title_message := 'running ${tool_cmd} over most .v files'
 	testing.eheader(title_message)

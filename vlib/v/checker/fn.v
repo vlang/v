@@ -1801,7 +1801,8 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 }
 
 // checks if a type from another module is as expected and visible(`is_pub`)
-fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind,
+	pos &token.Pos) bool {
 	mut sym := c.table.sym_by_idx(type_idx)
 	if sym.kind == .alias {
 		parent_type := (sym.info as ast.Alias).parent_type

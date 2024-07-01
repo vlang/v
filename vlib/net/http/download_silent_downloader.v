@@ -18,7 +18,8 @@ pub fn (mut d SilentStreamingDownloader) on_start(mut request Request, path stri
 }
 
 // on_chunk is called multiple times, once per chunk of received content.
-pub fn (mut d SilentStreamingDownloader) on_chunk(request &Request, chunk []u8, already_received u64, expected u64) ! {
+pub fn (mut d SilentStreamingDownloader) on_chunk(request &Request, chunk []u8, already_received u64,
+	expected u64) ! {
 	d.f.write(chunk)!
 }
 
