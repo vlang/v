@@ -1012,11 +1012,25 @@ pub mut:
 	obj            ScopeObject
 	mod            string
 	name           string
+	full_name      string
 	kind           IdentKind
 	info           IdentInfo
 	is_mut         bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
 	or_expr        OrExpr
 	concrete_types []Type
+}
+
+// full_name returns the name of the ident, prefixed with the module name
+pub fn (mut i Ident) full_name() string {
+	if i.full_name != '' {
+		return i.full_name
+	}
+	if i.name.contains('.') {
+		i.full_name = i.name
+	} else {
+		i.full_name = i.mod + '.' + i.name
+	}
+	return i.full_name
 }
 
 pub fn (i &Ident) is_auto_heap() bool {

@@ -42,7 +42,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 					}
 				}
 				ast.Ident {
-					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
+					if mut const_field := p.table.global_scope.find_const(size_expr.full_name()) {
 						if mut const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
 							size_unresolved = false

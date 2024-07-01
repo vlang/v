@@ -220,7 +220,13 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				stmt = t.stmt(mut stmt)
 			}
 		}
-		ast.EnumDecl {}
+		ast.EnumDecl {
+			for mut field in node.fields {
+				if field.has_expr {
+					field.expr = t.expr(mut field.expr)
+				}
+			}
+		}
 		ast.ExprStmt {
 			// TODO: check if this can be handled in `t.expr`
 			node.expr = match mut node.expr {
@@ -719,7 +725,7 @@ fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 		if _ := expr_.scope.find_var(expr_.name) {
 			return
 		}
-		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
+		if mut obj := t.table.global_scope.find_const(expr_.full_name()) {
 			if mut obj.expr is ast.BoolLiteral {
 				expr = obj.expr
 			} else if mut obj.expr is ast.IntegerLiteral {
