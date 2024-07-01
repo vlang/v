@@ -451,7 +451,8 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 
 // check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type checks that an expression is compile-time
 // and contains an integer greater than or equal to zero or it is a runtime expression with an integer type.
-fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut expr ast.Expr, sql_keyword string) {
+fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut expr ast.Expr,
+	sql_keyword string) {
 	comptime_number := c.get_comptime_number_value(mut expr) or {
 		c.check_sql_expr_type_is_int(expr, sql_keyword)
 		return
@@ -543,7 +544,8 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 // check_where_expr_has_no_pointless_exprs checks that an expression has no pointless expressions
 // which don't affect the result. For example, `where 3` is pointless.
 // Also, it checks that the left side of the infix expression is always the structure field.
-fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string, expr &ast.Expr) {
+fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string,
+	expr &ast.Expr) {
 	// Skip type checking for generated subqueries
 	// that are not linked to scope and vars but only created for cgen.
 	if expr is ast.None {

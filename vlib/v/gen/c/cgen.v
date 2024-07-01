@@ -2492,7 +2492,8 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	g.auto_fn_definitions << sb.str()
 }
 
-fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_is_fn bool, got_styp string) {
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string,
+	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
 	if exp_is_ptr {
 		g.write('HEAP(${exp_styp}, ')
@@ -3085,7 +3086,8 @@ fn (mut g Gen) print_autofree_var(var ast.Var, comment string) {
 	println('autofree: ${g.file.path}:${var.pos.line_nr}: skipping `${var.name}` in fn `${g.last_fn_c_name}`. ${comment}')
 }
 
-fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool,
+	stop_pos int) {
 	if scope == unsafe { nil } {
 		return
 	}
@@ -5937,7 +5939,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
+fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string, ct_value ast.ComptTimeConstValue,
+	typ ast.Type) bool {
 	mut styp := g.typ(typ)
 	cname := if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
 	$if trace_const_precomputed ? {
@@ -6091,7 +6094,8 @@ fn (mut g Gen) c_const_name(name string) string {
 	return if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool, surround_cbr bool) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool,
+	surround_cbr bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
@@ -6152,7 +6156,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	}
 }
 
-fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name string, expr ast.ArrayInit, typ ast.Type) {
+fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name string, expr ast.ArrayInit,
+	typ ast.Type) {
 	mut styp := g.typ(typ)
 	cname := g.c_const_name(name)
 	mut init := strings.new_builder(100)
@@ -6933,7 +6938,8 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	}
 }
 
-fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast.Stmt, return_type ast.Type, is_option bool) {
+fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast.Stmt, return_type ast.Type,
+	is_option bool) {
 	g.indent++
 	for i, stmt in stmts {
 		if i == stmts.len - 1 {

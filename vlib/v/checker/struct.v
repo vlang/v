@@ -936,7 +936,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 }
 
 // Recursively check whether the struct type field is initialized
-fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
+fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type,
+	linked_name string, pos &token.Pos) {
 	if (c.pref.translated || c.file.is_translated) || struct_sym.language == .c {
 		return
 	}
@@ -978,7 +979,8 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 // This method is temporary and will only be called by the do_check_elements_ref_fields_initialized() method.
 // The goal is to give only a notice, not an error, for now. After a while,
 // when we change the notice to error, we can remove this temporary method.
-fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
+fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type,
+	linked_name string, pos &token.Pos) {
 	if (c.pref.translated || c.file.is_translated) || struct_sym.language == .c {
 		return
 	}

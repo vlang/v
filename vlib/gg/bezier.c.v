@@ -18,7 +18,8 @@ pub fn (ctx &Context) draw_cubic_bezier_recursive(points []f32, c Color) {
 
 // draw_cubic_bezier_recursive_scalar is the same as `draw_cubic_bezier_recursive`, except that the `points` are given
 // as indiviual x,y f32 scalar parameters, and not in a single dynamic array parameter.
-pub fn (ctx &Context) draw_cubic_bezier_recursive_scalar(x1 f32, y1 f32, x2 f32, y2 f32, x3 f32, y3 f32, x4 f32, y4 f32, c Color) {
+pub fn (ctx &Context) draw_cubic_bezier_recursive_scalar(x1 f32, y1 f32, x2 f32, y2 f32, x3 f32, y3 f32,
+	x4 f32, y4 f32, c Color) {
 	if c.a == 0 {
 		return
 	}

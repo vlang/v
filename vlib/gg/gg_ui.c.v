@@ -15,7 +15,8 @@ pub fn (ctx &Context) has_text_style() bool {
 	return false
 }
 
-pub fn (ctx &Context) set_text_style(font_name string, font_path string, size int, color gx.Color, align int, vertical_align int) {}
+pub fn (ctx &Context) set_text_style(font_name string, font_path string, size int, color gx.Color, align int,
+	vertical_align int) {}
 
 // default draw_text (draw_text_def but without set_text_cfg)
 pub fn (ctx &Context) draw_text_default(x int, y int, text string) {

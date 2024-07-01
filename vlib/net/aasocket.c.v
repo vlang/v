@@ -88,7 +88,8 @@ fn C.getpeername(sockfd int, addr &Addr, addlen &u32) int
 
 fn C.inet_ntop(af AddrFamily, src voidptr, dst &char, dst_size int) &char
 
-fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char, lpdwAddressStringLength &u32) int
+fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char,
+	lpdwAddressStringLength &u32) int
 
 // fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
 fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int

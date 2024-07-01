@@ -604,7 +604,8 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	}
 }
 
-fn (mut c Checker) check_alias_vs_element_type_of_parent(node ast.AliasTypeDecl, element_type_of_parent ast.Type, label string) {
+fn (mut c Checker) check_alias_vs_element_type_of_parent(node ast.AliasTypeDecl, element_type_of_parent ast.Type,
+	label string) {
 	if node.typ.idx() != element_type_of_parent.idx() {
 		return
 	}
@@ -1969,7 +1970,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	}
 }
 
-fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool, styp string, pos token.Pos, mut useen []u64, umin u64, umax u64, mut iseen []i64, imin i64, imax i64) {
+fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool,
+	styp string, pos token.Pos, mut useen []u64, umin u64, umax u64, mut iseen []i64, imin i64, imax i64) {
 	mut overflows := false
 	mut uval := u64(0)
 	mut ival := i64(0)
@@ -3969,7 +3971,8 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope, is_comptime bool) {
+fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
+	is_comptime bool) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface_ && c.table.sym(to_type_).kind != .interface_ {
 		to_type_.ref()
@@ -4472,12 +4475,14 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	return right_type
 }
 
-fn (mut c Checker) type_error_for_operator(op_label string, types_label string, found_type_label string, pos token.Pos) {
+fn (mut c Checker) type_error_for_operator(op_label string, types_label string, found_type_label string,
+	pos token.Pos) {
 	c.error('operator `${op_label}` can only be used with ${types_label} types, but the value after `${op_label}` is of type `${found_type_label}` instead',
 		pos)
 }
 
-fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos, range_index bool, is_gated bool) {
+fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos,
+	range_index bool, is_gated bool) {
 	if typ_sym.kind in [.array, .array_fixed, .string] {
 		index_type_sym := c.table.sym(index_type)
 		if !(index_type.is_int() || index_type_sym.kind == .enum_
@@ -5171,7 +5176,8 @@ fn (mut c Checker) check_unused_labels() {
 	}
 }
 
-fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guessed_type bool, typ ast.Type, pos token.Pos, label string) {
+fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guessed_type bool, typ ast.Type,
+	pos token.Pos, label string) {
 	if is_guessed_type {
 		styp := c.table.type_to_str(typ)
 		c.note('`${label}(${styp})` is deprecated. Use `v fmt -w .` to convert it to `${label}[${styp}]()` instead.',

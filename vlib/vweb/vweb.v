@@ -668,7 +668,8 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 }
 
 @[manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route, tid int) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route,
+	tid int) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
