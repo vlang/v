@@ -129,6 +129,16 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
+
+	got_sym := c.table.sym(got)
+	exp_sym := c.table.sym(expected)
+	if (exp_idx == ast.nil_type_idx && got_sym.kind == .string)
+		|| (got_idx == ast.nil_type_idx && exp_sym.kind == .string) {
+		if got_sym.language != .c || exp_sym.language != .c {
+			return false
+		}
+	}
+
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
 	if expected.is_any_kind_of_pointer() {
