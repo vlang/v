@@ -1,0 +1,2 @@
+const spnames = ['f', unsafe { nil }]!
+const spnames1 = [unsafe { nil }, 'f']!

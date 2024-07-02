@@ -5,7 +5,7 @@ struct Foo {
 fn test_main() {
 	foo := Foo{
 		bar: unsafe {
-			&&char(['a', 'b', nil]!)
+			&&char([c'a', c'b', nil]!)
 		}
 	}
 	println(foo)
