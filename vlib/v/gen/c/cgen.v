@@ -3890,11 +3890,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.write('(*(${opt_base_typ}*)')
 	}
-	if sym.kind == .array_fixed {
+	final_sym := g.table.final_sym(g.unwrap_generic(node.expr_type))
+	if final_sym.kind == .array_fixed {
 		if node.field_name != 'len' {
 			g.error('field_name should be `len`', node.pos)
 		}
-		info := sym.info as ast.ArrayFixed
+		info := final_sym.info as ast.ArrayFixed
 		g.write('${info.size}')
 		return
 	} else if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
