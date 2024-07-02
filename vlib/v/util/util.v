@@ -251,7 +251,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
 
-		current_work_dir := os.getwd()
+		current_work_dir := os.wd_at_startup
 		tlog('recompiling ${tool_source}')
 		lockfile := tool_exe + '.lock'
 		tlog('lockfile: ${lockfile}')

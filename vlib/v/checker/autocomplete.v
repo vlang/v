@@ -10,7 +10,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	// Mini LS hack (v -line-info "a.v:16")
 	println(
 		'checker.ident() info.line_nr=${c.pref.linfo.line_nr} node.line_nr=${node.pos.line_nr} ' +
-		' pwd="${os.getwd()}" file="${c.file.path}", ' +
+		' pwd="${os.wd_at_startup}" file="${c.file.path}", ' +
 		' pref.linfo.path="${c.pref.linfo.path}" node.name="${node.name}" expr="${c.pref.linfo.expr}"')
 	// Make sure this ident is on the same line as requeste, in the same file, and has the same name
 	same_line := node.pos.line_nr in [c.pref.linfo.line_nr - 1, c.pref.linfo.line_nr + 1, c.pref.linfo.line_nr]
@@ -21,7 +21,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 	if !same_name {
 		return
 	}
-	abs_path := os.join_path(os.getwd(), c.file.path)
+	abs_path := os.join_path(os.wd_at_startup, c.file.path)
 	if c.pref.linfo.path !in [c.file.path, abs_path] {
 		return
 	}

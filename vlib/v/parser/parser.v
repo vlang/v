@@ -192,14 +192,11 @@ fn (mut p Parser) free_scanner() {
 	}
 }
 
-const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\',
-	'/')
-
 pub fn (mut p Parser) set_path(path string) {
 	p.file_path = path
 	p.file_base = os.base(path)
-	p.file_display_path = os.real_path(p.file_path).replace_once(parser.normalised_working_folder,
-		'').replace('\\', '/')
+	p.file_display_path = os.real_path(p.file_path).replace('\\', '/').replace_once(util.normalised_workdir,
+		'')
 	p.inside_vlib_file = os.dir(path).contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
 		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')

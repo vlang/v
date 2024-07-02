@@ -861,7 +861,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					res.is_o = true
 				}
 				if !os.is_abs_path(res.out_name) {
-					res.out_name = os.join_path(os.getwd(), res.out_name)
+					res.out_name = os.join_path(os.wd_at_startup, res.out_name)
 				}
 				i++
 			}

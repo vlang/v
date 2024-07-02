@@ -56,15 +56,15 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 		trace_qualify(@FN, mod, file_path, 'module_res 1', mod, 'main')
 		return mod
 	}
-	clean_file_path := file_path.all_before_last(os.path_separator)
+	clean_file_path := file_path.all_before_last(os.path_separator).replace('\\', '/')
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	//
-	// TODO: 2022-01-30: Using os.getwd() here does not seem right *at all* imho.
+	// TODO: 2022-01-30: Using os.getwd() or normalised_workdir, here does not seem right *at all* imho.
 	// TODO: 2022-01-30: That makes lookup dependent on fragile environment factors.
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
-	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
+	if clean_file_path.replace(normalised_workdir, '') == mod {
 		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}

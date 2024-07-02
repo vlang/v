@@ -11,6 +11,8 @@ import v.errors
 import v.token
 import v.mathutil as mu
 
+pub const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
+
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
 // output and jump to their source with a keyboard shortcut.
@@ -68,8 +70,6 @@ pub fn color(kind string, msg string) string {
 	}
 	return term.magenta(msg)
 }
-
-const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
 
 const verror_paths_absolute = os.getenv('VERROR_PATHS') == 'absolute'
 
