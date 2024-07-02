@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_update_right_type_ident_err.vv:16:38: error: unknown V identifier `seo_f1`
+   14 | 
+   15 |     sql db {
+   16 |         update SeoBlock set seo_f1 = seo_f1 where seo_f1 == ""
+      |                                      ~~~~~~
+   17 |     } or { panic(err) }
+   18 | }
