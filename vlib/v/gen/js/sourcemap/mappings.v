@@ -52,7 +52,8 @@ fn new_mappings() Mappings {
 }
 
 // Add the given source mapping
-fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, source_position SourcePositionType, names_ind NameIndexType) {
+fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, source_position SourcePositionType,
+	names_ind NameIndexType) {
 	if !(gen_line > m.last.gen_line
 		|| (gen_line == m.last.gen_line && gen_column >= m.last.gen_column)) {
 		m.is_sorted = false

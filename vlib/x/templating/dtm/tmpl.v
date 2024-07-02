@@ -130,7 +130,8 @@ fn replace_placeholders_with_data(line string, data &map[string]DtmMultiTypeMap,
 	return rline
 }
 
-fn insert_template_code(fn_name string, tmpl_str_start string, line string, data &map[string]DtmMultiTypeMap, state State) string {
+fn insert_template_code(fn_name string, tmpl_str_start string, line string, data &map[string]DtmMultiTypeMap,
+	state State) string {
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `vweb.RawHtml` string
 	trailing_bs := dtm.tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start

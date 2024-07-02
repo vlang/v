@@ -16,7 +16,8 @@ struct SystemDll {
 	full_path string
 }
 
-fn C.SearchPathA(lp_path &char, lp_file_name &char, lp_extension &char, n_buffer_length u32, lp_buffer &char, lp_file_part &&char) u32
+fn C.SearchPathA(lp_path &char, lp_file_name &char, lp_extension &char, n_buffer_length u32, lp_buffer &char,
+	lp_file_part &&char) u32
 fn C.GetLastError() u32
 
 fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
