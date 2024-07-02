@@ -182,11 +182,13 @@ fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, t
 	tasks.add('', checker_dir, voptions, result_extension, tests, false)
 }
 
-fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string,
+	is_module bool) {
 	tasks.add_evars('', custom_vexe, dir, voptions, result_extension, tests, is_module)
 }
 
-fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string,
+	tests []string, is_module bool) {
 	max_ntries := get_max_ntries()
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {

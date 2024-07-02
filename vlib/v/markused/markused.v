@@ -441,7 +441,8 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 	return all_fns, all_consts, all_globals
 }
 
-fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string, context_name string) {
+fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string,
+	context_name string) {
 	// handle vweb magic router methods:
 	result_type_idx := table.find_type_idx(result_name)
 	if result_type_idx != 0 {

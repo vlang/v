@@ -596,7 +596,8 @@ fn (mut c Checker) check_elements_ref_fields_initialized(typ ast.Type, pos &toke
 }
 
 // Recursively check the element, and its children for ref uninitialized fields
-fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol, mut checked_types []ast.Type, pos &token.Pos) {
+fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol, mut checked_types []ast.Type,
+	pos &token.Pos) {
 	if sym.info is ast.Struct {
 		linked_name := sym.name
 		// For now, let's call this method and give a notice instead of an error.

@@ -158,7 +158,8 @@ pub:
 }
 
 // step_message_with_label_and_duration returns a string describing the current step.
-pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg string, sduration time.Duration, opts MessageOptions) string {
+pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg string, sduration time.Duration,
+	opts MessageOptions) string {
 	timed_line := b.tdiff_in_ms(msg, sduration.microseconds())
 	if b.nexpected_steps > 1 {
 		mut sprogress := ''

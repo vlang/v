@@ -670,7 +670,8 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 }
 
 // draw_slice_empty draws the outline of a circle slice/pie
-pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+	c gx.Color) {
 	if segments <= 0 || radius <= 0 {
 		return
 	}
@@ -706,7 +707,8 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32
 // `end_angle` is the angle in radians at which the slice ends.
 // `segments` affects how smooth/round the slice is.
 // `c` is the fill color.
-pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+	c gx.Color) {
 	if segments <= 0 || radius < 0 {
 		return
 	}
@@ -747,7 +749,8 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc/outline.
-pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int,
+	c gx.Color) {
 	if segments <= 0 || radius < 0 {
 		return
 	}
@@ -794,7 +797,8 @@ pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, en
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc outline.
-pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32,
+	segments int, c gx.Color) {
 	outer_radius := inner_radius + thickness
 	if segments <= 0 || outer_radius < 0 {
 		return
@@ -857,7 +861,8 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 // `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the fill color of the arc.
-pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32,
+	segments int, c gx.Color) {
 	outer_radius := inner_radius + thickness
 	if segments <= 0 || outer_radius < 0 {
 		return

@@ -279,7 +279,8 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 }
 
 // `[]int{len: 6, cap: 10, init: index * index}`
-fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
+fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string,
+	var_name string) {
 	prev_inside_lambda := g.inside_lambda
 	g.inside_lambda = true
 	defer {
@@ -1393,7 +1394,8 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 	return has_infix_left_var_name
 }
 
-fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_type string, tmp string, i string) {
+fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_type string, tmp string,
+	i string) {
 	if g.table.sym(inp_info.elem_type).kind == .array_fixed {
 		g.writeln('${inp_elem_type} ${var_name};')
 		g.writeln('memcpy(&${var_name}, ((${inp_elem_type}*) ${tmp}_orig.data)[${i}], sizeof(${inp_elem_type}));')

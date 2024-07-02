@@ -1083,7 +1083,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias))
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, true))
 	// Handle trailing comments after fn header declarations
 	if node.no_body && node.end_comments.len > 0 {
 		first_comment := node.end_comments[0]
@@ -1409,7 +1409,8 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.writeln('}\n')
 }
 
-pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_aligns []AlignInfo, mut comment_aligns []AlignInfo, mut default_expr_aligns []AlignInfo, mut field_types []string) {
+pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_aligns []AlignInfo, mut comment_aligns []AlignInfo,
+	mut default_expr_aligns []AlignInfo, mut field_types []string) {
 	// Calculate the alignments first
 	for i, field in fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
@@ -1485,7 +1486,7 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 		f.comments(before_comments, level: .indent)
 	}
 	f.write('\t')
-	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias).all_after_first('fn '))
+	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn '))
 	f.comments(end_comments, same_line: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, level: .indent)

@@ -26,7 +26,8 @@ fn (vd VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
-fn (vd VDoc) write_markdown_content(contents []doc.DocNode, mut cw strings.Builder, mut hw strings.Builder, indent int, with_toc bool) {
+fn (vd VDoc) write_markdown_content(contents []doc.DocNode, mut cw strings.Builder, mut hw strings.Builder,
+	indent int, with_toc bool) {
 	cfg := vd.cfg
 	for cn in contents {
 		if with_toc && cn.name != '' {

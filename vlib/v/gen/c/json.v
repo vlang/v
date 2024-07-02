@@ -219,7 +219,8 @@ ${enc_fn_dec} {
 }
 
 @[inline]
-fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var string, result_var string, ident string, mut enc strings.Builder) {
+fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var string, result_var string, ident string,
+	mut enc strings.Builder) {
 	enum_prefix := g.gen_enum_prefix(utyp.clear_flag(.option))
 	enc.writeln('${ident}switch (${enum_var}) {')
 	for val in (sym.info as ast.Enum).vals {
@@ -238,7 +239,8 @@ fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var strin
 }
 
 @[inline]
-fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string, result_var string, ident string, mut dec strings.Builder) {
+fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string, result_var string, ident string,
+	mut dec strings.Builder) {
 	enum_prefix := g.gen_enum_prefix(utyp.clear_flag(.option))
 	is_option := utyp.has_flag(.option)
 	for k, val in (sym.info as ast.Enum).vals {
@@ -359,7 +361,8 @@ fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec
 }
 
 @[inline]
-fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder, ret_styp string) {
+fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder,
+	ret_styp string) {
 	info := sym.info as ast.SumType
 	type_var := g.new_tmp_var()
 	typ := g.table.type_idxs[sym.name]
@@ -602,7 +605,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 }
 
 @[inline]
-fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
+fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp string, mut enc strings.Builder,
+	mut dec strings.Builder) {
 	info := type_info as ast.Struct
 	for field in info.fields {
 		mut name := field.name
@@ -889,7 +893,8 @@ fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_
 	}
 }
 
-fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
+fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder,
+	is_required bool) {
 	gen_js_get(styp, tmp, name, mut dec, is_required)
 	value_field_type := field_type.replace('*', '_ptr')
 	dec.writeln('\t${result_name}_${value_field_type.replace('*', '_ptr')} ${tmp} = {0};')

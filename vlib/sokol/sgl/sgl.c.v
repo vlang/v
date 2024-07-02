@@ -224,7 +224,8 @@ pub fn perspective(fov_y f32, aspect f32, z_near f32, z_far f32) {
 }
 
 @[inline]
-pub fn lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, center_z f32, up_x f32, up_y f32, up_z f32) {
+pub fn lookat(eye_x f32, eye_y f32, eye_z f32, center_x f32, center_y f32, center_z f32, up_x f32, up_y f32,
+	up_z f32) {
 	C.sgl_lookat(eye_x, eye_y, eye_z, center_x, center_y, center_z, up_x, up_y, up_z)
 }
 

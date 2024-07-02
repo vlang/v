@@ -84,11 +84,11 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a, false)
 	return f.str()
 }
 
-pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string) string {
+pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, needs_wrap bool) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -132,11 +132,12 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a, needs_wrap)
 	return f.str()
 }
 
-fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string,
+	needs_wrap bool) {
 	mut add_para_types := true
 	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
@@ -162,6 +163,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 	}
 	f.write_string('(')
+	mut last_len := 0
 	for i, param in node.params {
 		// skip receiver
 		if node.is_method && i == 0 {
@@ -228,7 +230,12 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 		}
 		if !is_last_param {
-			f.write_string(', ')
+			if needs_wrap && f.len - last_len > 100 {
+				last_len = f.len
+				f.write_string(',\n\t')
+			} else {
+				f.write_string(', ')
+			}
 		}
 	}
 	f.write_string(')')

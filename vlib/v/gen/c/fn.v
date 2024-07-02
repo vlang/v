@@ -1419,7 +1419,8 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 	return comptime_args
 }
 
-fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.Type, final_left_sym ast.TypeSymbol, left_sym ast.TypeSymbol, typ_sym ast.TypeSymbol) string {
+fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.Type, final_left_sym ast.TypeSymbol,
+	left_sym ast.TypeSymbol, typ_sym ast.TypeSymbol) string {
 	mut receiver_type_name := util.no_dots(g.cc_type(unwrapped_rec_type, false))
 	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
