@@ -1,7 +1,10 @@
+// Use `v -d show_fps run examples/gg/fire.v` to show a fire effect with an FPS counter.
 import gg
 import gx
 import rand
 
+const win_width = 800
+const win_height = 600
 const width = 100
 const height = 140
 const scale = 4
@@ -43,7 +46,7 @@ const palette = [
 	gx.rgb(0xdf, 0xdf, 0x9f),
 	gx.rgb(0xef, 0xef, 0xc7),
 	gx.rgb(0xff, 0xff, 0xff),
-]
+]!
 
 struct App {
 mut:
@@ -66,8 +69,8 @@ fn main() {
 		window_title: 'Fire Animation'
 		user_data: app
 		bg_color: palette[0]
-		width: 1200
-		height: 600
+		width: win_width
+		height: win_height
 	)
 	app.gg.run()
 }
@@ -94,6 +97,7 @@ fn (mut app App) draw() {
 	}
 }
 
+@[direct_array_access]
 fn (mut app App) tick() {
 	for x in 0 .. width {
 		for y in 1 .. height {
