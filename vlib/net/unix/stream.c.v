@@ -9,6 +9,12 @@ const unix_default_write_timeout = 30 * time.second
 const connect_timeout = 5 * time.second
 const msg_nosignal = 0x4000
 
+pub struct UnixDialer {}
+
+pub fn (u UnixDialer) dial(address string) !net.IConn {
+	return connect_stream(address)!
+}
+
 @[heap]
 pub struct StreamConn {
 pub mut:
@@ -38,6 +44,14 @@ pub fn connect_stream(socket_path string) !&StreamConn {
 		read_timeout: unix.unix_default_read_timeout
 		write_timeout: unix.unix_default_write_timeout
 	}
+}
+
+pub fn (c StreamConn) addr() !net.Addr {
+	return error('not implemented for unix connections')
+}
+
+pub fn (c StreamConn) peer_addr() !net.Addr {
+	return error('not implemented for unix connections')
 }
 
 // close closes the connection

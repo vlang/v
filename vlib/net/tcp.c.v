@@ -6,6 +6,16 @@ import strings
 pub const tcp_default_read_timeout = 30 * time.second
 pub const tcp_default_write_timeout = 30 * time.second
 
+pub struct TCPDialer {}
+
+pub fn (t TCPDialer) dial(address string) !IConn {
+	return dial_tcp(address)!
+}
+
+pub fn default_tcp_dialer() IDialer {
+	return &TCPDialer{}
+}
+
 @[heap]
 pub struct TcpConn {
 pub mut:
