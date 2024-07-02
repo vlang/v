@@ -473,6 +473,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
+						if node.is_expr == false && c.comptime.is_generic_param_var(stmt.expr) {
+							// generic variable no yet type bounded
+							node.is_expr = true
+						}
 						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
 							&& stmt.typ != ast.voidptr_type {
 							if stmt.typ.is_ptr() != node.typ.is_ptr() {
