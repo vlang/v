@@ -130,10 +130,11 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 	}
 
-	got_sym := c.table.sym(got)
-	exp_sym := c.table.sym(expected)
-	if (exp_idx == ast.nil_type_idx && got_sym.kind == .string)
-		|| (got_idx == ast.nil_type_idx && exp_sym.kind == .string) {
+	if (exp_idx == ast.nil_type_idx && got_idx == ast.string_type_idx)
+		|| (got_idx == ast.nil_type_idx && exp_idx == ast.string_type_idx) {
+		got_sym := c.table.sym(got)
+		exp_sym := c.table.sym(expected)
+
 		if expected.is_ptr() || got.is_ptr() {
 			return true
 		}
