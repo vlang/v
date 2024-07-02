@@ -134,6 +134,9 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	exp_sym := c.table.sym(expected)
 	if (exp_idx == ast.nil_type_idx && got_sym.kind == .string)
 		|| (got_idx == ast.nil_type_idx && exp_sym.kind == .string) {
+		if expected.is_ptr() || got.is_ptr() {
+			return true
+		}
 		if got_sym.language != .c || exp_sym.language != .c {
 			return false
 		}
