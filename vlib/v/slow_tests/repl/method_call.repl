@@ -1,0 +1,7 @@
+mut values := [1, 2, 3]
+values
+values.pop()
+values
+===output===
+[1, 2, 3]
+[1, 2]
