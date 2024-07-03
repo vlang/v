@@ -84,7 +84,7 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a, false)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
 	return f.str()
 }
 
@@ -132,12 +132,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	t.stringify_fn_after_name(node, mut f, cur_mod, m2a, needs_wrap)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string,
-	needs_wrap bool) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
 	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
@@ -163,7 +162,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 	}
 	f.write_string('(')
-	mut last_len := 0
+	mut old_pline := node.pos.line_nr
+	mut pline := node.pos.line_nr
+	mut nparams_on_pline := 0
 	for i, param in node.params {
 		// skip receiver
 		if node.is_method && i == 0 {
@@ -189,6 +190,14 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 		if is_wrap_needed {
 			f.write_string('\t')
+		}
+		if param.on_newline {
+			f.write_string('\n\t')
+			pline++
+			nparams_on_pline = 0
+		}
+		if pline == old_pline && nparams_on_pline > 0 {
+			f.write_string(' ')
 		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
@@ -230,13 +239,10 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 		}
 		if !is_last_param {
-			if needs_wrap && f.len - last_len > 100 {
-				last_len = f.len
-				f.write_string(',\n\t')
-			} else {
-				f.write_string(', ')
-			}
+			f.write_string(',')
 		}
+		nparams_on_pline++
+		old_pline = pline
 	}
 	f.write_string(')')
 	if node.return_type != void_type {
