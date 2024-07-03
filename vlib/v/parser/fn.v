@@ -894,6 +894,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
 		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
+	mut prev_param_newline := p.tok.pos().line_nr
 	// TODO: copy paste, merge 2 branches
 	if types_only {
 		mut param_no := 1
@@ -983,7 +984,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				typ: param_type
 				type_pos: type_pos
 				comments: comments
+				on_newline: prev_param_newline != pos.line_nr
 			}
+			prev_param_newline = pos.line_nr
 			param_no++
 			if param_no > 1024 {
 				p.error_with_pos('too many parameters', pos)
@@ -1094,7 +1097,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 					typ: typ
 					type_pos: type_pos[i]
 					comments: comments
+					on_newline: prev_param_newline != param_pos[i].line_nr
 				}
+				prev_param_newline = param_pos[i].line_nr
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${para_name}',
