@@ -5835,6 +5835,13 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		}
 		name := c_name(field.name)
 		mut const_name := '_const_' + name
+		if g.pref.translated && !g.is_builtin_mod
+			&& !util.module_is_builtin(field.name.all_before_last('.')) {
+			mut x := util.no_dots(field.name)
+			if x.starts_with('main__') {
+				const_name = x['main__'.len..]
+			}
+		}
 		if !g.is_builtin_mod {
 			if cattr := node.attrs.find_first('export') {
 				const_name = cattr.arg
