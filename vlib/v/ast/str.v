@@ -84,7 +84,7 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a, false)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
 	return f.str()
 }
 
@@ -132,12 +132,11 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	t.stringify_fn_after_name(node, mut f, cur_mod, m2a, needs_wrap)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string,
-	oneeds_wrap bool) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
 	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
