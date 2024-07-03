@@ -147,6 +147,22 @@ fn test_chunk() {
 	assert chunk[int]([]int{}, 2) == [][]int{}
 }
 
+fn test_chunk_while() {
+	assert chunk_while([0, 9, 2, 2, 3, 2, 7, 5, 9, 5], fn (x int, y int) bool {
+		return x == y
+	}) == [[0], [9], [2, 2], [3], [2], [7], [5], [9], [5]]
+
+	assert chunk_while([0, 9, 2, 2, 3, 2, 7, 5, 9, 5], fn (x int, y int) bool {
+		return x <= y
+	}) == [[0, 9], [2, 2, 3], [2, 7], [5, 9], [5]]
+
+	assert chunk_while('aaaabbbcca'.runes(), fn (x rune, y rune) bool {
+		return x == y
+	}).map({
+		it[0]: it.len
+	}).str() == '[{`a`: 4}, {`b`: 3}, {`c`: 2}, {`a`: 1}]'
+}
+
 fn test_window() {
 	x := [1, 2, 3, 4, 5, 6]
 
