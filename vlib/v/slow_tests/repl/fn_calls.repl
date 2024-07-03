@@ -1,4 +1,4 @@
-math.sinf(50.0)
+println(math.sinf(50.0))
 println(1+math.sinf(50.0))
 fn test() { println('foo') } fn test2(a int) { println(a) }
 test()
