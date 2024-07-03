@@ -154,7 +154,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			arg := node.args.last()
 			param := m.params[node.args.len]
 
-			arg.expr is ast.Ident && g.table.type_to_str(arg.typ) == '[]string'
+			arg.expr in [ast.IndexExpr, ast.Ident] && g.table.type_to_str(arg.typ) == '[]string'
 				&& g.table.type_to_str(param.typ) != '[]string'
 		} else {
 			false
