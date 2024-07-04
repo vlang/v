@@ -435,8 +435,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			if s.output.len > r.last_output.len {
 				cur_line_output := s.output[r.last_output.len..]
 				print_output(cur_line_output)
-				r.last_output = s.output.clone()
-				r.lines << r.line
+				if s.exit_code == 0 {
+					r.last_output = s.output.clone()
+					r.lines << r.line
+				}
 			}
 		} else {
 			mut temp_line := r.line
@@ -467,8 +469,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				if s.output.len > r.last_output.len {
 					cur_line_output := s.output[r.last_output.len..]
 					print_output(cur_line_output)
-					r.last_output = s.output.clone()
-					r.lines << temp_line
+					if s.exit_code == 0 {
+						r.last_output = s.output.clone()
+						r.lines << temp_line
+					}
 				}
 				continue
 			}
