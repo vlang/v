@@ -480,6 +480,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				}
 			} else if temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
+			} else if temp_line.starts_with('fn') {
+				temp_source_code = r.current_source_code(false, false)
 			} else {
 				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
 			}
@@ -492,6 +494,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					r.parse_import(r.line)
 				} else if r.line.starts_with('#include ') {
 					r.includes << r.line
+				} else if r.line.starts_with('fn ') {
+					r.functions << r.line
 				} else {
 					r.lines << r.line
 				}
