@@ -1,4 +1,4 @@
 import encoding.hex as z
-print(z.decode('AB09CD')!.hex())
+z.decode('AB09CD')!.hex()
 ===output===
 ab09cd

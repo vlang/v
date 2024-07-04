@@ -435,6 +435,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			if s.output.len > r.last_output.len {
 				cur_line_output := s.output[r.last_output.len..]
 				print_output(cur_line_output)
+				r.last_output = s.output.clone()
+				r.lines << r.line
 			}
 		} else {
 			mut temp_line := r.line
@@ -442,9 +444,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
 			mut is_statement := false
-			if func_call {
-				is_statement = true
-			} else if filter_line.count('=') % 2 == 1
+			if filter_line.count('=') % 2 == 1
 				&& (filter_line.count('!=') + filter_line.count('>=') + filter_line.count('<=')) == 0 {
 				is_statement = true
 			} else {
@@ -467,6 +467,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				if s.output.len > r.last_output.len {
 					cur_line_output := s.output[r.last_output.len..]
 					print_output(cur_line_output)
+					r.last_output = s.output.clone()
+					r.lines << temp_line
 				}
 				continue
 			}
