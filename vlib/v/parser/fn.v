@@ -899,7 +899,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 	if types_only {
 		mut param_no := 1
 		for p.tok.kind != .rpar {
-			mut comments := p.eat_comments()
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false
@@ -963,7 +962,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false
 			}
-			comments << p.eat_comments()
 
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -983,7 +981,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				is_mut: is_mut
 				typ: param_type
 				type_pos: type_pos
-				comments: comments
 				on_newline: prev_param_newline != pos.line_nr
 			}
 			prev_param_newline = pos.line_nr
@@ -995,7 +992,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
-			mut comments := p.eat_comments()
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false
@@ -1008,7 +1004,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			mut param_pos := [p.tok.pos()]
 			name := p.check_name()
-			comments << p.eat_comments()
 			mut param_names := [name]
 			if name != '' && p.fn_language == .v && name[0].is_capital() {
 				p.error_with_pos('parameter name must not begin with upper case letter (`${param_names[0]}`)',
@@ -1082,7 +1077,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
 				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
 			}
-			comments << p.eat_comments()
 			for i, para_name in param_names {
 				alanguage := p.table.sym(typ).language
 				if alanguage != .v {
@@ -1096,7 +1090,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 					is_shared: is_shared
 					typ: typ
 					type_pos: type_pos[i]
-					comments: comments
 					on_newline: prev_param_newline != param_pos[i].line_nr
 				}
 				prev_param_newline = param_pos[i].line_nr

@@ -685,8 +685,7 @@ pub:
 	is_hidden   bool // interface first arg
 	on_newline  bool // whether the argument starts on a new line
 pub mut:
-	typ      Type
-	comments []Comment
+	typ Type
 }
 
 pub fn (p &Param) specifier() string {
