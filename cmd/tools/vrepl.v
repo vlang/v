@@ -384,7 +384,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.in_func = true
 			r.functions_name << r.line.all_before(':= fn(').trim_space()
 		}
-		if r.line.starts_with('fn') {
+		if r.line.starts_with('fn ') {
 			r.in_func = true
 			r.functions_name << r.line.all_after('fn').all_before('(').trim_space()
 		}
@@ -428,7 +428,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		if r.line.starts_with('=') {
 			r.line = 'println(' + r.line[1..] + ')'
 		}
-		if r.line.starts_with('print') {
+		if r.line.starts_with('print(') || r.line.starts_with('println(') {
 			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
@@ -484,7 +484,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				}
 			} else if temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
-			} else if temp_line.starts_with('fn') {
+			} else if temp_line.starts_with('fn ') {
 				temp_source_code = r.current_source_code(false, false)
 			} else {
 				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
