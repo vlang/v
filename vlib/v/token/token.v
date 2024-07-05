@@ -186,9 +186,9 @@ pub enum AtKind {
 	location
 }
 
-pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-	.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
-	.unsigned_right_shift_assign, .boolean_and_assign, .boolean_or_assign]
+pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assign, .mult_assign,
+	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign,
+	.left_shift_assign, .unsigned_right_shift_assign, .boolean_and_assign, .boolean_or_assign]
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
 	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@VMODHASH',
