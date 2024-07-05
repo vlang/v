@@ -503,7 +503,7 @@ run them via `v file.v` instead',
 				&& elem_type_sym.language == .v
 		}
 		if is_non_local {
-			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}',
+			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}. Define an alias and use that instead like `type AliasName = ${type_sym.name}` ',
 				rec.type_pos)
 			return ast.FnDecl{
 				scope: unsafe { nil }
