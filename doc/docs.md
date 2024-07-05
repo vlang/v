@@ -6008,10 +6008,14 @@ Full list of builtin options:
 | OS                             | Compilers        | Platforms                     | Other                                         |
 |--------------------------------|------------------|-------------------------------|-----------------------------------------------|
 | `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64`, `aarch64`   | `debug`, `prod`, `test`                       |
-| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
-| `android`, `mach`, `dragonfly` | `msvc`           | `x64`, `x32`                  | `no_bounds_checking`, `freestanding`          |
-| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `little_endian`, `big_endian` | `no_segfault_handler`, `no_backtrace`         |
-| `solaris`, `termux`            |                  |                               | `no_main`, 'fast_math'                        |
+| `darwin`, `ios`, `bsd`         | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
+| `freebsd`, `openbsd`, `netbsd` | `msvc`           | `rv64`, `rv32`                | `no_bounds_checking`, `freestanding`          |
+| `android`, `mach`, `dragonfly` | `cplusplus`      | `x64`, `x32`                  | `no_segfault_handler`, `no_backtrace`         |
+| `gnu`, `hpux`, `haiku`, `qnx`  |                  | `little_endian`, `big_endian` | `no_main`, `fast_math`, `apk`, `threads`      |
+| `solaris`, `termux`            |                  |                               | `js_node`, `js_browser`, `js_freestanding`    |
+| `serenity`, `vinix`, `plan9`   |                  |                               | `interpreter`, `es5`, `profile`, `wasm32`     |
+|                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
+|                                |                  |                               | `native`, `autofree`                          |
 
 #### `$embed_file`
 
