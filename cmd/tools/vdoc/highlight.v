@@ -138,8 +138,8 @@ fn color_highlight(code string, tb &ast.Table) string {
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
-					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
+					} else if tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational()
+						|| tok.kind.is_infix() || tok.kind.is_postfix() {
 						tok_typ = .operator
 					}
 				}
