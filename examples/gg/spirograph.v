@@ -26,7 +26,8 @@ gg.start(
 	frame_fn: fn [mut k, mut scale] (ctx &gg.Context) {
 		wsize := gg.window_size()
 		ctx.begin()
-		d := math.sin(f64(ctx.frame) / 300)
+		t := f64(ctx.frame) / 300
+		d := math.sin(t)
 		if math.abs(d) < 0.0015 {
 			k++
 		}
@@ -52,13 +53,15 @@ gg.start(
 			mut x, mut y := 0.0, 0.0
 			for j := 0; j < p; j++ {
 				a := pkj[j] * i * s
-				x += pdj[j] * math.sin(a) * cd600
-				y += pdj[j] * math.cos(a) * cd600
+				x += pdj[j] * math.sin(a - t) * cd600
+				y += pdj[j] * math.cos(a - t) * cd600
 			}
 			ctx.draw_rect_filled(f32(wsize.width / 2 + scale * x), f32(wsize.height / 2 + scale * y),
 				1, 1, colors[i % colors.len])
 		}
-		ctx.draw_text(wsize.width / 2 - 170, wsize.height - 15, 'frame: ${ctx.frame:06}, k: ${k:4}, scale: ${scale:4}, arrows to change')
+		ctx.draw_text(wsize.width / 2 - 170, wsize.height - 15, 'frame: ${ctx.frame:06}, k: ${k:4}, scale: ${scale:4}, arrows to change',
+			color: colors[1]
+		)
 		ctx.end()
 	}
 )
