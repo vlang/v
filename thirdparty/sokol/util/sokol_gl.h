@@ -2309,7 +2309,7 @@ typedef struct {
 #define _SGL_DEFAULT_CONTEXT_POOL_SIZE (4)
 #define _SGL_DEFAULT_PIPELINE_POOL_SIZE (64)
 // __v_ start
-#define _SGL_DEFAULT_MAX_VERTICES (1<<17)
+#define _SGL_DEFAULT_MAX_VERTICES (1<<22)
 #define _SGL_DEFAULT_MAX_COMMANDS (1<<15)
 // __v_ end
 #define _SGL_SLOT_SHIFT (16)
