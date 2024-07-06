@@ -224,10 +224,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut is_call := false
 		mut gen_or := false
 		mut blank_assign := false
+		mut is_va_list := false // C varargs
 		mut ident := ast.Ident{
 			scope: unsafe { nil }
 		}
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
+		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {
 			ident = left
 			g.curr_var_name << ident.name
@@ -612,7 +614,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
 					def_pos := g.definitions.len
-					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
+					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false,
+						false)
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(')${call_conv_attribute_suffix}')
 				}
@@ -693,9 +696,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
-			if is_fixed_array_var {
+			if is_fixed_array_var || is_va_list {
 				if is_decl {
 					g.writeln(';')
+					if is_va_list {
+						continue
+					}
 				}
 			} else if !g.is_arraymap_set && !str_add && !op_overloaded {
 				g.write(' ${op} ')

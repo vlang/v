@@ -290,7 +290,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				g.write(sig)
 				g.definitions.write_string(sig)
 			} else {
-				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic)
+				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic,
+					call_fn.func.is_c_variadic)
 			}
 
 			g.writeln(') {')
@@ -384,7 +385,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic)
+	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic,
+		node.is_c_variadic)
 	if is_closure {
 		g.nr_closures++
 	}
@@ -695,7 +697,7 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 	}
 }
 
-fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool) ([]string, []string, []bool) {
+fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool, is_c_variadic bool) ([]string, []string, []bool) {
 	mut fparams := []string{}
 	mut fparamtypes := []string{}
 	mut heap_promoted := []bool{}
@@ -720,7 +722,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*${caname})(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*${caname})(')
-			g.fn_decl_params(func.params, unsafe { nil }, func.is_variadic)
+			g.fn_decl_params(func.params, unsafe { nil }, func.is_variadic, func.is_c_variadic)
 			g.write(')')
 			g.definitions.write_string(')')
 			fparams << caname
@@ -756,7 +758,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.definitions.write_string(', ')
 		}
 	}
-	if g.pref.translated && is_variadic {
+	if (g.pref.translated && is_variadic) || is_c_variadic {
 		g.write(', ... ')
 		g.definitions.write_string(', ... ')
 	}

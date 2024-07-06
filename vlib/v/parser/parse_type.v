@@ -309,7 +309,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 
 	mut has_generic := false
 	line_nr := p.tok.line_nr
-	params, _, is_variadic := p.fn_params()
+	params, _, is_variadic, is_c_variadic := p.fn_params()
 	for param in params {
 		if param.typ.has_flag(.generic) {
 			has_generic = true
@@ -339,6 +339,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 		name: name
 		params: params
 		is_variadic: is_variadic
+		is_c_variadic: is_c_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
 		generic_names: generic_names

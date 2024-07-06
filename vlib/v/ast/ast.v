@@ -541,6 +541,7 @@ pub:
 	mod                   string // 'math.bits'
 	is_deprecated         bool
 	is_pub                bool
+	is_c_variadic         bool
 	is_variadic           bool
 	is_anon               bool
 	is_noreturn           bool        // true, when [noreturn] is used on a fn
@@ -630,6 +631,7 @@ pub:
 pub struct Fn {
 pub:
 	is_variadic           bool
+	is_c_variadic         bool
 	language              Language
 	is_pub                bool
 	is_ctor_new           bool // `[use_new] fn JS.Array.prototype.constructor()`
