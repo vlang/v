@@ -422,13 +422,11 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			continue
 		}
-		// Save the source only if the user is printing something,
-		// but don't add this print call to the `lines` array,
-		// so that it doesn't get called during the next print.
 		if r.line.starts_with('=') {
 			r.line = 'println(' + r.line[1..] + ')'
 		}
 		if r.line.starts_with('print(') || r.line.starts_with('println(') {
+			// >>> println('hello')
 			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
@@ -439,6 +437,17 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					r.last_output = s.output.clone()
 					r.lines << r.line
 				}
+			}
+		} else if r.line.contains('os.input(') {
+			// >>> s := os.input('name: ')
+			prompt_str := r.line.all_after('os.input(').all_before(')').trim('\'"')
+			line_t := r.get_one_line(prompt_str) or { break }.trim_right('\n')
+			trans_line := r.line.all_before('os.input(') + "'${line_t}'"
+			source_code := r.current_source_code(false, false) + '\n${trans_line}\n'
+			os.write_file(temp_file, source_code) or { panic(err) }
+			s := repl_run_vfile(temp_file) or { return 1 }
+			if s.exit_code == 0 {
+				r.lines << trans_line
 			}
 		} else {
 			mut temp_line := r.line
