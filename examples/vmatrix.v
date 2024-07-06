@@ -1,6 +1,7 @@
 import os
 import rand
 import term
+import term.termios
 import time
 
 const snooze = time.millisecond * 70
@@ -47,7 +48,6 @@ fn random_rain_column(max_col int, max_height int) RainColumn {
 	return RainColumn{
 		col: rand.int_in_range(1, max_col + 1) or { 1 }
 		len: rand.int_in_range(4, max_height / 4 * 3) or { 4 }
-		head: 0
 	}
 }
 
@@ -86,11 +86,17 @@ fn random_dim(s string) string {
 }
 
 fn init_terminal() ! {
+	mut old_state := termios.Termios{}
+	termios.tcgetattr(0, mut old_state)
 	// restore cursor, exit alternate buffer mode on Ctrl+C
-	os.signal_opt(os.Signal.int, fn (sig os.Signal) {
+	os.signal_opt(os.Signal.int, fn [mut old_state] (sig os.Signal) {
 		println('\e[?1049l\e[?25h')
+		termios.set_state(0, old_state)
 		exit(0)
 	})!
 	// turn off cursor, enter alternate buffer mode
 	print('\e[?1049h\e[?25l')
+	mut new_state := old_state
+	new_state.disable_echo()
+	termios.set_state(0, new_state)
 }
