@@ -38,6 +38,9 @@ fn test_version_flag() {
 	$if freebsd && clang {
 		compiler = 'clang'
 	}
+	$if freebsd && gcc {
+		compiler = 'gcc'
+	}
 
 	v_verbose_cmd_with_additional_args_res := os.execute_opt('${vexe} -cc ${compiler} -v run ${example_path}')!.output
 	assert v_verbose_cmd_with_additional_args_res != v_ver_cmd_res
