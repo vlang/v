@@ -223,10 +223,13 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 				if !is_type_only {
 					f.write_string(' ')
 				}
-				if node.is_variadic && is_last_param {
+				if node.is_variadic && is_last_param && !node.is_c_variadic {
 					f.write_string('...')
 				}
 				f.write_string(s)
+				if is_last_param && node.is_c_variadic {
+					f.write_string(', ...')
+				}
 			}
 		}
 		if !is_last_param {
