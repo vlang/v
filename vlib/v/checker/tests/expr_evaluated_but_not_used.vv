@@ -1,4 +1,10 @@
 fn main() {
-	{1, 2, 3, 4}
+	{
+		println(1)
+		println(2)
+		println(3)
+		println(4)
+		5
+	}
 	println('works')
 }
