@@ -2219,6 +2219,12 @@ fn (mut c Checker) block(mut node ast.Block) {
 		c.stmts(mut node.stmts)
 		c.inside_unsafe = prev_unsafe
 	} else {
+		if node.stmts.len > 0 && node.stmts.last() is ast.ExprStmt {
+			last_stmt := node.stmts.last() as ast.ExprStmt
+			if last_stmt.expr !in [ast.CallExpr, ast.IfExpr, ast.MatchExpr, ast.InfixExpr] {
+				c.error('expression evaluated but not used', node.stmts.last().pos)
+			}
+		}
 		c.stmts(mut node.stmts)
 	}
 }
