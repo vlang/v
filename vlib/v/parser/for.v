@@ -30,7 +30,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.close_scope()
 		return for_stmt
-	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon]
+	} else if p.peek_tok.kind == .semicolon
 		|| (p.peek_tok.kind in [.inc, .dec] && p.peek_token(2).kind in [.semicolon, .comma])
 		|| p.peek_tok.kind.is_assign() || p.tok.kind == .semicolon
 		|| (p.peek_tok.kind == .comma && p.peek_token(2).kind != .key_mut
@@ -47,7 +47,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut has_inc := false
 		mut is_multi := p.peek_tok.kind == .comma && p.peek_token(2).kind != .key_mut
 			&& p.peek_token(3).kind != .key_in
-		if p.peek_tok.kind in [.assign, .decl_assign] || p.peek_tok.kind.is_assign() || is_multi {
+		if p.peek_tok.kind.is_assign() || is_multi {
 			init = p.assign_stmt()
 			has_init = true
 		} else if p.peek_tok.kind in [.inc, .dec] {

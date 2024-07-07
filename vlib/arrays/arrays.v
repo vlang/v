@@ -181,6 +181,37 @@ pub fn chunk[T](array []T, size int) [][]T {
 	return chunks
 }
 
+// chunk_while splits the input array `a` into chunks of varying length,
+// using the `predicate`, passing to it pairs of adjacent elements `before` and `after`.
+// Each chunk, will contain all ajdacent elements, for which the `predicate` returned true.
+// The chunks are split *between* the `before` and `after` elements, for which the `predicate` returned false.
+// Example: assert arrays.chunk_while([0,9,2,2,3,2,7,5,9,5],fn(x int,y int)bool{return x<=y})==[[0,9],[2,2,3],[2,7],[5,9],[5]]
+// Example: assert arrays.chunk_while('aaaabbbcca'.runes(),fn(x rune,y rune)bool{return x==y})==[[`a`,`a`,`a`,`a`],[`b`,`b`,`b`],[`c`,`c`],[`a`]]
+// Example: assert arrays.chunk_while('aaaabbbcca'.runes(),fn(x rune,y rune)bool{return x==y}).map({it[0]:it.len})==[{`a`:4},{`b`:3},{`c`:2},{`a`:1}]
+pub fn chunk_while[T](a []T, predicate fn (before T, after T) bool) [][]T {
+	if a.len == 0 {
+		return []
+	}
+	mut chunks := [][]T{}
+	mut chunk := [a[0]]
+	mut i := 0
+	for i = 1; i < a.len; i++ {
+		// eprintln('> i: ${i} | a[i]: ${a[i]} | predicate: ${predicate(a[i-1], a[i]):10} | chunk: ${chunk}')
+		if predicate(a[i - 1], a[i]) {
+			chunk << a[i]
+			continue
+		}
+		if chunk.len > 0 {
+			chunks << chunk
+		}
+		chunk = [a[i]]
+	}
+	if chunk.len > 0 {
+		chunks << chunk
+	}
+	return chunks
+}
+
 pub struct WindowAttribute {
 pub:
 	size int

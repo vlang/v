@@ -84,7 +84,7 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a, false)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
 	return f.str()
 }
 
@@ -132,14 +132,12 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	t.stringify_fn_after_name(node, mut f, cur_mod, m2a, needs_wrap)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string,
-	needs_wrap bool) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
-	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
 		if node.is_method {
 			sym := t.sym(node.params[0].typ)
@@ -163,7 +161,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 	}
 	f.write_string('(')
-	mut last_len := 0
+	mut old_pline := node.pos.line_nr
+	mut pline := node.pos.line_nr
+	mut nparams_on_pline := 0
 	for i, param in node.params {
 		// skip receiver
 		if node.is_method && i == 0 {
@@ -174,21 +174,13 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 		is_last_param := i == node.params.len - 1
 		is_type_only := param.name == ''
-		should_add_type := true // is_last_param || is_type_only || node.params[i + 1].typ != param.typ ||
-		// (node.is_variadic && i == node.params.len - 2)
-		pre_comments := param.comments.filter(it.pos.pos < param.pos.pos)
-		if pre_comments.len > 0 {
-			if i == 0 {
-				is_wrap_needed = true
-				f.write_string('\n\t')
-			}
-			write_comments(pre_comments, mut f)
-			if !f.last_n(1)[0].is_space() {
-				f.write_string(' ')
-			}
+		if param.on_newline {
+			f.write_string('\n\t')
+			pline++
+			nparams_on_pline = 0
 		}
-		if is_wrap_needed {
-			f.write_string('\t')
+		if pline == old_pline && nparams_on_pline > 0 {
+			f.write_string(' ')
 		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
@@ -219,27 +211,21 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			}
 			s = util.no_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
-			if should_add_type {
-				if !is_type_only {
-					f.write_string(' ')
-				}
-				if node.is_variadic && is_last_param && !node.is_c_variadic {
-					f.write_string('...')
-				}
-				f.write_string(s)
-				if is_last_param && node.is_c_variadic {
-					f.write_string(', ...')
-				}
+			if !is_type_only {
+				f.write_string(' ')
 			}
+			if node.is_variadic && is_last_param && !node.is_c_variadic {
+				f.write_string('...')
+			}
+			f.write_string(s)
 		}
 		if !is_last_param {
-			if needs_wrap && f.len - last_len > 100 {
-				last_len = f.len
-				f.write_string(',\n\t')
-			} else {
-				f.write_string(', ')
-			}
+			f.write_string(',')
+		} else if node.is_c_variadic {
+			f.write_string(', ...')
 		}
+		nparams_on_pline++
+		old_pline = pline
 	}
 	f.write_string(')')
 	if node.return_type != void_type {

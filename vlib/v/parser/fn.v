@@ -503,7 +503,7 @@ run them via `v file.v` instead',
 				&& elem_type_sym.language == .v
 		}
 		if is_non_local {
-			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}',
+			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}. Define an alias and use that instead like `type AliasName = ${type_sym.name}` ',
 				rec.type_pos)
 			return ast.FnDecl{
 				scope: unsafe { nil }
@@ -897,11 +897,11 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
 		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
+	mut prev_param_newline := p.tok.pos().line_nr
 	// TODO: copy paste, merge 2 branches
 	if types_only {
 		mut param_no := 1
 		for p.tok.kind != .rpar {
-			mut comments := p.eat_comments()
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false, false
@@ -970,7 +970,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false, false
 			}
-			comments << p.eat_comments()
 
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -990,8 +989,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				is_mut: is_mut
 				typ: param_type
 				type_pos: type_pos
-				comments: comments
+				on_newline: prev_param_newline != pos.line_nr
 			}
+			prev_param_newline = pos.line_nr
 			param_no++
 			if param_no > 1024 {
 				p.error_with_pos('too many parameters', pos)
@@ -1000,7 +1000,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
-			mut comments := p.eat_comments()
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false, false
@@ -1019,7 +1018,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 
 			mut param_pos := [p.tok.pos()]
 			name := p.check_name()
-			comments << p.eat_comments()
 			mut param_names := [name]
 			if name != '' && p.fn_language == .v && name[0].is_capital() {
 				p.error_with_pos('parameter name must not begin with upper case letter (`${param_names[0]}`)',
@@ -1098,7 +1096,6 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
 				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
 			}
-			comments << p.eat_comments()
 			for i, para_name in param_names {
 				alanguage := p.table.sym(typ).language
 				if alanguage != .v {
@@ -1112,8 +1109,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					is_shared: is_shared
 					typ: typ
 					type_pos: type_pos[i]
-					comments: comments
+					on_newline: prev_param_newline != param_pos[i].line_nr
 				}
+				prev_param_newline = param_pos[i].line_nr
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${para_name}',
