@@ -353,15 +353,6 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		if line.len <= -1 || line == 'exit' {
 			break
 		}
-		if exit_pos := line.index('exit') {
-			oparen := line[(exit_pos + 4)..].trim_space()
-			if oparen.starts_with('(') {
-				if closing := oparen.index(')') {
-					rc := oparen[1..closing].parse_int(0, 8) or { panic(err) }
-					return int(rc)
-				}
-			}
-		}
 		r.line = line
 		if r.line == '\n' {
 			continue
@@ -468,6 +459,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			// Note: starting a line with 2 spaces escapes the println heuristic
 			if oline.starts_with('  ') {
+				is_statement = true
+			}
+			// The parentheses do not match
+			if r.line.count('(') != r.line.count(')') {
 				is_statement = true
 			}
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
