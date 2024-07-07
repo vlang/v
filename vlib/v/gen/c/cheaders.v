@@ -342,7 +342,7 @@ const c_common_macros = '
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
 	#ifndef _WIN32
-		int tcc_backtrace(char *fmt, ...);
+		int tcc_backtrace(const char *fmt, ...);
 	#endif
 #endif
 
