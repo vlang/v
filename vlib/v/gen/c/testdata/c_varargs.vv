@@ -11,7 +11,7 @@ fn C.printf(&char, ...)
 fn t2(fmt voidptr, ...) {
 	ap := C.va_list{}
 	C.va_start(ap, fmt)
-	C.vfprintf(C.stderr, fmt, ap)
+	C.vfprintf(C.stdout, fmt, ap)
 	C.va_end(ap)
 }
 
