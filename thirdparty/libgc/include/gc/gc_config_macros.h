@@ -330,7 +330,7 @@
 
 #if defined(__sgi) && !defined(__GNUC__) && _COMPILER_VERSION >= 720
 # define GC_ADD_CALLER
-# define GC_RETURN_ADDR (GC_word)__return_address
+# define GC_RETURN_ADDR (GC_return_addr_t)__return_address
 #endif
 
 #if defined(__linux__) || defined(__GLIBC__)
@@ -356,11 +356,8 @@
 # define GC_HAVE_BUILTIN_BACKTRACE
 #endif
 
-#if defined(GC_HAVE_BUILTIN_BACKTRACE) && !defined(GC_CAN_SAVE_CALL_STACKS)
-# define GC_CAN_SAVE_CALL_STACKS
-#endif
-
-#if defined(__sparc__)
+#if defined(GC_HAVE_BUILTIN_BACKTRACE) && !defined(GC_CAN_SAVE_CALL_STACKS) \
+    || defined(__sparc__)
 # define GC_CAN_SAVE_CALL_STACKS
 #endif
 
@@ -380,19 +377,20 @@
 # if GC_GNUC_PREREQ(2, 95)
     /* gcc knows how to retrieve return address, but we don't know      */
     /* how to generate call stacks.                                     */
-#   define GC_RETURN_ADDR (GC_word)__builtin_return_address(0)
+#   define GC_RETURN_ADDR (GC_return_addr_t)__builtin_return_address(0)
 #   if GC_GNUC_PREREQ(4, 0) && (defined(__i386__) || defined(__amd64__) \
                         || defined(__x86_64__) /* and probably others... */) \
        && !defined(GC_NO_RETURN_ADDR_PARENT)
 #     define GC_HAVE_RETURN_ADDR_PARENT
 #     define GC_RETURN_ADDR_PARENT \
-        (GC_word)__builtin_extract_return_addr(__builtin_return_address(1))
+                (GC_return_addr_t)__builtin_extract_return_addr( \
+                                        __builtin_return_address(1))
             /* Note: a compiler might complain that calling                 */
             /* __builtin_return_address with a nonzero argument is unsafe.  */
 #   endif
 # else
     /* Just pass 0 for gcc compatibility.       */
-#   define GC_RETURN_ADDR 0
+#   define GC_RETURN_ADDR ((GC_return_addr_t)0)
 # endif
 #endif /* !GC_CAN_SAVE_CALL_STACKS */
 

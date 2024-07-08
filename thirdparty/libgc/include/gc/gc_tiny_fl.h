@@ -32,7 +32,7 @@
 /* overhead and space usage for mark bits (usually mark bytes).         */
 /* On many 64-bit architectures some memory references require 16-byte  */
 /* alignment, making this necessary anyway.  For a few 32-bit           */
-/* architectures (e.g. x86), we may also need 16-byte alignment for     */
+/* architectures (e.g. i686), we may also need 16-byte alignment for    */
 /* certain memory references.  But currently that does not seem to be   */
 /* the default for all conventional malloc implementations, so we       */
 /* ignore that problem.                                                 */
@@ -61,7 +61,7 @@
 # define GC_WORDS_TO_GRANULES(n) ((n)*sizeof(void *)/GC_GRANULE_BYTES)
 #endif
 
-/* A "tiny" free list header contains GC_TINY_FREELISTS pointers to     */
+/* A "tiny" free-list header contains GC_TINY_FREELISTS pointers to     */
 /* singly linked lists of objects of different sizes, the i-th one      */
 /* containing objects i granules in size.  Note that there is a list    */
 /* of size zero objects.                                                */
@@ -75,10 +75,11 @@
 
 /* The i-th free list corresponds to size i*GC_GRANULE_BYTES    */
 /* Internally to the collector, the index can be computed with  */
-/* ALLOC_REQUEST_GRANS().  Externally, we don't know whether    */
-/* DONT_ADD_BYTE_AT_END is set, but the client should know.     */
+/* ALLOC_REQUEST_GRANS().  The later also depends on the        */
+/* values returned by GC_get_dont_add_byte_at_end() and         */
+/* GC_get_all_interior_pointers().                              */
 
-/* Convert a free list index to the actual size of objects      */
+/* Convert a free-list index to the actual size of objects      */
 /* on that list, including extra space we added.  Not an        */
 /* inverse of the above.                                        */
 #define GC_RAW_BYTES_FROM_INDEX(i) ((i) * GC_GRANULE_BYTES)
