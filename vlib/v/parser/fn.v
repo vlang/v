@@ -413,7 +413,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// Params
-	params_t, are_params_type_only, mut is_variadic := p.fn_params()
+	params_t, are_params_type_only, mut is_variadic, mut is_c_variadic := p.fn_params()
 	if is_c2v_variadic {
 		is_variadic = true
 	}
@@ -563,6 +563,7 @@ run them via `v file.v` instead',
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
+			is_c_variadic: is_c_variadic
 			generic_names: generic_names
 			is_pub: is_pub
 			is_deprecated: is_deprecated
@@ -626,6 +627,7 @@ run them via `v file.v` instead',
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
 		is_variadic: is_variadic
+		is_c_variadic: is_c_variadic
 		is_main: is_main
 		is_test: is_test
 		is_keep_alive: is_keep_alive
@@ -783,7 +785,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	inherited_vars_name := inherited_vars.map(it.name)
 	_, generic_names := p.parse_generic_types()
-	params, _, is_variadic := p.fn_params()
+	params, _, is_variadic, _ := p.fn_params()
 	for param in params {
 		if param.name == '' && p.table.sym(param.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', param.pos)
@@ -876,10 +878,11 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
-fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
+fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 	p.check(.lpar)
 	mut params := []ast.Param{}
 	mut is_variadic := false
+	mut is_c_variadic := false
 	// `int, int, string` (no names, just types)
 	param_name := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
 		p.prepend_mod(p.tok.lit)
@@ -901,7 +904,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		for p.tok.kind != .rpar {
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
@@ -918,13 +921,18 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			if p.tok.kind == .ellipsis {
 				p.next()
 				is_variadic = true
+				is_c_variadic = p.tok.kind == .rpar
+				if is_c_variadic {
+					p.check(.rpar)
+					return params, types_only, is_variadic, is_c_variadic
+				}
 			}
 			pos := p.tok.pos()
 			mut param_type := p.parse_type()
 			type_pos := pos.extend(p.prev_tok.pos())
 			if param_type == 0 {
 				// error is added in parse_type
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 			if is_mut {
 				if !param_type.has_flag(.generic) {
@@ -941,7 +949,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 					}
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
-					return []ast.Param{}, false, false
+					return []ast.Param{}, false, false, false
 				}
 				if param_type.is_ptr() && p.table.sym(param_type).kind == .struct_ {
 					param_type = param_type.ref()
@@ -960,14 +968,14 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no ${param_no}',
 						pos)
-					return []ast.Param{}, false, false
+					return []ast.Param{}, false, false, false
 				}
 				p.next()
 			}
@@ -987,14 +995,14 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			param_no++
 			if param_no > 1024 {
 				p.error_with_pos('too many parameters', pos)
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 		}
 	} else {
 		for p.tok.kind != .rpar {
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
@@ -1002,6 +1010,12 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			if is_mut {
 				p.next()
 			}
+			if p.tok.kind == .ellipsis && p.peek_tok.kind == .rpar {
+				p.check(.ellipsis)
+				p.check(.rpar)
+				return params, types_only, true, true
+			}
+
 			mut param_pos := [p.tok.pos()]
 			name := p.check_name()
 			mut param_names := [name]
@@ -1035,13 +1049,18 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			if p.tok.kind == .ellipsis {
 				p.next()
 				is_variadic = true
+				is_c_variadic = p.tok.kind == .rpar
+				if is_c_variadic {
+					p.check(.rpar)
+					return params, types_only, is_variadic, is_c_variadic
+				}
 			}
 			pos := p.tok.pos()
 			mut typ := p.parse_type()
 			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
@@ -1059,7 +1078,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic` or `shared`',
 						pos)
-					return []ast.Param{}, false, false
+					return []ast.Param{}, false, false, false
 				}
 				if typ.is_ptr() && p.table.sym(typ).kind == .struct_ {
 					typ = typ.ref()
@@ -1097,12 +1116,12 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${para_name}',
 						param_pos[i])
-					return []ast.Param{}, false, false
+					return []ast.Param{}, false, false, false
 				}
 			}
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
-				return []ast.Param{}, false, false
+				return []ast.Param{}, false, false, false
 			}
 			if p.tok.kind != .rpar {
 				p.check(.comma)
@@ -1110,7 +1129,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		}
 	}
 	p.check(.rpar)
-	return params, types_only, is_variadic
+	return params, types_only, is_variadic, is_c_variadic
 }
 
 fn (mut p Parser) spawn_expr() ast.SpawnExpr {
