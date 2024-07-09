@@ -203,9 +203,12 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			mut s := t.type_to_str(param.typ.clear_flag(.shared_f))
 			if param.is_mut {
-				if (!param_sym.is_number() && param_sym.kind != .bool)
+				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v
-					|| (param.typ.is_ptr() && t.sym(param.typ).kind == .struct_) {
+					|| (param.typ.is_ptr() && t.sym(param.typ).kind == .struct_)) {
+					s = s[1..]
+				} else if param.typ.is_ptr() && t.sym(param.typ).kind == .struct_
+					&& !s.contains('[') {
 					s = t.type_to_str(param.typ.clear_flag(.shared_f).deref())
 				}
 			}
