@@ -54,12 +54,6 @@ const possible_statement_patterns = [
 	'#include ',
 	'for ',
 	'or ',
-	'insert(',
-	'delete(',
-	'prepend(',
-	'sort(',
-	'clear(',
-	'trim(',
 	' as ',
 ]
 
@@ -508,9 +502,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					r.lines << r.line
 				}
 			} else {
-				for r.temp_lines.len > 0 {
-					r.temp_lines.delete(0)
-				}
+				r.temp_lines.clear()
 			}
 			if r.is_pin {
 				r.pin()
