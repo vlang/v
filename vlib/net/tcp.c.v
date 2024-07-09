@@ -297,7 +297,15 @@ pub fn (c &TcpConn) peer_addr() !Addr {
 
 // peer_ip retrieves the ip address used by the peer, and returns it as a string
 pub fn (c &TcpConn) peer_ip() !string {
-	return c.peer_addr()!.str().all_before(':')
+	address := c.peer_addr()!.str()
+	if address.contains(']:') {
+		// ipv6 addresses similar to this: '[::1]:46098'
+		ip := address.all_before(']:').all_after('[')
+		return ip
+	}
+	// ipv4 addresses similar to '127.0.0.1:7346'
+	ip := address.all_before(':')
+	return ip
 }
 
 pub fn (c &TcpConn) addr() !Addr {
