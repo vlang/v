@@ -207,6 +207,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 					|| node.language != .v
 					|| (param.typ.is_ptr() && t.sym(param.typ).kind == .struct_)) {
 					s = s[1..]
+				} else if param.typ.is_ptr() && t.sym(param.typ).kind == .struct_
+					&& !s.contains('[') {
+					s = t.type_to_str(param.typ.clear_flag(.shared_f).deref())
 				}
 			}
 			s = util.no_cur_mod(s, cur_mod)

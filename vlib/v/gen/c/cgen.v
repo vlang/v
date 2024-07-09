@@ -2060,8 +2060,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 				}
-				if !expr_typ.is_ptr() && ret_typ.is_ptr() {
-					g.write('&/*ref*/')
+				if ret_typ.nr_muls() > expr_typ.nr_muls() {
+					g.write('&'.repeat(ret_typ.nr_muls() - expr_typ.nr_muls()))
 				}
 			}
 		} else {
@@ -4830,6 +4830,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if !g.is_assign_lhs && is_auto_heap {
 					g.write('(*${name})')
 				} else {
+					if node.obj is ast.Var && node.obj.is_inherited {
+						g.write(closure_ctx + '->')
+					}
 					g.write(name)
 				}
 			} else {
