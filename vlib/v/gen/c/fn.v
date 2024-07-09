@@ -1805,7 +1805,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		if !is_interface || node.from_embed_types.len == 0 {
 			mut node_embed_types := node.from_embed_types.clone()
-			if node.left is ast.Ident && g.comptime.is_comptime_var(node.left) {
+			if node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .generic_var {
 				_, embed_types := g.table.find_method_from_embeds(final_left_sym, node.name) or {
 					ast.Fn{}, []ast.Type{}
 				}
