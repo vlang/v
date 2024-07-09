@@ -1142,8 +1142,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
-		obj := '${deref}it${op}${final_field_name}${sufix}'
-		return '${fn_name}(${obj})', true
+		return '${fn_name}()', true
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', true
 	} else if sym.kind == .thread {
