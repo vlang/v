@@ -297,7 +297,7 @@ pub fn (c &TcpConn) peer_addr() !Addr {
 
 // peer_ip retrieves the ip address used by the peer, and returns it as a string
 pub fn (c &TcpConn) peer_ip() !string {
-	return c.peer_addr()!.str()
+	return c.peer_addr()!.str().all_before(':')
 }
 
 pub fn (c &TcpConn) addr() !Addr {
