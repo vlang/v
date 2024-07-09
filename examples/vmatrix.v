@@ -5,7 +5,7 @@ import term.termios
 import time
 
 const snooze = time.millisecond * 70
-const symbols = '0123456789!@#$%^&*()-_=+[]{}|;:,.<>?¡±¥£¶ÿ'
+const symbols = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'
 
 struct RainColumn {
 mut:
@@ -21,11 +21,20 @@ fn main() {
 
 fn rain() {
 	mut rain_columns := []RainColumn{}
-	width, height := term.get_terminal_size()
+	mut width := 0
+	mut height := 0
 
 	for {
+		// clear screen and all rain columns if terminal resized
+		w, h := term.get_terminal_size()
+		if w != width || h != height {
+			width = w
+			height = h
+			term.clear()
+			rain_columns.clear()
+		}
 		// gradually add more rain columns
-		if rain_columns.len < width {
+		if rain_columns.len < (width / 4 * 3) {
 			rain_columns << random_rain_column(width, height)
 		}
 		// update and print all rain columns
@@ -33,40 +42,42 @@ fn rain() {
 			update_rain_column(mut rc, width, height)
 			print_rain_column(rc, height)
 		}
+		// snooze controls update speed
 		time.sleep(snooze)
 	}
 }
 
 fn update_rain_column(mut rc RainColumn, width int, height int) {
 	rc.head += 1
-	if rc.head >= height + rc.len + 1 {
+	if rc.head > height + rc.len {
 		rc = random_rain_column(width, height)
 	}
 }
 
 fn random_rain_column(max_col int, max_height int) RainColumn {
 	return RainColumn{
+		// console positions are 1 based, not zero
 		col: rand.int_in_range(1, max_col + 1) or { 1 }
 		len: rand.int_in_range(4, max_height / 4 * 3) or { 4 }
 	}
 }
 
 fn print_rain_column(rc RainColumn, height int) {
-	// print head in white
+	// print head in gray
 	if rc.head <= height {
-		print_at(random_symbol(), rc.col, rc.head)
+		print_at(term.gray(random_symbol()), rc.col, rc.head)
 	}
 	// print the char above the head in green to remove
-	// white color of the previous head. Dim chars
+	// gray color of the previous head. Dim chars
 	// randomly to add more interest to the effect
 	if (rc.head - 1) <= height {
 		symbol := random_dim(term.green(random_symbol()))
 		print_at(symbol, rc.col, rc.head - 1)
 	}
 	// remove tail by printing a space
-	t := rc.head - rc.len + 1
-	if t >= 0 && t <= height {
-		print_at(' ', rc.col, t)
+	tail := rc.head - rc.len + 1
+	if tail > 0 && tail <= height {
+		print_at(' ', rc.col, tail)
 	}
 }
 
@@ -88,15 +99,18 @@ fn random_dim(s string) string {
 fn init_terminal() ! {
 	mut old_state := termios.Termios{}
 	termios.tcgetattr(0, mut old_state)
-	// restore cursor, exit alternate buffer mode on Ctrl+C
-	os.signal_opt(os.Signal.int, fn [mut old_state] (sig os.Signal) {
-		println('\e[?1049l\e[?25h')
+	// restore terminal state on exit
+	at_exit(fn [mut old_state] () {
 		termios.set_state(0, old_state)
+		println('\e[?1049l\e[?25h') // cursor on, alternate buffer mode off
+	})!
+	// exit on Ctrl+C
+	os.signal_opt(os.Signal.int, fn (sig os.Signal) {
 		exit(0)
 	})!
-	// turn off cursor, enter alternate buffer mode
-	print('\e[?1049h\e[?25l')
+	// exit/restore setup, ok to init terminal
 	mut new_state := old_state
 	new_state.disable_echo()
 	termios.set_state(0, new_state)
+	print('\e[?1049h\e[?25l') // cursor off, alternate buffer mode on
 }
