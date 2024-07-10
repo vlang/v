@@ -1589,15 +1589,23 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
 	return match node {
 		ast.Ident {
+			// variable declared as generic type
 			c.comptime.is_generic_param_var(node)
 		}
 		ast.IndexExpr {
+			// generic_var[N]
 			c.comptime.is_generic_param_var(node.left)
 		}
 		ast.CallExpr {
-			node.args.any(c.comptime.is_generic_param_var(it.expr))
+			// fn which has any generic dependent expr
+			if node.args.any(c.comptime.is_generic_param_var(it.expr)) {
+				return true
+			}
+			// fn[T]() or generic_var.fn[T]()
+			node.concrete_types.any(it.has_flag(.generic))
 		}
 		ast.SelectorExpr {
+			// generic_var.property
 			c.comptime.is_generic_param_var(node.expr)
 		}
 		else {
