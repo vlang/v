@@ -64,6 +64,10 @@ fn test_socket() {
 
 fn test_socket_write_and_read() {
 	mut server, mut client, mut socket := setup()
+	addr := socket.peer_addr()!
+	ip := socket.peer_ip()!
+	assert ip in ['::1', 'localhost', '127.0.0.1']
+	println('> ip: ${ip} | addr: ${addr}')
 	defer {
 		cleanup(mut server, mut client, mut socket)
 	}
