@@ -53,6 +53,7 @@ const possible_statement_patterns = [
 	'import ',
 	'#include ',
 	'for ',
+	'if ',
 	'or ',
 	' as ',
 ]
