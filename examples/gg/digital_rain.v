@@ -1,3 +1,4 @@
+// Creates the digital rain effect from the movie, "The Matrix"
 module main
 
 import gg
@@ -24,7 +25,7 @@ mut:
 	col   int  // character based postion
 	len   int  // length of the rain column in characters
 	head  int  // y position of the rain column
-	drops []u8 // between 0 .. 1.0
+	drops []u8 // no retained graphics in gg, store entire column
 }
 
 fn main() {
@@ -35,7 +36,6 @@ fn main() {
 fn rain(mut app App) {
 	// calc rows and columns to use as matrix
 	app.screen_size = gg.screen_size()
-
 	// Create the drawing context
 	app.ctx = gg.new_context(
 		bg_color: gx.rgb(0, 0, 0)
@@ -50,10 +50,10 @@ fn rain(mut app App) {
 
 fn frame(mut app App) {
 	app.ctx.begin()
+	// figure out how many character rows and columns fit
 	if app.rows == 0 {
 		calc_sizes(mut app)
 	}
-
 	// gradually add rain columns
 	if app.rain_columns.len < app.cols / 4 * 3 {
 		app.rain_columns << random_rain_column(app.cols, app.rows)
@@ -64,7 +64,6 @@ fn frame(mut app App) {
 		draw_rain_column(rc, app)
 	}
 	app.ctx.end()
-
 	time.sleep(snooze)
 }
 
@@ -74,11 +73,12 @@ fn calc_sizes(mut app App) {
 		color: gx.green
 		mono: true
 	})
-
+	// figure out how big character it in pixesl
+	// Pad it or it looks too squashed
 	app.char_width, app.char_height = app.ctx.text_size('M')
 	app.char_width += 3
 	app.char_height += 1
-
+	// determine the size of the matrix in rows and columns
 	app.cols = app.screen_size.width / app.char_width
 	app.rows = app.screen_size.height / app.char_height
 }
@@ -91,9 +91,9 @@ fn update_rain_column(mut rc RainColumn, width int, height int) {
 }
 
 fn draw_rain_column(rc RainColumn, app App) {
-	end := rc.head - rc.len
-	x := rc.col * app.char_width
 	mut y := 0
+	x := rc.col * app.char_width
+	end := rc.head - rc.len
 	for i in 0 .. app.rows - 1 {
 		if i >= end && i < rc.head {
 			alpha := match i - end {
