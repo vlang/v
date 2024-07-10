@@ -128,6 +128,7 @@ fn random_rain_column(max_col int, max_height int) RainColumn {
 	mut rc := RainColumn{
 		col: rand.int_in_range(0, max_col) or { 0 }
 		len: rand.int_in_range(min_len, max_height / 4 * 3) or { min_len }
+		drops: []u8{cap: max_height}
 	}
 	for _ in 0 .. max_height {
 		rc.drops << random_rain_drop()
