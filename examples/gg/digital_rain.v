@@ -6,7 +6,6 @@ import gx
 import rand
 import time
 
-const snooze = time.millisecond * 100
 const rain_drops = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'.bytes()
 
 struct App {
@@ -19,6 +18,7 @@ mut:
 	screen_size  gg.Size
 	should_calc  bool = true
 	rain_columns []RainColumn
+	delay        time.Duration = time.millisecond * 100
 }
 
 struct RainColumn {
@@ -55,6 +55,13 @@ fn rain(mut app App) {
 				gg.toggle_fullscreen()
 				return
 			}
+			if event.typ == .key_up && event.key_code == .up {
+				app.delay = app.delay + 50 * time.millisecond
+			}
+			if event.typ == .key_down && event.key_code == .down {
+				new_delay := app.delay - 50 * time.millisecond
+				app.delay = if new_delay > 0 { new_delay } else { 0 }
+			}
 		}
 		frame_fn: frame
 	)
@@ -77,8 +84,8 @@ fn frame(mut app App) {
 		draw_rain_column(rc, app)
 	}
 	app.ctx.end()
-	vprintln('frame: ${app.ctx.frame} | app.cols: ${app.cols} | app.rows: ${app.rows} | app.rain_columns.len: ${app.rain_columns.len}')
-	time.sleep(snooze)
+	vprintln('frame: ${app.ctx.frame} | app.cols: ${app.cols} | app.rows: ${app.rows} | app.rain_columns.len: ${app.rain_columns.len} | app.delay: ${app.delay}')
+	time.sleep(app.delay)
 }
 
 @[if verbose ?]
