@@ -137,6 +137,5 @@ fn random_rain_column(max_col int, max_height int) RainColumn {
 }
 
 fn random_rain_drop() u8 {
-	idx := rand.int_in_range(0, rain_drops.len) or { 0 }
-	return rain_drops[idx]
+	return rand.element(rain_drops) or { rain_drops.first() }
 }
