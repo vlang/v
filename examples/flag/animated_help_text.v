@@ -62,7 +62,6 @@ Press ESCAPE or Ctrl+C to exit'
 		fields: {
 			'level':                                    'Level of lorem ipsum\nand more\nmany many many more.\nNotice how user newlines/format is kept since\ninput lines are all less or within\nthe default layout.description_padding\nand max width'
 			'example':                                  'Looong example text without newlines or anything else and lorem ipsum and more and many many many more. Should be auto fitted'
-			'the_limit':                                'Looonglimittextwithoutnewlinesoranythingelseandlorem ipsumandmoreandmanymanymanymore ffffffffffffffffffffffffffffffff f'
 			'multi':                                    'This flag can be repeated'
 			'-e, --extra':                              'Secret flag that does not exist on the struct, but we want documented (in same format as the others)'
 			'-q, --quiet-and-quite-long-flag <string>': 'Mega long description and secret flag that does not exist on the struct, but we want documented. Also the flag has custom newlines\nand the flag line itself is super long'
