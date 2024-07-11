@@ -1,5 +1,5 @@
 import term.ui as tui
-import flags
+import flag
 
 struct DocTest {
 	show_version bool   @[short: v; xdoc: 'Show version and exit']
@@ -24,8 +24,8 @@ const field_docs = {
 struct App {
 mut:
 	tui     &tui.Context = unsafe { nil }
-	layout  flags.DocLayout
-	options flags.DocOptions
+	layout  flag.DocLayout
+	options flag.DocOptions
 	edit    Edit
 }
 
@@ -183,7 +183,7 @@ fn frame(mut app App) {
 Use keyboard arrow keys right and left to adjust the value of the property
 Editing property: ${app.edit}, value: ${value}')
 
-	help_text := flags.to_doc[DocTest](
+	help_text := flag.to_doc[DocTest](
 		version: '1.0'
 		description: 'Simple DocLayout editor.
 Press ESCAPE or Ctrl+C to exit and print layout code'
