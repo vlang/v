@@ -119,6 +119,7 @@ pub mut:
 	show        Show   = ~Show.zero()
 }
 
+// max_width returns the total width of the `DocLayout`.
 pub fn (dl DocLayout) max_width() int {
 	return dl.flag_indent + dl.description_padding + dl.description_width
 }
@@ -296,6 +297,7 @@ fn (m map[string]FlagData) query_flag_with_name(name string) ?FlagData {
 	return none
 }
 
+// to_struct returns `T` with field values sat to any matching flags in `input`.
 pub fn to_struct[T](input []string, config ParseConfig) !(T, []int) {
 	mut fm := FlagMapper{
 		config: config
@@ -306,6 +308,8 @@ pub fn to_struct[T](input []string, config ParseConfig) !(T, []int) {
 	return st, fm.no_matches()
 }
 
+// to_doc returns a "usage" style documentation `string` generated from
+// attributes on `T` or via the `dc` argument.
 pub fn to_doc[T](dc DocConfig) !string {
 	mut fm := FlagMapper{
 		config: ParseConfig{
@@ -318,10 +322,13 @@ pub fn to_doc[T](dc DocConfig) !string {
 	return fm.to_doc(dc)!
 }
 
+// no_matches returns an array of indicies from the `input` (usually `os.args`),
+// that could not be matched against any fields.
 pub fn (fm FlagMapper) no_matches() []int {
 	return fm.no_match
 }
 
+// parse parses `T` to an internal data representation.
 pub fn (mut fm FlagMapper) parse[T]() ! {
 	config := fm.config
 	style := config.style
@@ -550,6 +557,8 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 }
 
+// to_doc returns a "usage" style documentation `string` generated from
+// the internal data structures generated via the `parse()` function.
 pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	mut docs := []string{}
 
@@ -633,6 +642,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	return docs.join('\n')
 }
 
+// fields_docs returns every line of the combined field documentation.
 pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 	short_delimiter := match dc.style {
 		.short, .short_long, .v, .go_flag, .cmd_exe { dc.delimiter }
