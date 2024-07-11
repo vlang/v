@@ -42,6 +42,9 @@ fn rain(mut app App) {
 		height: app.screen_size.height
 		user_data: app
 		window_title: 'Digital Rain'
+		init_fn: fn (mut app App) {
+			gg.toggle_fullscreen()
+		}
 		event_fn: fn (event &gg.Event, mut app App) {
 			if event.typ == .resized {
 				app.should_calc = true
