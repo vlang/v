@@ -30,7 +30,8 @@ pub enum Style {
 }
 
 struct StructInfo {
-	name   string
+	name   string // name of the struct itself
+	attrs  map[string]string // collection of `@[x: y]` sat on the struct, read via reflection
 	fields map[string]StructField
 }
 
@@ -85,7 +86,7 @@ pub:
 	delimiter string = '-' // delimiter used for flags
 	style     Style  = .short_long // expected flag style
 pub mut:
-	name        string = os.file_name(os.executable()) // application name
+	name        string            // application name
 	version     string            // application version
 	description string            // application description
 	footer      string            // application description footer written after auto-generated flags list/ field descriptions
@@ -153,11 +154,18 @@ fn (fm FlagMapper) dbg_match(flag_ctx FlagContext, field StructField, arg string
 
 fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 	mut struct_fields := map[string]StructField{}
+	mut struct_attrs := map[string]string{}
 	mut struct_name := ''
 	mut used_names := []string{}
 	$if T is $struct {
 		struct_name = T.name
 		trace_println('${@FN}: mapping struct "${struct_name}"...')
+
+		$for st_attr in T.attributes {
+			if st_attr.has_arg && st_attr.kind == .string {
+				struct_attrs[st_attr.name.trim_space()] = st_attr.arg.trim(' ')
+			}
+		}
 		// Handle positional first so they can be marked as handled
 		$for field in T.fields {
 			mut hints := FieldHints.zero()
@@ -168,7 +176,7 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 				trace_println('\tattribute: "${attr}"')
 				if attr.contains(':') {
 					split := attr.split(':')
-					attrs[split[0].trim(' ')] = split[1].trim(' ')
+					attrs[split[0].trim_space()] = split[1].trim(' ')
 				} else {
 					attrs[attr.trim(' ')] = 'true'
 				}
@@ -274,6 +282,7 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 
 	return StructInfo{
 		name: struct_name
+		attrs: struct_attrs
 		fields: struct_fields
 	}
 }
@@ -544,12 +553,44 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	mut docs := []string{}
 
+	// resolve name and version
 	if dc.options.show.has(.name_and_version) {
-		docs << '${dc.name} ${dc.version}'
+		mut app_name := os.file_name(os.executable())
+		// struct `name: x` attribute overrides the default value
+		if attr_name := fm.si.attrs['name'] {
+			app_name = attr_name
+		}
+		// user passed `name` overrides the attribute and default name
+		if dc.name != '' {
+			app_name = dc.name
+		}
+
+		mut app_version := ''
+		// struct `version` attribute, if defined
+		if attr_version := fm.si.attrs['version'] {
+			app_version = attr_version
+		}
+		// user passed `version` overrides the attribute
+		if dc.version != '' {
+			app_version = dc.version
+		}
+		docs << '${app_name} ${app_version}'
 	}
 
+	// Resolve the desciption if visible
 	if dc.options.show.has(.description) {
-		docs << keep_at_max(dc.description, dc.layout.max_width())
+		mut description := ''
+		// Set the description from any `xdoc` (or user defined) from *struct*
+		if attr_desc := fm.si.attrs[$d('v:flag:doc_attr', 'xdoc')] {
+			description = attr_desc
+		}
+		// user passed description overrides the attribute
+		if dc.description != '' {
+			description = dc.description
+		}
+		if description != '' {
+			docs << keep_at_max(description, dc.layout.max_width())
+		}
 	}
 
 	if dc.options.show.has(.flags) {
@@ -563,7 +604,18 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	}
 
 	if dc.options.show.has(.footer) {
-		docs << keep_at_max(dc.footer, dc.layout.max_width())
+		mut footer := ''
+		// struct `footer` attribute, if defined
+		if attr_footer := fm.si.attrs['footer'] {
+			footer = attr_footer
+		}
+		// user passed `footer` overrides the attribute
+		if dc.footer != '' {
+			footer = dc.footer
+		}
+		if footer != '' {
+			docs << keep_at_max(footer, dc.layout.max_width())
+		}
 	}
 
 	if dc.options.show.has(.name_and_version) {
