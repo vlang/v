@@ -6,6 +6,7 @@ import gx
 import rand
 import time
 
+const font_size = 20
 const rain_drops = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'.bytes()
 
 struct App {
@@ -96,11 +97,11 @@ fn vprintln(msg string) {
 fn calc_sizes(mut app App) {
 	app.screen_size = gg.window_size()
 	app.ctx.set_text_cfg(gx.TextCfg{
-		size: 20
+		size: font_size
 		color: gx.green
 		mono: true
 	})
-	// figure out how big character it in pixesl
+	// figure out how big character is in pixels
 	// Pad it or it looks too squashed
 	app.char_width, app.char_height = app.ctx.text_size('M')
 	app.char_width += 3
@@ -136,7 +137,7 @@ fn draw_rain_column(rc RainColumn, app App) {
 			}
 			at_head := i == rc.head - 1
 			cfg := gx.TextCfg{
-				size: 20
+				size: font_size
 				color: gg.Color{
 					r: if at_head { u8(255) } else { 0 }
 					g: 255
