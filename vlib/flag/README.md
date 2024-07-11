@@ -174,6 +174,8 @@ fn main() {
 
 # Other examples
 
+If you want to parse flags in a more function-based manner you can use the `FlagParser` instead.
+
 ```v
 module main
 
