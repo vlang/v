@@ -59,7 +59,7 @@ fn rain(mut app App) {
 			if event.typ == .key_up && event.key_code == .up {
 				app.delay = app.delay + 50 * time.millisecond
 			}
-			if event.typ == .key_down && event.key_code == .down {
+			if event.typ == .key_up && event.key_code == .down {
 				new_delay := app.delay - 50 * time.millisecond
 				app.delay = if new_delay > 0 { new_delay } else { 0 }
 			}
@@ -84,6 +84,9 @@ fn frame(mut app App) {
 		update_rain_column(mut rc, app.cols, app.rows)
 		draw_rain_column(rc, app)
 	}
+	app.ctx.draw_text(app.screen_size.width / 2 - 190, app.screen_size.height - 15, 'press `f` to toggle fullscreen, Up/Down arrows to change speed',
+		color: gx.gray
+	)
 	app.ctx.end()
 	vprintln('frame: ${app.ctx.frame} | app.cols: ${app.cols} | app.rows: ${app.rows} | app.rain_columns.len: ${app.rain_columns.len} | app.delay: ${app.delay}')
 	time.sleep(app.delay)
