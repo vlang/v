@@ -36,6 +36,10 @@ v run flags_example.v -h
 import flag
 import os
 
+@[xdoc: 'My application that does X']
+@[footer: 'A footer']
+@[name: 'app']
+@[version: '1.2.3']
 struct Config {
 	show_version bool   @[short: v; xdoc: 'Show version and exit']
 	debug_level  int    @[long: debug; short: d; xdoc: 'Debug level']
@@ -62,8 +66,7 @@ fn main() {
 	if config.show_help {
 		// Generate and layout (a configuable) documentation for the flags
 		documentation := flag.to_doc[Config](
-			version: '1.0'
-			description: 'My application'
+			version: '1.0' // NOTE: this overrides the `@[version: '1.2.3']` struct attribute
 			fields: {
 				'level':                                    'This is a doc string of the field `level` on struct `Config`'
 				'example':                                  'This is another doc string'
@@ -105,7 +108,8 @@ specify with special field attributes. The matching is done in the following way
 
 `pub fn to_doc[T](dc DocConfig) !string` returns an auto-generated `string` with flag
 documentation. The documentation can be tweaked in several ways to suit any special
-user needs via the `DocConfig` configuration struct.
+user needs via the `DocConfig` configuration struct or directly via attributes
+on the struct itself and it's fields.
 
 See also `examples/flag/flag_layout_editor.v` for a WYSIWYG editor.
 
