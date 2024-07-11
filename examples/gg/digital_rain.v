@@ -36,7 +36,6 @@ fn main() {
 }
 
 fn rain(mut app App) {
-	// Create the drawing context
 	app.ctx = gg.new_context(
 		bg_color: gx.rgb(0, 0, 0)
 		width: app.screen_size.width
@@ -151,6 +150,8 @@ fn draw_rain_column(rc RainColumn, app App) {
 			}
 			if i < rc.drops.len {
 				app.ctx.draw_text(x, y, rc.drops[i].ascii_str(), cfg)
+				app.ctx.draw_text(x, y, rc.drops[(i + 10) % rc.drops.len].ascii_str(),
+					cfg)
 			} else {
 				vprintln('BAD i: ${i} | rc.drops.len: ${rc.drops.len}')
 			}
