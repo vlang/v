@@ -3,7 +3,8 @@
 A V module to parse, map and document different command line option flag styles
 (as typically found in in `os.args`).
 
-`flag.to_struct[T](os.args)!` can map flags into user defined V `struct`s via compile time reflection.
+`flag.to_struct[T](os.args)!` can map flags into user defined V `struct`s via
+compile time reflection.
 
 The module supports several flag "styles" like:
 
@@ -116,8 +117,8 @@ See also `examples/flag/flag_layout_editor.v` for a WYSIWYG editor.
 # Sub commands
 
 Due to the nature of how `to_struct[T]` works it is not suited for applications that use
-sub commands at first glance. `git` and `v` are examples of command line applications that uses sub commands
-e.g.: `v help xyz`, where `help` is the sub command.
+sub commands at first glance. `git` and `v` are examples of command line applications
+that uses sub commands e.g.: `v help xyz`, where `help` is the sub command.
 
 To support this "flag" style in your application and still use `to_struct[T]()` you can
 simply parse out your sub command prior to mapping any flags.
