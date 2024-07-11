@@ -46,8 +46,14 @@ fn rain(mut app App) {
 			gg.toggle_fullscreen()
 		}
 		event_fn: fn (event &gg.Event, mut app App) {
+			vprintln('event.typ: ${event.typ} | event.char_code: ${event.char_code}')
 			if event.typ == .resized {
 				app.should_calc = true
+				return
+			}
+			if event.typ == .char && event.char_code == `f` {
+				gg.toggle_fullscreen()
+				return
 			}
 		}
 		frame_fn: frame
