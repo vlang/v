@@ -39,8 +39,8 @@ import os
 
 @[xdoc: 'My application that does X']
 @[footer: 'A footer']
-@[name: 'app']
 @[version: '1.2.3']
+@[name: 'app']
 struct Config {
 	show_version bool   @[short: v; xdoc: 'Show version and exit']
 	debug_level  int    @[long: debug; short: d; xdoc: 'Debug level']
