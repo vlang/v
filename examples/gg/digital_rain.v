@@ -7,7 +7,7 @@ import rand
 import time
 
 const snooze = time.millisecond * 100
-const rain_drops = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'
+const rain_drops = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'.bytes()
 
 struct App {
 mut:
