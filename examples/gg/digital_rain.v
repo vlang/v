@@ -17,6 +17,7 @@ mut:
 	char_width   int
 	char_height  int
 	screen_size  gg.Size
+	should_calc  bool = true
 	rain_columns []RainColumn
 }
 
@@ -34,8 +35,6 @@ fn main() {
 }
 
 fn rain(mut app App) {
-	// calc rows and columns to use as matrix
-	app.screen_size = gg.screen_size()
 	// Create the drawing context
 	app.ctx = gg.new_context(
 		bg_color: gx.rgb(0, 0, 0)
@@ -43,6 +42,11 @@ fn rain(mut app App) {
 		height: app.screen_size.height
 		user_data: app
 		window_title: 'Digital Rain'
+		event_fn: fn (event &gg.Event, mut app App) {
+			if event.typ == .resized {
+				app.should_calc = true
+			}
+		}
 		frame_fn: frame
 	)
 	app.ctx.run()
@@ -50,8 +54,8 @@ fn rain(mut app App) {
 
 fn frame(mut app App) {
 	app.ctx.begin()
-	// figure out how many character rows and columns fit
-	if app.rows == 0 {
+	if app.should_calc {
+		app.should_calc = false
 		calc_sizes(mut app)
 	}
 	// gradually add rain columns
@@ -64,10 +68,17 @@ fn frame(mut app App) {
 		draw_rain_column(rc, app)
 	}
 	app.ctx.end()
+	vprintln('frame: ${app.ctx.frame} | app.cols: ${app.cols} | app.rows: ${app.rows} | app.rain_columns.len: ${app.rain_columns.len}')
 	time.sleep(snooze)
 }
 
+@[if verbose ?]
+fn vprintln(msg string) {
+	println(msg)
+}
+
 fn calc_sizes(mut app App) {
+	app.screen_size = gg.window_size()
 	app.ctx.set_text_cfg(gx.TextCfg{
 		size: 20
 		color: gx.green
@@ -81,6 +92,7 @@ fn calc_sizes(mut app App) {
 	// determine the size of the matrix in rows and columns
 	app.cols = app.screen_size.width / app.char_width
 	app.rows = app.screen_size.height / app.char_height
+	vprintln('app.cols: ${app.cols} | app.rows: ${app.rows}')
 }
 
 fn update_rain_column(mut rc RainColumn, width int, height int) {
@@ -117,7 +129,11 @@ fn draw_rain_column(rc RainColumn, app App) {
 				}
 				mono: true
 			}
-			app.ctx.draw_text(x, y, rc.drops[i].ascii_str(), cfg)
+			if i < rc.drops.len {
+				app.ctx.draw_text(x, y, rc.drops[i].ascii_str(), cfg)
+			} else {
+				vprintln('BAD i: ${i} | rc.drops.len: ${rc.drops.len}')
+			}
 		}
 		y += app.char_height
 	}
@@ -137,5 +153,5 @@ fn random_rain_column(max_col int, max_height int) RainColumn {
 }
 
 fn random_rain_drop() u8 {
-	return rand.element(rain_drops) or { rain_drops.first() }
+	return rand.element(rain_drops) or { rain_drops[0] }
 }
