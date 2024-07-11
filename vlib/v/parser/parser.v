@@ -4142,13 +4142,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.codegen('
 //
 @[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
-@[inline] ${pubfn} (    e &${enum_name}) has(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
-@[inline] ${pubfn} (    e &${enum_name}) all(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
-@[inline] ${pubfn} (mut e  ${enum_name}) set(flag ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
+@[inline] ${pubfn} (    e &${enum_name}) has(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) != 0 }
+@[inline] ${pubfn} (    e &${enum_name}) all(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) == ${senum_type}(flag_) }
+@[inline] ${pubfn} (mut e  ${enum_name}) set(flag_ ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag_))) } }
 @[inline] ${pubfn} (mut e  ${enum_name}) set_all()                   { unsafe{ *e = ${enum_name}(${all_bits_set_value}) } }
-@[inline] ${pubfn} (mut e  ${enum_name}) clear(flag ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) clear(flag_ ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag_))) } }
 @[inline] ${pubfn} (mut e  ${enum_name}) clear_all()                 { unsafe{ *e = ${enum_name}(0) } }
-@[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag_ ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag_))) } }
 //
 ')
 	}
