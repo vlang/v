@@ -221,7 +221,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
 	is_live_wrap := is_livefn && is_livemode
 	if is_livefn && !is_livemode {
-		eprintln('INFO: compile with `v -live ${g.pref.path} `, if you want to use the [live] function ${node.name} .')
+		eprintln('INFO: compile with `v -live ${g.pref.path} `, if you want to use the @[live] function ${node.name} .')
 	}
 
 	mut name := g.c_fn_name(node)
@@ -553,7 +553,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 		if cattr := node.attrs.find_first('c') {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
-			// [c: 'P_TryMove'] fn p_trymove(thing &Mobj_t, x int, y int) bool
+			// @[c: 'P_TryMove'] fn p_trymove(thing &Mobj_t, x int, y int) bool
 			// translates to:
 			// bool P_TryMove(main__Mobj_t* thing, int x, int y);
 			// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
@@ -1962,7 +1962,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = c_fn_name(name)
 	}
 	if g.pref.translated || g.file.is_translated || node.is_file_translated {
-		// For `[c: 'P_TryMove'] fn p_trymove( ... `
+		// For `@[c: 'P_TryMove'] fn p_trymove( ... `
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
 			// TODO: PERF fn lookup for each fn call in translated mode
@@ -2764,22 +2764,22 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 					// only the exported wrapper should be weak; otherwise x86_64-w64-mingw32-gcc complains
 					continue
 				}
-				// a `[weak]` tag tells the C compiler, that the next declaration will be weak, i.e. when linking,
+				// a `@[weak]` tag tells the C compiler, that the next declaration will be weak, i.e. when linking,
 				// if there is another declaration of a symbol with the same name (a 'strong' one), it should be
 				// used instead, *without linker errors about duplicate symbols*.
 				g.write('VWEAK ')
 			}
 			'noreturn' {
-				// a `[noreturn]` tag tells the compiler, that a function
+				// a `@[noreturn]` tag tells the compiler, that a function
 				// *DOES NOT RETURN* to its callsites.
 				// See: https://en.cppreference.com/w/c/language/_Noreturn
 				// Such functions should have no return type. They can be used
 				// in places where `panic(err)` or `exit(0)` can be used.
 				// panic/1 and exit/0 themselves will also be marked as
-				// `[noreturn]` soon.
+				// `@[noreturn]` soon.
 				// These functions should have busy `for{}` loops injected
 				// at their end, when they do not end by calling other fns
-				// marked by `[noreturn]`.
+				// marked by `@[noreturn]`.
 				g.write('VNORETURN ')
 			}
 			'irq_handler' {

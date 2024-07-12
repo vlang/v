@@ -357,7 +357,7 @@ pub fn (mut re RE) reset() {
 }
 
 // reset for search mode fail
-// gcc bug, dont use [inline] or go 5 time slower
+// gcc bug, dont use @[inline] or go 5 time slower
 //[inline]
 @[direct_array_access]
 fn (mut re RE) reset_src() {

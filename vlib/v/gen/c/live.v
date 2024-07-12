@@ -103,7 +103,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	mut idx := 0
 	for f, _ in already_added {
 		fpath := os.real_path(f)
-		g.writeln('\t\tv__live__executable__add_live_monitored_file(live_info, ${ctoslit(fpath)}); // source V file with [live] ${
+		g.writeln('\t\tv__live__executable__add_live_monitored_file(live_info, ${ctoslit(fpath)}); // source V file with @[live] ${
 			idx + 1}/${already_added.len}')
 		idx++
 	}

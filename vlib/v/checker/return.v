@@ -121,7 +121,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			for expr in node.exprs {
 				if expr is ast.Ident {
 					if expr.name in pnames {
-						c.note('returning a parameter in a fn marked with `[manualfree]` can cause double freeing in the caller',
+						c.note('returning a parameter in a fn marked with `@[manualfree]` can cause double freeing in the caller',
 							node.pos)
 					}
 				}
@@ -308,7 +308,7 @@ fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.
 		if stmt is ast.ExprStmt {
 			if stmt.expr is ast.CallExpr {
 				if prev_stmt_was_noreturn_call {
-					c.error('unreachable code after a [noreturn] call', stmt.pos)
+					c.error('unreachable code after a @[noreturn] call', stmt.pos)
 					return
 				}
 				prev_stmt_was_noreturn_call = stmt.expr.is_noreturn
@@ -388,7 +388,7 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			else {}
 		}
 		if !is_valid_end_of_noreturn_fn {
-			c.error('[noreturn] functions should end with a call to another [noreturn] function, or with an infinite `for {}` loop',
+			c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
 				last_stmt.pos)
 			return
 		}

@@ -366,7 +366,7 @@ pub:
 	mod         string
 	name        string
 	is_pub      bool
-	is_markused bool // an explicit `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	is_markused bool // an explicit `@[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
 	attrs       []Attr // same value as `attrs` of the ConstDecl to which it belongs
 pub mut:
@@ -385,7 +385,7 @@ pub struct ConstDecl {
 pub:
 	is_pub bool
 	pos    token.Pos
-	attrs  []Attr // tags like `[markused]`, valid for all the consts in the list
+	attrs  []Attr // tags like `@[markused]`, valid for all the consts in the list
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment    // comments that after last const field
@@ -544,16 +544,16 @@ pub:
 	is_c_variadic         bool
 	is_variadic           bool
 	is_anon               bool
-	is_noreturn           bool        // true, when [noreturn] is used on a fn
-	is_manualfree         bool        // true, when [manualfree] is used on a fn
+	is_noreturn           bool        // true, when @[noreturn] is used on a fn
+	is_manualfree         bool        // true, when @[manualfree] is used on a fn
 	is_main               bool        // true for `fn main()`
 	is_test               bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
-	is_conditional        bool        // true for `[if abc] fn abc(){}`
-	is_exported           bool        // true for `[export: 'exact_C_name']`
+	is_conditional        bool        // true for `@[if abc] fn abc(){}`
+	is_exported           bool        // true for `@[export: 'exact_C_name']`
 	is_keep_alive         bool        // passed memory must not be freed (by GC) before function returns
-	is_unsafe             bool        // true, when [unsafe] is used on a fn
-	is_markused           bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
-	is_file_translated    bool        // true, when the file it resides in is `[translated]`
+	is_unsafe             bool        // true, when @[unsafe] is used on a fn
+	is_markused           bool        // true, when an explicit `@[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
+	is_file_translated    bool        // true, when the file it resides in is `@[translated]`
 	receiver              StructField // TODO: this is not a struct field
 	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method             bool
@@ -634,10 +634,10 @@ pub:
 	is_c_variadic         bool
 	language              Language
 	is_pub                bool
-	is_ctor_new           bool // `[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated         bool // `[deprecated] fn abc(){}`
-	is_noreturn           bool // `[noreturn] fn abc(){}`
-	is_unsafe             bool // `[unsafe] fn abc(){}`
+	is_ctor_new           bool // `@[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated         bool // `@[deprecated] fn abc(){}`
+	is_noreturn           bool // `@[noreturn] fn abc(){}`
+	is_unsafe             bool // `@[unsafe] fn abc(){}`
 	is_placeholder        bool
 	is_main               bool // `fn main(){}`
 	is_test               bool // `fn test_abc(){}`
@@ -645,7 +645,7 @@ pub:
 	is_method             bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
 	is_static_type_method bool // true for `fn Foo.bar() {}`
 	no_body               bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_file_translated    bool // true, when the file it resides in is `[translated]`
+	is_file_translated    bool // true, when the file it resides in is `@[translated]`
 	mod                   string
 	file                  string
 	file_mode             Language
@@ -765,7 +765,7 @@ pub mut:
 	is_keep_alive          bool // GC must not free arguments before fn returns
 	is_noreturn            bool // whether the function/method is marked as [noreturn]
 	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
-	is_file_translated     bool // true, when the file it resides in is `[translated]`
+	is_file_translated     bool // true, when the file it resides in is `@[translated]`
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
@@ -861,7 +861,7 @@ pub mut:
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
 	is_auto_heap bool // value whose address goes out of scope
-	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
+	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not @[heap] struct)
 }
 
 // used for smartcasting only
@@ -902,7 +902,7 @@ pub:
 	mod      string
 	pos      token.Pos
 	is_block bool   // __global() block
-	attrs    []Attr // tags like `[markused]`, valid for all the globals in the list
+	attrs    []Attr // tags like `@[markused]`, valid for all the globals in the list
 pub mut:
 	fields       []GlobalField
 	end_comments []Comment
@@ -932,8 +932,8 @@ pub:
 	mod           Module // the module of the source file (from `module xyz` at the top)
 	global_scope  &Scope = unsafe { nil }
 	is_test       bool // true for _test.v files
-	is_generated  bool // true for `[generated] module xyz` files; turn off notices
-	is_translated bool // true for `[translated] module xyz` files; turn off some checks
+	is_generated  bool // true for `@[generated] module xyz` files; turn off notices
+	is_translated bool // true for `@[translated] module xyz` files; turn off some checks
 pub mut:
 	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
@@ -1375,7 +1375,7 @@ pub struct EnumDecl {
 pub:
 	name             string
 	is_pub           bool
-	is_flag          bool        // true when the enum has [flag] tag,for bit field enum
+	is_flag          bool        // true when the enum has @[flag] tag,for bit field enum
 	is_multi_allowed bool        // true when the enum has [_allow_multiple_values] tag
 	comments         []Comment   // comments before the first EnumField
 	fields           []EnumField // all the enum fields

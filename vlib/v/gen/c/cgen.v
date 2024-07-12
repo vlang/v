@@ -225,7 +225,7 @@ mut:
 	curr_var_name       []string // curr var name on assignment
 	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
-	force_main_console  bool // true when [console] used on fn main()
+	force_main_console  bool // true when @[console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
 	referenced_fns      shared map[string]bool // functions that have been referenced

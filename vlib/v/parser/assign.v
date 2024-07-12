@@ -209,7 +209,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						if lx.info.is_static {
 							if !p.pref.translated && !p.is_translated && !p.pref.is_fmt
 								&& !p.inside_unsafe_fn {
-								return p.error_with_pos('static variables are supported only in translated mode or in [unsafe] fn',
+								return p.error_with_pos('static variables are supported only in translated mode or in @[unsafe] fn',
 									lx.pos)
 							}
 							is_static = true

@@ -49,7 +49,7 @@ fn (s S1) f() {
 fn test_funcs() {
 	s := S1{}
 	unsafe { s.f() }
-	_ = C.strerror(0) // [trusted] function prototype in builtin/cfns.c.v
+	_ = C.strerror(0) // @[trusted] function prototype in builtin/cfns.c.v
 }
 
 fn test_if_expr_unsafe() {

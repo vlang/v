@@ -13,7 +13,7 @@ pub enum AttrKind {
 	comptime_define // [if name]
 }
 
-// e.g. `[unsafe]`
+// e.g. `@[unsafe]`
 @[minify]
 pub struct Attr {
 pub:

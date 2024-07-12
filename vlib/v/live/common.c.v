@@ -9,7 +9,7 @@ pub:
 	vexe             string  // full path to the v compiler
 	vopts            string  // v compiler options for a live shared library
 	original         string  // full path to the original source file, compiled with -live
-	live_fn_mutex    voidptr // the address of the C mutex, that locks the [live] fns during reloads.
+	live_fn_mutex    voidptr // the address of the C mutex, that locks the @[live] fns during reloads.
 	live_linkfn      FNLinkLiveSymbols = unsafe { nil } // generated C callback; receives a dlopen handle
 	so_extension     string            // .so or .dll
 	so_name_template string // a template for the shared libraries location
@@ -38,7 +38,7 @@ pub mut:
 // The callbacks: cb_compile_fail, cb_before, cb_after will be
 // executed outside the mutex protected section, so be careful,
 // if you modify your data inside them. They can race with your
-// [live] functions.
+// @[live] functions.
 //
 // cb_locked_before and cb_locked_after will be executed *inside*
 // the mutex protected section. They can NOT race with your [live]

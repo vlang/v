@@ -128,7 +128,7 @@ pub fn (s &Surrounder) builder_write_afters(mut sb strings.Builder) {
 }
 
 // free frees the private resources associated with the surrounder instance
-// Called automatically by `-autofree`, or in `[manualfree]` tagged functions.
+// Called automatically by `-autofree`, or in `@[manualfree]` tagged functions.
 @[unsafe]
 pub fn (mut s Surrounder) free() {
 	unsafe {
