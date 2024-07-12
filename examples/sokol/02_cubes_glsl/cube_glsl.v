@@ -365,6 +365,7 @@ fn init_cube_glsl(mut app App) {
 	app.cube_bind.vertex_buffers[0] = vbuf
 	app.cube_bind.index_buffer = ibuf
 	app.cube_bind.fs.images[C.SLOT_tex] = app.texture
+	app.cube_bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.cube_pip_glsl = gfx.make_pipeline(&pipdesc)
 	println('GLSL init DONE!')
 }
@@ -483,8 +484,6 @@ fn frame(mut app App) {
 	// x1 := dw/2
 	y0 := 0
 	y1 := int(f32(dh) * 0.5)
-
-	// app.gg.begin()
 
 	app.gg.begin()
 	{
