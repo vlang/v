@@ -549,7 +549,7 @@ pub:
 	is_main               bool        // true for `fn main()`
 	is_test               bool        // true for `fn test_abcde() {}`, false for `fn test_abc(x int) {}`, or for fns that do not start with test_
 	is_conditional        bool        // true for `[if abc] fn abc(){}`
-	is_exported           bool        // true for `[export: 'exact_C_name']`
+	is_exported           bool        // true for `@[export: 'exact_C_name']`
 	is_keep_alive         bool        // passed memory must not be freed (by GC) before function returns
 	is_unsafe             bool        // true, when [unsafe] is used on a fn
 	is_markused           bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
