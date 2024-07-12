@@ -103,6 +103,8 @@ pub struct C._utimbuf {
 
 fn C._utime(&char, voidptr) int
 
+@[deprecated: 'os.args now uses arguments()']
+@[deprecated_after: '2024-07-30']
 fn init_os_args_wide(argc int, argv &&u8) []string {
 	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
