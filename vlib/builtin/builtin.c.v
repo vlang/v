@@ -719,6 +719,7 @@ __global g_main_argc = int(0)
 @[markused]
 __global g_main_argv = unsafe { nil }
 
+// arguments returns the command line arguments, used for starting the current program as a V array of strings.
 pub fn arguments() []string {
 	argv := &&u8(g_main_argv)
 	mut res := []string{cap: g_main_argc}
