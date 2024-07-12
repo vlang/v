@@ -21,6 +21,8 @@ fn main() {
 			ext_to_mt_str[ext] = mt_str
 		}
 	}
+	ext_to_mt_str['v'] = 'text/x-vlang'
+	ext_to_mt_str['vsh'] = 'text/x-vlang'
 
 	write_file('db.v', '
 	module mime
@@ -32,4 +34,5 @@ fn main() {
 	const ext_to_mt_str = ${ext_to_mt_str}	
 	')!
 	execute('${@VEXE} fmt -w db.v')
+	println('db.v was regenerated. New file size: ${file_size('db.v')} bytes .')
 }

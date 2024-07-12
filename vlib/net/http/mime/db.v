@@ -15332,4 +15332,6 @@ const ext_to_mt_str = {
 	'movie':                    'video/x-sgi-movie'
 	'smv':                      'video/x-smv'
 	'ice':                      'x-conference/x-cooltalk'
+	'v':                        'text/x-vlang'
+	'vsh':                      'text/x-vlang'
 }
