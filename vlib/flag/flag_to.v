@@ -527,14 +527,14 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 								fm.array_field_map_flag[field.name] << FlagData{
 									raw: arg
 									field_name: field.name
-									arg: arg // .arg is used when assigning at comptime to []XYZ
+									arg: ?string(arg) // .arg is used when assigning at comptime to []XYZ
 									pos: pos
 								}
 							} else {
 								fm.field_map_flag[field.name] = FlagData{
 									raw: arg
 									field_name: field.name
-									arg: arg
+									arg: ?string(arg)
 									pos: pos
 								}
 							}
@@ -963,7 +963,7 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 		} else {
@@ -974,7 +974,7 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 		}
@@ -1023,7 +1023,7 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 		} else {
@@ -1034,7 +1034,7 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 		}
@@ -1088,7 +1088,7 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: arg
+				arg: ?string(arg)
 				pos: pos
 			}
 		} else {
@@ -1099,7 +1099,7 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: arg
+				arg: ?string(arg)
 				pos: pos
 			}
 		}
@@ -1150,7 +1150,7 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: arg
+				arg: ?string(arg)
 				pos: pos
 			}
 		} else {
@@ -1161,7 +1161,7 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: arg
+				arg: ?string(arg)
 				pos: pos
 			}
 		}
@@ -1236,7 +1236,7 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 					if field.hints.has(.is_array) {
 						fm.array_field_map_flag[mf.field_name] << FlagData{
 							...mf
-							arg: arg
+							arg: ?string(arg)
 						}
 						trace_println('${@FN}: found match for (array) ${fm.dbg_match(flag_ctx,
 							field, arg, '')}')
@@ -1245,7 +1245,7 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 							field, arg, '')}')
 						fm.field_map_flag[mf.field_name] = FlagData{
 							...mf
-							arg: arg
+							arg: ?string(arg)
 						}
 					}
 					fm.handled_pos << flag_ctx.pos
@@ -1373,7 +1373,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 			fm.handled_pos << pos
@@ -1402,7 +1402,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			field_name: field.name
 			delimiter: used_delimiter
 			name: flag_name
-			arg: next
+			arg: ?string(next)
 			pos: pos
 			repeats: count_of_first_letter_repeats
 		}
@@ -1423,7 +1423,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			field_name: field.name
 			delimiter: used_delimiter
 			name: flag_name
-			arg: next
+			arg: ?string(next)
 			pos: pos
 			repeats: count_of_first_letter_repeats
 		}
@@ -1466,7 +1466,7 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 		} else {
@@ -1477,7 +1477,7 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 				field_name: field.name
 				delimiter: used_delimiter
 				name: flag_name
-				arg: next
+				arg: ?string(next)
 				pos: pos
 			}
 		}
@@ -1511,7 +1511,7 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 					field_name: field.name
 					delimiter: used_delimiter
 					name: flag_name
-					arg: next
+					arg: ?string(next)
 					pos: pos
 				}
 			} else {
@@ -1522,7 +1522,7 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 					field_name: field.name
 					delimiter: used_delimiter
 					name: flag_name
-					arg: next
+					arg: ?string(next)
 					pos: pos
 				}
 			}
