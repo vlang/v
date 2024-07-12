@@ -135,8 +135,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'main.vtest_new_metainfo',
 			'main.vtest_new_filemetainfo',
 			'os.getwd',
-			'os.init_os_args',
-			'os.init_os_args_wide',
 			'v.embed_file.find_index_entry_by_path',
 		]
 	}
