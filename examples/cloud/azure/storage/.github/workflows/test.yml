@@ -1,0 +1,35 @@
+name: Azure Storage Tests
+# https://learn.microsoft.com/en-us/azure/storage/blobs/use-azurite-to-run-automated-tests
+# https://github.com/Azure/Azurite
+# https://github.com/Azure/Azurite?tab=readme-ov-file#default-storage-account
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment info
+        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+      - name: Build local v
+        run: make -j4 && ./v symlink
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: Install and run Azurite
+        run: |
+          sudo npm install -g azurite
+          sudo mkdir azurite
+          sudo azurite --silent --location azurite --debug azurite/debug.log &
+
+      - name: Run tests
+        run: ./v test examples/cloud/azure/storage/main_test.v

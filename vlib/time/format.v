@@ -655,10 +655,35 @@ pub fn (t Time) utc_string() string {
 }
 
 // http_header_string returns a date string in the format used in HTTP headers, as defined in RFC 2616.
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
 pub fn (t Time) http_header_string() string {
-	day_str := t.weekday_str()
-	month_str := t.smonth()
-	http_header_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} GMT'
+	day_str := t.weekday_str().bytes()
+	month_str := t.smonth().bytes()
+
+	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
+		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
+		`G`, `M`, `T`]
+
+	buf[0] = day_str[0]
+	buf[1] = day_str[1]
+	buf[2] = day_str[2]
+
+	buf[8] = month_str[0]
+	buf[9] = month_str[1]
+	buf[10] = month_str[2]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.day, mut buf, 7)
+	int_to_byte_array_no_pad(t.year, mut buf, 16)
+	int_to_byte_array_no_pad(t.hour, mut buf, 19)
+	int_to_byte_array_no_pad(t.minute, mut buf, 22)
+	int_to_byte_array_no_pad(t.second, mut buf, 25)
+
+	http_header_string := buf.bytestr()
+
 	return http_header_string
 }
 
