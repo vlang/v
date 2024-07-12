@@ -6116,29 +6116,22 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	mut styp := g.typ(typ)
 	cname := g.c_const_name(name)
 	mut init := strings.new_builder(100)
-	if cname == '_const_os__args' {
-		if g.pref.os == .windows {
-			init.writeln('\t_const_os__args = os__init_os_args_wide(___argc, (byteptr*)___argv);')
-		} else {
-			init.writeln('\t_const_os__args = os__init_os_args(___argc, (byte**)___argv);')
-		}
+
+	if surround_cbr {
+		init.writeln('{')
+	}
+	if unwrap_option {
+		init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
+	} else if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
+		init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
+	} else if expr is ast.CallExpr
+		&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed {
+		init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, ', expr, ', sizeof(${styp}));'))
 	} else {
-		if surround_cbr {
-			init.writeln('{')
-		}
-		if unwrap_option {
-			init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
-		} else if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
-			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
-		} else if expr is ast.CallExpr
-			&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed {
-			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, ', expr, ', sizeof(${styp}));'))
-		} else {
-			init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
-		}
-		if surround_cbr {
-			init.writeln('}')
-		}
+		init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
+	}
+	if surround_cbr {
+		init.writeln('}')
 	}
 	mut def := '${styp} ${cname}'
 	expr_sym := g.table.sym(typ)

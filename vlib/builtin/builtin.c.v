@@ -711,13 +711,26 @@ fn v_fixed_index(i int, len int) int {
 
 // NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
 // They are used internally by V's builtin; for user code, it is much
-// more convenient to just use `os.args` instead.
+// more convenient to just use `os.args` or call `arguments()` instead.
 
 @[markused]
 __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+pub fn arguments() []string {
+	argv := &&u8(g_main_argv)
+	mut res := []string{cap: g_main_argc}
+	for i in 0 .. g_main_argc {
+		$if windows {
+			res << unsafe { string_from_wide(&u16(argv[i])) }
+		} $else {
+			res << unsafe { tos_clone(argv[i]) }
+		}
+	}
+	return res
+}
 
 @[if vplayground ?]
 fn vplayground_mlimit(n isize) {
