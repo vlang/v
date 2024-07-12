@@ -485,7 +485,6 @@ fn frame(mut app App) {
 	y0 := 0
 	y1 := int(f32(dh) * 0.5)
 
-	
 	app.gg.begin()
 	{
 		sgl.defaults()
@@ -503,7 +502,6 @@ fn frame(mut app App) {
 		draw_texture_cubes(app)
 	}
 	app.gg.end()
-	
 
 	// glsl cube
 	draw_cube_glsl(app)
