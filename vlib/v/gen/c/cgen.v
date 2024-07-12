@@ -6281,7 +6281,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			} else {
 				// More complex expressions need to be moved to `_vinit()`
 				// e.g. `__global ( mygblobal = 'hello ' + world' )`
-				init = '\t${field.name} = ${g.expr_string(field.expr)}; // 3global'
+				if field.name in ['g_main_argc', 'g_main_argv'] {
+					init = '\t// skipping ${field.name}, it was initialised in main'
+				} else {
+					init = '\t${field.name} = ${g.expr_string(field.expr)}; // 3global'
+				}
 			}
 		} else if !g.pref.translated { // don't zero globals from C code
 			default_initializer := g.type_default(field.typ)
