@@ -1329,7 +1329,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			if arg_typ !in [ast.voidptr_type, ast.nil_type]
 				&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
-				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
+				c.error('4 cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 					call_arg.pos)
 			}
 			continue
@@ -1443,12 +1443,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				continue
 			}
 			*/
-			c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
+			c.error('6 ${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 		}
 		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
-			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
+			c.error('2 cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 				call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
@@ -1493,6 +1493,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
 						if c.comptime.type_map.len > 0 {
 							continue
+						}
+						if unwrap_sym.kind == .function {
+							param_sym := c.table.sym(param.typ)
+							// performs checking against generic Fn[T] type
+							if param_sym.kind == .function
+								&& c.check_matching_function_symbols(unwrap_sym, param_sym) {
+								continue
+							}
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 					}
@@ -2302,7 +2310,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.args[i].typ = got_arg_typ
 		if no_type_promotion {
 			if got_arg_typ != exp_arg_typ {
-				c.error('cannot use `${c.table.sym(got_arg_typ).name}` as argument for `${method.name}` (`${exp_arg_sym.name}` expected)',
+				c.error('3 cannot use `${c.table.sym(got_arg_typ).name}` as argument for `${method.name}` (`${exp_arg_sym.name}` expected)',
 					arg.pos)
 			}
 		}

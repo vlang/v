@@ -921,6 +921,14 @@ pub fn (t &TypeSymbol) is_heap() bool {
 	}
 }
 
+pub fn (t &TypeSymbol) is_generic() bool {
+	if t.info is FnType {
+		return t.info.func.generic_names.len > 0
+	} else {
+		return false
+	}
+}
+
 pub fn (t &ArrayFixed) is_compatible(t2 ArrayFixed) bool {
 	return t.size == t2.size && t.elem_type == t2.elem_type
 }
