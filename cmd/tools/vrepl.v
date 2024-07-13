@@ -183,8 +183,7 @@ fn (r &Repl) import_to_source_code() []string {
 }
 
 fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool) string {
-	mut all_lines := []string{}
-	all_lines.insert(0, r.import_to_source_code())
+	mut all_lines := r.import_to_source_code()
 
 	if vstartup != '' {
 		mut lines := []string{}
