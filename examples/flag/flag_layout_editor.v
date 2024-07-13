@@ -1,6 +1,8 @@
 import term.ui as tui
 import flag
 
+@[name: 'flag_layout_editor']
+@[version: '1.0']
 struct DocTest {
 	show_version bool   @[short: v; xdoc: 'Show version and exit']
 	debug_level  int    @[long: debug; short: d; xdoc: 'Debug level']
@@ -35,20 +37,18 @@ enum Edit {
 	description_width
 	flag_indent
 	// DocOptions.show flags
+	name
+	version
 	flags
 	flag_type
 	flag_hint
 	description
 	flags_header
 	footer
-	name_and_version
 }
 
 pub fn (e Edit) next() Edit {
 	return match e {
-		.name_and_version {
-			.description_padding
-		}
 		.description_padding {
 			.description_width
 		}
@@ -56,6 +56,12 @@ pub fn (e Edit) next() Edit {
 			.flag_indent
 		}
 		.flag_indent {
+			.name
+		}
+		.name {
+			.version
+		}
+		.version {
 			.flags
 		}
 		.flags {
@@ -74,7 +80,7 @@ pub fn (e Edit) next() Edit {
 			.footer
 		}
 		.footer {
-			.name_and_version
+			.description_padding
 		}
 	}
 }
@@ -118,8 +124,11 @@ fn event(e &tui.Event, mut app App) {
 			.description_width {
 				app.layout.description_width += incr_decr
 			}
-			.name_and_version {
-				app.options.show.toggle(.name_and_version)
+			.name {
+				app.options.show.toggle(.name)
+			}
+			.version {
+				app.options.show.toggle(.version)
 			}
 			.flags {
 				app.options.show.toggle(.flags)
@@ -156,8 +165,11 @@ fn frame(mut app App) {
 		.description_width {
 			'${app.layout.description_width}'
 		}
-		.name_and_version {
-			if app.options.show.has(.name_and_version) { 'on' } else { 'off' }
+		.name {
+			if app.options.show.has(.name) { 'on' } else { 'off' }
+		}
+		.version {
+			if app.options.show.has(.version) { 'on' } else { 'off' }
 		}
 		.flags {
 			if app.options.show.has(.flags) { 'on' } else { 'off' }
@@ -184,7 +196,6 @@ Use keyboard arrow keys right and left to adjust the value of the property
 Editing property: ${app.edit}, value: ${value}')
 
 	help_text := flag.to_doc[DocTest](
-		version: '1.0'
 		description: 'Simple DocLayout editor.
 Press ESCAPE or Ctrl+C to exit and print layout code'
 		footer: '
