@@ -303,7 +303,20 @@ pub fn to_struct[T](input []string, config ParseConfig) !(T, []int) {
 		input: input
 	}
 	fm.parse[T]()!
-	st := fm.to_struct[T]()!
+	st := fm.to_struct[T](none)!
+	return st, fm.no_matches()
+}
+
+// from_struct returns `defaults` with field values sat to any matching flags in `input`.
+// Thus any field(s) that could not be matched with a flag will have the same value as the
+// field(s) passed as `defaults`.
+pub fn from_struct[T](defaults T, input []string, config ParseConfig) !(T, []int) {
+	mut fm := FlagMapper{
+		config: config
+		input: input
+	}
+	fm.parse[T]()!
+	st := fm.to_struct[T](defaults)!
 	return st, fm.no_matches()
 }
 
@@ -777,10 +790,10 @@ fn keep_at_max(str string, max int) string {
 	return fitted
 }
 
-// to_struct returns an instance of `T` that has the parsed flags from `input` mapped to the fields of struct `T`.
-pub fn (fm FlagMapper) to_struct[T]() !T {
+// to_struct returns `defaults` or a new instance of `T` that has the parsed flags from `input` mapped to the fields of struct `T`.
+pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 	// Generate T result
-	mut result := T{}
+	mut result := defaults or { T{} }
 
 	$if T is $struct {
 		struct_name := T.name
