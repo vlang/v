@@ -1,7 +1,7 @@
 exitasdfasdf
 ===output===
-error: undefined ident: `exitasdfasdf`
+error: `exitasdfasdf` evaluated but not used
     5 | import math
     6 | 
-    7 | println(exitasdfasdf)
-      |         ~~~~~~~~~~~~
+    7 | exitasdfasdf
+      | ~~~~~~~~~~~~

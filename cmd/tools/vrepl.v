@@ -39,7 +39,6 @@ const repl_folder = os.join_path(os.vtmp_dir(), 'repl')
 const possible_statement_patterns = [
 	'++',
 	'--',
-	'<<',
 	'//',
 	'/*',
 	'assert ',
@@ -461,19 +460,19 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				is_statement = true
 			}
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
-				temp_line = 'println(${r.line})'
-				source_code := r.current_source_code(false, false) + '\n${temp_line}\n'
+				print_line := 'println(${r.line})'
+				source_code := r.current_source_code(false, false) + '\n${print_line}\n'
 				os.write_file(temp_file, source_code) or { panic(err) }
 				s := repl_run_vfile(temp_file) or { return 1 }
-				if s.output.len > r.last_output.len {
-					cur_line_output := s.output[r.last_output.len..]
-					print_output(cur_line_output)
-					if s.exit_code == 0 {
+				if s.exit_code == 0 {
+					if s.output.len > r.last_output.len {
+						cur_line_output := s.output[r.last_output.len..]
+						print_output(cur_line_output)
 						r.last_output = s.output.clone()
-						r.lines << temp_line
+						r.lines << print_line
 					}
+					continue
 				}
-				continue
 			}
 			mut temp_source_code := ''
 			if temp_line.starts_with('import ') {

@@ -67,10 +67,10 @@ fn test_v_profile_works() {
 	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_1.v'
 	validate_output(@FN, '', sfile, {
-		'os__init_os_args': 1
-		'main__main':       1
-		'println':          1
-		'strconv__atoi':    1
+		'arguments':     1
+		'main__main':    1
+		'println':       1
+		'strconv__atoi': 1
 	})
 }
 
