@@ -7443,7 +7443,7 @@ By default all V functions have the following naming scheme in C: `[module name]
 
 For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
 
-To use a custom export name, use the `[export]` attribute:
+To use a custom export name, use the `@[export]` attribute:
 
 ```
 @[export: 'my_custom_c_name']
