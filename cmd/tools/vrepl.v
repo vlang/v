@@ -472,6 +472,14 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 						r.lines << print_line
 					}
 					continue
+				} else {
+					if s.output.len > r.last_output.len {
+						cur_line_output := s.output[r.last_output.len..]
+						if cur_line_output.contains('undefined ident:') {
+							print_output(cur_line_output)
+							continue
+						}
+					}
 				}
 			}
 			mut temp_source_code := ''
