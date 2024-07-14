@@ -96,7 +96,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					sym := c.table.sym(field.typ)
 					if sym.kind == .function && !field.typ.has_flag(.option)
 						&& !field.has_default_expr && !field.attrs.contains('required') {
-						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `@[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
 						c.note(error_msg, field.pos)
 					}
 				}
@@ -855,7 +855,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						node.pos)
 				}
 				*/
-				// Check for `[required]` struct attr
+				// Check for `@[required]` struct attr
 				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
 					&& node.init_fields.all(it.name != field.name) {
 					c.error('field `${type_sym.name}.${field.name}` must be initialized',

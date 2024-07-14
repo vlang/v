@@ -5,7 +5,7 @@ module builtin
 #flag @VEXEROOT/thirdparty/libbacktrace/backtrace.o
 #include <backtrace.h>
 
-// NOTE: Don't mark this as a [typedef] or it may cause compiler errors!
+// NOTE: Don't mark this as a @[typedef] or it may cause compiler errors!
 pub struct C.backtrace_state {
 	// filename &char
 }

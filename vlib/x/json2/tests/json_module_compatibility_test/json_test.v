@@ -51,7 +51,7 @@ fn test_simple() {
 
 // struct Price {
 // 	net         f64
-// 	currency_id string [json: currencyId] = currency_id
+// 	currency_id string @[json: currencyId] = currency_id
 // }
 
 struct User2 {

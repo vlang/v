@@ -64,7 +64,7 @@ fn test_ref_field() {
 	assert y.a.n == 29
 }
 
-// Yxc should become [heap] implicitly because `Abc` is
+// Yxc should become @[heap] implicitly because `Abc` is
 
 struct Yxc {
 mut:

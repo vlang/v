@@ -75,10 +75,10 @@ mut:
 	or_is_handled             bool              // ignore `or` in this expression
 	builtin_mod               bool              // are we in the `builtin` module?
 	mod                       string            // current module name
-	is_manualfree             bool              // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals               bool              // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated              bool              // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	is_translated             bool              // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
+	is_manualfree             bool              // true when `@[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals               bool              // `@[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated              bool              // `@[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated             bool              // `@[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
 	attrs                     []ast.Attr        // attributes before next decl stmt
 	expr_mod                  string            // for constructing full type names in parse_type()
 	imports                   map[string]string // alias => mod_name

@@ -332,7 +332,7 @@ pub fn (a Any) reflect[T]() T {
 		mut toml_field_name := field.name
 		// Remapping of field names, for example:
 		// TOML: 'assert = "ok"'
-		// V:    User { asrt string [toml: 'assert'] }
+		// V:    User { asrt string @[toml: 'assert'] }
 		// User.asrt == 'ok'
 		for attr in field.attrs {
 			if attr.starts_with('toml:') {

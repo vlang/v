@@ -73,7 +73,7 @@ pub mut:
 	scope_returns              bool
 	is_builtin_mod             bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
 	is_just_builtin_mod        bool // true only inside 'builtin'
-	is_generated               bool // true for `[generated] module xyz` .v files
+	is_generated               bool // true for `@[generated] module xyz` .v files
 	inside_unsafe              bool // true inside `unsafe {}` blocks
 	inside_const               bool // true inside `const ( ... )` blocks
 	inside_anon_fn             bool // true inside `fn() { ... }()`
@@ -465,7 +465,7 @@ fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 					c.error('function `main` must declare a body', stmt.pos)
 				}
 			} else if stmt.attrs.contains('console') {
-				c.error('only `main` can have the `[console]` attribute', stmt.pos)
+				c.error('only `main` can have the `@[console]` attribute', stmt.pos)
 			}
 		}
 	}
@@ -1363,7 +1363,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						return
 					}
 					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
-					c.error('`or` block must provide a default value of type `${expected_type_name}`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
+					c.error('`or` block must provide a default value of type `${expected_type_name}`, or return/continue/break or call a @[noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
 					if ret_type.is_ptr() && last_stmt_typ.is_pointer()
@@ -1671,9 +1671,9 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				rec_sym := c.table.sym(receiver.set_nr_muls(0))
 				if !rec_sym.is_heap() {
 					suggestion := if rec_sym.kind == .struct_ {
-						'declaring `${rec_sym.name}` as `[heap]`'
+						'declaring `${rec_sym.name}` as `@[heap]`'
 					} else {
-						'wrapping the `${rec_sym.name}` object in a `struct` declared as `[heap]`'
+						'wrapping the `${rec_sym.name}` object in a `struct` declared as `@[heap]`'
 					}
 					c.error('method `${c.table.type_to_str(receiver.idx())}.${method.name}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider ${suggestion}.',
 						node.expr.pos().extend(node.pos))
@@ -3905,7 +3905,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		c.error('undefined ident: `errcode`; did you mean `err.code`?', node.pos)
 	} else {
 		if c.inside_ct_attr {
-			c.note('`[if ${node.name}]` is deprecated. Use `[if ${node.name}?]` instead',
+			c.note('`[if ${node.name}]` is deprecated. Use `@[if ${node.name}?]` instead',
 				node.pos)
 		} else {
 			cname_mod := node.name.all_before('.')
@@ -4281,9 +4281,9 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
 					&& !c.file.is_translated {
 					suggestion := if type_sym.kind == .struct_ {
-						'declaring `${type_sym.name}` as `[heap]`'
+						'declaring `${type_sym.name}` as `@[heap]`'
 					} else {
-						'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
+						'wrapping the `${type_sym.name}` object in a `struct` declared as `@[heap]`'
 					}
 					mischief := if as_interface { 'used as interface object' } else { 'referenced' }
 					c.error('`${node.name}` cannot be ${mischief} outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
@@ -4360,7 +4360,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum_
 				&& !(right_sym.info as ast.Enum).is_flag
 				&& !(right_sym.info as ast.Enum).uses_exprs)) {
-				c.error('cannot take the address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `[minify]`',
+				c.error('cannot take the address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `@[minify]`',
 					node.pos.extend(node.right.pos))
 			}
 

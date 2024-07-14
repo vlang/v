@@ -79,7 +79,7 @@ pub fn (s string) runes() []rune {
 // working with C style pointers to 0 terminated strings (i.e. `char*`).
 // It is recommended to use it, unless you *do* understand the implications of
 // tos/tos2/tos3/tos4/tos5 in terms of memory management and interactions with
-// -autofree and `[manualfree]`.
+// -autofree and `@[manualfree]`.
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn cstring_to_vstring(s &char) string {

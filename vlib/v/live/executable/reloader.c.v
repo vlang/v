@@ -48,7 +48,7 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 
 // add_live_monitored_file will be called by the generated code inside main(), to add a list of all the .v files
 // that were used during the main program compilation. Any change to any of them, will later trigger a
-// recompilation and reloading of the produced shared library. This makes it possible for [live] functions
+// recompilation and reloading of the produced shared library. This makes it possible for @[live] functions
 // inside modules to also work, not just in the top level program.
 @[markused]
 pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {

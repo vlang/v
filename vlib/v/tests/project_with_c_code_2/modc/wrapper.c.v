@@ -7,7 +7,7 @@ module modc
 pub struct C.Atype {
 }
 
-// Note: [trusted] below, means that the C function, can be safely called outside unsafe{} blocks.
+// Note: @[trusted] below, means that the C function, can be safely called outside unsafe{} blocks.
 //
 // By default, all C. functions are NOT trusted, and all V functions are by default trusted.
 //
@@ -25,7 +25,7 @@ fn C.new_atype(int) voidptr
 fn C.handle_array(voidptr, int)
 
 fn todo_remove_me() {
-	// TODO: remove this dummy function, when the vfmt bug of [trusted] after a void C function is fixed
+	// TODO: remove this dummy function, when the vfmt bug of @[trusted] after a void C function is fixed
 }
 
 @[trusted]
