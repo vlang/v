@@ -253,7 +253,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				g.writeln('${g.typ(cond.expr_type)} ${var_name};')
+				g.writeln('${g.typ(g.unwrap_generic(cond.expr_type))} ${var_name};')
 			} else {
 				guard_vars[i] = ''
 			}
