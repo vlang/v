@@ -48,7 +48,9 @@ $if dynamic_boehm ? {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
-			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+			$if !use_bundled_libgc ? {
+				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+			}
 		}
 		$if macos {
 			#flag -DMPROTECT_VDB=1
@@ -73,7 +75,9 @@ $if dynamic_boehm ? {
 	} $else $if openbsd {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I/usr/local/include
-		#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+		$if !use_bundled_libgc ? {
+			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+		}
 		#flag -lpthread
 	} $else $if windows {
 		#flag -DGC_NOT_DLL=1
@@ -82,7 +86,9 @@ $if dynamic_boehm ? {
 		$if tinyc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
-			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+			$if !use_bundled_libgc ? {
+				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+			}
 		} $else $if msvc {
 			// Build libatomic_ops
 			#flag @VEXEROOT/thirdparty/libatomic_ops/atomic_ops.o
