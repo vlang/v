@@ -40,9 +40,9 @@ fn test_pure_gnu_long_no_exe() {
 
 fn test_pure_gnu_long_with_tail() {
 	config, no_matches := flag.to_struct[Config](exe_and_gnu_args_with_tail, skip: 1, style: .long)!
-	assert config.path == '/path/to/x'
-	assert exe_and_gnu_args_with_tail[no_matches[0]] == '/path/to/y'
-	assert exe_and_gnu_args_with_tail[no_matches[1]] == '/path/to/z'
+	assert config.path == '/path/to/x' // path is of type `string`, not `[]string`
+	assert no_matches[0] == '/path/to/y'
+	assert no_matches[1] == '/path/to/z'
 
 	assert config.amount == 6
 }
@@ -51,8 +51,8 @@ fn test_pure_gnu_long_with_tail_no_exe() {
 	a := exe_and_gnu_args_with_tail[1..]
 	config, no_matches := flag.to_struct[Config](a, style: .long)!
 	assert config.path == '/path/to/x'
-	assert a[no_matches[0]] == '/path/to/y'
-	assert a[no_matches[1]] == '/path/to/z'
+	assert no_matches[0] == '/path/to/y'
+	assert no_matches[1] == '/path/to/z'
 
 	assert config.amount == 6
 }

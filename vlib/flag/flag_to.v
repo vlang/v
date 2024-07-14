@@ -297,13 +297,30 @@ fn (m map[string]FlagData) query_flag_with_name(name string) ?FlagData {
 }
 
 // to_struct returns `T` with field values sat to any matching flags in `input`.
-pub fn to_struct[T](input []string, config ParseConfig) !(T, []int) {
+// to_struct also returns any flags from `input`, in order of appearance, that could *not* be matched
+// with any field on `T`.
+pub fn to_struct[T](input []string, config ParseConfig) !(T, []string) {
 	mut fm := FlagMapper{
 		config: config
 		input: input
 	}
 	fm.parse[T]()!
-	st := fm.to_struct[T]()!
+	st := fm.to_struct[T](none)!
+	return st, fm.no_matches()
+}
+
+// using returns `defaults` with field values overwritten with any matching flags in `input`.
+// Any field that could *not* be matched with a flag will have the same value as the
+// field(s) passed as `defaults`.
+// using also returns any flags from `input`, in order of appearance, that could *not* be matched
+// with any field on `T`.
+pub fn using[T](defaults T, input []string, config ParseConfig) !(T, []string) {
+	mut fm := FlagMapper{
+		config: config
+		input: input
+	}
+	fm.parse[T]()!
+	st := fm.to_struct[T](defaults)!
 	return st, fm.no_matches()
 }
 
@@ -321,10 +338,15 @@ pub fn to_doc[T](dc DocConfig) !string {
 	return fm.to_doc(dc)!
 }
 
-// no_matches returns an array of indicies from the `input` (usually `os.args`),
-// that could not be matched against any fields.
-pub fn (fm FlagMapper) no_matches() []int {
-	return fm.no_match
+// no_matches returns any flags from the `input` array, in order of appearance,
+// that could *not* be matched against any fields.
+// no_matches should be called *after* `to_struct[T]()`.
+pub fn (fm FlagMapper) no_matches() []string {
+	mut non_matching := []string{}
+	for i in fm.no_match {
+		non_matching << fm.input[i]
+	}
+	return non_matching
 }
 
 // parse parses `T` to an internal data representation.
@@ -777,10 +799,10 @@ fn keep_at_max(str string, max int) string {
 	return fitted
 }
 
-// to_struct returns an instance of `T` that has the parsed flags from `input` mapped to the fields of struct `T`.
-pub fn (fm FlagMapper) to_struct[T]() !T {
+// to_struct returns `defaults` or a new instance of `T` that has the parsed flags from `input` mapped to the fields of struct `T`.
+pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 	// Generate T result
-	mut result := T{}
+	mut result := defaults or { T{} }
 
 	$if T is $struct {
 		struct_name := T.name

@@ -136,7 +136,7 @@ fn test_flag_error_messages() {
 			style: e_num
 		)
 		{
-			assert no_matches == [0, 1] // index 0 = executable, index 1 = subcmd
+			assert no_matches == ['/path/to/exe', 'subcmd'] // index 0 = executable, index 1 = subcmd
 		}
 	}
 
@@ -155,7 +155,7 @@ fn test_flag_error_messages() {
 		}
 	}
 	if _, no_matches := flag.to_struct[LongConfig](gnu_args_error, style: .long) {
-		assert no_matches == [6]
+		assert no_matches == ['oo']
 	} else {
 		assert false, 'flags should not have reached this assert'
 	}
@@ -166,6 +166,6 @@ fn test_flag_error_messages() {
 		assert err.msg() == 'flag `--version=1.2.3` can not be assigned to bool field "show_version"'
 	}
 	if _, no_matches := flag.to_struct[IgnoreConfig](ignore_args_error, style: .long) {
-		assert no_matches == [1]
+		assert no_matches == ['--some-test=ouch']
 	}
 }

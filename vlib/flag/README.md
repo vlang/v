@@ -58,10 +58,7 @@ fn main() {
 	config, no_matches := flag.to_struct[Config](os.args, skip: 1)!
 
 	if no_matches.len > 0 {
-		println('The following flags could not be mapped to any fields on the struct:')
-		for index in no_matches {
-			println('${index}: ${os.args[no_matches[index]]}')
-		}
+		println('The following flags could not be mapped to any fields on the struct: ${no_matches}')
 	}
 
 	if config.show_help {
@@ -91,7 +88,7 @@ The 2 most useful functions in the module is `to_struct[T]()` and `to_doc[T]()`.
 
 ## `to_struct[T](...)`
 
-`to_struct[T](input []string, config ParseConfig) !(T, []int)` maps flags found in `input`
+`to_struct[T](input []string, config ParseConfig) !(T, []string)` maps flags found in `input`
 to *matching* fields on `T`. The matching is determined via hints that the user can
 specify with special field attributes. The matching is done in the following way:
 
@@ -104,6 +101,15 @@ specify with special field attributes. The matching is done in the following way
   * Short identifiers are specified using `@[short: n]`
   * To map a field *solely* to a short flag use `@[only: n]`
   * Short flags that repeats is mapped to fields via the attribute `@[repeats]`
+
+A new instance of `T` is returned with fields assigned with values from any matching
+input flags, along with an array of flags that could not be matched.
+
+## using[T](...)
+
+`using[T](defaults T, input []string, config ParseConfig) !(T, []string)` does the same as
+`to_struct[T]()` but allows for passing in an existing instance of `T`, making it possible
+to preserve existing field values that does not match any flags in `input`.
 
 ## `to_doc[T](...)`
 
