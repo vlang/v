@@ -297,7 +297,8 @@ fn (m map[string]FlagData) query_flag_with_name(name string) ?FlagData {
 }
 
 // to_struct returns `T` with field values sat to any matching flags in `input`.
-// to_struct also returns an array of strings with flags, in order of appearance, in `input` that could not be matched.
+// to_struct also returns any flags from `input`, in order of appearance, that could *not* be matched
+// with any field on `T`.
 pub fn to_struct[T](input []string, config ParseConfig) !(T, []string) {
 	mut fm := FlagMapper{
 		config: config
@@ -311,7 +312,8 @@ pub fn to_struct[T](input []string, config ParseConfig) !(T, []string) {
 // using returns `defaults` with field values overwritten with any matching flags in `input`.
 // Any field that could *not* be matched with a flag will have the same value as the
 // field(s) passed as `defaults`.
-// using also returns an array of strings with flags, in order of appearance, in `input` that could not be matched.
+// using also returns any flags from `input`, in order of appearance, that could *not* be matched
+// with any field on `T`.
 pub fn using[T](defaults T, input []string, config ParseConfig) !(T, []string) {
 	mut fm := FlagMapper{
 		config: config
