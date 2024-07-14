@@ -2,6 +2,12 @@ module builtin
 
 #flag -DGC_THREADS=1
 
+$if use_bundled_libgc ? {
+	#flag -DGC_BUILTIN_ATOMIC=1
+	#flag -I @VEXEROOT/thirdparty/libgc/include
+	#flag @VEXEROOT/thirdparty/libgc/gc.o
+}
+
 $if dynamic_boehm ? {
 	$if windows {
 		$if tinyc {
@@ -14,7 +20,7 @@ $if dynamic_boehm ? {
 		} $else {
 			#flag -DGC_WIN32_THREADS=1
 			#flag -DGC_BUILTIN_ATOMIC=1
-			#flag -I @VEXEROOT/thirdparty/libgc
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
