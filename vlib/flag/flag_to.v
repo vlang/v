@@ -336,8 +336,9 @@ pub fn to_doc[T](dc DocConfig) !string {
 	return fm.to_doc(dc)!
 }
 
-// no_matches returns an array of flags, in order of appearance, that could *not* be
-// matched against any fields.
+// no_matches returns any flags from the `input` array, in order of appearance,
+// that could *not* be matched against any fields.
+// no_matches should be called *after* `to_struct[T]()`.
 pub fn (fm FlagMapper) no_matches() []string {
 	mut non_matching := []string{}
 	for i in fm.no_match {
