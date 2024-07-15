@@ -1,0 +1,6 @@
+vlib/v/parser/tests/struct_anon_invalid_embed_err.vv:3:6: error: field-name `Int` cannot be same as the type-name
+    1 | type Int = int
+    2 | type MyIndex = struct {
+    3 |     Int Int
+      |         ~~~
+    4 | }
