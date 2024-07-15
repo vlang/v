@@ -148,7 +148,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			}
 		}
 		inited_fields[field_name] = i
-		if sym.kind != .struct_ {
+		if sym.kind != .struct_ && (sym.kind == .string || !sym.is_primitive()) {
 			if init_field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', init_field.pos)
 			}
