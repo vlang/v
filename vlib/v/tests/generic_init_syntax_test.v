@@ -1,8 +1,3 @@
-type Int = int
-type MyIndex = struct {
-	Int Int
-}
-
 fn func[I]() I {
 	return I{0}
 }
