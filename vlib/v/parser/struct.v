@@ -241,6 +241,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					start_type_pos := p.tok.pos()
 					if field_name == p.tok.lit && p.tok.lit[0].is_capital() {
 						p.error('field-name `${p.tok.lit}` cannot be same as the type-name')
+						return ast.StructDecl{}
 					}
 					typ = p.parse_type()
 					type_pos = start_type_pos.extend(p.prev_tok.pos())
