@@ -2284,6 +2284,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 				FnType {
 					mut parent_info := parent.info as FnType
 					mut function := parent_info.func
+					function.params = function.params.clone()
 					for mut param in function.params {
 						if param.typ.has_flag(.generic) {
 							if t_typ := t.resolve_generic_to_concrete(param.typ, function.generic_names,
