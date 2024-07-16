@@ -7,6 +7,7 @@ import os
 import term
 import rand
 import readline
+import regex
 import os.cmdline
 import v.util.version
 
@@ -14,7 +15,8 @@ struct Repl {
 mut:
 	readline    readline.Readline
 	indent      int    // indentation level
-	in_func     bool   // are we inside a new custom user function
+	in_func     bool   // inside a new custom user function
+	in_struct   bool   // inside a new custom user struct
 	line        string // the current line entered by the user
 	is_pin      bool   // does the repl 'pin' entered source code
 	folder      string // the folder in which the repl will write its temporary source files
@@ -25,6 +27,7 @@ mut:
 	includes        []string // all the #include statements
 	functions       []string // all the user function declarations
 	functions_name  []string // all the user function names
+	structs         []string // all the structs definitions
 	lines           []string // all the other lines/statements
 	temp_lines      []string // all the temporary expressions/printlns
 	vstartup_lines  []string // lines in the `VSTARTUP` file
@@ -128,13 +131,11 @@ fn (mut r Repl) checks() bool {
 			r.indent--
 			if r.indent == 0 {
 				r.in_func = false
+				r.in_struct = false
 			}
 		}
-		if i + 2 < r.line.len && r.indent == 0 && r.line[i + 1] == `f` && r.line[i + 2] == `n` {
-			r.in_func = true
-		}
 	}
-	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0
+	return (was_indent && r.indent <= 0) || r.indent > 0
 }
 
 fn (r &Repl) function_call(line string) (bool, FnType) {
@@ -196,6 +197,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	}
 	all_lines << r.includes
 	all_lines << r.functions
+	all_lines << r.structs
 	all_lines << r.lines
 
 	if should_add_temp_lines {
@@ -368,15 +370,25 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.in_func = true
 			r.functions_name << r.line.all_before(':= fn(').trim_space()
 		}
-		if r.line.starts_with('fn ') {
+		mut fn_re := regex.regex_opt(r'^(pub\s+)?fn\s') or { panic(err) }
+		start_fn, _ := fn_re.match_string(r.line)
+		if start_fn >= 0 {
 			r.in_func = true
 			r.functions_name << r.line.all_after('fn').all_before('(').trim_space()
 		}
+		mut struct_re := regex.regex_opt(r'^(pub\s+)?struct\s') or { panic(err) }
+		start_struct, _ := struct_re.match_string(r.line)
+		if start_struct >= 0 {
+			r.in_struct = true
+		}
 		was_func := r.in_func
+		was_struct := r.in_struct
 		if r.checks() {
 			for rline in r.line.split('\n') {
 				if r.in_func || was_func {
 					r.functions << rline
+				} else if r.in_struct || was_struct {
+					r.structs << rline
 				} else {
 					r.temp_lines << rline
 				}
