@@ -1020,6 +1020,14 @@ fn test_lower() {
 	assert s.to_lower() == '123'
 	s = ''
 	assert !s.is_lower()
+	s = 'ЁжИк'
+	assert s.to_lower() == 'ёжик'
+	s = 'ёЖиК HeDgeHog';
+	assert s.to_lower() == 'ёжик hedgehog'
+	s = 'абвгдеёжзийкл abcdefg !@#'
+	assert s.is_lower()
+	s = '!абвГдеёжзийкл abcdefg !@#'
+	assert !s.is_lower()
 }
 
 fn test_upper() {
@@ -1045,6 +1053,18 @@ fn test_upper() {
 	assert s.to_upper() == '123'
 	s = ''
 	assert !s.is_upper()
+	s = 'ЁжИк'
+	assert !s.is_upper()
+	assert s.to_upper() == 'ЁЖИК'
+	s = 'ёЖиК HeDgeHog';
+	assert !s.is_upper()
+	assert s.to_upper() == 'ЁЖИК HEDGEHOG'
+	s = 'АБВГДЕЁЖЗИЙКЛ ABCDEFG !@#'
+	assert s.is_upper()
+	assert s.to_upper() == 'АБВГДЕЁЖЗИЙКЛ ABCDEFG !@#'
+	s = '!АБВГДЕЁЖЗИЙКл ABCDEFG !@#'
+	assert !s.is_upper()
+	assert s.to_upper() == '!АБВГДЕЁЖЗИЙКЛ ABCDEFG !@#'
 }
 
 fn test_capitalize() {
@@ -1067,6 +1087,12 @@ fn test_capitalize() {
 	assert s.is_capital()
 	assert s.capitalize() == 'Test it'
 	assert 'GameMission_t'.capitalize() == 'GameMission_t'
+	s = 'тест'
+	assert !s.is_capital()
+	assert s.capitalize() == 'Тест'
+	s = 'Тест'
+	assert s.is_capital()
+	assert s.capitalize() == 'Тест'
 }
 
 fn test_title() {
@@ -1079,6 +1105,15 @@ fn test_title() {
 	s = 'Hello World'
 	assert s.is_title()
 	assert s.title() == 'Hello World'
+	s = 'привет мир!'
+	assert !s.is_title()
+	assert s.title() == 'Привет Мир!'
+	s = 'ПРИВЕТ МИР!'
+	assert !s.is_title()
+	assert s.title() == 'ПРИВЕТ МИР!'
+	s = 'Привет Мир!'
+	assert s.is_title()
+	assert s.title() == 'Привет Мир!'
 }
 
 fn test_for_loop() {
