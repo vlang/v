@@ -1518,8 +1518,24 @@ pub fn (s string) to_lower() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
-			if s.str[i].is_capital() {
+			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
+			} else if s[i] == 208 && i + 1 < s.len {
+				if s[i + 1] == 129 {
+					b[i] = 209
+					b[i + 1] = 145
+					i++
+				} else if s[i + 1] > 143 && s[i + 1] < 160 {
+					b[i] = 208
+					b[i + 1] = s[i + 1] + 32
+					i++
+				} else if s[i + 1] > 159 && s[i + 1] < 176 {
+					b[i] = 209
+					b[i + 1] = s[i + 1] - 32
+					i++
+				} else {
+					b[i] = s.str[i]
+				}
 			} else {
 				b[i] = s.str[i]
 			}
@@ -1539,6 +1555,9 @@ pub fn (s string) is_lower() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
+		} else if i + 1 < s.len && s[i] == 208 && ((s[i + 1] > 143 && s[i + 1] < 176)
+			|| s[i + 1] == 129) {
+			return false
 		}
 	}
 	return true
@@ -1553,6 +1572,19 @@ pub fn (s string) to_upper() string {
 		for i in 0 .. s.len {
 			if s.str[i] >= `a` && s.str[i] <= `z` {
 				b[i] = s.str[i] - 32
+			} else if s[i] == 208 && i + 1 < s.len && s[i + 1] > 175 && s[i + 1] < 192 {
+				b[i] = 208
+				b[i + 1] = s[i + 1] - 32
+				i++
+			} else if s[i] == 209 && i + 1 < s.len
+				&& (s[i + 1] == 145 || (s[i + 1] > 125 && s[i + 1] < 144)) {
+				b[i] = 208
+				if s[i + 1] == 145 { //ё special case
+					b[i + 1] = 129
+				} else {
+					b[i + 1] = s[i + 1] + 32
+				}
+				i++
 			} else {
 				b[i] = s.str[i]
 			}
@@ -1573,6 +1605,10 @@ pub fn (s string) is_upper() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
 			return false
+		} else if i + 1 < s.len && ((s[i] == 208 && s[i + 1] > 175 && s[i + 1] < 192)
+			|| (s[i] == 209 && ((s[i + 1] > 127 && s[i + 1] < 144)
+			|| s[i + 1] == 145))) {
+			return false
 		}
 	}
 	return true
@@ -1584,6 +1620,19 @@ pub fn (s string) is_upper() bool {
 pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
+	} else if s.len > 1 {
+		if s[0] == 208 && s[1] > 175 && s[1] < 192 {
+			new_string := u8(208).ascii_str() + u8(s[1] - 32).ascii_str() + s[2..s.len]
+			return new_string
+		} else if s[0] == 209 {
+			if s[1] == 145 {
+				new_string := u8(208).ascii_str() + u8(129).ascii_str() + s[2..s.len]
+				return new_string
+			} else if s[1] > 127 && s[1] < 144 {
+				new_string := u8(208).ascii_str() + u8(s[1] + 32).ascii_str() + s[2..s.len]
+				return new_string
+			}
+		}
 	}
 	s0 := s[0]
 	letter := s0.ascii_str()
@@ -1602,6 +1651,9 @@ pub fn (s string) capitalize() string {
 pub fn (s string) uncapitalize() string {
 	if s.len == 0 {
 		return ''
+	} else if s.len > 1 && (s[0] == 208 || s[0] == 209) {
+		new_string := s[0..2].to_lower() + s[2..s.len]
+		return new_string
 	}
 	s0 := s[0]
 	letter := s0.ascii_str()
@@ -1620,15 +1672,23 @@ pub fn (s string) uncapitalize() string {
 // Example: assert 'HelloWorld'.is_capital() == false
 @[direct_array_access]
 pub fn (s string) is_capital() bool {
-	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+	if s.len == 0 || !((s[0] >= `A` && s[0] <= `Z`) || s[0] == 208) {
 		return false
 	}
-	for i in 1 .. s.len {
+	if s.len == 1 || (s[0] != 208 && s[1].ascii_str().is_upper()) || s[0..2].is_lower() {
+		return false
+	}
+	/*for i in 1 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
 	}
-	return true
+	return true*/
+	if 2 != s.len {
+		return s[2..s.len].is_lower()
+	} else {
+		return true
+	}
 }
 
 // starts_with_capital returns `true`, if the first character in the string `s`,
@@ -1637,7 +1697,7 @@ pub fn (s string) is_capital() bool {
 // Example: assert 'Hello. World.'.starts_with_capital() == true
 @[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
-	if s.len == 0 || !s[0].is_capital() {
+	if s.len == 0 || (s[0] != 208 && !s[0].is_capital()) || (s.len > 1 && s[0..2].is_lower()) {
 		return false
 	}
 	return true
