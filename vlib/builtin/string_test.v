@@ -1022,7 +1022,7 @@ fn test_lower() {
 	assert !s.is_lower()
 	s = 'ЁжИк'
 	assert s.to_lower() == 'ёжик'
-	s = 'ёЖиК HeDgeHog';
+	s = 'ёЖиК HeDgeHog'
 	assert s.to_lower() == 'ёжик hedgehog'
 	s = 'абвгдеёжзийкл abcdefg !@#'
 	assert s.is_lower()
@@ -1056,7 +1056,7 @@ fn test_upper() {
 	s = 'ЁжИк'
 	assert !s.is_upper()
 	assert s.to_upper() == 'ЁЖИК'
-	s = 'ёЖиК HeDgeHog';
+	s = 'ёЖиК HeDgeHog'
 	assert !s.is_upper()
 	assert s.to_upper() == 'ЁЖИК HEDGEHOG'
 	s = 'АБВГДЕЁЖЗИЙКЛ ABCDEFG !@#'
