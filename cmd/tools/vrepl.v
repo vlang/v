@@ -334,6 +334,9 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		cleanup_files(temp_file)
 	}
 	mut r := new_repl(workdir)
+	mut fn_regex := regex.regex_opt(r'^(pub\s+)?fn\s') or { panic(err) }
+	mut struct_regex := regex.regex_opt(r'^(pub\s+)?struct\s') or { panic(err) }
+
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -370,19 +373,22 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.in_func = true
 			r.functions_name << r.line.all_before(':= fn(').trim_space()
 		}
-		mut fn_re := regex.regex_opt(r'^(pub\s+)?fn\s') or { panic(err) }
-		start_fn, _ := fn_re.match_string(r.line)
+
+		// `pub fn ... ` or `fn ...`
+		start_fn, _ := fn_regex.match_string(r.line)
 		if start_fn >= 0 {
 			r.in_func = true
 			r.functions_name << r.line.all_after('fn').all_before('(').trim_space()
 		}
-		mut struct_re := regex.regex_opt(r'^(pub\s+)?struct\s') or { panic(err) }
-		start_struct, _ := struct_re.match_string(r.line)
+		was_func := r.in_func
+
+		// `pub struct ...` or `struct ...`
+		start_struct, _ := struct_regex.match_string(r.line)
 		if start_struct >= 0 {
 			r.in_struct = true
 		}
-		was_func := r.in_func
 		was_struct := r.in_struct
+
 		if r.checks() {
 			for rline in r.line.split('\n') {
 				if r.in_func || was_func {
