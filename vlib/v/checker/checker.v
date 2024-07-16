@@ -568,6 +568,15 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 							node.type_pos)
 					}
 				}
+				if parent_typ_sym.info.is_anon {
+					// Disallow cases like `type Alias = struct { Int Int }` where Int is `type Int = int`
+					for field in parent_typ_sym.info.fields {
+						if field.name != '' && field.anon_struct_decl.fields.len == 0
+							&& field.anon_struct_decl.name == '' {
+							c.error('invalid anonymous struct', node.type_pos)
+						}
+					}
+				}
 			}
 		}
 		.array {
