@@ -1678,12 +1678,6 @@ pub fn (s string) is_capital() bool {
 	if s.len == 1 || (s[0] != 208 && s[1].ascii_str().is_upper()) || s[0..2].is_lower() {
 		return false
 	}
-	/*for i in 1 .. s.len {
-		if s[i] >= `A` && s[i] <= `Z` {
-			return false
-		}
-	}
-	return true*/
 	if 2 != s.len {
 		return s[2..s.len].is_lower()
 	} else {
