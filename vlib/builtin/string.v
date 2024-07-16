@@ -79,7 +79,7 @@ pub fn (s string) runes() []rune {
 // working with C style pointers to 0 terminated strings (i.e. `char*`).
 // It is recommended to use it, unless you *do* understand the implications of
 // tos/tos2/tos3/tos4/tos5 in terms of memory management and interactions with
-// -autofree and `[manualfree]`.
+// -autofree and `@[manualfree]`.
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
 pub fn cstring_to_vstring(s &char) string {
@@ -1522,14 +1522,19 @@ pub fn (s string) to_lower() string {
 				b[i] = s.str[i] + 32
 			} else if s[i] == 208 && i + 1 < s.len {
 				if s[i + 1] == 129 {
-					b[i] = 209; b[i + 1] = 145
+					b[i] = 209
+					b[i + 1] = 145
 					i++
 				} else if s[i + 1] > 143 && s[i + 1] < 160 {
-					b[i] = 208; b[i + 1] = s[i + 1] + 32
+					b[i] = 208
+					b[i + 1] = s[i + 1] + 32
 					i++
 				} else if s[i + 1] > 159 && s[i + 1] < 176 {
-					b[i] = 209; b[i + 1] = s[i + 1] - 32
+					b[i] = 209
+					b[i + 1] = s[i + 1] - 32
 					i++
+				} else {
+					b[i] = s.str[i]
 				}
 			} else {
 				b[i] = s.str[i]
@@ -1550,8 +1555,8 @@ pub fn (s string) is_lower() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
-		} else if i + 1 < s.len && s[i] == 208 &&
-			((s[i + 1] > 143 && s[i + 1] < 176) || s[i + 1] == 129) {
+		} else if i + 1 < s.len && s[i] == 208 && ((s[i + 1] > 143 && s[i + 1] < 176)
+			|| s[i + 1] == 129) {
 			return false
 		}
 	}
@@ -1567,12 +1572,12 @@ pub fn (s string) to_upper() string {
 		for i in 0 .. s.len {
 			if s.str[i] >= `a` && s.str[i] <= `z` {
 				b[i] = s.str[i] - 32
-			} else if s[i] == 208 && i + 1 < s.len && s[i + 1] > 175 && s[i + 1] < 192{
+			} else if s[i] == 208 && i + 1 < s.len && s[i + 1] > 175 && s[i + 1] < 192 {
 				b[i] = 208
 				b[i + 1] = s[i + 1] - 32
 				i++
-			} else if s[i] == 209 && i + 1 < s.len && (s[i + 1] == 145 ||
-				(s[i + 1] > 125 && s[i + 1] < 144)) {
+			} else if s[i] == 209 && i + 1 < s.len
+				&& (s[i + 1] == 145 || (s[i + 1] > 125 && s[i + 1] < 144)) {
 				b[i] = 208
 				if s[i + 1] == 145 { //ё special case
 					b[i + 1] = 129
@@ -1580,7 +1585,7 @@ pub fn (s string) to_upper() string {
 					b[i + 1] = s[i + 1] + 32
 				}
 				i++
-			}  else {
+			} else {
 				b[i] = s.str[i]
 			}
 		}
@@ -1600,9 +1605,9 @@ pub fn (s string) is_upper() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
 			return false
-		} else if i + 1 < s.len && 
-			((s[i] == 208 && s[i + 1] > 175 && s[i + 1] < 192) || 
-			(s[i] == 209 && ((s[i + 1] > 127 && s[i + 1] < 144) || s[i + 1] == 145))) {
+		} else if i + 1 < s.len && ((s[i] == 208 && s[i + 1] > 175 && s[i + 1] < 192)
+			|| (s[i] == 209 && ((s[i + 1] > 127 && s[i + 1] < 144)
+			|| s[i + 1] == 145))) {
 			return false
 		}
 	}
@@ -1617,14 +1622,14 @@ pub fn (s string) capitalize() string {
 		return ''
 	} else if s.len > 1 {
 		if s[0] == 208 && s[1] > 175 && s[1] < 192 {
-			new_string := u8(208).ascii_str() + u8(s[1]-32).ascii_str() + s[2..s.len]
+			new_string := u8(208).ascii_str() + u8(s[1] - 32).ascii_str() + s[2..s.len]
 			return new_string
 		} else if s[0] == 209 {
 			if s[1] == 145 {
 				new_string := u8(208).ascii_str() + u8(129).ascii_str() + s[2..s.len]
-				return new_string 
+				return new_string
 			} else if s[1] > 127 && s[1] < 144 {
-				new_string := u8(208).ascii_str() + u8(s[1]+32).ascii_str() + s[2..s.len]
+				new_string := u8(208).ascii_str() + u8(s[1] + 32).ascii_str() + s[2..s.len]
 				return new_string
 			}
 		}
@@ -1646,7 +1651,7 @@ pub fn (s string) capitalize() string {
 pub fn (s string) uncapitalize() string {
 	if s.len == 0 {
 		return ''
-	} else if s.len > 1 && (s[0] == 208 || s[0] == 209){
+	} else if s.len > 1 && (s[0] == 208 || s[0] == 209) {
 		new_string := s[0..2].to_lower() + s[2..s.len]
 		return new_string
 	}
@@ -1679,8 +1684,11 @@ pub fn (s string) is_capital() bool {
 		}
 	}
 	return true*/
-	if 2 != s.len {return s[2..s.len].is_lower()}
-	else {return true}
+	if 2 != s.len {
+		return s[2..s.len].is_lower()
+	} else {
+		return true
+	}
 }
 
 // starts_with_capital returns `true`, if the first character in the string `s`,
@@ -1689,8 +1697,7 @@ pub fn (s string) is_capital() bool {
 // Example: assert 'Hello. World.'.starts_with_capital() == true
 @[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
-	if s.len == 0 || (s[0] != 208 && !s[0].is_capital()) ||
-		(s.len > 1 && s[0..2].is_lower()) {
+	if s.len == 0 || (s[0] != 208 && !s[0].is_capital()) || (s.len > 1 && s[0..2].is_lower()) {
 		return false
 	}
 	return true
