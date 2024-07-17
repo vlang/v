@@ -115,7 +115,8 @@ pub mut:
 pub struct DocOptions {
 pub mut:
 	flag_header string = '\nOptions:'
-	show        Show   = ~Show.zero()
+	compact     bool
+	show        Show = ~Show.zero()
 }
 
 // max_width returns the total width of the `DocLayout`.
@@ -732,12 +733,20 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 		flag_line_diff := flag_line.len - pad_desc
 		if flag_line_diff < 0 {
 			diff := -flag_line_diff
-			docs << flag_line + ' '.repeat(diff) +
-				keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}') + '\n'
+			mut line := flag_line + ' '.repeat(diff) +
+				keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
+			if !dc.options.compact {
+				line += '\n'
+			}
+			docs << line
 		} else {
 			docs << flag_line
-			docs << empty_padding + keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}') +
-				'\n'
+			mut line := empty_padding +
+				keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
+			if !dc.options.compact {
+				line += '\n'
+			}
+			docs << line
 		}
 	}
 	// Look for custom flag entries starting with delimiter
@@ -746,12 +755,20 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 			flag_line_diff := entry.len - pad_desc + indent_flags
 			if flag_line_diff < 0 {
 				diff := -flag_line_diff
-				docs << indent_flags_padding + entry.trim(' ') + ' '.repeat(diff) +
-					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}') + '\n'
+				mut line := indent_flags_padding + entry.trim(' ') + ' '.repeat(diff) +
+					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
+				if !dc.options.compact {
+					line += '\n'
+				}
+				docs << line
 			} else {
 				docs << indent_flags_padding + entry.trim(' ')
-				docs << empty_padding +
-					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}') + '\n'
+				mut line := empty_padding +
+					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
+				if !dc.options.compact {
+					line += '\n'
+				}
+				docs << line
 			}
 		}
 	}
