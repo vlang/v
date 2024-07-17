@@ -19,13 +19,14 @@ const c_verror_message_marker = 'VERROR_MESSAGE '
 
 const current_os = os.user_os()
 
-fn (mut v Builder) show_c_compiler_output(res os.Result) {
-	println('======== C Compiler output ========')
-	println(res.output)
-	println('=================================')
+fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
+	header := '======== Output of the C Compiler (${ccompiler}) ========'
+	println(header)
+	println(res.output.trim_space())
+	println('='.repeat(header.len))
 }
 
-fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
+fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Result) {
 	if res.exit_code == 0 {
 		if v.pref.reuse_tmpc {
 			return
@@ -54,14 +55,19 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		if res.output.len < 30 {
 			println(res.output)
 		} else {
-			elines := error_context_lines(res.output, 'error:', 1, 12)
-			println('==================')
+			trimmed_output := res.output.trim_space()
+			original_elines := trimmed_output.split_into_lines()
+			elines := error_context_lines(trimmed_output, 'error:', 1, 12)
+			header := '================== C compilation error (from ${ccompiler}): =============='
+			println(header)
 			for eline in elines {
-				println(eline)
+				println('cc: ${eline}')
 			}
-			println('...')
-			println('==================')
-			println('(Use `v -cg` to print the entire error message)\n')
+			if original_elines.len != elines.len {
+				println('... (the original output was ${original_elines.len} lines long, and was truncated to ${elines.len} lines)')
+			}
+			println('='.repeat(header.len))
+			println('(You can pass `-cg`, or `-show-c-output` as well, to print all the C error messages).')
 		}
 	}
 	if os.getenv('V_NO_C_ERROR_INFO') != '' {
@@ -680,7 +686,7 @@ pub fn (mut v Builder) cc() {
 		res := os.execute(cmd)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
-			v.show_c_compiler_output(res)
+			v.show_c_compiler_output(ccompiler, res)
 		}
 		os.chdir(original_pwd) or {}
 		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
@@ -719,9 +725,9 @@ pub fn (mut v Builder) cc() {
 			// print the tcc error instead since it may contain more useful information
 			// see https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
 			if res.exit_code != 0 && tcc_output.output != '' {
-				v.post_process_c_compiler_output(tcc_output)
+				v.post_process_c_compiler_output('tcc', tcc_output)
 			} else {
-				v.post_process_c_compiler_output(res)
+				v.post_process_c_compiler_output(ccompiler, res)
 			}
 		}
 		// Print the C command
