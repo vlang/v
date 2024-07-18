@@ -7,7 +7,6 @@ import os
 import term
 import rand
 import readline
-import regex
 import os.cmdline
 import v.util.version
 
@@ -32,6 +31,7 @@ mut:
 	structs         []string // all the struct definitions
 	enums           []string // all the enum definitions
 	consts          []string // all the const definitions
+	types           []string // all the type definitions
 	interfaces      []string // all the interface definitions
 	lines           []string // all the other lines/statements
 	temp_lines      []string // all the temporary expressions/printlns
@@ -91,6 +91,19 @@ fn endline_if_missed(line string) string {
 		return line
 	}
 	return line + '\n'
+}
+
+fn starts_with_type_decl(line string, type_name string) bool {
+	if line.starts_with(type_name + ' ') || line.starts_with(type_name + '\t') {
+		return true
+	}
+	if line.starts_with('pub ') || line.starts_with('pub\t') {
+		substring := line[3..].trim_space()
+		if substring.starts_with(type_name + ' ') || substring.starts_with(type_name + '\t') {
+			return true
+		}
+	}
+	return false
 }
 
 fn repl_help() {
@@ -203,6 +216,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 		all_lines << lines
 	}
 	all_lines << r.includes
+	all_lines << r.types
 	all_lines << r.enums
 	all_lines << r.consts
 	all_lines << r.structs
@@ -344,13 +358,6 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		cleanup_files(temp_file)
 	}
 	mut r := new_repl(workdir)
-	mut pub_fn_or_fn_regex := regex.regex_opt(r'^(pub\s+)?fn\s') or { panic(err) }
-	mut pub_const_or_const_regex := regex.regex_opt(r'^(pub\s+)?const\s') or { panic(err) }
-	mut pub_struct_or_struct_regex := regex.regex_opt(r'^(pub\s+)?struct\s') or { panic(err) }
-	mut pub_enum_or_enum_regex := regex.regex_opt(r'^(pub\s+)?enum\s') or { panic(err) }
-	mut pub_interface_or_interface_regex := regex.regex_opt(r'^(pub\s+)?interface\s') or {
-		panic(err)
-	}
 
 	for {
 		if r.indent == 0 {
@@ -389,37 +396,33 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			r.functions_name << r.line.all_before(':= fn(').trim_space()
 		}
 
-		start_fn, _ := pub_fn_or_fn_regex.match_string(r.line)
-		starts_with_fn := start_fn >= 0
+		starts_with_fn := starts_with_type_decl(r.line, 'fn')
 		if starts_with_fn {
 			r.in_func = true
 			r.functions_name << r.line.all_after('fn').all_before('(').trim_space()
 		}
 		was_func := r.in_func
 
-		start_struct, _ := pub_struct_or_struct_regex.match_string(r.line)
-		starts_with_struct := start_struct >= 0
+		starts_with_struct := starts_with_type_decl(r.line, 'struct')
 		if starts_with_struct {
 			r.in_struct = true
 		}
 		was_struct := r.in_struct
 
-		start_enum, _ := pub_enum_or_enum_regex.match_string(r.line)
-		starts_with_enum := start_enum >= 0
+		starts_with_enum := starts_with_type_decl(r.line, 'enum')
 		if starts_with_enum {
 			r.in_enum = true
 		}
 		was_enum := r.in_enum
 
-		start_interface, _ := pub_interface_or_interface_regex.match_string(r.line)
-		starts_with_interface := start_interface >= 0
+		starts_with_interface := starts_with_type_decl(r.line, 'interface')
 		if starts_with_interface {
 			r.in_interface = true
 		}
 		was_interface := r.in_interface
 
-		start_const, _ := pub_const_or_const_regex.match_string(r.line)
-		starts_with_const := start_const >= 0
+		starts_with_const := starts_with_type_decl(r.line, 'const')
+		starts_with_type := starts_with_type_decl(r.line, 'type')
 
 		if r.checks() {
 			for rline in r.line.split('\n') {
@@ -544,7 +547,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			} else if temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
 			} else if starts_with_fn || starts_with_const || starts_with_enum || starts_with_struct
-				|| starts_with_interface {
+				|| starts_with_interface || starts_with_type {
 				temp_source_code = r.current_source_code(false, false)
 			} else {
 				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
@@ -564,6 +567,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					r.consts << r.line
 				} else if starts_with_enum {
 					r.enums << r.line
+				} else if starts_with_type {
+					r.types << r.line
 				} else if starts_with_struct {
 					r.structs << r.line
 				} else if starts_with_interface {
