@@ -36,6 +36,8 @@ enum Edit {
 	description_padding
 	description_width
 	flag_indent
+	// DocOptions.compact
+	compact
 	// DocOptions.show flags
 	name
 	version
@@ -56,6 +58,9 @@ pub fn (e Edit) next() Edit {
 			.flag_indent
 		}
 		.flag_indent {
+			.compact
+		}
+		.compact {
 			.name
 		}
 		.name {
@@ -124,6 +129,9 @@ fn event(e &tui.Event, mut app App) {
 			.description_width {
 				app.layout.description_width += incr_decr
 			}
+			.compact {
+				app.options.compact = !app.options.compact
+			}
 			.name {
 				app.options.show.toggle(.name)
 			}
@@ -164,6 +172,9 @@ fn frame(mut app App) {
 		}
 		.description_width {
 			'${app.layout.description_width}'
+		}
+		.compact {
+			if app.options.compact { 'on' } else { 'off' }
 		}
 		.name {
 			if app.options.show.has(.name) { 'on' } else { 'off' }
