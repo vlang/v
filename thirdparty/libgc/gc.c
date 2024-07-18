@@ -16,24 +16,6 @@
  * modified is included with the above copyright notice.
  */
 
-/*
- * Copyright (c) 1994 by Xerox Corporation.  All rights reserved.
- * Copyright (c) 1996 by Silicon Graphics.  All rights reserved.
- * Copyright (c) 1998 by Fergus Henderson.  All rights reserved.
- * Copyright (c) 2000-2009 by Hewlett-Packard Development Company.
- * All rights reserved.
- * Copyright (c) 2009-2018 Ivan Maidanski
- *
- * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
- * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
- *
- * Permission is hereby granted to use or copy this program
- * for any purpose, provided the above notices are retained on all copies.
- * Permission to modify the code and to distribute modified code is granted,
- * provided the above notices are retained, and a notice that the code was
- * modified is included with the above copyright notice.
- */
-
 /* This file could be used for the following purposes:          */
 /* - get the complete GC as a single link object file (module); */
 /* - enable more compiler optimizations.                        */
@@ -66,7 +48,6 @@
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
- *
  */
 
 /*
@@ -136,7 +117,7 @@
 /* #undef DARWIN_DONT_PARSE_STACK */
 
 /* Define to force debug headers on all objects. */
-/* #undef DBG_HDRS_ALL */
+#define DBG_HDRS_ALL 1
 
 /* Do not use user32.dll import library (Win32). */
 /* #undef DONT_USE_USER32_DLL */
@@ -163,7 +144,7 @@
 #define GC_BUILTIN_ATOMIC 1
 
 /* Define to build dynamic libraries with only API symbols exposed. */
-#define GC_DLL 1
+/* #undef GC_DLL */
 
 /* Skip the initial guess of data root sets. */
 /* #undef GC_DONT_REGISTER_MAIN_STATIC_DATA */
@@ -202,7 +183,7 @@
 #define GC_THREADS 1
 
 /* Force the GC to use signals based on SIGRTMIN+k. */
-/* #undef GC_USESIGRT_SIGNALS */
+#define GC_USESIGRT_SIGNALS 1
 
 /* Define to cause the collector to redefine malloc and intercepted pthread
    routines with their real names while using dlsym to refer to the original
@@ -285,7 +266,7 @@
 #define JAVA_FINALIZATION 1
 
 /* Define to save back-pointers in debugging headers. */
-/* #undef KEEP_BACK_PTRS */
+#define KEEP_BACK_PTRS 1
 
 /* Define to optimize for large heaps or root sets. */
 /* #undef LARGE_CONFIG */
@@ -388,7 +369,7 @@
 #define USE_MUNMAP 1
 
 /* Use rwlock for the allocator lock instead of mutex. */
-/* #undef USE_RWLOCK */
+#define USE_RWLOCK 1
 
 /* Define to use Win32 VirtualAlloc (instead of sbrk or mmap) to expand the
    heap. */
@@ -453,9 +434,7 @@
 # endif
 
 #ifndef GC_H
-/* This file is installed for backward compatibility. */
-
-
+# include "gc/gc.h"
 #endif
 
 #include <stdlib.h>
@@ -549,8 +528,8 @@ typedef int GC_bool;
 
 #ifndef GC_H
 # ifdef HAVE_CONFIG_H
-
 # endif
+
 
 #endif
 
@@ -1254,7 +1233,7 @@ EXTERN_C_BEGIN
  *    the original main program.  The new main program would read something
  *    like (provided real_main() is not inlined by the compiler):
  *
-
+ *              #include "gc/gc.h"
  *
  *              main(argc, argv, envp)
  *              int argc;
@@ -4430,6 +4409,7 @@ EXTERN_C_END
 
 
 
+
 # ifdef __cplusplus
     extern "C" {
 # endif
@@ -5534,6 +5514,7 @@ EXTERN_C_BEGIN
 #define divWORDSZ(n) ((n) / CPP_WORDSZ)
 
 #define SIGNB ((word)1 << (CPP_WORDSZ-1))
+#define SIZET_SIGNB (GC_SIZE_MAX ^ (GC_SIZE_MAX >> 1))
 
 #if CPP_WORDSZ / 8 != ALIGNMENT
 # define UNALIGNED_PTRS
@@ -5615,7 +5596,7 @@ EXTERN_C_BEGIN
 #define LOG_HBLKSIZE ((size_t)CPP_LOG_HBLKSIZE)
 #define HBLKSIZE ((size_t)1 << CPP_LOG_HBLKSIZE)
 
-#define GC_SQRT_SIZE_MAX ((((size_t)1) << (CPP_WORDSZ / 2)) - 1)
+#define GC_SQRT_SIZE_MAX ((((size_t)1) << (sizeof(size_t) * 8 / 2)) - 1)
 
 /*  Max size objects supported by free list (larger objects are */
 /*  allocated directly with allchblk(), by rounding to the next */
@@ -5702,7 +5683,7 @@ EXTERN_C_BEGIN
 #define PHT_SIZE (PHT_ENTRIES > CPP_WORDSZ ? PHT_ENTRIES / CPP_WORDSZ : 1)
 typedef word page_hash_table[PHT_SIZE];
 
-#define PHT_HASH(addr) ((ADDR(addr) >> LOG_HBLKSIZE) & (PHT_ENTRIES-1))
+#define PHT_HASH(p) ((size_t)((ADDR(p) >> LOG_HBLKSIZE) & (PHT_ENTRIES-1)))
 
 #define get_pht_entry_from_index(bl, index) \
                 (((bl)[divWORDSZ(index)] >> modWORDSZ(index)) & 1)
@@ -5805,11 +5786,11 @@ struct hblkhdr {
                                 /* LARGE_INV_SZ.                        */
 #     define LARGE_INV_SZ ((unsigned32)1 << 16)
 #   endif
-    word hb_sz; /* If in use, size in bytes, of objects in the block.   */
-                /* if free, the size in bytes of the whole block.       */
-                /* We assume that this is convertible to signed_word    */
-                /* without generating a negative result.  We avoid      */
-                /* generating free blocks larger than that.             */
+    size_t hb_sz;  /* If in use, size in bytes, of objects in the block. */
+                   /* if free, the size in bytes of the whole block      */
+                   /* We assume that this is convertible to signed_word  */
+                   /* without generating a negative result.  We avoid    */
+                   /* generating free blocks larger than that.           */
     word hb_descr;              /* object descriptor for marking.  See  */
                                 /* gc_mark.h.                           */
 #   ifndef MARK_BIT_PER_OBJ
@@ -5972,7 +5953,7 @@ struct finalizable_object;
 
 struct dl_hashtbl_s {
     struct disappearing_link **head;
-    word entries;
+    size_t entries;
     unsigned log_size;
 };
 
@@ -6177,10 +6158,10 @@ struct _GC_arrays {
 # define GC_capacity_heap_sects GC_arrays._capacity_heap_sects
   size_t _capacity_heap_sects;
 # define GC_n_heap_sects GC_arrays._n_heap_sects
-  word _n_heap_sects;   /* Number of separately added heap sections.    */
+  size_t _n_heap_sects; /* number of separately added heap sections */
 # ifdef ANY_MSWIN
 #   define GC_n_heap_bases GC_arrays._n_heap_bases
-    word _n_heap_bases; /* See GC_heap_bases.   */
+    size_t _n_heap_bases; /* see GC_heap_bases[] */
 # endif
 # ifdef USE_PROC_FOR_LIBRARIES
 #   define GC_n_memory GC_arrays._n_memory
@@ -6191,7 +6172,7 @@ struct _GC_arrays {
     ptr_t *_gcjobjfreelist;
 # endif
 # define GC_fo_entries GC_arrays._fo_entries
-  word _fo_entries;
+  size_t _fo_entries;
 # ifndef GC_NO_FINALIZATION
 #   define GC_dl_hashtbl GC_arrays._dl_hashtbl
 #   define GC_fnlz_roots GC_arrays._fnlz_roots
@@ -6222,7 +6203,7 @@ struct _GC_arrays {
 # endif
 # define n_root_sets GC_arrays._n_root_sets
 # define GC_excl_table_entries GC_arrays._excl_table_entries
-  int _n_root_sets;     /* GC_static_roots[0..n_root_sets) contains the */
+  size_t _n_root_sets;  /* GC_static_roots[0..n_root_sets) contains the */
                         /* valid root sets.                             */
   size_t _excl_table_entries;   /* Number of entries in use.    */
 # define GC_ed_size GC_arrays._ed_size
@@ -6530,7 +6511,8 @@ struct GC_traced_stack_sect_s {
 #ifdef IA64
   /* Similar to GC_push_all_stack_sections() but for IA-64 registers store. */
   GC_INNER void GC_push_all_register_sections(ptr_t bs_lo, ptr_t bs_hi,
-                  int eager, struct GC_traced_stack_sect_s *traced_stack_sect);
+                        GC_bool eager,
+                        struct GC_traced_stack_sect_s *traced_stack_sect);
 #endif /* IA64 */
 
 /*  Marks are in a reserved area in                          */
@@ -6572,7 +6554,7 @@ struct GC_traced_stack_sect_s {
 #endif /* !USE_MARK_BYTES */
 
 #ifdef MARK_BIT_PER_OBJ
-# define MARK_BIT_NO(offset, sz) (((word)(offset))/(sz))
+# define MARK_BIT_NO(offset, sz) ((offset) / (sz))
         /* Get the mark bit index corresponding to the given byte       */
         /* offset and size (in bytes).                                  */
 # define MARK_BIT_OFFSET(sz) 1
@@ -6580,7 +6562,7 @@ struct GC_traced_stack_sect_s {
 # define FINAL_MARK_BIT(sz) ((sz) > MAXOBJBYTES ? 1 : HBLK_OBJS(sz))
         /* Position of final, always set, mark bit.                     */
 #else
-# define MARK_BIT_NO(offset, sz) BYTES_TO_GRANULES((word)(offset))
+# define MARK_BIT_NO(offset, sz) BYTES_TO_GRANULES(offset)
 # define MARK_BIT_OFFSET(sz) BYTES_TO_GRANULES(sz)
 # define FINAL_MARK_BIT(sz) \
                 ((sz) > MAXOBJBYTES ? MARK_BITS_PER_HBLK \
@@ -6881,27 +6863,27 @@ void GC_register_data_segments(void);
 
 /* Black listing: */
 #ifdef PRINT_BLACK_LIST
-  GC_INNER void GC_add_to_black_list_normal(word p, ptr_t source);
+  GC_INNER void GC_add_to_black_list_normal(ptr_t p, ptr_t source);
                         /* Register bits as a possible future false     */
                         /* reference from the heap or static data       */
-# define GC_ADD_TO_BLACK_LIST_NORMAL(bits, source) \
+# define GC_ADD_TO_BLACK_LIST_NORMAL(p, source) \
                 if (GC_all_interior_pointers) { \
-                  GC_add_to_black_list_stack((word)(bits), (source)); \
+                  GC_add_to_black_list_stack(p, source); \
                 } else \
-                  GC_add_to_black_list_normal((word)(bits), (source))
-  GC_INNER void GC_add_to_black_list_stack(word p, ptr_t source);
-# define GC_ADD_TO_BLACK_LIST_STACK(bits, source) \
-            GC_add_to_black_list_stack((word)(bits), (source))
+                  GC_add_to_black_list_normal(p, source)
+  GC_INNER void GC_add_to_black_list_stack(ptr_t p, ptr_t source);
+# define GC_ADD_TO_BLACK_LIST_STACK(p, source) \
+                GC_add_to_black_list_stack(p, source)
 #else
-  GC_INNER void GC_add_to_black_list_normal(word p);
-# define GC_ADD_TO_BLACK_LIST_NORMAL(bits, source) \
+  GC_INNER void GC_add_to_black_list_normal(ptr_t p);
+# define GC_ADD_TO_BLACK_LIST_NORMAL(p, source) \
                 if (GC_all_interior_pointers) { \
-                  GC_add_to_black_list_stack((word)(bits)); \
+                  GC_add_to_black_list_stack(p); \
                 } else \
-                  GC_add_to_black_list_normal((word)(bits))
-  GC_INNER void GC_add_to_black_list_stack(word p);
-# define GC_ADD_TO_BLACK_LIST_STACK(bits, source) \
-            GC_add_to_black_list_stack((word)(bits))
+                  GC_add_to_black_list_normal(p)
+  GC_INNER void GC_add_to_black_list_stack(ptr_t p);
+# define GC_ADD_TO_BLACK_LIST_STACK(p, source) \
+                GC_add_to_black_list_stack(p)
 #endif /* PRINT_BLACK_LIST */
 
 GC_INNER void GC_promote_black_lists(void);
@@ -6921,7 +6903,7 @@ GC_INNER ptr_t GC_scratch_alloc(size_t bytes);
 #else
 # define GC_scratch_recycle_no_gww GC_scratch_recycle_inner
 #endif
-GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t bytes);
+GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t sz);
                                 /* Reuse the memory region by the heap. */
 
 #ifndef MARK_BIT_PER_OBJ
@@ -7287,7 +7269,7 @@ GC_EXTERN GC_bool GC_print_back_height;
   GC_INNER GC_bool GC_page_was_dirty(struct hblk *h);
                         /* Read retrieved dirty bits.   */
 
-  GC_INNER void GC_remove_protection(struct hblk *h, word nblocks,
+  GC_INNER void GC_remove_protection(struct hblk *h, size_t nblocks,
                                      GC_bool is_ptrfree);
                 /* Block h is about to be written or allocated shortly. */
                 /* Ensure that all pages containing any part of the     */
@@ -7539,7 +7521,7 @@ GC_INNER void GC_start_debugging_inner(void);   /* defined in dbg_mlc.c. */
 
 /* Store debugging info into p.  Return displaced pointer.      */
 /* Assume we hold the allocator lock.                           */
-GC_INNER void *GC_store_debug_info_inner(void *p, word sz, const char *str,
+GC_INNER void *GC_store_debug_info_inner(void *p, size_t sz, const char *str,
                                          int linenum);
 
 #if defined(REDIRECT_MALLOC) && !defined(REDIRECT_MALLOC_IN_HEADER) \
@@ -8372,12 +8354,12 @@ static void add_edge(ptr_t p, ptr_t q)
 #   endif
 }
 
-typedef void (*per_object_func)(ptr_t p, size_t n_bytes, word gc_descr);
+typedef void (*per_object_func)(ptr_t p, size_t sz, word descr);
 
 static GC_CALLBACK void per_object_helper(struct hblk *h, void *fn_ptr)
 {
   const hdr *hhdr = HDR(h);
-  size_t sz = (size_t)(hhdr -> hb_sz);
+  size_t sz = hhdr -> hb_sz;
   word descr = hhdr -> hb_descr;
   per_object_func fn = *(per_object_func *)fn_ptr;
   size_t i = 0;
@@ -8393,10 +8375,10 @@ GC_INLINE void GC_apply_to_each_object(per_object_func fn)
   GC_apply_to_all_blocks(per_object_helper, &fn);
 }
 
-static void reset_back_edge(ptr_t p, size_t n_bytes, word gc_descr)
+static void reset_back_edge(ptr_t p, size_t sz, word descr)
 {
-  UNUSED_ARG(n_bytes);
-  UNUSED_ARG(gc_descr);
+  UNUSED_ARG(sz);
+  UNUSED_ARG(descr);
   GC_ASSERT(I_HOLD_LOCK());
   /* Skip any free-list links, or dropped blocks.   */
   if (GC_HAS_DEBUG_INFO(p)) {
@@ -8431,16 +8413,16 @@ static void reset_back_edge(ptr_t p, size_t n_bytes, word gc_descr)
   }
 }
 
-static void add_back_edges(ptr_t p, size_t n_bytes, word gc_descr)
+static void add_back_edges(ptr_t p, size_t sz, word descr)
 {
   ptr_t current_p = p + sizeof(oh);
 
   /* For now, fix up non-length descriptors conservatively.     */
-    if((gc_descr & GC_DS_TAGS) != GC_DS_LENGTH) {
-      gc_descr = n_bytes;
+    if ((descr & GC_DS_TAGS) != GC_DS_LENGTH) {
+      descr = sz;
     }
 
-  for (; ADDR_LT(current_p, p + gc_descr); current_p += sizeof(word)) {
+  for (; ADDR_LT(current_p, p + descr); current_p += sizeof(word)) {
     ptr_t q;
 
     LOAD_WORD_OR_CONTINUE(q, current_p);
@@ -8549,10 +8531,10 @@ STATIC ptr_t GC_deepest_obj = NULL;
 /* next GC.                                                             */
 /* Set GC_max_height to be the maximum height we encounter, and         */
 /* GC_deepest_obj to be the corresponding object.                       */
-static void update_max_height(ptr_t p, size_t n_bytes, word gc_descr)
+static void update_max_height(ptr_t p, size_t sz, word descr)
 {
-  UNUSED_ARG(n_bytes);
-  UNUSED_ARG(gc_descr);
+  UNUSED_ARG(sz);
+  UNUSED_ARG(descr);
   GC_ASSERT(I_HOLD_LOCK());
   if (GC_is_marked(p) && GC_HAS_DEBUG_INFO(p)) {
     word p_height = 0;
@@ -8678,7 +8660,6 @@ void GC_print_back_graph_stats(void)
  */
 
 
-
 /*
  * We maintain several hash tables of hblks that have had false hits.
  * Each contains one bit per hash bucket;  If any page in the bucket
@@ -8727,7 +8708,7 @@ GC_INNER void GC_default_print_heap_obj_proc(ptr_t p)
 GC_INNER void (*GC_print_heap_obj)(ptr_t p) = GC_default_print_heap_obj_proc;
 
 #ifdef PRINT_BLACK_LIST
-  STATIC void GC_print_blacklisted_ptr(word p, ptr_t source,
+  STATIC void GC_print_blacklisted_ptr(ptr_t p, ptr_t source,
                                        const char *kind_str)
   {
     ptr_t base = (ptr_t)GC_base(source);
@@ -8852,19 +8833,18 @@ GC_INNER void GC_unpromote_black_lists(void)
 /* the plausible heap bounds.                                   */
 /* Add it to the normal incomplete black list if appropriate.   */
 #ifdef PRINT_BLACK_LIST
-  GC_INNER void GC_add_to_black_list_normal(word p, ptr_t source)
+  GC_INNER void GC_add_to_black_list_normal(ptr_t p, ptr_t source)
 #else
-  GC_INNER void GC_add_to_black_list_normal(word p)
+  GC_INNER void GC_add_to_black_list_normal(ptr_t p)
 #endif
 {
 # ifndef PARALLEL_MARK
     GC_ASSERT(I_HOLD_LOCK());
 # endif
-  if (GC_modws_valid_offsets[p & (sizeof(word)-1)]) {
-    word index = PHT_HASH(p);
+  if (GC_modws_valid_offsets[ADDR(p) & (sizeof(word)-1)]) {
+    size_t index = PHT_HASH(p);
 
-    if (NULL == HDR((ptr_t)p)
-        || get_pht_entry_from_index(GC_old_normal_bl, index)) {
+    if (NULL == HDR(p) || get_pht_entry_from_index(GC_old_normal_bl, index)) {
 #     ifdef PRINT_BLACK_LIST
         if (!get_pht_entry_from_index(GC_incomplete_normal_bl, index)) {
           GC_print_blacklisted_ptr(p, source, "normal");
@@ -8878,18 +8858,17 @@ GC_INNER void GC_unpromote_black_lists(void)
 
 /* And the same for false pointers from the stack. */
 #ifdef PRINT_BLACK_LIST
-  GC_INNER void GC_add_to_black_list_stack(word p, ptr_t source)
+  GC_INNER void GC_add_to_black_list_stack(ptr_t p, ptr_t source)
 #else
-  GC_INNER void GC_add_to_black_list_stack(word p)
+  GC_INNER void GC_add_to_black_list_stack(ptr_t p)
 #endif
 {
-  word index = PHT_HASH(p);
+  size_t index = PHT_HASH(p);
 
 # ifndef PARALLEL_MARK
     GC_ASSERT(I_HOLD_LOCK());
 # endif
-  if (NULL == HDR((ptr_t)p)
-      || get_pht_entry_from_index(GC_old_stack_bl, index)) {
+  if (NULL == HDR(p) || get_pht_entry_from_index(GC_old_stack_bl, index)) {
 #   ifdef PRINT_BLACK_LIST
       if (!get_pht_entry_from_index(GC_incomplete_stack_bl, index)) {
         GC_print_blacklisted_ptr(p, source, "stack");
@@ -8909,7 +8888,7 @@ GC_INNER void GC_unpromote_black_lists(void)
 GC_API struct GC_hblk_s *GC_CALL GC_is_black_listed(struct GC_hblk_s *h,
                                                     size_t len)
 {
-    size_t index = (size_t)PHT_HASH(h);
+    size_t index = PHT_HASH(h);
     size_t i, nblocks;
 
     if (!GC_all_interior_pointers
@@ -8927,12 +8906,12 @@ GC_API struct GC_hblk_s *GC_CALL GC_is_black_listed(struct GC_hblk_s *h,
         } else {
           if (get_pht_entry_from_index(GC_old_stack_bl, index)
               || get_pht_entry_from_index(GC_incomplete_stack_bl, index)) {
-            return h + (i+1);
+            return &h[i + 1];
           }
           i++;
         }
         if (i >= nblocks) break;
-        index = (size_t)PHT_HASH(h + i);
+        index = PHT_HASH(h + i);
     }
     return NULL;
 }
@@ -8947,7 +8926,7 @@ STATIC word GC_number_stack_black_listed(struct hblk *start,
     word result = 0;
 
     for (h = start; ADDR_LT((ptr_t)h, (ptr_t)endp1); h++) {
-        word index = PHT_HASH(h);
+        size_t index = PHT_HASH(h);
 
         if (get_pht_entry_from_index(GC_old_stack_bl, index)) result++;
     }
@@ -8957,7 +8936,7 @@ STATIC word GC_number_stack_black_listed(struct hblk *start,
 /* Return the total number of (stack) black-listed bytes. */
 static word total_stack_black_listed(void)
 {
-    unsigned i;
+    size_t i;
     word total = 0;
 
     for (i = 0; i < GC_n_heap_sects; i++) {
@@ -8981,7 +8960,6 @@ static word total_stack_black_listed(void)
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 #ifdef CHECKSUMS
@@ -9029,7 +9007,7 @@ STATIC GC_bool GC_was_faulted(struct hblk *h)
 STATIC word GC_checksum(struct hblk *h)
 {
     word *p;
-    word *lim = (word *)(h+1);
+    word *lim = (word *)(h + 1);
     word result = 0;
 
     for (p = (word *)h; ADDR_LT((ptr_t)p, (ptr_t)lim); p++) {
@@ -9086,7 +9064,7 @@ STATIC void GC_CALLBACK GC_add_block(struct hblk *h, void *dummy)
    const hdr *hhdr = HDR(h);
 
    UNUSED_ARG(dummy);
-   GC_bytes_in_used_blocks += (hhdr->hb_sz + HBLKSIZE-1) & ~(word)(HBLKSIZE-1);
+   GC_bytes_in_used_blocks += (hhdr -> hb_sz + HBLKSIZE-1) & ~(HBLKSIZE-1);
 }
 
 STATIC void GC_check_blocks(void)
@@ -9109,7 +9087,7 @@ STATIC void GC_check_blocks(void)
 void GC_check_dirty(void)
 {
     int index;
-    unsigned i;
+    size_t i;
 
     GC_check_blocks();
     GC_n_dirty_errors = 0;
@@ -9190,7 +9168,6 @@ void GC_check_dirty(void)
 #if defined(HAVE_CONFIG_H) && !defined(GC_PRIVATE_H)
   /* When gc_pmark.h is included from gc_priv.h, some of macros might   */
   /* be undefined in gcconfig.h, so skip config.h in this case.         */
-
 #endif
 
 #ifndef GC_BUILD
@@ -9204,7 +9181,6 @@ void GC_check_dirty(void)
 #endif
 
 #if defined(KEEP_BACK_PTRS) || defined(PRINT_BLACK_LIST)
-
 #endif
 
 
@@ -9445,7 +9421,7 @@ GC_INLINE mse * GC_push_contents_hdr(ptr_t current, mse * mark_stack_top,
 
             /* Accurate enough if HBLKSIZE <= 2**15.    */
             GC_STATIC_ASSERT(HBLKSIZE <= (1 << 15));
-            obj_displ = (((low_prod >> 16) + 1) * (size_t)hhdr->hb_sz) >> 16;
+            obj_displ = (((low_prod >> 16) + 1) * hhdr -> hb_sz) >> 16;
 #         endif
           if (do_offset_check && !GC_valid_offsets[obj_displ]) {
             GC_ADD_TO_BLACK_LIST_NORMAL(current, source);
@@ -9608,7 +9584,6 @@ EXTERN_C_END
  */
 
 #include "gc/gc_gcj.h"
-
 
 int GC_gcj_kind = 0;    /* Object kind for objects with descriptors     */
                         /* in "vtable".                                 */
@@ -9785,7 +9760,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_debug_gcj_malloc(size_t lb,
     if (!GC_debugging_started) {
         GC_start_debugging_inner();
     }
-    result = GC_store_debug_info_inner(base, (word)lb, s, i);
+    result = GC_store_debug_info_inner(base, lb, s, i);
     ADD_CALL_CHAIN(base, ra);
     UNLOCK();
     GC_dirty(result);
@@ -9812,9 +9787,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_debug_gcj_malloc(size_t lb,
  */
 
 
-
 #if defined(KEEP_BACK_PTRS) && defined(GC_ASSERTIONS)
-
 #endif
 /*
  * This implements:
@@ -10151,7 +10124,7 @@ GC_API void GC_CALL GC_apply_to_all_blocks(GC_walk_hblk_fn fn,
 GC_INNER struct hblk * GC_next_block(struct hblk *h, GC_bool allow_free)
 {
     REGISTER bottom_index * bi;
-    REGISTER word j = (ADDR(h) >> LOG_HBLKSIZE) & (BOTTOM_SZ-1);
+    REGISTER size_t j = (size_t)(ADDR(h) >> LOG_HBLKSIZE) & (BOTTOM_SZ-1);
 
     GC_ASSERT(I_HOLD_READER_LOCK());
     GET_BI(h, bi);
@@ -10166,6 +10139,7 @@ GC_INNER struct hblk * GC_next_block(struct hblk *h, GC_bool allow_free)
     while (bi != 0) {
         while (j < BOTTOM_SZ) {
             hdr * hhdr = bi -> index[j];
+
             if (IS_FORWARDING_ADDR_OR_NIL(hhdr)) {
                 j++;
             } else {
@@ -10230,7 +10204,6 @@ GC_INNER struct hblk * GC_prev_block(struct hblk *h)
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 /*
@@ -10408,7 +10381,6 @@ GC_INNER void GC_new_hblk(size_t lg, int k)
  */
 
 
-
 /* Routines for maintaining maps describing heap block
  * layouts for various object sizes.  Allows fast pointer validity checks
  * and fast location of object start locations on machines (such as SPARC)
@@ -10494,7 +10466,6 @@ GC_INNER void GC_initialize_offsets(void)
  */
 
 
-
 /*
  * These are checking routines calls to which could be inserted by a
  * preprocessor to validate C pointer arithmetic.
@@ -10513,7 +10484,7 @@ GC_API void * GC_CALL GC_same_obj(void *p, void *q)
 {
     hdr *hhdr;
     ptr_t base, limit;
-    word sz;
+    size_t sz;
 
     if (!EXPECT(GC_is_initialized, TRUE)) GC_init();
     hhdr = HDR(p);
@@ -10545,9 +10516,7 @@ GC_API void * GC_CALL GC_same_obj(void *p, void *q)
       }
     } else {
       size_t offset;
-      size_t pdispl = HBLKDISPL(p);
 
-      offset = pdispl % sz;
       if (HBLKPTR(p) != HBLKPTR(q)) {
                 /* W/o this check, we might miss an error if    */
                 /* q points to the first object on a page, and  */
@@ -10555,6 +10524,7 @@ GC_API void * GC_CALL GC_same_obj(void *p, void *q)
         GC_same_obj_print_proc((ptr_t)p, (ptr_t)q);
         return p;
       }
+      offset = HBLKDISPL(p) % sz;
       base = (ptr_t)p - offset;
       limit = base + sz;
     }
@@ -10579,10 +10549,9 @@ GC_valid_ptr_print_proc_t GC_is_valid_displacement_print_proc =
 GC_API void * GC_CALL GC_is_valid_displacement(void *p)
 {
     hdr *hhdr;
-    word pdispl;
-    word offset;
+    size_t offset;
     struct hblk *h;
-    word sz;
+    size_t sz;
 
     if (!EXPECT(GC_is_initialized, TRUE)) GC_init();
     if (NULL == p) return NULL;
@@ -10596,8 +10565,7 @@ GC_API void * GC_CALL GC_is_valid_displacement(void *p)
         return p;
     }
     sz = hhdr -> hb_sz;
-    pdispl = HBLKDISPL(p);
-    offset = pdispl % sz;
+    offset = HBLKDISPL(p) % sz;
     if ((sz > MAXOBJBYTES && ADDR_GE((ptr_t)p, (ptr_t)h + sz))
         || !GC_valid_offsets[offset]
         || (ADDR_LT((ptr_t)(h + 1), (ptr_t)p + sz - offset)
@@ -10688,8 +10656,8 @@ GC_API void * GC_CALL GC_is_visible(void *p)
                       if (EXPECT(NULL == type_descr, FALSE))
                         goto fail; /* see comment in GC_mark_from */
                       descr = *(word *)(type_descr
-                                        - (descr - (word)(GC_DS_PER_OBJECT
-                                           - GC_INDIR_PER_OBJ_BIAS)));
+                                - ((signed_word)descr + (GC_INDIR_PER_OBJ_BIAS
+                                                         - GC_DS_PER_OBJECT)));
                     }
                     goto retry;
             }
@@ -10779,7 +10747,6 @@ GC_API GC_valid_ptr_print_proc_t GC_CALL GC_get_is_visible_print_proc(void)
  */
 
 
-
 #ifdef GC_USE_ENTIRE_HEAP
   int GC_use_entire_heap = TRUE;
 #else
@@ -10792,22 +10759,21 @@ GC_API GC_valid_ptr_print_proc_t GC_CALL GC_get_is_visible_print_proc(void)
  * Adjacent free blocks are coalesced.
  */
 
-
-# define MAX_BLACK_LIST_ALLOC (2*HBLKSIZE)
+#define MAX_BLACK_LIST_ALLOC (2*HBLKSIZE)
                 /* largest block we will allocate starting on a black   */
                 /* listed block.  Must be >= HBLKSIZE.                  */
 
 
-# define UNIQUE_THRESHOLD 32
+#define UNIQUE_THRESHOLD 32
         /* Sizes up to this many HBLKs each have their own free list    */
-# define HUGE_THRESHOLD 256
+#define HUGE_THRESHOLD 256
         /* Sizes of at least this many heap blocks are mapped to a      */
         /* single free list.                                            */
-# define FL_COMPRESSION 8
+#define FL_COMPRESSION 8
         /* In between sizes map this many distinct sizes to a single    */
         /* bin.                                                         */
 
-# define N_HBLK_FLS ((HUGE_THRESHOLD - UNIQUE_THRESHOLD) / FL_COMPRESSION \
+#define N_HBLK_FLS ((HUGE_THRESHOLD - UNIQUE_THRESHOLD) / FL_COMPRESSION \
                      + UNIQUE_THRESHOLD)
 
 #ifndef GC_GCJ_SUPPORT
@@ -10843,36 +10809,37 @@ GC_API void GC_CALL GC_iterate_free_hblks(GC_walk_free_blk_fn fn,
 /* Return the largest n such that the number of free bytes on lists     */
 /* n .. N_HBLK_FLS is greater or equal to GC_max_large_allocd_bytes     */
 /* minus GC_large_allocd_bytes.  If there is no such n, return 0.       */
-GC_INLINE int GC_enough_large_bytes_left(void)
+GC_INLINE size_t GC_enough_large_bytes_left(void)
 {
-    int n;
+    size_t n;
     word bytes = GC_large_allocd_bytes;
 
     GC_ASSERT(GC_max_large_allocd_bytes <= GC_heapsize);
-    for (n = N_HBLK_FLS; n >= 0; --n) {
+    for (n = N_HBLK_FLS + 1; n > 0;) {
+        n--;
         bytes += GC_free_bytes[n];
-        if (bytes >= GC_max_large_allocd_bytes) return n;
+        if (bytes >= GC_max_large_allocd_bytes) break;
     }
-    return 0;
+    return n;
 }
 
 /* Map a number of blocks to the appropriate large block free-list index. */
-STATIC int GC_hblk_fl_from_blocks(size_t blocks_needed)
+STATIC size_t GC_hblk_fl_from_blocks(size_t blocks_needed)
 {
-    if (blocks_needed <= UNIQUE_THRESHOLD) return (int)blocks_needed;
+    if (blocks_needed <= UNIQUE_THRESHOLD) return blocks_needed;
     if (blocks_needed >= HUGE_THRESHOLD) return N_HBLK_FLS;
-    return (int)(blocks_needed - UNIQUE_THRESHOLD)/FL_COMPRESSION
-                                        + UNIQUE_THRESHOLD;
+    return (blocks_needed - UNIQUE_THRESHOLD) / FL_COMPRESSION
+           + UNIQUE_THRESHOLD;
 }
 
-# define PHDR(hhdr) HDR((hhdr) -> hb_prev)
-# define NHDR(hhdr) HDR((hhdr) -> hb_next)
+#define PHDR(hhdr) HDR((hhdr) -> hb_prev)
+#define NHDR(hhdr) HDR((hhdr) -> hb_next)
 
-# ifdef USE_MUNMAP
+#ifdef USE_MUNMAP
 #   define IS_MAPPED(hhdr) (((hhdr) -> hb_flags & WAS_UNMAPPED) == 0)
-# else
+#else
 #   define IS_MAPPED(hhdr) TRUE
-# endif /* !USE_MUNMAP */
+#endif /* !USE_MUNMAP */
 
 #if !defined(NO_DEBUGGING) || defined(GC_ASSERTIONS)
   static void GC_CALLBACK add_hb_sz(struct hblk *h, int i,
@@ -10895,7 +10862,7 @@ STATIC int GC_hblk_fl_from_blocks(size_t blocks_needed)
   }
 #endif /* !NO_DEBUGGING || GC_ASSERTIONS */
 
-# if !defined(NO_DEBUGGING)
+#if !defined(NO_DEBUGGING)
   static void GC_CALLBACK print_hblkfreelist_item(struct hblk *h, int i,
                                                   void *prev_index_ptr)
   {
@@ -10931,10 +10898,10 @@ STATIC int GC_hblk_fl_from_blocks(size_t blocks_needed)
                     (unsigned long)total);
   }
 
-/* Return the free-list index on which the block described by the header */
-/* appears, or -1 if it appears nowhere.                                 */
-static int free_list_index_of(const hdr *wanted)
-{
+  /* Return the free-list index on which the block described by the header */
+  /* appears, or -1 if it appears nowhere.                                 */
+  static int free_list_index_of(const hdr *wanted)
+  {
     int i;
 
     for (i = 0; i <= N_HBLK_FLS; ++i) {
@@ -10947,11 +10914,11 @@ static int free_list_index_of(const hdr *wanted)
       }
     }
     return -1;
-}
+  }
 
-GC_API void GC_CALL GC_dump_regions(void)
-{
-    unsigned i;
+  GC_API void GC_CALL GC_dump_regions(void)
+  {
+    size_t i;
 
     for (i = 0; i < GC_n_heap_sects; ++i) {
         ptr_t start = GC_heap_sects[i].hs_start;
@@ -10975,8 +10942,8 @@ GC_API void GC_CALL GC_dump_regions(void)
                 continue;
             }
             if (HBLK_IS_FREE(hhdr)) {
-                int correct_index = GC_hblk_fl_from_blocks(
-                                        (size_t)divHBLKSZ(hhdr -> hb_sz));
+                int correct_index = (int)GC_hblk_fl_from_blocks(
+                                                divHBLKSZ(hhdr -> hb_sz));
                 int actual_index;
 
                 GC_printf("\t%p\tfree block of size 0x%lx bytes%s\n",
@@ -10998,9 +10965,8 @@ GC_API void GC_CALL GC_dump_regions(void)
             }
         }
     }
-}
-
-# endif /* NO_DEBUGGING */
+  }
+#endif /* NO_DEBUGGING */
 
 /* Initialize hdr for a block containing the indicated size and         */
 /* kind of objects.  Return FALSE on failure.                           */
@@ -11088,7 +11054,7 @@ static GC_bool setup_header(hdr *hhdr, struct hblk *block, size_t lb_adjusted,
 }
 
 /* Remove hhdr from the free list (it is assumed to specified by index). */
-STATIC void GC_remove_from_fl_at(hdr *hhdr, int index)
+STATIC void GC_remove_from_fl_at(hdr *hhdr, size_t index)
 {
     GC_ASSERT(modHBLKSZ(hhdr -> hb_sz) == 0);
     if (hhdr -> hb_prev == 0) {
@@ -11115,8 +11081,7 @@ STATIC void GC_remove_from_fl_at(hdr *hhdr, int index)
 /* size-appropriate free list).                                         */
 GC_INLINE void GC_remove_from_fl(hdr *hhdr)
 {
-  GC_remove_from_fl_at(hhdr, GC_hblk_fl_from_blocks(
-                                        (size_t)divHBLKSZ(hhdr -> hb_sz)));
+  GC_remove_from_fl_at(hhdr, GC_hblk_fl_from_blocks(divHBLKSZ(hhdr -> hb_sz)));
 }
 
 /* Return a pointer to the block ending just before h, if any.  */
@@ -11158,7 +11123,7 @@ STATIC struct hblk * GC_free_block_ending_at(struct hblk *h)
 /* We maintain individual free lists sorted by address. */
 STATIC void GC_add_to_fl(struct hblk *h, hdr *hhdr)
 {
-    int index = GC_hblk_fl_from_blocks((size_t)divHBLKSZ(hhdr -> hb_sz));
+    size_t index = GC_hblk_fl_from_blocks(divHBLKSZ(hhdr -> hb_sz));
     struct hblk *second = GC_hblkfreelist[index];
 
 #   if defined(GC_ASSERTIONS) && !defined(USE_MUNMAP)
@@ -11252,7 +11217,7 @@ GC_INLINE void GC_adjust_num_unmapped(struct hblk *h, hdr *hhdr)
 /* way blocks are ever unmapped.                                        */
 GC_INNER void GC_unmap_old(unsigned threshold)
 {
-    int i;
+    size_t i;
 
 # ifdef COUNT_UNMAPPED_REGIONS
     /* Skip unmapping if we have already exceeded the soft limit.       */
@@ -11286,7 +11251,7 @@ GC_INNER void GC_unmap_old(unsigned threshold)
             }
             GC_num_unmapped_regions = regions;
 #         endif
-          GC_unmap((ptr_t)h, (size_t)(hhdr -> hb_sz));
+          GC_unmap((ptr_t)h, hhdr -> hb_sz);
           hhdr -> hb_flags |= WAS_UNMAPPED;
         }
       }
@@ -11298,7 +11263,7 @@ GC_INNER void GC_unmap_old(unsigned threshold)
 /* fully mapped or fully unmapped.                                      */
 GC_INNER void GC_merge_unmapped(void)
 {
-    int i;
+    size_t i;
 
     for (i = 0; i <= N_HBLK_FLS; ++i) {
       struct hblk *h = GC_hblkfreelist[i];
@@ -11306,7 +11271,7 @@ GC_INNER void GC_merge_unmapped(void)
       while (h != 0) {
         struct hblk *next;
         hdr *hhdr, *nexthdr;
-        word size, nextsize;
+        size_t size, next_size;
 
         GET_HDR(h, hhdr);
         size = hhdr -> hb_sz;
@@ -11314,7 +11279,7 @@ GC_INNER void GC_merge_unmapped(void)
         GET_HDR(next, nexthdr);
         /* Coalesce with successor, if possible. */
         if (nexthdr != NULL && HBLK_IS_FREE(nexthdr)
-              && !((size + (nextsize = nexthdr -> hb_sz)) & SIGNB)
+              && ((size + (next_size = nexthdr -> hb_sz)) & SIZET_SIGNB) == 0
                  /* no overflow */) {
             /* Note that we usually try to avoid adjacent free blocks   */
             /* that are either both mapped or both unmapped.  But that  */
@@ -11323,20 +11288,20 @@ GC_INNER void GC_merge_unmapped(void)
             /* not hold if the merged block would be too big.           */
             if (IS_MAPPED(hhdr) && !IS_MAPPED(nexthdr)) {
               /* Make both consistent, so that we can merge.    */
-                if (size > nextsize) {
+                if (size > next_size) {
                   GC_adjust_num_unmapped(next, nexthdr);
-                  GC_remap((ptr_t)next, nextsize);
+                  GC_remap((ptr_t)next, next_size);
                 } else {
                   GC_adjust_num_unmapped(h, hhdr);
                   GC_unmap((ptr_t)h, size);
-                  GC_unmap_gap((ptr_t)h, size, (ptr_t)next, nextsize);
+                  GC_unmap_gap((ptr_t)h, size, (ptr_t)next, next_size);
                   hhdr -> hb_flags |= WAS_UNMAPPED;
                 }
             } else if (IS_MAPPED(nexthdr) && !IS_MAPPED(hhdr)) {
-              if (size > nextsize) {
+              if (size > next_size) {
                 GC_adjust_num_unmapped(next, nexthdr);
-                GC_unmap((ptr_t)next, nextsize);
-                GC_unmap_gap((ptr_t)h, size, (ptr_t)next, nextsize);
+                GC_unmap((ptr_t)next, next_size);
+                GC_unmap_gap((ptr_t)h, size, (ptr_t)next, next_size);
               } else {
                 GC_adjust_num_unmapped(h, hhdr);
                 GC_remap((ptr_t)h, size);
@@ -11345,7 +11310,7 @@ GC_INNER void GC_merge_unmapped(void)
               }
             } else if (!IS_MAPPED(hhdr) && !IS_MAPPED(nexthdr)) {
               /* Unmap any gap in the middle */
-                GC_unmap_gap((ptr_t)h, size, (ptr_t)next, nextsize);
+                GC_unmap_gap((ptr_t)h, size, (ptr_t)next, next_size);
             }
             /* If they are both unmapped, we merge, but leave unmapped. */
             GC_remove_from_fl_at(hhdr, i);
@@ -11374,27 +11339,27 @@ GC_INNER void GC_merge_unmapped(void)
  * If the return value is not 0, then hhdr is the header for it.
  */
 STATIC struct hblk * GC_get_first_part(struct hblk *h, hdr *hhdr,
-                                       size_t bytes, int index)
+                                       size_t size_needed, size_t index)
 {
     size_t total_size;
     struct hblk * rest;
     hdr * rest_hdr;
 
     GC_ASSERT(I_HOLD_LOCK());
-    GC_ASSERT(modHBLKSZ(bytes) == 0);
-    total_size = (size_t)(hhdr -> hb_sz);
+    GC_ASSERT(modHBLKSZ(size_needed) == 0);
+    total_size = hhdr -> hb_sz;
     GC_ASSERT(modHBLKSZ(total_size) == 0);
     GC_remove_from_fl_at(hhdr, index);
-    if (total_size == bytes) return h;
+    if (total_size == size_needed) return h;
 
-    rest = (struct hblk *)((word)h + bytes);
+    rest = (struct hblk *)((word)h + size_needed);
     rest_hdr = GC_install_header(rest);
     if (EXPECT(NULL == rest_hdr, FALSE)) {
         /* FIXME: This is likely to be very bad news ... */
         WARN("Header allocation failed: dropping block\n", 0);
         return NULL;
     }
-    rest_hdr -> hb_sz = total_size - bytes;
+    rest_hdr -> hb_sz = total_size - size_needed;
     rest_hdr -> hb_flags = 0;
 #   ifdef GC_ASSERTIONS
       /* Mark h not free, to avoid assertion about adjacent free blocks. */
@@ -11415,17 +11380,16 @@ STATIC struct hblk * GC_get_first_part(struct hblk *h, hdr *hhdr,
 /* a free list is silly.  But this path is hopefully rare enough that   */
 /* it does not matter.  The code is cleaner this way.)                  */
 STATIC void GC_split_block(struct hblk *hbp, hdr *hhdr, struct hblk *last_hbp,
-                           hdr *last_hdr, int index /* of free list */)
+                           hdr *last_hdr, size_t index /* of free list */)
 {
-    word total_size = hhdr -> hb_sz;
-    word h_size = (word)((ptr_t)last_hbp - (ptr_t)hbp);
+    size_t h_size = (size_t)((ptr_t)last_hbp - (ptr_t)hbp);
     struct hblk *prev = hhdr -> hb_prev;
     struct hblk *next = hhdr -> hb_next;
 
     /* Replace hbp with last_hbp on its free list.  */
     last_hdr -> hb_prev = prev;
     last_hdr -> hb_next = next;
-    last_hdr -> hb_sz = total_size - h_size;
+    last_hdr -> hb_sz = hhdr -> hb_sz - h_size;
     last_hdr -> hb_flags = 0;
     if (prev /* != NULL */) { /* CPPCHECK */
       HDR(prev) -> hb_next = last_hbp;
@@ -11445,8 +11409,8 @@ STATIC void GC_split_block(struct hblk *hbp, hdr *hhdr, struct hblk *last_hbp,
     last_hdr -> hb_flags |= FREE_BLK;
 }
 
-STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k,
-                                     unsigned flags, int index, int may_split,
+STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k, unsigned flags,
+                                     size_t index, int may_split,
                                      size_t align_m1);
 
 #ifdef USE_MUNMAP
@@ -11457,11 +11421,10 @@ GC_INNER struct hblk *GC_allochblk(size_t lb_adjusted, int k,
                                    unsigned flags /* IGNORE_OFF_PAGE or 0 */,
                                    size_t align_m1)
 {
-    size_t blocks;
-    int start_list;
+    size_t blocks, start_list;
     struct hblk *result;
     int may_split;
-    int split_limit; /* highest index of free list whose blocks we split */
+    size_t split_limit; /* highest index of free list whose blocks we split */
 
     GC_ASSERT(I_HOLD_LOCK());
     GC_ASSERT((lb_adjusted & (GC_GRANULE_BYTES-1)) == 0);
@@ -11522,11 +11485,11 @@ STATIC unsigned GC_drop_blacklisted_count = 0;
 #define ALIGN_PAD_SZ(p, align_m1) \
                (((align_m1) + 1 - (size_t)ADDR(p)) & (align_m1))
 
-static GC_bool next_hblk_fits_better(const hdr *hhdr, word size_avail,
-                                     word size_needed, size_t align_m1)
+static GC_bool next_hblk_fits_better(const hdr *hhdr, size_t size_avail,
+                                     size_t size_needed, size_t align_m1)
 {
   const hdr *nexthdr;
-  word next_size;
+  size_t next_size;
   size_t next_ofs;
   struct hblk *next_hbp = hhdr -> hb_next;
 
@@ -11540,8 +11503,8 @@ static GC_bool next_hblk_fits_better(const hdr *hhdr, word size_avail,
          && !GC_is_black_listed(next_hbp + divHBLKSZ(next_ofs), size_needed);
 }
 
-static struct hblk *find_nonbl_hblk(struct hblk *last_hbp, word size_remain,
-                                    word eff_size_needed, size_t align_m1)
+static struct hblk *find_nonbl_hblk(struct hblk *last_hbp, size_t size_remain,
+                                    size_t eff_size_needed, size_t align_m1)
 {
   ptr_t search_end = PTR_ALIGN_DOWN((ptr_t)last_hbp + size_remain,
                                     align_m1 + 1);
@@ -11559,9 +11522,9 @@ static struct hblk *find_nonbl_hblk(struct hblk *last_hbp, word size_remain,
 
 /* Allocate and drop the block in small chunks, to maximize the chance  */
 /* that we will recover some later.  hhdr should correspond to hbp.     */
-static void drop_hblk_in_chunks(int n, struct hblk *hbp, hdr *hhdr)
+static void drop_hblk_in_chunks(size_t n, struct hblk *hbp, hdr *hhdr)
 {
-  size_t total_size = (size_t)(hhdr -> hb_sz);
+  size_t total_size = hhdr -> hb_sz;
   const struct hblk *limit = hbp + divHBLKSZ(total_size);
 
   GC_ASSERT(HDR(hbp) == hhdr);
@@ -11609,13 +11572,13 @@ static void drop_hblk_in_chunks(int n, struct hblk *hbp, hdr *hhdr)
 /* If may_split is set to AVOID_SPLIT_REMAPPED, then memory remapping   */
 /* followed by splitting should be generally avoided.  Rounded-up       */
 /* lb_adjusted plus align_m1 value should be less than GC_SIZE_MAX / 2. */
-STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k,
-                                     unsigned flags, int index, int may_split,
+STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k, unsigned flags,
+                                     size_t index, int may_split,
                                      size_t align_m1)
 {
     struct hblk *hbp, *last_hbp;
     hdr *hhdr; /* header corresponding to hbp */
-    word size_needed = HBLKSIZE * OBJ_SZ_TO_BLOCKS_CHECKED(lb_adjusted);
+    size_t size_needed = HBLKSIZE * OBJ_SZ_TO_BLOCKS_CHECKED(lb_adjusted);
                                 /* number of bytes in requested objects */
 
     GC_ASSERT(I_HOLD_LOCK());
@@ -11624,7 +11587,7 @@ STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k,
   retry:
     /* Search for a big enough block in free list.      */
     for (hbp = GC_hblkfreelist[index];; hbp = hhdr -> hb_next) {
-      word size_avail; /* bytes available in this block */
+      size_t size_avail; /* bytes available in this block */
       size_t align_ofs;
 
       if (hbp /* != NULL */) {
@@ -11719,7 +11682,7 @@ STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k,
 #     ifdef USE_MUNMAP
         if (!IS_MAPPED(hhdr)) {
           GC_adjust_num_unmapped(hbp, hhdr);
-          GC_remap((ptr_t)hbp, (size_t)(hhdr -> hb_sz));
+          GC_remap((ptr_t)hbp, hhdr -> hb_sz);
           hhdr -> hb_flags &= (unsigned char)~WAS_UNMAPPED;
         }
 #     endif
@@ -11735,17 +11698,17 @@ STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k,
 #   ifdef USE_MUNMAP
       if (!IS_MAPPED(hhdr)) {
         GC_adjust_num_unmapped(hbp, hhdr);
-        GC_remap((ptr_t)hbp, (size_t)(hhdr -> hb_sz));
+        GC_remap((ptr_t)hbp, hhdr -> hb_sz);
         hhdr -> hb_flags &= (unsigned char)~WAS_UNMAPPED;
         /* Note: This may leave adjacent, mapped free blocks. */
       }
 #   endif
     /* hbp may be on the wrong free list; the parameter index is important. */
-    hbp = GC_get_first_part(hbp, hhdr, (size_t)size_needed, index);
+    hbp = GC_get_first_part(hbp, hhdr, size_needed, index);
     if (EXPECT(NULL == hbp, FALSE)) return NULL;
 
     /* Add it to map of valid blocks.   */
-    if (EXPECT(!GC_install_counts(hbp, (size_t)size_needed), FALSE))
+    if (EXPECT(!GC_install_counts(hbp, size_needed), FALSE))
       return NULL; /* This leaks memory under very rare conditions. */
 
     /* Set up the header.       */
@@ -11755,7 +11718,7 @@ STATIC struct hblk *GC_allochblk_nth(size_t lb_adjusted, int k,
       /* Result is always true, not checked to avoid a cppcheck warning. */
 #   else
       if (EXPECT(!setup_header(hhdr, hbp, lb_adjusted, k, flags), FALSE)) {
-        GC_remove_counts(hbp, (size_t)size_needed);
+        GC_remove_counts(hbp, size_needed);
         return NULL; /* ditto */
       }
 #   endif
@@ -11803,17 +11766,17 @@ GC_INNER void GC_freehblk(struct hblk *hbp)
 {
     struct hblk *next, *prev;
     hdr *hhdr, *prevhdr, *nexthdr;
-    word size;
+    size_t size;
 
     GET_HDR(hbp, hhdr);
     size = HBLKSIZE * OBJ_SZ_TO_BLOCKS(hhdr -> hb_sz);
-    if ((size & SIGNB) != 0)
+    if ((size & SIZET_SIGNB) != 0)
       ABORT("Deallocating excessively large block.  Too large an allocation?");
       /* Probably possible if we try to allocate more than half the address */
       /* space at once.  If we don't catch it here, strange things happen   */
       /* later.                                                             */
 
-    GC_remove_counts(hbp, (size_t)size);
+    GC_remove_counts(hbp, size);
     hhdr -> hb_sz = size;
 #   ifdef USE_MUNMAP
       hhdr -> hb_last_reclaimed = (unsigned short)GC_gc_no;
@@ -11832,7 +11795,8 @@ GC_INNER void GC_freehblk(struct hblk *hbp)
     prev = GC_free_block_ending_at(hbp);
     /* Coalesce with successor, if possible.    */
     if (nexthdr != NULL && HBLK_IS_FREE(nexthdr) && IS_MAPPED(nexthdr)
-          && !((hhdr -> hb_sz + nexthdr -> hb_sz) & SIGNB) /* no overflow */) {
+          && ((hhdr -> hb_sz + nexthdr -> hb_sz) & SIZET_SIGNB) == 0
+             /* no overflow */) {
         GC_remove_from_fl(nexthdr);
         hhdr -> hb_sz += nexthdr -> hb_sz;
         GC_remove_header(next);
@@ -11842,7 +11806,7 @@ GC_INNER void GC_freehblk(struct hblk *hbp)
     if (prev /* != NULL */) { /* CPPCHECK */
         prevhdr = HDR(prev);
         if (IS_MAPPED(prevhdr)
-            && !((hhdr -> hb_sz + prevhdr -> hb_sz) & SIGNB)) {
+            && ((hhdr -> hb_sz + prevhdr -> hb_sz) & SIZET_SIGNB) == 0) {
           GC_remove_from_fl(prevhdr);
           prevhdr -> hb_sz += hhdr -> hb_sz;
 #         ifdef USE_MUNMAP
@@ -11877,7 +11841,6 @@ GC_INNER void GC_freehblk(struct hblk *hbp)
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 /*
@@ -12854,7 +12817,7 @@ GC_INNER void GC_set_fl_marks(ptr_t q)
     const struct hblk *last_h = h;
     hdr *hhdr;
 #   ifdef MARK_BIT_PER_OBJ
-        word sz;
+        size_t sz;
 #   endif
 
     GC_ASSERT(q != NULL);
@@ -12866,7 +12829,7 @@ GC_INNER void GC_set_fl_marks(ptr_t q)
         q2 = (ptr_t)obj_link(q);
 #   endif
     for (;;) {
-        word bit_no = MARK_BIT_NO((ptr_t)q - (ptr_t)h, sz);
+        size_t bit_no = MARK_BIT_NO((size_t)((ptr_t)q - (ptr_t)h), sz);
 
         if (!mark_bit_from_hdr(hhdr, bit_no)) {
           set_mark_bit_from_hdr(hhdr, bit_no);
@@ -12953,10 +12916,10 @@ STATIC void GC_clear_fl_marks(ptr_t q)
       struct hblk *h = HBLKPTR(q);
       const struct hblk *last_h = h;
       hdr *hhdr = HDR(h);
-      word sz = hhdr -> hb_sz; /* Normally set only once. */
+      size_t sz = hhdr -> hb_sz; /* Normally set only once. */
 
       for (;;) {
-        word bit_no = MARK_BIT_NO((ptr_t)q - (ptr_t)h, sz);
+        size_t bit_no = MARK_BIT_NO((size_t)((ptr_t)q - (ptr_t)h), sz);
 
         if (mark_bit_from_hdr(hhdr, bit_no)) {
           size_t n_marks = hhdr -> hb_n_marks;
@@ -13257,22 +13220,22 @@ GC_INNER ptr_t GC_os_get_mem(size_t bytes)
   return (ptr_t)space;
 }
 
-/* Use the chunk of memory starting at h of size bytes as part of the heap. */
-/* Assumes h is HBLKSIZE aligned, bytes argument is a multiple of HBLKSIZE. */
-STATIC void GC_add_to_heap(struct hblk *h, size_t bytes)
+/* Use the chunk of memory starting at h of size sz as part of the      */
+/* heap.  Assumes h is HBLKSIZE aligned, sz is a multiple of HBLKSIZE.  */
+STATIC void GC_add_to_heap(struct hblk *h, size_t sz)
 {
     hdr *hhdr;
     ptr_t endp;
     size_t old_capacity = 0;
     void *old_heap_sects = NULL;
 #   ifdef GC_ASSERTIONS
-      unsigned i;
+      size_t i;
 #   endif
 
     GC_ASSERT(I_HOLD_LOCK());
     GC_ASSERT(ADDR(h) % HBLKSIZE == 0);
-    GC_ASSERT(bytes % HBLKSIZE == 0);
-    GC_ASSERT(bytes > 0);
+    GC_ASSERT(sz % HBLKSIZE == 0);
+    GC_ASSERT(sz > 0);
     GC_ASSERT(GC_all_nils != NULL);
 
     if (EXPECT(GC_n_heap_sects == GC_capacity_heap_sects, FALSE)) {
@@ -13280,14 +13243,14 @@ STATIC void GC_add_to_heap(struct hblk *h, size_t bytes)
 #     ifndef INITIAL_HEAP_SECTS
 #       define INITIAL_HEAP_SECTS 32
 #     endif
-      size_t new_capacity = GC_n_heap_sects > 0 ?
-                (size_t)GC_n_heap_sects * 2 : INITIAL_HEAP_SECTS;
+      size_t new_capacity = GC_n_heap_sects > 0
+                                ? GC_n_heap_sects * 2 : INITIAL_HEAP_SECTS;
       void *new_heap_sects =
                 GC_scratch_alloc(new_capacity * sizeof(struct HeapSect));
 
       if (NULL == new_heap_sects) {
         /* Retry with smaller yet sufficient capacity.  */
-        new_capacity = (size_t)GC_n_heap_sects + INITIAL_HEAP_SECTS;
+        new_capacity = GC_n_heap_sects + INITIAL_HEAP_SECTS;
         new_heap_sects =
                 GC_scratch_alloc(new_capacity * sizeof(struct HeapSect));
         if (NULL == new_heap_sects)
@@ -13308,13 +13271,13 @@ STATIC void GC_add_to_heap(struct hblk *h, size_t bytes)
     while (EXPECT(ADDR(h) <= HBLKSIZE, FALSE)) {
         /* Can't handle memory near address zero. */
         ++h;
-        bytes -= HBLKSIZE;
-        if (0 == bytes) return;
+        sz -= HBLKSIZE;
+        if (0 == sz) return;
     }
-    endp = (ptr_t)h + bytes;
+    endp = (ptr_t)h + sz;
     while (EXPECT(ADDR_GE((ptr_t)h, endp), FALSE)) {
-        bytes -= HBLKSIZE;
-        if (0 == bytes) return;
+        sz -= HBLKSIZE;
+        if (0 == sz) return;
         endp -= HBLKSIZE;
     }
     hhdr = GC_install_header(h);
@@ -13337,12 +13300,12 @@ STATIC void GC_add_to_heap(struct hblk *h, size_t bytes)
       }
 #   endif
     GC_heap_sects[GC_n_heap_sects].hs_start = (ptr_t)h;
-    GC_heap_sects[GC_n_heap_sects].hs_bytes = bytes;
+    GC_heap_sects[GC_n_heap_sects].hs_bytes = sz;
     GC_n_heap_sects++;
-    hhdr -> hb_sz = bytes;
+    hhdr -> hb_sz = sz;
     hhdr -> hb_flags = 0;
     GC_freehblk(h);
-    GC_heapsize += bytes;
+    GC_heapsize += sz;
 
     if (ADDR_GE((ptr_t)GC_least_plausible_heap_addr, (ptr_t)h)
         || EXPECT(NULL == GC_least_plausible_heap_addr, FALSE)) {
@@ -13384,7 +13347,7 @@ STATIC void GC_add_to_heap(struct hblk *h, size_t bytes)
 #if !defined(NO_DEBUGGING)
   void GC_print_heap_sects(void)
   {
-    unsigned i;
+    size_t i;
 
     GC_printf("Total heap size: %lu" IF_USE_MUNMAP(" (%lu unmapped)") "\n",
               (unsigned long)GC_heapsize /*, */
@@ -13399,8 +13362,8 @@ STATIC void GC_add_to_heap(struct hblk *h, size_t bytes)
       for (h = (struct hblk *)start; ADDR_LT((ptr_t)h, start + len); h++) {
         if (GC_is_black_listed(h, HBLKSIZE)) nbl++;
       }
-      GC_printf("Section %d from %p to %p %u/%lu blacklisted\n",
-                i, (void *)start, (void *)&start[len],
+      GC_printf("Section %u from %p to %p %u/%lu blacklisted\n",
+                (unsigned)i, (void *)start, (void *)&start[len],
                 nbl, (unsigned long)divHBLKSZ(len));
     }
   }
@@ -13418,7 +13381,7 @@ GC_API void GC_CALL GC_set_max_heap_size(GC_word n)
 
 word GC_max_retries = 0;
 
-GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t bytes)
+GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t sz)
 {
   size_t page_offset;
   size_t displ = 0;
@@ -13427,15 +13390,15 @@ GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t bytes)
   GC_ASSERT(I_HOLD_LOCK());
   if (NULL == ptr) return;
 
-  GC_ASSERT(bytes != 0);
+  GC_ASSERT(sz != 0);
   GC_ASSERT(GC_page_size != 0);
   /* TODO: Assert correct memory flags if GWW_VDB */
   page_offset = ADDR(ptr) & (GC_page_size-1);
   if (page_offset != 0)
     displ = GC_page_size - page_offset;
-  recycled_bytes = bytes > displ ? (bytes - displ) & ~(GC_page_size - 1) : 0;
+  recycled_bytes = sz > displ ? (sz - displ) & ~(GC_page_size - 1) : 0;
   GC_COND_LOG_PRINTF("Recycle %lu/%lu scratch-allocated bytes at %p\n",
-                (unsigned long)recycled_bytes, (unsigned long)bytes, ptr);
+                (unsigned long)recycled_bytes, (unsigned long)sz, ptr);
   if (recycled_bytes > 0)
     GC_add_to_heap((struct hblk *)((ptr_t)ptr + displ), recycled_bytes);
 }
@@ -13446,7 +13409,7 @@ GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t bytes)
 /* Returns FALSE on failure.                                            */
 GC_INNER GC_bool GC_expand_hp_inner(word n)
 {
-    size_t bytes;
+    size_t sz;
     struct hblk * space;
     word expansion_slop;        /* Number of bytes by which we expect   */
                                 /* the heap to expand soon.             */
@@ -13454,22 +13417,22 @@ GC_INNER GC_bool GC_expand_hp_inner(word n)
     GC_ASSERT(I_HOLD_LOCK());
     GC_ASSERT(GC_page_size != 0);
     if (0 == n) n = 1;
-    bytes = ROUNDUP_PAGESIZE((size_t)n * HBLKSIZE);
+    sz = ROUNDUP_PAGESIZE((size_t)n * HBLKSIZE);
     GC_DBGLOG_PRINT_HEAP_IN_USE();
     if (GC_max_heapsize != 0
-        && (GC_max_heapsize < (word)bytes
-            || GC_heapsize > GC_max_heapsize - (word)bytes)) {
+        && (GC_max_heapsize < (word)sz
+            || GC_heapsize > GC_max_heapsize - (word)sz)) {
         /* Exceeded self-imposed limit */
         return FALSE;
     }
-    space = (struct hblk *)GC_os_get_mem(bytes);
+    space = (struct hblk *)GC_os_get_mem(sz);
     if (EXPECT(NULL == space, FALSE)) {
-        WARN("Failed to expand heap by %" WARN_PRIuPTR " KiB\n", bytes >> 10);
+        WARN("Failed to expand heap by %" WARN_PRIuPTR " KiB\n", sz >> 10);
         return FALSE;
     }
     GC_last_heap_growth_gc_no = GC_gc_no;
     GC_INFOLOG_PRINTF("Grow heap to %lu KiB after %lu bytes allocated\n",
-                      TO_KiB_UL(GC_heapsize + bytes),
+                      TO_KiB_UL(GC_heapsize + sz),
                       (unsigned long)GC_bytes_allocd);
 
     /* Adjust heap limits generously for blacklisting to work better.   */
@@ -13478,14 +13441,14 @@ GC_INNER GC_bool GC_expand_hp_inner(word n)
     expansion_slop = min_bytes_allocd() + 4 * MAXHINCR * HBLKSIZE;
     if ((0 == GC_last_heap_addr && (ADDR(space) & SIGNB) == 0)
         || (GC_last_heap_addr != 0 && GC_last_heap_addr < ADDR(space))) {
-        /* Assume the heap is growing up. */
-        ptr_t new_limit = (ptr_t)space + bytes + expansion_slop;
+      /* Assume the heap is growing up. */
+        ptr_t new_limit = (ptr_t)space + sz + expansion_slop;
 
         if (ADDR_LT((ptr_t)space, new_limit)
             && ADDR_LT((ptr_t)GC_greatest_plausible_heap_addr, new_limit))
           GC_greatest_plausible_heap_addr = new_limit;
     } else {
-        /* Heap is growing down. */
+      /* Heap is growing down.  */
         ptr_t new_limit = (ptr_t)space - expansion_slop - sizeof(word);
 
         if (ADDR_LT(new_limit, (ptr_t)space)
@@ -13494,7 +13457,7 @@ GC_INNER GC_bool GC_expand_hp_inner(word n)
     }
     GC_last_heap_addr = ADDR(space);
 
-    GC_add_to_heap(space, bytes);
+    GC_add_to_heap(space, sz);
     if (GC_on_heap_resize)
         (*GC_on_heap_resize)(GC_heapsize);
 
@@ -13743,7 +13706,6 @@ GC_INNER ptr_t GC_allocobj(size_t lg, int k)
  */
 
 
-
 #ifndef MSWINCE
 # include <errno.h>
 #endif
@@ -13762,7 +13724,7 @@ GC_INNER ptr_t GC_allocobj(size_t lg, int k)
   GC_INNER int GC_has_other_debug_info(ptr_t base)
   {
     ptr_t body = (ptr_t)((oh *)base + 1);
-    word sz = GC_size(base);
+    size_t sz = GC_size(base);
 
     if (HBLKPTR(base) != HBLKPTR(body)
         || sz < DEBUG_BYTES + EXTRA_BYTES) {
@@ -13976,7 +13938,7 @@ GC_INNER ptr_t GC_allocobj(size_t lg, int k)
 #define CROSSES_HBLK(p, sz) \
                 ((ADDR((p) + sizeof(oh) + (sz) - 1) ^ ADDR(p)) >= HBLKSIZE)
 
-GC_INNER void *GC_store_debug_info_inner(void *base, word sz,
+GC_INNER void *GC_store_debug_info_inner(void *base, size_t sz,
                                          const char *string, int linenum)
 {
     GC_uintptr_t *result = (GC_uintptr_t *)((oh *)base + 1);
@@ -14019,7 +13981,7 @@ static void *store_debug_info(void *base, size_t lb,
     LOCK();
     if (!GC_debugging_started)
         GC_start_debugging_inner();
-    result = GC_store_debug_info_inner(base, (word)lb, s, i);
+    result = GC_store_debug_info_inner(base, lb, s, i);
     ADD_CALL_CHAIN(base, ra);
     UNLOCK();
     return result;
@@ -14032,7 +13994,7 @@ static void *store_debug_info(void *base, size_t lb,
   STATIC ptr_t GC_check_annotated_obj(oh *ohdr)
   {
     ptr_t body = (ptr_t)(ohdr + 1);
-    word gc_sz = GC_size(ohdr);
+    size_t gc_sz = GC_size(ohdr);
 
     if (ohdr -> oh_sz + DEBUG_BYTES > (GC_uintptr_t)gc_sz) {
         return (ptr_t)(&(ohdr -> oh_sz));
@@ -14197,7 +14159,7 @@ GC_INNER void GC_start_debugging_inner(void)
 # endif
   GC_print_heap_obj = GC_debug_print_heap_obj_proc;
   GC_debugging_started = TRUE;
-  GC_register_displacement_inner((word)sizeof(oh));
+  GC_register_displacement_inner(sizeof(oh));
 # if defined(CPPCHECK)
     GC_noop1(GC_debug_header_size);
 # endif
@@ -14213,7 +14175,7 @@ GC_API void GC_CALL GC_debug_register_displacement(size_t offset)
 {
   LOCK();
   GC_register_displacement_inner(offset);
-  GC_register_displacement_inner((word)sizeof(oh) + offset);
+  GC_register_displacement_inner(sizeof(oh) + offset);
   UNLOCK();
 }
 
@@ -14311,7 +14273,7 @@ STATIC void * GC_debug_generic_malloc(size_t lb, int k, GC_EXTRA_PARAMS)
     }
     if (!GC_debugging_started)
         GC_start_debugging_inner();
-    result = GC_store_debug_info_inner(base, (word)lb, "INTERNAL", 0);
+    result = GC_store_debug_info_inner(base, lb, "INTERNAL", 0);
     ADD_CALL_CHAIN_INNER(base);
     return result;
   }
@@ -14461,6 +14423,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_debug_malloc_uncollectable(size_t lb,
 
 
 
+
 #ifdef __cplusplus
   extern "C" {
 #endif
@@ -14533,7 +14496,7 @@ GC_API void GC_CALL GC_debug_free(void * p)
     } else {
 #     ifndef SHORT_DBG_HDRS
         ptr_t clobbered = GC_check_annotated_obj((oh *)base);
-        word sz = GC_size(base);
+        size_t sz = GC_size(base);
 
         if (clobbered != NULL) {
           GC_SET_HAVE_ERRORS(); /* no "release" barrier is needed */
@@ -14566,9 +14529,9 @@ GC_API void GC_CALL GC_debug_free(void * p)
           ) {
         GC_free(base);
       } else {
-        word i;
-        word sz = hhdr -> hb_sz;
-        word obj_sz = BYTES_TO_WORDS(sz - sizeof(oh));
+        size_t i;
+        size_t sz = hhdr -> hb_sz;
+        size_t obj_sz = BYTES_TO_WORDS(sz - sizeof(oh));
 
         for (i = 0; i < obj_sz; ++i)
           ((GC_uintptr_t *)p)[i] = GC_FREED_MEM_MARKER;
@@ -14577,7 +14540,7 @@ GC_API void GC_CALL GC_debug_free(void * p)
         /* is deferred.                                         */
         LOCK();
 #       ifdef LINT2
-          GC_incr_bytes_freed((size_t)sz);
+          GC_incr_bytes_freed(sz);
 #       else
           GC_bytes_freed += sz;
 #       endif
@@ -14721,8 +14684,8 @@ GC_API GC_ATTR_MALLOC void * GC_CALL
     const hdr *hhdr = HDR(hbp);
     ptr_t p = hbp -> hb_body;
     ptr_t plim;
-    word sz = hhdr -> hb_sz;
-    word bit_no;
+    size_t sz = hhdr -> hb_sz;
+    size_t bit_no;
 
     UNUSED_ARG(dummy);
     plim = sz > MAXOBJBYTES ? p : p + HBLKSIZE - sz;
@@ -14749,8 +14712,8 @@ GC_API GC_ATTR_MALLOC void * GC_CALL
 
   GC_INNER GC_bool GC_check_leaked(ptr_t base)
   {
-    word i;
-    word obj_sz;
+    size_t i;
+    size_t obj_sz;
     word *p;
 
     if (
@@ -14985,7 +14948,6 @@ GC_API void * GC_CALL GC_debug_realloc_replacement(void *p, size_t lb)
  */
 
 
-
 #ifndef GC_NO_FINALIZATION
 # include "gc/javaxfc.h" /* to get GC_finalize_all() as extern "C" */
 
@@ -14995,9 +14957,9 @@ GC_API void * GC_CALL GC_debug_realloc_replacement(void *p, size_t lb)
 typedef void (* finalization_mark_proc)(ptr_t /* finalizable_obj_ptr */);
 
 #define HASH3(addr,size,log_size) \
-            (((ADDR(addr) >> 3) ^ (ADDR(addr) >> (3 + (log_size)))) \
+            ((size_t)((ADDR(addr) >> 3) ^ (ADDR(addr) >> (3 + (log_size)))) \
              & ((size)-1))
-#define HASH2(addr,log_size) HASH3(addr, (word)1 << (log_size), log_size)
+#define HASH2(addr,log_size) HASH3(addr, (size_t)1 << (log_size), log_size)
 
 struct hash_chain_entry {
     word hidden_key;
@@ -15022,9 +14984,9 @@ struct finalizable_object {
                                 /* is on finalize_now queue.    */
 #   define fo_next(x) (struct finalizable_object *)((x) -> prolog.next)
 #   define fo_set_next(x,y) ((x)->prolog.next = (struct hash_chain_entry *)(y))
-    GC_finalization_proc fo_fn; /* Finalizer.                   */
+    GC_finalization_proc fo_fn; /* finalizer */
     ptr_t fo_client_data;
-    word fo_object_size;        /* In bytes.                    */
+    size_t fo_object_sz; /* in bytes */
     finalization_mark_proc fo_mark_proc;        /* Mark-through procedure */
 };
 
@@ -15060,14 +15022,14 @@ GC_API void GC_CALL GC_push_finalizer_structures(void)
 /* current size.  May be a no-op.  *table is a pointer to an array of   */
 /* hash headers.  We update both *table and *log_size_ptr on success.   */
 STATIC void GC_grow_table(struct hash_chain_entry ***table,
-                          unsigned *log_size_ptr, const word *entries_ptr)
+                          unsigned *log_size_ptr, const size_t *entries_ptr)
 {
-    word i;
+    size_t i;
     struct hash_chain_entry *p;
     unsigned log_old_size = *log_size_ptr;
     unsigned log_new_size = log_old_size + 1;
-    word old_size = *table == NULL ? 0 : (word)1 << log_old_size;
-    word new_size = (word)1 << log_new_size;
+    size_t old_size = NULL == *table ? 0 : (size_t)1 << log_old_size;
+    size_t new_size = (size_t)1 << log_new_size;
     /* FIXME: Power of 2 size often gets rounded up to one more page. */
     struct hash_chain_entry **new_table;
 
@@ -15083,24 +15045,22 @@ STATIC void GC_grow_table(struct hash_chain_entry ***table,
       GC_gcollect_inner();
       RESTORE_CANCEL(cancel_state);
       /* GC_finalize might decrease entries value.  */
-      if (*entries_ptr < ((word)1 << log_old_size) - (*entries_ptr >> 2))
+      if (*entries_ptr < ((size_t)1 << log_old_size) - (*entries_ptr >> 2))
         return;
     }
 
     new_table = (struct hash_chain_entry **)
                     GC_INTERNAL_MALLOC_IGNORE_OFF_PAGE(
-                        (size_t)new_size * sizeof(struct hash_chain_entry *),
-                        NORMAL);
-    if (new_table == 0) {
-        if (*table == 0) {
+                        new_size * sizeof(struct hash_chain_entry *), NORMAL);
+    if (NULL == new_table) {
+        if (NULL == *table) {
             ABORT("Insufficient space for initial table allocation");
         } else {
             return;
         }
     }
     for (i = 0; i < old_size; i++) {
-      p = (*table)[i];
-      while (p != 0) {
+      for (p = (*table)[i]; p != NULL;) {
         ptr_t real_key = (ptr_t)GC_REVEAL_POINTER(p -> hidden_key);
         struct hash_chain_entry *next = p -> next;
         size_t new_hash = HASH3(real_key, new_size, log_new_size);
@@ -15143,7 +15103,7 @@ STATIC int GC_register_disappearing_link_inner(
     GC_ASSERT(obj != NULL && GC_base_C(obj) == obj);
     if (EXPECT(NULL == dl_hashtbl -> head, FALSE)
         || EXPECT(dl_hashtbl -> entries
-                  > ((word)1 << dl_hashtbl -> log_size), FALSE)) {
+                  > ((size_t)1 << dl_hashtbl -> log_size), FALSE)) {
         GC_grow_table((struct hash_chain_entry ***)&dl_hashtbl -> head,
                       &dl_hashtbl -> log_size, &dl_hashtbl -> entries);
         GC_COND_LOG_PRINTF("Grew %s table to %u entries\n", tbl_log_name,
@@ -15674,7 +15634,8 @@ STATIC void GC_register_finalizer_inner(void * obj,
     if (mp == GC_unreachable_finalize_mark_proc)
         need_unreachable_finalization = TRUE;
     if (EXPECT(NULL == GC_fnlz_roots.fo_head, FALSE)
-        || EXPECT(GC_fo_entries > ((word)1 << GC_log_fo_table_size), FALSE)) {
+        || EXPECT(GC_fo_entries
+                    > ((size_t)1 << GC_log_fo_table_size), FALSE)) {
         GC_grow_table((struct hash_chain_entry ***)&GC_fnlz_roots.fo_head,
                       &GC_log_fo_table_size, &GC_fo_entries);
         GC_COND_LOG_PRINTF("Grew fo table to %u entries\n",
@@ -15686,7 +15647,7 @@ STATIC void GC_register_finalizer_inner(void * obj,
 
       index = HASH2(obj, GC_log_fo_table_size);
       curr_fo = GC_fnlz_roots.fo_head[index];
-      while (curr_fo != 0) {
+      while (curr_fo != NULL) {
         GC_ASSERT(GC_size(curr_fo) >= sizeof(struct finalizable_object));
         if (curr_fo -> fo_hidden_base == GC_HIDE_POINTER(obj)) {
           /* Interruption by a signal in the middle of this     */
@@ -15780,7 +15741,7 @@ STATIC void GC_register_finalizer_inner(void * obj,
     new_fo -> fo_hidden_base = GC_HIDE_POINTER(obj);
     new_fo -> fo_fn = fn;
     new_fo -> fo_client_data = (ptr_t)cd;
-    new_fo -> fo_object_size = hhdr -> hb_sz;
+    new_fo -> fo_object_sz = hhdr -> hb_sz;
     new_fo -> fo_mark_proc = mp;
     fo_set_next(new_fo, GC_fnlz_roots.fo_head[index]);
     GC_dirty(new_fo);
@@ -15872,9 +15833,9 @@ GC_API void GC_CALL GC_register_finalizer_unreachable(void * obj,
 #endif /* !NO_DEBUGGING */
 
 #ifndef SMALL_CONFIG
-  STATIC word GC_old_dl_entries = 0; /* for stats printing */
+  STATIC size_t GC_old_dl_entries = 0; /* for stats printing */
 # ifndef GC_LONG_REFS_NOT_NEEDED
-    STATIC word GC_old_ll_entries = 0;
+    STATIC size_t GC_old_ll_entries = 0;
 # endif
 #endif /* !SMALL_CONFIG */
 
@@ -16039,9 +16000,8 @@ GC_INNER void GC_finalize(void)
             /* see it.                                                */
               curr_fo -> fo_hidden_base =
                         (word)GC_REVEAL_POINTER(curr_fo -> fo_hidden_base);
-              GC_bytes_finalized +=
-                        curr_fo -> fo_object_size
-                        + sizeof(struct finalizable_object);
+              GC_bytes_finalized += (word)(curr_fo -> fo_object_sz)
+                                    + sizeof(struct finalizable_object);
             GC_ASSERT(GC_is_marked(GC_base(curr_fo)));
             curr_fo = next_fo;
         } else {
@@ -16090,8 +16050,8 @@ GC_INNER void GC_finalize(void)
             GC_dirty(prev_fo);
           }
           curr_fo -> fo_hidden_base = GC_HIDE_POINTER(real_ptr);
-          GC_bytes_finalized -=
-              (curr_fo -> fo_object_size) + sizeof(struct finalizable_object);
+          GC_bytes_finalized -= (word)(curr_fo -> fo_object_sz)
+                                + sizeof(struct finalizable_object);
 
           i = HASH2(real_ptr, GC_log_fo_table_size);
           fo_set_next(curr_fo, GC_fnlz_roots.fo_head[i]);
@@ -16168,8 +16128,8 @@ STATIC unsigned GC_interrupt_finalizers = 0;
           /* see it.                                                    */
           curr_fo -> fo_hidden_base =
                         (word)GC_REVEAL_POINTER(curr_fo -> fo_hidden_base);
-          GC_bytes_finalized +=
-                curr_fo -> fo_object_size + sizeof(struct finalizable_object);
+          GC_bytes_finalized += (word)(curr_fo -> fo_object_sz)
+                                + sizeof(struct finalizable_object);
           curr_fo = next_fo;
       }
     }
@@ -16427,11 +16387,9 @@ GC_INNER void GC_notify_or_invoke_finalizers(void)
  */
 
 
-
 #ifdef ENABLE_DISCLAIM
 
 #include "gc/gc_disclaim.h"
-
 
 #if defined(KEEP_BACK_PTRS) || defined(MAKE_BACK_GRAPH)
   /* The first bit is already used for a debug purpose. */
@@ -16556,7 +16514,6 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_finalized_malloc(size_t lb,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 #include <string.h>
@@ -17153,7 +17110,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_malloc_uncollectable(size_t lb)
 /* Explicitly deallocate the object.  hhdr should correspond to p.      */
 static void free_internal(void *p, const hdr *hhdr)
 {
-  size_t lb = (size_t)(hhdr -> hb_sz);  /* size in bytes */
+  size_t lb = hhdr -> hb_sz;  /* size in bytes */
   size_t lg = BYTES_TO_GRANULES(lb);    /* size in granules */
   int k = hhdr -> hb_obj_kind;
 
@@ -17280,7 +17237,6 @@ GC_API void GC_CALL GC_free(void * p)
  */
 
 
-
 /*
  * These are extra allocation routines which are likely to be less
  * frequently used than those in malloc.c.  They are separate in the
@@ -17297,7 +17253,6 @@ GC_API void GC_CALL GC_free(void * p)
 /* Some externally visible but unadvertised variables to allow access to */
 /* free lists from inlined allocators without including gc_priv.h        */
 /* or introducing dependencies on internal data structure layouts.       */
-
 void ** const GC_objfreelist_ptr = GC_objfreelist;
 void ** const GC_aobjfreelist_ptr = GC_aobjfreelist;
 void ** const GC_uobjfreelist_ptr = GC_uobjfreelist;
@@ -17310,7 +17265,7 @@ GC_API int GC_CALL GC_get_kind_and_size(const void * p, size_t * psize)
     const hdr *hhdr = HDR(p);
 
     if (psize != NULL) {
-        *psize = (size_t)(hhdr -> hb_sz);
+        *psize = hhdr -> hb_sz;
     }
     return hhdr -> hb_obj_kind;
 }
@@ -17360,7 +17315,7 @@ GC_API void * GC_CALL GC_realloc(void * p, size_t lb)
       return NULL;
     }
     hhdr = HDR(HBLKPTR(p));
-    sz = (size_t)hhdr->hb_sz;
+    sz = hhdr -> hb_sz;
     obj_kind = hhdr -> hb_obj_kind;
     orig_sz = sz;
 
@@ -17869,7 +17824,6 @@ GC_API void GC_CALL GC_ptr_store_and_dirty(void *p, const void *q)
  */
 
 
-
 /* Make arguments appear live to compiler.  Put here to minimize the    */
 /* risk of inlining.  Used to minimize junk left in registers.          */
 GC_ATTR_NOINLINE
@@ -18029,10 +17983,10 @@ GC_INNER void GC_clear_hdr_marks(hdr *hhdr)
 
 # ifdef AO_HAVE_load
     /* Atomic access is used to avoid racing with GC_realloc.   */
-    last_bit = FINAL_MARK_BIT((size_t)AO_load((volatile AO_t *)&hhdr->hb_sz));
+    last_bit = FINAL_MARK_BIT(AO_load((volatile AO_t *)&hhdr->hb_sz));
 # else
     /* No race as GC_realloc holds the allocator lock while updating hb_sz. */
-    last_bit = FINAL_MARK_BIT((size_t)hhdr->hb_sz);
+    last_bit = FINAL_MARK_BIT(hhdr -> hb_sz);
 # endif
 
     BZERO(hhdr -> hb_marks, sizeof(hhdr->hb_marks));
@@ -18043,12 +17997,12 @@ GC_INNER void GC_clear_hdr_marks(hdr *hhdr)
 /* Set all mark bits in the header.  Used for uncollectible blocks. */
 GC_INNER void GC_set_hdr_marks(hdr *hhdr)
 {
-    unsigned i;
-    size_t sz = (size_t)hhdr->hb_sz;
-    unsigned n_marks = (unsigned)FINAL_MARK_BIT(sz);
+    size_t i;
+    size_t sz = hhdr -> hb_sz;
+    size_t n_marks = FINAL_MARK_BIT(sz);
 
 #   ifdef USE_MARK_BYTES
-      for (i = 0; i <= n_marks; i += (unsigned)MARK_BIT_OFFSET(sz)) {
+      for (i = 0; i <= n_marks; i += MARK_BIT_OFFSET(sz)) {
         hhdr -> hb_marks[i] = 1;
       }
 #   else
@@ -18089,7 +18043,7 @@ GC_API void GC_CALL GC_set_mark_bit(const void *p)
 {
     struct hblk *h = HBLKPTR(p);
     hdr * hhdr = HDR(h);
-    word bit_no = MARK_BIT_NO((word)((ptr_t)p - (ptr_t)h), hhdr -> hb_sz);
+    size_t bit_no = MARK_BIT_NO((size_t)((ptr_t)p - (ptr_t)h), hhdr -> hb_sz);
 
     if (!mark_bit_from_hdr(hhdr, bit_no)) {
       set_mark_bit_from_hdr(hhdr, bit_no);
@@ -18101,7 +18055,7 @@ GC_API void GC_CALL GC_clear_mark_bit(const void *p)
 {
     struct hblk *h = HBLKPTR(p);
     hdr * hhdr = HDR(h);
-    word bit_no = MARK_BIT_NO((word)((ptr_t)p - (ptr_t)h), hhdr -> hb_sz);
+    size_t bit_no = MARK_BIT_NO((size_t)((ptr_t)p - (ptr_t)h), hhdr -> hb_sz);
 
     if (mark_bit_from_hdr(hhdr, bit_no)) {
       size_t n_marks = hhdr -> hb_n_marks;
@@ -18125,7 +18079,7 @@ GC_API int GC_CALL GC_is_marked(const void *p)
 {
     struct hblk *h = HBLKPTR(p);
     hdr * hhdr = HDR(h);
-    word bit_no = MARK_BIT_NO((word)((ptr_t)p - (ptr_t)h), hhdr -> hb_sz);
+    size_t bit_no = MARK_BIT_NO((size_t)((ptr_t)p - (ptr_t)h), hhdr -> hb_sz);
 
     return (int)mark_bit_from_hdr(hhdr, bit_no); /* 0 or 1 */
 }
@@ -18822,20 +18776,20 @@ GC_INNER void GC_wait_for_markers_init(void)
 }
 
 /* Steal mark stack entries starting at mse low into mark stack local   */
-/* until we either steal mse high, or we have max entries.              */
+/* until we either steal mse high, or we have n_to_get entries.         */
 /* Return a pointer to the top of the local mark stack.                 */
 /* (*next) is replaced by a pointer to the next unscanned mark stack    */
 /* entry.                                                               */
 STATIC mse * GC_steal_mark_stack(mse * low, mse * high, mse * local,
-                                 unsigned max, mse **next)
+                                 size_t n_to_get, mse **next)
 {
     mse *p;
     mse *top = local - 1;
-    unsigned i = 0;
+    size_t i = 0;
 
     GC_ASSERT(ADDR_GE((ptr_t)high, (ptr_t)(low - 1))
               && (word)(high - low + 1) <= GC_mark_stack_size);
-    for (p = low; ADDR_GE((ptr_t)high, (ptr_t)p) && i <= max; ++p) {
+    for (p = low; ADDR_GE((ptr_t)high, (ptr_t)p) && i <= n_to_get; ++p) {
         word descr = (word)AO_load(&p->mse_descr.ao);
         if (descr != 0) {
             /* Must be ordered after read of descr: */
@@ -18853,7 +18807,8 @@ STATIC mse * GC_steal_mark_stack(mse * low, mse * high, mse * local,
                     || ADDR(p -> mse_start) >= GC_greatest_real_heap_addr);
             /* If this is a big object, count it as size/256 + 1 objects. */
             ++i;
-            if ((descr & GC_DS_TAGS) == GC_DS_LENGTH) i += (int)(descr >> 8);
+            if ((descr & GC_DS_TAGS) == GC_DS_LENGTH)
+              i += (size_t)(descr >> 8);
         }
     }
     *next = p;
@@ -18973,10 +18928,8 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
     GC_VERBOSE_LOG_PRINTF("Starting mark helper %d\n", id);
     GC_release_mark_lock();
     for (;;) {
-        size_t n_on_stack;
-        unsigned n_to_get;
-        mse * my_top;
-        mse * local_top;
+        size_t n_on_stack, n_to_get;
+        mse *my_top, *local_top;
         mse * global_first_nonempty = (mse *)AO_load(&GC_first_nonempty);
 
         GC_ASSERT(ADDR_GE((ptr_t)my_first_nonempty, (ptr_t)GC_mark_stack)
@@ -19375,7 +19328,7 @@ GC_API struct GC_ms_entry * GC_CALL GC_mark_and_push(void *obj,
          && (!GC_all_interior_pointers
              || NULL == (hhdr = GC_find_header(GC_base(obj)))))
         || EXPECT(HBLK_IS_FREE(hhdr), FALSE)) {
-      GC_ADD_TO_BLACK_LIST_NORMAL(obj, (ptr_t)src);
+      GC_ADD_TO_BLACK_LIST_NORMAL((ptr_t)obj, (ptr_t)src);
       return mark_stack_top;
     }
     return GC_push_contents_hdr((ptr_t)obj, mark_stack_top, mark_stack_limit,
@@ -19756,10 +19709,10 @@ GC_INNER void GC_push_all_stack(ptr_t bottom, ptr_t top)
 /* Push all objects reachable from marked objects in the given block.   */
 STATIC void GC_push_marked(struct hblk *h, const hdr *hhdr)
 {
-    word sz = hhdr -> hb_sz;
+    size_t sz = hhdr -> hb_sz;
     word descr = hhdr -> hb_descr;
     ptr_t p;
-    word bit_no;
+    size_t bit_no;
     ptr_t lim;
     mse * mark_stack_top;
     mse * mark_stack_limit = GC_mark_stack_limit;
@@ -19818,7 +19771,7 @@ STATIC void GC_push_marked(struct hblk *h, const hdr *hhdr)
   GC_ATTR_NO_SANITIZE_THREAD
   STATIC void GC_push_unconditionally(struct hblk *h, const hdr *hhdr)
   {
-    word sz = hhdr -> hb_sz;
+    size_t sz = hhdr -> hb_sz;
     word descr = hhdr -> hb_descr;
     ptr_t p;
     ptr_t lim;
@@ -19848,12 +19801,12 @@ STATIC void GC_push_marked(struct hblk *h, const hdr *hhdr)
   /* Test whether any page in the given block is dirty.   */
   STATIC GC_bool GC_block_was_dirty(struct hblk *h, const hdr *hhdr)
   {
-    word sz;
+    size_t sz;
     ptr_t p;
 
 #   ifdef AO_HAVE_load
       /* Atomic access is used to avoid racing with GC_realloc. */
-      sz = (word)AO_load((volatile AO_t *)&(hhdr -> hb_sz));
+      sz = AO_load((volatile AO_t *)&(hhdr -> hb_sz));
 #   else
       sz = hhdr -> hb_sz;
 #   endif
@@ -19978,7 +19931,6 @@ STATIC struct hblk * GC_push_next_marked_uncollectable(struct hblk *h)
  */
 
 
-
 #if defined(E2K) && !defined(THREADS)
 # include <alloca.h>
 #endif
@@ -20007,7 +19959,7 @@ int GC_no_dls = 0;      /* Register dynamic library data segments.      */
   /* Should return the same value as GC_root_size.      */
   GC_INNER word GC_compute_root_size(void)
   {
-    int i;
+    size_t i;
     word size = 0;
 
     for (i = 0; i < n_root_sets; i++) {
@@ -20021,7 +19973,7 @@ int GC_no_dls = 0;      /* Register dynamic library data segments.      */
   /* For debugging:     */
   void GC_print_static_roots(void)
   {
-    int i;
+    size_t i;
     word size;
 
     for (i = 0; i < n_root_sets; i++) {
@@ -20043,8 +19995,8 @@ int GC_no_dls = 0;      /* Register dynamic library data segments.      */
   /* Is the address p in one of the registered static root sections?      */
   GC_INNER GC_bool GC_is_static_root(ptr_t p)
   {
-    static int last_root_set = MAX_ROOT_SETS;
-    int i;
+    static size_t last_root_set = MAX_ROOT_SETS;
+    size_t i;
 
 #   if defined(CPPCHECK)
       if (n_root_sets > MAX_ROOT_SETS) ABORT("Bad n_root_sets");
@@ -20075,7 +20027,7 @@ int GC_no_dls = 0;      /* Register dynamic library data segments.      */
         -- really defined in gc_priv.h
 */
 
-  GC_INLINE int rt_hash(ptr_t addr)
+  GC_INLINE size_t rt_hash(ptr_t addr)
   {
     word val = ADDR(addr);
 
@@ -20086,14 +20038,14 @@ int GC_no_dls = 0;      /* Register dynamic library data segments.      */
       val ^= val >> (4*LOG_RT_SIZE);
 #   endif
     val ^= val >> (2*LOG_RT_SIZE);
-    return ((val >> LOG_RT_SIZE) ^ val) & (RT_SIZE-1);
+    return (size_t)((val >> LOG_RT_SIZE) ^ val) & (RT_SIZE-1);
   }
 
   /* Is a range starting at b already in the table? If so, return a     */
   /* pointer to it, else NULL.                                          */
   GC_INNER void * GC_roots_present(ptr_t b)
   {
-    int h;
+    size_t h;
     struct roots *p;
 
     GC_ASSERT(I_HOLD_READER_LOCK());
@@ -20107,7 +20059,7 @@ int GC_no_dls = 0;      /* Register dynamic library data segments.      */
   /* Add the given root structure to the index. */
   GC_INLINE void add_roots_to_index(struct roots *p)
   {
-    int h = rt_hash(p -> r_start);
+    size_t h = rt_hash(p -> r_start);
 
     p -> r_next = GC_root_index[h];
     GC_root_index[h] = p;
@@ -20150,7 +20102,7 @@ void GC_add_roots_inner(ptr_t b, ptr_t e, GC_bool tmp)
       /* virtually guaranteed to be dominated by the time it    */
       /* takes to scan the roots.                               */
       {
-        int i;
+        size_t i;
         struct roots * old = NULL; /* initialized to prevent warning. */
 
         for (i = 0; i < n_root_sets; i++) {
@@ -20221,8 +20173,8 @@ void GC_add_roots_inner(ptr_t b, ptr_t e, GC_bool tmp)
     }
 
 #   ifdef DEBUG_ADD_DEL_ROOTS
-      GC_log_printf("Adding data root section %d: %p .. %p%s\n",
-                    n_root_sets, (void *)b, (void *)e,
+      GC_log_printf("Adding data root section %u: %p .. %p%s\n",
+                    (unsigned)n_root_sets, (void *)b, (void *)e,
                     tmp ? " (temporary)" : "");
 #   endif
     GC_static_roots[n_root_sets].r_start = (ptr_t)b;
@@ -20254,9 +20206,10 @@ GC_API void GC_CALL GC_clear_roots(void)
     UNLOCK();
 }
 
-STATIC void GC_remove_root_at_pos(int i)
+STATIC void GC_remove_root_at_pos(size_t i)
 {
     GC_ASSERT(I_HOLD_LOCK());
+    GC_ASSERT(i < n_root_sets);
 #   ifdef DEBUG_ADD_DEL_ROOTS
       GC_log_printf("Remove data root section at %d: %p .. %p%s\n",
                     i, (void *)GC_static_roots[i].r_start,
@@ -20274,7 +20227,8 @@ STATIC void GC_remove_root_at_pos(int i)
 #ifndef ANY_MSWIN
   STATIC void GC_rebuild_root_index(void)
   {
-    int i;
+    size_t i;
+
     BZERO(GC_root_index, RT_SIZE * sizeof(void *));
     for (i = 0; i < n_root_sets; i++)
         add_roots_to_index(GC_static_roots + i);
@@ -20284,9 +20238,9 @@ STATIC void GC_remove_root_at_pos(int i)
 #if defined(DYNAMIC_LOADING) || defined(ANY_MSWIN) || defined(PCR)
   STATIC void GC_remove_tmp_roots(void)
   {
-    int i;
-#   if !defined(MSWIN32) && !defined(MSWINCE) && !defined(CYGWIN32)
-      int old_n_roots = n_root_sets;
+    size_t i;
+#   ifndef ANY_MSWIN
+      size_t old_n_roots = n_root_sets;
 #   endif
 
     GC_ASSERT(I_HOLD_LOCK());
@@ -20297,7 +20251,7 @@ STATIC void GC_remove_root_at_pos(int i)
             i++;
         }
     }
-#   if !defined(MSWIN32) && !defined(MSWINCE) && !defined(CYGWIN32)
+#   ifndef ANY_MSWIN
       if (n_root_sets < old_n_roots)
         GC_rebuild_root_index();
 #   endif
@@ -20320,9 +20274,9 @@ GC_API void GC_CALL GC_remove_roots(void *b, void *e)
 
 STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
 {
-    int i;
+    size_t i;
 #   ifndef ANY_MSWIN
-      int old_n_roots = n_root_sets;
+      size_t old_n_roots = n_root_sets;
 #   endif
 
     GC_ASSERT(I_HOLD_LOCK());
@@ -20343,7 +20297,7 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
 #ifdef USE_PROC_FOR_LIBRARIES
   /* Exchange the elements of the roots table.  Requires rebuild of     */
   /* the roots index table after the swap.                              */
-  GC_INLINE void swap_static_roots(int i, int j)
+  GC_INLINE void swap_static_roots(size_t i, size_t j)
   {
     ptr_t r_start = GC_static_roots[i].r_start;
     ptr_t r_end = GC_static_roots[i].r_end;
@@ -20363,7 +20317,7 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
   /* this function is called repeatedly by GC_register_map_entries.     */
   GC_INNER void GC_remove_roots_subregion(ptr_t b, ptr_t e)
   {
-    int i;
+    size_t i;
     GC_bool rebuild = FALSE;
 
     GC_ASSERT(I_HOLD_LOCK());
@@ -20374,7 +20328,8 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
       if (GC_static_roots[i].r_tmp) {
         /* The remaining roots are skipped as they are all temporary. */
 #       ifdef GC_ASSERTIONS
-          int j;
+          size_t j;
+
           for (j = i + 1; j < n_root_sets; j++) {
             GC_ASSERT(GC_static_roots[j].r_tmp);
           }
@@ -20394,7 +20349,7 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
           GC_static_roots[i].r_end = b;
           /* No need to rebuild as hash does not use r_end value. */
           if (ADDR_LT(e, r_end)) {
-            int j;
+            size_t j;
 
             if (rebuild) {
               GC_rebuild_root_index();
@@ -20416,9 +20371,9 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
             GC_static_roots[i].r_start = e;
           } else {
             GC_remove_root_at_pos(i);
-            if (i < n_root_sets - 1 && GC_static_roots[i].r_tmp
+            if (i + 1 < n_root_sets && GC_static_roots[i].r_tmp
                 && !GC_static_roots[i + 1].r_tmp) {
-              int j;
+              size_t j;
 
               for (j = i + 2; j < n_root_sets; j++)
                 if (GC_static_roots[j].r_tmp)
@@ -20444,20 +20399,20 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
   GC_API int GC_CALL GC_is_tmp_root(void *p)
   {
 #   ifndef HAS_REAL_READER_LOCK
-      static int last_root_set; /* initialized to 0; no shared access */
+      static size_t last_root_set; /* initialized to 0; no shared access */
 #   elif defined(AO_HAVE_load) || defined(AO_HAVE_store)
       static volatile AO_t last_root_set;
 #   else
-      static volatile int last_root_set;
+      static volatile size_t last_root_set;
                         /* A race is acceptable, it's just a cached index. */
 #   endif
-    int i;
+    size_t i;
     int res;
 
     READER_LOCK();
     /* First try the cached root. */
 #   if defined(AO_HAVE_load) && defined(HAS_REAL_READER_LOCK)
-      i = (int)(unsigned)AO_load(&last_root_set);
+      i = AO_load(&last_root_set);
 #   else
       i = last_root_set;
 #   endif
@@ -20472,7 +20427,7 @@ STATIC void GC_remove_roots_inner(ptr_t b, ptr_t e)
                         GC_static_roots[i].r_end)) {
           res = (int)GC_static_roots[i].r_tmp;
 #         if defined(AO_HAVE_store) && defined(HAS_REAL_READER_LOCK)
-            AO_store(&last_root_set, (AO_t)(unsigned)i);
+            AO_store(&last_root_set, i);
 #         else
             last_root_set = i;
 #         endif
@@ -20652,7 +20607,8 @@ STATIC void GC_push_conditional_with_exclusions(ptr_t bottom, ptr_t top,
 #ifdef IA64
   /* Similar to GC_push_all_stack_sections() but for IA-64 registers store. */
   GC_INNER void GC_push_all_register_sections(ptr_t bs_lo, ptr_t bs_hi,
-                  int eager, struct GC_traced_stack_sect_s *traced_stack_sect)
+                        GC_bool eager,
+                        struct GC_traced_stack_sect_s *traced_stack_sect)
   {
     GC_ASSERT(I_HOLD_LOCK());
     while (traced_stack_sect != NULL) {
@@ -20884,7 +20840,7 @@ STATIC void GC_push_regs_and_stack(ptr_t cold_gc_frame)
 /* that it is OK to miss some register values.                          */
 GC_INNER void GC_push_roots(GC_bool all, ptr_t cold_gc_frame)
 {
-    int i;
+    size_t i;
     unsigned kind;
 
     GC_ASSERT(I_HOLD_LOCK());
@@ -20915,6 +20871,7 @@ GC_INNER void GC_push_roots(GC_bool all, ptr_t cold_gc_frame)
     /* marking the freelists.                                           */
     for (kind = 0; kind < GC_n_kinds; kind++) {
         const void *base = GC_base(GC_obj_kinds[kind].ok_freelist);
+
         if (base != NULL) {
             GC_set_mark_bit(base);
         }
@@ -20980,8 +20937,8 @@ GC_INNER void GC_push_roots(GC_bool all, ptr_t cold_gc_frame)
  */
 
 
-
 #ifdef ENABLE_DISCLAIM
+
 
 #endif
 
@@ -21102,7 +21059,7 @@ GC_INNER GC_bool GC_block_empty(const hdr *hhdr)
     return 0 == hhdr -> hb_n_marks;
 }
 
-STATIC GC_bool GC_block_nearly_full(const hdr *hhdr, word sz)
+STATIC GC_bool GC_block_nearly_full(const hdr *hhdr, size_t sz)
 {
     return hhdr -> hb_n_marks > HBLK_OBJS(sz) * 7 / 8;
 }
@@ -21110,7 +21067,7 @@ STATIC GC_bool GC_block_nearly_full(const hdr *hhdr, word sz)
 /* TODO: This should perhaps again be specialized for USE_MARK_BYTES    */
 /* and USE_MARK_BITS cases.                                             */
 
-GC_INLINE word *GC_clear_block(word *p, word sz, word *pcount)
+GC_INLINE word *GC_clear_block(word *p, size_t sz, word *pcount)
 {
   word *q = (word *)((ptr_t)p + sz);
 
@@ -21139,10 +21096,10 @@ GC_INLINE word *GC_clear_block(word *p, word sz, word *pcount)
  * free list.  Returns the new list.
  * Clears unmarked objects.  Sz is in bytes.
  */
-STATIC ptr_t GC_reclaim_clear(struct hblk *hbp, const hdr *hhdr, word sz,
+STATIC ptr_t GC_reclaim_clear(struct hblk *hbp, const hdr *hhdr, size_t sz,
                               ptr_t list, word *pcount)
 {
-    word bit_no;
+    size_t bit_no;
     ptr_t p, plim;
 
     GC_ASSERT(hhdr == GC_find_header(hbp));
@@ -21171,10 +21128,10 @@ STATIC ptr_t GC_reclaim_clear(struct hblk *hbp, const hdr *hhdr, word sz,
 }
 
 /* The same thing, but don't clear objects: */
-STATIC ptr_t GC_reclaim_uninit(struct hblk *hbp, const hdr *hhdr, word sz,
+STATIC ptr_t GC_reclaim_uninit(struct hblk *hbp, const hdr *hhdr, size_t sz,
                                ptr_t list, word *pcount)
 {
-    word bit_no;
+    size_t bit_no;
     word n_bytes_found = 0;
     ptr_t p, plim;
 
@@ -21202,10 +21159,10 @@ STATIC ptr_t GC_reclaim_uninit(struct hblk *hbp, const hdr *hhdr, word sz,
 #ifdef ENABLE_DISCLAIM
   /* Call reclaim notifier for block's kind on each unmarked object in  */
   /* block, all within a pair of corresponding enter/leave callbacks.   */
-  STATIC ptr_t GC_disclaim_and_reclaim(struct hblk *hbp, hdr *hhdr, word sz,
+  STATIC ptr_t GC_disclaim_and_reclaim(struct hblk *hbp, hdr *hhdr, size_t sz,
                                        ptr_t list, word *pcount)
   {
-    word bit_no;
+    size_t bit_no;
     ptr_t p, plim;
     int (GC_CALLBACK *disclaim)(void *) =
                 GC_obj_kinds[hhdr -> hb_obj_kind].ok_disclaim_proc;
@@ -21236,9 +21193,9 @@ STATIC ptr_t GC_reclaim_uninit(struct hblk *hbp, const hdr *hhdr, word sz,
 #endif /* ENABLE_DISCLAIM */
 
 /* Don't really reclaim objects, just check for unmarked ones: */
-STATIC void GC_reclaim_check(struct hblk *hbp, const hdr *hhdr, word sz)
+STATIC void GC_reclaim_check(struct hblk *hbp, const hdr *hhdr, size_t sz)
 {
-    word bit_no;
+    size_t bit_no;
     ptr_t p, plim;
 
 #   ifndef THREADS
@@ -21301,7 +21258,7 @@ GC_INNER ptr_t GC_reclaim_generic(struct hblk *hbp, hdr *hhdr, size_t sz,
  * If entirely empty blocks are to be completely deallocated, then
  * caller should perform that check.
  */
-STATIC void GC_reclaim_small_nonempty_block(struct hblk *hbp, word sz,
+STATIC void GC_reclaim_small_nonempty_block(struct hblk *hbp, size_t sz,
                                             GC_bool report_if_found)
 {
     hdr *hhdr;
@@ -21315,8 +21272,8 @@ STATIC void GC_reclaim_small_nonempty_block(struct hblk *hbp, word sz,
         struct obj_kind *ok = &GC_obj_kinds[hhdr -> hb_obj_kind];
         void **flh = &(ok -> ok_freelist[BYTES_TO_GRANULES(sz)]);
 
-        *flh = GC_reclaim_generic(hbp, hhdr, sz, ok -> ok_init,
-                                  (ptr_t)(*flh), (word *)&GC_bytes_found);
+        *flh = GC_reclaim_generic(hbp, hhdr, sz, ok -> ok_init, (ptr_t)(*flh),
+                                  (/* unsigned */ word *)&GC_bytes_found);
     }
 }
 
@@ -21324,7 +21281,7 @@ STATIC void GC_reclaim_small_nonempty_block(struct hblk *hbp, word sz,
   STATIC void GC_disclaim_and_reclaim_or_free_small_block(struct hblk *hbp)
   {
     hdr *hhdr;
-    word sz;
+    size_t sz;
     struct obj_kind *ok;
     void **flh;
     void *flh_next;
@@ -21336,8 +21293,8 @@ STATIC void GC_reclaim_small_nonempty_block(struct hblk *hbp, word sz,
     flh = &(ok -> ok_freelist[BYTES_TO_GRANULES(sz)]);
 
     hhdr -> hb_last_reclaimed = (unsigned short)GC_gc_no;
-    flh_next = GC_reclaim_generic(hbp, hhdr, sz, ok -> ok_init,
-                                  (ptr_t)(*flh), (word *)&GC_bytes_found);
+    flh_next = GC_reclaim_generic(hbp, hhdr, sz, ok -> ok_init, (ptr_t)(*flh),
+                                  (/* unsigned */ word *)&GC_bytes_found);
     if (hhdr -> hb_n_marks) {
         *flh = flh_next;
     } else {
@@ -21356,7 +21313,7 @@ STATIC void GC_CALLBACK GC_reclaim_block(struct hblk *hbp,
                                          void *report_if_found)
 {
     hdr *hhdr;
-    word sz;    /* size of objects in current block */
+    size_t sz;  /* size of objects in current block */
     struct obj_kind *ok;
 
     GC_ASSERT(I_HOLD_LOCK());
@@ -21367,7 +21324,7 @@ STATIC void GC_CALLBACK GC_reclaim_block(struct hblk *hbp,
     ok = &GC_obj_kinds[hhdr -> hb_obj_kind];
 #   ifdef AO_HAVE_load
         /* Atomic access is used to avoid racing with GC_realloc.       */
-        sz = (word)AO_load((volatile AO_t *)&(hhdr -> hb_sz));
+        sz = AO_load((volatile AO_t *)&(hhdr -> hb_sz));
 #   else
         /* No race as GC_realloc holds the allocator lock while */
         /* updating hb_sz.                                      */
@@ -21425,7 +21382,7 @@ STATIC void GC_CALLBACK GC_reclaim_block(struct hblk *hbp,
           {
             ptr_t p = hbp -> hb_body;
             ptr_t plim = p + HBLKSIZE - sz;
-            word bit_no;
+            size_t bit_no;
 
             for (bit_no = 0; ADDR_GE(plim, p);
                  bit_no += MARK_BIT_OFFSET(sz), p += sz) {
@@ -21463,121 +21420,118 @@ STATIC void GC_CALLBACK GC_reclaim_block(struct hblk *hbp,
         /* doing it here avoids some silly lock contention in   */
         /* GC_malloc_many.                                      */
         if (IS_PTRFREE_SAFE(hhdr)) {
-          GC_atomic_in_use += sz * hhdr -> hb_n_marks;
+          GC_atomic_in_use += (word)sz * hhdr -> hb_n_marks;
         } else {
-          GC_composite_in_use += sz * hhdr -> hb_n_marks;
+          GC_composite_in_use += (word)sz * hhdr -> hb_n_marks;
         }
     }
 }
 
 #if !defined(NO_DEBUGGING)
-/* Routines to gather and print heap block info         */
-/* intended for debugging.  Otherwise should be called  */
-/* with the allocator lock held.                        */
+  /* Routines to gather and print heap block info intended for      */
+  /* debugging.  Otherwise should be called with the allocator lock */
+  /* held.                                                          */
 
-struct Print_stats
-{
-        size_t number_of_blocks;
-        size_t total_bytes;
-};
+  struct Print_stats
+  {
+    size_t number_of_blocks;
+    size_t total_bytes;
+  };
 
-EXTERN_C_BEGIN /* to avoid "no previous prototype" clang warning */
-unsigned GC_n_set_marks(const hdr *);
-EXTERN_C_END
+  EXTERN_C_BEGIN /* to avoid "no previous prototype" clang warning */
+  unsigned GC_n_set_marks(const hdr *);
+  EXTERN_C_END
 
-#ifdef USE_MARK_BYTES
+# ifdef USE_MARK_BYTES
+    /* Return the number of set mark bits in the given header.      */
+    /* Remains externally visible as used by GNU GCJ currently.     */
+    /* There could be a race between GC_clear_hdr_marks and this    */
+    /* function but the latter is for a debug purpose.              */
+    GC_ATTR_NO_SANITIZE_THREAD
+    unsigned GC_n_set_marks(const hdr *hhdr)
+    {
+      unsigned result = 0;
+      size_t i;
+      size_t offset = MARK_BIT_OFFSET(hhdr -> hb_sz);
+      size_t limit = FINAL_MARK_BIT(hhdr -> hb_sz);
 
-/* Return the number of set mark bits in the given header.      */
-/* Remains externally visible as used by GNU GCJ currently.     */
-/* There could be a race between GC_clear_hdr_marks and this    */
-/* function but the latter is for a debug purpose.              */
-GC_ATTR_NO_SANITIZE_THREAD
-unsigned GC_n_set_marks(const hdr *hhdr)
-{
-    unsigned result = 0;
-    word i;
-    word offset = MARK_BIT_OFFSET(hhdr -> hb_sz);
-    word limit = FINAL_MARK_BIT(hhdr -> hb_sz);
-
-    for (i = 0; i < limit; i += offset) {
+      for (i = 0; i < limit; i += offset) {
         result += hhdr -> hb_marks[i];
+      }
+      GC_ASSERT(hhdr -> hb_marks[limit]); /* the one set past the end */
+      return result;
     }
-    GC_ASSERT(hhdr -> hb_marks[limit]); /* the one set past the end */
-    return result;
-}
 
-#else
+# else
+    /* Number of set bits in a word.  Not performance critical.     */
+    static unsigned count_ones(word v)
+    {
+      unsigned result = 0;
 
-/* Number of set bits in a word.  Not performance critical.     */
-static unsigned count_ones(word n)
-{
-    unsigned result = 0;
+      for (; v > 0; v >>= 1) {
+        if (v & 1) result++;
+      }
+      return result;
+    }
 
-    for (; n > 0; n >>= 1)
-        if (n & 1) result++;
+    unsigned GC_n_set_marks(const hdr *hhdr)
+    {
+      unsigned result = 0;
+      size_t sz = hhdr -> hb_sz;
+      size_t i;
+#     ifdef MARK_BIT_PER_OBJ
+        size_t n_objs = HBLK_OBJS(sz);
+        size_t n_mark_words
+                    = divWORDSZ(n_objs > 0 ? n_objs : 1); /* round down */
 
-    return result;
-}
-
-unsigned GC_n_set_marks(const hdr *hhdr)
-{
-    unsigned result = 0;
-    word sz = hhdr -> hb_sz;
-    word i;
-#   ifdef MARK_BIT_PER_OBJ
-      word n_objs = HBLK_OBJS(sz);
-      word n_mark_words = divWORDSZ(n_objs > 0 ? n_objs : 1); /* round down */
-
-      for (i = 0; i <= n_mark_words; i++) {
+        for (i = 0; i <= n_mark_words; i++) {
           result += count_ones(hhdr -> hb_marks[i]);
-      }
-#   else
+        }
+#     else
 
-      for (i = 0; i < HB_MARKS_SZ; i++) {
+        for (i = 0; i < HB_MARKS_SZ; i++) {
           result += count_ones(hhdr -> hb_marks[i]);
-      }
-#   endif
-    GC_ASSERT(result > 0);
-    result--; /* exclude the one bit set past the end */
-#   ifndef MARK_BIT_PER_OBJ
-      if (IS_UNCOLLECTABLE(hhdr -> hb_obj_kind)) {
-        size_t lg = (size_t)BYTES_TO_GRANULES(sz);
+        }
+#     endif
+      GC_ASSERT(result > 0);
+      result--; /* exclude the one bit set past the end */
+#     ifndef MARK_BIT_PER_OBJ
+        if (IS_UNCOLLECTABLE(hhdr -> hb_obj_kind)) {
+          size_t lg = BYTES_TO_GRANULES(sz);
 
-        /* As mentioned in GC_set_hdr_marks(), all the bits are set     */
-        /* instead of every n-th, thus the result should be adjusted.   */
-        GC_ASSERT((unsigned)lg != 0 && result % lg == 0);
-        result /= (unsigned)lg;
-      }
-#   endif
-    return result;
-}
+          /* As mentioned in GC_set_hdr_marks(), all the bits are set   */
+          /* instead of every n-th, thus the result should be adjusted. */
+          GC_ASSERT((unsigned)lg != 0 && result % lg == 0);
+          result /= (unsigned)lg;
+        }
+#     endif
+      return result;
+    }
+# endif /* !USE_MARK_BYTES  */
 
-#endif /* !USE_MARK_BYTES  */
-
-GC_API unsigned GC_CALL GC_count_set_marks_in_hblk(const void *p) {
+  GC_API unsigned GC_CALL GC_count_set_marks_in_hblk(const void *p) {
     return GC_n_set_marks(HDR(p));
-}
+  }
 
   STATIC void GC_CALLBACK GC_print_block_descr(struct hblk *h, void *raw_ps)
   {
     const hdr *hhdr = HDR(h);
-    word sz = hhdr -> hb_sz;
+    size_t sz = hhdr -> hb_sz;
     struct Print_stats *ps = (struct Print_stats *)raw_ps;
-    unsigned n_marks = GC_n_set_marks(hhdr);
-    unsigned n_objs = (unsigned)HBLK_OBJS(sz);
+    size_t n_marks = (size_t)GC_n_set_marks(hhdr);
+    size_t n_objs = HBLK_OBJS(sz);
 
 #   ifndef PARALLEL_MARK
-        GC_ASSERT(hhdr -> hb_n_marks == n_marks);
+      GC_ASSERT(hhdr -> hb_n_marks == n_marks);
 #   endif
 #   if defined(CPPCHECK)
         GC_noop1_ptr(h);
 #   endif
     GC_ASSERT((n_objs > 0 ? n_objs : 1) >= n_marks);
-    GC_printf("%u,%u,%u,%u\n",
-              hhdr -> hb_obj_kind, (unsigned)sz, n_marks, n_objs);
+    GC_printf("%u,%u,%u,%u\n", hhdr -> hb_obj_kind, (unsigned)sz,
+              (unsigned)n_marks, (unsigned)n_objs);
     ps -> number_of_blocks++;
-    ps -> total_bytes +=
-                (sz + HBLKSIZE-1) & ~(word)(HBLKSIZE-1); /* round up */
+    ps -> total_bytes += (sz + HBLKSIZE-1) & ~(HBLKSIZE-1); /* round up */
   }
 
   void GC_print_block_list(void)
@@ -21593,8 +21547,8 @@ GC_API unsigned GC_CALL GC_count_set_marks_in_hblk(const void *p) {
               (unsigned long)pstats.total_bytes);
   }
 
-GC_API void GC_CALL GC_print_free_list(int k, size_t lg)
-{
+  GC_API void GC_CALL GC_print_free_list(int k, size_t lg)
+  {
     void *flh_next;
     int n;
 
@@ -21602,12 +21556,11 @@ GC_API void GC_CALL GC_print_free_list(int k, size_t lg)
     GC_ASSERT(lg <= MAXOBJGRANULES);
     flh_next = GC_obj_kinds[k].ok_freelist[lg];
     for (n = 0; flh_next != NULL; n++) {
-        GC_printf("Free object in heap block %p [%d]: %p\n",
-                  (void *)HBLKPTR(flh_next), n, flh_next);
-        flh_next = obj_link(flh_next);
+      GC_printf("Free object in heap block %p [%d]: %p\n",
+                (void *)HBLKPTR(flh_next), n, flh_next);
+      flh_next = obj_link(flh_next);
     }
-}
-
+  }
 #endif /* !NO_DEBUGGING */
 
 /*
@@ -21750,7 +21703,7 @@ GC_INNER GC_bool GC_reclaim_all(GC_stop_func stop_func, GC_bool ignore_old)
                     /* It's likely we'll need it this time, too */
                     /* It's been touched recently, so this      */
                     /* shouldn't trigger paging.                */
-                    GC_reclaim_small_nonempty_block(hbp, hhdr->hb_sz, FALSE);
+                    GC_reclaim_small_nonempty_block(hbp, hhdr -> hb_sz, FALSE);
                 }
             }
         }
@@ -21813,7 +21766,7 @@ STATIC void GC_CALLBACK GC_do_enumerate_reachable_objects(struct hblk *hbp,
   ptr_t p, plim;
   const struct enumerate_reachable_s *ped
                         = (struct enumerate_reachable_s *)ed_ptr;
-  size_t sz = (size_t)(hhdr -> hb_sz);
+  size_t sz = hhdr -> hb_sz;
   size_t bit_no;
 
   if (GC_block_empty(hhdr)) return;
@@ -21857,9 +21810,7 @@ GC_API void GC_CALL GC_enumerate_reachable_objects_inner(
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
- *
  */
-
 
 
 /*
@@ -21875,10 +21826,10 @@ GC_API void GC_CALL GC_enumerate_reachable_objects_inner(
  * This is done because the environment field is too small, and the collector
  * must trace the complex_descriptor.
  *
- * Note that descriptors inside objects may appear cleared, if we encounter a
- * false reference to an object on a free list.  In the GC_descr case, this
- * is OK, since a 0 descriptor corresponds to examining no fields.
- * In the complex_descriptor case, we explicitly check for that case.
+ * Note that descriptors inside objects may appear cleared, if we encounter
+ * a false reference to an object on a free list.  In the case of a simple
+ * object, this is OK, since a zero descriptor corresponds to examining no
+ * fields.  In the complex_descriptor case, we explicitly check for that case.
  *
  * MAJOR PARTS OF THIS CODE HAVE NOT BEEN TESTED AT ALL and are not testable,
  * since they are not accessible through the current interface.
@@ -21908,19 +21859,19 @@ STATIC void GC_push_typed_structures_proc(void)
 
 /* Add a multi-word bitmap to GC_ext_descriptors arrays.        */
 /* Returns starting index on success, -1 otherwise.             */
-STATIC signed_word GC_add_ext_descriptor(const word * bm, word nbits)
+STATIC signed_word GC_add_ext_descriptor(const word * bm, size_t nbits)
 {
-    size_t nwords = divWORDSZ(nbits + CPP_WORDSZ-1);
     signed_word result;
     size_t i;
+    size_t nwords = divWORDSZ(nbits + CPP_WORDSZ-1);
 
     LOCK();
     while (EXPECT(GC_avail_descr + nwords >= GC_ed_size, FALSE)) {
         typed_ext_descr_t *newExtD;
         size_t new_size;
-        word ed_size = GC_ed_size;
+        size_t ed_size = GC_ed_size;
 
-        if (ed_size == 0) {
+        if (0 == ed_size) {
             GC_ASSERT(ADDR(&GC_ext_descriptors) % sizeof(word) == 0);
             GC_push_typed_structures = GC_push_typed_structures_proc;
             UNLOCK();
@@ -22001,7 +21952,7 @@ STATIC void GC_init_explicit_typing(void)
 
     GC_bm_table[0] = GC_DS_BITMAP;
     for (i = 1; i < CPP_WORDSZ / 2; i++) {
-      GC_bm_table[i] = (((word)-1) << (CPP_WORDSZ - i)) | GC_DS_BITMAP;
+      GC_bm_table[i] = (GC_WORD_MAX << (CPP_WORDSZ - i)) | GC_DS_BITMAP;
     }
 }
 
@@ -22066,7 +22017,7 @@ GC_API GC_descr GC_CALL GC_make_descriptor(const GC_word * bm, size_t len)
       UNLOCK();
 #   endif
 
-    while (last_set_bit >= 0 && !GC_get_bit(bm, (word)last_set_bit))
+    while (last_set_bit >= 0 && !GC_get_bit(bm, (size_t)last_set_bit))
       last_set_bit--;
     if (last_set_bit < 0) return 0; /* no pointers */
 
@@ -22088,8 +22039,8 @@ GC_API GC_descr GC_CALL GC_make_descriptor(const GC_word * bm, size_t len)
     if (last_set_bit < BITMAP_BITS) {
         signed_word i;
 
-        /* Hopefully the common case.                   */
-        /* Build bitmap descriptor (with bits reversed) */
+        /* Hopefully the common case.  Build the bitmap descriptor  */
+        /* (with the bits reversed).                                */
         d = SIGNB;
         for (i = last_set_bit - 1; i >= 0; i--) {
             d >>= 1;
@@ -22165,9 +22116,9 @@ GC_API GC_ATTR_MALLOC void * GC_CALL
 struct LeafDescriptor {         /* Describes simple array.      */
   word ld_tag;
 # define LEAF_TAG 1
-  word ld_size;                 /* Bytes per element; non-zero, */
+  size_t ld_size;               /* Bytes per element; non-zero, */
                                 /* multiple of ALIGNMENT.       */
-  word ld_nelements;            /* Number of elements.          */
+  size_t ld_nelements;          /* Number of elements.          */
   GC_descr ld_descriptor;       /* A simple length, bitmap,     */
                                 /* or procedure descriptor.     */
 };
@@ -22175,7 +22126,7 @@ struct LeafDescriptor {         /* Describes simple array.      */
 struct ComplexArrayDescriptor {
   word ad_tag;
 # define ARRAY_TAG 2
-  word ad_nelements;
+  size_t ad_nelements;
   union ComplexDescriptor *ad_element_descr;
 };
 
@@ -22192,7 +22143,7 @@ typedef union ComplexDescriptor {
   struct SequenceDescriptor sd;
 } complex_descriptor;
 
-STATIC complex_descriptor *GC_make_leaf_descriptor(word size, word nelements,
+STATIC complex_descriptor *GC_make_leaf_descriptor(word size, size_t nelements,
                                                    GC_descr d)
 {
   complex_descriptor *result = (complex_descriptor *)
@@ -22289,11 +22240,11 @@ STATIC int GC_make_array_descriptor(size_t nelements, size_t size,
     if (COMPLEX == result) {
       beginning = *pcomplex_d;
     } else {
-      beginning = SIMPLE == result ?
-                        GC_make_leaf_descriptor(size, 1, *psimple_d) :
-                        GC_make_leaf_descriptor(pleaf -> ld_size,
-                                                pleaf -> ld_nelements,
-                                                pleaf -> ld_descriptor);
+      beginning = SIMPLE == result
+                    ? GC_make_leaf_descriptor(size, 1, *psimple_d)
+                    : GC_make_leaf_descriptor(pleaf -> ld_size,
+                                              pleaf -> ld_nelements,
+                                              pleaf -> ld_descriptor);
       if (EXPECT(NULL == beginning, FALSE)) return NO_MEM;
     }
     *pcomplex_d = GC_make_sequence_descriptor(beginning, one_element);
@@ -22336,20 +22287,21 @@ GC_API int GC_CALL GC_calloc_prepare_explicitly_typed(
       return 0; /* failure */
     }
 
-    pctd -> descr_type = GC_make_array_descriptor((word)n, (word)lb, d,
-                                &(pctd -> simple_d), &(pctd -> complex_d),
-                                &(pctd -> leaf));
+    pctd -> descr_type = GC_make_array_descriptor(n, lb, d,
+                                                  &(pctd -> simple_d),
+                                                  &(pctd -> complex_d),
+                                                  &(pctd -> leaf));
     switch (pctd -> descr_type) {
     case NO_MEM:
     case SIMPLE:
       pctd -> alloc_lb = (word)lb * n;
       break;
     case LEAF:
-      pctd -> alloc_lb = (word)SIZET_SAT_ADD(lb * n,
+      pctd -> alloc_lb = SIZET_SAT_ADD(lb * n,
                         sizeof(struct LeafDescriptor) + TYPD_EXTRA_BYTES);
       break;
     case COMPLEX:
-      pctd -> alloc_lb = (word)SIZET_SAT_ADD(lb * n, TYPD_EXTRA_BYTES);
+      pctd -> alloc_lb = SIZET_SAT_ADD(lb * n, TYPD_EXTRA_BYTES);
       break;
     }
     return 1; /* success */
@@ -22439,9 +22391,9 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_calloc_explicitly_typed(size_t n,
 /* Return the size of the object described by complex_d.  It would be   */
 /* faster to store this directly, or to compute it as part of           */
 /* GC_push_complex_descriptor, but hopefully it does not matter.        */
-STATIC word GC_descr_obj_size(complex_descriptor *complex_d)
+STATIC size_t GC_descr_obj_size(complex_descriptor *complex_d)
 {
-  switch(complex_d -> ad.ad_tag) {
+  switch (complex_d -> ad.ad_tag) {
   case LEAF_TAG:
     return complex_d -> ld.ld_nelements * complex_d -> ld.ld_size;
   case ARRAY_TAG:
@@ -22463,13 +22415,12 @@ STATIC mse *GC_push_complex_descriptor(word *addr,
                                        mse *msp, mse *msl)
 {
   ptr_t current = (ptr_t)addr;
-  word nelements;
-  word sz;
-  word i;
+  size_t i, nelements;
+  size_t sz;
   GC_descr d;
   complex_descriptor *element_descr;
 
-  switch(complex_d -> ad.ad_tag) {
+  switch (complex_d -> ad.ad_tag) {
   case LEAF_TAG:
     d = complex_d -> ld.ld_descriptor;
     nelements = complex_d -> ld.ld_nelements;
@@ -22522,8 +22473,8 @@ static complex_descriptor *get_complex_descr(word *addr, size_t nwords)
 STATIC mse *GC_CALLBACK GC_array_mark_proc(word *addr, mse *mark_stack_top,
                                            mse *mark_stack_limit, word env)
 {
-  word sz = HDR(addr) -> hb_sz;
-  size_t nwords = (size_t)BYTES_TO_WORDS(sz);
+  size_t sz = HDR(addr) -> hb_sz;
+  size_t nwords = BYTES_TO_WORDS(sz);
   complex_descriptor *complex_d = get_complex_descr(addr, nwords);
   mse *orig_mark_stack_top = mark_stack_top;
   mse *new_mark_stack_top;
@@ -22581,7 +22532,6 @@ STATIC mse *GC_CALLBACK GC_array_mark_proc(word *addr, mse *mark_stack_top,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 #include <limits.h>
@@ -22849,13 +22799,13 @@ STATIC void GC_init_size_map(void)
 # else
     STATIC word GC_stack_last_cleared = 0;
                         /* GC_gc_no value when we last did this.        */
+    STATIC word GC_bytes_allocd_at_reset = 0;
     STATIC ptr_t GC_min_sp = NULL;
                         /* Coolest stack pointer value from which       */
                         /* we've already cleared the stack.             */
     STATIC ptr_t GC_high_water = NULL;
                         /* "hottest" stack pointer value we have seen   */
                         /* recently.  Degrades over time.               */
-    STATIC word GC_bytes_allocd_at_reset = 0;
 #   define DEGRADE_RATE 50
 # endif
 
@@ -22998,7 +22948,7 @@ GC_API void * GC_CALL GC_base(void * p)
     bottom_index *bi;
     hdr *hhdr;
     ptr_t limit;
-    word sz;
+    size_t sz;
 
     if (!EXPECT(GC_is_initialized, TRUE)) return NULL;
     h = HBLKPTR(r);
@@ -23045,7 +22995,7 @@ GC_API size_t GC_CALL GC_size(const void * p)
     if (EXPECT(NULL == p, FALSE)) return 0;
 
     hhdr = HDR(p);
-    return (size_t)(hhdr -> hb_sz);
+    return hhdr -> hb_sz;
 }
 
 /* These getters remain unsynchronized for compatibility (since some    */
@@ -23899,6 +23849,7 @@ GC_API void GC_CALL GC_init(void)
       }
 #   endif
 #   if !defined(CPPCHECK)
+      GC_STATIC_ASSERT(sizeof(size_t) <= sizeof(ptrdiff_t));
       GC_STATIC_ASSERT(sizeof(ptrdiff_t) == sizeof(word));
       GC_STATIC_ASSERT(sizeof(signed_word) == sizeof(word));
       GC_STATIC_ASSERT(sizeof(ptr_t) == sizeof(GC_uintptr_t));
@@ -23974,7 +23925,7 @@ GC_API void GC_CALL GC_init(void)
     }
     if (GC_all_interior_pointers)
       GC_initialize_offsets();
-    GC_register_displacement_inner(0L);
+    GC_register_displacement_inner(0);
 #   if defined(GC_LINUX_THREADS) && defined(REDIRECT_MALLOC)
       if (!GC_all_interior_pointers) {
         /* TLS ABI uses pointer-sized offsets for dtv. */
@@ -24722,7 +24673,7 @@ GC_API void ** GC_CALL GC_new_free_list_inner(void)
     GC_ASSERT(I_HOLD_LOCK());
     result = GC_INTERNAL_MALLOC((MAXOBJGRANULES+1) * sizeof(ptr_t), PTRFREE);
     if (NULL == result) ABORT("Failed to allocate free list for new kind");
-    BZERO(result, (MAXOBJGRANULES+1)*sizeof(ptr_t));
+    BZERO(result, (MAXOBJGRANULES+1) * sizeof(ptr_t));
     return (void **)result;
 }
 
@@ -24873,17 +24824,19 @@ GC_API void * GC_CALL GC_call_with_stack_base(GC_stack_base_func fn, void *arg)
 
 #ifndef THREADS
 
-GC_INNER ptr_t GC_blocked_sp = NULL;
+  GC_INNER ptr_t GC_blocked_sp = NULL;
         /* NULL value means we are not inside GC_do_blocking() call. */
+
 # ifdef IA64
     STATIC ptr_t GC_blocked_register_sp = NULL;
 # endif
 
-GC_INNER struct GC_traced_stack_sect_s *GC_traced_stack_sect = NULL;
+  GC_INNER struct GC_traced_stack_sect_s *GC_traced_stack_sect = NULL;
 
-/* This is nearly the same as in pthread_support.c.     */
-GC_API void * GC_CALL GC_call_with_gc_active(GC_fn_type fn, void *client_data)
-{
+  /* This is nearly the same as in pthread_support.c.   */
+  GC_API void * GC_CALL GC_call_with_gc_active(GC_fn_type fn,
+                                               void *client_data)
+  {
     struct GC_traced_stack_sect_s stacksect;
     GC_ASSERT(GC_is_initialized);
 
@@ -24930,11 +24883,11 @@ GC_API void * GC_CALL GC_call_with_gc_active(GC_fn_type fn, void *client_data)
     GC_blocked_sp = stacksect.saved_stack_ptr;
 
     return client_data; /* result */
-}
+  }
 
-/* This is nearly the same as in pthread_support.c.     */
-STATIC void GC_do_blocking_inner(ptr_t data, void *context)
-{
+  /* This is nearly the same as in pthread_support.c.   */
+  STATIC void GC_do_blocking_inner(ptr_t data, void *context)
+  {
     struct blocking_data * d = (struct blocking_data *)data;
 
     UNUSED_ARG(context);
@@ -24960,7 +24913,7 @@ STATIC void GC_do_blocking_inner(ptr_t data, void *context)
       GC_noop1_ptr(GC_blocked_sp);
 #   endif
     GC_blocked_sp = NULL;
-}
+  }
 
   GC_API void GC_CALL GC_set_stackbottom(void *gc_thread_handle,
                                          const struct GC_stack_base *sb)
@@ -25045,7 +24998,7 @@ static void GC_CALLBACK block_add_size(struct hblk *h, void *pbytes)
 {
   const hdr *hhdr = HDR(h);
 
-  *(word *)pbytes += (hhdr -> hb_sz + HBLKSIZE-1) & ~(word)(HBLKSIZE-1);
+  *(word *)pbytes += ((word)hhdr->hb_sz + HBLKSIZE-1) & ~(word)(HBLKSIZE-1);
 # if defined(CPPCHECK)
     GC_noop1_ptr(h);
 # endif
@@ -25336,7 +25289,6 @@ GC_API size_t GC_CALL GC_get_hblk_size(void)
  */
 
 
-
 #if (defined(MPROTECT_VDB) && !defined(MSWIN32) && !defined(MSWINCE)) \
     || defined(GC_SOLARIS_THREADS) || defined(OPENBSD)
 # include <signal.h>
@@ -25367,7 +25319,6 @@ GC_API size_t GC_CALL GC_get_hblk_size(void)
 
 
 #if !defined(GC_AMIGA_DEF) && !defined(GC_AMIGA_SB) && !defined(GC_AMIGA_DS) && !defined(GC_AMIGA_AM)
-
 # include <stdio.h>
 # include <signal.h>
 # define GC_AMIGA_DEF
@@ -25941,6 +25892,8 @@ void *GC_amiga_realloc(void *old_object,size_t new_size_in_bytes){
 #ifdef PCR
 
 
+
+
 # include "mm/PCR_MM.h"
 #endif
 
@@ -26008,6 +25961,7 @@ void *GC_amiga_realloc(void *old_object,size_t new_size_in_bytes){
   {
     int f = open("/proc/self/maps", O_RDONLY);
     size_t result;
+
     if (f < 0) return 0; /* treat missing file as empty */
     result = GC_get_file_len(f);
     close(f);
@@ -26738,7 +26692,6 @@ GC_INNER void GC_setpagesize(void)
 
 #ifdef AMIGA
 #   define GC_AMIGA_SB
-
 #   undef GC_AMIGA_SB
 #   define GET_MAIN_STACKBASE_SPECIAL
 #endif /* AMIGA */
@@ -27448,8 +27401,8 @@ GC_INNER void GC_setpagesize(void)
 
 #ifdef OS2
 
-void GC_register_data_segments(void)
-{
+  void GC_register_data_segments(void)
+  {
     PTIB ptib;
     PPIB ppib;
     HMODULE module_handle;
@@ -27525,7 +27478,7 @@ void GC_register_data_segments(void)
                          (ptr_t)(O32_BASE(seg)+O32_SIZE(seg)), FALSE);
     }
     (void)fclose(myexefile);
-}
+  }
 
 #else /* !OS2 */
 
@@ -27629,58 +27582,60 @@ void GC_register_data_segments(void)
 #   define GetWriteWatch_alloc_flag 0
 # endif /* !GWW_VDB */
 
-# ifdef ANY_MSWIN
-
 # ifdef MSWIN32
-  /* Unfortunately, we have to handle win32s very differently from NT,  */
-  /* Since VirtualQuery has very different semantics.  In particular,   */
-  /* under win32s a VirtualQuery call on an unmapped page returns an    */
-  /* invalid result.  Under NT, GC_register_data_segments is a no-op    */
-  /* and all real work is done by GC_register_dynamic_libraries.  Under */
-  /* win32s, we cannot find the data segments associated with dll's.    */
-  /* We register the main data segment here.                            */
-  GC_INNER GC_bool GC_no_win32_dlls = FALSE;
-        /* This used to be set for gcc, to avoid dealing with           */
-        /* the structured exception handling issues.  But we now have   */
-        /* assembly code to do that right.                              */
+    /* Unfortunately, we have to handle win32s very differently from    */
+    /* NT, since VirtualQuery has very different semantics.  In         */
+    /* particular, under win32s a VirtualQuery call on an unmapped page */
+    /* returns an invalid result.  Under NT, GC_register_data_segments  */
+    /* is a no-op and all real work is done by                          */
+    /* GC_register_dynamic_libraries().  Under win32s, we cannot find   */
+    /* the data segments associated with dll's.  We register the main   */
+    /* data segment here.                                               */
 
-  GC_INNER GC_bool GC_wnt = FALSE;
-         /* This is a Windows NT derivative, i.e. NT, Win2K, XP or later. */
+    GC_INNER GC_bool GC_no_win32_dlls = FALSE;
+                        /* This used to be set for gcc, to avoid        */
+                        /* dealing with the structured exception        */
+                        /* handling issues.  But we now have assembly   */
+                        /* code to do that right.                       */
 
-  GC_INNER void GC_init_win32(void)
-  {
-#   if defined(_WIN64) || (defined(_MSC_VER) && _MSC_VER >= 1800)
-      /* MS Visual Studio 2013 deprecates GetVersion, but on the other  */
-      /* hand it cannot be used to target pre-Win2K.                    */
-      GC_wnt = TRUE;
-#   else
-      /* Set GC_wnt.  If we're running under win32s, assume that no     */
-      /* DLLs will be loaded.  I doubt anyone still runs win32s, but... */
-      DWORD v = GetVersion();
+    GC_INNER GC_bool GC_wnt = FALSE;
+                        /* This is a Windows NT derivative, i.e. NT,    */
+                        /* Win2K, XP or later.                          */
 
-      GC_wnt = !(v & (DWORD)0x80000000UL);
-      GC_no_win32_dlls |= ((!GC_wnt) && (v & 0xff) <= 3);
-#   endif
-#   ifdef USE_MUNMAP
-      if (GC_no_win32_dlls) {
-        /* Turn off unmapping for safety (since may not work well with  */
-        /* GlobalAlloc).                                                */
-        GC_unmap_threshold = 0;
-      }
-#   endif
-  }
+    GC_INNER void GC_init_win32(void)
+    {
+#     if defined(_WIN64) || (defined(_MSC_VER) && _MSC_VER >= 1800)
+        /* MS Visual Studio 2013 deprecates GetVersion, but on the      */
+        /* other hand it cannot be used to target pre-Win2K.            */
+        GC_wnt = TRUE;
+#     else
+        /* Set GC_wnt.  If we're running under win32s, assume that no     */
+        /* DLLs will be loaded.  I doubt anyone still runs win32s, but... */
+        DWORD v = GetVersion();
 
-  /* Return the smallest address a such that VirtualQuery               */
-  /* returns correct results for all addresses between a and start.     */
-  /* Assumes VirtualQuery returns correct information for start.        */
-  STATIC ptr_t GC_least_described_address(ptr_t start)
-  {
-    MEMORY_BASIC_INFORMATION buf;
-    ptr_t limit = (ptr_t)GC_sysinfo.lpMinimumApplicationAddress;
-    ptr_t p = PTR_ALIGN_DOWN(start, GC_page_size);
+        GC_wnt = !(v & (DWORD)0x80000000UL);
+        GC_no_win32_dlls |= ((!GC_wnt) && (v & 0xff) <= 3);
+#     endif
+#     ifdef USE_MUNMAP
+        if (GC_no_win32_dlls) {
+          /* Turn off unmapping for safety (since may not work well     */
+          /* with GlobalAlloc).                                         */
+          GC_unmap_threshold = 0;
+        }
+#     endif
+    }
 
-    GC_ASSERT(GC_page_size != 0);
-    for (;;) {
+    /* Return the smallest address p such that VirtualQuery returns     */
+    /* correct results for all addresses between p and start.  Assumes  */
+    /* VirtualQuery() returns correct information for start.            */
+    STATIC ptr_t GC_least_described_address(ptr_t start)
+    {
+      ptr_t limit = (ptr_t)GC_sysinfo.lpMinimumApplicationAddress;
+      ptr_t p = PTR_ALIGN_DOWN(start, GC_page_size);
+
+      GC_ASSERT(GC_page_size != 0);
+      for (;;) {
+        MEMORY_BASIC_INFORMATION buf;
         size_t result;
         ptr_t q = p - GC_page_size;
 
@@ -27688,160 +27643,165 @@ void GC_register_data_segments(void)
         result = VirtualQuery((LPVOID)q, &buf, sizeof(buf));
         if (result != sizeof(buf) || 0 == buf.AllocationBase) break;
         p = (ptr_t)buf.AllocationBase;
+      }
+      return p;
     }
-    return p;
-  }
-# endif /* MSWIN32 */
 
-# if defined(USE_WINALLOC) && !defined(REDIRECT_MALLOC)
-  /* We maintain a linked list of AllocationBase values that we know    */
-  /* correspond to malloc heap sections.  Currently this is only called */
-  /* during a GC.  But there is some hope that for long running         */
-  /* programs we will eventually see most heap sections.                */
-
-  /* In the long run, it would be more reliable to occasionally walk    */
-  /* the malloc heap with HeapWalk on the default heap.  But that       */
-  /* apparently works only for NT-based Windows.                        */
-
-  STATIC size_t GC_max_root_size = 100000; /* Appr. largest root size.  */
-
-  /* In the long run, a better data structure would also be nice ...    */
-  STATIC struct GC_malloc_heap_list {
-    void * allocation_base;
-    struct GC_malloc_heap_list *next;
-  } *GC_malloc_heap_l = 0;
-
-  /* Is p the base of one of the malloc heap sections we already know   */
-  /* about?                                                             */
-  STATIC GC_bool GC_is_malloc_heap_base(const void *p)
-  {
-    struct GC_malloc_heap_list *q;
-
-    for (q = GC_malloc_heap_l; q != NULL; q = q -> next) {
-      if (q -> allocation_base == p) return TRUE;
-    }
-    return FALSE;
-  }
-
-  STATIC void *GC_get_allocation_base(void *p)
-  {
-    MEMORY_BASIC_INFORMATION buf;
-    size_t result = VirtualQuery(p, &buf, sizeof(buf));
-    if (result != sizeof(buf)) {
-      ABORT("Weird VirtualQuery result");
-    }
-    return buf.AllocationBase;
-  }
-
-  GC_INNER void GC_add_current_malloc_heap(void)
-  {
-    struct GC_malloc_heap_list *new_l = (struct GC_malloc_heap_list *)
-                 malloc(sizeof(struct GC_malloc_heap_list));
-    void *candidate;
-
-    if (NULL == new_l) return;
-    new_l -> allocation_base = NULL;
-                        /* to suppress maybe-uninitialized gcc warning  */
-
-    candidate = GC_get_allocation_base(new_l);
-    if (GC_is_malloc_heap_base(candidate)) {
-      /* Try a little harder to find malloc heap.                       */
-        size_t req_size = 10000;
-        do {
-          void *p = malloc(req_size);
-          if (0 == p) {
-            free(new_l);
-            return;
-          }
-          candidate = GC_get_allocation_base(p);
-          free(p);
-          req_size *= 2;
-        } while (GC_is_malloc_heap_base(candidate)
-                 && req_size < GC_max_root_size/10 && req_size < 500000);
-        if (GC_is_malloc_heap_base(candidate)) {
-          free(new_l);
-          return;
-        }
-    }
-    GC_COND_LOG_PRINTF("Found new system malloc AllocationBase at %p\n",
-                       candidate);
-    new_l -> allocation_base = candidate;
-    new_l -> next = GC_malloc_heap_l;
-    GC_malloc_heap_l = new_l;
-  }
-
-  /* Free all the linked list nodes. Could be invoked at process exit   */
-  /* to avoid memory leak complains of a dynamic code analysis tool.    */
-  STATIC void GC_free_malloc_heap_list(void)
-  {
-    struct GC_malloc_heap_list *q = GC_malloc_heap_l;
-
-    GC_malloc_heap_l = NULL;
-    while (q != NULL) {
-      struct GC_malloc_heap_list *next = q -> next;
-      free(q);
-      q = next;
-    }
-  }
-# endif /* USE_WINALLOC && !REDIRECT_MALLOC */
-
-  /* Is p the start of either the malloc heap, or of one of our */
-  /* heap sections?                                             */
-  GC_INNER GC_bool GC_is_heap_base(const void *p)
-  {
-    int i;
-
-#   if defined(USE_WINALLOC) && !defined(REDIRECT_MALLOC)
-      if (GC_root_size > GC_max_root_size)
-        GC_max_root_size = GC_root_size;
-      if (GC_is_malloc_heap_base(p))
-        return TRUE;
-#   endif
-    for (i = 0; i < (int)GC_n_heap_bases; i++) {
-      if (GC_heap_bases[i] == p) return TRUE;
-    }
-    return FALSE;
-  }
-
-#ifdef MSWIN32
-  STATIC void GC_register_root_section(ptr_t static_root)
-  {
-      MEMORY_BASIC_INFORMATION buf;
+    STATIC void GC_register_root_section(ptr_t static_root)
+    {
       ptr_t p, base, limit;
 
       GC_ASSERT(I_HOLD_LOCK());
       if (!GC_no_win32_dlls) return;
-      p = base = limit = GC_least_described_address(static_root);
-      while (ADDR_LT(p, (ptr_t)GC_sysinfo.lpMaximumApplicationAddress)) {
-        size_t result = VirtualQuery((LPVOID)p, &buf, sizeof(buf));
-        DWORD protect;
 
-        if (result != sizeof(buf) || buf.AllocationBase == 0
+      p = GC_least_described_address(static_root);
+      base = limit = p;
+      while (ADDR_LT(p, (ptr_t)GC_sysinfo.lpMaximumApplicationAddress)) {
+        MEMORY_BASIC_INFORMATION buf;
+        size_t result = VirtualQuery((LPVOID)p, &buf, sizeof(buf));
+
+        if (result != sizeof(buf) || 0 == buf.AllocationBase
             || GC_is_heap_base(buf.AllocationBase)) break;
         if (ADDR(p) > GC_WORD_MAX - buf.RegionSize) break; /* overflow */
 
-        protect = buf.Protect;
-        if (buf.State == MEM_COMMIT
-            && is_writable(protect)) {
-            if (p != limit) {
-                if (base != limit) GC_add_roots_inner(base, limit, FALSE);
-                base = p;
-            }
-            limit = p + buf.RegionSize;
+        if (buf.State == MEM_COMMIT && is_writable(buf.Protect)) {
+          if (p != limit) {
+            if (base != limit) GC_add_roots_inner(base, limit, FALSE);
+            base = p;
+          }
+          limit = p + buf.RegionSize;
         }
         p += buf.RegionSize;
       }
       if (base != limit) GC_add_roots_inner(base, limit, FALSE);
-  }
-#endif /* MSWIN32 */
+    }
+# endif /* MSWIN32 */
 
-  void GC_register_data_segments(void)
-  {
-#   ifdef MSWIN32
-      GC_register_root_section((ptr_t)&GC_pages_executable);
-                            /* any other GC global variable would fit too. */
-#   endif
-  }
+# ifdef ANY_MSWIN
+
+#   if defined(USE_WINALLOC) && !defined(REDIRECT_MALLOC)
+      /* We maintain a linked list of AllocationBase values that we */
+      /* know correspond to malloc heap sections.  Currently this   */
+      /* is only called during a GC.  But there is some hope that   */
+      /* for long running programs we will eventually see most heap */
+      /* sections.                                                  */
+
+      /* In the long run, it would be more reliable to occasionally */
+      /* walk the malloc heap with HeapWalk on the default heap.    */
+      /* But that apparently works only for NT-based Windows.       */
+
+      STATIC size_t GC_max_root_size = 100000; /* approx. largest root size */
+
+      /* In the long run, a better data structure would also be nice... */
+      STATIC struct GC_malloc_heap_list {
+        void * allocation_base;
+        struct GC_malloc_heap_list *next;
+      } *GC_malloc_heap_l = 0;
+
+      /* Is p the base of one of the malloc heap sections we already    */
+      /* know about?                                                    */
+      STATIC GC_bool GC_is_malloc_heap_base(const void *p)
+      {
+        struct GC_malloc_heap_list *q;
+
+        for (q = GC_malloc_heap_l; q != NULL; q = q -> next) {
+          if (q -> allocation_base == p) return TRUE;
+        }
+        return FALSE;
+      }
+
+      STATIC void *GC_get_allocation_base(void *p)
+      {
+        MEMORY_BASIC_INFORMATION buf;
+        size_t result = VirtualQuery(p, &buf, sizeof(buf));
+
+        if (result != sizeof(buf)) {
+          ABORT("Weird VirtualQuery result");
+        }
+        return buf.AllocationBase;
+      }
+
+      GC_INNER void GC_add_current_malloc_heap(void)
+      {
+        struct GC_malloc_heap_list *new_l = (struct GC_malloc_heap_list *)
+                                malloc(sizeof(struct GC_malloc_heap_list));
+        void *candidate;
+
+        if (NULL == new_l) return;
+        new_l -> allocation_base = NULL;
+                        /* to suppress maybe-uninitialized gcc warning */
+
+        candidate = GC_get_allocation_base(new_l);
+        if (GC_is_malloc_heap_base(candidate)) {
+          /* Try a little harder to find malloc heap.   */
+          size_t req_size = 10000;
+
+          do {
+            void *p = malloc(req_size);
+
+            if (NULL == p) {
+              free(new_l);
+              return;
+            }
+            candidate = GC_get_allocation_base(p);
+            free(p);
+            req_size *= 2;
+          } while (GC_is_malloc_heap_base(candidate)
+                   && req_size < GC_max_root_size / 10 && req_size < 500000);
+          if (GC_is_malloc_heap_base(candidate)) {
+            free(new_l);
+            return;
+          }
+        }
+        GC_COND_LOG_PRINTF("Found new system malloc AllocationBase at %p\n",
+                           candidate);
+        new_l -> allocation_base = candidate;
+        new_l -> next = GC_malloc_heap_l;
+        GC_malloc_heap_l = new_l;
+      }
+
+      /* Free all the linked list nodes.  Could be invoked at process   */
+      /* exit to avoid memory leak complains of a dynamic code analysis */
+      /* tool.                                                          */
+      STATIC void GC_free_malloc_heap_list(void)
+      {
+        struct GC_malloc_heap_list *q = GC_malloc_heap_l;
+
+        GC_malloc_heap_l = NULL;
+        while (q != NULL) {
+          struct GC_malloc_heap_list *next = q -> next;
+
+          free(q);
+          q = next;
+        }
+      }
+#   endif /* USE_WINALLOC && !REDIRECT_MALLOC */
+
+    /* Is p the start of either the malloc heap, or of one of our   */
+    /* heap sections?                                               */
+    GC_INNER GC_bool GC_is_heap_base(const void *p)
+    {
+      size_t i;
+
+#     if defined(USE_WINALLOC) && !defined(REDIRECT_MALLOC)
+        if (GC_root_size > GC_max_root_size)
+          GC_max_root_size = GC_root_size;
+        if (GC_is_malloc_heap_base(p))
+          return TRUE;
+#     endif
+      for (i = 0; i < GC_n_heap_bases; i++) {
+        if (GC_heap_bases[i] == p) return TRUE;
+      }
+      return FALSE;
+    }
+
+    void GC_register_data_segments(void)
+    {
+#     ifdef MSWIN32
+        GC_register_root_section((ptr_t)&GC_pages_executable);
+                            /* any other GC global variable would fit too */
+#     endif
+    }
 
 # else /* !ANY_MSWIN */
 
@@ -27887,142 +27847,141 @@ void GC_register_data_segments(void)
       }
 #   endif /* SVR4 || AIX || DGUX */
 
-#ifdef DATASTART_USES_BSDGETDATASTART
-/* It's unclear whether this should be identical to the above, or       */
-/* whether it should apply to non-x86 architectures.                    */
-/* For now we don't assume that there is always an empty page after     */
-/* etext.  But in some cases there actually seems to be slightly more.  */
-/* This also deals with holes between read-only data and writable data. */
-  GC_INNER ptr_t GC_FreeBSDGetDataStart(size_t max_page_size,
-                                        ptr_t etext_addr)
-  {
-    volatile ptr_t result = PTR_ALIGN_UP(etext_addr, sizeof(ptr_t));
-    volatile ptr_t next_page = PTR_ALIGN_UP(etext_addr, max_page_size);
-
-    GC_ASSERT(max_page_size % sizeof(ptr_t) == 0);
-    GC_setup_temporary_fault_handler();
-    if (SETJMP(GC_jmp_buf) == 0) {
-        /* Try reading at the address.                          */
-        /* This should happen before there is another thread.   */
-        for (; ADDR_LT(next_page, DATAEND); next_page += max_page_size)
-            GC_noop1((word)(*(volatile unsigned char *)next_page));
-        GC_reset_fault_handler();
-    } else {
-        GC_reset_fault_handler();
-        /* As above, we go to plan B.   */
-        result = (ptr_t)GC_find_limit(DATAEND, FALSE);
-    }
-    return result;
-  }
-#endif /* DATASTART_USES_BSDGETDATASTART */
-
-#ifdef AMIGA
-
-# define GC_AMIGA_DS
-
-# undef GC_AMIGA_DS
-
-#elif defined(OPENBSD)
-
-/* Depending on arch alignment, there can be multiple holes     */
-/* between DATASTART and DATAEND.  Scan in DATASTART .. DATAEND */
-/* and register each region.                                    */
-void GC_register_data_segments(void)
-{
-  ptr_t region_start = DATASTART;
-
-  GC_ASSERT(I_HOLD_LOCK());
-  if (ADDR(region_start) - 1U >= ADDR(DATAEND))
-    ABORT_ARG2("Wrong DATASTART/END pair",
-               ": %p .. %p", (void *)region_start, (void *)DATAEND);
-  for (;;) {
-    ptr_t region_end = GC_find_limit_with_bound(region_start, TRUE, DATAEND);
-
-    GC_add_roots_inner(region_start, region_end, FALSE);
-    if (ADDR_GE(region_end, DATAEND))
-      break;
-    region_start = GC_skip_hole_openbsd(region_end, DATAEND);
-  }
-}
-
-# else /* !AMIGA && !OPENBSD */
-
-# if !defined(PCR) && !defined(MACOS) && defined(REDIRECT_MALLOC) \
-     && defined(GC_SOLARIS_THREADS)
-    EXTERN_C_BEGIN
-    extern caddr_t sbrk(int);
-    EXTERN_C_END
-# endif
-
-  void GC_register_data_segments(void)
-  {
-    GC_ASSERT(I_HOLD_LOCK());
-#   if !defined(DYNAMIC_LOADING) && defined(GC_DONT_REGISTER_MAIN_STATIC_DATA)
-      /* Avoid even referencing DATASTART and DATAEND as they are       */
-      /* unnecessary and cause linker errors when bitcode is enabled.   */
-      /* GC_register_data_segments() is not called anyway.              */
-#   elif defined(PCR) || (defined(DYNAMIC_LOADING) && defined(DARWIN))
-      /* No-op.  GC_register_main_static_data() always returns false.   */
-#   elif defined(MACOS)
+#   ifdef DATASTART_USES_BSDGETDATASTART
+      /* It's unclear whether this should be identical to the above, or */
+      /* whether it should apply to non-x86 architectures.  For now we  */
+      /* do not assume that there is always an empty page after etext.  */
+      /* But in some cases there actually seems to be slightly more.    */
+      /* It also deals with holes between read-only and writable data.  */
+      GC_INNER ptr_t GC_FreeBSDGetDataStart(size_t max_page_size,
+                                            ptr_t etext_addr)
       {
-#       if defined(THINK_C)
-          extern void *GC_MacGetDataStart(void);
+        volatile ptr_t result = PTR_ALIGN_UP(etext_addr, sizeof(ptr_t));
+        volatile ptr_t next_page = PTR_ALIGN_UP(etext_addr, max_page_size);
 
-          /* Globals begin above stack and end at a5.   */
-          GC_add_roots_inner((ptr_t)GC_MacGetDataStart(),
-                             (ptr_t)LMGetCurrentA5(), FALSE);
-#       elif defined(__MWERKS__) && defined(M68K)
-          extern void *GC_MacGetDataStart(void);
-#         if __option(far_data)
-            extern void *GC_MacGetDataEnd(void);
-
-            /* Handle Far Globals (CW Pro 3) located after the QD globals. */
-            GC_add_roots_inner((ptr_t)GC_MacGetDataStart(),
-                               (ptr_t)GC_MacGetDataEnd(), FALSE);
-#         else
-            GC_add_roots_inner((ptr_t)GC_MacGetDataStart(),
-                               (ptr_t)LMGetCurrentA5(), FALSE);
-#         endif
-#       elif defined(__MWERKS__) && defined(POWERPC)
-          extern char __data_start__[], __data_end__[];
-
-          GC_add_roots_inner((ptr_t)&__data_start__,
-                             (ptr_t)&__data_end__, FALSE);
-#       endif
+        GC_ASSERT(max_page_size % sizeof(ptr_t) == 0);
+        GC_setup_temporary_fault_handler();
+        if (SETJMP(GC_jmp_buf) == 0) {
+          /* Try reading at the address.                        */
+          /* This should happen before there is another thread. */
+          for (; ADDR_LT(next_page, DATAEND); next_page += max_page_size)
+            GC_noop1((word)(*(volatile unsigned char *)next_page));
+          GC_reset_fault_handler();
+        } else {
+          GC_reset_fault_handler();
+          /* As above, we go to plan B. */
+          result = (ptr_t)GC_find_limit(DATAEND, FALSE);
+        }
+        return result;
       }
-#   elif defined(REDIRECT_MALLOC) && defined(GC_SOLARIS_THREADS)
-        /* As of Solaris 2.3, the Solaris threads implementation        */
-        /* allocates the data structure for the initial thread with     */
-        /* sbrk at process startup.  It needs to be scanned, so that    */
-        /* we don't lose some malloc allocated data structures          */
-        /* hanging from it.  We're on thin ice here ...                 */
-        GC_ASSERT(DATASTART);
-        {
-          ptr_t p = (ptr_t)sbrk(0);
+#   endif /* DATASTART_USES_BSDGETDATASTART */
 
-          if (ADDR_LT(DATASTART, p))
-            GC_add_roots_inner(DATASTART, p, FALSE);
-        }
-#   else
-        if (ADDR(DATASTART) - 1U >= ADDR(DATAEND)) {
-                                /* Subtract one to check also for NULL  */
-                                /* without a compiler warning.          */
+#   ifdef AMIGA
+#     define GC_AMIGA_DS
+#     undef GC_AMIGA_DS
+
+#   elif defined(OPENBSD)
+      /* Depending on arch alignment, there can be multiple holes       */
+      /* between DATASTART and DATAEND.  Scan in DATASTART .. DATAEND   */
+      /* and register each region.                                      */
+      void GC_register_data_segments(void)
+      {
+        ptr_t region_start = DATASTART;
+
+        GC_ASSERT(I_HOLD_LOCK());
+        if (ADDR(region_start) - 1U >= ADDR(DATAEND))
           ABORT_ARG2("Wrong DATASTART/END pair",
-                     ": %p .. %p", (void *)DATASTART, (void *)DATAEND);
-        }
-        GC_add_roots_inner(DATASTART, DATAEND, FALSE);
-#       ifdef GC_HAVE_DATAREGION2
-          if (ADDR(DATASTART2) - 1U >= ADDR(DATAEND2))
-            ABORT_ARG2("Wrong DATASTART/END2 pair",
-                       ": %p .. %p", (void *)DATASTART2, (void *)DATAEND2);
-          GC_add_roots_inner(DATASTART2, DATAEND2, FALSE);
-#       endif
-#   endif
-    /* Dynamic libraries are added at every collection, since they may  */
-    /* change.                                                          */
-  }
+                     ": %p .. %p", (void *)region_start, (void *)DATAEND);
+        for (;;) {
+          ptr_t region_end = GC_find_limit_with_bound(region_start, TRUE,
+                                                      DATAEND);
 
-# endif /* !AMIGA && !OPENBSD */
+          GC_add_roots_inner(region_start, region_end, FALSE);
+          if (ADDR_GE(region_end, DATAEND))
+            break;
+          region_start = GC_skip_hole_openbsd(region_end, DATAEND);
+        }
+      }
+
+#   else /* !AMIGA && !OPENBSD */
+#     if !defined(PCR) && !defined(MACOS) && defined(REDIRECT_MALLOC) \
+         && defined(GC_SOLARIS_THREADS)
+        EXTERN_C_BEGIN
+        extern caddr_t sbrk(int);
+        EXTERN_C_END
+#     endif
+
+      void GC_register_data_segments(void)
+      {
+        GC_ASSERT(I_HOLD_LOCK());
+#       if !defined(DYNAMIC_LOADING) \
+           && defined(GC_DONT_REGISTER_MAIN_STATIC_DATA)
+          /* Avoid even referencing DATASTART and DATAEND as they are   */
+          /* unnecessary and cause linker errors when bitcode is        */
+          /* enabled.  GC_register_data_segments is not called anyway.  */
+#       elif defined(PCR) || (defined(DYNAMIC_LOADING) && defined(DARWIN))
+          /* No-op.  GC_register_main_static_data() always returns false. */
+#       elif defined(MACOS)
+          {
+#           if defined(THINK_C)
+              extern void *GC_MacGetDataStart(void);
+
+              /* Globals begin above stack and end at a5.   */
+              GC_add_roots_inner((ptr_t)GC_MacGetDataStart(),
+                                 (ptr_t)LMGetCurrentA5(), FALSE);
+#           elif defined(__MWERKS__) && defined(M68K)
+              extern void *GC_MacGetDataStart(void);
+#             if __option(far_data)
+                extern void *GC_MacGetDataEnd(void);
+
+                /* Handle Far Globals (CW Pro 3) located after  */
+                /* the QD globals.                              */
+                GC_add_roots_inner((ptr_t)GC_MacGetDataStart(),
+                                   (ptr_t)GC_MacGetDataEnd(), FALSE);
+#             else
+                GC_add_roots_inner((ptr_t)GC_MacGetDataStart(),
+                                   (ptr_t)LMGetCurrentA5(), FALSE);
+#             endif
+#           elif defined(__MWERKS__) && defined(POWERPC)
+              extern char __data_start__[], __data_end__[];
+
+              GC_add_roots_inner((ptr_t)&__data_start__,
+                                 (ptr_t)&__data_end__, FALSE);
+#           endif
+          }
+#       elif defined(REDIRECT_MALLOC) && defined(GC_SOLARIS_THREADS)
+            /* As of Solaris 2.3, the Solaris threads implementation    */
+            /* allocates the data structure for the initial thread with */
+            /* sbrk at process startup.  It needs to be scanned, so     */
+            /* that we don't lose some malloc allocated data structures */
+            /* hanging from it.  We're on thin ice here...              */
+            GC_ASSERT(DATASTART);
+            {
+              ptr_t p = (ptr_t)sbrk(0);
+
+              if (ADDR_LT(DATASTART, p))
+                GC_add_roots_inner(DATASTART, p, FALSE);
+            }
+#       else
+            if (ADDR(DATASTART) - 1U >= ADDR(DATAEND)) {
+                            /* Subtract one to check also for NULL  */
+                            /* without a compiler warning.          */
+              ABORT_ARG2("Wrong DATASTART/END pair",
+                         ": %p .. %p", (void *)DATASTART, (void *)DATAEND);
+            }
+            GC_add_roots_inner(DATASTART, DATAEND, FALSE);
+#           ifdef GC_HAVE_DATAREGION2
+              if (ADDR(DATASTART2) - 1U >= ADDR(DATAEND2))
+                ABORT_ARG2("Wrong DATASTART/END2 pair",
+                           ": %p .. %p", (void *)DATASTART2, (void *)DATAEND2);
+              GC_add_roots_inner(DATASTART2, DATAEND2, FALSE);
+#           endif
+#       endif
+        /* Dynamic libraries are added at every collection, since they  */
+        /* may change.                                                  */
+      }
+#   endif /* !AMIGA && !OPENBSD */
+
 # endif /* !ANY_MSWIN */
 #endif /* !OS2 */
 
@@ -28233,7 +28192,7 @@ ptr_t GC_unix_get_mem(size_t bytes)
   ptr_t GC_wince_get_mem(size_t bytes)
   {
     ptr_t result = 0; /* initialized to prevent warning. */
-    word i;
+    size_t i;
 
     GC_ASSERT(GC_page_size != 0);
     bytes = ROUNDUP_PAGESIZE(bytes);
@@ -28378,7 +28337,8 @@ ptr_t GC_unix_get_mem(size_t bytes)
           if (GLOBAL_ALLOC_TEST)
 #       endif
         {
-          while (GC_n_heap_bases-- > 0) {
+          while (GC_n_heap_bases > 0) {
+            GC_n_heap_bases--;
 #           ifdef CYGWIN32
               /* FIXME: Is it OK to use non-GC free() here? */
 #           else
@@ -28402,7 +28362,6 @@ ptr_t GC_unix_get_mem(size_t bytes)
 
 #ifdef AMIGA
 # define GC_AMIGA_AM
-
 # undef GC_AMIGA_AM
 #endif
 
@@ -28821,7 +28780,8 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
     /* Add all pages in pht2 to pht1.   */
     STATIC void GC_or_pages(page_hash_table pht1, const word *pht2)
     {
-      unsigned i;
+      size_t i;
+
       for (i = 0; i < PHT_SIZE; i++) pht1[i] |= pht2[i];
     }
 #endif /* CHECKSUMS && GWW_VDB || PROC_VDB */
@@ -28846,13 +28806,13 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
 
   GC_INLINE void GC_gww_read_dirty(GC_bool output_unneeded)
   {
-    word i;
+    size_t i;
 
     GC_ASSERT(I_HOLD_LOCK());
     if (!output_unneeded)
       BZERO(GC_grungy_pages, sizeof(GC_grungy_pages));
 
-    for (i = 0; i != GC_n_heap_sects; ++i) {
+    for (i = 0; i < GC_n_heap_sects; ++i) {
       GC_ULONG_PTR count;
 
       do {
@@ -28890,11 +28850,12 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
                  " Falling back to marking all pages dirty\n", start);
           }
           if (!output_unneeded) {
-            unsigned j;
+            size_t j;
 
             for (j = 0; j < nblocks; ++j) {
-              word hash = PHT_HASH(start + j);
-              set_pht_entry_from_index(GC_grungy_pages, hash);
+              size_t index = PHT_HASH(start + j);
+
+              set_pht_entry_from_index(GC_grungy_pages, index);
             }
           }
           count = 1;  /* Done with this section. */
@@ -29231,7 +29192,7 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
         /* and then to have the thread stopping code set the dirty      */
         /* flag, if necessary.                                          */
         for (i = 0; i < divHBLKSZ(GC_page_size); i++) {
-            word index = PHT_HASH(h+i);
+            size_t index = PHT_HASH(h + i);
 
             async_set_pht_entry_from_index(GC_dirty_pages, index);
         }
@@ -29377,7 +29338,7 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
 
 STATIC void GC_protect_heap(void)
 {
-  unsigned i;
+  size_t i;
 
   GC_ASSERT(GC_page_size != 0);
   for (i = 0; i < GC_n_heap_sects; i++) {
@@ -29401,7 +29362,7 @@ STATIC void GC_protect_heap(void)
     current_start = (struct hblk *)start;
     limit = start + len;
     for (current = current_start;;) {
-      word nblocks = 0;
+      size_t nblocks = 0;
       GC_bool is_ptrfree = TRUE;
 
       if (ADDR_LT((ptr_t)current, limit)) {
@@ -29452,7 +29413,7 @@ STATIC void GC_protect_heap(void)
     /* Remove protection for the entire heap not updating GC_dirty_pages. */
     STATIC void GC_unprotect_all_heap(void)
     {
-      unsigned i;
+      size_t i;
 
       GC_ASSERT(I_HOLD_LOCK());
       GC_ASSERT(GC_auto_incremental);
@@ -29581,9 +29542,8 @@ GC_INNER GC_bool GC_dirty_init(void)
 
 GC_INLINE void GC_proc_read_dirty(GC_bool output_unneeded)
 {
-    int nmaps;
+    size_t i, nmaps;
     char * bufp = GC_proc_buf;
-    int i;
 
     GC_ASSERT(I_HOLD_LOCK());
 #   ifndef THREADS
@@ -29628,10 +29588,10 @@ GC_INLINE void GC_proc_read_dirty(GC_bool output_unneeded)
     }
 
     /* Copy dirty bits into GC_grungy_pages     */
-    nmaps = ((struct prpageheader *)bufp) -> pr_nmap;
+    nmaps = (size_t)(((struct prpageheader *)bufp) -> pr_nmap);
 #   ifdef DEBUG_DIRTY_BITS
       GC_log_printf("Proc VDB read: pr_nmap= %u, pr_npage= %lu\n",
-                    nmaps, ((struct prpageheader *)bufp)->pr_npage);
+                    (unsigned)nmaps, ((struct prpageheader *)bufp)->pr_npage);
 #   endif
 #   if defined(GC_NO_SYS_FAULT_H) && defined(CPPCHECK)
       GC_noop1(((struct prpageheader *)bufp)->dummy[0]);
@@ -29665,7 +29625,7 @@ GC_INLINE void GC_proc_read_dirty(GC_bool output_unneeded)
 #               endif
                 for (h = (struct hblk *)vaddr;
                      ADDR_LT((ptr_t)h, next_vaddr); h++) {
-                    word index = PHT_HASH(h);
+                    size_t index = PHT_HASH(h);
 
                     set_pht_entry_from_index(GC_grungy_pages, index);
                 }
@@ -29971,7 +29931,7 @@ GC_INLINE void GC_proc_read_dirty(GC_bool output_unneeded)
           if (EXPECT(ADDR_LT(vaddr, start), FALSE))
             h = (struct hblk *)start;
           for (; ADDR_LT((ptr_t)h, next_vaddr); h++) {
-            word index = PHT_HASH(h);
+            size_t index = PHT_HASH(h);
 
             /* Filter out the blocks without pointers.  It might worth  */
             /* for the case when the heap is large enough for the hash  */
@@ -30041,26 +30001,26 @@ GC_INLINE void GC_proc_read_dirty(GC_bool output_unneeded)
 #   endif
 
     if (!output_unneeded) {
-      word i;
+      size_t i;
 
       BZERO(GC_grungy_pages, sizeof(GC_grungy_pages));
       pagemap_buf_len = 0; /* invalidate soft_vdb_buf */
 
-      for (i = 0; i != GC_n_heap_sects; ++i) {
+      for (i = 0; i < GC_n_heap_sects; ++i) {
         ptr_t start = GC_heap_sects[i].hs_start;
 
         soft_set_grungy_pages(start, start + GC_heap_sects[i].hs_bytes,
-                              i < GC_n_heap_sects-1 ?
-                                    GC_heap_sects[i+1].hs_start : NULL,
+                              i + 1 < GC_n_heap_sects
+                                    ? GC_heap_sects[i+1].hs_start : NULL,
                               FALSE);
       }
 
 #     ifndef NO_VDB_FOR_STATIC_ROOTS
-        for (i = 0; (int)i < n_root_sets; ++i) {
+        for (i = 0; i < n_root_sets; ++i) {
           soft_set_grungy_pages((ptr_t)HBLKPTR(GC_static_roots[i].r_start),
                                 GC_static_roots[i].r_end,
-                                (int)i < n_root_sets-1 ?
-                                    GC_static_roots[i+1].r_start : NULL,
+                                i + 1 < n_root_sets
+                                    ? GC_static_roots[i+1].r_start : NULL,
                                 TRUE);
         }
 #     endif
@@ -30104,7 +30064,7 @@ GC_INNER GC_bool GC_dirty_init(void)
   /* dirties the entire object.                                         */
   GC_INNER void GC_dirty_inner(const void *p)
   {
-    word index = PHT_HASH(p);
+    size_t index = PHT_HASH(p);
 
 #   if defined(MPROTECT_VDB)
       /* Do not update GC_dirty_pages if it should be followed by the   */
@@ -30153,8 +30113,9 @@ GC_INNER GC_bool GC_dirty_init(void)
 #   elif defined(PCR_VDB)
       /* lazily enable dirty bits on newly added heap sects */
       {
-        static int onhs = 0;
-        int nhs = GC_n_heap_sects;
+        static size_t onhs = 0;
+        size_t nhs = GC_n_heap_sects;
+
         for (; onhs < nhs; onhs++) {
             PCR_VD_WriteProtectEnable(
                     GC_heap_sects[onhs].hs_start,
@@ -30194,7 +30155,7 @@ GC_INNER GC_bool GC_dirty_init(void)
   /* side of labeling pages as dirty (and this implementation does).    */
   GC_INNER GC_bool GC_page_was_dirty(struct hblk *h)
   {
-    word index;
+    size_t index;
 
 #   ifdef PCR_VDB
       if (!GC_manual_vdb) {
@@ -30222,7 +30183,7 @@ GC_INNER GC_bool GC_dirty_init(void)
     GC_INNER GC_bool GC_page_was_ever_dirty(struct hblk *h)
     {
 #     if defined(GWW_VDB) || defined(PROC_VDB) || defined(SOFT_VDB)
-        word index;
+        size_t index;
 
 #       ifdef MPROTECT_VDB
           if (!GC_GWW_AVAILABLE())
@@ -30245,7 +30206,7 @@ GC_INNER GC_bool GC_dirty_init(void)
     }
 # endif /* CHECKSUMS || PROC_VDB */
 
-  GC_INNER void GC_remove_protection(struct hblk *h, word nblocks,
+  GC_INNER void GC_remove_protection(struct hblk *h, size_t nblocks,
                                      GC_bool is_ptrfree)
   {
 #   ifdef MPROTECT_VDB
@@ -30272,7 +30233,7 @@ GC_INNER GC_bool GC_dirty_init(void)
       /* whether the page at h_trunc has already been marked    */
       /* dirty as there could be a hash collision.              */
       for (current = h_trunc; ADDR_LT((ptr_t)current, h_end); ++current) {
-        word index = PHT_HASH(current);
+        size_t index = PHT_HASH(current);
 
 #       ifndef DONT_PROTECT_PTRFREE
           if (!is_ptrfree
@@ -30768,7 +30729,7 @@ STATIC kern_return_t GC_forward_exception(mach_port_t thread, mach_port_t task,
                                           exception_data_t data,
                                           mach_msg_type_number_t data_count)
 {
-  unsigned int i;
+  size_t i;
   kern_return_t r;
   mach_port_t port;
   exception_behavior_t behavior;
@@ -30777,11 +30738,11 @@ STATIC kern_return_t GC_forward_exception(mach_port_t thread, mach_port_t task,
   thread_state_data_t thread_state;
   mach_msg_type_number_t thread_state_count = THREAD_STATE_MAX;
 
-  for (i = 0; i < GC_old_exc_ports.count; i++) {
+  for (i = 0; i < (size_t)GC_old_exc_ports.count; i++) {
     if ((GC_old_exc_ports.masks[i] & ((exception_mask_t)1 << exception)) != 0)
       break;
   }
-  if (i == GC_old_exc_ports.count)
+  if (i == (size_t)GC_old_exc_ports.count)
     ABORT("No handler for exception!");
 
   port = GC_old_exc_ports.ports[i];
@@ -30958,7 +30919,8 @@ catch_exception_raise(mach_port_t exception_port, mach_port_t thread,
 #   endif
     UNPROTECT(h, GC_page_size);
     for (i = 0; i < divHBLKSZ(GC_page_size); i++) {
-      word index = PHT_HASH(h+i);
+      size_t index = PHT_HASH(h + i);
+
       async_set_pht_entry_from_index(GC_dirty_pages, index);
     }
   } else if (GC_mprotect_state == GC_MP_DISCARDING) {
@@ -31131,7 +31093,6 @@ GC_API int GC_CALL GC_get_pages_executable(void)
         STATIC GC_bool GC_in_save_callers = FALSE;
 
 #       if defined(THREADS) && defined(DBG_HDRS_ALL)
-
 
           /* A dummy version of GC_save_callers() which does not call   */
           /* backtrace().                                               */
@@ -31465,7 +31426,6 @@ GC_API int GC_CALL GC_get_pages_executable(void)
  */
 
 
-
 #if defined(THREAD_LOCAL_ALLOC)
 
 #if !defined(THREADS) && !defined(CPPCHECK)
@@ -31495,7 +31455,6 @@ GC_API int GC_CALL GC_get_pages_executable(void)
 
 #ifndef GC_THREAD_LOCAL_ALLOC_H
 #define GC_THREAD_LOCAL_ALLOC_H
-
 
 
 #ifdef THREAD_LOCAL_ALLOC
@@ -31717,10 +31676,10 @@ EXTERN_C_BEGIN
 /* value.  This invariant must be preserved at ALL times, since         */
 /* asynchronous reads are allowed.                                      */
 typedef struct thread_specific_entry {
-        volatile AO_t qtid;     /* quick thread id, only for cache */
-        ts_entry_value_t value;
-        struct thread_specific_entry *next;
-        pthread_t thread;
+  volatile AO_t qtid;   /* quick thread id, only for cache */
+  ts_entry_value_t value;
+  struct thread_specific_entry *next;
+  pthread_t thread;
 } tse;
 
 /* We represent each thread-specific datum as two tables.  The first is */
@@ -31735,9 +31694,9 @@ typedef struct thread_specific_entry {
 /* or at least thread stack separation, is at least 4 KB.               */
 /* Must be defined so that it never returns 0.  (Page 0 can't really be */
 /* part of any stack, since that would make 0 a valid stack pointer.)   */
-#define ts_quick_thread_id() (ADDR(GC_approx_sp()) >> 12)
+#define ts_quick_thread_id() ((size_t)(ADDR(GC_approx_sp()) >> 12))
 
-#define INVALID_QTID ((word)0)
+#define INVALID_QTID ((size_t)0)
 #define INVALID_THREADID ((pthread_t)0)
 
 union ptse_ao_u {
@@ -31762,21 +31721,22 @@ GC_INNER int GC_setspecific(tsd * key, void * value);
 GC_INNER void GC_remove_specific_after_fork(tsd * key, pthread_t t);
 
 /* An internal version of getspecific that assumes a cache miss.        */
-GC_INNER void * GC_slow_getspecific(tsd * key, word qtid,
+GC_INNER void * GC_slow_getspecific(tsd * key, size_t qtid,
                                     tse * volatile * cache_entry);
 
 GC_INLINE void * GC_getspecific(tsd * key)
 {
-    word qtid = ts_quick_thread_id();
-    tse * volatile * entry_ptr = &(key -> cache[TS_CACHE_HASH(qtid)]);
-    const tse * entry = *entry_ptr; /* must be loaded only once */
+  size_t qtid = ts_quick_thread_id();
+  tse * volatile * entry_ptr = &(key -> cache[TS_CACHE_HASH(qtid)]);
+  const tse * entry = *entry_ptr; /* must be loaded only once */
 
-    GC_ASSERT(qtid != INVALID_QTID);
-    if (EXPECT(entry -> qtid == qtid, TRUE)) {
-      GC_ASSERT(entry -> thread == pthread_self());
-      return TS_REVEAL_PTR(entry -> value);
-    }
-    return GC_slow_getspecific(key, qtid, entry_ptr);
+  GC_ASSERT(qtid != INVALID_QTID);
+  if (EXPECT(entry -> qtid == qtid, TRUE)) {
+    GC_ASSERT(entry -> thread == pthread_self());
+    return TS_REVEAL_PTR(entry -> value);
+  }
+
+  return GC_slow_getspecific(key, qtid, entry_ptr);
 }
 
 EXTERN_C_END
@@ -32011,6 +31971,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_malloc_kind(size_t lb, int k)
 
 
 
+
 /* Gcj-style allocation without locks is extremely tricky.  The         */
 /* fundamental issue is that we may end up marking a free list, which   */
 /* has free-list links instead of "vtable" pointers.  That is usually   */
@@ -32161,7 +32122,6 @@ GC_INNER void GC_mark_thread_local_fls_for(GC_tlfs p)
 #define GC_PTHREAD_SUPPORT_H
 
 
-
 #ifdef THREADS
 
 #if defined(GC_PTHREADS) || defined(GC_PTHREADS_PARAMARK)
@@ -32174,11 +32134,9 @@ GC_INNER void GC_mark_thread_local_fls_for(GC_tlfs p)
 #endif
 
 #ifdef THREAD_LOCAL_ALLOC
-
 #endif
 
 #ifdef THREAD_SANITIZER
-
 #endif
 
 EXTERN_C_BEGIN
@@ -32235,7 +32193,7 @@ typedef struct GC_StackContext_Rep {
 # endif
 
 # ifdef E2K
-    size_t ps_ofs; /* the current offset of the procedure stack */
+    size_t ps_ofs; /* the current offset in the procedure stack */
 # endif
 
 # ifndef GC_NO_FINALIZATION
@@ -32545,7 +32503,7 @@ GC_INNER void GC_wait_for_gc_completion(GC_bool);
 #endif
 
 #if defined(GC_ENABLE_SUSPEND_THREAD) && defined(SIGNAL_BASED_STOP_WORLD)
-  GC_INNER void GC_suspend_self_inner(GC_thread me, word suspend_cnt);
+  GC_INNER void GC_suspend_self_inner(GC_thread me, size_t suspend_cnt);
 
   GC_INNER void GC_suspend_self_blocked(ptr_t thread_me, void *context);
                                 /* Wrapper over GC_suspend_self_inner.  */
@@ -33371,7 +33329,6 @@ GC_INNER void GC_start_world(void)
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 /*
@@ -34898,6 +34855,9 @@ GC_INNER GC_bool GC_register_main_static_data(void)
 
 
 
+
+
+
   GC_INNER void GC_register_dynamic_libraries(void)
   {
     /* Add new static data areas of dynamically loaded modules. */
@@ -34959,7 +34919,6 @@ GC_API void GC_CALL GC_register_has_static_roots_callback(
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 /* This used to be in dyn_load.c.  It was extracted into a separate     */
@@ -35062,7 +35021,6 @@ GC_API void * WRAP_DLFUNC(dlopen)(const char *path, int mode)
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 #if !defined(PLATFORM_MACH_DEP) && !defined(SN_TARGET_PSP2)
@@ -35422,7 +35380,6 @@ GC_INNER void GC_with_callee_saves_pushed(GC_with_callee_saves_func fn,
  */
 
 
-
 #ifdef PTHREAD_STOP_WORLD_IMPL
 
 #ifdef NACL
@@ -35723,7 +35680,7 @@ STATIC void GC_suspend_handler_inner(ptr_t dummy, void *context)
 # endif
   IF_CANCEL(int cancel_state;)
 # ifdef GC_ENABLE_SUSPEND_THREAD
-    word suspend_cnt;
+    AO_t suspend_cnt;
 # endif
   AO_t my_stop_count = ao_load_acquire_async(&GC_stop_count);
                         /* After the barrier, this thread should see    */
@@ -35766,7 +35723,7 @@ STATIC void GC_suspend_handler_inner(ptr_t dummy, void *context)
     crtn -> backing_store_ptr = bs_lo + stack_size;
 # endif
 # ifdef GC_ENABLE_SUSPEND_THREAD
-    suspend_cnt = (word)ao_load_async(&(me -> ext_suspend_cnt));
+    suspend_cnt = ao_load_async(&(me -> ext_suspend_cnt));
 # endif
 
   /* Tell the thread that wants to stop the world that this     */
@@ -35791,8 +35748,7 @@ STATIC void GC_suspend_handler_inner(ptr_t dummy, void *context)
   } while (ao_load_acquire_async(&GC_stop_count) == my_stop_count
 #          ifdef GC_ENABLE_SUSPEND_THREAD
              || ((suspend_cnt & 1) != 0
-                 && (word)ao_load_async(&(me -> ext_suspend_cnt))
-                    == suspend_cnt)
+                 && ao_load_async(&(me -> ext_suspend_cnt)) == suspend_cnt)
 #          endif
           );
 
@@ -35993,6 +35949,7 @@ STATIC void GC_restart_handler(int sig)
 #   include <sys/time.h>
 
 
+
     STATIC void GC_brief_async_signal_safe_sleep(void)
     {
       struct timeval tv;
@@ -36005,7 +35962,7 @@ STATIC void GC_restart_handler(int sig)
       (void)select(0, 0, 0, 0, &tv);
     }
 
-    GC_INNER void GC_suspend_self_inner(GC_thread me, word suspend_cnt) {
+    GC_INNER void GC_suspend_self_inner(GC_thread me, size_t suspend_cnt) {
       IF_CANCEL(int cancel_state;)
 
       GC_ASSERT((suspend_cnt & 1) != 0);
@@ -36013,8 +35970,7 @@ STATIC void GC_restart_handler(int sig)
 #     ifdef DEBUG_THREADS
         GC_log_printf("Suspend self: %p\n", (void *)(me -> id));
 #     endif
-      while ((word)ao_load_acquire_async(&(me -> ext_suspend_cnt))
-             == suspend_cnt) {
+      while (ao_load_acquire_async(&(me -> ext_suspend_cnt)) == suspend_cnt) {
         /* TODO: Use sigsuspend() even for self-suspended threads. */
         GC_brief_async_signal_safe_sleep();
       }
@@ -36027,7 +35983,7 @@ STATIC void GC_restart_handler(int sig)
     GC_API void GC_CALL GC_suspend_thread(GC_SUSPEND_THREAD_ID thread) {
       GC_thread t;
       AO_t next_stop_count;
-      word suspend_cnt;
+      AO_t suspend_cnt;
       IF_CANCEL(int cancel_state;)
 
       LOCK();
@@ -36036,21 +35992,21 @@ STATIC void GC_restart_handler(int sig)
         UNLOCK();
         return;
       }
-      suspend_cnt = (word)(t -> ext_suspend_cnt);
+      suspend_cnt = t -> ext_suspend_cnt;
       if ((suspend_cnt & 1) != 0) /* already suspended? */ {
         GC_ASSERT(!THREAD_EQUAL((pthread_t)thread, pthread_self()));
         UNLOCK();
         return;
       }
       if ((t -> flags & (FINISHED | DO_BLOCKING)) != 0) {
-        t -> ext_suspend_cnt = (AO_t)(suspend_cnt | 1); /* suspend */
+        t -> ext_suspend_cnt = suspend_cnt | 1; /* suspend */
         /* Terminated but not joined yet, or in do-blocking state.  */
         UNLOCK();
         return;
       }
 
       if (THREAD_EQUAL((pthread_t)thread, pthread_self())) {
-        t -> ext_suspend_cnt = (AO_t)(suspend_cnt | 1);
+        t -> ext_suspend_cnt = suspend_cnt | 1;
         GC_with_callee_saves_pushed(GC_suspend_self_blocked, (ptr_t)t);
         UNLOCK();
         return;
@@ -36083,7 +36039,7 @@ STATIC void GC_restart_handler(int sig)
       AO_store(&GC_stop_count, next_stop_count);
 
       /* Set the flag making the change visible to the signal handler.  */
-      AO_store_release(&(t -> ext_suspend_cnt), (AO_t)(suspend_cnt | 1));
+      AO_store_release(&(t -> ext_suspend_cnt), suspend_cnt | 1);
 
       /* TODO: Support GC_retry_signals (not needed for TSan) */
       switch (raise_signal(t, GC_sig_suspend)) {
@@ -36112,12 +36068,12 @@ STATIC void GC_restart_handler(int sig)
       LOCK();
       t = GC_lookup_by_pthread((pthread_t)thread);
       if (t != NULL) {
-        word suspend_cnt = (word)(t -> ext_suspend_cnt);
+        AO_t suspend_cnt = t -> ext_suspend_cnt;
 
         if ((suspend_cnt & 1) != 0) /* is suspended? */ {
           GC_ASSERT((GC_stop_count & THREAD_RESTARTED) != 0);
           /* Mark the thread as not suspended - it will be resumed shortly. */
-          AO_store(&(t -> ext_suspend_cnt), (AO_t)(suspend_cnt + 1));
+          AO_store(&(t -> ext_suspend_cnt), suspend_cnt + 1);
 
           if ((t -> flags & (FINISHED | DO_BLOCKING)) == 0) {
             int result = raise_signal(t, GC_sig_thr_restart);
@@ -36428,8 +36384,8 @@ GC_INNER void GC_stop_world(void)
 # endif
   GC_ASSERT(I_HOLD_LOCK());
   /* Make sure all free list construction has stopped before we start.  */
-  /* No new construction can start, since a free list construction is   */
-  /* required to acquire and release the allocator lock before start.   */
+  /* No new construction can start, since it is required to acquire and */
+  /* release the allocator lock before start.                           */
 
   GC_ASSERT(GC_thr_initialized);
 # ifdef DEBUG_THREADS
@@ -36821,7 +36777,6 @@ GC_INNER void GC_stop_init(void)
  */
 
 
-
 /*
  * Support code originally for LinuxThreads, the clone()-based kernel
  * thread package for Linux which is included in libc6.
@@ -36857,7 +36812,6 @@ GC_INNER void GC_stop_init(void)
 
 #ifndef GC_DARWIN_SEMAPHORE_H
 #define GC_DARWIN_SEMAPHORE_H
-
 
 
 #if !defined(GC_DARWIN_THREADS) && !defined(GC_WIN32_THREADS)
@@ -38076,7 +38030,6 @@ GC_API void GC_CALL GC_register_altstack(void *normstack,
 
 #if defined(CAN_HANDLE_FORK) && defined(THREAD_SANITIZER)
 
-
   /* Workaround for TSan which does not notice that the allocator lock  */
   /* is acquired in fork_prepare_proc().                                */
   GC_ATTR_NO_SANITIZE_THREAD
@@ -38832,7 +38785,7 @@ GC_INNER void GC_do_blocking_inner(ptr_t data, void *context)
       /* otherwise there could be a static analysis tool warning    */
       /* (false positive) about unlock without a matching lock.     */
       while (EXPECT((me -> ext_suspend_cnt & 1) != 0, FALSE)) {
-        word suspend_cnt = (word)(me -> ext_suspend_cnt);
+        size_t suspend_cnt = me -> ext_suspend_cnt;
                         /* read suspend counter (number) before unlocking */
 
         READER_UNLOCK_RELEASE();
@@ -38860,7 +38813,7 @@ GC_INNER void GC_do_blocking_inner(ptr_t data, void *context)
                         /* function.                                    */
     do_blocking_enter(&topOfStackUnset, me);
     while ((me -> ext_suspend_cnt & 1) != 0) {
-      word suspend_cnt = (word)(me -> ext_suspend_cnt);
+      size_t suspend_cnt = me -> ext_suspend_cnt;
 
       UNLOCK();
       GC_suspend_self_inner(me, suspend_cnt);
@@ -38969,7 +38922,7 @@ GC_API void * GC_CALL GC_call_with_gc_active(GC_fn_type fn, void *client_data)
 
 #   if defined(GC_ENABLE_SUSPEND_THREAD) && defined(SIGNAL_BASED_STOP_WORLD)
       while (EXPECT((me -> ext_suspend_cnt & 1) != 0, FALSE)) {
-        word suspend_cnt = (word)(me -> ext_suspend_cnt);
+        size_t suspend_cnt = me -> ext_suspend_cnt;
 
         READER_UNLOCK_RELEASE();
         GC_suspend_self_inner(me, suspend_cnt);
@@ -39574,7 +39527,7 @@ GC_API int GC_CALL GC_register_my_thread(const struct GC_stack_base *sb)
 #       endif
         return;
       }
-      for (; pause_length <= SPIN_MAX; pause_length <<= 1) {
+      for (; pause_length <= (unsigned)SPIN_MAX; pause_length <<= 1) {
          for (i = 0; i < pause_length; ++i) {
             GC_pause();
         }
@@ -39637,20 +39590,19 @@ GC_API int GC_CALL GC_register_my_thread(const struct GC_stack_base *sb)
 
   GC_INNER void GC_lock(void)
   {
-    unsigned my_spin_max;
-    unsigned my_last_spins;
-    unsigned i;
+    AO_t my_spin_max, my_last_spins_half;
+    size_t i;
 
     if (EXPECT(AO_test_and_set_acquire(&GC_allocate_lock)
                 == AO_TS_CLEAR, TRUE)) {
         return;
     }
-    my_spin_max = (unsigned)AO_load(&spin_max);
-    my_last_spins = (unsigned)AO_load(&last_spins);
+    my_spin_max = AO_load(&spin_max);
+    my_last_spins_half = AO_load(&last_spins) / 2;
     for (i = 0; i < my_spin_max; i++) {
         if (is_collecting() || GC_nprocs == 1)
           goto yield;
-        if (i < my_last_spins/2) {
+        if (i < my_last_spins_half) {
             GC_pause();
             continue;
         }
@@ -39661,13 +39613,13 @@ GC_API int GC_CALL GC_register_my_thread(const struct GC_stack_base *sb)
              * against the other process with which we were contending.
              * Thus it makes sense to spin longer the next time.
              */
-            AO_store(&last_spins, (AO_t)i);
-            AO_store(&spin_max, (AO_t)high_spin_max);
+            AO_store(&last_spins, i);
+            AO_store(&spin_max, high_spin_max);
             return;
         }
     }
     /* We are probably being scheduled against the other process.  Sleep. */
-    AO_store(&spin_max, (AO_t)low_spin_max);
+    AO_store(&spin_max, low_spin_max);
   yield:
     for (i = 0;; ++i) {
         if (AO_test_and_set_acquire(&GC_allocate_lock) == AO_TS_CLEAR) {
@@ -39940,7 +39892,6 @@ GC_API GC_sp_corrector_proc GC_CALL GC_get_sp_corrector(void)
  * modified is included with the above copyright notice.
  */
 
-
                 /* To determine type of tsd impl.       */
                 /* Includes private/specific.h          */
                 /* if needed.                           */
@@ -40074,7 +40025,7 @@ GC_INNER void GC_remove_specific_after_fork(tsd * key, pthread_t t)
 }
 
 /* Note that even the slow path doesn't lock.   */
-GC_INNER void * GC_slow_getspecific(tsd * key, word qtid,
+GC_INNER void * GC_slow_getspecific(tsd * key, size_t qtid,
                                     tse * volatile * cache_ptr)
 {
     pthread_t self = pthread_self();
@@ -40145,7 +40096,6 @@ GC_INNER void * GC_slow_getspecific(tsd * key, word qtid,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  */
-
 
 
 #if defined(GC_WIN32_THREADS)
@@ -42029,7 +41979,6 @@ GC_INNER void GC_thr_init(void)
 #endif
 
 
-
 #if defined(GC_PTHREADS) \
     && !defined(SN_TARGET_ORBIS) && !defined(SN_TARGET_PSP2)
 
@@ -42077,4 +42026,3 @@ GC_INNER_PTHRSTART void *GC_CALLBACK GC_pthread_start_inner(
 #endif
 
 /* The files from "extra" folder are not included. */
-
