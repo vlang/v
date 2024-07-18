@@ -16,11 +16,6 @@ fn test_main() {
 			}
 		}
 	}
-	unexpected := "Outer{
-    value: {'test': Inner{
-        value: 1
-    }}
-}"
 	expected := "Outer{
     value: {'test': &Inner{
         value: 1
