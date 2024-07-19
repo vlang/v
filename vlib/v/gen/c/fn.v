@@ -790,21 +790,25 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
+	mut tmp_anon_fn_var := ''
 	if node.left is ast.AnonFn {
 		if node.left.inherited_vars.len > 0 {
-			tmp_var := g.new_tmp_var()
+			tmp_anon_fn_var = g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
-				tmp_var)
+				tmp_anon_fn_var)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${fn_type} = ')
 			g.expr(node.left)
 			g.writeln(';')
+			g.set_current_pos_as_last_stmt_pos()
 			g.write(line)
-			if g.out.last_n(1) != '\n' {
-				g.writeln('')
+			if node.or_block.kind == .absent {
+				if g.out.last_n(1) != '\n' {
+					g.writeln('')
+				}
+				g.write(tmp_anon_fn_var)
 			}
-			g.write(tmp_var)
 		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
 		}
@@ -887,7 +891,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			}
 			g.write('${styp} ${tmp_opt} = ')
 			if node.left is ast.AnonFn {
-				g.expr(node.left)
+				if node.left.inherited_vars.len > 0 {
+					g.write(tmp_anon_fn_var)
+				} else {
+					g.expr(node.left)
+				}
 			}
 		}
 	}
