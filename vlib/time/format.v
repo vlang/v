@@ -657,8 +657,8 @@ pub fn (t Time) utc_string() string {
 // http_header_string returns a date string in the format used in HTTP headers, as defined in RFC 2616.
 // e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
 pub fn (t Time) http_header_string() string {
-	day_str := t.weekday_str().bytes()
-	month_str := t.smonth().bytes()
+	day_str := t.weekday_str()
+	month_str := t.smonth()
 
 	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
 		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
