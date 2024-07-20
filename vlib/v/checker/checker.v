@@ -3874,7 +3874,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			return c.resolve_var_fn(func, mut node, name)
 		} else if node.name in checker.builtin_v_fns {
 			if func := c.table.find_fn(node.name) {
-				return c.resolve_var_fn(func, mut node, '_v_${node.name}')
+				return c.resolve_var_fn(func, mut node, node.name)
 			}
 		}
 	}

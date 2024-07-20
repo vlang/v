@@ -4756,7 +4756,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write(util.no_dots(node.name[2..]))
 		return
 	}
-	mut name := c_name(node.name)
+	mut name := if node.kind == .function { c_fn_name(node.name) } else { c_name(node.name) }
 	if node.kind == .constant {
 		if g.pref.translated && !g.is_builtin_mod
 			&& !util.module_is_builtin(node.name.all_before_last('.')) {
