@@ -732,21 +732,22 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 		}
 		flag_line_diff := flag_line.len - pad_desc
 		if flag_line_diff < 0 {
+			// This makes sure the description is put on a new line if the flag line is
+			// longer than the padding.
 			diff := -flag_line_diff
-			mut line := flag_line + ' '.repeat(diff) +
+			line := flag_line + ' '.repeat(diff) +
 				keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-			if !dc.options.compact {
-				line += '\n'
-			}
-			docs << line
+			docs << line.trim_right(' \n\t\v\f\r')
 		} else {
-			docs << flag_line
-			mut line := empty_padding +
-				keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-			if !dc.options.compact {
-				line += '\n'
+			docs << flag_line.trim_right(' \n\t\v\f\r')
+			if doc != '' {
+				line := empty_padding +
+					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
+				docs << line.trim_right(' \n\t\v\f\r')
 			}
-			docs << line
+		}
+		if !dc.options.compact {
+			docs << ''
 		}
 	}
 	// Look for custom flag entries starting with delimiter
@@ -754,26 +755,28 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 		if entry.starts_with(dc.delimiter) {
 			flag_line_diff := entry.len - pad_desc + indent_flags
 			if flag_line_diff < 0 {
+				// This makes sure the description is put on a new line if the flag line is
+				// longer than the padding.
 				diff := -flag_line_diff
-				mut line := indent_flags_padding + entry.trim(' ') + ' '.repeat(diff) +
+				line := indent_flags_padding + entry.trim(' ') + ' '.repeat(diff) +
 					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-				if !dc.options.compact {
-					line += '\n'
-				}
-				docs << line
+				docs << line.trim_right(' \n\t\v\f\r')
 			} else {
 				docs << indent_flags_padding + entry.trim(' ')
-				mut line := empty_padding +
+				line := empty_padding +
 					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-				if !dc.options.compact {
-					line += '\n'
-				}
-				docs << line
+				docs << line.trim_right(' \n\t\v\f\r')
+			}
+			if !dc.options.compact {
+				docs << ''
 			}
 		}
 	}
 	if docs.len > 0 {
-		docs[docs.len - 1] = docs[docs.len - 1].trim_right(' \n')
+		if !dc.options.compact {
+			// In non-compact mode the last item will be an empty line, delete it
+			docs.delete_last()
+		}
 	}
 	return docs
 }
