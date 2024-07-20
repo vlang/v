@@ -573,7 +573,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 					for field in parent_typ_sym.info.fields {
 						if c.table.final_sym(field.typ).kind != .struct_ {
 							c.error('cannot embed non-struct `${c.table.sym(field.typ).name}`',
-								node.type_pos)
+								field.type_pos)
 						}
 					}
 				}
