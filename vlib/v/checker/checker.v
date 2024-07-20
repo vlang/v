@@ -38,6 +38,8 @@ pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i6
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 
+const builtin_v_fns = ['error']
+
 @[heap; minify]
 pub struct Checker {
 pub mut:
@@ -3605,6 +3607,28 @@ struct ACFieldMethod {
 	typ  string
 }
 
+fn (mut c Checker) resolve_var_fn(func ast.Fn, mut node ast.Ident, name string) ast.Type {
+	mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
+				true))
+	if func.generic_names.len > 0 {
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
+			concrete_types)
+		{
+			fn_type = typ_
+			if concrete_types.all(!it.has_flag(.generic)) {
+				c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+			}
+		}
+	}
+	node.name = name
+	node.kind = .function
+	node.info = ast.IdentFn{
+		typ: fn_type
+	}
+	return fn_type
+}
+
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if c.pref.linfo.is_running {
 		// Mini LS hack (v -line-info "a.v:16")
@@ -3850,25 +3874,11 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
-			mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
-				true))
-			if func.generic_names.len > 0 {
-				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
-				if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
-					concrete_types)
-				{
-					fn_type = typ_
-					if concrete_types.all(!it.has_flag(.generic)) {
-						c.table.register_fn_concrete_types(func.fkey(), concrete_types)
-					}
-				}
+			return c.resolve_var_fn(func, mut node, name)
+		} else if node.name in builtin_v_fns {
+			if func := c.table.find_fn(node.name) {
+				return c.resolve_var_fn(func, mut node, '_v_${node.name}')
 			}
-			node.name = name
-			node.kind = .function
-			node.info = ast.IdentFn{
-				typ: fn_type
-			}
-			return fn_type
 		}
 	}
 	if node.language == .c {
