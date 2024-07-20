@@ -2278,6 +2278,16 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 				panic('internal compiler error - could not find global in scope')
 			}
 			v.typ = ast.mktyp(field.typ)
+		} else {
+			field_sym := c.table.sym(field.typ)
+			if field_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(field_sym.info) {
+				mut size_expr := field_sym.info.size_expr
+				field.typ = c.eval_array_fixed_sizes(mut size_expr, 0, field_sym.info.elem_type)
+				mut v := c.file.global_scope.find_global(field.name) or {
+					panic('internal compiler error - could not find global in scope')
+				}
+				v.typ = ast.mktyp(field.typ)
+			}
 		}
 		c.global_names << field.name
 	}
