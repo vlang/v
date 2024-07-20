@@ -24,4 +24,7 @@ fn get_as_sumtype[T, R](struct_ T, name string, typname string) R {
 fn test_main() {
 	println(get_as_sumtype[Test, SumType](Test{ a: 123 }, 'a', 'int'))
 	println(get_as_sumtype[Test, SumType](Test{ b: 'foo' }, 'b', 'string'))
+
+	assert get_as_sumtype[Test, SumType](Test{ a: 123 }, 'a', 'int') == SumType(123)
+	assert get_as_sumtype[Test, SumType](Test{ b: 'foo' }, 'b', 'string') == SumType('foo')
 }
