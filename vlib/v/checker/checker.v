@@ -3608,13 +3608,10 @@ struct ACFieldMethod {
 }
 
 fn (mut c Checker) resolve_var_fn(func ast.Fn, mut node ast.Ident, name string) ast.Type {
-	mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false,
-				true))
+	mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false, true))
 	if func.generic_names.len > 0 {
 		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
-		if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names,
-			concrete_types)
-		{
+		if typ_ := c.table.resolve_generic_to_concrete(fn_type, func.generic_names, concrete_types) {
 			fn_type = typ_
 			if concrete_types.all(!it.has_flag(.generic)) {
 				c.table.register_fn_concrete_types(func.fkey(), concrete_types)
@@ -3875,7 +3872,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
 			return c.resolve_var_fn(func, mut node, name)
-		} else if node.name in builtin_v_fns {
+		} else if node.name in checker.builtin_v_fns {
 			if func := c.table.find_fn(node.name) {
 				return c.resolve_var_fn(func, mut node, '_v_${node.name}')
 			}
