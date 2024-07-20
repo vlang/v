@@ -49,7 +49,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.fn_level++
 	c.in_for_count = 0
 	c.inside_defer = false
-	c.inside_unsafe = false
+	c.inside_unsafe = node.is_unsafe
 	c.returns = false
 	defer {
 		c.stmt_level = prev_stmt_level
