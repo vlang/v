@@ -324,6 +324,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		inner_loop: unsafe { &ast.empty_stmt }
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		enum_data_type: ast.Type(table.find_type_idx('EnumData'))
+		variant_data_type: ast.Type(table.find_type_idx('VariantData'))
 		is_cc_msvc: pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
