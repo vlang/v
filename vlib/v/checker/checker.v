@@ -38,8 +38,6 @@ pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i6
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
 pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 
-const builtin_v_fns = ['error']
-
 @[heap; minify]
 pub struct Checker {
 pub mut:
@@ -3872,10 +3870,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
 			return c.resolve_var_fn(func, mut node, name)
-		} else if node.name in checker.builtin_v_fns {
-			if func := c.table.find_fn(node.name) {
-				return c.resolve_var_fn(func, mut node, node.name)
-			}
 		}
 	}
 	if node.language == .c {
