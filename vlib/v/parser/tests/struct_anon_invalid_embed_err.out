@@ -1,4 +1,4 @@
-vlib/v/parser/tests/struct_anon_invalid_embed_err.vv:2:16: error: invalid anonymous struct
+vlib/v/parser/tests/struct_anon_invalid_embed_err.vv:2:16: error: cannot embed non-struct `Int`
     1 | type Int = int
     2 | type MyIndex = struct {
       |                ~~~~~~~~
