@@ -1100,11 +1100,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 				}
 				suggestion := util.new_suggestion(fn_name, mod_func_names)
-				c.error(suggestion.say('unknown function: ${fn_name} '), node.pos)
+				c.fatal(suggestion.say('unknown function: ${fn_name} '), node.pos)
 				return ast.void_type
 			}
 		}
-		c.error('unknown function: ${node.get_name()}', node.pos)
+		c.fatal('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
 	node.is_file_translated = func.is_file_translated
