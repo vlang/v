@@ -79,6 +79,7 @@ enum DeclType {
 	fn_ // fn ...
 	struct_ // struct ...
 	interface_ // interface ...
+	stmt_ // statement
 }
 
 fn new_repl(folder string) Repl {
@@ -240,42 +241,44 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	return all_lines.join('\n')
 }
 
-fn (r &Repl) insert_source_code(typ DeclType, line string) string {
+fn (r &Repl) insert_source_code(typ DeclType, lines []string) string {
 	mut all_lines := r.import_to_source_code()
 
 	if vstartup != '' {
-		mut lines := r.vstartup_lines.filter(!it.starts_with('print'))
-		all_lines << lines
+		all_lines << r.vstartup_lines.filter(!it.starts_with('print'))
 	}
 	all_lines << r.includes
 	if typ == .include_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.types
 	if typ == .type_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.enums
 	if typ == .enum_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.consts
 	if typ == .const_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.structs
 	if typ == .struct_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.interfaces
 	if typ == .interface_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.functions
 	if typ == .fn_ {
-		all_lines << line
+		all_lines << lines
 	}
 	all_lines << r.lines
+	if typ == .stmt_ {
+		all_lines << lines
+	}
 	return all_lines.join('\n')
 }
 
@@ -472,17 +475,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 
 		if r.checks() {
 			for rline in r.line.split('\n') {
-				if r.in_func || was_func {
-					r.functions << rline
-				} else if r.in_struct || was_struct {
-					r.structs << rline
-				} else if r.in_enum || was_enum {
-					r.enums << rline
-				} else if r.in_interface || was_interface {
-					r.interfaces << rline
-				} else {
-					r.temp_lines << rline
-				}
+				r.temp_lines << rline
 			}
 			if r.indent > 0 {
 				continue
@@ -597,30 +590,52 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				if mod !in r.modules {
 					temp_source_code = '${r.line}\n' + r.current_source_code(false, true)
 				}
+			} else if r.line.len == 0 {
+				if was_func {
+					temp_source_code = r.insert_source_code(DeclType.fn_, r.temp_lines)
+				} else if was_struct {
+					temp_source_code = r.insert_source_code(DeclType.struct_, r.temp_lines)
+				} else if was_enum {
+					temp_source_code = r.insert_source_code(DeclType.enum_, r.temp_lines)
+				} else if was_interface {
+					temp_source_code = r.insert_source_code(DeclType.interface_, r.temp_lines)
+				} else {
+					temp_source_code = r.insert_source_code(DeclType.stmt_, r.temp_lines)
+				}
 			} else if starts_with_include {
-				temp_source_code = r.insert_source_code(DeclType.include_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.include_, [r.line])
 			} else if starts_with_fn {
-				temp_source_code = r.insert_source_code(DeclType.fn_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.fn_, [r.line])
 			} else if starts_with_const {
-				temp_source_code = r.insert_source_code(DeclType.const_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.const_, [r.line])
 			} else if starts_with_enum {
-				temp_source_code = r.insert_source_code(DeclType.enum_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.enum_, [r.line])
 			} else if starts_with_struct {
-				temp_source_code = r.insert_source_code(DeclType.struct_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.struct_, [r.line])
 			} else if starts_with_interface {
-				temp_source_code = r.insert_source_code(DeclType.interface_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.interface_, [r.line])
 			} else if starts_with_type {
-				temp_source_code = r.insert_source_code(DeclType.type_, r.line)
+				temp_source_code = r.insert_source_code(DeclType.type_, [r.line])
 			} else {
 				temp_source_code = r.current_source_code(true, false) + '\n${r.line}\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
 			if s.exit_code == 0 {
-				r.lines << r.temp_lines
-				r.temp_lines.clear()
 				if starts_with_import {
 					r.parse_import(r.line)
+				} else if r.line.len == 0 {
+					if was_func {
+						r.functions << r.temp_lines
+					} else if was_struct {
+						r.structs << r.temp_lines
+					} else if was_enum {
+						r.enums << r.temp_lines
+					} else if was_interface {
+						r.interfaces << r.temp_lines
+					} else {
+						r.lines << r.temp_lines
+					}
 				} else if starts_with_include {
 					r.includes << r.line
 				} else if starts_with_fn {
@@ -638,9 +653,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				} else {
 					r.lines << r.line
 				}
-			} else {
-				r.temp_lines.clear()
 			}
+			r.temp_lines.clear()
 			if r.is_pin {
 				r.pin()
 				println('')
