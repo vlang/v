@@ -93,17 +93,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 		// val.$(field.name)
 		return ct.get_comptime_selector_type(node, ast.void_type)
 	} else if node is ast.SelectorExpr && ct.is_comptime_selector_type(node) {
-		if node.expr is ast.Ident {
-			match node.expr.name {
-				ct.comptime_for_variant_var {
-					return ct.type_map['${ct.comptime_for_variant_var}.typ']
-				}
-				else {
-					// field_var.typ from $for field
-					return ct.comptime_for_field_type
-				}
-			}
-		}
+		return ct.get_type_from_comptime_var(node.expr as ast.Ident)
 	} else if node is ast.ComptimeCall {
 		method_name := ct.comptime_for_method
 		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
@@ -115,6 +105,20 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 		return f.return_type
 	}
 	return ast.void_type
+}
+
+// get_type_from_comptime_var retrives the comptime type related to $for variable
+@[inline]
+pub fn (mut ct ComptimeInfo) get_type_from_comptime_var(var ast.Ident) ast.Type {
+	return match var.name {
+		ct.comptime_for_variant_var {
+			ct.type_map['${ct.comptime_for_variant_var}.typ']
+		}
+		else {
+			// field_var.typ from $for field
+			ct.comptime_for_field_type
+		}
+	}
 }
 
 pub fn (mut ct ComptimeInfo) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
