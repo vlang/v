@@ -561,6 +561,22 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 						c.error('unknown type `${ct_sym.name}`', node.type_pos)
 					}
 				}
+				// check if embed types are struct
+				for embed_type in parent_typ_sym.info.embeds {
+					final_embed_sym := c.table.final_sym(embed_type)
+					if final_embed_sym.kind != .struct_ {
+						c.error('cannot embed non-struct `${c.table.sym(embed_type).name}`',
+							node.type_pos)
+					}
+				}
+				if parent_typ_sym.info.is_anon {
+					for field in parent_typ_sym.info.fields {
+						if c.table.final_sym(field.typ).kind != .struct_ {
+							c.error('cannot embed non-struct `${c.table.sym(field.typ).name}`',
+								field.type_pos)
+						}
+					}
+				}
 			}
 		}
 		.array {
