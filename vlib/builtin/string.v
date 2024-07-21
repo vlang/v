@@ -1690,6 +1690,20 @@ pub fn (s string) trim_space() string {
 	return s.trim(' \n\t\v\f\r')
 }
 
+// trim_space_left strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start of the string.
+// Example: assert ' Hello V '.trim_space_left() == 'Hello V '
+@[inline]
+pub fn (s string) trim_space_left() string {
+	return s.trim_left(' \n\t\v\f\r')
+}
+
+// trim_space_left strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the end of the string.
+// Example: assert ' Hello V '.trim_space_right() == ' Hello V'
+@[inline]
+pub fn (s string) trim_space_right() string {
+	return s.trim_right(' \n\t\v\f\r')
+}
+
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {

@@ -737,13 +737,13 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 			diff := -flag_line_diff
 			line := flag_line + ' '.repeat(diff) +
 				keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-			docs << line.trim_right(' \n\t\v\f\r')
+			docs << line.trim_space_right()
 		} else {
-			docs << flag_line.trim_right(' \n\t\v\f\r')
+			docs << flag_line.trim_space_right()
 			if doc != '' {
 				line := empty_padding +
 					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-				docs << line.trim_right(' \n\t\v\f\r')
+				docs << line.trim_space_right()
 			}
 		}
 		if !dc.options.compact {
@@ -760,12 +760,12 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 				diff := -flag_line_diff
 				line := indent_flags_padding + entry.trim(' ') + ' '.repeat(diff) +
 					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-				docs << line.trim_right(' \n\t\v\f\r')
+				docs << line.trim_space_right()
 			} else {
 				docs << indent_flags_padding + entry.trim(' ')
 				line := empty_padding +
 					keep_at_max(doc, desc_max).replace('\n', '\n${empty_padding}')
-				docs << line.trim_right(' \n\t\v\f\r')
+				docs << line.trim_space_right()
 			}
 			if !dc.options.compact {
 				docs << ''

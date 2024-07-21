@@ -596,6 +596,9 @@ fn test_is_int() {
 fn test_trim_space() {
 	a := ' a '
 	assert a.trim_space() == 'a'
+	assert a.trim_space_left() == 'a '
+	assert a.trim_space_right() == ' a'
+
 	code := '
 
 fn main() {
@@ -606,7 +609,19 @@ fn main() {
 	code_clean := 'fn main() {
         println(2)
 }'
+	code_trim_right := '
+
+fn main() {
+        println(2)
+}'
+	code_trim_left := 'fn main() {
+        println(2)
+}
+
+'
 	assert code.trim_space() == code_clean
+	assert code.trim_space_right() == code_trim_right
+	assert code.trim_space_left() == code_trim_left
 }
 
 fn test_join() {
