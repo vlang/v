@@ -1697,7 +1697,7 @@ pub fn (s string) trim_space_left() string {
 	return s.trim_left(' \n\t\v\f\r')
 }
 
-// trim_space_left strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the end of the string.
+// trim_space_right strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the end of the string.
 // Example: assert ' Hello V '.trim_space_right() == ' Hello V'
 @[inline]
 pub fn (s string) trim_space_right() string {
