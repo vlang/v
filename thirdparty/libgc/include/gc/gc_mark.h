@@ -11,7 +11,6 @@
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
- *
  */
 
 /*
@@ -63,12 +62,14 @@
 /* to invoke the normal mark procedure instead.                         */
 /* WARNING: Such a mark procedure may be invoked on an unused object    */
 /* residing on a free list.  Such objects are cleared, except for a     */
-/* free-list link field in the first word.  Thus mark procedures may    */
-/* not count on the presence of a type descriptor, and must handle this */
-/* case correctly somehow.  Also, a mark procedure should be prepared   */
-/* to be executed concurrently from the marker threads (the later ones  */
-/* are created only if the client has called GC_start_mark_threads()    */
-/* or started a user thread previously).                                */
+/* free-list link field (which is located at the beginning of each      */
+/* object).  Thus mark procedures may not count on the presence of a    */
+/* type descriptor, and must handle this case correctly somehow.  Also, */
+/* a mark procedure should be prepared to be executed concurrently from */
+/* the marker threads (the later ones are created only if the client    */
+/* has called GC_start_mark_threads() or started a user thread          */
+/* previously).  For the compatibility reason, addr is a pointer to     */
+/* word, but it should be treated as a pointer to void pointer.         */
 typedef struct GC_ms_entry * (GC_CALLBACK * GC_mark_proc)(GC_word * /* addr */,
                                 struct GC_ms_entry * /* mark_stack_top */,
                                 struct GC_ms_entry * /* mark_stack_limit */,
@@ -92,12 +93,12 @@ typedef struct GC_ms_entry * (GC_CALLBACK * GC_mark_proc)(GC_word * /* addr */,
                         /* must be a multiple of 4.                     */
 #define GC_DS_BITMAP 1  /* The high-order bits are describing pointer   */
                         /* fields.  The most significant bit is set if  */
-                        /* the first word is a pointer.                 */
+                        /* the first "pointer-sized" word is a pointer. */
                         /* (This unconventional ordering sometimes      */
                         /* makes the marker slightly faster.)           */
                         /* Zeroes indicate definite non-pointers; ones  */
                         /* indicate possible pointers.                  */
-                        /* Only usable if pointers are word-aligned.    */
+                        /* Only usable if pointers are aligned.         */
 #define GC_DS_PROC   2
                         /* The objects referenced by this object can be */
                         /* pushed on the mark stack by invoking         */
@@ -107,21 +108,22 @@ typedef struct GC_ms_entry * (GC_CALLBACK * GC_mark_proc)(GC_word * /* addr */,
             ((((((GC_word)(env)) << GC_LOG_MAX_MARK_PROCS) \
                | (unsigned)(proc_index)) << GC_DS_TAG_BITS) \
              | (GC_word)GC_DS_PROC)
-#define GC_DS_PER_OBJECT 3  /* The real descriptor is at the            */
-                        /* byte displacement from the beginning of the  */
+#define GC_DS_PER_OBJECT 3
+                        /* The real descriptor is at the byte           */
+                        /* displacement from the beginning of the       */
                         /* object given by descr & ~GC_DS_TAGS.         */
                         /* If the descriptor is negative, the real      */
                         /* descriptor is at (*<object_start>) -         */
-                        /* (descr&~GC_DS_TAGS) - GC_INDIR_PER_OBJ_BIAS  */
+                        /* (descr&~GC_DS_TAGS) - GC_INDIR_PER_OBJ_BIAS. */
                         /* The latter alternative can be used if each   */
-                        /* object contains a type descriptor in the     */
-                        /* first word.                                  */
-                        /* Note that in the multi-threaded environments */
-                        /* per-object descriptors must be located in    */
-                        /* either the first two or last two words of    */
-                        /* the object, since only those are guaranteed  */
-                        /* to be cleared while the allocator lock is    */
-                        /* held.                                        */
+                        /* object contains a type descriptor at the     */
+                        /* beginning of the object.  Note that in the   */
+                        /* multi-threaded environments per-object       */
+                        /* descriptors must be located in either the    */
+                        /* first two or last two "pointer-sized" words  */
+                        /* of the object, since only those are          */
+                        /* guaranteed to be cleared while the allocator */
+                        /* lock is held.                                */
 #define GC_INDIR_PER_OBJ_BIAS 0x10
 
 GC_API void * GC_least_plausible_heap_addr;
@@ -134,18 +136,18 @@ GC_API void * GC_greatest_plausible_heap_addr;
                         /* larger than GC_least_plausible_heap_addr and */
                         /* less than GC_greatest_plausible_heap_addr.   */
 
-/* Specify the pointer mask.  Works only if the collector is built with */
-/* DYNAMIC_POINTER_MASK macro defined.  These primitives are normally   */
-/* needed only to support systems that use high-order pointer tags.     */
-/* The setter is expected to be called, if needed, before the GC        */
+/* Specify the pointer address mask.  Works only if the collector is    */
+/* built with DYNAMIC_POINTER_MASK macro defined.  These primitives are */
+/* normally needed only to support systems that use high-order pointer  */
+/* tags.  The setter is expected to be called, if needed, before the GC */
 /* initialization or, at least, before the first object is allocated.   */
 /* Both the setter and the getter are unsynchronized.                   */
 GC_API void GC_CALL GC_set_pointer_mask(GC_word);
 GC_API GC_word GC_CALL GC_get_pointer_mask(void);
 
-/* Similar to GC_set/get_pointer_mask but for the pointer shift.        */
-/* The value should be less than the size of word, in bits.  Applied    */
-/* after the mask.                                                      */
+/* Similar to GC_set/get_pointer_mask but for the pointer address       */
+/* shift.  The value should be less than the size of word, in bits.     */
+/* Applied after the mask.                                              */
 GC_API void GC_CALL GC_set_pointer_shift(unsigned);
 GC_API unsigned GC_CALL GC_get_pointer_shift(void);
 

@@ -1534,6 +1534,9 @@ GC_API int GC_CALL GC_invoke_finalizers(void);
 # if defined(__e2k__)
 #   define GC_reachable_here(ptr) \
                 __asm__ __volatile__ (" " : : "r"(ptr) : "memory")
+# elif defined(__TINYC__)
+#   define GC_reachable_here(ptr) \
+                __asm__ __volatile__ (" " : : "g"(ptr) : "memory")
 # else
 #   define GC_reachable_here(ptr) \
                 __asm__ __volatile__ (" " : : "X"(ptr) : "memory")

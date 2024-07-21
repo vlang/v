@@ -34,18 +34,31 @@
   extern "C" {
 #endif
 
-typedef GC_word * GC_bitmap;
-        /* The least significant bit of the first word is one if        */
-        /* the first word in the object may be a pointer.               */
-
+/* The size of word (not a pointer) in bits.    */
 #define GC_WORDSZ (8 * sizeof(GC_word))
-#define GC_get_bit(bm, index) /* index should be of unsigned type */ \
-            (((bm)[(index) / GC_WORDSZ] >> ((index) % GC_WORDSZ)) & 1)
-#define GC_set_bit(bm, index) /* index should be of unsigned type */ \
-            ((bm)[(index) / GC_WORDSZ] |= (GC_word)1 << ((index) % GC_WORDSZ))
-#define GC_WORD_OFFSET(t, f) (offsetof(t,f) / sizeof(GC_word))
+
+/* The size of a type in words.         */
 #define GC_WORD_LEN(t) (sizeof(t) / sizeof(GC_word))
+
+/* The offset of a field in words.      */
+#define GC_WORD_OFFSET(t, f) (offsetof(t, f) / sizeof(GC_word))
+
+/* The bitmap type.  The least significant bit of the first word is one */
+/* if the first "pointer-sized" word in the object may be a pointer.    */
+typedef GC_word * GC_bitmap;
+
+/* The number of elements (words) of a bitmap array to create for       */
+/* a given type.   The bitmap is intended to be passed to               */
+/* GC_make_descriptor().                                                */
 #define GC_BITMAP_SIZE(t) ((GC_WORD_LEN(t) + GC_WORDSZ - 1) / GC_WORDSZ)
+
+/* The setter and getter of the bitmap.  The bm argument should be of   */
+/* GC_bitmap type; index argument should be of some unsigned type and   */
+/* should not have side effects.                                        */
+#define GC_set_bit(bm, index) \
+            ((bm)[(index) / GC_WORDSZ] |= (GC_word)1 << ((index) % GC_WORDSZ))
+#define GC_get_bit(bm, index) \
+            (((bm)[(index) / GC_WORDSZ] >> ((index) % GC_WORDSZ)) & 1)
 
 typedef GC_word GC_descr;
 
@@ -82,8 +95,8 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
                                    GC_descr /* d */);
                 /* Allocate an object whose layout is described by d.   */
                 /* The size may NOT be less than the number of          */
-                /* meaningful bits in the bitmap of d multiplied by     */
-                /* sizeof GC_word.  The returned object is cleared.     */
+                /* meaningful bits in the bitmap of d multiplied by the */
+                /* size of a pointer.  The returned object is cleared.  */
                 /* The returned object may NOT be passed to GC_realloc. */
 
 GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
@@ -101,7 +114,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_CALLOC_SIZE(1, 2) void * GC_CALL
         /* machine with 16-bit aligned pointers, size_in_bytes  */
         /* must be a multiple of 2.  The element size may NOT   */
         /* be less than the number of meaningful bits in the    */
-        /* bitmap of d multiplied by sizeof GC_word.            */
+        /* bitmap of d multiplied by the size of a pointer.     */
         /* Returned object is cleared.                          */
 
 #define GC_CALLOC_TYPED_DESCR_WORDS 8

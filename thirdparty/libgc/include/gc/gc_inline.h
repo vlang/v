@@ -19,17 +19,17 @@
 
 /* WARNING:                                                             */
 /* Note that for these routines, it is the clients responsibility to    */
-/* add the extra byte at the end to deal with one-past-the-end pointers.*/
-/* In the standard collector configuration, the collector assumes that  */
-/* such a byte has been added, and hence does not trace the last word   */
-/* in the resulting object.                                             */
-/* This is not an issue if GC_get_all_interior_pointers() returns 0     */
-/* or if GC_get_dont_add_byte_at_end() returns 1.                       */
-/* This interface is most useful for compilers that generate C.         */
-/* It is also used internally for thread-local allocation.              */
-/* Manual use is hereby discouraged.                                    */
-/* Clients should include atomic_ops.h (or similar) before this header. */
-/* There is no debugging version of this allocation API.                */
+/* add the extra byte at the end to deal with one-past-the-end          */
+/* pointers.  In the standard collector configuration, the collector    */
+/* assumes that such a byte has been added, and hence does not trace    */
+/* the last "pointer-sized" word in the resulting object.  This is not  */
+/* an issue if GC_get_all_interior_pointers() returns 0 or              */
+/* if GC_get_dont_add_byte_at_end() returns 1.                          */
+/* This interface is most useful for compilers that generate C.  It is  */
+/* also used internally for thread-local allocation.  A manual use is   */
+/* hereby discouraged.  Clients should include atomic_ops.h (or         */
+/* similar) before this header.  There is no debugging version of this  */
+/* allocation API.                                                      */
 
 #include "gc.h"
 #include "gc_tiny_fl.h"
@@ -79,23 +79,23 @@
 GC_API int GC_CALL GC_get_dont_add_byte_at_end(void);
 
 /* Return a list of one or more objects of the indicated size, linked   */
-/* through the first word in each object.  This has the advantage that  */
-/* it acquires the allocator lock only once, and may greatly reduce     */
-/* time wasted contending for the allocator lock.  Typical usage would  */
-/* be in a thread that requires many items of the same size.  It would  */
-/* keep its own free list in a thread-local storage, and call           */
+/* through the first pointer in each object.  This has the advantage    */
+/* that it acquires the allocator lock only once, and may greatly       */
+/* reduce time wasted contending for the allocator lock.  Typical usage */
+/* would be in a thread that requires many items of the same size.      */
+/* It would keep its own free list in a thread-local storage, and call  */
 /* GC_malloc_many or friends to replenish it.  (We do not round up      */
 /* object sizes, since a call indicates the intention to consume many   */
 /* objects of exactly this size.)  We assume that the size is non-zero  */
-/* and a multiple of GC_GRANULE_BYTES, and that it already includes     */
-/* value returned by GC_get_all_interior_pointers() (unless             */
-/* GC_get_dont_add_byte_at_end() returns a non-zero value).  We return  */
-/* the free-list by assigning it to (*result), since it is not safe to  */
-/* return, e.g. a linked list of pointer-free objects, since the        */
-/* collector would not retain the entire list if it were invoked just   */
-/* as we were returning; the client must make sure that (*result) is    */
-/* traced even if objects are pointer-free.  Note also that the client  */
-/* should usually clear the link field.                                 */
+/* and a multiple of GC_GRANULE_BYTES, and that the size already        */
+/* includes the value returned by GC_get_all_interior_pointers()        */
+/* (unless GC_get_dont_add_byte_at_end() returns a non-zero value).     */
+/* We return the free-list by assigning it to (*result), since it is    */
+/* not safe to return, e.g. a linked list of pointer-free objects,      */
+/* since the collector would not retain the entire list if it were      */
+/* invoked just as we were returning; the client must make sure that    */
+/* (*result) is traced even if objects are pointer-free.  Note also     */
+/* that the client should usually clear the link field.                 */
 GC_API void GC_CALL GC_generic_malloc_many(size_t /* lb_adjusted */,
                                            int /* k */, void ** /* result */);
 
@@ -133,14 +133,14 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 /* are initialized to (void *)1, then we allocate num_direct granules   */
 /* directly using generic_malloc before putting multiple objects into   */
 /* the tiny_fl entry.  If num_direct is zero, then the free lists may   */
-/* also be initialized to (void *)0.                                    */
+/* also be initialized to NULL.                                         */
 /* Note that we use the zeroth free list to hold objects 1 granule in   */
 /* size that are used to satisfy size 0 allocation requests.            */
 /* We rely on much of this hopefully getting optimized away in the      */
 /* case of num_direct is 0.  Particularly, if lg argument is constant,  */
 /* this should generate a small amount of code.                         */
-# define GC_FAST_MALLOC_GRANS(result, lg, tiny_fl, num_direct, k, \
-                              default_expr, init) \
+#define GC_FAST_MALLOC_GRANS(result, lg, tiny_fl, num_direct, k, \
+                             default_expr, init) \
   do { \
     if (GC_EXPECT((lg) >= GC_TINY_FREELISTS, 0)) { \
         result = (default_expr); \
@@ -148,7 +148,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
         void **my_fl = (tiny_fl) + (lg); \
         void *my_entry = *my_fl; \
         void *next; \
-    \
+        \
         for (;;) { \
             if (GC_EXPECT((GC_word)my_entry \
                           > (num_direct) + GC_TINY_FREELISTS + 1, 1)) { \
@@ -163,7 +163,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
                 } \
                 GC_ASSERT(GC_size(result) >= (lg) * GC_GRANULE_BYTES); \
                 GC_ASSERT((k) == GC_I_PTRFREE \
-                          || ((GC_word *)result)[1] == 0); \
+                          || 0 /* NULL */ == ((void **)result)[1]); \
                 break; \
             } \
             /* Entry contains counter or NULL */ \
@@ -189,31 +189,33 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
     } \
   } while (0)
 
-# define GC_WORDS_TO_WHOLE_GRANULES(n) \
+#define GC_WORDS_TO_WHOLE_GRANULES(n) \
         GC_WORDS_TO_GRANULES((n) + GC_GRANULE_WORDS - 1)
 
-/* Allocate n words (not bytes).  The pointer is stored to result.      */
+/* Allocate n "pointer-sized" words.  The allocation size is            */
+/* rounded up to a granule size.  The pointer is stored to result.      */
 /* Should not be used unless GC_get_all_interior_pointers() returns 0   */
 /* or if GC_get_dont_add_byte_at_end() returns 1.  Does not acquire the */
 /* allocator lock.  The caller is responsible for supplying a cleared   */
 /* tiny_fl free-list array.  For single-threaded applications, this may */
 /* be a global array.                                                   */
-# define GC_MALLOC_WORDS_KIND(result, n, tiny_fl, k, init) \
+#define GC_MALLOC_WORDS_KIND(result, n, tiny_fl, k, init) \
     do { \
       size_t lg = GC_WORDS_TO_WHOLE_GRANULES(n); \
+      \
       GC_FAST_MALLOC_GRANS(result, lg, tiny_fl, 0 /* num_direct */, k, \
                            GC_malloc_kind(lg * GC_GRANULE_BYTES, k), init); \
     } while (0)
 
-# define GC_MALLOC_WORDS(result, n, tiny_fl) \
+#define GC_MALLOC_WORDS(result, n, tiny_fl) \
         GC_MALLOC_WORDS_KIND(result, n, tiny_fl, GC_I_NORMAL, \
-                             *(void **)(result) = 0)
+                             (void)(*(void **)(result) = 0 /* NULL */))
 
-# define GC_MALLOC_ATOMIC_WORDS(result, n, tiny_fl) \
+#define GC_MALLOC_ATOMIC_WORDS(result, n, tiny_fl) \
         GC_MALLOC_WORDS_KIND(result, n, tiny_fl, GC_I_PTRFREE, (void)0)
 
-/* And once more for two word initialized objects: */
-# define GC_CONS(result, first, second, tiny_fl) \
+/* And one more for two-pointer initialized objects:    */
+#define GC_CONS(result, first, second, tiny_fl) \
     do { \
       void *l = (void *)(first); \
       void *r = (void *)(second); \
