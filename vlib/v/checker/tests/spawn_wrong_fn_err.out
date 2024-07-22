@@ -1,0 +1,14 @@
+vlib/v/checker/tests/spawn_wrong_fn_err.vv:29:5: error: unknown function: vlang_ip
+   27 |     wg.add(2)
+   28 |     go vlang_time(mut wg)
+   29 |     go vlang_ip(mut wg)
+      |        ~~~~~~~~~~~~~~~~
+   30 |     wg.wait()
+   31 | }
+vlib/v/checker/tests/spawn_wrong_fn_err.vv:29:5: error: invalid expr
+   27 |     wg.add(2)
+   28 |     go vlang_time(mut wg)
+   29 |     go vlang_ip(mut wg)
+      |        ~~~~~~~~~~~~~~~~
+   30 |     wg.wait()
+   31 | }
