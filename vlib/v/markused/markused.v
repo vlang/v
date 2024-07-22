@@ -119,6 +119,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			ref_array_idx_str + '.reverse',
 			ref_array_idx_str + '.set',
 			ref_array_idx_str + '.set_unsafe',
+			ref_array_idx_str + '.sorted_with_compare',
 			// TODO: process the _vinit const initializations automatically too
 			'json.decode_string',
 			'json.decode_int',
