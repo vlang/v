@@ -1100,11 +1100,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					}
 				}
 				suggestion := util.new_suggestion(fn_name, mod_func_names)
-				c.fatal(suggestion.say('unknown function: ${fn_name} '), node.pos)
+				c.error(suggestion.say('unknown function: ${fn_name} '), node.pos)
 				return ast.void_type
 			}
 		}
-		c.fatal('unknown function: ${node.get_name()}', node.pos)
+		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
 	node.is_file_translated = func.is_file_translated
@@ -2584,6 +2584,10 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
+			if arg.typ == 0 {
+				c.error('invalid expr', node.pos)
+				return 0
+			}
 			if c.table.final_sym(arg.typ).kind == .array {
 				// allow mutable []array to be passed as mut
 				continue
