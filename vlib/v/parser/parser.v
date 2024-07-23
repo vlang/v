@@ -2774,34 +2774,43 @@ fn (mut p Parser) name_expr() ast.Expr {
 					got: '${p.prev_tok}'
 				)
 			}
-			node = p.call_expr(language, mod)
-			if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
-				p.next()
-				pos := p.tok.pos()
-				args := p.call_args()
-				p.check(.rpar)
-
-				mut or_kind := ast.OrKind.absent
-				mut or_stmts := []ast.Stmt{}
-				mut or_pos := p.tok.pos()
-				if p.tok.kind in [.not, .question] {
-					or_kind = if p.tok.kind == .not { .propagate_result } else { .propagate_option }
+			// mod.Enum.val
+			if p.peek_tok.kind == .dot && p.peek_token(3).kind in [.comma, .rpar] {
+				node = p.enum_val_expr(mod)
+			} else {
+				node = p.call_expr(language, mod)
+				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
 					p.next()
-				}
-				if p.tok.kind == .key_orelse {
-					// `foo() or {}``
-					or_kind = .block
-					or_stmts, or_pos = p.or_block(.with_err_var)
-				}
-				node = ast.CallExpr{
-					left: node
-					args: args
-					pos: pos
-					scope: p.scope
-					or_block: ast.OrExpr{
-						stmts: or_stmts
-						kind: or_kind
-						pos: or_pos
+					pos := p.tok.pos()
+					args := p.call_args()
+					p.check(.rpar)
+
+					mut or_kind := ast.OrKind.absent
+					mut or_stmts := []ast.Stmt{}
+					mut or_pos := p.tok.pos()
+					if p.tok.kind in [.not, .question] {
+						or_kind = if p.tok.kind == .not {
+							.propagate_result
+						} else {
+							.propagate_option
+						}
+						p.next()
+					}
+					if p.tok.kind == .key_orelse {
+						// `foo() or {}``
+						or_kind = .block
+						or_stmts, or_pos = p.or_block(.with_err_var)
+					}
+					node = ast.CallExpr{
+						left: node
+						args: args
+						pos: pos
+						scope: p.scope
+						or_block: ast.OrExpr{
+							stmts: or_stmts
+							kind: or_kind
+							pos: or_pos
+						}
 					}
 				}
 			}
@@ -2879,23 +2888,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-		// `Color.green`
-		mut enum_name := p.check_name()
-		enum_name_pos := p.prev_tok.pos()
-		if mod != '' {
-			enum_name = mod + '.' + enum_name
-		} else {
-			enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
-		}
-		p.check(.dot)
-		val := p.check_name()
-		p.expr_mod = ''
-		return ast.EnumVal{
-			enum_name: enum_name
-			val: val
-			pos: enum_name_pos.extend(p.prev_tok.pos())
-			mod: mod
-		}
+		return p.enum_val_expr(mod)
 	} else if language == .js && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
@@ -2965,6 +2958,26 @@ fn (mut p Parser) name_expr() ast.Expr {
 enum OrBlockErrVarMode {
 	no_err_var
 	with_err_var
+}
+
+fn (mut p Parser) enum_val_expr(mod string) ast.EnumVal {
+	// `Color.green`
+	mut enum_name := p.check_name()
+	enum_name_pos := p.prev_tok.pos()
+	if mod != '' {
+		enum_name = mod + '.' + enum_name
+	} else {
+		enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
+	}
+	p.check(.dot)
+	val := p.check_name()
+	p.expr_mod = ''
+	return ast.EnumVal{
+		enum_name: enum_name
+		val: val
+		pos: enum_name_pos.extend(p.prev_tok.pos())
+		mod: mod
+	}
 }
 
 fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos) {
