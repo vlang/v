@@ -58,6 +58,8 @@ jobs:
         run: v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self compilation with -skip-unused
         run: v -skip-unused -o v2 cmd/v && ./v2 -skip-unused -o v3 cmd/v && ./v3 -skip-unused -o v4 cmd/v
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
       - name: v doctor
         run: v doctor
       - name: Verify `v test` works
@@ -178,6 +180,8 @@ jobs:
       - name: V self compilation with -parallel-cc
         run: |
           v -o v2 -parallel-cc cmd/v
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
       - name: Build modules
         run: |
           v build-module vlib/os
@@ -215,6 +219,8 @@ jobs:
         #   uses: coverallsapp/github-action@v1.0.1
         #   with:
         #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
 
   clang:
     runs-on: ubuntu-20.04
@@ -277,6 +283,8 @@ jobs:
       - name: Build examples with -autofree
         run: |
           v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
       - name: Build modules
         run: |
           v build-module vlib/os
