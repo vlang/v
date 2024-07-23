@@ -1,4 +1,4 @@
-vlib/v/checker/tests/enum_value_used_before_decl_err.vv:2:10: error: cannot use `TestEnum.a` as not defined or declared later
+vlib/v/checker/tests/enum_value_used_before_decl_err.vv:2:10: error: `TestEnum.a` should be declared before using it
     1 | enum TestEnum {
     2 |     chan  = int(TestEnum.a)
       |             ~~~~~~~~~~~~~~~
