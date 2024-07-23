@@ -44,16 +44,7 @@ pub fn htonf64(host f64) f64 {
 // hton64 converts the 64 bit value `host` to the net format (htonll)
 pub fn hton64(host u64) u64 {
 	$if little_endian {
-		// vfmt off
-		return ((host >> 56) & 0x00000000_000000FF) |
-			   ((host >> 40) & 0x00000000_0000FF00) |
-			   ((host >> 24) & 0x00000000_00FF0000) |
-			   ((host >> 8)  & 0x00000000_FF000000) |
-			   ((host << 8)  & 0x000000FF_00000000) |
-			   ((host << 24) & 0x0000FF00_00000000) |
-			   ((host << 40) & 0x00FF0000_00000000) |
-			   ((host << 56) & 0xFF000000_00000000)
-		// vfmt on
+		return reverse_bytes_u64(host)
 	} $else {
 		return host
 	}
@@ -69,12 +60,7 @@ pub fn htn32(host u32) u32 {
 // hton32 converts the 32 bit value `host` to the net format (htonl)
 pub fn hton32(host u32) u32 {
 	$if little_endian {
-		// vfmt off
-		return ((host >> 24) & 0x0000_00FF) |
-			   ((host >> 8)  & 0x0000_FF00) |
-			   ((host << 8)  & 0x00FF_0000) |
-			   ((host << 24) & 0xFF00_0000)
-		// vfmt on
+		return reverse_bytes_u32(host)
 	} $else {
 		return host
 	}
@@ -90,10 +76,7 @@ pub fn htn16(host u16) u16 {
 // hton16 converts the 16 bit value `host` to the net format (htons)
 pub fn hton16(host u16) u16 {
 	$if little_endian {
-		// vfmt off
-		return ((host >> 8) & 0x00FF) |
-			   ((host << 8) & 0xFF00)
-		// vfmt on
+		return reverse_bytes_u16(host)
 	} $else {
 		return host
 	}
@@ -187,4 +170,39 @@ pub fn varinttou64(b []u8) !(u64, u8) {
 		n = n * 256 + b[i]
 	}
 	return n, len
+}
+
+// reverse_bytes_u64 reverse a u64's byte order
+@[inline]
+pub fn reverse_bytes_u64(a u64) u64 {
+	// vfmt off
+	return ((a >> 56) & 0x00000000_000000FF) |
+		   ((a >> 40) & 0x00000000_0000FF00) |
+		   ((a >> 24) & 0x00000000_00FF0000) |
+		   ((a >> 8)  & 0x00000000_FF000000) |
+		   ((a << 8)  & 0x000000FF_00000000) |
+		   ((a << 24) & 0x0000FF00_00000000) |
+		   ((a << 40) & 0x00FF0000_00000000) |
+		   ((a << 56) & 0xFF000000_00000000)
+	// vfmt on
+}
+
+// reverse_bytes_u32 reverse a u32's byte order
+@[inline]
+pub fn reverse_bytes_u32(a u32) u32 {
+	// vfmt off
+	return ((a >> 24) & 0x0000_00FF) |
+		   ((a >> 8)  & 0x0000_FF00) |
+		   ((a << 8)  & 0x00FF_0000) |
+		   ((a << 24) & 0xFF00_0000)
+	// vfmt on
+}
+
+// reverse_bytes_u16 reverse a u16's byte order
+@[inline]
+pub fn reverse_bytes_u16(a u16) u16 {
+	// vfmt off
+	return ((a >> 8) & 0x00FF) |
+		   ((a << 8) & 0xFF00)
+	// vfmt on
 }
