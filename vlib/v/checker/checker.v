@@ -1932,6 +1932,14 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						c.error('the type of an enum value must be an integer type, like i8, u8, int, u64 etc.',
 							field.expr.pos)
 					}
+					if mut field.expr.expr is ast.EnumVal {
+						if field.expr.expr.enum_name == node.name {
+							if field.expr.expr.val !in seen_enum_field_names {
+								c.error('`${field.expr.expr.enum_name}.${field.expr.expr.val}` should be declared before using it',
+									field.expr.pos)
+							}
+						}
+					}
 				}
 				else {
 					if mut field.expr is ast.Ident {
