@@ -112,6 +112,10 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	res << Command{
+		line: '${vexe} -skip-unused test vlib/builtin'
+		okmsg: 'V can test vlib/builtin with -skip-unused'
+	}
+	res << Command{
 		line: '${vexe} -skip-unused -profile - examples/hello_world.v'
 		okmsg: 'V can compile hello world with both -skip-unused and -profile .'
 		rmfile: 'examples/hello_world'

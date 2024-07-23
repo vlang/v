@@ -52,6 +52,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'_option_ok',
 			'_result_ok',
 			'error',
+			'ptr_str', // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
 			// utf8_str_visible_length is used by c/str.v
 			'utf8_str_visible_length',
 			'compare_ints',
