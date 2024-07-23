@@ -20,7 +20,7 @@ pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
 	module_path  string
 pub mut:
-	checker             &checker.Checker = unsafe { nil }
+	checker             &checker.Checker         = unsafe { nil }
 	transformer         &transformer.Transformer = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
@@ -42,8 +42,8 @@ pub mut:
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
-	crun_cache_keys       []string // target executable + top level source files; filled in by Builder.should_rebuild
-	executable_exists     bool     // if the executable already exists, don't remove new executable after `v run`
+	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {

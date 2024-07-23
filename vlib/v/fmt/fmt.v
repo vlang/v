@@ -32,7 +32,7 @@ pub mut:
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
-	import_pos         int // position of the imports in the resulting string
+	import_pos         int               // position of the imports in the resulting string
 	auto_imports       map[string]bool   // potentially hidden imports(`sync` when using channels) and preludes(when embedding files)
 	used_imports       map[string]bool   // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols

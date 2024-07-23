@@ -17,12 +17,12 @@ pub:
 	assetManager     &AssetManager = unsafe { nil } // Pointer to the Asset Manager instance for the application.
 	clazz            voidptr       // (jobject) The NativeActivity object handle.
 	env              voidptr       // (JNIEnv *) JNI context for the main thread of the app.
-	externalDataPath &char   // Path to this application's external (removable/mountable) data directory.
-	instance         voidptr // This is the native instance of the application.
-	internalDataPath &char   // Path to this application's internal data directory.
-	obbPath          &char   // Available starting with Honeycomb: path to the directory containing the application's OBB files (if any).
-	sdkVersion       int     // The platform's SDK version code.
-	vm               voidptr // (JavaVM *) The global handle on the process's Java VM.
+	externalDataPath &char         // Path to this application's external (removable/mountable) data directory.
+	instance         voidptr       // This is the native instance of the application.
+	internalDataPath &char         // Path to this application's internal data directory.
+	obbPath          &char         // Available starting with Honeycomb: path to the directory containing the application's OBB files (if any).
+	sdkVersion       int           // The platform's SDK version code.
+	vm               voidptr       // (JavaVM *) The global handle on the process's Java VM.
 }
 
 // NativeActivity defines the native side of an android.app.NativeActivity.

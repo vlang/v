@@ -179,8 +179,8 @@ pub mut:
 	scroll_x      int
 	scroll_y      int
 	//
-	key_modifiers     Modifier // the current key modifiers
-	key_repeat        bool     // whether the pressed key was an autorepeated one
+	key_modifiers     Modifier           // the current key modifiers
+	key_repeat        bool               // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different

@@ -191,8 +191,8 @@ pub mut:
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
-	compile_defines     []string // just ['vfmt']
-	compile_defines_all []string // contains both: ['vfmt','another']
+	compile_defines     []string          // just ['vfmt']
+	compile_defines_all []string          // contains both: ['vfmt','another']
 	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
@@ -244,10 +244,10 @@ pub mut:
 
 pub struct LineInfo {
 pub mut:
-	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
-	path         string // same, but stores the path being parsed
-	expr         string // "foo" or "foo.bar" V code (expression) which needs autocomplete
-	is_running   bool   // so that line info is fetched only on the second checker run
+	line_nr      int             // a quick single file run when called with v -line-info (contains line nr to inspect)
+	path         string          // same, but stores the path being parsed
+	expr         string          // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	is_running   bool            // so that line info is fetched only on the second checker run
 	vars_printed map[string]bool // to avoid dups
 }
 

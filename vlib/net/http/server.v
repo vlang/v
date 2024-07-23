@@ -35,8 +35,8 @@ pub mut:
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
 	accept_timeout     time.Duration = 30 * time.second
-	pool_channel_slots int = 1024
-	worker_num         int = runtime.nr_jobs()
+	pool_channel_slots int           = 1024
+	worker_num         int           = runtime.nr_jobs()
 	listener           net.TcpListener
 	//
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.

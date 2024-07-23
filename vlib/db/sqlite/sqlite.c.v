@@ -59,7 +59,7 @@ pub struct C.sqlite3_stmt {
 @[heap]
 pub struct Stmt {
 	stmt &C.sqlite3_stmt = unsafe { nil }
-	db   &DB = unsafe { nil }
+	db   &DB             = unsafe { nil }
 }
 
 struct SQLError {

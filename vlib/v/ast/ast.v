@@ -389,7 +389,7 @@ pub:
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment    // comments that after last const field
-	is_block     bool // const() block
+	is_block     bool         // const() block
 }
 
 @[minify]
@@ -528,7 +528,7 @@ pub struct AnonFn {
 pub mut:
 	decl           FnDecl
 	inherited_vars []Param
-	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	typ            Type            // the type of anonymous fn. Both .typ and .decl.name are auto generated
 	has_gen        map[string]bool // a map of the names of all generic anon functions, generated from it
 }
 
@@ -854,8 +854,8 @@ pub mut:
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 	pos         token.Pos
-	is_used     bool // whether the local variable was used in other expressions
-	is_changed  bool // to detect mutable vars that are never changed
+	is_used     bool            // whether the local variable was used in other expressions
+	is_changed  bool            // to detect mutable vars that are never changed
 	ct_type_var ComptimeVarKind // comptime variable type
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`

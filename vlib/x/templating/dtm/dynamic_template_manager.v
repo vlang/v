@@ -70,7 +70,7 @@ mut:
 	// cache database
 	template_caches shared []TemplateCache = []TemplateCache{}
 	// counter for each individual TemplateCache created/updated
-	id_counter       int = 1
+	id_counter       int                = 1
 	ch_cache_handler chan TemplateCache = chan TemplateCache{cap: dtm.cache_handler_channel_cap}
 	// 'id_to_handlered' field is used exclusively by the cache handler to update or delete specific 'TemplateCache' in the cache database.
 	id_to_handlered     int

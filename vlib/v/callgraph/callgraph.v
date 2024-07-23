@@ -27,9 +27,9 @@ struct Mapper {
 mut:
 	pref            &pref.Preferences = unsafe { nil }
 	table           &ast.Table        = unsafe { nil }
-	file            &ast.File   = unsafe { nil }
-	node            &ast.Node   = unsafe { nil }
-	fn_decl         &ast.FnDecl = unsafe { nil }
+	file            &ast.File         = unsafe { nil }
+	node            &ast.Node         = unsafe { nil }
+	fn_decl         &ast.FnDecl       = unsafe { nil }
 	caller_name     string
 	dot_caller_name string
 	is_caller_used  bool

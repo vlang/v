@@ -295,7 +295,7 @@ pub mut:
 	prog_len int // regex program len
 	// char classes storage
 	cc       []CharClass // char class list
-	cc_index int // index
+	cc_index int         // index
 	// groups
 	group_count      int   // number of groups in this regex struct
 	groups           []int // groups index results

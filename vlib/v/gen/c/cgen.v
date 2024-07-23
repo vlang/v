@@ -66,28 +66,28 @@ mut:
 	comptime_definitions      strings.Builder // custom defines, given by -d/-define flags on the CLI
 	cleanup                   strings.Builder
 	cleanups                  map[string]strings.Builder // contents of `void _vcleanup(){}`
-	gowrappers                strings.Builder // all go callsite wrappers
-	auto_str_funcs            strings.Builder // function bodies of all auto generated _str funcs
-	dump_funcs                strings.Builder // function bodies of all auto generated _str funcs
-	pcs_declarations          strings.Builder // -prof profile counter declarations for each function
-	cov_declarations          strings.Builder // -cov coverage
-	embedded_data             strings.Builder // data to embed in the executable/binary
-	shared_types              strings.Builder // shared/lock types
-	shared_functions          strings.Builder // shared constructors
-	out_options_forward       strings.Builder // forward `option_xxxx` types
-	out_options               strings.Builder // `option_xxxx` types
-	out_results_forward       strings.Builder // forward`result_xxxx` types
-	out_results               strings.Builder // `result_xxxx` types
-	json_forward_decls        strings.Builder // json type forward decls
-	sql_buf                   strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
+	gowrappers                strings.Builder            // all go callsite wrappers
+	auto_str_funcs            strings.Builder            // function bodies of all auto generated _str funcs
+	dump_funcs                strings.Builder            // function bodies of all auto generated _str funcs
+	pcs_declarations          strings.Builder            // -prof profile counter declarations for each function
+	cov_declarations          strings.Builder            // -cov coverage
+	embedded_data             strings.Builder            // data to embed in the executable/binary
+	shared_types              strings.Builder            // shared/lock types
+	shared_functions          strings.Builder            // shared constructors
+	out_options_forward       strings.Builder            // forward `option_xxxx` types
+	out_options               strings.Builder            // `option_xxxx` types
+	out_results_forward       strings.Builder            // forward`result_xxxx` types
+	out_results               strings.Builder            // `result_xxxx` types
+	json_forward_decls        strings.Builder            // json type forward decls
+	sql_buf                   strings.Builder            // for writing exprs to args via `sqlite3_bind_int()` etc
 	global_const_defs         map[string]GlobalConstDef
 	sorted_global_const_names []string
 	file                      &ast.File  = unsafe { nil }
 	table                     &ast.Table = unsafe { nil }
-	unique_file_path_hash     u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
+	unique_file_path_hash     u64         // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
-	tmp_count                 int         // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count                 int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
 	tmp_count_af              int  // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations    int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	global_tmp_count          int  // like tmp_count but global and not reset in each function
@@ -107,17 +107,17 @@ mut:
 	is_fn_index_call          bool
 	is_cc_msvc                bool // g.pref.ccompiler == 'msvc'
 	is_option_auto_heap       bool
-	vlines_path               string   // set to the proper path for generating #line directives
-	options_pos_forward       int      // insertion point to forward
-	options_forward           []string // to forward
+	vlines_path               string            // set to the proper path for generating #line directives
+	options_pos_forward       int               // insertion point to forward
+	options_forward           []string          // to forward
 	options                   map[string]string // to avoid duplicates
-	results_forward           []string // to forward
+	results_forward           []string          // to forward
 	results                   map[string]string // to avoid duplicates
 	done_options              shared []string   // to avoid duplicates
 	done_results              shared []string   // to avoid duplicates
 	chan_pop_options          map[string]string // types for `x := <-ch or {...}`
 	chan_push_options         map[string]string // types for `ch <- x or {...}`
-	mtxs                      string // array of mutexes if the `lock` has multiple variables
+	mtxs                      string            // array of mutexes if the `lock` has multiple variables
 	labeled_loops             map[string]&ast.Stmt
 	inner_loop                &ast.Stmt = unsafe { nil }
 	shareds                   map[int]string // types with hidden mutex for which decl has been emitted
@@ -186,7 +186,7 @@ mut:
 	anon_fn_definitions       []string     // anon generated functions definition list
 	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions      []string
-	json_types                []ast.Type // to avoid json gen duplicates
+	json_types                []ast.Type           // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names          []string
 	hotcode_fpaths            []string
@@ -225,7 +225,7 @@ mut:
 	curr_var_name       []string // curr var name on assignment
 	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
-	force_main_console  bool // true when @[console] used on fn main()
+	force_main_console  bool              // true when @[console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
 	referenced_fns      shared map[string]bool // functions that have been referenced

@@ -74,10 +74,10 @@ mut:
 	errmsg      string
 	rmfile      string
 	runcmd      RunCommandKind = .system
-	expect      string = expect_nothing
-	starts_with string = starts_with_nothing
-	ends_with   string = ends_with_nothing
-	contains    string = contains_nothing
+	expect      string         = expect_nothing
+	starts_with string         = starts_with_nothing
+	ends_with   string         = ends_with_nothing
+	contains    string         = contains_nothing
 	output      string
 	before_cb   FnCheck = unsafe { nil }
 	after_cb    FnCheck = unsafe { nil }

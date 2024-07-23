@@ -98,8 +98,8 @@ mut:
 	secondary_color_idx int          = 28
 	bg_color            ui.Color     = ui.Color{0, 0, 0}
 	drawing             [][]ui.Color = [][]ui.Color{len: h, init: []ui.Color{len: w}}
-	size                int  = 1
-	should_redraw       bool = true
+	size                int          = 1
+	should_redraw       bool         = true
 	is_dragging         bool
 }
 

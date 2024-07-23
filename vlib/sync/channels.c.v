@@ -42,7 +42,7 @@ mut: // atomic
 	read_adr           C.atomic_uintptr_t // if != NULL an obj can be read from here without wait
 	adr_read           C.atomic_uintptr_t // used to identify origin of writesem
 	adr_written        C.atomic_uintptr_t // used to identify origin of readsem
-	write_free         u32 // for queue state
+	write_free         u32                // for queue state
 	read_avail         u32
 	buf_elem_write_idx u32
 	buf_elem_read_idx  u32

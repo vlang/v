@@ -5,7 +5,7 @@ module fmt
 
 import v.mathutil
 
-const struct_field_align_threshold = 8
+const struct_field_align_threshold = 16
 
 struct AlignInfo {
 mut:

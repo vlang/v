@@ -12,10 +12,10 @@ struct FlagData {
 
 struct FlagContext {
 	raw       string @[required] // raw arg array entry. E.g.: `--id=val`
-	delimiter string // usually `'-'`
-	name      string // either struct field name or what is defined in `@[long: <name>]`
-	next      string // peek at what is the next flag/arg
-	pos       int    // position in arg array
+	delimiter string            // usually `'-'`
+	name      string            // either struct field name or what is defined in `@[long: <name>]`
+	next      string            // peek at what is the next flag/arg
+	pos       int               // position in arg array
 }
 
 pub enum Style {
@@ -28,7 +28,7 @@ pub enum Style {
 }
 
 struct StructInfo {
-	name   string // name of the struct itself
+	name   string            // name of the struct itself
 	attrs  map[string]string // collection of `@[x: y]` sat on the struct, read via reflection
 	fields map[string]StructField
 }

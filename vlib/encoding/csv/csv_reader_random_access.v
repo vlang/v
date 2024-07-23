@@ -74,7 +74,7 @@ pub mut:
 	csv_map [][]i64
 	// header
 	header_row  int = -1 // row index of the header in the csv_map
-	header_list []HeaderItem // list of the header item
+	header_list []HeaderItem   // list of the header item
 	header_map  map[string]int // map from header label to column index
 }
 

@@ -45,9 +45,9 @@ pub:
 	// fail_cb    fn (&u8)    = unsafe { nil }
 
 	user_data           voidptr // these are the user-provided callbacks with user data
-	init_userdata_cb    fn (voidptr) = unsafe { nil }
-	frame_userdata_cb   fn (voidptr) = unsafe { nil }
-	cleanup_userdata_cb fn (voidptr) = unsafe { nil }
+	init_userdata_cb    fn (voidptr)         = unsafe { nil }
+	frame_userdata_cb   fn (voidptr)         = unsafe { nil }
+	cleanup_userdata_cb fn (voidptr)         = unsafe { nil }
 	event_userdata_cb   fn (&Event, voidptr) = unsafe { nil }
 	// fail_userdata_cb    fn (&char, voidptr)  = unsafe { nil }
 
@@ -96,13 +96,13 @@ pub:
 	key_repeat         bool        // true if this is a key-repeat event, valid in KEY_UP, KEY_DOWN and CHAR
 	modifiers          u32         // current modifier keys, valid in all key-, char- and mouse-events
 	mouse_button       MouseButton // mouse button that was pressed or released, valid in MOUSE_DOWN, MOUSE_UP
-	mouse_x            f32 // current horizontal mouse position in pixels, always valid except during mouse lock
-	mouse_y            f32 // current vertical mouse position in pixels, always valid except during mouse lock
-	mouse_dx           f32 // relative horizontal mouse movement since last frame, always valid
-	mouse_dy           f32 // relative vertical mouse movement since last frame, always valid
-	scroll_x           f32 // horizontal mouse wheel scroll distance, valid in MOUSE_SCROLL events
-	scroll_y           f32 // vertical mouse wheel scroll distance, valid in MOUSE_SCROLL events
-	num_touches        int // number of valid items in the touches[] array
+	mouse_x            f32         // current horizontal mouse position in pixels, always valid except during mouse lock
+	mouse_y            f32         // current vertical mouse position in pixels, always valid except during mouse lock
+	mouse_dx           f32         // relative horizontal mouse movement since last frame, always valid
+	mouse_dy           f32         // relative vertical mouse movement since last frame, always valid
+	scroll_x           f32         // horizontal mouse wheel scroll distance, valid in MOUSE_SCROLL events
+	scroll_y           f32         // vertical mouse wheel scroll distance, valid in MOUSE_SCROLL events
+	num_touches        int         // number of valid items in the touches[] array
 	touches            [max_touchpoints]TouchPoint // current touch points, valid in TOUCHES_BEGIN, TOUCHES_MOVED, TOUCHES_ENDED
 	window_width       int // current window- and framebuffer width in pixels, always valid
 	window_height      int // current window- and framebuffer height in pixels, always valid
