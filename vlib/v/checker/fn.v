@@ -2584,6 +2584,10 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
+			if arg.typ == 0 {
+				c.error('invalid expr', node.pos)
+				return 0
+			}
 			if c.table.final_sym(arg.typ).kind == .array {
 				// allow mutable []array to be passed as mut
 				continue
