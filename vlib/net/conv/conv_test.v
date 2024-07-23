@@ -62,3 +62,21 @@ fn test_varinttou64_u64tovarint() {
 		assert rn == v
 	}
 }
+
+fn test_reverse_bytes_u64() {
+	assert 0 == conv.reverse_bytes_u64(0)
+	assert 0xFFFF_FFFF_FFFF_FFFF == conv.reverse_bytes_u64(0xFFFF_FFFF_FFFF_FFFF)
+	assert 0x12345678ABCDEF00 == conv.reverse_bytes_u64(0x00EFCDAB78563412)
+}
+
+fn test_reverse_bytes_u32() {
+	assert 0 == conv.reverse_bytes_u32(0)
+	assert 0xFFFF_FFFF == conv.reverse_bytes_u32(0xFFFF_FFFF)
+	assert 0x12345678 == conv.reverse_bytes_u32(0x78563412)
+}
+
+fn test_reverse_bytes_u16() {
+	assert 0 == conv.reverse_bytes_u16(0)
+	assert 0xFFFF == conv.reverse_bytes_u16(0xFFFF)
+	assert 0x1234 == conv.reverse_bytes_u16(0x3412)
+}
