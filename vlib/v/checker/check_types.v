@@ -158,7 +158,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 	}
 	if got_idx == ast.voidptr_type_idx {
-		if expected.is_int_valptr() {
+		if expected.is_int_valptr() || expected.is_int() {
 			return true
 		}
 		exp_sym := c.table.final_sym(expected)
