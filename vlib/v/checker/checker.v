@@ -1951,6 +1951,14 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						}
 						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
 							// accepts int constants as enum value
+							if mut field.expr.obj is ast.ConstField {
+								if mut field.expr.obj.expr is ast.IntegerLiteral {
+									c.check_enum_field_integer_literal(field.expr.obj.expr,
+										signed, node.is_multi_allowed, senum_type, field.expr.pos, mut
+										useen, enum_umin, enum_umax, mut iseen, enum_imin,
+										enum_imax)
+								}
+							}
 							continue
 						}
 					}
