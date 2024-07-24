@@ -5,8 +5,6 @@ module fmt
 
 import v.mathutil
 
-const struct_field_align_threshold = 16
-
 struct AlignInfo {
 mut:
 	line_nr      int
@@ -18,6 +16,7 @@ mut:
 struct AddInfoConfig {
 pub:
 	use_threshold bool
+	threshold     int = 16
 }
 
 fn (mut infos []AlignInfo) add_new_info(len int, type_len int, line int) {
@@ -43,7 +42,7 @@ fn (mut infos []AlignInfo) add_info(len int, type_len int, line int, cfg AddInfo
 		len_diff := mathutil.abs(infos[i].max_len - len) +
 			mathutil.abs(infos[i].max_type_len - type_len)
 
-		if len_diff >= fmt.struct_field_align_threshold {
+		if len_diff >= cfg.threshold {
 			infos.add_new_info(len, type_len, line)
 			return
 		}
