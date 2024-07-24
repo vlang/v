@@ -15,4 +15,7 @@ fn test_main() {
 	assert arrays.fold[MyInt, []MyInt]([MyInt(0), 1], []MyInt{}, fn (r []MyInt, t MyInt) []MyInt {
 		return arrays.merge(r, [t])
 	}) == [MyInt(0), 1]
+        assert arrays.fold([1, 2, 3, 4], [5, 6, 7], fn (r []int, t int) []int {
+                return r.map(it * t)
+        }) == [120, 144, 168]
 }
