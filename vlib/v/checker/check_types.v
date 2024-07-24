@@ -157,6 +157,15 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
+	if got_idx == ast.voidptr_type_idx {
+		if expected.is_int_valptr() {
+			return true
+		}
+		exp_sym := c.table.final_sym(expected)
+		if exp_sym.kind !in [.function, .placeholder] {
+			return false
+		}
+	}
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
