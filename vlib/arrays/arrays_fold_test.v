@@ -2,10 +2,6 @@ import arrays
 
 type MyInt = int
 
-pub struct Test {
-	a int
-}
-
 fn test_main() {
 	assert arrays.fold[int, []int]([1, 2, 3, 4], []int{}, fn (r []int, t int) []int {
 		return arrays.merge(r, [t])
