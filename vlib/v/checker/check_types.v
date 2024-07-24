@@ -162,7 +162,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 		exp_sym := c.table.final_sym(expected)
-		if exp_sym.kind !in [.function, .placeholder] {
+		if exp_sym.kind !in [.voidptr, .function, .placeholder] {
 			return false
 		}
 	}
