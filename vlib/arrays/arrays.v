@@ -331,7 +331,12 @@ pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 // assert r == 5
 // ```
 pub fn fold[T, R](array []T, init R, fold_op fn (acc R, elem T) R) R {
-	mut value := init
+	mut value := R{}
+	$if R is $array {
+		value = init.clone()
+	} $else {
+		value = init
+	}
 
 	for e in array {
 		value = fold_op(value, e)
