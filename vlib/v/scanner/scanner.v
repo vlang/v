@@ -540,18 +540,6 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-const nonwhite_space_bytes_table = fill_nonwhite_space_bytes_table()
-
-fn fill_nonwhite_space_bytes_table() [255]bool {
-	mut bytes := [255]bool{}
-	for c in 0 .. 255 {
-		if !(c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0) {
-			bytes[c] = true
-		}
-	}
-	return bytes
-}
-
 @[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
@@ -561,7 +549,7 @@ fn (mut s Scanner) skip_whitespace() {
 			s.pos++
 			continue
 		}
-		if scanner.nonwhite_space_bytes_table[c] {
+		if util.non_whitespace_table[c] {
 			return
 		}
 		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
