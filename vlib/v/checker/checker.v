@@ -571,9 +571,12 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 				}
 				if parent_typ_sym.info.is_anon {
 					for field in parent_typ_sym.info.fields {
-						if c.table.final_sym(field.typ).kind != .struct_ {
-							c.error('cannot embed non-struct `${c.table.sym(field.typ).name}`',
-								field.type_pos)
+						field_sym := c.table.sym(field.typ)
+						if field_sym.info is ast.Alias {
+							if c.table.sym(field_sym.info.parent_type).kind != .struct_ {
+								c.error('cannot embed non-struct `${field_sym.name}`',
+									field.type_pos)
+							}
 						}
 					}
 				}
@@ -1952,9 +1955,13 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
 							// accepts int constants as enum value
 							if mut field.expr.obj is ast.ConstField {
-								if mut field.expr.obj.expr is ast.IntegerLiteral {
-									c.check_enum_field_integer_literal(field.expr.obj.expr,
-										signed, node.is_multi_allowed, senum_type, field.expr.pos, mut
+								mut t := transformer.new_transformer_with_table(c.table,
+									c.pref)
+								folded_expr := t.expr(mut field.expr.obj.expr)
+
+								if folded_expr is ast.IntegerLiteral {
+									c.check_enum_field_integer_literal(folded_expr, signed,
+										node.is_multi_allowed, senum_type, field.expr.pos, mut
 										useen, enum_umin, enum_umax, mut iseen, enum_imin,
 										enum_imax)
 								}

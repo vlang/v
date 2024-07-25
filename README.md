@@ -389,7 +389,7 @@ section on our
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
 [PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpatrons&style=flat
 [SponsorBadge]: https://img.shields.io/github/sponsors/medvednikov?style=flat&logo=github&logoColor=white
-[XBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=x&style=flat&logoColor=white
+[XBadge]: https://img.shields.io/badge/follow-%40v__language-1DA1F2?logo=x&style=flat&logoColor=white
 [ModulesBadge]: https://img.shields.io/badge/modules-reference-027d9c?logo=v&logoColor=white&logoWidth=10
 
 [WorkflowUrl]: https://github.com/vlang/v/commits/master
