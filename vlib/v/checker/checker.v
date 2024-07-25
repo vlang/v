@@ -571,9 +571,12 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 				}
 				if parent_typ_sym.info.is_anon {
 					for field in parent_typ_sym.info.fields {
-						if c.table.final_sym(field.typ).kind != .struct_ {
-							c.error('cannot embed non-struct `${c.table.sym(field.typ).name}`',
-								field.type_pos)
+						field_sym := c.table.sym(field.typ)
+						if field_sym.info is ast.Alias {
+							if c.table.sym(field_sym.info.parent_type).kind != .struct_ {
+								c.error('cannot embed non-struct `${field_sym.name}`',
+									field.type_pos)
+							}
 						}
 					}
 				}
