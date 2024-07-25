@@ -1,13 +1,43 @@
 module util
 
-@[inline]
-pub fn is_name_char(c u8) bool {
-	return c.is_letter() || c == `_`
+pub const name_char_table = get_name_char_table()
+
+pub const func_char_table = get_func_char_table()
+
+pub const non_whitespace_table = get_non_white_space_table()
+
+fn get_non_white_space_table() [256]bool {
+	mut bytes := [256]bool{}
+	for c in 0 .. 256 {
+		bytes[c] = !u8(c).is_space()
+	}
+	return bytes
 }
 
-@[inline]
+fn get_name_char_table() [256]bool {
+	mut res := [256]bool{}
+	for c in 0 .. 256 {
+		res[c] = u8(c).is_letter() || c == `_`
+	}
+	return res
+}
+
+fn get_func_char_table() [256]bool {
+	mut res := [256]bool{}
+	for c in 0 .. 256 {
+		res[c] = u8(c).is_letter() || u8(c).is_digit() || c == `_`
+	}
+	return res
+}
+
+@[direct_array_access; inline]
+pub fn is_name_char(c u8) bool {
+	return util.name_char_table[c]
+}
+
+@[direct_array_access; inline]
 pub fn is_func_char(c u8) bool {
-	return c.is_letter() || c == `_` || c.is_digit()
+	return util.func_char_table[c]
 }
 
 pub fn contains_capital(s string) bool {
