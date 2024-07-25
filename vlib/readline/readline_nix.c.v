@@ -374,15 +374,20 @@ fn get_prompt_offset(prompt string) int {
 // refresh_line redraws the current line, including the prompt.
 fn (mut r Readline) refresh_line() {
 	mut end_of_input := [0, 0]
-	end_of_input = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.current.len,
-		end_of_input)
+	last_prompt_line := if r.prompt.contains('\n') {
+		r.prompt.all_after_last('\n')
+	} else {
+		r.prompt
+	}
+	end_of_input = calculate_screen_position(last_prompt_line.len, 0, get_screen_columns(),
+		r.current.len, end_of_input)
 	end_of_input[1] += r.current.filter(it == `\n`).len
 	mut cursor_pos := [0, 0]
-	cursor_pos = calculate_screen_position(r.prompt.len, 0, get_screen_columns(), r.cursor,
-		cursor_pos)
+	cursor_pos = calculate_screen_position(last_prompt_line.len, 0, get_screen_columns(),
+		r.cursor, cursor_pos)
 	shift_cursor(0, -r.cursor_row_offset)
 	term.erase_toend()
-	print(r.prompt)
+	print(last_prompt_line)
 	print(r.current.string())
 	if end_of_input[0] == 0 && end_of_input[1] > 0 {
 		print('\n')

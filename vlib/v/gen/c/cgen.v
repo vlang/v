@@ -1161,7 +1161,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${c.option_name}_${base}'
 	}
-	if t.is_ptr() {
+	if t.is_ptr() || t.has_flag(.generic) {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -1183,7 +1183,7 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${c.result_name}_${base}'
 	}
-	if t.is_ptr() {
+	if t.is_ptr() || t.has_flag(.generic) {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base

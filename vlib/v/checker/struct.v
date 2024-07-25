@@ -26,7 +26,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		}
 		for embed in node.embeds {
 			embed_sym := c.table.sym(embed.typ)
-			if embed_sym.kind != .struct_ {
+			if embed_sym.info is ast.Alias {
+				parent_sym := c.table.sym(embed_sym.info.parent_type)
+				if parent_sym.kind != .struct_ {
+					c.error('`${embed_sym.name}` (alias of `${parent_sym.name}`) is not a struct',
+						embed.pos)
+				}
+			} else if embed_sym.kind != .struct_ {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
 			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
 				struct_sym.info.is_heap = true
