@@ -239,19 +239,7 @@ fn (mut s Scanner) ident_name() string {
 	s.pos++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c >= `a` && c <= `z` {
-			s.pos++
-			continue
-		}
-		if c == `_` {
-			s.pos++
-			continue
-		}
-		if c >= `A` && c <= `Z` {
-			s.pos++
-			continue
-		}
-		if c >= `0` && c <= `9` {
+		if util.func_char_table[c] {
 			s.pos++
 			continue
 		}
@@ -698,7 +686,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 		c := s.text[s.pos]
 		nextc := s.look_ahead(1)
 		// name or keyword
-		if util.is_name_char(c) {
+		if util.name_char_table[c] {
 			name := s.ident_name()
 			// tmp hack to detect . in ${}
 			// Check if not .eof to prevent panic
@@ -1327,7 +1315,7 @@ pub fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if prevc == `$` && util.is_name_char(c) && !is_raw
+		if prevc == `$` && util.name_char_table[c] && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
