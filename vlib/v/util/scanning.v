@@ -9,9 +9,7 @@ pub const non_whitespace_table = get_non_white_space_table()
 fn get_non_white_space_table() [256]bool {
 	mut bytes := [256]bool{}
 	for c in 0 .. 256 {
-		if !(c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0) {
-			bytes[c] = true
-		}
+		bytes[c] = !u8(c).is_space()
 	}
 	return bytes
 }
@@ -19,7 +17,7 @@ fn get_non_white_space_table() [256]bool {
 fn get_name_char_table() [256]bool {
 	mut res := [256]bool{}
 	for c in 0 .. 256 {
-		res[c] = (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`) || c == `_`
+		res[c] = u8(c).is_letter() || c == `_`
 	}
 	return res
 }
@@ -27,8 +25,7 @@ fn get_name_char_table() [256]bool {
 fn get_func_char_table() [256]bool {
 	mut res := [256]bool{}
 	for c in 0 .. 256 {
-		res[c] = (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`)
-			|| (c >= `0` && c <= `9`) || c == `_`
+		res[c] = u8(c).is_letter() || u8(c).is_digit() || c == `_`
 	}
 	return res
 }
