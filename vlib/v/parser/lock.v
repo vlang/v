@@ -72,7 +72,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	for {
 		is_rlock := p.tok.kind == .key_rlock
 		if !is_rlock && p.tok.kind != .key_lock {
-			p.unexpected(expecting: '`lock` or `rlock`')
+			p.unexpected(expecting: 'expecting one or more shared variable names')
 		}
 		p.next()
 		if p.tok.kind == .lcbr {
