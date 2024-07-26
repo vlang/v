@@ -385,6 +385,8 @@ const stdlib_strings = [
 	'io:',
 	'io.',
 	'log:',
+	'flag:',
+	'regex:',
 ]
 
 fn is_stdlib(text string) bool {

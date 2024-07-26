@@ -1,7 +1,211 @@
-## V 0.4.7 (NEXT)
+## V 0.4.7
+*26 Jul 2024*
 
 #### Improvements in the language
-- comptime: add support for `-d ident=value` and retrieval in code via `$d('ident', <default value>)`.
+- Add support for `-d ident=value` and retrieval in code via `$d('ident', <default value>)`
+- `-warn-about-allocs` for debugging allocations when using manual memory management
+- `@[freed]` attribute for assign statements (for the above mode)
+- Implement `&&=` and `||=` operators  (#21678)
+- Improve C var args interop, allow for `fn f(some int, ...) {` (#21812)
+- A new flag `-n` for skipping notes (similar to `-w` for skipping warnings)
+- Cross compilation to FreeBSD
+
+#### Breaking changes
+**none**
+
+#### Checker improvements/fixes
+- Fix unknown fixed array size for `const n = int(sizeof(u64)); _ = [n]int{}` (fix #21544) (#21548)
+- Fix checking of default field initialisations, that are part of unions of structs tagged with `@[noinit]` (#21587)
+- Disallow sum type with `Result` variants (#21620)
+- Add error for `field map` (i.e. a plain untyped map), used inside a struct (#21625)
+- Fix missing concrete type checking on a generic type specifier (#21614)
+- Fix missing option and result wrong type return type definition (#21626)
+- Turn warnings for private fields into errors (#21296)
+- Support nested labeled for statements (#21658)
+- Fix the return type of overloaded operators, defined on aliases of primitive types (fix #21654) (#21663)
+- Fix match expr with auto promote number (#21696)
+- Fix sorting compare fn with mut reference parameter (fix #21662) (#21706)
+- Fix `$if x {` condition, using `const x = $d('ident', false)` (fix #21709) (#21713)
+- Fix generic variable resolution on generic func return assignment (#21712)
+- Fix result call or_block with multi-statements (fix #21504) (#21717)
+- Allow `\uxxxxx` in raw strings (#21724)
+- Limit recursion in Checker.ensure_type_exists/2 to 40 levels (it is usually 4 or less) (#21734)
+- Add error for `field [$d('x', 2)]int = [1, 2]!` (#21741)
+- Fix nested if expr method call (#21773)
+- Fix generic inference in if expressions used in assignments (#21781)
+- Disallow nil in non-nil arrays and vice versa  (#21786)
+- Check expr evaluated but not used (fix #21436) (#21816)
+- Fix wrong receiver generic resolution with embed types (#21833)
+- Check mismatch of fn call mut argument (fix #21857) (#21873)
+- Fix global fixed array key resolution when it is a constant ident (#21900)
+- Improve checks for embed in anon struct  (#21877)
+- Fix builtin fn var resolving (#21899)
+- Fix spawn when calling undefined function (#21906)
+- Require enum values to be declared, before using them in other enum values (#21913)
+- Check enum field value duplicate (#21920)
+- Allow embed of type alias anon struct  (#21928)
+
+#### Parser improvements
+- Register selective import aliases as used (#21613)
+- Allow multiple flag values in enum.from() for flag enums (fix #21569) (#21615)
+- Disallow duplicate operator overload  (#21675)
+- Support `[$d('s', 4)]int{}`, move resolving to method on `ComptimeCall` (#21701)
+- Support `$d()` in fixed size array `struct` fields (#21731)
+- Suggest using type alias when defining methods on non-local types (#21803)
+- Sugggest map initialization with the correct syntax  (#21817)
+- Fix parameter collision for generated `@[flag]` enum methods, with modules named `flag` (#21844)
+- Fix high order generic fn resolution (#21871)
+- Fix recognition of `mod.Enum.val` inside fn args (#21908)
+
+#### Compiler internals
+- tools,cgen,pref: add `-coverage` support + `vcover`  tool (#21154)
+- v.utils: allow to set the names of the compared items, when diffing strings (#21650)
+- v.pref: fix regression of command flags not working, when there is a subfolder, named after the command, in the current working folder (#21647)
+- transformer: handle `enum_variant = some_const + 10` (fix #21777) (#21779)
+- v.builder: print the suggestion for using `v xyz` instead of `v xyz.v` just once (#21801)
+- v.builder: improve the C compilation output on cgen errors (#21885)
+- v.scanner: use table lookups for very frequently done character checks (#21931)
+- markused: mark explicitly all used array and map methods with `-skip-unused` (fix #21907) (#21914)
+
+#### Standard library
+- builtin,v: reduce overhead and memory usage for very frequently called methods (#21540)
+- builtin: reduce allocations in s.index_kmp/1 and s.replace/2 (#21561)
+- os: remove mut declarions for unchanged vars in `os_nix.c.v` (#21564)
+- os: make minior improvement to C function semantics and related code (#21565)
+- builtin: simplify splint_nth methods (#21563)
+- toml: fix `@[toml: ]`, support `@[skip]` (#21571)
+- builtin:  update `last_index_u8`, deprecate `index_u8_last` string methods, make consistent with `last_index` (#21604)
+- builtin: implement a JS version of `string.split_any` (#21612)
+- crypto: add a `crypto.sha3` hash and extended output functions (#21664)
+- crypto.sha3: remove unnecessary return at the end of the write function (#21669)
+- builtin: fix string.find_between(), when not found end string return '' (#21670)
+- builtin: add string.camel_to_snake/0 and string.snake_to_camel/0 methods (#21679)
+- cgen,x.json2: fix generic map decoding (#21704)
+- encoding.base32: fix warning of implicit clone of array, by using an explicit unsafe block (#21728)
+- vlib: simplify byte character conditions by using methods like is_capital, is_lower, is_letter etc (#21725)
+- gg: add Context.draw_cubic_bezier_recursive/2 and Context.draw_cubic_bezier_recursive_scalar/9 (#21749)
+- ci: fix deprecations_consts.out (the warning for math.max_i8 is now an error; it was deprecated since 2023-12-31)
+- math: add divide_truncated/2, divide_euclid/2, divide_floored/2 and modulo_truncated/2, modulo_euclid/2, modulo_floored/2 (#21759)
+- math: avoid unused calculations for math.modulo_floored/2 and math.modulo_euclid/2
+- crypto.blowfish: apply `@[direct_array_access]` to very commonly used functions (#21771)
+- encoding.binary: little_endian_f32_at
+- arrays: add arrays.chunk_while/2, where `arrays.chunk_while([0,9,2,2,3,2],fn(x int,y int)bool{return x<=y})==[[0,9],[2,2,3],[2]]`
+- sokol: reduce _SGL_DEFAULT_MAX_VERTICES back to 1<<17 (1<<22 in 811ac12, leads to ~140MB of memory usage for gg/minimal.v, instead of just ~38MB)
+- vrepl: fix os.input() (#21811)
+- Improve consistency and behavior regarding explicit mutability (#21566)
+- builtin: add `pub fn arguments() []string {`; make `os.args` use it, remove edge case in cgen (#21852)
+- builtin: support `-d use_bundled_libgc` to make it easier to debug/upgrade reliably libgc cloned from ivmai/bdwgc (#21869)
+- time: increase http_header_string performance (#21894)
+- builtin: add s.trim_space_left/0 and s.trim_space_right/0 methods (#21903)
+- strconv,math.bits: eliminate bounds checking in commonly used routines
+- arrays: fix arrays.fold, when the `init` value in the call, is an array (#21921)
+- string: fix leak in replace_once
+
+#### Web
+- net.http: change default http.Server listening address to :9009, to avoid conflicts with tools, that start their own http servers on 8080 like bytehound (#21570)
+- net.urllib: update parse host to allow for better error handling (#21602)
+- net.html: quick workaround for a cgen problem for `const x = int(0x80000000)`
+- net.http:  implement http.download_file_with_progress/2, saving each chunk, as it is received, without growing the memory usage (#21633)
+- veb: update import name in docs (#21668)
+- Add `m3u8` MIME type `application/vnd.apple.mpegurl` for multimedia playlists (#21688)
+- veb.auth: use constant time comparision in compare_password_with_hash (#21693)
+- net.http: correct `Response.status()` method comment, to indicate returning of a `Status` enum field, instead of struct (#21735)
+- net: fix TcpConn.peer_ip/0 to only return the ip address, without the port number (#21831)
+- Add mime type `text/x-vlang`, for `.v` and `.vsh` file extensions (#21851)
+- net.conv: add conv.reverse_bytes_u64/u32/u16 (#21917)
+
+#### ORM
+- orm: fix subquery without where expr (#21598)
+- orm: ilike for case insensitive text search
+- orm: update readme with more specifics (#21697)
+
+#### Database drivers
+
+#### Native backend
+
+#### C backend
+- Fix printing of floating point values in asserts (#21538)
+- Fix array fixed initialization on struct from call (#21568)
+- Put the `Interface(unsafe{nil})` change for now behind -experimental (#21593)
+- Fix indexexpr with orexpr (fix #21591) (#21592)
+- Fix generic struct init when it is a reference &T (fix #21594) (#21596)
+- Fix generated code for handling fn call with result/option return on match conditional (#21608)
+- Fix missing call to a function returning option, when called inside a print (fix #21616) (#21623)
+- Support a `-d no_bool` option, for cgen compatibility with the C23 language standard (since `bool` is a builtin type and a keyword in it) (#21637)
+- Fix or expr with non option fn call return (fix #21660) (#21661)
+- Generate pragmas for gcc-14, to make it more relaxed by default. Support `-no-relaxed-gcc14` for turning them off. (#21680)
+- Fix spawn code generated when calling conditional function (fix #19352) (#21681)
+- Fix comptime generic arg resolution (allow several different struct fields in generic functions using comptime) (fix #18110) (#21682)
+- Fix dumping array of reference (#21694)
+- Implement g.trace_last_lines/2 to help debugging cgen problems
+- Support inc cond for c style for loop with alias types  (#21708)
+- Fix fn call with mut reference args (fix #21265) (#21719)
+- Fix auto dereference mut variable in if expr (fix #21309) (#21720)
+- Fix smartcasting a reference to a sumtype value (#21730)
+- Fix assert checking fn option ret with `none` (#21726)
+- Fix generics map with the reference argument (#21737)
+- Fix shortcircuiting of infix and/or expressions (#21740)
+- Simplify in infix_expr_and_or_op() (#21745)
+- Fix reference variable str() method call (#21753)
+- Fix scope command when `$dbg` breakpoint is on or-expr (fix #21772) (#21747)
+- Fix array fixed empty struct code generated on clang (fix #21761) (#21764)
+- Allow alias to array fixed to be initialized like `[n]int{}` (#21785)
+- Fix comptime call argument auto conversion for indexexpr (fix #15232) (#21796)
+- Fix const name without main prefix in `-translated` mode (#21789)
+- Fix closure variable with optional reference params (fix #21827) (#21829)
+- Fix auto str for fn struct member (#21825)
+- Fix option string struct member init with autofree (#21859)
+- Fix fn mut argument of sumtype reference (#21874)
+- Fix generic type init syntax for primitive types  (#21872)
+- Fix missing `&` in string representation of `map[X]&Y` (#21890)
+- Fix optional closure direct call (#21892)
+- Fix wrong missing unsafe block checking when calling generic functions with @[unsafe] attr (#21898)
+- Fix typeof(var.typ) with comptime $for variables (#21901)
+- Fix enum with const value (#21919)
+- Fix generic option/result reference return (#21922)
+
+#### vfmt
+- Allow single line `defer {}`, just like `or {}`
+- Don't break `it` variable name in match expression function calls (#21600)
+- Exit with error code if encountering diffs with `-diff` flag (#21603)
+- Add fn_with_mut_ref_params_keep.vv (#21711)
+- Implement wrapping function's super long arguments  (fix #15545, fix #21643) (#21782)
+- Keep manual newlines after fn parameters in fn declarations, do not auto wrap (#21795)
+
+#### Tools
+- Fix spurious ending quote in the output of show_manual_release_cmd.vsh
+- Dockerfile.alpine: update to alpine:3.20, add more tools like gdb, libunwind, gc, to ease producing and debugging static executable in more situations (#21583)
+- Add `v download URL` for downloading single files, to avoid curl/wget etc, which are not available uniformly. (#21597)
+- ci: use shebang with better portability in shell scripts, format shell scripts (#21605)
+- Don't write vpm logfiles in CI runs (#21649)
+- ci: make vmodules_overrides_test.v failures more informative
+- Fix measurements for `./v repeat "./vold -o x project/" "./vnew -o x project/"`
+- Make the summary output of `v repeat` more informative
+- Disallow self referencing function alias types like `type FnType = fn(string) FnType` and `type FnType = fn (FnType) string` (#21733)
+- vrepl: fix method call (fix #21788) (#21792)
+- ci: restore v_apps_and_modules_compile_ci.yml (#21791)
+- vrepl: fix output of the fn call (related #21792) (#21800)
+- vrepl: fix variable name starts with print (#21806)
+- v.pref: make pref_test.v be less sensitive on the specific C compiler used as a backend (#21813)
+- vrepl: fix arbitrary script execute (#21818)
+- ci: disable c2v_ci.yml temporarily, until it is fixed
+- vrepl: lots of fixes in REPL
+- Add a TOTAL line, to the output of -show-timings, to minimise the need for external tools on windows (#21847)
+
+#### Operating System support
+- veb: support sendfile() syscall on FreeBSD (#21541)
+- os: use 1 instead of C.SW_SHOWNORMAL to workaround a cross compilation issue from linux to windows
+- v.builder: minimise the amount of linked libs for cross compilation to FreeBSD
+- v.builder: support downloading the FreeBSD cross compilation files on first use
+- Add a test for crosscompiling hw, on linux and macos, to FreeBSD (#21553)
+- vlib: make `./v -Wimpure-v -W test vlib/` pass on Linux (#21554)
+- os: fix debugger_present() for non Windows OSes (#21573)
+- ci: extend coverage, move app test from macos_ci to v_apps_and_modules_ci (#21584)
+- gc: fix tcc on macos
+- os.font: return the "segoeui.ttf" font, if its file exists on Windows (#21655)
+- readline: fix s := read_line('Message\nName:') on unix/linux (#21930)
+
+
 
 ## V 0.4.6
 *20 May 2024*
@@ -888,7 +1092,7 @@
 - Fix new int type promotion rules and cleanup native gen() (#19535)
 
 #### Breaking changes
-- `Request.cookies` map has been deprecated. Replaced with `Request.cookie()` and `Request.add_cookie()`. 
+- `Request.cookies` map has been deprecated. Replaced with `Request.cookie()` and `Request.add_cookie()`.
 - Stricter rules for C types (they always have to be declared now)
 
 #### Checker improvements/fixes
