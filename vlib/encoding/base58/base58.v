@@ -87,7 +87,7 @@ pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
 	for i = zcount; i < sz && out[i] == 0; i++ {}
 
 	// now encode the values with actual alphabet in-place
-	val := out[i - zcount..]
+	val := out[i - zcount..].clone()
 	sz = val.len
 	for i = 0; i < sz; i++ {
 		out[i] = alphabet.encode[val[i]]
