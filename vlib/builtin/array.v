@@ -182,9 +182,17 @@ fn (mut a array) ensure_cap(required int) {
 	if a.flags.has(.nogrow) {
 		panic('array.ensure_cap: array with the flag `.nogrow` cannot grow in size, array required new size: ${required}')
 	}
-	mut cap := if a.cap > 0 { a.cap } else { 2 }
+	mut cap := if a.cap > 0 { i64(a.cap) } else { i64(2) }
 	for required > cap {
 		cap *= 2
+	}
+	if cap > max_int {
+		if a.cap < max_int {
+			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
+			cap = max_int
+		} else {
+			panic('array.ensure_cap: array needs to grow to cap = ${cap}, which is > 2^31')
+		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
 	new_data := unsafe { malloc(__at_least_one(new_size)) }
@@ -199,7 +207,7 @@ fn (mut a array) ensure_cap(required int) {
 	}
 	a.data = new_data
 	a.offset = 0
-	a.cap = cap
+	a.cap = int(cap)
 }
 
 // repeat returns a new array with the given array elements repeated given times.
