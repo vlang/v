@@ -278,10 +278,11 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 // c.insert(0, [1, 2])     // c now is [[1, 2], [3, 4]]
 // ```
 pub fn (mut a array) insert(i int, val voidptr) {
-	$if !no_bounds_checking {
-		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
-		}
+	if i < 0 || i > a.len {
+		panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
+	}
+	if a.len == max_int {
+		panic('array.insert: a.len reached max_int')
 	}
 	if a.len >= a.cap {
 		a.ensure_cap(a.len + 1)
@@ -297,19 +298,21 @@ pub fn (mut a array) insert(i int, val voidptr) {
 // into an the array beginning at `i`.
 @[unsafe]
 fn (mut a array) insert_many(i int, val voidptr, size int) {
-	$if !no_bounds_checking {
-		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
-		}
+	if i < 0 || i > a.len {
+		panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
 	}
-	a.ensure_cap(a.len + size)
+	new_len := i64(a.len) + i64(size)
+	if new_len > max_int {
+		panic('array.insert_many: a.len = ${new_len} will exceed max_int')
+	}
+	a.ensure_cap(int(new_len))
 	elem_size := a.element_size
 	unsafe {
 		iptr := a.get_unsafe(i)
 		vmemmove(a.get_unsafe(i + size), iptr, u64(a.len - i) * u64(elem_size))
 		vmemcpy(iptr, val, u64(size) * u64(elem_size))
 	}
-	a.len += size
+	a.len = int(new_len)
 }
 
 // prepend prepends one or more elements to an array.
@@ -356,11 +359,9 @@ pub fn (mut a array) delete(i int) {
 // dump(b) // b: [1, 2, 3, 4, 5, 6, 7, 8, 9] // `b` is still the same
 // ```
 pub fn (mut a array) delete_many(i int, size int) {
-	$if !no_bounds_checking {
-		if i < 0 || i + size > a.len {
-			endidx := if size > 1 { '..${i + size}' } else { '' }
-			panic('array.delete: index out of range (i == ${i}${endidx}, a.len == ${a.len})')
-		}
+	if i < 0 || i64(i) + i64(size) > i64(a.len) {
+		endidx := if size > 1 { '..${i + size}' } else { '' }
+		panic('array.delete: index out of range (i == ${i}${endidx}, a.len == ${a.len})')
 	}
 	if a.flags.all(.noshrink | .noslices) {
 		unsafe {
@@ -435,7 +436,6 @@ pub fn (mut a array) drop(num int) {
 	a.data = unsafe { &u8(a.data) + blen }
 	a.offset += int(blen) // TODO: offset should become 64bit as well
 	a.len -= n
-	a.cap -= n
 }
 
 // we manually inline this for single operations for performance without -prod
@@ -473,10 +473,8 @@ fn (a array) get_with_check(i int) voidptr {
 // However, `a[0]` returns an error object
 // so it can be handled with an `or` block.
 pub fn (a array) first() voidptr {
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			panic('array.first: array is empty')
-		}
+	if a.len == 0 {
+		panic('array.first: array is empty')
 	}
 	return a.data
 }
@@ -484,10 +482,8 @@ pub fn (a array) first() voidptr {
 // last returns the last element of the `array`.
 // If the `array` is empty, this will panic.
 pub fn (a array) last() voidptr {
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			panic('array.last: array is empty')
-		}
+	if a.len == 0 {
+		panic('array.last: array is empty')
 	}
 	unsafe {
 		return &u8(a.data) + u64(a.len - 1) * u64(a.element_size)
@@ -511,10 +507,8 @@ pub fn (a array) last() voidptr {
 // ```
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			panic('array.pop: array is empty')
-		}
+	if a.len == 0 {
+		panic('array.pop: array is empty')
 	}
 	new_len := a.len - 1
 	last_elem := unsafe { &u8(a.data) + u64(new_len) * u64(a.element_size) }
@@ -529,11 +523,8 @@ pub fn (mut a array) pop() voidptr {
 // If the array is empty, this will panic.
 // See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
-	// copy pasting code for performance
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			panic('array.pop: array is empty')
-		}
+	if a.len == 0 {
+		panic('array.delete_last: array is empty')
 	}
 	a.len--
 }
@@ -684,6 +675,9 @@ fn (mut a array) set(i int, val voidptr) {
 }
 
 fn (mut a array) push(val voidptr) {
+	if a.len < 0 || a.len > max_int {
+		panic('array.push: invalid len: ${a.len}')
+	}
 	if a.len >= a.cap {
 		a.ensure_cap(a.len + 1)
 	}
@@ -698,7 +692,13 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if size <= 0 || val == unsafe { nil } {
 		return
 	}
-	a3.ensure_cap(a3.len + size)
+	new_len := i64(a3.len) + i64(size)
+	if new_len > max_int {
+		panic('array.push_many: new len exceeds max_int: ${new_len}')
+	}
+	if new_len >= a3.cap {
+		a3.ensure_cap(int(new_len))
+	}
 	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
 		copy := a3.clone()
@@ -710,7 +710,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 			unsafe { vmemcpy(&u8(a3.data) + u64(a3.element_size) * u64(a3.len), val, u64(a3.element_size) * u64(size)) }
 		}
 	}
-	a3.len += size
+	a3.len = int(new_len)
 }
 
 // reverse_in_place reverses existing array data, modifying original array.
@@ -984,7 +984,11 @@ pub fn copy(mut dst []u8, src []u8) int {
 // Internally, it does this by copying the entire array to
 // a new memory location (creating a clone).
 pub fn (mut a array) grow_cap(amount int) {
-	a.ensure_cap(a.cap + amount)
+	new_cap := i64(amount) + i64(a.cap)
+	if new_cap > max_int {
+		panic('array.grow_cap: new capacity ${new_cap} will exceed max_int')
+	}
+	a.ensure_cap(int(new_cap))
 }
 
 // grow_len ensures that an array has a.len + amount of length
@@ -993,8 +997,12 @@ pub fn (mut a array) grow_cap(amount int) {
 // is already large enough.
 @[unsafe]
 pub fn (mut a array) grow_len(amount int) {
-	a.ensure_cap(a.len + amount)
-	a.len += amount
+	new_len := i64(amount) + i64(a.len)
+	if new_len > max_int {
+		panic('array.grow_len: new len ${new_len} will exceed max_int')
+	}
+	a.ensure_cap(int(new_len))
+	a.len = int(new_len)
 }
 
 // pointers returns a new array, where each element

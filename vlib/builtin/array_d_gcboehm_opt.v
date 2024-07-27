@@ -104,7 +104,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
 			cap = max_int
 		} else {
-			panic('array.ensure_cap: array needs to grow to cap = ${cap}, which is > 2^31')
+			panic('array.ensure_cap_noscan: array needs to grow to cap = ${cap}, which is > 2^31')
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
@@ -159,10 +159,11 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 
 // insert inserts a value in the array at index `i`
 fn (mut a array) insert_noscan(i int, val voidptr) {
-	$if !no_bounds_checking {
-		if i < 0 || i > a.len {
-			panic('array.insert: index out of range (i == ${i}, a.len == ${a.len})')
-		}
+	if i < 0 || i > a.len {
+		panic('array.insert_noscan: index out of range (i == ${i}, a.len == ${a.len})')
+	}
+	if a.len == max_int {
+		panic('array.insert_noscan: a.len reached max_int')
 	}
 	a.ensure_cap_noscan(a.len + 1)
 	unsafe {
@@ -175,10 +176,12 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 // insert_many inserts many values into the array from index `i`.
 @[unsafe]
 fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
-	$if !no_bounds_checking {
-		if i < 0 || i > a.len {
-			panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
-		}
+	if i < 0 || i > a.len {
+		panic('array.insert_many: index out of range (i == ${i}, a.len == ${a.len})')
+	}
+	new_len := i64(a.len) + i64(size)
+	if new_len > max_int {
+		panic('array.insert_many_noscan: a.len = ${new_len} will exceed max_int')
 	}
 	a.ensure_cap_noscan(a.len + size)
 	elem_size := a.element_size
@@ -204,10 +207,8 @@ fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 // pop returns the last element of the array, and removes it.
 fn (mut a array) pop_noscan() voidptr {
 	// in a sense, this is the opposite of `a << x`
-	$if !no_bounds_checking {
-		if a.len == 0 {
-			panic('array.pop: array is empty')
-		}
+	if a.len == 0 {
+		panic('array.pop: array is empty')
 	}
 	new_len := a.len - 1
 	last_elem := unsafe { &u8(a.data) + u64(new_len) * u64(a.element_size) }
@@ -255,7 +256,12 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 }
 
 fn (mut a array) push_noscan(val voidptr) {
-	a.ensure_cap_noscan(a.len + 1)
+	if a.len < 0 || a.len > max_int {
+		panic('array.push_noscan: invalid len: ${a.len}')
+	}
+	if a.len >= a.cap {
+		a.ensure_cap_noscan(a.len + 1)
+	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
 	a.len++
 }
@@ -264,8 +270,12 @@ fn (mut a array) push_noscan(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 @[unsafe]
 fn (mut a3 array) push_many_noscan(val voidptr, size int) {
-	if size <= 0 || val == unsafe { nil } {
+	if size == 0 || val == unsafe { nil } {
 		return
+	}
+	new_len := i64(a3.len) + i64(size)
+	if new_len > max_int {
+		panic('array.push_many_noscan: new len exceeds max_int: ${new_len}')
 	}
 	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
@@ -280,7 +290,7 @@ fn (mut a3 array) push_many_noscan(val voidptr, size int) {
 			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, u64(a3.element_size) * u64(size)) }
 		}
 	}
-	a3.len += size
+	a3.len = int(new_len)
 }
 
 // reverse returns a new array with the elements of the original array in reverse order.
@@ -302,12 +312,20 @@ fn (a array) reverse_noscan() array {
 
 // grow_cap grows the array's capacity by `amount` elements.
 fn (mut a array) grow_cap_noscan(amount int) {
-	a.ensure_cap_noscan(a.cap + amount)
+	new_cap := i64(amount) + i64(a.cap)
+	if new_cap > max_int {
+		panic('array.grow_cap: new capacity ${new_cap} will exceed max_int')
+	}
+	a.ensure_cap_noscan(int(new_cap))
 }
 
 // grow_len ensures that an array has a.len + amount of length
 @[unsafe]
 fn (mut a array) grow_len_noscan(amount int) {
-	a.ensure_cap_noscan(a.len + amount)
-	a.len += amount
+	new_len := i64(amount) + i64(a.len)
+	if new_len > max_int {
+		panic('array.grow_len: new len ${new_len} will exceed max_int')
+	}
+	a.ensure_cap_noscan(int(new_len))
+	a.len = int(new_len)
 }
