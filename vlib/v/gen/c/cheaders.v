@@ -649,6 +649,11 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+typedef int64_t vint_t;
+#else
+typedef int32_t vint_t;
+#endif
 typedef int64_t i64;
 typedef int16_t i16;
 typedef int8_t i8;
