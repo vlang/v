@@ -9,10 +9,12 @@ on:
     paths-ignore:
       - '**.yml'
       - '!**/docs_ci.yml'
+      - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
       - '**.yml'
       - '!**/docs_ci.yml'
+      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
