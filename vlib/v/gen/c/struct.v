@@ -439,15 +439,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 				tmp_var)
 			return true
 		}
-		if field.typ.is_ptr() && field.default_expr is ast.StructInit {
-			// reference field with default value without & prefix
-			g.expr(ast.PrefixExpr{
-				op: .amp
-				right: field.default_expr
-			})
-		} else {
-			g.expr(field.default_expr)
-		}
+		g.expr(field.default_expr)
 	} else if field.typ.has_flag(.option) {
 		g.gen_option_error(field.typ, ast.None{})
 		return true
