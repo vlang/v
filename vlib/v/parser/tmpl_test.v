@@ -11,29 +11,29 @@ fn test_tmpl_comptime() {
 	assert index.contains('<br>Line ending with caret ^\n')
 }
 
-//Add a tests for @include!
+// Add a tests for @include!
 
-//File contents for building repsonse
+// File contents for building repsonse
 const base = '<p>This is the base file</p>'
 const child = '<p>This is the child file</p>'
 const grandchild = '<p>This is the grandchild file</p>'
 const parent = '<p>This is the parent file</p>'
 
-//Call the parent file which contains all child templates
+// Call the parent file which contains all child templates
 fn test_tmpl_include_parent() {
 	expected := [base, base, child, base, base, child, grandchild, parent].join('\n')
 	parent_tmpl := $tmpl('templates/parent.html')
 	assert parent_tmpl.contains(expected)
 }
 
-//Test the child template which calls parent template
+// Test the child template which calls parent template
 fn test_tmpl_include_child() {
 	expected := [base, child].join('\n')
 	child_tmpl := $tmpl('templates/nested/child.html')
 	assert child_tmpl.contains(expected)
 }
 
-//Test the grandchild templates calling both parent and grandparent templates
+// Test the grandchild templates calling both parent and grandparent templates
 fn test_tmpl_include_grandchild() {
 	expected := [base, base, child, grandchild].join('\n')
 	child_tmpl := $tmpl('templates/nested/nested_deeper/grandchild.html')
