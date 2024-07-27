@@ -5,6 +5,9 @@ on:
   pull_request:
     paths-ignore:
       - '**.md'
+      - '**.yml'
+      - '!**/vinix_ci.yml'
+      - 'cmd/tools/vrepl.v'
   push:
     branches:
       - master
@@ -12,6 +15,7 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/vinix_ci.yml'
+      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
