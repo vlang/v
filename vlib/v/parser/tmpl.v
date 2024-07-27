@@ -162,18 +162,22 @@ fn vweb_tmpl_${fn_name}() string {
 			})
 			continue
 		}
-		if line.contains('@include ') {
+		if line.contains('@include ') || line.contains('@include! ') {
 			lines.delete(i)
+			base := line.contains('@include! ')
+			mut s := '@include '
+			if base {
+				s = '@include! '
+			}
 			// Allow single or double quoted paths.
 			mut file_name := if line.contains('"') {
 				line.split('"')[1]
 			} else if line.contains("'") {
 				line.split("'")[1]
 			} else {
-				s := '@include '
 				position := line.index(s) or { 0 }
 				p.error_with_error(errors.Error{
-					message: 'path for @include must be quoted with \' or "'
+					message: 'path for ${s} must be quoted with \' or "'
 					file_path: template_file
 					pos: token.Pos{
 						len: s.len
@@ -197,85 +201,27 @@ fn vweb_tmpl_${fn_name}() string {
 				// an absolute path
 				templates_folder = ''
 			}
-			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
-			$if trace_tmpl ? {
-				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
+			// the call is from base folder
+			if base {
+				idx := templates_folder.last_index('templates/')
+				if idx != none {
+					templates_folder = templates_folder.substr(0, idx + 'templates/'.len)
+				}
 			}
-			file_content := os.read_file(file_path) or {
-				position := line.index('@include ') or { 0 } + '@include '.len
-				p.error_with_error(errors.Error{
-					message: 'Reading file ${file_name} from path: ${file_path} failed'
-					details: "Failed to @include '${file_name}'"
-					file_path: template_file
-					pos: token.Pos{
-						len: '@include '.len + file_name.len
-						line_nr: tline_number
-						pos: start_of_line_pos + position
-						last_line: lines.len
-					}
-					reporter: .parser
-				})
-				''
-			}
-			p.template_paths << file_path
-			file_splitted := file_content.split_into_lines().reverse()
-			for f in file_splitted {
-				tline_number--
-				lines.insert(i, f)
-			}
-			i--
-			continue
-		}
-		if line.contains('@include! ') {
-			lines.delete(i)
-			// Allow single or double quoted paths.
-			mut file_name := if line.contains('"') {
-				line.split('"')[1]
-			} else if line.contains("'") {
-				line.split("'")[1]
-			} else {
-				s := '@include! '
-				position := line.index(s) or { 0 }
-				p.error_with_error(errors.Error{
-					message: 'path for @include! must be quoted with \' or "'
-					file_path: template_file
-					pos: token.Pos{
-						len: s.len
-						line_nr: tline_number
-						pos: start_of_line_pos + position + s.len
-						col: position + s.len
-						last_line: lines.len + 1
-					}
-					reporter: .parser
-				})
-				''
-			}
-			mut file_ext := os.file_ext(file_name)
-			if file_ext == '' {
-				file_ext = '.html'
-			}
-			file_name = file_name.replace(file_ext, '')
-			// relative path, starting with the current folder
-			// walk back until `templates` folder found and set to templates_folder'
-			mut templates_folder := os.real_path(basepath)
-			idx := templates_folder.last_index('templates/')
-			if idx != none {
-				templates_folder = templates_folder.substr(0, idx + 'templates/'.len)
-			}
-
 			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
 
 			$if trace_tmpl ? {
-				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
+				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , ${s} line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
 			}
+
 			file_content := os.read_file(file_path) or {
-				position := line.index('@include! ') or { 0 } + '@include! '.len
+				position := line.index('${s} ') or { 0 } + '${s} '.len
 				p.error_with_error(errors.Error{
 					message: 'Reading file ${file_name} from path: ${file_path} failed'
-					details: "Failed to @include! '${file_name}'"
+					details: "Failed to ${s} '${file_name}'"
 					file_path: template_file
 					pos: token.Pos{
-						len: '@include! '.len + file_name.len
+						len: '${s} '.len + file_name.len
 						line_nr: tline_number
 						pos: start_of_line_pos + position
 						last_line: lines.len
