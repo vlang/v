@@ -23,7 +23,7 @@ mut:
 pub struct DownloaderParams {
 	FetchConfig
 pub mut:
-	downloader &Downloader = TerminalStreamingDownloader{}
+	downloader &Downloader = &TerminalStreamingDownloader{}
 }
 
 // download_file_with_progress will save the URL `url` to the filepath `path` .
