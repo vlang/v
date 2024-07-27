@@ -265,9 +265,6 @@ fn vweb_tmpl_${fn_name}() string {
 
 			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
 
-			println('templates folder => ${templates_folder}')
-			println('join => ${os.join_path_single(templates_folder, '${file_name}${file_ext}')}')
-			println('file_path => ${file_path}')
 			$if trace_tmpl ? {
 				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
 			}
