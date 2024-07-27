@@ -41,6 +41,7 @@ mut:
 
 const is_stdin_a_pipe = os.is_atty(0) == 0
 const vexe = os.getenv('VEXE')
+const vquiet = os.getenv('VQUIET') != ''
 const vstartup = os.getenv('VSTARTUP')
 const repl_folder = os.join_path(os.vtmp_dir(), 'repl')
 
@@ -345,6 +346,9 @@ fn highlight_repl_command(command string) string {
 }
 
 fn print_welcome_screen() {
+	if vquiet {
+		return
+	}
 	cmd_exit := highlight_repl_command('exit')
 	cmd_list := highlight_repl_command('list')
 	cmd_help := highlight_repl_command('help')
