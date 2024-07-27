@@ -6,11 +6,13 @@ on:
       - '**.md'
       - '**.yml'
       - '!**/v_apps_and_modules_compile_ci.yml'
+      - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**/v_apps_and_modules_compile_ci.yml'
+      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
