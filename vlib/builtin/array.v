@@ -436,6 +436,7 @@ pub fn (mut a array) drop(num int) {
 	a.data = unsafe { &u8(a.data) + blen }
 	a.offset += int(blen) // TODO: offset should become 64bit as well
 	a.len -= n
+	a.cap -= n
 }
 
 // we manually inline this for single operations for performance without -prod
