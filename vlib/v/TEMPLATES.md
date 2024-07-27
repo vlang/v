@@ -162,7 +162,7 @@ When calling `todo.html` directly, then to include `/headers/base.html` use the 
 
 ```html
 
-<div>@include! 'header/base'</div>
+<div>@include! 'headers/base'</div>
 ```
 
 ## js
