@@ -295,6 +295,12 @@ fn gg_frame_fn(mut ctx Context) {
 	if ctx.native_rendering {
 		// return
 	}
+	defer {
+		ctx.mouse_dx = 0
+		ctx.mouse_dy = 0
+		ctx.scroll_x = 0
+		ctx.scroll_y = 0
+	}
 
 	ctx.record_frame()
 
