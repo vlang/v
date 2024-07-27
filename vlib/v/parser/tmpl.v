@@ -201,7 +201,7 @@ fn vweb_tmpl_${fn_name}() string {
 				// an absolute path
 				templates_folder = ''
 			}
-			// the call is from base folder
+			// the file to be called to be relative to basepath
 			if base {
 				idx := templates_folder.last_index('templates/')
 				if idx != none {
