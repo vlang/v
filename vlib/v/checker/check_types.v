@@ -306,7 +306,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	if c.check_types(got, expected) {
 		if language == .v && idx_got == ast.voidptr_type_idx {
 			if expected.is_int_valptr() || expected.is_int() || idx_expected == ast.voidptr_type_idx
-				|| idx_expected == ast.charptr_type_idx {
+				|| idx_expected == ast.charptr_type_idx || idx_expected == ast.byteptr_type_idx {
 				return
 			}
 			exp_sym := c.table.final_sym(expected)
