@@ -157,7 +157,8 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 					has_index = p.handle_index_variable(mut init_expr)
 				}
 				else {
-					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
+					p.error_with_pos('wrong field `${key}`, expecting `len`, `cap`, or `init`',
+						attr_pos)
 					return ast.ArrayInit{}
 				}
 			}
