@@ -304,6 +304,17 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	}
 
 	if c.check_types(got, expected) {
+		if language == .v && idx_got == ast.voidptr_type_idx {
+			if expected.is_int_valptr() || expected.is_int() || expected.is_ptr() {
+				return
+			}
+			exp_sym := c.table.final_sym(expected)
+			if exp_sym.language == .v
+				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .struct_] {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+			}
+		}
 		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
 			|| arg.expr.is_auto_deref_var() || got.has_flag(.shared_f)
 			|| c.table.sym(expected_).kind !in [.array, .map] {
