@@ -676,8 +676,11 @@ fn (mut a array) set(i int, val voidptr) {
 }
 
 fn (mut a array) push(val voidptr) {
-	if a.len < 0 || a.len > max_int {
-		panic('array.push: invalid len: ${a.len}')
+	if a.len < 0 {
+		panic('array.push: negative len')
+	}
+	if a.len >= max_int {
+		panic('array.push: len bigger than max_int')
 	}
 	if a.len >= a.cap {
 		a.ensure_cap(a.len + 1)
@@ -695,7 +698,8 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	}
 	new_len := i64(a3.len) + i64(size)
 	if new_len > max_int {
-		panic('array.push_many: new len exceeds max_int: ${new_len}')
+		// string interpolation also uses <<; avoid it, use a fixed string for the panic
+		panic('array.push_many: new len exceeds max_int')
 	}
 	if new_len >= a3.cap {
 		a3.ensure_cap(int(new_len))

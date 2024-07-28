@@ -256,8 +256,11 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 }
 
 fn (mut a array) push_noscan(val voidptr) {
-	if a.len < 0 || a.len > max_int {
-		panic('array.push_noscan: invalid len: ${a.len}')
+	if a.len < 0 {
+		panic('array.push_noscan: negative len')
+	}
+	if a.len >= max_int {
+		panic('array.push_noscan: len bigger than max_int')
 	}
 	if a.len >= a.cap {
 		a.ensure_cap_noscan(a.len + 1)
@@ -275,7 +278,8 @@ fn (mut a3 array) push_many_noscan(val voidptr, size int) {
 	}
 	new_len := i64(a3.len) + i64(size)
 	if new_len > max_int {
-		panic('array.push_many_noscan: new len exceeds max_int: ${new_len}')
+		// string interpolation also uses <<; avoid it, use a fixed string for the panic
+		panic('array.push_many_noscan: new len exceeds max_int')
 	}
 	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
