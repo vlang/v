@@ -12,7 +12,7 @@ fn vhalt() {
 }
 
 @[markused]
-fn v_segmentation_fault_handler(signal_number int) {
+fn v_segmentation_fault_handler(signal_number i32) {
 	$if freestanding {
 		eprintln('signal 11: segmentation fault')
 	} $else {
