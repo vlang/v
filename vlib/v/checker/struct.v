@@ -111,9 +111,20 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
-				if field.typ.is_ptr() && !field.default_expr_typ.is_ptr()
-					&& field.default_expr is ast.StructInit {
-					c.error('reference field must be initialized with reference', field.default_expr.pos())
+				if field.typ.is_ptr() != field.default_expr_typ.is_ptr() {
+					match field.default_expr {
+						ast.CallExpr {
+							err_desc := if field.typ.is_ptr() { 'is' } else { 'is not' }
+							val_desc := if field.default_expr_typ.is_ptr() { 'is' } else { 'is not' }
+							c.error('field ${err_desc} reference but default value ${val_desc} reference',
+								field.default_expr.pos())
+						}
+						ast.StructInit {
+							c.error('reference field must be initialized with reference',
+								field.default_expr.pos())
+						}
+						else {}
+					}
 				}
 
 				// disallow map `mut a = b`
