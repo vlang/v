@@ -1,5 +1,4 @@
 type MySum = string | voidptr
-type Alias = voidptr
 
 fn t(a MySum) MySum {
 	return dump(a)
