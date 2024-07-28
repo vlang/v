@@ -85,6 +85,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		ret_sym := g.table.sym(g.fn_decl.return_type)
 		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
+		is_vweb := ret_sym.cname == 'vweb__Result'
 		is_veb := ret_sym.cname == 'veb__Result'
 
 		for stmt in node.vweb_tmpl.stmts {
@@ -112,13 +113,13 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 
 		if is_html {
 			// return a vweb or x.vweb html template
-			if is_veb {
+			if is_veb && g.fn_decl.params.len == 2 {
 				ctx_name := g.fn_decl.params[1].name
 				g.writeln('veb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
-			} else if is_x_vweb {
+			} else if is_x_vweb && g.fn_decl.params.len == 2 {
 				ctx_name := g.fn_decl.params[1].name
 				g.writeln('x__vweb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
-			} else {
+			} else if is_vweb && g.fn_decl.params.len == 1 {
 				// old vweb:
 				app_name := g.fn_decl.params[0].name
 				g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name});')
