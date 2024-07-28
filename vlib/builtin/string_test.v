@@ -333,6 +333,13 @@ fn test_split() {
 	assert vals.len == 2
 	assert vals[0] == 'wavy turquoise'
 	assert vals[1] == ''
+	// /////////
+	s = 'aaaa'
+	vals = s.split('aa')
+	assert vals.len == 3
+	assert vals[0] == ''
+	assert vals[1] == ''
+	assert vals[2] == ''
 }
 
 fn test_rsplit() {
