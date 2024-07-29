@@ -1068,11 +1068,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
-		&& !inter_sym.name.starts_with('JS.') {
-		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
-			pos)
-	}
+	// if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
+	// 	&& !inter_sym.name.starts_with('JS.') {
+	// 	c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
+	// 		pos)
+	// }
 	imethods := if inter_sym.kind == .interface_ {
 		(inter_sym.info as ast.Interface).methods
 	} else {

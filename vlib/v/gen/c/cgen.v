@@ -2617,6 +2617,20 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				false, got_styp)
 		}
 		return
+	} else if got_sym.info is ast.Interface && exp_sym.info is ast.Interface && expr is ast.Ident
+		&& got_type.idx() != expected_type.idx() && !got_type.is_ptr()
+		&& !expected_type.has_flag(.result) && !g.inside_struct_init {
+		g.inside_cast_in_heap++
+		got_styp := g.cc_type(got_type.ref(), true)
+		exp_styp := exp_sym.cname
+		mut fname := 'I_${got_styp}_to_Interface_${exp_styp}'
+		if exp_sym.info.is_generic {
+			fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
+		}
+		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true, false,
+			got_styp)
+		g.inside_cast_in_heap--
+		return
 	}
 	// cast to sum type
 	exp_styp := g.typ(expected_type)
@@ -2721,10 +2735,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& expr !is ast.InfixExpr {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.sym(got_deref_type)
-		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt_or_res := got_type.has_option_or_result()
-		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
-			g.write('*')
+		if !(expr is ast.Ident && (expr as ast.Ident).obj is ast.Var
+			&& g.table.is_generic_smartcast((expr as ast.Ident).obj) && exp_sym.kind == .interface_) {
+			deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
+			got_is_opt_or_res := got_type.has_option_or_result()
+			if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
+				g.write('*')
+			}
 		}
 	}
 	if expr is ast.IntegerLiteral {
