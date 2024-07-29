@@ -1938,6 +1938,7 @@ pub:
 	method_pos       token.Pos
 	scope            &Scope = unsafe { nil }
 	is_vweb          bool
+	is_veb           bool
 	is_embed         bool // $embed_file(...)
 	is_env           bool // $env(...) // TODO: deprecate after $d() is stable
 	is_compile_value bool // $d(...)
