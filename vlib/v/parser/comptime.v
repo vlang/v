@@ -113,6 +113,13 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			p.error(error_msg)
 			return err_node
 		}
+		if name == 'vweb' && 'vweb' !in p.ast_imports.map(it.mod) {
+			p.error_with_pos('`\$vweb` cannot be used without import vweb', start_pos.extend(p.prev_tok.pos()))
+			return err_node
+		} else if name == 'veb' && 'veb' !in p.ast_imports.map(it.mod) {
+			p.error_with_pos('`\$veb` cannot be used without import veb', start_pos.extend(p.prev_tok.pos()))
+			return err_node
+		}
 		p.check(.dot)
 	}
 	method_name := p.check_name()
