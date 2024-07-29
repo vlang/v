@@ -141,6 +141,9 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 // can be updated *each frame* by calling:  gg.update_pixel_data(image_idx, buf)
 // ... where buf is a pointer to the actual pixel data for the image.
 // Note: you still need to call app.gg.draw_image after that, to actually draw it.
+// Note: Sokol needs to be setup, *before* calling this function. In practice,
+// this often means, that you have to call it once in the `init_fn` callback of
+// gg.new_context, or gg.start, and then store the result in your app instance.
 pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg StreamingImageConfig) int {
 	mut img := Image{}
 	img.width = w
