@@ -106,12 +106,24 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
+	mut is_veb := false
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' && name != 'veb' {
 			p.error(error_msg)
 			return err_node
+		}
+		import_mods := p.ast_imports.map(it.mod)
+		if name == 'vweb' && 'vweb' !in import_mods && 'x.vweb' !in import_mods {
+			p.error_with_pos('`\$vweb` cannot be used without importing vweb', start_pos.extend(p.prev_tok.pos()))
+			return err_node
+		} else if name == 'veb' {
+			if 'veb' !in import_mods {
+				p.error_with_pos('`\$veb` cannot be used without importing veb', start_pos.extend(p.prev_tok.pos()))
+				return err_node
+			}
+			is_veb = true
 		}
 		p.check(.dot)
 	}
@@ -265,6 +277,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 				return ast.ComptimeCall{
 					scope: unsafe { nil }
 					is_vweb: true
+					is_veb: is_veb
 					method_name: method_name
 					args_var: literal_string_param
 					args: [arg]
@@ -306,6 +319,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	return ast.ComptimeCall{
 		scope: unsafe { nil }
 		is_vweb: true
+		is_veb: is_veb
 		vweb_tmpl: file
 		method_name: method_name
 		args_var: literal_string_param
