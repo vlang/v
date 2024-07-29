@@ -20,6 +20,10 @@ struct Cat {
 	cat_name string
 }
 
+struct Dog {
+	dog_name string
+}
+
 fn test_main() {
 	data := '{"attributes": {"price": [{"net": 1, "_type": "Price"}, {"net": 2, "_type": "Price"}]}}'
 	entity := json.decode(ShopResponseData, data) or { panic(err) }
