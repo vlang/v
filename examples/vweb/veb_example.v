@@ -33,6 +33,7 @@ pub fn (mut app App) user_endpoint(mut ctx Context, user string) veb.Result {
 	})
 }
 
+// vfmt off
 pub fn (mut app App) index(mut ctx Context) veb.Result {
 	mut c := 0
 	lock app.state {
@@ -46,13 +47,13 @@ pub fn (mut app App) index(mut ctx Context) veb.Result {
 	show := true
 	hello := 'Hello world from veb, request number: ${c}'
 	numbers := [1, 2, 3]
-	return $vweb.html()
+	return $veb.html()
 }
 
 pub fn (mut app App) custom_template(mut ctx Context) veb.Result {
-	return $vweb.html('custom.html')
+	return $veb.html('custom.html')
 }
-
+// vfmt on
 pub fn (mut app App) show_text(mut ctx Context) veb.Result {
 	return ctx.text('Hello world from veb')
 }
