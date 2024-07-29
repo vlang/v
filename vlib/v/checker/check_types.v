@@ -310,7 +310,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			}
 			exp_sym := c.table.final_sym(expected)
 			if exp_sym.language == .v
-				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .struct_] {
+				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .sum_type, .struct_] {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
