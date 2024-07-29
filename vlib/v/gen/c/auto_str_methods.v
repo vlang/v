@@ -442,7 +442,12 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 		clean_sum_type_v_type_name = util.strip_main_name(typ_str)
 	}
 	fn_builder.writeln('\tswitch(x._typ) {')
+	mut idxs := []int{}
 	for typ in info.variants {
+		if typ in idxs {
+			continue
+		}
+		idxs << typ
 		typ_name := g.typ(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)

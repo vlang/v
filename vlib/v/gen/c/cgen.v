@@ -1000,9 +1000,14 @@ pub fn (mut g Gen) write_typeof_functions() {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
+				mut idxs := []int{}
 				for v in sum_info.variants {
+					if v in idxs {
+						continue
+					}
 					subtype := g.table.sym(v)
 					g.writeln('\t\tcase ${int(v)}: return "${util.strip_main_name(subtype.name)}";')
+					idxs << v
 				}
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";')
 				g.writeln('\t}')
@@ -1021,8 +1026,13 @@ pub fn (mut g Gen) write_typeof_functions() {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return ${int(ityp)};')
+				mut idxs := []int{}
 				for v in sum_info.variants {
+					if v in idxs {
+						continue
+					}
 					g.writeln('\t\tcase ${int(v)}: return ${int(v)};')
+					idxs << v
 				}
 				g.writeln('\t\tdefault: return ${int(ityp)};')
 				g.writeln('\t}')
@@ -6678,12 +6688,22 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type ${name} = ')
+				mut idxs := []int{}
 				for variant in sym.info.variants {
+					if variant in idxs {
+						continue
+					}
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
+					idxs << variant
 				}
+				idxs.clear()
 				g.type_definitions.writeln('struct ${name} {')
 				g.type_definitions.writeln('\tunion {')
 				for variant in sym.info.variants {
+					if variant in idxs {
+						continue
+					}
+					idxs << variant
 					variant_sym := g.table.sym(variant)
 					mut var := if variant.has_flag(.option) { variant } else { variant.ref() }
 					variant_name := g.get_sumtype_variant_name(variant, variant_sym)
