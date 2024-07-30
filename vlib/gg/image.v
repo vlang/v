@@ -14,7 +14,7 @@ pub mut:
 	img_id    int
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering
-	rotate    int  // amount to rotate the image in degrees
+	rotate    f32  // amount to rotate the image in degrees
 	z         f32
 	color     gx.Color    = gx.white
 	effect    ImageEffect = .alpha
