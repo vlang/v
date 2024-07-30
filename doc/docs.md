@@ -7199,7 +7199,7 @@ Note also that they *do not have* to be complete, unlike the ones in the .h file
 
 **C. struct redeclarations**
 For example, if a struct has 3 fields on the C side, but you want to only
-refer to just 1 of them, you can just declare it like this:
+refer to 1 of them, you can declare it like this:
 
 **Example of C struct redeclaration**
 ```v oksyntax
