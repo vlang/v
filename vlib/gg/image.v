@@ -7,7 +7,7 @@ import gx
 // DrawImageConfig struct defines the various options
 // that can be used to draw an image onto the screen
 pub struct DrawImageConfig {
-pub:
+pub mut:
 	flip_x    bool
 	flip_y    bool
 	img       &Image = unsafe { nil }
