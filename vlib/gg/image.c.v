@@ -387,13 +387,13 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	sgl.enable_texture()
 	sgl.texture(img.simg, img.ssmp)
 
-	if config.rotate != 0 {
+	if config.rotation != 0 {
 		width := img_rect.width * ctx.scale
 		height := (if img_rect.height > 0 { img_rect.height } else { img.height }) * ctx.scale
 
 		sgl.push_matrix()
 		sgl.translate(x0 + (width / 2), y0 + (height / 2), 0)
-		sgl.rotate(sgl.rad(-config.rotate), 0, 0, 1)
+		sgl.rotate(sgl.rad(-config.rotation), 0, 0, 1)
 		sgl.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
 	}
 
@@ -405,7 +405,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
 	sgl.end()
 
-	if config.rotate != 0 {
+	if config.rotation != 0 {
 		sgl.pop_matrix()
 	}
 

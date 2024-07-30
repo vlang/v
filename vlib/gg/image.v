@@ -8,16 +8,18 @@ import gx
 // that can be used to draw an image onto the screen
 pub struct DrawImageConfig {
 pub mut:
-	flip_x    bool
-	flip_y    bool
+	flip_x    bool // set to true, if you need to flip the image horizontally (around a vertical axis), <- will become ->
+	flip_y    bool // set to true, if you need to flip the image vertically (around a horizontal axiz), -\/- will become -/\-
 	img       &Image = unsafe { nil }
 	img_id    int
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering
-	rotate    f32  // amount to rotate the image in degrees
+	rotate    f32         @[deprecated: 'use `rotation` instead of `rotate`'; deprecated_after: '2024-07-30']
 	z         f32
 	color     gx.Color    = gx.white
 	effect    ImageEffect = .alpha
+	//
+	rotation f32 // the amount to rotate the image in degrees, counterclockwise. Use a negative value, to rotate it clockwise.
 }
 
 pub enum ImageEffect {
