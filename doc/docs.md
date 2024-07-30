@@ -7188,7 +7188,7 @@ structs declared in `stdio.h`, but if you try to compile the .v file,
 it will add the include in the generated C code, so that if that header file
 is missing, you will get a C error (you will not in this specific case, if you
 have a proper C compiler setup, since `<stdio.h>` is part of the
-standart C library).
+standard C library).
 
 To overcome that limitation (that V does not have a C parser), V needs you to
 redeclare the C functions and structs, on the V side, in your `.c.v` files.
