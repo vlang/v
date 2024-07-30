@@ -111,7 +111,17 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.table.cur_fn = save_cur_fn
 	}
 	if node.method_name == 'html' {
-		rtyp := c.table.find_type_idx('vweb.Result')
+		ret_sym := c.table.sym(c.table.cur_fn.return_type)
+		if ret_sym.cname !in ['veb__Result', 'vweb__Result', 'x__vweb__Result'] {
+			ct_call := if node.is_veb { 'veb' } else { 'vweb' }
+			c.error('`\$${ct_call}.html()` must be called inside a web method, e.g. `fn (mut app App) foo(mut ctx Context) ${ct_call}.Result { return \$${ct_call}.html(\'index.html\') }`',
+				node.pos)
+		}
+		rtyp := if node.is_veb {
+			c.table.find_type_idx('veb.Result')
+		} else {
+			c.table.find_type_idx('vweb.Result')
+		}
 		node.result_type = rtyp
 		return rtyp
 	}

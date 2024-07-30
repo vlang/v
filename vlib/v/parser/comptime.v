@@ -115,14 +115,18 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			return err_node
 		}
 		import_mods := p.ast_imports.map(it.mod)
-		if name == 'vweb' && 'vweb' !in import_mods && 'x.vweb' !in import_mods {
-			p.error_with_pos('`\$vweb` cannot be used without importing vweb', start_pos.extend(p.prev_tok.pos()))
-			return err_node
+		if name == 'vweb' {
+			if 'vweb' !in import_mods && 'x.vweb' !in import_mods {
+				p.error_with_pos('`\$vweb` cannot be used without importing vweb', start_pos.extend(p.prev_tok.pos()))
+				return err_node
+			}
+			p.register_used_import('vweb')
 		} else if name == 'veb' {
 			if 'veb' !in import_mods {
 				p.error_with_pos('`\$veb` cannot be used without importing veb', start_pos.extend(p.prev_tok.pos()))
 				return err_node
 			}
+			p.register_used_import('veb')
 			is_veb = true
 		}
 		p.check(.dot)
