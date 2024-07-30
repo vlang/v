@@ -82,17 +82,17 @@ pub fn (s string) runes() []rune {
 // -autofree and `@[manualfree]`.
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
-pub fn cstring_to_vstring(s &char) string {
-	return unsafe { tos2(&u8(s)) }.clone()
+pub fn cstring_to_vstring(const_s &char) string {
+	return unsafe { tos2(&u8(const_s)) }.clone()
 }
 
 // tos_clone creates a new V string copy of the C style string, pointed by `s`.
 // See also cstring_to_vstring (it is the same as it, the only difference is,
-// that tos_clone expects `&byte`, while cstring_to_vstring expects &char).
+// that tos_clone expects `&u8`, while cstring_to_vstring expects &char).
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
-pub fn tos_clone(s &u8) string {
-	return unsafe { tos2(s) }.clone()
+pub fn tos_clone(const_s &u8) string {
+	return unsafe { tos2(&u8(const_s)) }.clone()
 }
 
 // tos creates a V string, given a C style pointer to a 0 terminated block.
@@ -114,7 +114,7 @@ pub fn tos(s &u8, len int) string {
 // Note: the memory block pointed by s is *reused, not copied*!
 // It will calculate the length first, thus it is more costly than `tos`.
 // It will panic, when the pointer `s` is 0.
-// It is the same as `tos3`, but for &byte pointers, avoiding callsite casts.
+// It is the same as `tos3`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
 @[unsafe]
 pub fn tos2(s &u8) string {
@@ -148,7 +148,7 @@ pub fn tos3(s &char) string {
 // Note: the memory block pointed by s is *reused, not copied*!
 // It will calculate the length first, so it is more costly than tos.
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
-// It is the same as `tos5`, but for &byte pointers, avoiding callsite casts.
+// It is the same as `tos5`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
 @[unsafe]
 pub fn tos4(s &u8) string {

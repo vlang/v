@@ -92,7 +92,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		num_mipmaps: 0
 		// wrap_u: .clamp_to_edge // XTODO SAMPLER
 		// wrap_v: .clamp_to_edge
-		label: img.path.str
+		label: &char(img.path.str)
 		d3d11_texture: 0
 	}
 
@@ -156,7 +156,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		num_slices: 1
 		num_mipmaps: 1
 		usage: .stream
-		label: img.path.str
+		label: &char(img.path.str)
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
 	img_desc.data.subimage[0][0] = gfx.Range{
