@@ -7222,7 +7222,7 @@ Note that the name of the `C.` struct in V, is the one *after* the `struct SomeN
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a
 library, but its .h header declares dozens of them, you will only need to declare that single
-one function like this for example:
+function, for example:
 
 **Example of C function redeclaration**
 ```v oksyntax
