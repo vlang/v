@@ -29,9 +29,10 @@ pub fn (mut window Window) draw(_ voidptr) {
 			width: window.image.width
 			height: window.image.height
 		}
+		rotation: f32(window.ctx.frame)
 		// effect: .alpha <-- this can be omitted completely as it is alpha by default.
 	}
-	window.ctx.draw_image_with_config(myconfig)
+	window.ctx.draw_image_with_config(gg.DrawImageConfig{ ...myconfig, flip_x: true })
 
 	// Red
 	window.ctx.draw_image_with_config(gg.DrawImageConfig{
@@ -110,6 +111,7 @@ fn main() {
 	mut window := &Window{}
 
 	window.ctx = gg.new_context(
+		window_title: 'Additive colors & image rotation'
 		width: 800
 		height: 600
 		user_data: window
