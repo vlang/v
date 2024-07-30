@@ -7228,7 +7228,7 @@ function, for example:
 ```v oksyntax
 fn C.name_of_the_C_function(param1 int, const_param2 &char, param3 f32) f64
 ```
-... and then later, you will be able to call it like this:
+... and then later, you will be able to call the same way you would V function:
 ```v oksyntax
 f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
 dump(f)
