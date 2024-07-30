@@ -315,7 +315,6 @@ println(os.args)
 /*
 This is a multiline comment.
    /* It can be nested. */
-*/
 ```
 
 ## Functions
