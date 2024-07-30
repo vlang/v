@@ -1,0 +1,3 @@
+struct MyStruct[T] { t T }
+type MyAlias = MyStruct[T]
+type MyAlias2 = MyStruct

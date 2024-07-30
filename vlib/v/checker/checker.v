@@ -561,6 +561,12 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 						c.error('unknown type `${ct_sym.name}`', node.type_pos)
 					}
 				}
+
+				if parent_typ_sym.info.is_generic && parent_typ_sym.info.concrete_types.len == 0 {
+					c.error('${parent_typ_sym.name} type is generic struct, must specify the generic type names, e.g. ${parent_typ_sym.name}[int]',
+						node.type_pos)
+				}
+
 				// check if embed types are struct
 				for embed_type in parent_typ_sym.info.embeds {
 					final_embed_sym := c.table.final_sym(embed_type)
