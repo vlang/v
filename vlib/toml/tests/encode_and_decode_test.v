@@ -60,7 +60,7 @@ struct Arrs {
 	times []toml.Time
 }
 
-//individual because toml.decode[Foo](str)! == foo is false
+// individual because toml.decode[Foo](str)! == foo is false
 struct AnyArr {
 	arr []toml.Any
 }
@@ -268,7 +268,7 @@ times = [
 	assert toml.encode[Arrs](a) == s
 	assert toml.decode[Arrs](s)! == a
 
-	any_a := AnyArr{[toml.Any(10),20,30]}
+	any_a := AnyArr{[toml.Any(10), 20, 30]}
 	any_s := 'arr = [
   10,
   20,
@@ -276,7 +276,7 @@ times = [
 ]'
 
 	assert toml.encode[AnyArr](any_a) == any_s
-	assert toml.decode[AnyArr](any_s)!.arr.map(it.int()) == [10,20,30]
+	assert toml.decode[AnyArr](any_s)!.arr.map(it.int()) == [10, 20, 30]
 }
 
 fn test_decode_doc() {
