@@ -50,7 +50,7 @@ const default_slangs = $if macos {
 	]
 } $else {
 	[
-		'glsl430',
+		'glsl410',
 		'glsl300es',
 		// 'hlsl4', and hlsl5 can't be used at the same time
 		'hlsl5',

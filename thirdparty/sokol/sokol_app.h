@@ -3162,6 +3162,9 @@ _SOKOL_PRIVATE sapp_desc _sapp_desc_defaults(const sapp_desc* desc) {
         #else
             res.gl_major_version = 4;
             res.gl_minor_version = 3;
+            // __v_ start
+            res.gl_minor_version = 1; // keep backwards compatibility
+            // __v_ end
         #endif
     }
     res.html5_canvas_name = _sapp_def(res.html5_canvas_name, "canvas");
