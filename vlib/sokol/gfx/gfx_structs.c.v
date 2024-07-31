@@ -254,6 +254,7 @@ pub mut:
 	entry               &char
 	d3d11_target        &char
 	uniform_blocks      [4]ShaderUniformBlockDesc
+	storage_buffers     [8]ShaderStorageBufferDesc
 	images              [12]ShaderImageDesc
 	samplers            [8]ShaderSamplerDesc
 	image_sampler_pairs [12]ShaderImageSamplerPairDesc
@@ -295,6 +296,14 @@ pub mut:
 }
 
 pub type ShaderImageDesc = C.sg_shader_image_desc
+
+pub struct C.sg_shader_storage_buffer_desc {
+pub mut:
+	used     bool
+	readonly bool
+}
+
+pub type ShaderStorageBufferDesc = C.sg_shader_storage_buffer_desc
 
 pub struct C.sg_shader_sampler_desc {
 pub mut:
@@ -461,6 +470,7 @@ pub struct C.sg_frame_stats_metal_bindings {
 	num_set_vertex_buffer          u32
 	num_set_vertex_texture         u32
 	num_set_vertex_sampler_state   u32
+	num_set_fragment_buffer        u32
 	num_set_fragment_texture       u32
 	num_set_fragment_sampler_state u32
 }
@@ -770,11 +780,7 @@ pub:
 	image_clamp_to_border       bool // border color and clamp-to-border UV-wrap mode is supported
 	mrt_independent_blend_state bool // multiple-render-target rendering can use per-render-target blend state
 	mrt_independent_write_mask  bool // multiple-render-target rendering can use per-render-target color write masks
-	//	instancing                  bool // hardware instancing supported
-	//	multiple_render_targets     bool // offscreen render passes can have multiple render targets attached
-	//	msaa_render_targets         bool // offscreen render passes support MSAA antialiasing
-	//	imagetype_3d                bool // creation of SG_IMAGETYPE_3D images is supported
-	//	imagetype_array             bool // creation of SG_IMAGETYPE_ARRAY images is supported
+	storage_buffer              bool // storage buffers are supported
 }
 
 pub type Features = C.sg_features

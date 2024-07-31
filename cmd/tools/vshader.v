@@ -18,17 +18,16 @@ import io.util
 import flag
 import net.http
 
-const shdc_full_hash = '6b84ea387a323db9e8e17f5abed2b254a6e409fe'
-const tool_version = '0.0.3'
+const shdc_full_hash = '0d91b038780614a867f2c8eecd7d935d76bcaae3'
+const tool_version = '0.0.4'
 const tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
 const tool_name = os.file_name(os.executable())
 const cache_dir = os.join_path(os.cache_dir(), 'v', tool_name)
 const runtime_os = os.user_os()
-
 const supported_hosts = ['linux', 'macos', 'windows']
 const supported_slangs = [
-	'glsl330', // desktop OpenGL backend (SOKOL_GLCORE33)
-	'glsl100', // OpenGLES2 and WebGL (SOKOL_GLES3)
+	'glsl430', // default desktop OpenGL backend (SOKOL_GLCORE)
+	'glsl410', // default macOS desktop OpenGL
 	'glsl300es', // OpenGLES3 and WebGL2 (SOKOL_GLES3)
 	'hlsl4', // Direct3D11 with HLSL4 (SOKOL_D3D11)
 	'hlsl5', // Direct3D11 with HLSL5 (SOKOL_D3D11)
@@ -36,18 +35,31 @@ const supported_slangs = [
 	'metal_ios', // Metal on iOS devices (SOKOL_METAL)
 	'metal_sim', // Metal on iOS simulator (SOKOL_METAL)
 	'wgsl', // WebGPU (SOKOL_WGPU)
+	'reflection',
 ]
-const default_slangs = [
-	'glsl330',
-	'glsl100',
-	'glsl300es',
-	// 'hlsl4', and hlsl5 can't be used at the same time
-	'hlsl5',
-	'metal_macos',
-	'metal_ios',
-	'metal_sim',
-	'wgsl',
-]
+const default_slangs = $if macos {
+	[
+		'glsl410',
+		'glsl300es',
+		// 'hlsl4', and hlsl5 can't be used at the same time
+		'hlsl5',
+		'metal_macos',
+		'metal_ios',
+		'metal_sim',
+		'wgsl',
+	]
+} $else {
+	[
+		'glsl430',
+		'glsl300es',
+		// 'hlsl4', and hlsl5 can't be used at the same time
+		'hlsl5',
+		'metal_macos',
+		'metal_ios',
+		'metal_sim',
+		'wgsl',
+	]
+}
 
 const shdc_version = shdc_full_hash[0..8]
 const shdc_urls = {
