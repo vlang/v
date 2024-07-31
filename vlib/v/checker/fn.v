@@ -923,6 +923,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 	}
+
+	if _ := fn_name.index('__static__') {
+		if sym := c.table.find_sym(node.name.all_before('__static__')) {
+			if sym.kind == .placeholder {
+				c.error('unknown type `${sym.name}`', node.name_pos)
+			}
+		}
+	}
+
 	// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
 	if !found && fn_name.ends_with('__static__from_string') {
 		enum_name := fn_name.all_before('__static__')
