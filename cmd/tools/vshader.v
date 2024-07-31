@@ -37,29 +37,16 @@ const supported_slangs = [
 	'wgsl', // WebGPU (SOKOL_WGPU)
 	'reflection',
 ]
-const default_slangs = $if macos {
-	[
-		'glsl410',
-		'glsl300es',
-		// 'hlsl4', and hlsl5 can't be used at the same time
-		'hlsl5',
-		'metal_macos',
-		'metal_ios',
-		'metal_sim',
-		'wgsl',
-	]
-} $else {
-	[
-		'glsl410',
-		'glsl300es',
-		// 'hlsl4', and hlsl5 can't be used at the same time
-		'hlsl5',
-		'metal_macos',
-		'metal_ios',
-		'metal_sim',
-		'wgsl',
-	]
-}
+const default_slangs = [
+	'glsl410',
+	'glsl300es',
+	// 'hlsl4', and hlsl5 can't be used at the same time
+	'hlsl5',
+	'metal_macos',
+	'metal_ios',
+	'metal_sim',
+	'wgsl',
+]
 
 const shdc_version = shdc_full_hash[0..8]
 const shdc_urls = {
