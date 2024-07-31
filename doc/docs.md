@@ -7173,6 +7173,104 @@ For all supported options check the latest help:
 
 ### Calling C from V
 
+V currently does not have a parser for C code. That means that even
+though it allows you to `#include` existing C header and source files,
+it will not know anything about the declarations in them. The `#include`
+statement will only appear in the generated C code, to be used by the
+C compiler backend itself.
+
+**Example of #include**
+```v oksyntax
+#include <stdio.h>
+```
+After this statement, V will *not* know anything about the functions and
+structs declared in `stdio.h`, but if you try to compile the .v file,
+it will add the include in the generated C code, so that if that header file
+is missing, you will get a C error (you will not in this specific case, if you
+have a proper C compiler setup, since `<stdio.h>` is part of the
+standard C library).
+
+To overcome that limitation (that V does not have a C parser), V needs you to
+redeclare the C functions and structs, on the V side, in your `.c.v` files.
+Note that such redeclarations only need to have enough details about the
+functions/structs that you want to use.
+Note also that they *do not have* to be complete, unlike the ones in the .h files.
+
+
+**C. struct redeclarations**
+For example, if a struct has 3 fields on the C side, but you want to only
+refer to 1 of them, you can declare it like this:
+
+**Example of C struct redeclaration**
+```v oksyntax
+struct C.NameOfTheStruct {
+	a_field int
+}
+```
+Another feature, that is very frequently needed for C interoperability,
+is the `@[typedef]` attribute. It is used for marking `C.` structs,
+that are defined with `typedef struct SomeName { ..... } TypeName;` in the C headers.
+
+For that case, you will have to write something like this in your .c.v file:
+```v oksyntax
+@[typedef]
+pub struct C.TypeName {
+}
+```
+Note that the name of the `C.` struct in V, is the one *after* the `struct SomeName {...}`.
+
+**C. function redeclarations**
+The situation is similar for `C.` functions. If you are going to call just 1 function in a
+library, but its .h header declares dozens of them, you will only need to declare that single
+function, for example:
+
+**Example of C function redeclaration**
+```v oksyntax
+fn C.name_of_the_C_function(param1 int, const_param2 &char, param3 f32) f64
+```
+... and then later, you will be able to call the same way you would V function:
+```v oksyntax
+f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
+dump(f)
+```
+
+**Example of using a C function from stdio, by redeclaring it on the V side**
+```v
+#include <stdio.h>
+
+// int dprintf(int fd, const char *format, ...)
+fn C.dprintf(fd int, const_format &char, ...voidptr) int
+
+value := 12345
+x := C.dprintf(0, c'Hello world, value: %d\n', value)
+dump(x)
+```
+
+If your C backend compiler is properly setup, you should see something like this, when you try
+to run it:
+```console
+#0 10:42:32 /v/examples> v run a.v
+Hello world, value: 12345
+[a.v:8] x: 26
+#0 10:42:33 /v/examples>
+```
+
+Note, that the C function redeclarations look very simillar to the V ones, with some differences:
+1) They lack a body (they are defined on the C side) .
+2) Their names start with `C.` .
+3) Their names can have capital letters (unlike V ones, that are required to use snake_case) .
+
+Note also the second parameter `const char *format`, which was redeclared as `const_format &char` .
+The `const_` prefix in that redeclaration may seem arbitrary, but it is important, if you want
+to compile your code with `-cstrict` or thirdparty C static analysis tools. V currently does not
+have another way to express that this parameter is a const (this will probably change in V 1.0).
+
+For some C functions, that use variadics (`...`) as parameters, V supports a special syntax for
+the parameters - `...voidptr`, that is not available for ordinary V functions (V's variadics are
+*required* to have the same exact type). Usually those are functions of the printf/scanf family
+i.e for `printf`, `fprintf`, `scanf`, `sscanf`, etc, and other formatting/parsing/logging
+functions.
+
 **Example**
 
 ```v
