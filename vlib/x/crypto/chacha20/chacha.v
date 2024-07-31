@@ -28,7 +28,7 @@ const cc2 = u32(0x79622d32) // 2-by
 const cc3 = u32(0x6b206574) // te k
 
 // Cipher represents ChaCha20 stream cipher instances.
-struct Cipher {
+pub struct Cipher {
 mut:
 	// internal's of ChaCha20 states, ie, 16 of u32 words, 4 of ChaCha20 constants,
 	// 8 word (32 bytes) of keys, 3 word (24 bytes) of nonces and 1 word of counter
