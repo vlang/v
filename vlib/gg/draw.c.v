@@ -6,19 +6,24 @@ import gx
 import math
 import sokol.sgl
 
+@[params]
+pub struct DrawPixelConfig {
+pub mut:
+	size f32 = 1.0
+}
+
 // draw_pixel draws one pixel on the screen.
 //
 // NOTE calling this function frequently is very *inefficient*,
 // for drawing shapes it's recommended to draw whole primitives with
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
-@[inline]
-pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
+pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color, params DrawPixelConfig) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-
 	sgl.begin_points()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.point_size(params.size)
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.end()
 }
@@ -28,8 +33,8 @@ pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 // NOTE calling this function frequently is very *inefficient*,
 // for drawing shapes it's recommended to draw whole primitives with
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
-@[direct_array_access; inline]
-pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
+@[direct_array_access]
+pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color, params DrawPixelConfig) {
 	if points.len % 2 != 0 {
 		return
 	}
@@ -38,9 +43,9 @@ pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-
 	sgl.begin_points()
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.point_size(params.size)
 	for i in 0 .. len {
 		x, y := points[i * 2], points[i * 2 + 1]
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
