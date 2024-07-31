@@ -34,6 +34,10 @@ struct Contact {
 	phone string
 }*/
 
+struct AnyStruct {
+	val toml.Any
+}
+
 struct Employee {
 mut:
 	name     string
@@ -54,6 +58,11 @@ struct Arrs {
 	dts   []toml.DateTime
 	dates []toml.Date
 	times []toml.Time
+}
+
+//individual because toml.decode[Foo](str)! == foo is false
+struct AnyArr {
+	arr []toml.Any
 }
 
 fn test_encode_and_decode() {
@@ -80,6 +89,14 @@ meal_frequency = { bones = 2, kibble = 5 }'
 
 	assert toml.encode[Pet](p) == s
 	assert toml.decode[Pet](s)! == p
+}
+
+fn test_encode_and_decode_any() {
+	a := AnyStruct{toml.Any(10)}
+	s := 'val = 10'
+
+	assert toml.encode[AnyStruct](a) == s
+	assert toml.decode[AnyStruct](s)!.val.int() == 10
 }
 
 pub fn (e Employee) to_toml() string {
@@ -250,6 +267,16 @@ times = [
 
 	assert toml.encode[Arrs](a) == s
 	assert toml.decode[Arrs](s)! == a
+
+	any_a := AnyArr{[toml.Any(10),20,30]}
+	any_s := 'arr = [
+  10,
+  20,
+  30
+]'
+
+	assert toml.encode[AnyArr](any_a) == any_s
+	assert toml.decode[AnyArr](any_s)!.arr.map(it.int()) == [10,20,30]
 }
 
 fn test_decode_doc() {

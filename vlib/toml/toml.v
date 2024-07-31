@@ -68,6 +68,8 @@ fn decode_struct[T](doc Any, mut typ T) {
 				typ.$(field.name) = value.date()
 			} $else $if field.typ is Time {
 				typ.$(field.name) = value.time()
+			} $else $if field.typ is Any {
+				typ.$(field.name) = value
 			} $else $if field.is_array {
 				arr := value.array()
 				match field.typ {
@@ -81,6 +83,7 @@ fn decode_struct[T](doc Any, mut typ T) {
 					[]DateTime { typ.$(field.name) = arr.map(it.datetime()) }
 					[]Date { typ.$(field.name) = arr.map(it.date()) }
 					[]Time { typ.$(field.name) = arr.map(it.time()) }
+					[]Any { typ.$(field.name) = arr }
 					else {}
 				}
 			} $else $if field.is_map {
@@ -145,6 +148,9 @@ fn decode_struct[T](doc Any, mut typ T) {
 							fn (k string, v Any) (string, Time) {
 							return k, v.time()
 						})
+					}
+					map[string]Any {
+						typ.$(field.name) = mmap.clone()
 					}
 					else {}
 				}
@@ -211,6 +217,8 @@ fn to_any[T](value T) Any {
 		return Any(value)
 	} $else $if T is DateTime {
 		return Any(value)
+	} $else $if T is Any {
+		return value
 	} $else $if T is $struct {
 		$for method in T.methods {
 			$if method.name == 'to_toml' {
