@@ -1,3 +1,6 @@
+Roadmap with big features.
+For a list of all features and fixes, check out the changelog.
+
 ## [Version 0.3]
 
 - [x] gc option
@@ -39,7 +42,6 @@
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes
-- [ ] `arr.first() or { }` like `arr[0] or { }`
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
 
 ## [Version 0.6]
@@ -52,7 +54,8 @@
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default
 - [ ] ORM migrations
-      
+- [ ] Allow `$if` everywhere: top level, inside struct definitions, etc
+
 ## [Version 1.0]
 
 - [ ] Cross compilation of C

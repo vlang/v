@@ -16,9 +16,23 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	}
 	mut convertor := ''
 	mut typename_ := ''
+	mut got_int_str := false
 	if sym.parent_idx in ast.integer_type_idxs {
 		convertor = 'int'
 		typename_ = 'int'
+		$if new_int ? {
+			if str_fn_name == 'i64_str' {
+				if got_int_str {
+					return
+				} else {
+					got_int_str = true
+				}
+			}
+
+			// if sym.parent_idx == ast.int_type_idx {
+			// return
+			//}
+		}
 	} else if sym.parent_idx == ast.f32_type_idx {
 		convertor = 'float'
 		typename_ = 'f32'

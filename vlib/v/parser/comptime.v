@@ -302,7 +302,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
 	}
 	v_code := p.compile_template_file(path, tmp_fn_name)
-	$if print_vweb_template_expansions ? {
+	$if print_veb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
 			println('${path}:${i + 1}: ${line}')
