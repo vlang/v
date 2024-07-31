@@ -88,9 +88,10 @@ pub enum PixelFormat as u32 {
 	etc2_rgb8a1
 	etc2_rgba8
 	etc2_srgb8a8
-	etc2_rg11
-	etc2_rg11sn
-	//
+	eac_r11
+	eac_r11sn
+	eac_rg11
+	eac_rg11sn
 	astc_4x4_rgba
 	astc_4x4_srgba
 	//
@@ -120,8 +121,9 @@ pub enum BufferType as u32 {
 	_default // value 0 reserved for default-init
 	vertexbuffer
 	indexbuffer
+	storagebuffer
 	_num
-	_force_u32   = 0x7FFFFFFF
+	_force_u32    = 0x7FFFFFFF
 }
 
 pub enum IndexType as u32 {

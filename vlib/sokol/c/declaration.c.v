@@ -26,7 +26,7 @@ $if !tinyc {
 // METAL
 $if macos {
 	$if darwin_sokol_glcore33 ? {
-		#flag darwin -DSOKOL_GLCORE33 -framework OpenGL -framework Cocoa -framework QuartzCore
+		#flag darwin -DSOKOL_GLCORE -framework OpenGL -framework Cocoa -framework QuartzCore
 	} $else {
 		#flag -DSOKOL_METAL
 		#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
@@ -47,12 +47,12 @@ $if emscripten ? {
 }
 
 // OPENGL
-#flag linux -DSOKOL_GLCORE33
-#flag freebsd -DSOKOL_GLCORE33
-#flag openbsd -DSOKOL_GLCORE33
+#flag linux -DSOKOL_GLCORE
+#flag freebsd -DSOKOL_GLCORE
+#flag openbsd -DSOKOL_GLCORE
 //#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 // D3D
-#flag windows -DSOKOL_GLCORE33
+#flag windows -DSOKOL_GLCORE
 //#flag windows -DSOKOL_D3D11
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
