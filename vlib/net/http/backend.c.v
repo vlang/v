@@ -57,7 +57,7 @@ fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Resp
 	$if trace_http_response ? {
 		eprint('< ')
 		eprint(response_text)
-		eprinln('')
+		eprintln('')
 	}
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
