@@ -57,7 +57,7 @@ pub fn (mut x Ofb) xor_key_stream(mut dst []u8, src []u8) {
 
 			n := xor_bytes(mut local_dst, local_src, x.out)
 			local_dst = local_dst[n..]
-			local_src = local_dst[n..]
+			local_src = local_src[n..]
 			x.out_used += n
 		}
 	}
