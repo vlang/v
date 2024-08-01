@@ -26,35 +26,30 @@ fn my_audio_stream_callback(mut soundbuffer &f32, num_frames int, num_channels i
 
 fn graphics_frame(mut state AppState) {
 	ws := gg.window_size()
-	center_y := ws.height / 2
+	center_y := f32(ws.height / 2)
 	state.gg.begin()
 	for x in 0 .. 1024 {
-		vx := int(ws.width * f64(x) / 1024.0)
-		vy := f32(center_y) * 3.0 / 4.0 * (state.frames[2 * x] + state.frames[2 * x + 1])
-		color := gg.Color{state.f(x), state.f(x + 300), state.f(x + 700), 255}
+		vx := ws.width * f32(x) / 1024.0
+		vy := center_y * 3.0 / 4.0 * (state.frames[2 * x] + state.frames[2 * x + 1])
+		color := gg.Color{f(state, x), f(state, x + 300), f(state, x + 700), 255}
 		state.gg.draw_line(vx, center_y, vx, center_y + vy, color)
 	}
 	state.gg.end()
 }
 
-@[inline]
-fn (state &AppState) f(idx int) u8 {
+fn f(state &AppState, idx int) u8 {
 	return u8(127 + state.frames[(int(state.gg.frame) + idx) & 2047] * 128)
 }
 
 fn main() {
 	println('Based on the ByteBeat formula from: https://www.youtube.com/watch?v=V4GfkFbDojc \n "Techno" by Gabriel Miceli')
 	mut state := &AppState{}
-	audio.setup(
-		stream_userdata_cb: my_audio_stream_callback
-		user_data: state
-	)
+	audio.setup(stream_userdata_cb: my_audio_stream_callback, user_data: state)
 	defer { audio.shutdown() }
 	state.gg = gg.new_context(
 		bg_color: gg.Color{50, 50, 50, 255}
-		width: 1024
-		height: 400
-		create_window: true
+		width: 800
+		height: 600
 		window_title: 'ByteBeat Music'
 		frame_fn: graphics_frame
 		user_data: state
