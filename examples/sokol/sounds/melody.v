@@ -12,8 +12,7 @@ mut:
 	gg      &gg.Context = unsafe { nil } // used for drawing
 }
 
-fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut acontext AppState) {
-	mut soundbuffer := unsafe { buffer }
+fn my_audio_stream_callback(mut soundbuffer &f32, num_frames int, num_channels int, mut acontext AppState) {
 	for frame := 0; frame < num_frames; frame++ {
 		t := int(f32(acontext.frame_0 + frame) * 0.245)
 		// "Techno" by Gabriel Miceli
@@ -21,11 +20,9 @@ fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut a
 			(t * (((t / 640 | 0) ^ ((t / 640 | 0) - 2)) % 13) / 2 & 127)
 		for ch := 0; ch < num_channels; ch++ {
 			idx := frame * num_channels + ch
-			unsafe {
-				a := f32(u8(y) - 127) / 255.0
-				soundbuffer[idx] = a
-				acontext.frames[idx & 2047] = a
-			}
+			a := f32(u8(y) - 127) / 255.0
+			soundbuffer[idx] = a
+			acontext.frames[idx & 2047] = a
 		}
 	}
 	acontext.frame_0 += num_frames
