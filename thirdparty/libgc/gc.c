@@ -35507,7 +35507,7 @@ STATIC void GC_suspend_handler_inner(ptr_t dummy, void *context)
     GC_log_printf("Suspending %p\n", (void *)pthread_self());
 # endif
   me = GC_lookup_self_thread_async();
-  if (NULL == me) return NULL; // __v_, make the sanitizers and -cstrict happy
+  if (NULL == me) return; // __v_, make the sanitizers and -cstrict happy
   if ((me -> last_stop_count & ~(word)THREAD_RESTARTED) == my_stop_count) {
       /* Duplicate signal.  OK if we are retrying.      */
       if (!GC_retry_signals) {
