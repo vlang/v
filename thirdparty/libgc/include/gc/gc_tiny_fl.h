@@ -39,34 +39,33 @@
 /* It would always be safe, and often useful, to be able to allocate    */
 /* very small objects with smaller alignment.  But that would cost us   */
 /* mark bit space, so we no longer do so.                               */
-
 /* GC_GRANULE_BYTES should not be overridden in any instances of the GC */
 /* library that may be shared between applications, since it affects    */
 /* the binary interface to the library.                                 */
-#ifndef GC_GRANULE_BYTES
-# define GC_GRANULE_WORDS 2
-# if defined(__LP64__) || defined (_LP64) || defined(_WIN64) \
-        || defined(__alpha__) || defined(__arch64__) \
-        || defined(__powerpc64__) || defined(__s390x__) \
-        || (defined(__x86_64__) && !defined(__ILP32__))
-#   define GC_GRANULE_BYTES (GC_GRANULE_WORDS * 8 /* sizeof(void*) */)
-# else
-#   define GC_GRANULE_BYTES (GC_GRANULE_WORDS * 4 /* sizeof(void*) */)
-# endif
+#if defined(CPPCHECK) && GC_GRANULE_BYTES == 1
+# undef GC_GRANULE_BYTES
+#endif
+#ifdef GC_GRANULE_BYTES
+# define GC_GRANULE_PTRS (GC_GRANULE_BYTES / GC_SIZEOF_PTR)
+#else
+# define GC_GRANULE_PTRS 2 /* in pointers */
+# define GC_GRANULE_BYTES (GC_GRANULE_PTRS * GC_SIZEOF_PTR)
 #endif /* !GC_GRANULE_BYTES */
 
-#if GC_GRANULE_WORDS == 2
-# define GC_WORDS_TO_GRANULES(n) ((n)>>1)
-#else
-# define GC_WORDS_TO_GRANULES(n) ((n)*sizeof(void *)/GC_GRANULE_BYTES)
-#endif
+/* Convert size in pointers to that in granules.        */
+#define GC_PTRS_TO_GRANULES(n) ((n) / GC_GRANULE_PTRS)
+
+/* Convert size in pointers to that in granules, but rounding up the    */
+/* result.                                                              */
+#define GC_PTRS_TO_WHOLE_GRANULES(n) \
+                GC_PTRS_TO_GRANULES((n) + GC_GRANULE_PTRS - 1)
 
 /* A "tiny" free-list header contains GC_TINY_FREELISTS pointers to     */
 /* singly linked lists of objects of different sizes, the i-th one      */
 /* containing objects i granules in size.  Note that there is a list    */
 /* of size zero objects.                                                */
 #ifndef GC_TINY_FREELISTS
-# if GC_GRANULE_BYTES == 16
+# if GC_GRANULE_BYTES >= 16
 #   define GC_TINY_FREELISTS 25
 # else
 #   define GC_TINY_FREELISTS 33 /* Up to and including 256 bytes */
@@ -83,5 +82,15 @@
 /* on that list, including extra space we added.  Not an        */
 /* inverse of the above.                                        */
 #define GC_RAW_BYTES_FROM_INDEX(i) ((i) * GC_GRANULE_BYTES)
+
+/* Deprecated.  Use GC_GRANULE_PTRS instead.    */
+#undef GC_GRANULE_WORDS
+#define GC_GRANULE_WORDS GC_GRANULE_PTRS
+
+/* Deprecated.  Use GC_PTRS_TO_GRANULES() instead.              */
+#define GC_WORDS_TO_GRANULES(n) GC_PTRS_TO_GRANULES(n)
+
+/* Deprecated.  */
+#define GC_WORDS_TO_WHOLE_GRANULES(n) GC_PTRS_TO_WHOLE_GRANULES(n)
 
 #endif /* GC_TINY_FL_H */

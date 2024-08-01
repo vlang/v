@@ -115,11 +115,16 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 
 /* An internal macro to update the free-list pointer atomically (if     */
 /* the AO primitives are available) to avoid race with the marker.      */
-#if defined(GC_THREADS) && defined(AO_HAVE_store)
-# define GC_FAST_M_AO_STORE(my_fl, next) \
-                AO_store((volatile AO_t *)(my_fl), (AO_t)(next))
-#else
+#if !defined(GC_THREADS) || !defined(AO_HAVE_store)
 # define GC_FAST_M_AO_STORE(my_fl, next) (void)(*(my_fl) = (next))
+#elif defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ > __SIZEOF_SIZE_T__)
+  /* Directly use the GCC atomic intrinsic as the size of a pointer is  */
+  /* bigger than that of AO_t.                                          */
+# define GC_FAST_M_AO_STORE(my_fl, next) \
+                        __atomic_store_n(my_fl, next, __ATOMIC_RELAXED)
+#else
+# define GC_FAST_M_AO_STORE(my_fl, next) \
+                        AO_store((volatile AO_t *)(my_fl), (size_t)(next))
 #endif
 
 /* The ultimately general inline allocation macro.  Allocate an object  */
@@ -189,9 +194,6 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
     } \
   } while (0)
 
-#define GC_WORDS_TO_WHOLE_GRANULES(n) \
-        GC_WORDS_TO_GRANULES((n) + GC_GRANULE_WORDS - 1)
-
 /* Allocate n "pointer-sized" words.  The allocation size is            */
 /* rounded up to a granule size.  The pointer is stored to result.      */
 /* Should not be used unless GC_get_all_interior_pointers() returns 0   */
@@ -201,7 +203,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 /* be a global array.                                                   */
 #define GC_MALLOC_WORDS_KIND(result, n, tiny_fl, k, init) \
     do { \
-      size_t lg = GC_WORDS_TO_WHOLE_GRANULES(n); \
+      size_t lg = GC_PTRS_TO_WHOLE_GRANULES(n); \
       \
       GC_FAST_MALLOC_GRANS(result, lg, tiny_fl, 0 /* num_direct */, k, \
                            GC_malloc_kind(lg * GC_GRANULE_BYTES, k), init); \

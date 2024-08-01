@@ -45,6 +45,18 @@
 #endif
 #define GC_UNSIGNEDWORD unsigned GC_SIGNEDWORD
 
+/* Size of a pointer in bytes.  */
+#if defined(__SIZEOF_POINTER__)
+# define GC_SIZEOF_PTR __SIZEOF_POINTER__
+#elif defined(__LP64__) || defined (_LP64) || defined(_WIN64) \
+        || defined(__alpha__) || defined(__arch64__) \
+        || defined(__powerpc64__) || defined(__s390x__) \
+        || (defined(__x86_64__) && !defined(__ILP32__))
+# define GC_SIZEOF_PTR 8
+#else
+# define GC_SIZEOF_PTR 4
+#endif
+
 /* The return type of GC_get_version().  A 32-bit unsigned integer  */
 /* or longer.                                                       */
 # define GC_VERSION_VAL_T unsigned

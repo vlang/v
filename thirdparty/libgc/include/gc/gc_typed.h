@@ -117,13 +117,15 @@ GC_API GC_ATTR_MALLOC GC_ATTR_CALLOC_SIZE(1, 2) void * GC_CALL
         /* bitmap of d multiplied by the size of a pointer.     */
         /* Returned object is cleared.                          */
 
-#define GC_CALLOC_TYPED_DESCR_WORDS 8
+#define GC_CALLOC_TYPED_DESCR_PTRS 1
+#define GC_CALLOC_TYPED_DESCR_WORDS 8 /* includes space for pointers */
 
 #ifdef GC_BUILD
   struct GC_calloc_typed_descr_s;
 #else
   struct GC_calloc_typed_descr_s {
-    GC_word opaque[GC_CALLOC_TYPED_DESCR_WORDS];
+    GC_uintptr_t opaque_p[GC_CALLOC_TYPED_DESCR_PTRS];
+    GC_word opaque[GC_CALLOC_TYPED_DESCR_WORDS - GC_CALLOC_TYPED_DESCR_PTRS];
   };
 #endif
 
