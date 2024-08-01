@@ -558,6 +558,7 @@ pub:
 	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method             bool
 	is_static_type_method bool      // true for `fn Foo.bar() {}`
+	static_type_pos       token.Pos // `Foo` in `fn Foo.bar() {}`
 	method_type_pos       token.Pos // `User` in ` fn (u User)` position
 	method_idx            int
 	rec_mut               bool // is receiver mutable

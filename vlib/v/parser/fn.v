@@ -308,6 +308,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	mut type_sym := p.table.sym(rec.typ)
 	mut name_pos := p.tok.pos()
+	mut static_type_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		mut check_name := ''
 		// TODO: high order fn
@@ -315,6 +316,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
 		if is_static_type_method {
 			type_name := p.tok.lit // "Foo"
+			static_type_pos = p.tok.pos()
 			rec.typ = p.parse_type()
 			p.check(.dot)
 			check_name = p.check_name()
@@ -647,6 +649,7 @@ run them via `v file.v` instead',
 		receiver_pos: rec.pos
 		is_method: is_method
 		is_static_type_method: is_static_type_method
+		static_type_pos: static_type_pos
 		method_type_pos: rec.type_pos
 		method_idx: type_sym_method_idx
 		rec_mut: rec.is_mut
