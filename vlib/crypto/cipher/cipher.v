@@ -16,6 +16,7 @@ pub interface Block {
 
 // A Stream represents a stream cipher.
 pub interface Stream {
+mut:
 	// xor_key_stream XORs each byte in the given slice with a byte from the
 	// cipher's key stream. Dst and src must overlap entirely or not at all.
 	//
