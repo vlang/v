@@ -366,6 +366,22 @@ fn get_all_commands() []Command {
 		okmsg: '`v install` works.'
 	}
 	res << Command{
+		okmsg: 'Running net.http with -d trace_http_request works.'
+		line: '${vexe} -d trace_http_request -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
+		runcmd: .execute
+		starts_with: '> GET /some/unknown/url HTTP/1.1'
+		contains: 'User-Agent: v.http'
+		ends_with: '404\n'
+	}
+	res << Command{
+		okmsg: 'Running net.http with -d trace_http_response works.'
+		line: '${vexe} -d trace_http_response -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
+		runcmd: .execute
+		starts_with: '< HTTP/1.1 404 Not Found'
+		contains: 'Server: nginx'
+		ends_with: '404\n'
+	}
+	res << Command{
 		line: '${vexe} -usecache -cg examples/hello_world.v'
 		okmsg: '`v -usecache -cg` works.'
 		rmfile: 'examples/hello_world'
