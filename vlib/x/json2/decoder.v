@@ -267,6 +267,12 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					if json_name in res {
 						typ.$(field.name) = res[json_name]!.to_time()!
 					}
+				} $else $if field.typ is Any {
+					typ.$(field.name) = res[json_name]!
+				} $else $if field.typ is ?Any {
+					if json_name in res {
+						typ.$(field.name) = res[json_name]!
+					}
 				} $else $if field.is_array {
 					arr := res[field.name]! as []Any
 					// vfmt off
@@ -292,6 +298,8 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 						// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
 						[]time.Time { typ.$(field.name) = arr.map(it.to_time() or { time.Time{} }) }
 						[]?time.Time { typ.$(field.name) = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
+						[]Any { typ.$(field.name) = arr }
+						[]?Any { typ.$(field.name) = arr.map(?Any(it)) }
 						[]u8   { typ.$(field.name) = arr.map(it.u64()) }
 						[]?u8  { typ.$(field.name) = arr.map(?u8(it.u64())) }
 						[]u16  { typ.$(field.name) = arr.map(it.u64()) }
