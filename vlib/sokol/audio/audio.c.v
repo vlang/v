@@ -12,7 +12,7 @@ $if linux {
 #flag freebsd -I/usr/local/include
 #define SOKOL_IMPL
 #include "sokol_audio.h"
-#flag linux -lasound
+#flag linux -lasound -lpthread
 #flag darwin -framework AudioToolbox
 #flag windows -lole32
 #flag freebsd -L/usr/local/lib
