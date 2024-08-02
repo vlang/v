@@ -153,6 +153,10 @@ where you can insert your src
 @js 'myscripts.js'
 ```
 
+## Escaping
+
+The `@` sign is used to begin a template directive. To be able to use the `@` sign as a normal character inside a template use `$$`.
+
 # Variables
 
 All variables, which are declared before the $tmpl can be used through the `@{my_var}` syntax.
