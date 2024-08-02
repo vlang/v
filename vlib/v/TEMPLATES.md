@@ -160,6 +160,5 @@ It's also possible to use properties of structs here like `@{my_struct.prop}`.
 
 # Escaping
 
-The `@` sign is used to begin a template directive. 
-To be able to use the `@` sign as a normal character inside a 
-template use `$$`.
+The `@` symbol starts a template directive. If you need to use `@` as a regular 
+character within a template, escape it by using a double `@` like this: `@@`.
