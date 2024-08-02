@@ -35,7 +35,7 @@ fn C.tcgetattr(fd int, termios_p &C.termios) int
 
 fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
 
-fn C.ioctl(fd int, request u64, arg voidptr) int
+fn C.ioctl(fd int, request u64, args ...voidptr) int
 
 // flag provides a termios flag of the correct size
 // for the underlying C.termios structure
