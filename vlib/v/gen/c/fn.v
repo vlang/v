@@ -2463,6 +2463,25 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if !exp_option {
 				expected_types[i] = expected_types[i].clear_flag(.option)
 			}
+		} else if arg.expr is ast.CallExpr {
+			if arg.expr.nr_ret_values > 1 {
+				line := g.go_before_last_stmt().trim_space()
+				g.empty_line = true
+				ret_type := arg.expr.return_type
+				tmp_var := g.new_tmp_var()
+				g.write('${g.typ(ret_type)} ${tmp_var} = ')
+				g.expr(arg.expr)
+				g.writeln(';')
+				g.write(line)
+				for n in 0 .. arg.expr.nr_ret_values {
+					if n != arg.expr.nr_ret_values - 1 {
+						g.write('${tmp_var}.arg${n},')
+					} else {
+						g.write('${tmp_var}.arg${n}')
+					}
+				}
+				continue
+			}
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod

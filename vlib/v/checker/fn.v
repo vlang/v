@@ -606,6 +606,16 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
+	if node.return_type == ast.void_type {
+		node.nr_ret_values = 0
+	} else {
+		ret_sym := c.table.sym(node.return_type)
+		if ret_sym.info is ast.MultiReturn {
+			node.nr_ret_values = ret_sym.info.types.len
+		} else {
+			node.nr_ret_values = 1
+		}
+	}
 	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 	c.expected_or_type = ast.void_type
@@ -1160,8 +1170,14 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		&& func.ctdefine_idx != ast.invalid_type_idx {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
+
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {
+		for mut call_arg in node.args {
+			if call_arg.expr is ast.CallExpr {
+				c.expr(mut call_arg.expr)
+			}
+		}
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
@@ -1336,7 +1352,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			if arg_typ !in [ast.voidptr_type, ast.nil_type]
 				&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
-				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
+				c.error('1cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 					call_arg.pos)
 			}
 			continue
@@ -1365,6 +1381,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					&& param_elem_type == arg_elem_type {
 					continue
 				}
+			} else if arg_typ_sym.info is ast.MultiReturn {
+				continue
 			}
 			if c.pref.translated || c.file.is_translated {
 				// in case of variadic make sure to use array elem type for checks
@@ -1455,7 +1473,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
-			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
+			c.error('2cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
 				call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
@@ -2704,6 +2722,12 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 		if has_decompose {
 			// if call(...args) is present
 			min_required_params = nr_args - 1
+		}
+		for arg_expr in node.args.filter(it.expr is ast.CallExpr) {
+			call_arg_expr := arg_expr.expr as ast.CallExpr
+			if call_arg_expr.nr_ret_values > 1 {
+				min_required_params -= call_arg_expr.nr_ret_values - 1
+			}
 		}
 	}
 	if min_required_params < 0 {
