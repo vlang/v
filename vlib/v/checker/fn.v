@@ -606,14 +606,16 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
-	if node.return_type == ast.void_type {
-		node.nr_ret_values = 0
-	} else {
-		ret_sym := c.table.sym(node.return_type)
-		if ret_sym.info is ast.MultiReturn {
-			node.nr_ret_values = ret_sym.info.types.len
+	if node.nr_ret_values == -1 {
+		if node.return_type == ast.void_type {
+			node.nr_ret_values = 0
 		} else {
-			node.nr_ret_values = 1
+			ret_sym := c.table.sym(node.return_type)
+			if ret_sym.info is ast.MultiReturn {
+				node.nr_ret_values = ret_sym.info.types.len
+			} else {
+				node.nr_ret_values = 1
+			}
 		}
 	}
 	c.expected_or_type = node.return_type.clear_flag(.result)
