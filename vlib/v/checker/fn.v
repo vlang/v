@@ -606,7 +606,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
-	if node.nr_ret_values == -1 {
+	if node.nr_ret_values == -1 && node.return_type != 0 {
 		if node.return_type == ast.void_type {
 			node.nr_ret_values = 0
 		} else {
