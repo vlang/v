@@ -1174,7 +1174,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {
 		for mut call_arg in node.args {
-			if call_arg.expr is ast.CallExpr {
+			if call_arg.expr is ast.CallExpr && call_arg.expr.nr_ret_values == -1 {
 				c.expr(mut call_arg.expr)
 			}
 		}
@@ -1199,8 +1199,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.pos)
 	}
 	mut has_decompose := false
+	mut skip_next := 0
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
+			continue
+		}
+		if skip_next != 0 {
+			skip_next--
+			mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+			node.args[i].typ = arg_typ
 			continue
 		}
 		if !func.is_variadic && has_decompose {
@@ -1382,6 +1389,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					continue
 				}
 			} else if arg_typ_sym.info is ast.MultiReturn {
+				skip_next = arg_typ_sym.info.types.len - 1
 				continue
 			}
 			if c.pref.translated || c.file.is_translated {

@@ -2474,8 +2474,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				g.writeln(';')
 				g.write(line)
 				for n in 0 .. arg.expr.nr_ret_values {
-					if n != arg.expr.nr_ret_values - 1 {
-						g.write('${tmp_var}.arg${n},')
+					if n != arg.expr.nr_ret_values - 1 || i != args.len - 1 {
+						g.write('${tmp_var}.arg${n}, ')
 					} else {
 						g.write('${tmp_var}.arg${n}')
 					}
