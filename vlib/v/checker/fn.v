@@ -644,7 +644,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
 	c.inside_interface_deref = true
 	c.expected_type = ast.string_type
-	node.args[0].typ = c.expr(mut node.args[0].expr)
+	if node.language != .js && node.args[0].expr !is ast.CallExpr {
+		node.args[0].typ = c.expr(mut node.args[0].expr)
+	}
 	arg := node.args[0]
 	c.check_expr_option_or_result_call(arg.expr, arg.typ)
 	if arg.typ.is_void() {
@@ -1175,9 +1177,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {
-		for mut call_arg in node.args {
-			if call_arg.expr is ast.CallExpr && call_arg.expr.nr_ret_values == -1 {
-				c.expr(mut call_arg.expr)
+		for i, mut call_arg in node.args {
+			if call_arg.expr is ast.CallExpr {
+				node.args[i].typ = c.expr(mut call_arg.expr)
 			}
 		}
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
@@ -1235,7 +1237,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				expected_type = param_sym.info.elem_type
 				c.expected_type = expected_type
 			}
-			typ := c.expr(mut call_arg.expr)
+			typ := if mut call_arg.expr is ast.CallExpr {
+				call_arg.expr.return_type
+			} else {
+				c.expr(mut call_arg.expr)
+			}
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
 					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
@@ -1266,7 +1272,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			continue
 		}
 
-		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, if mut call_arg.expr is ast.CallExpr {
+			node.args[i].typ
+		} else {
+			c.expr(mut call_arg.expr)
+		})
 		if call_arg.expr is ast.StructInit {
 			arg_typ = c.expr(mut call_arg.expr)
 		}
@@ -1508,7 +1518,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func.params[i]
 			}
 			c.expected_type = param.typ
-			typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+			typ := c.check_expr_option_or_result_call(call_arg.expr, if mut call_arg.expr is ast.CallExpr {
+				call_arg.expr.return_type
+			} else {
+				c.expr(mut call_arg.expr)
+			})
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
