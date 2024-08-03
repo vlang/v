@@ -43,7 +43,7 @@ jobs:
 
       ## Autobahn integrations tests
       - name: Run autobahn services
-        run: docker-compose -f ${{github.workspace}}/vlib/net/websocket/tests/autobahn/docker-compose.yml up -d
+        run: docker compose -f ${{github.workspace}}/vlib/net/websocket/tests/autobahn/docker-compose.yml up -d
 
       - name: Wait for the service to start
         run: sleep 10s
