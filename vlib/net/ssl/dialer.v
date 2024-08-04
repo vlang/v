@@ -2,6 +2,8 @@ module ssl
 
 import net
 
+// SSLDialer is a concrete instance of the IDialer interface,
+// for creating SSL socket connections.
 pub struct SSLDialer {
 	config SSLConnectConfig
 }

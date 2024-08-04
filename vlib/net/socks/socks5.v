@@ -37,8 +37,7 @@ pub fn socks5_ssl_dial(proxy_url string, host string, username string, password 
 	return ssl_conn
 }
 
-// SOCKS5Dialer implements the IDialer interface initiating connections through
-// a SOCKS5 proxy.
+// SOCKS5Dialer implements the IDialer interface initiating connections through a SOCKS5 proxy.
 pub struct SOCKS5Dialer {
 pub:
 	dialer        net.IDialer

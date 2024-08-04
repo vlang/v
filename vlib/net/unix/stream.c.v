@@ -9,8 +9,12 @@ const unix_default_write_timeout = 30 * time.second
 const connect_timeout = 5 * time.second
 const msg_nosignal = 0x4000
 
+// UnixDialer is a concrete instance of the IDialer interface,
+// for creating unix socket connections.
 pub struct UnixDialer {}
 
+// dial will try to create a new abstract connection to the given address.
+// It will return an error, if that is not possible.
 pub fn (u UnixDialer) dial(address string) !net.IConn {
 	return connect_stream(address)!
 }
@@ -46,10 +50,12 @@ pub fn connect_stream(socket_path string) !&StreamConn {
 	}
 }
 
+// addr returns the local address of the stream
 pub fn (c StreamConn) addr() !net.Addr {
 	return error('not implemented for unix connections')
 }
 
+// peer_addr returns the address of the remote peer of the stream
 pub fn (c StreamConn) peer_addr() !net.Addr {
 	return error('not implemented for unix connections')
 }
