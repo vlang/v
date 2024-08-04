@@ -1208,28 +1208,24 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if func.params.len == 0 {
 			continue
 		}
-		if skip_next != 0 {
-			skip_next--
-			mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
-			node.args[i].typ = arg_typ
-			continue
-		}
+		arg_i := i + skip_next
 		if !func.is_variadic && has_decompose {
 			c.error('cannot have parameter after array decompose', node.pos)
 		}
-		param := if func.is_variadic && i >= func.params.len - 1 {
+		param := if func.is_variadic && arg_i >= func.params.len - 1 {
 			func.params.last()
 		} else {
-			func.params[i]
+			func.params[arg_i]
 		}
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
-			if i > func.params.len - 1 {
+			if arg_i > func.params.len - 1 {
 				c.error('too many arguments in call to `${func.name}`', node.pos)
 			}
 		}
 		has_decompose = call_arg.expr is ast.ArrayDecompose
+		already_checked := node.language != .js && call_arg.expr is ast.CallExpr
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
@@ -1237,7 +1233,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				expected_type = param_sym.info.elem_type
 				c.expected_type = expected_type
 			}
-			typ := if mut call_arg.expr is ast.CallExpr {
+			typ := if already_checked && mut call_arg.expr is ast.CallExpr {
 				call_arg.expr.return_type
 			} else {
 				c.expr(mut call_arg.expr)
@@ -1271,8 +1267,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot initialize a map with a struct', call_arg.pos)
 			continue
 		}
-
-		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, if mut call_arg.expr is ast.CallExpr {
+		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked {
 			node.args[i].typ
 		} else {
 			c.expr(mut call_arg.expr)
@@ -1407,7 +1402,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
 						func.params.last()
 					} else {
-						func.params[n + i]
+						func.params[n + arg_i]
 					}
 					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
 						node.language, call_arg) or {
@@ -1416,7 +1411,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						continue out
 					}
 				}
-				skip_next = arg_typ_sym.info.types.len - 1
+				// ignore next N parameters already validated above from multi return types
+				skip_next += arg_typ_sym.info.types.len - 1
 				continue
 			}
 			if c.pref.translated || c.file.is_translated {
@@ -1533,7 +1529,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func.params[i]
 			}
 			c.expected_type = param.typ
-			typ := c.check_expr_option_or_result_call(call_arg.expr, if mut call_arg.expr is ast.CallExpr {
+			already_checked := node.language != .js && call_arg.expr is ast.CallExpr
+			typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
+				&& mut call_arg.expr is ast.CallExpr {
 				call_arg.expr.return_type
 			} else {
 				c.expr(mut call_arg.expr)
