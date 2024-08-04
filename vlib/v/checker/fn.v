@@ -644,7 +644,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
 	c.inside_interface_deref = true
 	c.expected_type = ast.string_type
-	if node.language != .js && node.args[0].expr !is ast.CallExpr {
+	if !(node.language != .js && node.args[0].expr is ast.CallExpr) {
 		node.args[0].typ = c.expr(mut node.args[0].expr)
 	}
 	arg := node.args[0]
@@ -1401,6 +1401,21 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					continue
 				}
 			} else if arg_typ_sym.info is ast.MultiReturn {
+				arg_typs := arg_typ_sym.info.types
+				out: for n in 0 .. arg_typ_sym.info.types.len {
+					curr_arg := arg_typs[n]
+					multi_param := if func.is_variadic && i >= func.params.len - 1 {
+						func.params.last()
+					} else {
+						func.params[n + i]
+					}
+					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
+						node.language, call_arg) or {
+						c.error('${err.msg()} in argument ${i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
+							call_arg.pos)
+						continue out
+					}
+				}
 				skip_next = arg_typ_sym.info.types.len - 1
 				continue
 			}
