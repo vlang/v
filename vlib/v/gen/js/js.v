@@ -64,7 +64,7 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	fn_decl                &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	generated_str_fns      []StrType
-	str_types              []StrType   // types that need automatic str() generation
+	str_types              []StrType // types that need automatic str() generation
 	copy_types             []StrType // types that need to be deep copied
 	generated_copy_fns     []StrType
 	array_fn_definitions   []string // array equality functions that have been defined

@@ -1,9 +1,9 @@
 import json
 
 struct Foo {
-	x   int        = 123
+	x   int = 123
 	bar int = -112233 @[skip]
-	y   int        = 456
+	y   int = 456
 }
 
 fn test_check_field_default_expr() {

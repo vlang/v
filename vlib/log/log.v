@@ -34,7 +34,7 @@ mut:
 	time_format        TimeFormat
 	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
-	always_flush       bool   // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
+	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 pub mut:
 	output_file_name string // log output to this file
 }

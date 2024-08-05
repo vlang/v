@@ -21,9 +21,9 @@ pub mut:
 	pre_execute     FnCommandCallback = unsafe { nil }
 	execute         FnCommandCallback = unsafe { nil }
 	post_execute    FnCommandCallback = unsafe { nil }
-	disable_help    bool              @[deprecated: 'use defaults.help instead'; deprecated_after: '2024-06-31']
-	disable_man     bool              @[deprecated: 'use defaults.man instead'; deprecated_after: '2024-06-31']
-	disable_version bool              @[deprecated: 'use defaults.version instead'; deprecated_after: '2024-06-31']
+	disable_help    bool @[deprecated: 'use defaults.help instead'; deprecated_after: '2024-06-31']
+	disable_man     bool @[deprecated: 'use defaults.man instead'; deprecated_after: '2024-06-31']
+	disable_version bool @[deprecated: 'use defaults.version instead'; deprecated_after: '2024-06-31']
 	disable_flags   bool
 	sort_flags      bool
 	sort_commands   bool

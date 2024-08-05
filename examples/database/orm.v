@@ -33,9 +33,9 @@ const pg_db = os.getenv_opt('PGDATABASE') or { 'test' }
 
 @[table: 'modules']
 struct Module {
-	id           int    @[primary; sql: serial]
+	id           int @[primary; sql: serial]
 	name         string
-	nr_downloads int    @[sql: u64]
+	nr_downloads int @[sql: u64]
 	creator      User
 }
 
@@ -48,13 +48,13 @@ struct User {
 }
 
 struct Parent {
-	id       int     @[primary; sql: serial]
+	id       int @[primary; sql: serial]
 	name     string
 	children []Child @[fkey: 'parent_id']
 }
 
 struct Child {
-	id        int    @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	parent_id int
 	name      string
 }

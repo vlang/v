@@ -4,20 +4,20 @@ import db.sqlite
 
 @[table: 'visits']
 struct Visit {
-	id   int    @[primary; sql: serial]
+	id   int @[primary; sql: serial]
 	site string
 }
 
 @[table: 'sites']
 struct Site {
-	hostname string  @[primary]
+	hostname string @[primary]
 	owner    int
 	visits   []Visit @[fkey: 'site']
 }
 
 @[table: 'users']
 struct User {
-	id    int    @[primary; sql: serial]
+	id    int @[primary; sql: serial]
 	name  string
 	sites []Site @[fkey: 'owner']
 }

@@ -70,7 +70,7 @@ mut:
 	// cache database
 	template_caches shared []TemplateCache = []TemplateCache{}
 	// counter for each individual TemplateCache created/updated
-	id_counter       int = 1
+	id_counter       int                = 1
 	ch_cache_handler chan TemplateCache = chan TemplateCache{cap: dtm.cache_handler_channel_cap}
 	// 'id_to_handlered' field is used exclusively by the cache handler to update or delete specific 'TemplateCache' in the cache database.
 	id_to_handlered     int
@@ -161,7 +161,7 @@ struct HtmlFileInfo {
 pub struct TemplateCacheParams {
 pub:
 	placeholders           &map[string]DtmMultiTypeMap = &map[string]DtmMultiTypeMap{}
-	cache_delay_expiration i64 = dtm.cache_delay_expiration_by_default
+	cache_delay_expiration i64                         = dtm.cache_delay_expiration_by_default
 }
 
 // DynamicTemplateManagerInitialisationParams is used with 'initialize' function. (See below at initialize section)

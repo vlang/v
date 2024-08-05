@@ -52,9 +52,9 @@ pub type Sqlite3_vfs = C.sqlite3_vfs
 pub struct C.sqlite3_vfs {
 pub mut:
 	// version 1 and later fields
-	iVersion   int // Structure version number (currently 3)
-	szOsFile   int // Size of subclassed sqlite3_file
-	mxPathname int // Maximum file pathname length
+	iVersion   int          // Structure version number (currently 3)
+	szOsFile   int          // Size of subclassed sqlite3_file
+	mxPathname int          // Maximum file pathname length
 	pNext      &Sqlite3_vfs // Next registered VFS
 	zName      &char        // Name of this virtual file system
 	pAppData   voidptr      // Pointer to application-specific data

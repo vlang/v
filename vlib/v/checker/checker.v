@@ -59,9 +59,9 @@ pub mut:
 	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	//
 	expected_type              ast.Type
-	expected_or_type           ast.Type        // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type         ast.Type        // if/match is_expr: expected_type
-	mod                        string          // current module name
+	expected_or_type           ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type         ast.Type // if/match is_expr: expected_type
+	mod                        string   // current module name
 	const_var                  &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                 []string
 	const_names                []string
@@ -128,7 +128,7 @@ mut:
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign   bool
-	comptime_call_pos int // needed for correctly checking use before decl for templates
+	comptime_call_pos int                      // needed for correctly checking use before decl for templates
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
 	field_data_type   ast.Type

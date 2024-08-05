@@ -11,9 +11,9 @@ const show_state = os.getenv('VERBOSE') != ''
 
 struct BFState {
 mut:
-	pc      u16         // program counter (PC) register
-	address u16         // a 16-bit address register, serving as an index to the memory below
-	program string      // the BF program
+	pc      u16    // program counter (PC) register
+	address u16    // a 16-bit address register, serving as an index to the memory below
+	program string // the BF program
 	memory  []u8 = []u8{len: 65536} // we have 2^16 bytes of memory
 	targets map[int]int // a mapping for the program address of a `[` to its corresponding `]`, and from a `]` to its corresponding opening `[`.
 }

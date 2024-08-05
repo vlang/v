@@ -13,7 +13,7 @@ struct Todo {
 pub mut:
 	// `id` is the primary field. The attribute `sql: serial` acts like AUTO INCREMENT in sql.
 	// You can use this attribute if you want a unique id for each row.
-	id        int       @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	name      string
 	completed bool
 	created   time.Time

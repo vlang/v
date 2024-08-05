@@ -129,8 +129,8 @@ pub mut:
 	hide_auto_str      bool     // `v -hide-auto-str program.v`, doesn't generate str() with struct data
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
-	sanitize               bool   // use Clang's new "-fsanitize" option
-	sourcemap              bool   // JS Backend: -sourcemap will create a source map - default false
+	sanitize               bool // use Clang's new "-fsanitize" option
+	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
 	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
 	sourcemap_src_included bool   // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
 	show_cc                bool   // -showcc, print cc command
@@ -143,7 +143,7 @@ pub mut:
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
-	use_os_system_to_run   bool   // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
+	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
 	cflags  string // Additional options which will be passed to the C compiler *before* other options.
@@ -191,8 +191,8 @@ pub mut:
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
-	compile_defines     []string // just ['vfmt']
-	compile_defines_all []string // contains both: ['vfmt','another']
+	compile_defines     []string          // just ['vfmt']
+	compile_defines_all []string          // contains both: ['vfmt','another']
 	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
@@ -224,7 +224,7 @@ pub mut:
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
-	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
+	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	use_coroutines      bool // experimental coroutines
@@ -244,10 +244,10 @@ pub mut:
 
 pub struct LineInfo {
 pub mut:
-	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
-	path         string // same, but stores the path being parsed
-	expr         string // "foo" or "foo.bar" V code (expression) which needs autocomplete
-	is_running   bool   // so that line info is fetched only on the second checker run
+	line_nr      int             // a quick single file run when called with v -line-info (contains line nr to inspect)
+	path         string          // same, but stores the path being parsed
+	expr         string          // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	is_running   bool            // so that line info is fetched only on the second checker run
 	vars_printed map[string]bool // to avoid dups
 }
 

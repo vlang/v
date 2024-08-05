@@ -15,8 +15,8 @@ pub enum AssetMode {
 pub struct C.ANativeActivity {
 pub:
 	assetManager     &AssetManager = unsafe { nil } // Pointer to the Asset Manager instance for the application.
-	clazz            voidptr       // (jobject) The NativeActivity object handle.
-	env              voidptr       // (JNIEnv *) JNI context for the main thread of the app.
+	clazz            voidptr // (jobject) The NativeActivity object handle.
+	env              voidptr // (JNIEnv *) JNI context for the main thread of the app.
 	externalDataPath &char   // Path to this application's external (removable/mountable) data directory.
 	instance         voidptr // This is the native instance of the application.
 	internalDataPath &char   // Path to this application's internal data directory.

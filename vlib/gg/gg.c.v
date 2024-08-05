@@ -84,28 +84,28 @@ pub:
 	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen    bool   // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
+	fullscreen    bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
 	scale         f32 = 1.0
-	sample_count  int      // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	sample_count  int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
 	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
 	// ved needs this
 	// init_text bool
 	font_path             string
 	custom_bold_font_path string
-	ui_mode               bool      // refreshes only on events to save CPU usage
+	ui_mode               bool // refreshes only on events to save CPU usage
 	// font bytes for embedding
 	font_bytes_normal []u8
 	font_bytes_bold   []u8
 	font_bytes_mono   []u8
 	font_bytes_italic []u8
-	native_rendering  bool      // Cocoa on macOS/iOS, GDI+ on Windows
+	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
+	max_dropped_files            int = 1    // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	//
 	min_width  int // desired minimum width of the window
-	min_height int  // desired minimum height of the window
+	min_height int // desired minimum height of the window
 }
 
 @[heap]
@@ -179,8 +179,8 @@ pub mut:
 	scroll_x      int
 	scroll_y      int
 	//
-	key_modifiers     Modifier // the current key modifiers
-	key_repeat        bool     // whether the pressed key was an autorepeated one
+	key_modifiers     Modifier           // the current key modifiers
+	key_repeat        bool               // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different

@@ -392,8 +392,8 @@ pub fn default_c_level() int {
 pub struct CompressParams {
 pub:
 	compression_level int // 1~22
-	nb_threads        int  = 1 // how many threads will be spawned to compress in parallel
-	checksum_flag     bool = true
+	nb_threads        int           = 1 // how many threads will be spawned to compress in parallel
+	checksum_flag     bool          = true
 	strategy          ZSTD_strategy = ZSTD_strategy.zstd_default
 }
 

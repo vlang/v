@@ -8,7 +8,7 @@ import rand
 
 pub struct ServerState {
 mut:
-	ping_interval int   = 30 // interval for sending ping to clients (seconds)
+	ping_interval int   = 30      // interval for sending ping to clients (seconds)
 	state         State = .closed // current state of connection
 pub mut:
 	clients map[string]&ServerClient // clients connected to this server

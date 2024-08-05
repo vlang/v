@@ -19,7 +19,7 @@ pub struct BufferedReaderConfig {
 pub:
 	reader  Reader
 	cap     int = 128 * 1024 // large for fast reading of big(ish) files
-	retries int = 2 // how many times to retry before assuming the stream ended
+	retries int = 2          // how many times to retry before assuming the stream ended
 }
 
 // BufferedReadLineConfig are options that can be given to the read_line() function.
