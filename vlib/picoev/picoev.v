@@ -44,15 +44,15 @@ pub mut:
 pub struct Config {
 pub:
 	port         int = 8080
-	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
+	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)         = unsafe { nil }
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback
 	raw_cb       fn (mut Picoev, int, int) = unsafe { nil }
-	user_data    voidptr        = unsafe { nil }
-	timeout_secs int            = 8
-	max_headers  int            = 100
-	max_read     int            = 4096
-	max_write    int            = 8192
-	family       net.AddrFamily = .ip6
+	user_data    voidptr                   = unsafe { nil }
+	timeout_secs int                       = 8
+	max_headers  int                       = 100
+	max_read     int                       = 4096
+	max_write    int                       = 8192
+	family       net.AddrFamily            = .ip6
 	host         string
 }
 
@@ -60,7 +60,7 @@ pub:
 // Contains event loop, file descriptor table, timeouts, buffers, and configuration.
 @[heap]
 pub struct Picoev {
-	cb             fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
+	cb             fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)         = unsafe { nil }
 	error_callback fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback
 	raw_callback   fn (mut Picoev, int, int) = unsafe { nil }
 
@@ -70,7 +70,7 @@ pub struct Picoev {
 	max_write    int = 8192
 
 	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback @[deprecated: 'use `error_callback` instead']
-	raw_cb fn (mut Picoev, int, int) = unsafe { nil }                                                 @[deprecated: 'use `raw_callback` instead']
+	raw_cb fn (mut Picoev, int, int) = unsafe { nil } @[deprecated: 'use `raw_callback` instead']
 mut:
 	loop             &LoopType = unsafe { nil }
 	file_descriptors [max_fds]&Target

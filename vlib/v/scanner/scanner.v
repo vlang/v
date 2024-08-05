@@ -29,10 +29,10 @@ pub mut:
 	pos                         int    // current position in the file, first character is s.text[0]
 	line_nr                     int    // current line number
 	last_nl_pos                 int = -1 // for calculating column
-	is_crlf                     bool   // special check when computing columns
-	is_inside_string            bool   // set to true in a string, *at the start* of an $var or ${expr}
-	is_nested_string            bool   // '${'abc':-12s}'
-	is_inter_start              bool   // for hacky string interpolation TODO simplify
+	is_crlf                     bool // special check when computing columns
+	is_inside_string            bool // set to true in a string, *at the start* of an $var or ${expr}
+	is_nested_string            bool // '${'abc':-12s}'
+	is_inter_start              bool // for hacky string interpolation TODO simplify
 	is_inter_end                bool
 	is_enclosed_inter           bool
 	is_nested_enclosed_inter    bool
@@ -42,14 +42,14 @@ pub mut:
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
-	quote                       u8  // which quote is used to denote current string: ' or "
+	quote                       u8 // which quote is used to denote current string: ' or "
 	inter_quote                 u8
 	just_closed_inter           bool // if is_enclosed_inter was set to false on the previous character: `}`
 	nr_lines                    int  // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
-	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
+	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int

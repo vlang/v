@@ -22,11 +22,11 @@ enum JobTitle {
 struct Employee {
 mut:
 	name   string
-	family string   @[json: '-'] // this field will be skipped
+	family string @[json: '-'] // this field will be skipped
 	age    int
 	salary f32
 	title  JobTitle @[json: 'ETitle'] // the key for this field will be 'ETitle', not 'title'
-	notes  string   @[omitempty]        // the JSON property is not created if the string is equal to '' (an empty string).
+	notes  string   @[omitempty]      // the JSON property is not created if the string is equal to '' (an empty string).
 	// TODO: document @[raw]
 }
 

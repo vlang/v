@@ -245,7 +245,7 @@ mut:
 	}
 	captured bool
 	color    termui.Color = grey
-	app      &App = unsafe { nil }
+	app      &App         = unsafe { nil }
 }
 
 // randomize spawn the rat in a new spot within the playable field

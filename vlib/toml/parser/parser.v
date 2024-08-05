@@ -75,8 +75,8 @@ mut:
 pub struct Config {
 pub:
 	scanner       &scanner.Scanner = unsafe { nil }
-	run_checks    bool = true
-	decode_values bool = true
+	run_checks    bool             = true
+	decode_values bool             = true
 }
 
 // new_parser returns a new, stack allocated, `Parser`.

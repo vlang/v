@@ -76,7 +76,7 @@ pub:
 @[heap]
 pub struct Sessions[T] {
 pub:
-	secret         []u8          @[required]
+	secret         []u8 @[required]
 	cookie_options CookieOptions
 	// max age of session data and id, default is 30 days
 	max_age time.Duration = time.hour * 24 * 30

@@ -17,7 +17,7 @@ pub:
 // other XML nodes, CDATA, plain text, or comments.
 pub struct XMLNode {
 pub:
-	name       string            @[required]
+	name       string @[required]
 	attributes map[string]string
 	children   []XMLNodeContents
 }
@@ -56,7 +56,7 @@ pub:
 
 pub struct DocumentType {
 pub:
-	name string  @[required]
+	name string @[required]
 	dtd  DTDInfo
 }
 

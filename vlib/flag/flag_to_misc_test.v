@@ -28,9 +28,9 @@ struct Config {
 	device        []string @[short: d]
 	paths         []string @[tail]
 	amount        int = 1
-	verbosity     int      @[repeats; short: v]
-	show_version  bool     @[long: version]
-	no_long_beef  bool     @[only: n]
+	verbosity     int  @[repeats; short: v]
+	show_version  bool @[long: version]
+	no_long_beef  bool @[only: n]
 }
 
 struct LongConfig {
@@ -39,7 +39,7 @@ struct LongConfig {
 	some_test    string = 'abc' @[long: test]
 	path         string @[tail]
 	amount       int = 1
-	show_version bool   @[long: version]
+	show_version bool @[long: version]
 }
 
 struct IgnoreConfig {

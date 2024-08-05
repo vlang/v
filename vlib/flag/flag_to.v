@@ -1,8 +1,8 @@
 module flag
 
 struct FlagData {
-	raw        string  @[required]
-	field_name string  @[required]
+	raw        string @[required]
+	field_name string @[required]
 	delimiter  string
 	name       string
 	arg        ?string
@@ -28,7 +28,7 @@ pub enum Style {
 }
 
 struct StructInfo {
-	name   string // name of the struct itself
+	name   string            // name of the struct itself
 	attrs  map[string]string // collection of `@[x: y]` sat on the struct, read via reflection
 	fields map[string]StructField
 }
@@ -72,7 +72,7 @@ fn (sf StructField) shortest_match_name() ?string {
 @[params]
 pub struct ParseConfig {
 pub:
-	delimiter string = '-' // delimiter used for flags
+	delimiter string = '-'         // delimiter used for flags
 	style     Style  = .short_long // expected flag style
 	stop      ?string // single, usually '--', string that stops parsing flags/options
 	skip      u16     // skip this amount in the input argument array, usually `1` for skipping executable or subcmd entry
@@ -81,7 +81,7 @@ pub:
 @[params]
 pub struct DocConfig {
 pub:
-	delimiter string = '-' // delimiter used for flags
+	delimiter string = '-'         // delimiter used for flags
 	style     Style  = .short_long // expected flag style
 pub mut:
 	name        string            // application name

@@ -279,8 +279,8 @@ pub:
 	wrap_v       gfx.Wrap        = .clamp_to_edge
 	min_filter   gfx.Filter      = .linear
 	mag_filter   gfx.Filter      = .linear
-	num_mipmaps  int = 1
-	num_slices   int = 1
+	num_mipmaps  int             = 1
+	num_slices   int             = 1
 }
 
 // draw_image_with_config takes in a config that details how the

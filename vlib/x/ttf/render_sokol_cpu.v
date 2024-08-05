@@ -24,7 +24,7 @@ pub mut:
 	sg_img       gfx.Image   // sokol image
 	sg_smp       gfx.Sampler // sokol sampler
 	scale_reduct f32 = 2.0 // scale of the cpu texture for filtering
-	device_dpi   int = 72 // device DPI
+	device_dpi   int = 72  // device DPI
 }
 
 /******************************************************************************

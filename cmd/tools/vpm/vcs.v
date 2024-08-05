@@ -10,7 +10,7 @@ enum VCS {
 }
 
 struct VCSInfo {
-	dir  string        @[required]
+	dir  string @[required]
 	args struct {
 		install  string   @[required]
 		version  string   @[required] // flag to specify a version, added to install.

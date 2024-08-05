@@ -2,7 +2,7 @@ import db.sqlite
 
 struct Target {
 pub mut:
-	id   int     @[primary; sql: serial]
+	id   int @[primary; sql: serial]
 	kind ?string
 }
 

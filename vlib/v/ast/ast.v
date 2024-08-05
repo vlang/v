@@ -389,7 +389,7 @@ pub:
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment    // comments that after last const field
-	is_block     bool // const() block
+	is_block     bool         // const() block
 }
 
 @[minify]
@@ -528,7 +528,7 @@ pub struct AnonFn {
 pub mut:
 	decl           FnDecl
 	inherited_vars []Param
-	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	typ            Type            // the type of anonymous fn. Both .typ and .decl.name are auto generated
 	has_gen        map[string]bool // a map of the names of all generic anon functions, generated from it
 }
 
@@ -583,7 +583,7 @@ pub mut:
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
-	should_be_skipped bool      // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
+	should_be_skipped bool // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
 	ninstances        int  // 0 for generic functions with no concrete instances
 	has_await         bool // 'true' if this function uses JS.await
 
@@ -665,7 +665,7 @@ pub mut:
 	is_conditional     bool     // true for `[if abc]fn(){}`
 	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type Type     // for interface only, fn from the embedded interface
-	from_embeded_type  Type     @[deprecated: 'use from_embedded_type instead'; deprecated_after: '2024-03-31']
+	from_embeded_type  Type @[deprecated: 'use from_embedded_type instead'; deprecated_after: '2024-03-31']
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -855,8 +855,8 @@ pub mut:
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 	pos         token.Pos
-	is_used     bool // whether the local variable was used in other expressions
-	is_changed  bool // to detect mutable vars that are never changed
+	is_used     bool            // whether the local variable was used in other expressions
+	is_changed  bool            // to detect mutable vars that are never changed
 	ct_type_var ComptimeVarKind // comptime variable type
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`

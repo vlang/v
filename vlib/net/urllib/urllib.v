@@ -317,14 +317,14 @@ fn escape(s string, mode EncodingMode) string {
 pub struct URL {
 pub mut:
 	scheme      string
-	opaque      string    // encoded opaque data
+	opaque      string // encoded opaque data
 	user        &Userinfo = unsafe { nil } // username and password information
-	host        string    // host or host:port
-	path        string    // path (relative paths may omit leading slash)
-	raw_path    string    // encoded path hint (see escaped_path method)
-	force_query bool      // append a query ('?') even if raw_query is empty
-	raw_query   string    // encoded query values, without '?'
-	fragment    string    // fragment for references, without '#'
+	host        string // host or host:port
+	path        string // path (relative paths may omit leading slash)
+	raw_path    string // encoded path hint (see escaped_path method)
+	force_query bool   // append a query ('?') even if raw_query is empty
+	raw_query   string // encoded query values, without '?'
+	fragment    string // fragment for references, without '#'
 }
 
 // debug returns a string representation of *ALL* the fields of the given URL

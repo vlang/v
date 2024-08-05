@@ -29,14 +29,14 @@ pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string = ':${http.default_server_port}'
-	port               int = http.default_server_port             @[deprecated: 'use addr']
+	addr               string        = ':${http.default_server_port}'
+	port               int           = http.default_server_port @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
 	accept_timeout     time.Duration = 30 * time.second
-	pool_channel_slots int = 1024
-	worker_num         int = runtime.nr_jobs()
+	pool_channel_slots int           = 1024
+	worker_num         int           = runtime.nr_jobs()
 	listener           net.TcpListener
 	//
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
@@ -145,7 +145,7 @@ pub fn (s &Server) status() ServerStatus {
 pub struct WaitTillRunningParams {
 pub:
 	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call
-	retry_period_ms int = 10 // how much time to wait between each check for the status, in milliseconds
+	retry_period_ms int = 10  // how much time to wait between each check for the status, in milliseconds
 }
 
 // wait_till_running allows you to synchronise your calling (main) thread, with the state of the server

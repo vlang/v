@@ -10,7 +10,7 @@ struct Boat {
 }
 
 struct Color {
-	id  int    @[primary; sql: serial]
+	id  int @[primary; sql: serial]
 	hex string
 }
 

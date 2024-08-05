@@ -4,7 +4,7 @@ import db.sqlite
 import rand
 
 struct Parent {
-	id       int     @[primary; sql: serial]
+	id       int @[primary; sql: serial]
 	name     string
 	children []Child @[fkey: 'parent_id']
 	notes    []Note  @[fkey: 'owner_id']
@@ -12,14 +12,14 @@ struct Parent {
 
 struct Child {
 mut:
-	id        int    @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	parent_id int
 	name      string
 }
 
 struct Note {
 mut:
-	id       int    @[primary; sql: serial]
+	id       int @[primary; sql: serial]
 	owner_id int
 	text     string
 }
@@ -52,7 +52,7 @@ struct Entity {
 }
 
 struct EntityWithFloatPrimary {
-	id   f64    @[primary]
+	id   f64 @[primary]
 	name string
 }
 
@@ -398,7 +398,7 @@ fn test_orm_insert_with_child_element_and_no_table() {
 
 @[table: 'customers']
 struct Customer {
-	id   i64    @[primary; sql: serial]
+	id   i64 @[primary; sql: serial]
 	name string
 }
 

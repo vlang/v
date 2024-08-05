@@ -56,16 +56,16 @@ pub mut:
 
 	end_line      u8  = `\n`
 	end_line_len  int = csv.endline_cr_len // size of the endline rune \n = 1, \r\n = 2
-	separator     u8  = `,` // comma is the default separator
-	separator_len int = 1 // size of the separator rune
-	quote         u8  = `"` // double quote is the standard quote char
+	separator     u8  = `,`            // comma is the default separator
+	separator_len int = 1              // size of the separator rune
+	quote         u8  = `"`            // double quote is the standard quote char
 	quote_remove  bool // if true clear the cell from the quotes
 	comment       u8 = `#` // every line that start with the quote char is ignored
 
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string = '#' // retunrn this if empty cell
 	// ram buffer
-	mem_buf_type  u32    // buffer type 0=File,1=RAM
+	mem_buf_type  u32     // buffer type 0=File,1=RAM
 	mem_buf       voidptr // buffer used to load chars from file
 	mem_buf_size  i64     // size of the buffer
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
@@ -74,7 +74,7 @@ pub mut:
 	csv_map [][]i64
 	// header
 	header_row  int = -1 // row index of the header in the csv_map
-	header_list []HeaderItem // list of the header item
+	header_list []HeaderItem   // list of the header item
 	header_map  map[string]int // map from header label to column index
 }
 
@@ -92,8 +92,8 @@ pub:
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
 	end_line_len int = csv.endline_cr_len // size of the endline rune
-	quote        u8  = `"` // double quote is the standard quote char
-	quote_remove bool   // if true clear the cell from the quotes
+	quote        u8  = `"`            // double quote is the standard quote char
+	quote_remove bool // if true clear the cell from the quotes
 }
 
 /******************************************************************************

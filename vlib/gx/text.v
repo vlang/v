@@ -7,8 +7,8 @@ pub const align_right = HorizontalAlign.right
 @[params]
 pub struct TextCfg {
 pub:
-	color          Color = black
-	size           int   = 16
+	color          Color           = black
+	size           int             = 16
 	align          HorizontalAlign = .left
 	vertical_align VerticalAlign   = .top
 	max_width      int

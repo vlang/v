@@ -18,7 +18,7 @@ pub struct Auth[T] {
 
 pub struct Token {
 pub:
-	id      int    @[primary; sql: serial]
+	id      int @[primary; sql: serial]
 	user_id int
 	value   string
 	// ip      string
