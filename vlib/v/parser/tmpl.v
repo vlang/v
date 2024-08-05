@@ -138,19 +138,6 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 		line.split("'")[1]
 	} else {
 		position := line.index('@include ') or { 0 }
-		// p.error_with_error(errors.Error{
-		// 	message: 'path for @include must be quoted with \' or "'
-		// 	file_path: calling_file
-		// 	pos: token.Pos{
-		// 		len: '@include '.len
-		// 		line_nr: line_number
-		// 		pos: position + '@include '.len
-		// 		col: position + '@include '.len
-		// 		// last_line: dc.lines + 1
-		// 	}
-		// 	reporter: .parser
-		// })
-		// ''
 		return &IncludeError{
 			calling_file: calling_file
 			line_nr: tline_number // line_number
