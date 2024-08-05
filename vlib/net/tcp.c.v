@@ -6,18 +6,18 @@ import strings
 pub const tcp_default_read_timeout = 30 * time.second
 pub const tcp_default_write_timeout = 30 * time.second
 
-// TCPDialer is a concrete instance of the IDialer interface,
+// TCPDialer is a concrete instance of the Dialer interface,
 // for creating tcp connections.
 pub struct TCPDialer {}
 
 // dial will try to create a new abstract connection to the given address.
 // It will return an error, if that is not possible.
-pub fn (t TCPDialer) dial(address string) !IConn {
+pub fn (t TCPDialer) dial(address string) !Connection {
 	return dial_tcp(address)!
 }
 
-// default_tcp_dialer will give you an instance of IDialer, that is suitable for making new tcp connections.
-pub fn default_tcp_dialer() IDialer {
+// default_tcp_dialer will give you an instance of Dialer, that is suitable for making new tcp connections.
+pub fn default_tcp_dialer() Dialer {
 	return &TCPDialer{}
 }
 

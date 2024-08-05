@@ -9,13 +9,13 @@ const unix_default_write_timeout = 30 * time.second
 const connect_timeout = 5 * time.second
 const msg_nosignal = 0x4000
 
-// UnixDialer is a concrete instance of the IDialer interface,
+// UnixDialer is a concrete instance of the Dialer interface,
 // for creating unix socket connections.
 pub struct UnixDialer {}
 
 // dial will try to create a new abstract connection to the given address.
 // It will return an error, if that is not possible.
-pub fn (u UnixDialer) dial(address string) !net.IConn {
+pub fn (u UnixDialer) dial(address string) !net.Connection {
 	return connect_stream(address)!
 }
 
