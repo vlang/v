@@ -29,7 +29,7 @@ pub struct Context {
 }
 
 struct User {
-	id            int    @[primary; sql: serial]
+	id            int @[primary; sql: serial]
 	name          string
 	password_hash string
 	salt          string
@@ -98,4 +98,3 @@ algorithm and multiple iterations.
 
 See also:
 - [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
-

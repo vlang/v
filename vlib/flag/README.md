@@ -42,9 +42,9 @@ import os
 @[version: '1.2.3']
 @[name: 'app']
 struct Config {
-	show_version bool   @[short: v; xdoc: 'Show version and exit']
-	debug_level  int    @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32    @[only: l; xdoc: 'This doc text is overwritten']
+	show_version bool @[short: v; xdoc: 'Show version and exit']
+	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32  @[only: l; xdoc: 'This doc text is overwritten']
 	example      string
 	square       bool
 	show_help    bool   @[long: help; short: h]

@@ -210,10 +210,10 @@ A text block is defined from a `Text_block` struct:
 
 ```v
 struct Text_block {
-	x         int  // x position of the left high corner
-	y         int  // y position of the left high corner
-	w         int  // width of the text block
-	h         int  // height of the text block
+	x         int // x position of the left high corner
+	y         int // y position of the left high corner
+	w         int // width of the text block
+	h         int // height of the text block
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 ```
