@@ -1410,11 +1410,18 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.writeln('}\n')
 }
 
+enum AlignState {
+	plain
+	has_attributes
+	has_default_expression
+	has_everything
+}
+
 pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns []AlignInfo, mut comment_aligns []AlignInfo,
 	mut default_expr_aligns []AlignInfo, mut attr_aligns []AlignInfo, mut field_types []string) {
 	// Calculate the alignments first
-	mut prev_state := 0
-	for i, field in fields {
+	mut prev_state := AlignState.plain
+	for field in fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		// Handle anon structs recursively
 		field_types << ft
@@ -1433,16 +1440,16 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns
 			if comment.pos.pos >= end_pos {
 				if comment.pos.line_nr == field.pos.line_nr {
 					if field.attrs.len > 0 {
-						if prev_state != 1 {
+						if prev_state != AlignState.has_attributes {
 							comment_aligns.add_new_info(attrs_len, comment.pos.line_nr)
 						} else {
 							comment_aligns.add_info(attrs_len, comment.pos.line_nr,
 								use_threshold: true
 							)
 						}
-						prev_state = 1
+						prev_state = AlignState.has_attributes
 					} else if field.has_default_expr {
-						if prev_state != 2 {
+						if prev_state != AlignState.has_default_expression {
 							comment_aligns.add_new_info(field.default_expr.str().len + 2,
 								comment.pos.line_nr)
 						} else {
@@ -1451,16 +1458,16 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns
 								use_threshold: true
 							)
 						}
-						prev_state = 2
+						prev_state = AlignState.has_default_expression
 					} else {
-						if prev_state != 3 {
+						if prev_state != AlignState.has_everything {
 							comment_aligns.add_new_info(ft.len, comment.pos.line_nr)
 						} else {
 							comment_aligns.add_info(ft.len, comment.pos.line_nr,
 								use_threshold: true
 							)
 						}
-						prev_state = 3
+						prev_state = AlignState.has_everything
 					}
 				}
 				continue
