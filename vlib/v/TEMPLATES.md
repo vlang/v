@@ -139,32 +139,6 @@ Project root
 > it is automatically appended and only allows `html` files.
 
 
-## include!
-
-The include! directive is for including other html files from a location relative to the
-templates root folder. As with `@include` it consists of the `@include!` tag and a 
-following `'<path>'` string.
-
-### Example for the folder structure of a project using templates:
-
-```
-Project root
-/templates
-    - index.html
-    /headers
-        - base.html
-    /components
-        /todos
-            -todo.html
-```
-
-When calling `todo.html` directly, then to include `/headers/base.html` use the the following
-
-```html
-
-<div>@include! 'headers/base'</div>
-```
-
 ## js
 
 The js directive consists of two parts, the `@js` tag and `'<path>'` string,

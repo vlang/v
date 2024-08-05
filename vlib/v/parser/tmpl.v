@@ -105,6 +105,7 @@ pub:
 	calling_file string
 	line_nr      int
 	position     int
+	col          int
 	message      string
 }
 
@@ -122,6 +123,10 @@ fn (err IncludeError) pos() int {
 
 fn (err IncludeError) calling_file() string {
 	return err.calling_file
+}
+
+fn (err IncludeError) col() int {
+	return err.col
 }
 
 fn (mut p Parser) process_includes(calling_file string, line_number int, line string, mut dc DependencyCache) ![]string {
@@ -149,7 +154,8 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 		return &IncludeError{
 			calling_file: calling_file
 			line_nr: tline_number // line_number
-			position: position
+			position: position + '@include '.len
+			col: position + '@include '.len
 			message: 'path for @include must be quoted with \' or "'
 		}
 	}
@@ -158,9 +164,18 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 		file_ext = '.html'
 	}
 	file_name = file_name.replace(file_ext, '')
-	file_path := os.real_path(os.join_path_single(base_path, '${file_name}${file_ext}'))
-	// println(history.dependencies[calling_file])
-	// dump(dc)
+	mut file_path := os.real_path(os.join_path_single(base_path, '${file_name}${file_ext}'))
+
+	if !os.exists(file_path) && !file_name.contains('../') {
+		// the calling file is probably original way (relative to calling file) and works from the root folder
+		path_arr := base_path.split_any('/\\')
+		idx := path_arr.index('templates')
+		root_path := path_arr[..idx + 1].join('/')
+		file_name = file_name.rsplit('../')[0]
+		file_path = os.real_path(os.join_path_single(root_path, '${file_name}${file_ext}'))
+	}
+
+	// If file hasnt been called before then add to dependency tree
 	if !dc.dependencies[file_path].contains(calling_file) {
 		dc.dependencies[file_path] << calling_file
 	}
@@ -168,54 +183,20 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 	// Circular import detection
 	for callee in dc.dependencies[file_path] {
 		if dc.dependencies[callee].contains(file_path) {
-			// p.error_with_error(errors.Error{
-			// 	message: 'The template ${calling_file} is making a recursive call on template ${file_name}'
-			// 	details: 'Calling templates which call themselves will result in a circular reference'
-			// 	file_path: calling_file
-			// 	// pos: token.Pos{
-			// 	// 	len: '@include'.len + file_name.len
-			// 	// 	line_nr: dc.tline_number
-			// 	// 	pos: dc.start_of_line_pos
-			// 	// 	last_line: dc.lines
-			// 	// }
-			// 	reporter: .parser
-			// })
-			// []string{}
 			return &IncludeError{
 				calling_file: calling_file
 				line_nr: tline_number
 				position: line.index('@include ') or { 0 }
-				message: 'The template ${calling_file} is making a recursive call on template ${file_name}'
+				message: 'A recursive call is being made on template ${file_name}'
 			}
 		}
 	}
-	// if history.dependencies[file_path].contains()
-	// if history.contains(file_path) {
-	// 	eprintln('Templates can not call other templates which will call themselves. Recursion')
-	// }
-	// history << file_path
 	mut file_content := []string{}
 	if file_path in dc.cache {
 		file_content = dc.cache[file_path]
-		println('from cache')
 	} else {
-		// file_content = os.read_lines(file_path)!
 		file_content = os.read_lines(file_path) or {
-			position := line.index('@include ') or { 0 } + '@include'.len
-			// println('file read error in process_includes, \n ${tline_number}:${position}')
-			// p.error_with_error(errors.Error{
-			// 	message: 'Reading file `${file_name}` from path: ${file_path} failed'
-			// 	details: "Failed to @include '${file_name}'"
-			// 	file_path: calling_file
-			// 	pos: token.Pos{
-			// 		len: '@include'.len + file_name.len
-			// 		line_nr: line_number
-			// 		pos: position
-			// 		last_line: line_number + 1
-			// 	}
-			// 	reporter: .parser
-			// })
-			// []string{}
+			position := line.index('@include ') or { 0 } + '@include '.len
 			return &IncludeError{
 				calling_file: calling_file
 				line_nr: tline_number // line_number
@@ -224,30 +205,24 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 			}
 		}
 	}
-	// no errors detected in calling file - reset tLine_number
+	// no errors detected in calling file - reset tline_number (error reporting)
 	tline_number = 1
 
 	// loop over the imported file
 	for i, l in file_content {
-		// do a search to find if any more imported files in called template
 		if l.contains('@include ') {
 			processed := p.process_includes(file_path, tline_number, l, mut dc) or { return err }
-			file_content.delete(i) // remove the include?
+			file_content.delete(i) // remove the include line
 			for processed_line in processed.reverse() {
 				file_content.insert(i, processed_line)
 				tline_number--
 			}
-			// println(file_content)
-			// time.sleep(2 * time.second)
-			// continue
 		}
-		tline_number++
 	}
+	// Add template to parser for reloading
 	p.template_paths << file_path
-	// dump(dc.cache)
+	// Add the imported template to the cache
 	dc.cache[file_path] = file_content
-	// dump(dc.cache)
-	// println('process_includes => ${file_content}')
 	return file_content
 }
 
@@ -331,9 +306,10 @@ fn vweb_tmpl_${fn_name}() string {
 						message: err.msg()
 						file_path: err.calling_file()
 						pos: token.Pos{
-							len: '@include'.len
+							len: '@include '.len
 							line_nr: err.line_nr()
 							pos: start_of_line_pos + err.pos()
+							col: err.col()
 							last_line: lines.len
 						}
 						reporter: .parser
@@ -344,7 +320,7 @@ fn vweb_tmpl_${fn_name}() string {
 						message: 'An unknown error has occurred'
 						file_path: template_file
 						pos: token.Pos{
-							len: '@include'.len
+							len: '@include '.len
 							line_nr: tline_number
 							pos: start_of_line_pos
 							last_line: lines.len
