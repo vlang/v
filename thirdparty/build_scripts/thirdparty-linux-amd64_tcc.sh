@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 
-## should be run in V's main repo folder!
+set -e
+
+if ! test -f vlib/v/compiler_errors_test.v; then
+  echo "this script should be run in V's main repo folder!"
+  exit 1
+fi
 
 export CURRENT_SCRIPT_PATH=$(realpath "$0")
 
 export TCC_COMMIT="${TCC_COMMIT:-mob}"
 export TCC_FOLDER="${TCC_FOLDER:-thirdparty/tcc.$TCC_COMMIT}"
+export CC="${CC:-gcc}"
 
+echo "        CC: $CC"
 echo "TCC_COMMIT: $TCC_COMMIT"
 echo "TCC_FOLDER: $TCC_FOLDER"
 echo ===============================================================
@@ -35,7 +42,7 @@ export TCC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
             --bindir=$TCC_FOLDER \
             --crtprefix=$TCC_FOLDER/lib:/usr/lib/x86_64-linux-gnu:/usr/lib64:/usr/lib:/lib/x86_64-linux-gnu:/lib \
             --libpaths=$TCC_FOLDER/lib/tcc:$TCC_FOLDER/lib:/usr/lib/x86_64-linux-gnu:/usr/lib64:/usr/lib:/lib/x86_64-linux-gnu:/lib:/usr/local/lib/x86_64-linux-gnu:/usr/local/lib \
-            --cc=gcc-11 \
+            --cc=$CC \
             --extra-cflags=-O3 \
             --config-bcheck=yes \
             --config-backtrace=yes \
@@ -57,6 +64,7 @@ mv                $TCC_FOLDER/tcc                     $TCC_FOLDER/tcc.exe
 date                                                > $TCC_FOLDER/build_on_date.txt
 echo $TCC_COMMIT_FULL_HASH                          > $TCC_FOLDER/build_source_hash.txt
 $TCC_FOLDER/tcc.exe --version                       > $TCC_FOLDER/build_version.txt
+uname -a                                            > $TCC_FOLDER/build_machine_uname.txt
 
 ## show the builtin search paths for sanity checking:
 $TCC_FOLDER/tcc.exe -v -v
