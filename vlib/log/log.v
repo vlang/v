@@ -8,19 +8,19 @@ import time
 
 // TimeFormat define the log time string format, come from time/format.v
 pub enum TimeFormat {
-	tf_ss_micro // YYYY-MM-DD HH:mm:ss.123456 (24h) default
-	tf_default // YYYY-MM-DD HH:mm (24h)
-	tf_ss // YYYY-MM-DD HH:mm:ss (24h)
-	tf_ss_milli // YYYY-MM-DD HH:mm:ss.123 (24h)
-	tf_ss_nano // YYYY-MM-DD HH:mm:ss.123456789 (24h)
-	tf_rfc3339 // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-	tf_rfc3339_nano // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-	tf_hhmm // HH:mm (24h)
-	tf_hhmmss // HH:mm:ss (24h)
-	tf_hhmm12 // hh:mm (12h)
-	tf_ymmdd // YYYY-MM-DD
-	tf_ddmmy // DD.MM.YYYY
-	tf_md // MMM D
+	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h) default
+	tf_default       // YYYY-MM-DD HH:mm (24h)
+	tf_ss            // YYYY-MM-DD HH:mm:ss (24h)
+	tf_ss_milli      // YYYY-MM-DD HH:mm:ss.123 (24h)
+	tf_ss_nano       // YYYY-MM-DD HH:mm:ss.123456789 (24h)
+	tf_rfc3339       // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_rfc3339_nano  // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_hhmm          // HH:mm (24h)
+	tf_hhmmss        // HH:mm:ss (24h)
+	tf_hhmm12        // hh:mm (12h)
+	tf_ymmdd         // YYYY-MM-DD
+	tf_ddmmy         // DD.MM.YYYY
+	tf_md            // MMM D
 	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 }
 

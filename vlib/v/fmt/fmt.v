@@ -926,12 +926,6 @@ pub fn (mut f Fmt) comptime_for(node ast.ComptimeFor) {
 	f.writeln('}')
 }
 
-struct ValAlignInfo {
-mut:
-	max      int
-	last_idx int
-}
-
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
 		// remove "const()"
@@ -1044,37 +1038,74 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	}
 	f.writeln('enum ${name} {')
 	f.comments(node.comments, same_line: true, level: .indent)
-	mut align_infos := []ValAlignInfo{}
-	mut info := ValAlignInfo{}
-	for i, field in node.fields {
-		if field.name.len > info.max {
-			info.max = field.name.len
+
+	mut value_aligns := []AlignInfo{}
+	mut attr_aligns := []AlignInfo{}
+	mut comment_aligns := []AlignInfo{}
+	for field in node.fields {
+		if field.has_expr {
+			value_aligns.add_info(field.name.len, field.pos.line_nr)
 		}
-		if !expr_is_single_line(field.expr) {
-			info.last_idx = i
-			align_infos << info
-			info = ValAlignInfo{}
+		attrs_len := inline_attrs_len(field.attrs)
+		if field.attrs.len > 0 {
+			if field.has_expr {
+				attr_aligns.add_info(field.expr.str().len + 2, field.pos.line_nr)
+			} else {
+				attr_aligns.add_info(field.name.len, field.pos.line_nr)
+			}
+		}
+		if field.comments.len > 0 {
+			if field.attrs.len > 0 {
+				comment_aligns.add_info(attrs_len, field.pos.line_nr)
+			} else if field.has_expr {
+				comment_aligns.add_info(field.expr.str().len + 2, field.pos.line_nr)
+			} else {
+				comment_aligns.add_info(field.name.len, field.pos.line_nr)
+			}
 		}
 	}
-	info.last_idx = node.fields.len
-	align_infos << info
 
-	mut align_idx := 0
+	mut value_align_i := 0
+	mut attr_align_i := 0
+	mut comment_align_i := 0
 	for i, field in node.fields {
-		if i > align_infos[align_idx].last_idx {
-			align_idx++
-		}
 		f.write('\t${field.name}')
 		if field.has_expr {
-			f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
+			if value_aligns[value_align_i].line_nr < field.pos.line_nr {
+				value_align_i++
+			}
+			f.write(strings.repeat(` `, value_aligns[value_align_i].max_len - field.name.len))
 			f.write(' = ')
 			f.expr(field.expr)
 		}
+		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
+			if attr_aligns[attr_align_i].line_nr < field.pos.line_nr {
+				attr_align_i++
+			}
+			if field.has_expr {
+				f.write(strings.repeat(` `, attr_aligns[attr_align_i].max_len - field.expr.str().len - 2))
+			} else {
+				f.write(strings.repeat(` `, attr_aligns[attr_align_i].max_len - field.name.len))
+			}
 			f.write(' ')
 			f.single_line_attrs(field.attrs, same_line: true)
 		}
-		f.comments(field.comments, same_line: true, has_nl: false, level: .indent)
+		// f.comments(field.comments, same_line: true, has_nl: false, level: .indent)
+		if field.comments.len > 0 {
+			if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
+				comment_align_i++
+			}
+			if field.attrs.len > 0 {
+				f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - attrs_len))
+			} else if field.has_expr {
+				f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - field.expr.str().len - 2))
+			} else {
+				f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - field.name.len))
+			}
+			f.write(' ')
+			f.comments(field.comments, same_line: true, has_nl: false)
+		}
 		f.writeln('')
 		f.comments(field.next_comments, has_nl: true, level: .indent)
 	}

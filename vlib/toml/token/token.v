@@ -18,26 +18,26 @@ pub:
 pub enum Kind {
 	unknown
 	eof
-	bare // user
-	boolean // true or false
-	number // 123
-	quoted // 'foo', "foo", """foo""" or '''foo'''
-	plus // +
-	minus // -
+	bare       // user
+	boolean    // true or false
+	number     // 123
+	quoted     // 'foo', "foo", """foo""" or '''foo'''
+	plus       // +
+	minus      // -
 	underscore // _
-	comma // ,
-	colon // :
-	hash // # comment
-	assign // =
-	lcbr // {
-	rcbr // }
-	lsbr // [
-	rsbr // ]
-	nl // \n linefeed / newline character
-	cr // \r carriage return
-	tab // \t character
+	comma      // ,
+	colon      // :
+	hash       // # comment
+	assign     // =
+	lcbr       // {
+	rcbr       // }
+	lsbr       // [
+	rsbr       // ]
+	nl         // \n linefeed / newline character
+	cr         // \r carriage return
+	tab        // \t character
 	whitespace // ` `
-	period // .
+	period     // .
 	_end_
 }
 

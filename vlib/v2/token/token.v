@@ -4,32 +4,32 @@
 module token
 
 pub enum Token {
-	amp // &
-	and // &&
+	amp        // &
+	and        // &&
 	and_assign // &=
-	arrow // <-
-	assign // =
+	arrow      // <-
+	assign     // =
 	// at // @
 	attribute
 	bit_not // ~
-	char // `A` - rune
-	colon // :
-	comma // ,
+	char    // `A` - rune
+	colon   // :
+	comma   // ,
 	comment
-	dec // --
+	dec         // --
 	decl_assign // :=
-	div // /
-	div_assign // /=
-	dollar // $
-	dot // .
-	dotdot // ..
-	ellipsis // ...
+	div         // /
+	div_assign  // /=
+	dollar      // $
+	dot         // .
+	dotdot      // ..
+	ellipsis    // ...
 	eof
-	eq // ==
-	ge // >=
-	gt // >
+	eq   // ==
+	ge   // >=
+	gt   // >
 	hash // #
-	inc // ++
+	inc  // ++
 	key_as
 	key_asm
 	key_assert
@@ -78,43 +78,43 @@ pub enum Token {
 	key_unlikely
 	key_unsafe
 	key_volatile
-	lcbr // {
-	le // <=
-	left_shift // <<
-	left_shift_assign // >>=
-	logical_or // ||
-	lpar // (
-	lsbr // [
-	lt // <
-	minus // -
-	minus_assign // -=
-	mod // %
-	mod_assign // %=
-	mul // *
-	mul_assign // *=
-	name // user
-	ne // !=
-	not // !
-	not_in // !in
-	not_is // !is
-	number // 123
-	or_assign // |=
-	pipe // |
-	plus // +
-	plus_assign // +=
-	question // ?
-	rcbr // }
-	right_shift // >>
-	right_shift_assign // <<=
-	right_shift_unsigned // >>>
+	lcbr                        // {
+	le                          // <=
+	left_shift                  // <<
+	left_shift_assign           // >>=
+	logical_or                  // ||
+	lpar                        // (
+	lsbr                        // [
+	lt                          // <
+	minus                       // -
+	minus_assign                // -=
+	mod                         // %
+	mod_assign                  // %=
+	mul                         // *
+	mul_assign                  // *=
+	name                        // user
+	ne                          // !=
+	not                         // !
+	not_in                      // !in
+	not_is                      // !is
+	number                      // 123
+	or_assign                   // |=
+	pipe                        // |
+	plus                        // +
+	plus_assign                 // +=
+	question                    // ?
+	rcbr                        // }
+	right_shift                 // >>
+	right_shift_assign          // <<=
+	right_shift_unsigned        // >>>
 	right_shift_unsigned_assign // >>>=
-	rpar // )
-	rsbr // ]
-	semicolon // ;
+	rpar                        // )
+	rsbr                        // ]
+	semicolon                   // ;
 	str_dollar
 	string // 'foo'
 	unknown
-	xor // ^
+	xor        // ^
 	xor_assign // ^=
 }
 

@@ -5,8 +5,8 @@ pub enum Arch {
 	amd64 // aka x86_64
 	arm64 // 64-bit arm
 	arm32 // 32-bit arm
-	rv64 // 64-bit risc-v
-	rv32 // 32-bit risc-v
+	rv64  // 64-bit risc-v
+	rv32  // 32-bit risc-v
 	i386
 	js_node
 	js_browser

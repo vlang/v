@@ -35,7 +35,7 @@ pub fn PartialEmoji.parse(j json2.Any) !PartialEmoji {
 }
 
 pub enum ButtonStyle {
-	primary   = 1
+	primary = 1
 	secondary
 	success
 	danger

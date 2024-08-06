@@ -19,12 +19,12 @@ struct FlagContext {
 }
 
 pub enum Style {
-	short // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
-	long // GNU style long option *only*. E.g.: `--name` or `--name=value`
+	short      // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
+	long       // GNU style long option *only*. E.g.: `--name` or `--name=value`
 	short_long // extends `posix` style shorts with GNU style long options: `--flag` or `--name=value`
-	v // V style flags as found in flags for the `v` compiler. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v`, `-n value` or `-d ident=value`
-	go_flag // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
-	cmd_exe // `cmd.exe` style flags. Single flag denote `/` followed by lower- or upper-case character
+	v          // V style flags as found in flags for the `v` compiler. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v`, `-n value` or `-d ident=value`
+	go_flag    // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
+	cmd_exe    // `cmd.exe` style flags. Single flag denote `/` followed by lower- or upper-case character
 }
 
 struct StructInfo {

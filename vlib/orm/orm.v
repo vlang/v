@@ -56,15 +56,15 @@ pub type Primitive = InfixType
 pub struct Null {}
 
 pub enum OperationKind {
-	neq // !=
-	eq // ==
-	gt // >
-	lt // <
-	ge // >=
-	le // <=
-	orm_like // LIKE
-	orm_ilike // ILIKE
-	is_null // IS NULL
+	neq         // !=
+	eq          // ==
+	gt          // >
+	lt          // <
+	ge          // >=
+	le          // <=
+	orm_like    // LIKE
+	orm_ilike   // ILIKE
+	is_null     // IS NULL
 	is_not_null // IS NOT NULL
 }
 

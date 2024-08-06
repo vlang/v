@@ -8,7 +8,7 @@ const spinloops = 750
 const spinloops_sem = 4000
 
 enum BufferElemStat {
-	unused  = 0
+	unused = 0
 	writing
 	written
 	reading

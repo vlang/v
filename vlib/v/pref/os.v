@@ -30,7 +30,7 @@ pub enum OS {
 	wasm32_emscripten
 	wasm32_wasi
 	browser // -b wasm -os browser
-	wasi // -b wasm -os wasi
+	wasi    // -b wasm -os wasi
 	raw
 	all
 }

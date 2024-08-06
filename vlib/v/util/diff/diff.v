@@ -6,9 +6,9 @@ import time
 
 pub enum DiffTool {
 	auto
-	diff // core package on Unix-like systems.
+	diff      // core package on Unix-like systems.
 	colordiff // `diff` wrapper.
-	delta // viewer for git and diff output.
+	delta     // viewer for git and diff output.
 	// fc // built-in tool on windows. // TODO: enable when its command output can be read.
 }
 

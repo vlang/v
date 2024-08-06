@@ -27,11 +27,11 @@ pub enum AssertFailureMode {
 pub enum GarbageCollectionMode {
 	unknown
 	no_gc
-	boehm_full // full garbage collection mode
-	boehm_incr // incremental garbage collection mode
+	boehm_full     // full garbage collection mode
+	boehm_incr     // incremental garbage collection mode
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage collection mode
-	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
+	boehm_leak     // leak detection mode (makes `gc_check_leaks()` work)
 }
 
 pub enum OutputMode {
@@ -46,14 +46,14 @@ pub enum ColorOutput {
 }
 
 pub enum Backend {
-	c // The (default) C backend
-	golang // Go backend
-	interpret // Interpret the ast
-	js_node // The JavaScript NodeJS backend
-	js_browser // The JavaScript browser backend
+	c               // The (default) C backend
+	golang          // Go backend
+	interpret       // Interpret the ast
+	js_node         // The JavaScript NodeJS backend
+	js_browser      // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
-	native // The Native backend
-	wasm // The WebAssembly backend
+	native          // The Native backend
+	wasm            // The WebAssembly backend
 }
 
 pub fn (b Backend) is_js() bool {
