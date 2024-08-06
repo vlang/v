@@ -19,11 +19,11 @@ vlib/v/checker/tests/multi_return_err.vv:16:2: error: expected 3 arguments, but 
       |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
    17 |     my_func(my_func5())
    18 |     my_func(my_func6())
-vlib/v/checker/tests/multi_return_err.vv:17:10: error: expected 2 arguments, but got 0
+vlib/v/checker/tests/multi_return_err.vv:17:2: error: expected 2 arguments, but got 1
    15 |     my_func3(my_func2(), 'foo')
    16 |     my_func4('foo', my_func2())
    17 |     my_func(my_func5())
-      |             ~~~~~~~~~~
+      |     ~~~~~~~~~~~~~~~~~~~
    18 |     my_func(my_func6())
    19 | }
 vlib/v/checker/tests/multi_return_err.vv:18:10: error: expected 2 arguments, but got 3 from multi-return (int, int, int)
