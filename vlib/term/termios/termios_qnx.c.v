@@ -25,7 +25,7 @@ mut:
 	c_oflag  TcFlag
 	c_cflag  TcFlag
 	c_lflag  TcFlag
-	c_cc     [cclen]Cc
+	c_cc     [termios.cclen]Cc
 	reserved [3]u32
 	c_ispeed Speed
 	c_ospeed Speed
@@ -57,7 +57,7 @@ pub mut:
 	c_oflag  TcFlag
 	c_cflag  TcFlag
 	c_lflag  TcFlag
-	c_cc     [cclen]Cc
+	c_cc     [termios.cclen]Cc
 	reserved [3]u32
 	c_ispeed Speed
 	c_ospeed Speed

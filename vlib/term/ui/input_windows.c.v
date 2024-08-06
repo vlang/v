@@ -17,7 +17,7 @@ struct ExtraContext {
 mut:
 	stdin_handle  C.HANDLE
 	stdout_handle C.HANDLE
-	read_buf      [buf_size]C.INPUT_RECORD
+	read_buf      [ui.buf_size]C.INPUT_RECORD
 	mouse_down    MouseButton
 }
 

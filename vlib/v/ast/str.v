@@ -498,6 +498,12 @@ pub fn (x Expr) str() string {
 			return 'spawn ${x.call_expr}'
 		}
 		Ident {
+			if obj := x.scope.find('${x.mod}.${x.name}') {
+				if obj is ConstField && x.mod != 'main' {
+					last_mod := x.mod.all_after_last('.')
+					return '${last_mod}.${x.name}'
+				}
+			}
 			return x.name.clone()
 		}
 		IfExpr {
