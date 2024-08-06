@@ -1203,24 +1203,22 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.pos)
 	}
 	mut has_decompose := false
-	mut skip_next := 0
 	for i, mut call_arg in node.args {
 		if func.params.len == 0 {
 			continue
 		}
-		arg_i := i + skip_next
 		if !func.is_variadic && has_decompose {
 			c.error('cannot have parameter after array decompose', node.pos)
 		}
-		param := if func.is_variadic && arg_i >= func.params.len - 1 {
+		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params.last()
 		} else {
-			func.params[arg_i]
+			func.params[i]
 		}
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
-			if arg_i > func.params.len - 1 {
+			if i > func.params.len - 1 {
 				c.error('too many arguments in call to `${func.name}`', node.pos)
 			}
 		}
@@ -1402,7 +1400,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					multi_param := if func.is_variadic && i >= func.params.len - 1 {
 						func.params.last()
 					} else {
-						func.params[n + arg_i]
+						func.params[n + i]
 					}
 					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
 						node.language, call_arg) or {
@@ -1411,8 +1409,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						continue out
 					}
 				}
-				// ignore next N parameters already validated above from multi return types
-				skip_next += arg_typ_sym.info.types.len - 1
 				continue
 			}
 			if c.pref.translated || c.file.is_translated {
@@ -2746,7 +2742,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 }
 
 fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
-	nr_args := node.args.len
+	mut nr_args := node.args.len
 	nr_params := if node.is_method && f.params.len > 0 { f.params.len - 1 } else { f.params.len }
 	mut min_required_params := f.params.len
 	if node.is_method {
@@ -2760,11 +2756,17 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			// if call(...args) is present
 			min_required_params = nr_args - 1
 		}
-		for arg_expr in node.args.filter(it.expr is ast.CallExpr) {
-			call_arg_expr := arg_expr.expr as ast.CallExpr
-			if call_arg_expr.nr_ret_values > 1 {
-				min_required_params -= call_arg_expr.nr_ret_values - 1
-			}
+	}
+	// check if multi-return is used as unique argument to the function
+	if node.args.len == 1 && mut node.args[0].expr is ast.CallExpr {
+		if node.args[0].expr.nr_ret_values > 1 {
+			// it is a multi-return argument
+			nr_args = node.args[0].expr.nr_ret_values
+		}
+		if nr_args != nr_params {
+			unexpected_args_pos := node.args[0].pos.extend(node.args.last().pos)
+			c.error('expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+			return error('')
 		}
 	}
 	if min_required_params < 0 {

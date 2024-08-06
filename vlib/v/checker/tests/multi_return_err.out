@@ -5,16 +5,16 @@ vlib/v/checker/tests/multi_return_err.vv:10:10: error: cannot use `f64` as `int`
       |             ~~~~~~~~~~
    11 |     my_func3(my_func2(), 'foo')
    12 |     my_func4('foo', my_func2())
-vlib/v/checker/tests/multi_return_err.vv:11:11: error: cannot use `f64` as `int` in argument 2 to `my_func3` from (int, f64)
+vlib/v/checker/tests/multi_return_err.vv:11:2: error: expected 3 arguments, but got 2
     9 | fn main() {
    10 |     my_func(my_func2())
    11 |     my_func3(my_func2(), 'foo')
-      |              ~~~~~~~~~~
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
    12 |     my_func4('foo', my_func2())
    13 | }
-vlib/v/checker/tests/multi_return_err.vv:12:18: error: cannot use `f64` as `int` in argument 3 to `my_func4` from (int, f64)
+vlib/v/checker/tests/multi_return_err.vv:12:2: error: expected 3 arguments, but got 2
    10 |     my_func(my_func2())
    11 |     my_func3(my_func2(), 'foo')
    12 |     my_func4('foo', my_func2())
-      |                     ~~~~~~~~~~
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
    13 | }
