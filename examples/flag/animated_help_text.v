@@ -2,13 +2,13 @@ import term.ui as tui
 import flag
 
 struct DocTest {
-	show_version bool   @[short: v; xdoc: 'Show version and exit']
-	debug_level  int    @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32    @[only: l; xdoc: 'Do not show this']
+	show_version bool @[short: v; xdoc: 'Show version and exit']
+	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32  @[only: l; xdoc: 'Do not show this']
 	example      string
 	square       bool
-	multi        int    @[only: m; repeats]
-	wroom        []int  @[short: w]
+	multi        int   @[only: m; repeats]
+	wroom        []int @[short: w]
 	the_limit    string
 }
 

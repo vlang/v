@@ -8,7 +8,7 @@ const points = [f32(200.0), 200.0, 200.0, 100.0, 400.0, 100.0, 400.0, 300.0]
 struct App {
 mut:
 	gg    &gg.Context = unsafe { nil }
-	steps int = 30
+	steps int         = 30
 }
 
 fn main() {

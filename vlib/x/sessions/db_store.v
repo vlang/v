@@ -8,7 +8,7 @@ import time
 // a session data record
 pub struct DBStoreSessions {
 pub mut:
-	session_id string    @[primary]
+	session_id string @[primary]
 	created_at time.Time
 	data       string
 }

@@ -52,14 +52,14 @@ pub struct DebugContextVar {
 
 // DebugContextInfo has the context info for the debugger repl
 pub struct DebugContextInfo {
-	is_anon           bool   // cur fn is anon?
-	is_generic        bool   // cur fn is a generic?
-	is_method         bool   // cur fn is a bool?
-	receiver_typ_name string // cur receiver type name (method only)
-	line              int    // cur line number
-	file              string // cur file name
-	mod               string // cur module name
-	fn_name           string // cur function name
+	is_anon           bool                       // cur fn is anon?
+	is_generic        bool                       // cur fn is a generic?
+	is_method         bool                       // cur fn is a bool?
+	receiver_typ_name string                     // cur receiver type name (method only)
+	line              int                        // cur line number
+	file              string                     // cur file name
+	mod               string                     // cur module name
+	fn_name           string                     // cur function name
 	scope             map[string]DebugContextVar // scope var data
 }
 

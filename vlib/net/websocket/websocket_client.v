@@ -24,8 +24,8 @@ pub struct Client {
 	is_server bool
 mut:
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
-	flags             []Flag       // flags used in handshake
-	fragments         []Fragment   // current fragments
+	flags             []Flag                // flags used in handshake
+	fragments         []Fragment            // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
@@ -37,10 +37,10 @@ pub:
 	read_timeout  i64
 	write_timeout i64
 pub mut:
-	header            http.Header  // headers that will be passed when connecting
+	header            http.Header // headers that will be passed when connecting
 	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
-	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool // set to true of callbacks can panic
+	nonce_size        int          = 16             // size of nounce used for masking
+	panic_on_callback bool               // set to true of callbacks can panic
 	client_state      shared ClientState // current state of connection
 	// logger used to log messages
 	logger        &log.Logger = default_logger
@@ -83,8 +83,8 @@ pub enum OPCode {
 @[params]
 pub struct ClientOpt {
 pub:
-	read_timeout  i64 = 30 * time.second
-	write_timeout i64 = 30 * time.second
+	read_timeout  i64         = 30 * time.second
+	write_timeout i64         = 30 * time.second
 	logger        &log.Logger = default_logger
 }
 

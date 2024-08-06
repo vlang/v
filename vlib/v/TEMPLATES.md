@@ -157,3 +157,8 @@ where you can insert your src
 
 All variables, which are declared before the $tmpl can be used through the `@{my_var}` syntax.
 It's also possible to use properties of structs here like `@{my_struct.prop}`.
+
+# Escaping
+
+The `@` symbol starts a template directive. If you need to use `@` as a regular 
+character within a template, escape it by using a double `@` like this: `@@`.

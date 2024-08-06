@@ -60,6 +60,12 @@ fn (mut t TestFn) tst_2(cb fn (int)) {
 	cb(1)
 }
 
+fn TestFn.static_fn() {
+	assert @FN == 'static_fn'
+	assert @METHOD == 'TestFn.static_fn'
+	assert @STRUCT == 'TestFn'
+}
+
 fn fn_name_mod_level() {
 	assert @FN == 'fn_name_mod_level'
 	assert @METHOD == 'fn_name_mod_level'
@@ -96,6 +102,7 @@ fn test_at_fn() {
 		t := i + 1
 		assert t == 2
 	})
+	TestFn.static_fn()
 }
 
 fn test_at_mod() {

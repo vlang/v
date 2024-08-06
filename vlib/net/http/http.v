@@ -31,7 +31,7 @@ pub mut:
 	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
-	max_retries            int  = 5 // maximum number of retries required when an underlying socket error occurs
+	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
 	on_redirect      RequestRedirectFn     = unsafe { nil }
 	on_progress      RequestProgressFn     = unsafe { nil }

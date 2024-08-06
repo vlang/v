@@ -3,8 +3,8 @@ import sokol.audio
 
 struct AppState {
 mut:
-	frame_0 int         // offset of the current audio frames, relative to the start of the music
-	frames  [2048]f32   // a copy of the last rendered audio frames
+	frame_0 int       // offset of the current audio frames, relative to the start of the music
+	frames  [2048]f32 // a copy of the last rendered audio frames
 	gg      &gg.Context = unsafe { nil } // used for drawing
 }
 

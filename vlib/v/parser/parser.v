@@ -34,9 +34,9 @@ mut:
 	peek_tok                  token.Token
 	language                  ast.Language
 	fn_language               ast.Language // .c for `fn C.abcd()` declarations
-	expr_level                int  // prevent too deep recursions for pathological programs
-	inside_vlib_file          bool // true for all vlib/ files
-	inside_test_file          bool // when inside _test.v or _test.vv file
+	expr_level                int          // prevent too deep recursions for pathological programs
+	inside_vlib_file          bool         // true for all vlib/ files
+	inside_test_file          bool         // when inside _test.v or _test.vv file
 	inside_if                 bool
 	inside_comptime_if        bool
 	inside_if_expr            bool
@@ -83,8 +83,8 @@ mut:
 	expr_mod                  string            // for constructing full type names in parse_type()
 	imports                   map[string]string // alias => mod_name
 	ast_imports               []ast.Import      // mod_names
-	used_imports              []string // alias
-	auto_imports              []string // imports, the user does not need to specify
+	used_imports              []string          // alias
+	auto_imports              []string          // imports, the user does not need to specify
 	imported_symbols          map[string]string
 	is_amp                    bool // for generating the right code for `&Foo{}`
 	returns                   bool

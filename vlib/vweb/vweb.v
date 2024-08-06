@@ -153,8 +153,8 @@ pub const default_port = 8080
 // It has fields for the query, form, files.
 pub struct Context {
 mut:
-	content_type string = 'text/plain'
-	status       string = '200 OK'
+	content_type string          = 'text/plain'
+	status       string          = '200 OK'
 	ctx          context.Context = context.EmptyContext{}
 pub mut:
 	// HTTP Request
@@ -1222,7 +1222,7 @@ fn (mut w Worker[T]) process_incoming_requests() {
 pub struct PoolParams[T] {
 pub:
 	handler    fn () T = unsafe { nil } @[required]
-	nr_workers int = runtime.nr_jobs()
+	nr_workers int     = runtime.nr_jobs()
 }
 
 // database_pool creates a pool of database connections

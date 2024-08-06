@@ -40,7 +40,7 @@ mut:
 	heap_base              ?wasm.GlobalIndex
 	fn_local_idx_end       int
 	fn_name                string
-	stack_frame            int             // Size of the current stack frame, if needed
+	stack_frame            int // Size of the current stack frame, if needed
 	is_leaf_function       bool = true
 	loop_breakpoint_stack  []LoopBreakpoint
 	stack_top              int // position in linear memory

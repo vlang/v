@@ -169,7 +169,7 @@ fn test_invalid_origin() {
 struct App {
 	vweb.Context
 pub mut:
-	csrf        csrf.CsrfApp                 @[vweb_global]
+	csrf        csrf.CsrfApp @[vweb_global]
 	middlewares map[string][]vweb.Middleware
 }
 

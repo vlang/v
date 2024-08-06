@@ -59,9 +59,9 @@ pub mut:
 	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	//
 	expected_type              ast.Type
-	expected_or_type           ast.Type        // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type         ast.Type        // if/match is_expr: expected_type
-	mod                        string          // current module name
+	expected_or_type           ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type         ast.Type // if/match is_expr: expected_type
+	mod                        string   // current module name
 	const_var                  &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                 []string
 	const_names                []string
@@ -128,7 +128,7 @@ mut:
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign   bool
-	comptime_call_pos int // needed for correctly checking use before decl for templates
+	comptime_call_pos int                      // needed for correctly checking use before decl for templates
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
 	field_data_type   ast.Type
@@ -3546,7 +3546,11 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			if c.table.cur_fn == unsafe { nil } {
 				return ast.void_type
 			}
-			node.val = c.table.cur_fn.name.all_after_last('.')
+			if _ := c.table.cur_fn.name.index('__static__') {
+				node.val = c.table.cur_fn.name.all_after_last('__static__')
+			} else {
+				node.val = c.table.cur_fn.name.all_after_last('.')
+			}
 		}
 		.method_name {
 			if c.table.cur_fn == unsafe { nil } {
@@ -3556,6 +3560,8 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			if c.table.cur_fn.is_method {
 				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.') +
 					'.' + fname
+			} else if _ := fname.index('__static__') {
+				node.val = fname.all_before('__static__') + '.' + fname.all_after('__static__')
 			} else {
 				node.val = fname
 			}

@@ -53,7 +53,7 @@ pub mut:
 	mat_map       map[string]int         // mapping material name to its material index
 	texture       map[string]gfx.Image   // GPU loaded texture map
 	sampler       map[string]gfx.Sampler // GPU loaded sampler
-	material_file string // .mtl file name for the .obj
+	material_file string                 // .mtl file name for the .obj
 
 	rend_data []Render_data // render data used for the rendering
 
