@@ -4,6 +4,8 @@ import v.ast
 import v.util
 import v.token
 
+const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
+
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	$if trace_post_process_generic_fns_types ? {
 		if node.generic_names.len > 0 {
@@ -1019,7 +1021,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if is_native_builtin {
-		if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+		if node.args.len > 0 && fn_name in checker.print_everything_fns {
 			c.builtin_args(mut node, fn_name, func)
 			return func.return_type
 		}
@@ -1185,7 +1187,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
-	if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+	if node.args.len > 0 && fn_name in checker.print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
 		return func.return_type
 	}
@@ -2760,7 +2762,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	// check if multi-return is used as unique argument to the function
 	if node.args.len == 1 && mut node.args[0].expr is ast.CallExpr {
 		is_multi := node.args[0].expr.nr_ret_values > 1
-		if is_multi {
+		if is_multi && node.name !in checker.print_everything_fns {
 			// it is a multi-return argument
 			nr_args = node.args[0].expr.nr_ret_values
 			if nr_args != nr_params {
