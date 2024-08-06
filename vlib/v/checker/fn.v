@@ -2765,13 +2765,8 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			nr_args = node.args[0].expr.nr_ret_values
 			if nr_args != nr_params {
 				unexpected_args_pos := node.args[0].pos.extend(node.args.last().pos)
-				if is_multi {
-					c.error('expected ${min_required_params} arguments, but got ${nr_args} from multi-return ${c.table.type_to_str(node.args[0].expr.return_type)}',
-						unexpected_args_pos)
-				} else {
-					c.error('expected ${min_required_params} arguments, but got ${nr_args}',
-						unexpected_args_pos)
-				}
+				c.error('expected ${min_required_params} arguments, but got ${nr_args} from multi-return ${c.table.type_to_str(node.args[0].expr.return_type)}',
+					unexpected_args_pos)
 				return error('')
 			}
 		}
