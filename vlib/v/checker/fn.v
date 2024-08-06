@@ -2759,13 +2759,17 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	// check if multi-return is used as unique argument to the function
 	if node.args.len == 1 && mut node.args[0].expr is ast.CallExpr {
-		if node.args[0].expr.nr_ret_values > 1 {
+		if node.args[0].expr.nr_ret_values != -1 {
 			// it is a multi-return argument
 			nr_args = node.args[0].expr.nr_ret_values
 		}
 		if nr_args != nr_params {
 			unexpected_args_pos := node.args[0].pos.extend(node.args.last().pos)
-			c.error('expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+			if nr_args > 0 {
+				c.error('expected ${min_required_params} arguments, but got ${nr_args} from multi-return ${c.table.type_to_str(node.args[0].typ)}', unexpected_args_pos)
+			} else {
+				c.error('expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+			}
 			return error('')
 		}
 	}
