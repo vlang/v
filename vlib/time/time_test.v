@@ -237,14 +237,14 @@ fn test_add() {
 	assert t2.nanosecond == t1.nanosecond + d_nanoseconds
 	assert t2.unix() == t1.unix() + d_seconds
 	assert t2.is_local == t1.is_local
-	//
+
 	t3 := local_time_to_test.add(-duration)
 	// dump(t3.debug())
 	assert t3.second == t1.second - d_seconds
 	assert t3.nanosecond == t1.nanosecond - d_nanoseconds
 	assert t3.unix() == t1.unix() - d_seconds
 	assert t3.is_local == t1.is_local
-	//
+
 	t4 := local_time_to_test.as_local()
 	// dump(t4.debug())
 	t5 := t4.add(duration)
@@ -319,14 +319,14 @@ fn test_unix_time() {
 	eprintln(' ut1: ${ut1}')
 	eprintln(' ut2: ${ut2}')
 	assert ut2 - ut1 < 2
-	//
+
 	utm1 := t1.unix_milli()
 	utm2 := t2.unix_milli()
 	eprintln('utm1: ${utm1}')
 	eprintln('utm2: ${utm2}')
 	assert (utm1 - ut1 * 1000) < 1000
 	assert (utm2 - ut2 * 1000) < 1000
-	//
+
 	assert utm2 - utm1 > 2
 	assert utm2 - utm1 < 999
 }
@@ -334,7 +334,7 @@ fn test_unix_time() {
 fn test_offset() {
 	u := time.utc()
 	n := time.now()
-	//
+
 	mut diff_seconds := 0
 	if u.day != n.day {
 		if u.day > n.day {

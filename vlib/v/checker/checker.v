@@ -42,10 +42,10 @@ pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or 
 pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
-	//
+
 	table &ast.Table = unsafe { nil }
 	file  &ast.File  = unsafe { nil }
-	//
+
 	nr_errors     int
 	nr_warnings   int
 	nr_notices    int
@@ -57,7 +57,7 @@ pub mut:
 	notice_lines  map[string]bool // dedup notices
 	error_details []string
 	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
-	//
+
 	expected_type              ast.Type
 	expected_or_type           ast.Type // fn() or { 'this type' } eg. string. expected or block type
 	expected_expr_type         ast.Type // if/match is_expr: expected_type
@@ -135,7 +135,7 @@ mut:
 	variant_data_type ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
-	//
+
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
 }

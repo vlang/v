@@ -159,13 +159,13 @@ fn check_invalid_date(s string) {
 fn test_invalid_dates_should_error_during_parse() {
 	check_invalid_date('-99999-12-20 00:00:00')
 	check_invalid_date('99999-12-20 00:00:00')
-	//
+
 	check_invalid_date('2008-00-20 00:00:00')
 	check_invalid_date('2008-25-20 00:00:00')
-	//
+
 	check_invalid_date('2008-12-00 00:00:00')
 	check_invalid_date('2008-12-32 00:00:00')
-	//
+
 	check_invalid_date('2008-12-01 30:00:00')
 	check_invalid_date('2008-12-01 00:60:00')
 	check_invalid_date('2008-12-01 00:01:60')

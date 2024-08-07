@@ -1279,7 +1279,7 @@ fn test_push_arr_string_free() {
 	lines << s
 	// make sure the data in the array is valid after freeing the string
 	unsafe { s.free() }
-	//
+
 	println(lines)
 	assert lines.len == 2
 	assert lines[0] == 'hi'

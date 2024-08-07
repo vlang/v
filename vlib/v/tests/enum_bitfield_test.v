@@ -61,17 +61,17 @@ fn test_enum_bitfield_has_vs_all_methods_with_combined_flags() {
 
 fn test_enum_bitfield_has_vs_all_methods_with_combined_flags_2() {
 	mut c := BfPermission.read | .execute | .other
-	//
+
 	assert c.has(.read | .execute | .other | .write)
 	assert c.has(.read | .write)
 	assert !c.all(.read | .execute | .other | .write)
 	assert !c.all(.read | .write)
-	//
+
 	assert c.all(.read | .execute | .other)
 	assert c.all(.read | .execute)
 	assert c.all(.execute | .other)
 	assert c.all(.read | .other)
-	//
+
 	assert c.has(.read | .execute | .other)
 	assert c.has(.read | .execute)
 	assert c.has(.execute | .other)

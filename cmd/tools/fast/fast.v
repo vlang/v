@@ -45,7 +45,7 @@ fn main() {
 	defer {
 		elog('fast.html generator end, total: ${total_sw.elapsed().milliseconds():6} ms')
 	}
-	//
+
 	mut ccompiler_path := 'tcc'
 	if vdir.contains('/tmp/cirrus-ci-build') {
 		ccompiler_path = 'clang'

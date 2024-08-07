@@ -113,7 +113,7 @@ fn test_http_client_settings_page() {
 	x := http.get('http://${localserver}/bilbo/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo'
-	//
+
 	y := http.get('http://${localserver}/kent/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent'
@@ -123,11 +123,11 @@ fn test_http_client_user_repo_settings_page() {
 	x := http.get('http://${localserver}/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo | repository: gostamp'
-	//
+
 	y := http.get('http://${localserver}/kent/golang/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent | repository: golang'
-	//
+
 	z := http.get('http://${localserver}/missing/golang/settings') or { panic(err) }
 	assert z.status() == .not_found
 }

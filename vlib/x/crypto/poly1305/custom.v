@@ -98,11 +98,11 @@ fn (u Uint192) mul_128_checked(v unsigned.Uint128) (Uint192, unsigned.Uint128) {
 	ulovlo := u128_from_64_mul(u.lo, v.lo)
 	umivlo := u128_from_64_mul(u.mi, v.lo)
 	uhivlo := u128_from_64_mul(u.hi, v.lo)
-	//
+
 	ulovhi := u128_from_64_mul(u.lo, v.hi)
 	umivhi := u128_from_64_mul(u.mi, v.hi)
 	uhivhi := u128_from_64_mul(u.hi, v.hi)
-	//
+
 	m0 := ulovlo
 	m1, c1 := unsigned.add_128(umivlo, ulovhi, 0)
 	m2, c2 := unsigned.add_128(uhivlo, umivhi, c1)

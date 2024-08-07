@@ -13,7 +13,7 @@ struct App {
 	is_prod    bool
 	vexe       string
 	vroot      string
-	//
+
 	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `make.bat`
 	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
 }

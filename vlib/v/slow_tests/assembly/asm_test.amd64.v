@@ -217,7 +217,7 @@ fn test_asm_generic() {
 	u := u64(49)
 	assert generic_asm(u) == 14
 	assert u == 63
-	//
+
 	i := i32(123)
 	assert generic_asm(i) == 14
 	assert i == 137

@@ -507,7 +507,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return ${idx}; };')
 		}
 	}
-	//
+
 	// v files are finished, what remains is pure C code
 	g.gen_vlines_reset()
 	if g.pref.build_mode != .build_module {

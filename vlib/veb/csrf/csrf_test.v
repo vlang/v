@@ -282,7 +282,6 @@ fn protect_route_util(path string) {
 	res = req.do() or { panic(err) }
 	assert res.status() == .forbidden
 
-	//
 	req = http.Request{
 		method: .post
 		url: 'http://${localserver}/${path}'

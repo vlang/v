@@ -27,7 +27,7 @@ const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
 	'vlib/arrays/arrays_test.v',
 	'vlib/bitfield/bitfield_test.v',
-	//
+
 	'vlib/builtin/int_test.v',
 	'vlib/builtin/array_test.v',
 	'vlib/builtin/array_sorted_test.v',
@@ -45,7 +45,7 @@ const essential_list = [
 	'vlib/builtin/isnil_test.v',
 	'vlib/builtin/string_match_glob_test.v',
 	'vlib/builtin/string_strip_margin_test.v',
-	//
+
 	'vlib/cli/command_test.v',
 	'vlib/crypto/md5/md5_test.v',
 	'vlib/dl/dl_test.v',

@@ -436,7 +436,7 @@ fn test_map_of_indexes() {
 	assert arrays.map_of_indexes([1, 2, 3, 999]) == {1: [0], 2: [1], 3: [2], 999: [3]}
 	assert arrays.map_of_indexes([999, 1, 2, 3]) == {1: [1], 2: [2], 3: [3], 999: [0]}
 	assert arrays.map_of_indexes([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: [0, 6], 2: [1, 5], 3: [2], 4: [3, 4, 7, 8], 999: [9]}
-	//
+
 	assert arrays.map_of_indexes([]string{}) == {}
 	assert arrays.map_of_indexes(['abc']) == {'abc': [0]}
 	assert arrays.map_of_indexes(['abc', 'abc']) == {'abc': [0, 1]}
@@ -451,7 +451,7 @@ fn test_map_of_counts() {
 	assert map_of_counts([1, 2, 3, 999]) == {1: 1, 2: 1, 3: 1, 999: 1}
 	assert map_of_counts([999, 1, 2, 3]) == {1: 1, 2: 1, 3: 1, 999: 1}
 	assert map_of_counts([1, 2, 3, 4, 4, 2, 1, 4, 4, 999]) == {1: 2, 2: 2, 3: 1, 4: 4, 999: 1}
-	//
+
 	assert map_of_counts([]string{}) == {}
 	assert map_of_counts(['abc']) == {'abc': 1}
 	assert map_of_counts(['abc', 'abc']) == {'abc': 2}
@@ -550,7 +550,7 @@ fn test_each() {
 	for x in a {
 		control_sum += x
 	}
-	//
+
 	each(a, fn (x int) {
 		println(x)
 	})
@@ -573,7 +573,7 @@ fn test_each_indexed() {
 	for idx, x in a {
 		control_sum += f(idx, x)
 	}
-	//
+
 	each_indexed(a, fn (idx int, x int) {
 		println('idx: ${idx}, x: ${x}')
 	})

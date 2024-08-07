@@ -345,7 +345,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 	}
 
-	//
 	if is_live_wrap {
 		if is_livemain {
 			g.definitions.write_string('${type_name} (* ${impl_fn_name})(')

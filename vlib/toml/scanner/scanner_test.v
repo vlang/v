@@ -50,7 +50,7 @@ fn test_at() {
 	assert s.at() == `a`
 	assert s.at() == `a`
 	assert s.at() == `a`
-	//
+
 	assert s.next() == `a`
 	assert s.next() == `b`
 	assert s.next() == `c`
@@ -64,7 +64,7 @@ fn test_peek() {
 	assert s.peek(2) == `c`
 	assert s.peek(3) == scanner.end_of_text
 	assert s.peek(4) == scanner.end_of_text
-	//
+
 	assert s.next() == `a`
 	assert s.next() == `b`
 	assert s.next() == `c`

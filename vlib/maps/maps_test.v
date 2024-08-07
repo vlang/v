@@ -127,7 +127,7 @@ fn test_merge_in_place() {
 		'xyz': 'zyx'
 		'aa':  'dd'
 	}
-	//
+
 	mut im1 := {
 		11: 22
 		33: 44
@@ -171,7 +171,7 @@ fn test_merge() {
 		'xyz': 'zyx'
 		'aa':  'dd'
 	}
-	//
+
 	mut im1 := {
 		11: 22
 		33: 44

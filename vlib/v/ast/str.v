@@ -302,7 +302,7 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 	if replacements.len == 0 {
 		return input
 	}
-	//
+
 	mut res := input
 	if replacements.len > 1 {
 		replacements.sort(a.weight > b.weight)

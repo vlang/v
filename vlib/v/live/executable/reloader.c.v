@@ -103,18 +103,18 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex locking...')
 	C.pthread_mutex_lock(r.live_fn_mutex)
 	elog(r, 'live mutex locked')
-	//
+
 	if r.cb_locked_before != unsafe { nil } {
 		r.cb_locked_before(r)
 	}
-	//
+
 	protected_load_lib(mut r, new_lib_path)
-	//
+
 	r.reloads_ok++
 	if r.cb_locked_after != unsafe { nil } {
 		r.cb_locked_after(r)
 	}
-	//
+
 	elog(r, 'live mutex unlocking...')
 	C.pthread_mutex_unlock(r.live_fn_mutex)
 	elog(r, 'live mutex unlocked')

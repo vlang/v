@@ -82,7 +82,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		res.header.add(.content_type, 'text/html; charset=utf-8')
 		return res
 	}
-	//
+
 	mut body := ''
 	mut content_type := 'text/html; charset=utf-8'
 	if os.is_dir(requested_file_path) {

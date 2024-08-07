@@ -84,7 +84,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
-	//
+
 	g.writeln('\t\t// start background reloading thread')
 	if g.pref.os == .windows {
 		g.writeln('\t\tlive_fn_mutex = CreateMutexA(0, 0, 0);')

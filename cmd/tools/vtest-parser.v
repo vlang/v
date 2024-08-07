@@ -112,7 +112,7 @@ fn process_cli_args() &Context {
 	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
 	context.timeout_ms = fp.int('timeout_ms', `t`, 250, 'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
 	context.path = fp.string('path', `p`, '', 'worker specific flag - path to the current source file, which will be parsed.')
-	//
+
 	if context.is_help {
 		println(fp.usage())
 		exit(0)

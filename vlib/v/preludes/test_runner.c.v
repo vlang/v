@@ -22,15 +22,15 @@ mut:
 	start(ntests int) // called before all tests, you can initialise private data here. ntests is the number of test functions in the _test.v file.
 	finish() // called after all tests are finished, you can print some stats if you want here.
 	exit_code() int // called right after finish(), it should return the exit code, that the test program will exit with.
-	//
+
 	fn_start() bool // called before the start of each test_ function. Return false, if the function should be skipped.
 	fn_pass() // called after the end of each test_ function, with NO failed assertion.
 	fn_fail() // called after the end of each test_ function, with a failed assertion, *or* returning an error.
 	fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) // called only for `fn test_xyz() ? { return error('message') }`, before .fn_fail() is called.
-	//
+
 	assert_pass(i &VAssertMetaInfo) // called after each `assert true`.
 	assert_fail(i &VAssertMetaInfo) // called after each `assert false`.
-	//
+
 	free() // you should free all the private data of your runner here.
 }
 

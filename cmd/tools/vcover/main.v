@@ -21,11 +21,11 @@ mut:
 	be_verbose         bool
 	filter             string
 	working_folder     string
-	//
+
 	targets            []string
 	meta               map[string]MetaData // aggregated meta data, read from all .json files
 	all_lines_per_file map[string][]int    // aggregated by load_meta
-	//
+
 	counters         map[string]u64         // incremented by process_target, based on each .csv file
 	lines_per_file   map[string]map[int]int // incremented by process_target, based on each .csv file
 	processed_points u64

@@ -258,7 +258,7 @@ pub fn (mut v Builder) cc_msvc() {
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
 	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
 	mut a := []string{}
-	//
+
 	env_cflags := os.getenv('CFLAGS')
 	mut all_cflags := '${env_cflags} ${v.pref.cflags}'
 	if all_cflags != ' ' {
@@ -406,7 +406,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
-	//
+
 	mut oargs := []string{}
 	env_cflags := os.getenv('CFLAGS')
 	mut all_cflags := '${env_cflags} ${v.pref.cflags}'
@@ -415,7 +415,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	}
 	oargs << '/NOLOGO'
 	oargs << '/volatile:ms'
-	//
+
 	if v.pref.is_prod {
 		oargs << '/O2'
 		oargs << '/MD'

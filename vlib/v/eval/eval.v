@@ -66,7 +66,7 @@ pub mut:
 	return_values          []Object
 	cur_mod                string
 	cur_file               string
-	//
+
 	trace_file_paths     []string
 	trace_function_names []string
 	back_trace           []EvalTrace
@@ -97,7 +97,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.back_trace.pop()
 	}
 	is_main := func.name == 'main.main'
-	//
+
 	mut args := _args.clone()
 	if !is_main && func.params.len != args.len && !func.is_variadic {
 		e.error('mismatched parameter length for ${func.name}: got `${args.len}`, expected `${func.params.len}`')

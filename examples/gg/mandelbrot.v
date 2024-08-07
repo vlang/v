@@ -60,7 +60,7 @@ fn (mut state AppState) update() {
 	for t in 0 .. state.ntasks {
 		threads << spawn state.worker(t, chunk_channel, chunk_ready_channel)
 	}
-	//
+
 	mut oview := ViewRect{}
 	mut sw := time.new_stopwatch()
 	for {

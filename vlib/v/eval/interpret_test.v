@@ -11,7 +11,7 @@ fn test_interpret() {
 	os.chdir(vroot)!
 	dir := os.join_path(vroot, 'vlib/v/eval/testdata')
 	files := os.ls(dir)!
-	//
+
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no interpreter tests found')

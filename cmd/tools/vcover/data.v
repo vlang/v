@@ -11,7 +11,7 @@ struct CounterLine {
 mut:
 	file string // retrieved based on the loaded meta
 	line int    // retrieved based on the loaded meta
-	//
+
 	meta  string // A filename in the sibling meta/ folder, should exist, to match the value from this field. The filename is a hash of both the path and the used build options, to facilitate merging coverage data from different builds/programs
 	point int    // The index of a source point. Note that it is not a line number, but an index in the meta data file, keyed by the field `meta` above.
 	hits  u64    // How many times the coverage point was executed. Only counters that are != 0 are recorded.

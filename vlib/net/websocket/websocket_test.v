@@ -151,7 +151,7 @@ fn test_on_close_when_server_closing_connection() ! {
 		res.nr_closes++
 	}, test_results)
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
-	//
+
 	mut client := websocket.new_client('ws://localhost:30003')!
 	client.connect()!
 	spawn client.listen()
@@ -164,7 +164,7 @@ fn test_on_close_when_server_closing_connection() ! {
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)
-	//
+
 	mut client := websocket.new_client('ws://localhost:30004')!
 	mut test_results := WebsocketTestResults{}
 	client.on_close_ref(fn (mut cli websocket.Client, code int, reason string, mut res WebsocketTestResults) ! {

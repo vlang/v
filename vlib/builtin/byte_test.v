@@ -14,7 +14,7 @@ fn test_clone() {
 	x := rune(`A`)
 	assert x.str() == 'A'
 	assert typeof(x).name == 'rune'
-	//
+
 	y := `Z`
 	assert typeof(y).name == 'rune'
 	assert y.str() == 'Z'

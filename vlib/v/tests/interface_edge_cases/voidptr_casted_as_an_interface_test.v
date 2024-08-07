@@ -18,7 +18,7 @@ fn test_voidptr_casted_as_an_interface_reference() {
 	mut pi := &IAbc(unsafe { voidptr(u64(0)) })
 	dump(pi)
 	assert f(pi) == '&IAbc(0x0)'
-	//
+
 	mut i := IAbc(Abc{})
 	pi = &i
 	dump(pi)

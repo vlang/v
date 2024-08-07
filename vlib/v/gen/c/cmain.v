@@ -301,7 +301,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	g.writeln('\tmain__vtest_init();')
 	g.gen_c_main_profile_hook()
-	//
+
 	mut all_tfuncs := g.get_all_test_function_names()
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
@@ -350,7 +350,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('')
 	g.writeln('\t_vtrunner._method_finish(_vtobj);')
 	g.writeln('\tint test_exit_code = _vtrunner._method_exit_code(_vtobj);')
-	//
+
 	g.writeln('\t_vtrunner._method__v_free(_vtobj);')
 	g.writeln('')
 	g.writeln('\t_vcleanup();')

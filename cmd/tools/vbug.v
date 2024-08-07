@@ -32,7 +32,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	} else {
 		eprintln('unable to compile V in debug mode: ${vdbg_result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
-	//
+
 	mut result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {

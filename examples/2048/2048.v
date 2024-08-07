@@ -18,7 +18,7 @@ mut:
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
-	//
+
 	is_ai_mode bool
 	ai_fpm     u64 = 8
 }

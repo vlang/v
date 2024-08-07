@@ -22,7 +22,7 @@ mut:
 	is_pin       bool   // does the repl 'pin' entered source code
 	folder       string // the folder in which the repl will write its temporary source files
 	last_output  string // the last repl output
-	//
+
 	modules         []string          // all the import modules
 	alias           map[string]string // all the alias used in the import
 	includes        []string          // all the #include statements

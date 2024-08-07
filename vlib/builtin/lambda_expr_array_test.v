@@ -3,7 +3,7 @@ const a = [4, 5, 1, 2, 5, 9]
 fn test_map() {
 	assert a.map(it) == a
 	assert a.map(it * 10) == [40, 50, 10, 20, 50, 90]
-	//
+
 	assert a.map(|x| x) == a
 	assert a.map(|x| x * 10) == [40, 50, 10, 20, 50, 90]
 	assert a.map(|x| 'x: ${x}') == ['x: 4', 'x: 5', 'x: 1', 'x: 2', 'x: 5', 'x: 9']
@@ -13,7 +13,7 @@ fn test_map() {
 fn test_filter() {
 	assert a.filter(it > 4) == [5, 5, 9]
 	assert a.filter(it < 4) == [1, 2]
-	//
+
 	assert a.filter(|x| x > 4) == [5, 5, 9]
 	assert a.filter(|x| x < 4) == [1, 2]
 }

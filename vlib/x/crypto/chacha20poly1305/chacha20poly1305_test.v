@@ -17,7 +17,6 @@ fn test_encrypt_example_test() ! {
 
 	exp_onetime_key := hex.decode('7bac2b252db447af09b67a55a4e955840ae1d6731075d9eb2a9375783ed553ff')!
 
-	//
 	ncsize := nonce.len
 	mut c := new(key, ncsize)!
 	mut cs := chacha20.new_cipher(key, nonce)!
@@ -52,7 +51,7 @@ fn test_aead_decrypt_vector_test_51() ! {
 	mut ciphertext_msg := []u8{}
 	ciphertext_msg << ciphertext
 	ciphertext_msg << expected_tag
-	//
+
 	ncsize := nonce.len
 	mut c := new(key, ncsize)!
 	mut cs := chacha20.new_cipher(key, nonce)!

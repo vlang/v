@@ -25,7 +25,7 @@ mut:
 	table     &ast.Table = unsafe { nil }
 	eval      eval.Eval
 	enum_vals map[string]Enum
-	//
+
 	mod                    wasm.Module
 	pool                   serialise.Pool
 	func                   wasm.Function

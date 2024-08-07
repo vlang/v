@@ -49,7 +49,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	for i in 0 .. c_files {
 		out_files[i].close()
 	}
-	//
+
 	sw := time.new_stopwatch()
 	mut o_postfixes := ['0', 'x']
 	for i in 0 .. c_files {

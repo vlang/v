@@ -92,7 +92,7 @@ fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 	if vals.len > 0 {
 		res.average = sum / f64(vals.len)
 	}
-	//
+
 	mut devsum := f64(0.0)
 	for i in vals {
 		x := f64(i) - res.average

@@ -326,7 +326,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write32(0)
 	// lc_symtab
 	g.sym_table_command()
-	//
+
 	g.macho_add_loadcommand(native.lc_dysymtab, native.macho_d_size)
 	g.write32(0)
 	g.write32(2)
