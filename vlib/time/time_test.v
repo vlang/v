@@ -397,7 +397,7 @@ fn test_parse_three_letters_month() {
 	assert tm_tm.month == tm.month
 }
 
-fn test_parse_ordinal_weekday_sunday() {
+fn test_parse_ordinal_weekday_d() {
 	format := 'd MMM DD HH:mm:ss YYYY'
 	dt := '0 Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
@@ -405,7 +405,7 @@ fn test_parse_ordinal_weekday_sunday() {
 	assert tm_s != dt
 }
 
-fn test_parse_ordinal_weekday_sunday() {
+fn test_parse_ordinal_weekday_c() {
 	format := 'd MMM DD HH:mm:ss YYYY'
 	dt := '7 Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
