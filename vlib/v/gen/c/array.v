@@ -553,11 +553,17 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.Ident {
 			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
 			if expr.kind == .function {
+				if expr.obj is ast.Var && expr.obj.is_inherited {
+					g.write(closure_ctx + '->')
+				}
 				g.write('${c_name(expr.name)}(${var_name})')
 			} else if expr.kind == .variable {
 				var_info := expr.var_info()
 				sym := g.table.sym(var_info.typ)
 				if sym.kind == .function {
+					if expr.obj is ast.Var && expr.obj.is_inherited {
+						g.write(closure_ctx + '->')
+					}
 					g.write('${c_name(expr.name)}(${var_name})')
 				} else {
 					g.expr(expr)
