@@ -3981,7 +3981,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 		if !has_embeds {
 			if !node.has_hidden_receiver {
-				g.write('${g.typ(node.expr_type.idx())}_${m.name}')
+				if node.expr is ast.Ident && sym.info is ast.Interface {
+					left_cc_type := g.cc_type(g.table.unaliased_type(node.expr_type),
+						false)
+					left_type_name := util.no_dots(left_cc_type)
+					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]._method_${m.name}')
+				} else {
+					g.write('${g.typ(node.expr_type.idx())}_${m.name}')
+				}
 				return
 			}
 			receiver := m.params[0]
