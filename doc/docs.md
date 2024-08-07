@@ -2666,7 +2666,7 @@ the struct `Size`, which allows you to do:
 
 ```v oksyntax
 mut button := Button{
-	title: 'Click me'
+	title : 'Click me'
 	height: 2
 }
 
