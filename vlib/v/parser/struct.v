@@ -497,11 +497,11 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		} else {
 			p.prev_tok.pos()
 		})
-		no_keys             : no_keys
-		is_short_syntax     : kind == .short_syntax
-		is_anon             : kind == .anon
-		pre_comments        : pre_comments
-		generic_types       : struct_init_generic_types
+		no_keys        : no_keys
+		is_short_syntax: kind == .short_syntax
+		is_anon        : kind == .anon
+		pre_comments   : pre_comments
+		generic_types  : struct_init_generic_types
 	}
 }
 
