@@ -406,7 +406,7 @@ fn test_parse_ordinal_weekday_d() {
 }
 
 fn test_parse_ordinal_weekday_c() {
-	format := 'd MMM DD HH:mm:ss YYYY'
+	format := 'c MMM DD HH:mm:ss YYYY'
 	dt := '7 Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
 	tm_s := tm.custom_format(format)
