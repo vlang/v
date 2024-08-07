@@ -4046,8 +4046,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 			if !node.expr.is_lvalue() {
 				current_stmt := g.go_before_last_stmt()
+				g.empty_line = true
 				var := g.new_ctemp_var_then_gen(node.expr, node.expr_type)
-				g.write(current_stmt)
+				g.write(current_stmt.trim_left('\t '))
 				g.expr(ast.Expr(var))
 			} else {
 				g.expr(node.expr)
