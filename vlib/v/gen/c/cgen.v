@@ -2375,27 +2375,23 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 }
 
 fn (mut g Gen) write_defer_stmts() {
-	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
 		g.writeln('// Defer begin')
 		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
-		g.indent++
+		//		g.indent++
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
 			g.writeln('')
 			g.writeln('#endif')
 		} else {
-			g.indent--
 			g.stmts(defer_stmt.stmts)
-			g.indent++
 		}
-		g.indent--
+		//		g.indent--
 		g.writeln('}')
 		g.writeln('// Defer end')
 	}
-	g.indent--
 }
 
 struct SumtypeCastingFn {
