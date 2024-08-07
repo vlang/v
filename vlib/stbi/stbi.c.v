@@ -122,7 +122,7 @@ pub:
 pub fn load(path string, params LoadParams) !Image {
 	ext := path.all_after_last('.')
 	mut res := Image{
-		ok: true
+		ok : true
 		ext: ext
 	}
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
@@ -158,10 +158,10 @@ fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 	mut res := Image{
-		ok: true
-		ext: img.ext
-		width: output_w
-		height: output_h
+		ok         : true
+		ext        : img.ext
+		width      : output_w
+		height     : output_h
 		nr_channels: img.nr_channels
 	}
 

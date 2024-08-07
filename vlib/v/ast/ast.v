@@ -2120,10 +2120,10 @@ pub fn (expr Expr) pos() token.Pos {
 			left_pos := expr.left.pos()
 			right_pos := expr.right.pos()
 			token.Pos{
-				line_nr: expr.pos.line_nr
-				pos: left_pos.pos
-				len: right_pos.pos - left_pos.pos + right_pos.len
-				col: left_pos.col
+				line_nr  : expr.pos.line_nr
+				pos      : left_pos.pos
+				len      : right_pos.pos - left_pos.pos + right_pos.len
+				col      : left_pos.col
 				last_line: right_pos.last_line
 			}
 		}
@@ -2262,11 +2262,11 @@ pub fn (node Node) pos() token.Pos {
 				}
 				AsmRegister {
 					return token.Pos{
-						len: -1
-						line_nr: -1
-						pos: -1
+						len      : -1
+						line_nr  : -1
+						pos      : -1
 						last_line: -1
-						col: -1
+						col      : -1
 					}
 				}
 			}
@@ -2460,7 +2460,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 				for name in array {
 					res[name] = AsmRegister{
 						name: name
-						typ: t.bitsize_to_type(bit_size)
+						typ : t.bitsize_to_type(bit_size)
 						size: bit_size
 					}
 				}
@@ -2474,7 +2474,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 						res[assembled_name] = AsmRegister{
 							name: assembled_name
-							typ: t.bitsize_to_type(bit_size)
+							typ : t.bitsize_to_type(bit_size)
 							size: bit_size
 						}
 					}
@@ -2526,7 +2526,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	for name in without_numbers {
 		res[name] = AsmRegister{
 			name: name
-			typ: t.bitsize_to_type(bit_size)
+			typ : t.bitsize_to_type(bit_size)
 			size: bit_size
 		}
 	}
@@ -2536,7 +2536,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 			assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 			res[assembled_name] = AsmRegister{
 				name: assembled_name
-				typ: t.bitsize_to_type(bit_size)
+				typ : t.bitsize_to_type(bit_size)
 				size: bit_size
 			}
 		}

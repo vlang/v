@@ -32,11 +32,11 @@ fn inspect[T](t T) string {
 
 fn test_comptime_for_in_field_with_generic_fn() {
 	p := Parent{
-		name: 'parent'
-		age: 30
+		name : 'parent'
+		age  : 30
 		child: Child{
 			name: 'child'
-			age: 5
+			age : 5
 		}
 	}
 	ret := inspect(p)

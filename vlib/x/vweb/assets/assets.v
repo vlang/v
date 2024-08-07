@@ -116,10 +116,10 @@ pub fn (mut am AssetManager) add(asset_type AssetType, file_path string, include
 	}
 
 	asset := Asset{
-		kind: asset_type
-		file_path: real_path
+		kind         : asset_type
+		file_path    : real_path
 		last_modified: time.unix(last_modified_unix)
-		include_name: include_name
+		include_name : include_name
 	}
 
 	match asset_type {

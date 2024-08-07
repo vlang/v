@@ -61,7 +61,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 
 	// create a new todo
 	todo := Todo{
-		name: name
+		name   : name
 		created: time.now()
 		updated: time.now()
 	}

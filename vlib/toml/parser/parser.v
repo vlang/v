@@ -82,7 +82,7 @@ pub:
 // new_parser returns a new, stack allocated, `Parser`.
 pub fn new_parser(config Config) Parser {
 	return Parser{
-		config: config
+		config : config
 		scanner: config.scanner
 	}
 }
@@ -1162,7 +1162,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed hash comment "#${p.tok.lit}"')
 	return ast.Comment{
 		text: p.tok.lit
-		pos: p.tok.pos()
+		pos : p.tok.pos()
 	}
 }
 
@@ -1184,7 +1184,7 @@ pub fn (mut p Parser) key() !ast.Key {
 			}
 			return ast.Key(ast.Bare{
 				text: lits
-				pos: pos
+				pos : pos
 			})
 		}
 		key = ast.Key(p.number())
@@ -1352,7 +1352,7 @@ pub fn (mut p Parser) bare() !ast.Bare {
 	}
 	return ast.Bare{
 		text: lits
-		pos: pos
+		pos : pos
 	}
 }
 
@@ -1374,9 +1374,9 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 		}
 	}
 	return ast.Quoted{
-		text: lit
-		pos: p.tok.pos()
-		quote: quote
+		text        : lit
+		pos         : p.tok.pos()
+		quote       : quote
 		is_multiline: is_multiline
 	}
 }
@@ -1389,7 +1389,7 @@ pub fn (mut p Parser) boolean() !ast.Bool {
 	}
 	return ast.Bool{
 		text: p.tok.lit
-		pos: p.tok.pos()
+		pos : p.tok.pos()
 	}
 }
 
@@ -1397,7 +1397,7 @@ pub fn (mut p Parser) boolean() !ast.Bool {
 pub fn (mut p Parser) number() ast.Number {
 	return ast.Number{
 		text: p.tok.lit
-		pos: p.tok.pos()
+		pos : p.tok.pos()
 	}
 }
 
@@ -1429,7 +1429,7 @@ pub fn (mut p Parser) date_time() !ast.DateTimeType {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date-time: "${lit}"')
 			return ast.DateTime{
 				text: lit
-				pos: pos
+				pos : pos
 				date: date
 				time: time
 			}
@@ -1441,7 +1441,7 @@ pub fn (mut p Parser) date_time() !ast.DateTimeType {
 
 	return ast.Date{
 		text: lit
-		pos: pos
+		pos : pos
 	}
 }
 
@@ -1464,7 +1464,7 @@ pub fn (mut p Parser) date() !ast.Date {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date: "${lit}"')
 	return ast.Date{
 		text: lit
-		pos: pos
+		pos : pos
 	}
 }
 
@@ -1525,7 +1525,7 @@ pub fn (mut p Parser) time() !ast.Time {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed time: "${lit}"')
 	return ast.Time{
 		text: lit
-		pos: pos
+		pos : pos
 	}
 }
 

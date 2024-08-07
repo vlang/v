@@ -15,7 +15,7 @@ fn fill(mut s MyStruct[i64]) {
 
 fn test_generics_call_with_reference_arg() {
 	mut s := MyStruct[i64]{
-		pos: 1
+		pos   : 1
 		buffer: unsafe { []&i64{len: 2} }
 	}
 	fill(mut s)

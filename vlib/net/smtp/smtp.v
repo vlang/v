@@ -116,7 +116,7 @@ pub fn (mut c Client) send(config Mail) ! {
 	c.send_data() or { return error('Sending mail data failed') }
 	c.send_body(Mail{
 		...config
-		from: from
+		from    : from
 		boundary: rand.uuid_v4()
 	}) or { return error('Sending mail body failed') }
 }

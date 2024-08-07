@@ -56,8 +56,8 @@ pub fn compute_result(request SimRequest) &SimResult {
 	id := request.id
 
 	return &SimResult{
-		id: id
-		state: state
+		id              : id
+		state           : state
 		magnet1_distance: m1_dist
 		magnet2_distance: m2_dist
 		magnet3_distance: m3_dist

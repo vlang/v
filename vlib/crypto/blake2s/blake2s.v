@@ -164,8 +164,8 @@ pub fn new_digest(hash_size u8, key []u8) !&Digest {
 	}
 
 	mut d := Digest{
-		h: blake2s.iv.clone()
-		t: 0
+		h        : blake2s.iv.clone()
+		t        : 0
 		hash_size: hash_size
 	}
 

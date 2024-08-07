@@ -47,12 +47,12 @@ fn main() {
 	audio.setup(stream_userdata_cb: my_audio_stream_callback, user_data: state)
 	defer { audio.shutdown() }
 	state.gg = gg.new_context(
-		bg_color: gg.Color{50, 50, 50, 255}
-		width: 800
-		height: 600
+		bg_color    : gg.Color{50, 50, 50, 255}
+		width       : 800
+		height      : 600
 		window_title: 'ByteBeat Music'
-		frame_fn: graphics_frame
-		user_data: state
+		frame_fn    : graphics_frame
+		user_data   : state
 	)
 	state.gg.run()
 }

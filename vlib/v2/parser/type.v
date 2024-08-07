@@ -25,7 +25,7 @@ fn (mut p Parser) try_type() ast.Expr {
 		.amp {
 			p.next()
 			return ast.PrefixExpr{
-				op: .amp
+				op  : .amp
 				expr: p.expect_type()
 			}
 		}
@@ -41,7 +41,7 @@ fn (mut p Parser) try_type() ast.Expr {
 					else {
 						// TODO: match only allowed tokens otherwise error
 						ast.Ident{
-							pos: p.pos
+							pos : p.pos
 							name: p.tok().str()
 						}
 					}
@@ -53,7 +53,7 @@ fn (mut p Parser) try_type() ast.Expr {
 			p.next()
 			// TODO: what will we use here?
 			return ast.PrefixExpr{
-				op: .ellipsis
+				op  : .ellipsis
 				expr: p.expect_type()
 			}
 		}
@@ -91,8 +91,8 @@ fn (mut p Parser) try_type() ast.Expr {
 			// even though it technically is not one? hrmm
 			return ast.Type(ast.AnonStructType{
 				generic_params: generic_params
-				embedded: embedded
-				fields: fields
+				embedded      : embedded
+				fields        : fields
 			})
 		}
 		// tuple (multi return): `(type, type)`
@@ -126,7 +126,7 @@ fn (mut p Parser) try_type() ast.Expr {
 			len_expr := p.expr(.lowest)
 			p.expect(.rsbr)
 			return ast.Type(ast.ArrayFixedType{
-				len: len_expr
+				len      : len_expr
 				elem_type: p.expect_type()
 			})
 		}
@@ -146,7 +146,7 @@ fn (mut p Parser) try_type() ast.Expr {
 				// perhaps we should rename it to ast.GenericTypes
 				// if name is ast.Ident && p.pos == pos + name.name.len { return name }
 				return ast.Type(ast.GenericType{
-					name: name
+					name  : name
 					params: p.generic_list()
 				})
 			}
@@ -181,8 +181,8 @@ fn (mut p Parser) fn_type() ast.FnType {
 	params := p.fn_parameters()
 	return ast.FnType{
 		generic_params: generic_params
-		params: params
-		return_type: if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }
+		params        : params
+		return_type   : if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }
 	}
 }
 
@@ -198,14 +198,14 @@ fn (mut p Parser) ident_or_named_type() ast.Expr {
 			key_type := p.expect_type()
 			p.expect(.rsbr)
 			return ast.Type(ast.MapType{
-				key_type: key_type
+				key_type  : key_type
 				value_type: p.expect_type()
 			})
 		}
 		// struct called `map` in builtin
 		return ast.Ident{
 			name: 'map'
-			pos: pos
+			pos : pos
 		}
 	}
 	// `chan` | `chan type`
@@ -220,7 +220,7 @@ fn (mut p Parser) ident_or_named_type() ast.Expr {
 		// struct called `chan` in builtin
 		return ast.Ident{
 			name: 'chan'
-			pos: pos
+			pos : pos
 		}
 	}
 	// `thread` | `thread type`
@@ -240,7 +240,7 @@ fn (mut p Parser) ident_or_type() ast.Expr {
 	ident_or_selector := p.ident_or_selector_expr()
 	if p.tok == .lsbr {
 		return ast.Type(ast.GenericType{
-			name: ident_or_selector
+			name  : ident_or_selector
 			params: p.generic_list()
 		})
 	}

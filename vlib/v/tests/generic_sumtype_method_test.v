@@ -19,12 +19,12 @@ fn (leaf Leaf[T]) size[T]() int {
 fn test_generic_sumtype_method() {
 	r := Node[int]{
 		value: 20
-		left: Empty{}
+		left : Empty{}
 		right: Empty{}
 	}
 	tree := Leaf[int](Node[int]{
 		value: 10
-		left: Empty{}
+		left : Empty{}
 		right: r
 	})
 	println(tree.size())

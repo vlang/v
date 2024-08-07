@@ -11,15 +11,15 @@ const exit_after_time = 12000 // milliseconds
 
 const session_id_cookie_name = 'session_id'
 const csrf_config = &csrf.CsrfConfig{
-	secret: 'my-256bit-secret'
-	allowed_hosts: ['*']
+	secret        : 'my-256bit-secret'
+	allowed_hosts : ['*']
 	session_cookie: session_id_cookie_name
 }
 
 const allowed_origin = 'example.com'
 const csrf_config_origin = &csrf.CsrfConfig{
-	secret: 'my-256bit-secret'
-	allowed_hosts: [allowed_origin]
+	secret        : 'my-256bit-secret'
+	allowed_hosts : [allowed_origin]
 	session_cookie: session_id_cookie_name
 }
 
@@ -50,7 +50,7 @@ fn test_protect() {
 	}
 	ctx = vweb.Context{
 		form: form
-		req: http.Request{
+		req : http.Request{
 			method: .post
 		}
 	}
@@ -63,10 +63,10 @@ fn test_protect() {
 fn test_timeout() {
 	timeout := 1
 	short_time_config := &csrf.CsrfConfig{
-		secret: 'my-256bit-secret'
-		allowed_hosts: ['*']
+		secret        : 'my-256bit-secret'
+		allowed_hosts : ['*']
 		session_cookie: session_id_cookie_name
-		max_age: timeout
+		max_age       : timeout
 	}
 
 	mut ctx := vweb.Context{}
@@ -84,7 +84,7 @@ fn test_timeout() {
 	}
 	ctx = vweb.Context{
 		form: form
-		req: http.Request{
+		req : http.Request{
 			method: .post
 		}
 	}
@@ -234,8 +234,8 @@ fn exit_after_timeout[T](mut app T, timeout_in_ms int) {
 fn test_run_app_in_background() {
 	mut app := &App{
 		csrf: csrf.CsrfApp{
-			secret: 'my-256bit-secret'
-			allowed_hosts: [allowed_origin]
+			secret        : 'my-256bit-secret'
+			allowed_hosts : [allowed_origin]
 			session_cookie: session_id_cookie_name
 		}
 		middlewares: {
@@ -270,7 +270,7 @@ fn test_token_with_middleware() {
 fn protect_route_util(path string) {
 	mut req := http.Request{
 		method: .post
-		url: 'http://${localserver}/${path}'
+		url   : 'http://${localserver}/${path}'
 	}
 	mut res := req.do() or { panic(err) }
 	assert res.status() == .forbidden
@@ -293,8 +293,8 @@ fn protect_route_util(path string) {
 	// if the session id the csrftoken changes so the cookie can't be validated
 	req = http.Request{
 		method: .post
-		url: 'http://${localserver}/${path}'
-		data: formdata
+		url   : 'http://${localserver}/${path}'
+		data  : formdata
 		header: header
 	}
 	req.add_cookie(name: csrf_config.cookie_name, value: cookie)
@@ -305,8 +305,8 @@ fn protect_route_util(path string) {
 
 	req = http.Request{
 		method: .post
-		url: 'http://${localserver}/${path}'
-		data: formdata
+		url   : 'http://${localserver}/${path}'
+		data  : formdata
 		header: header
 	}
 	req.add_cookie(name: csrf_config.cookie_name, value: cookie)

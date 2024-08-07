@@ -7,7 +7,7 @@ struct Tree {
 
 fn test_map_sumtype_value_init() {
 	tree := Tree{
-		name: 'foo'
+		name : 'foo'
 		child: {
 			'a': 'value'
 		}

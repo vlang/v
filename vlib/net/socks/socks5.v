@@ -26,10 +26,10 @@ pub fn socks5_dial(proxy_url string, host string, username string, password stri
 // socks5_ssl_dial create new instance of &ssl.SSLConn
 pub fn socks5_ssl_dial(proxy_url string, host string, username string, password string) !&ssl.SSLConn {
 	mut ssl_conn := ssl.new_ssl_conn(
-		verify: ''
-		cert: ''
-		cert_key: ''
-		validate: false
+		verify                : ''
+		cert                  : ''
+		cert_key              : ''
+		validate              : false
 		in_memory_verification: false
 	)!
 	mut con := socks5_dial(proxy_url, host, username, password)!
@@ -52,10 +52,10 @@ pub:
 // net.default_tcp_dialer or ssl.create_ssl_dialer.
 pub fn new_socks5_dialer(base net.Dialer, proxy_address string, username string, password string) net.Dialer {
 	return &SOCKS5Dialer{
-		dialer: base
+		dialer       : base
 		proxy_address: proxy_address
-		username: username
-		password: password
+		username     : username
+		password     : password
 	}
 }
 

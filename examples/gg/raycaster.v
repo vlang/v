@@ -55,13 +55,13 @@ fn main() {
 	calc_deltas(mut app)
 
 	app.ctx = gg.new_context(
-		user_data: &app
+		user_data   : &app
 		window_title: 'Raycaster Demo'
-		width: 1024
-		height: 512
-		bg_color: gx.gray
-		frame_fn: draw
-		event_fn: handle_events
+		width       : 1024
+		height      : 512
+		bg_color    : gx.gray
+		frame_fn    : draw
+		event_fn    : handle_events
 	)
 
 	app.ctx.run()
@@ -217,7 +217,7 @@ fn draw_rays_and_walls(app App) {
 		wall_offset := max_wall_height / 2 - wall_height / 2
 		app.ctx.draw_line_with_config(step * line_thickeness + offset_3d_view, wall_offset,
 			step * line_thickeness + offset_3d_view, wall_offset + wall_height, gg.PenConfig{
-			color: color
+			color    : color
 			thickness: line_thickeness
 		})
 		// step to next ray angle

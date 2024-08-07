@@ -23,7 +23,7 @@ struct BumpTestCase {
 const test_cases = [
 	BumpTestCase{
 		file_name: 'v.mod'
-		contents: "Module {
+		contents : "Module {
 	name: 'Sample'
 	description: 'Sample project'
 	version: '1.2.6'
@@ -32,28 +32,28 @@ const test_cases = [
 }
 
 "
-		line: 3
+		line          : 3
 		expected_patch: "	version: '1.2.7'"
 		expected_minor: "	version: '1.3.0'"
 		expected_major: "	version: '2.0.0'"
 	},
 	BumpTestCase{
 		file_name: 'random_versions.vv'
-		contents: "
+		contents : "
 1.1.2
 1.2.5
 3.21.73
 version = '1.5.1'
 
 "
-		line: 4
+		line          : 4
 		expected_patch: "version = '1.5.2'"
 		expected_minor: "version = '1.6.0'"
 		expected_major: "version = '2.0.0'"
 	},
 	BumpTestCase{
 		file_name: 'sample_tool.v'
-		contents: "// Module comment and copyright information
+		contents : "// Module comment and copyright information
 import os
 import flag
 
@@ -64,7 +64,7 @@ fn main() {
 	// stuff
 }
 	"
-		line: 5
+		line          : 5
 		expected_patch: "const tool_version = '0.1.34'"
 		expected_minor: "const tool_version = '0.2.0'"
 		expected_major: "const tool_version = '1.0.0'"
@@ -111,7 +111,7 @@ struct SkipTestCase {
 const skip_test_cases = [
 	SkipTestCase{
 		file_name: 'CITATION.cff'
-		contents: 'abstract: A sample CLI tool made in V that prints geometric shapes to the screen.
+		contents : 'abstract: A sample CLI tool made in V that prints geometric shapes to the screen.
 authors:
   - alias: hungrybluedev
     family-names: Haldar
@@ -125,8 +125,8 @@ title: geo
 url: https://github.com/hungrybluedev/geo
 version: 0.2.4
 '
-		line: 12
-		skip: 'cff-version'
+		line          : 12
+		skip          : 'cff-version'
 		expected_patch: 'version: 0.2.5'
 		expected_minor: 'version: 0.3.0'
 		expected_major: 'version: 1.0.0'

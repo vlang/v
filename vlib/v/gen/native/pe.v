@@ -234,21 +234,21 @@ struct Pe32PlusOptionalHeader {
 
 fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 	return Pe32PlusOptionalHeader{
-		magic: .pe32plus
-		major_linker_version: native.pe_major_linker_version
-		minor_linker_version: native.pe_minor_linker_version
-		image_base: native.image_base
-		section_alignment: native.pe_section_align
-		file_alignment: native.pe_file_align
-		major_os_version: native.pe_major_os_version
-		minor_os_version: native.pe_minor_os_version
+		magic                  : .pe32plus
+		major_linker_version   : native.pe_major_linker_version
+		minor_linker_version   : native.pe_minor_linker_version
+		image_base             : native.image_base
+		section_alignment      : native.pe_section_align
+		file_alignment         : native.pe_file_align
+		major_os_version       : native.pe_major_os_version
+		minor_os_version       : native.pe_minor_os_version
 		major_subsystem_version: native.pe_major_subsystem_version
 		minor_subsystem_version: native.pe_minor_subsystem_version
-		size_of_headers: native.pe_header_size
-		subsystem: .windows_cui
-		size_of_stack_reserve: native.pe_stack_size
-		size_of_stack_commit: native.pe_stack_size
-		size_of_heap_reserve: native.pe_heap_size
+		size_of_headers        : native.pe_header_size
+		subsystem              : .windows_cui
+		size_of_stack_reserve  : native.pe_stack_size
+		size_of_stack_commit   : native.pe_stack_size
+		size_of_heap_reserve   : native.pe_heap_size
 		number_of_rva_and_sizes: native.pe_num_data_dirs
 	}
 }
@@ -399,7 +399,7 @@ const pe_data_dir_names = [
 const pe_default_data_dirs = [
 	PeDataDir{},
 	PeDataDir{
-		rva: 0x1000
+		rva : 0x1000
 		size: 0x2000
 	},
 	// remaining filled in implicitly
@@ -492,7 +492,7 @@ fn (mut s PeSection) set_virtual_size(mut g Gen, size i32) {
 
 fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
 	return PeSection{
-		name: name
+		name  : name
 		header: header
 	}
 }

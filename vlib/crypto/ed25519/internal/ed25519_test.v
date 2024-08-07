@@ -134,7 +134,7 @@ fn worker_for_string_content(mut p pool.PoolProcessor, idx int, worker_id int) &
 	// println('worker_s worker_id: $worker_id | idx: $idx ')
 	res := works_check_on_sign_input_string(item)
 	mut sr := &SignResult{
-		item: item
+		item  : item
 		result: res
 	}
 	return sr
@@ -153,7 +153,7 @@ fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() {
 	// contents := os.read_lines('testdata/sign.input') or { panic(err) } //[]string
 	mut pool_s := pool.new_pool_processor(
 		callback: worker_for_string_content
-		maxjobs: 4
+		maxjobs : 4
 	)
 	pool_s.work_on_items[string](contents)
 	for i, x in pool_s.get_results[SignResult]() {

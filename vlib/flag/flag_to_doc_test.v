@@ -65,8 +65,8 @@ fn test_attrs() {
 
 fn test_attrs_override() {
 	assert flag.to_doc[Config](
-		name: 'my app'
-		version: '1.0'
+		name       : 'my app'
+		version    : '1.0'
 		description: 'My application'
 	)! == doc3
 }

@@ -5,7 +5,7 @@ mut:
 
 fn (s Struct) rows() StructsRowIterator {
 	return StructsRowIterator{
-		array: s.array
+		array   : s.array
 		position: 0
 	}
 }

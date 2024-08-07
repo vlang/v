@@ -180,7 +180,7 @@ pub fn (mut am AssetManager) add(asset_type string, file string) bool {
 		return false
 	}
 	asset := Asset{
-		file_path: file
+		file_path    : file
 		last_modified: os.file_last_mod_unix(file)
 	}
 	if asset_type == 'css' {

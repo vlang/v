@@ -37,12 +37,12 @@ fn awesome[T](mut data T) {
 
 fn test_generic_fn_infer_multi_paras() {
 	mut page := Page{
-		lang: 'vlang'
-		page: 'one'
-		var_one: 'variable one'
-		var_two: 'variable two'
+		lang     : 'vlang'
+		page     : 'one'
+		var_one  : 'variable one'
+		var_two  : 'variable two'
 		var_three: Two_data{
-			title: 'what a title'
+			title  : 'what a title'
 			content: 'what a content'
 		}
 	}

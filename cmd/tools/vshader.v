@@ -84,10 +84,10 @@ fn main() {
 	fp.skip_executable()
 	// Collect tool options
 	opt := Options{
-		show_help: fp.bool('help', `h`, false, 'Show this help text.')
+		show_help   : fp.bool('help', `h`, false, 'Show this help text.')
 		force_update: fp.bool('force-update', `u`, false, 'Force update of the sokol-shdc tool.')
-		verbose: fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
-		slangs: fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
+		verbose     : fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
+		slangs      : fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -161,8 +161,8 @@ fn compile_shaders(opt Options, input_path string) ! {
 			continue
 		}
 		co := CompileOptions{
-			verbose: opt.verbose
-			slangs: opt.slangs
+			verbose    : opt.verbose
+			slangs     : opt.slangs
 			invoke_path: path
 		}
 		// Currently sokol-shdc allows for multiple --input flags

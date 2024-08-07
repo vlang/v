@@ -43,8 +43,8 @@ fn main() {
 	spawn exit_after_timeout(timeout)
 	//
 	mut app := &ServerApp{
-		port: http_port
-		timeout: timeout
+		port         : http_port
+		timeout      : timeout
 		global_config: Config{
 			max_ping: 50
 		}

@@ -142,9 +142,9 @@ ${contents[1]}\r
 	assert files == {
 		names[0]: [
 			FileData{
-				filename: file
+				filename    : file
 				content_type: ct
-				data: contents[0]
+				data        : contents[0]
 			},
 		]
 	}
@@ -180,9 +180,9 @@ fn test_multipart_form_body() {
 	files := {
 		'foo': [
 			FileData{
-				filename: 'bar.v'
+				filename    : 'bar.v'
 				content_type: 'application/octet-stream'
-				data: 'baz'
+				data        : 'baz'
 			},
 		]
 	}

@@ -18,8 +18,8 @@ pub mut:
 }
 
 const default_user = User{
-	name: 'casper'
-	age: 21
+	name    : 'casper'
+	age     : 21
 	verified: false
 }
 
@@ -89,8 +89,8 @@ fn testsuite_begin() {
 
 	mut app := &App{
 		sessions: &sessions.Sessions[User]{
-			store: sessions.MemoryStore[User]{}
-			secret: 'secret'.bytes()
+			store         : sessions.MemoryStore[User]{}
+			secret        : 'secret'.bytes()
 			cookie_options: sessions.CookieOptions{
 				cookie_name: cookie_name
 			}
@@ -169,8 +169,8 @@ fn get_session_id() !string {
 
 fn make_request_with_session_id(method http.Method, path string, sid string) !http.Response {
 	return http.fetch(http.FetchConfig{
-		url: '${localserver}${path}'
-		method: method
+		url    : '${localserver}${path}'
+		method : method
 		cookies: {
 			cookie_name: sid
 		}

@@ -719,7 +719,7 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 
 			rep_idx := RepIndex{
-				idx: 0
+				idx    : 0
 				val_idx: 0
 			}
 			// todo: primitives should always be copied

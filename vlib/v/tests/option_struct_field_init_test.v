@@ -21,7 +21,7 @@ pub:
 
 pub fn bot(token string, config BotConfig) Client {
 	return Client{
-		token: 'Bot ${token}'
+		token  : 'Bot ${token}'
 		intents: match config.intents {
 			Intents { int(config.intents) }
 			int { config.intents }

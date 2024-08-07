@@ -92,18 +92,18 @@ pub:
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{
-		conn: unsafe { nil }
-		is_server: false
-		ssl_conn: ssl.new_ssl_conn()!
-		is_ssl: address.starts_with('wss')
-		logger: opt.logger
-		uri: uri
+		conn        : unsafe { nil }
+		is_server   : false
+		ssl_conn    : ssl.new_ssl_conn()!
+		is_ssl      : address.starts_with('wss')
+		logger      : opt.logger
+		uri         : uri
 		client_state: ClientState{
 			state: .closed
 		}
-		id: rand.uuid_v4()
-		header: http.new_header()
-		read_timeout: opt.read_timeout
+		id           : rand.uuid_v4()
+		header       : http.new_header()
+		read_timeout : opt.read_timeout
 		write_timeout: opt.write_timeout
 	}
 }
@@ -437,10 +437,10 @@ fn parse_uri(url string) !&Uri {
 	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
-		url: url
-		hostname: u.hostname()
-		port: port
-		resource: v[0]
+		url        : url
+		hostname   : u.hostname()
+		port       : port
+		resource   : v[0]
 		querystring: querystring
 	}
 }

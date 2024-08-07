@@ -347,7 +347,7 @@ pub fn execute(cmd string) Result {
 	if isnil(f) {
 		return Result{
 			exit_code: -1
-			output: 'exec("${cmd}") failed'
+			output   : 'exec("${cmd}") failed'
 		}
 	}
 	fd := fileno(f)
@@ -370,7 +370,7 @@ pub fn execute(cmd string) Result {
 	exit_code := vpclose(f)
 	return Result{
 		exit_code: exit_code
-		output: soutput
+		output   : soutput
 	}
 }
 

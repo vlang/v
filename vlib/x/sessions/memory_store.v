@@ -52,7 +52,7 @@ pub fn (mut store MemoryStore[T]) set(sid string, val T) ! {
 	} else {
 		store.data[sid] = MemoryStoreSessions[T]{
 			created_at: time.now()
-			data: val
+			data      : val
 		}
 	}
 }

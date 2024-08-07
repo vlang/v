@@ -104,7 +104,7 @@ pub mut:
 	table     &ast.Table      = ast.new_table()
 	checker   checker.Checker = checker.Checker{
 		table: unsafe { nil }
-		pref: unsafe { nil }
+		pref : unsafe { nil }
 	}
 	fmt                 fmt.Fmt
 	filename            string
@@ -151,7 +151,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	// so its preferences should be permissive:
 	mut pref_ := &pref.Preferences{
 		enable_globals: true
-		is_fmt: true
+		is_fmt        : true
 	}
 	pref_.fill_with_defaults()
 	return pref_
@@ -160,17 +160,17 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 // new creates a new instance of a `Doc` struct.
 pub fn new(input_path string) Doc {
 	mut d := Doc{
-		base_path: os.real_path(input_path)
-		table: ast.new_table()
-		head: DocNode{}
-		contents: map[string]DocNode{}
+		base_path     : os.real_path(input_path)
+		table         : ast.new_table()
+		head          : DocNode{}
+		contents      : map[string]DocNode{}
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
-		pref: d.prefs
-		indent: 0
+		pref    : d.prefs
+		indent  : 0
 		is_debug: false
-		table: d.table
+		table   : d.table
 	}
 	d.checker = checker.new_checker(d.table, d.prefs)
 	return d
@@ -188,12 +188,12 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 		name = name.all_after(d.orig_mod_name + '.')
 	}
 	mut node := DocNode{
-		name: name
-		content: d.stmt_signature(stmt)
-		pos: stmt.pos
+		name     : name
+		content  : d.stmt_signature(stmt)
+		pos      : stmt.pos
 		file_path: os.join_path(d.base_path, filename)
-		is_pub: d.stmt_pub(stmt)
-		platform: platform_from_filename(filename)
+		is_pub   : d.stmt_pub(stmt)
+		platform : platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
 		return error('symbol ${node.name} not public')
@@ -216,9 +216,9 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 						d.type_to_str(field.typ)
 					}
 					node.children << DocNode{
-						name: field.name.all_after(d.orig_mod_name + '.')
-						kind: .constant
-						pos: field.pos
+						name       : field.name.all_after(d.orig_mod_name + '.')
+						kind       : .constant
+						pos        : field.pos
 						return_type: ret_type
 					}
 				}
@@ -234,10 +234,10 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 						'int'
 					}
 					node.children << DocNode{
-						name: field.name
-						kind: .enum_field
+						name       : field.name
+						kind       : .enum_field
 						parent_name: node.name
-						pos: field.pos
+						pos        : field.pos
 						return_type: ret_type
 					}
 				}
@@ -264,10 +264,10 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 						d.type_to_str(field.typ)
 					}
 					node.children << DocNode{
-						name: field.name
-						kind: .struct_field
+						name       : field.name
+						kind       : .struct_field
 						parent_name: node.name
-						pos: field.pos
+						pos        : field.pos
 						return_type: ret_type
 					}
 				}
@@ -309,11 +309,11 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			if d.extract_vars {
 				for param in stmt.params {
 					node.children << DocNode{
-						name: param.name
-						kind: .variable
+						name       : param.name
+						kind       : .variable
 						parent_name: node.name
-						pos: param.pos
-						attrs: {
+						pos        : param.pos
+						attrs      : {
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)
@@ -432,11 +432,11 @@ pub fn (mut d Doc) file_ast_with_pos(mut file_ast ast.File, pos int) map[string]
 		}
 		mut vr_data := val as ast.Var
 		l_node := DocNode{
-			name: name
-			pos: vr_data.pos
-			file_path: file_ast.path
-			from_scope: true
-			kind: .variable
+			name       : name
+			pos        : vr_data.pos
+			file_path  : file_ast.path
+			from_scope : true
+			kind       : .variable
 			return_type: d.expr_typ_to_string(mut vr_data.expr)
 		}
 		contents[l_node.name] = l_node
@@ -490,9 +490,9 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 			// 	module_name = d.parent_mod_name + '.' + module_name
 			// }
 			d.head = DocNode{
-				name: module_name
+				name   : module_name
 				content: 'module ${module_name}'
-				kind: .none_
+				kind   : .none_
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {
 			continue

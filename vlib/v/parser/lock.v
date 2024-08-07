@@ -23,21 +23,21 @@ fn (mut p Parser) lockable() ast.Expr {
 	}
 	mut expr := ast.Expr(ast.Ident{
 		language: ast.Language.v
-		pos: positions[0]
-		mod: p.mod
-		name: names[0]
-		is_mut: true
-		info: ast.IdentVar{}
-		scope: p.scope
+		pos     : positions[0]
+		mod     : p.mod
+		name    : names[0]
+		is_mut  : true
+		info    : ast.IdentVar{}
+		scope   : p.scope
 	})
 	for i := 1; i < names.len; i++ {
 		expr = ast.SelectorExpr{
-			expr: expr
+			expr      : expr
 			field_name: names[i]
 			next_token: if i < names.len - 1 { token.Kind.dot } else { p.tok.kind }
-			is_mut: true
-			pos: positions[i]
-			scope: p.scope
+			is_mut    : true
+			pos       : positions[i]
+			scope     : p.scope
 		}
 	}
 	return expr
@@ -100,10 +100,10 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	scope := p.scope
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.LockExpr{
-		lockeds: lockeds
-		stmts: stmts
+		lockeds : lockeds
+		stmts   : stmts
 		is_rlock: is_rlocked
-		pos: pos
-		scope: scope
+		pos     : pos
+		scope   : scope
 	}
 }

@@ -82,15 +82,15 @@ struct Sub2 {
 fn test_converting_down() {
 	mut out := []Master{}
 	out << Sub1{
-		val: 1
+		val : 1
 		name: 'one'
 	}
 	out << Sub2{
-		val: 2
+		val : 2
 		name: 'two'
 	}
 	out << Sub2{
-		val: 3
+		val : 3
 		name: 'three'
 	}
 	mut res := []Sub2{cap: out.len}

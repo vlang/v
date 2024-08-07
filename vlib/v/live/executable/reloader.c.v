@@ -17,16 +17,16 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 	}
 	// $if msvc { so_extension = '.dll' } $else { so_extension = '.so' }
 	return &live.LiveReloadInfo{
-		original: original
-		vexe: vexe
-		vopts: vopts
-		live_fn_mutex: live_fn_mutex
-		live_linkfn: live_linkfn
-		so_extension: so_extension
+		original        : original
+		vexe            : vexe
+		vopts           : vopts
+		live_fn_mutex   : live_fn_mutex
+		live_linkfn     : live_linkfn
+		so_extension    : so_extension
 		so_name_template: '${so_dir}/tmp.%d.${file_base}'
-		live_lib: 0
-		reloads: 0
-		reload_time_ms: 0
+		live_lib        : 0
+		reloads         : 0
+		reload_time_ms  : 0
 	}
 }
 

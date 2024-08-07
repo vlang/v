@@ -18,7 +18,7 @@ fn test_none() {
 
 fn test_not_none() {
 	pp := ParamPrecos{
-		code: 'V'
+		code     : 'V'
 		table_ref: 123
 	}
 

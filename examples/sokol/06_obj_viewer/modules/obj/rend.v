@@ -21,20 +21,20 @@ import stbi
 pub fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width      : w
+		height     : h
 		num_mipmaps: 0
 		// min_filter: .linear
 		// mag_filter: .linear
 		// usage: .dynamic
 		// wrap_u: .clamp_to_edge
 		// wrap_v: .clamp_to_edge
-		label: &u8(0)
+		label        : &u8(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr : buf
 		size: usize(sz)
 	}
 
@@ -43,8 +43,8 @@ pub fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u    : .clamp_to_edge
+		wrap_v    : .clamp_to_edge
 	}
 
 	sg_smp := gfx.make_sampler(&smp_desc)
@@ -82,7 +82,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 
 	vert_buffer_desc.size = usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
 	vert_buffer_desc.data = gfx.Range{
-		ptr: obj_buf.vbuf.data
+		ptr : obj_buf.vbuf.data
 		size: usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
 	}
 
@@ -96,7 +96,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 
 	index_buffer_desc.size = usize(obj_buf.ibuf.len * int(sizeof(u32)))
 	index_buffer_desc.data = gfx.Range{
-		ptr: obj_buf.ibuf.data
+		ptr : obj_buf.ibuf.data
 		size: usize(obj_buf.ibuf.len * int(sizeof(u32)))
 	}
 
@@ -118,7 +118,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 
 	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled       : true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
@@ -127,7 +127,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 
 	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: .less_equal
+		compare      : .less_equal
 	}
 	pipdesc.cull_mode = .front
 
@@ -243,11 +243,11 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 	gfx.apply_bindings(part_render_data.bind)
 
 	vs_uniforms_range := gfx.Range{
-		ptr: in_data.vs_data
+		ptr : in_data.vs_data
 		size: usize(in_data.vs_len)
 	}
 	fs_uniforms_range := gfx.Range{
-		ptr: unsafe { &tmp_fs_params }
+		ptr : unsafe { &tmp_fs_params }
 		size: usize(in_data.fs_len)
 	}
 

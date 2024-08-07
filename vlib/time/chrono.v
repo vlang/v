@@ -28,8 +28,8 @@ pub fn (t Time) days_from_unix_epoch() int {
 pub fn date_from_days_after_unix_epoch(days int) Time {
 	year, month, day := calculate_date_from_day_offset(i64(days))
 	return Time{
-		year: year
+		year : year
 		month: month
-		day: day
+		day  : day
 	}
 }

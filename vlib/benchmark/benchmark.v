@@ -30,7 +30,7 @@ pub mut:
 pub fn new_benchmark() Benchmark {
 	return Benchmark{
 		bench_timer: time.new_stopwatch()
-		verbose: true
+		verbose    : true
 	}
 }
 
@@ -38,8 +38,8 @@ pub fn new_benchmark() Benchmark {
 pub fn new_benchmark_no_cstep() Benchmark {
 	return Benchmark{
 		bench_timer: time.new_stopwatch()
-		verbose: true
-		no_cstep: true
+		verbose    : true
+		no_cstep   : true
 	}
 }
 
@@ -48,7 +48,7 @@ pub fn new_benchmark_no_cstep() Benchmark {
 pub fn new_benchmark_pointer() &Benchmark {
 	return &Benchmark{
 		bench_timer: time.new_stopwatch()
-		verbose: true
+		verbose    : true
 	}
 }
 

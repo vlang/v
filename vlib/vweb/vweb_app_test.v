@@ -38,7 +38,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	}
 	article := Article{
 		title: title
-		text: text
+		text : text
 	}
 	println('posting article')
 	println(article)
@@ -73,7 +73,7 @@ struct ApiSuccessResponse[T] {
 fn (mut app App) json_success[T](result T) vweb.Result {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result : result
 	}
 
 	return app.json(response)
@@ -83,7 +83,7 @@ fn (mut app App) json_success[T](result T) vweb.Result {
 fn (mut app App) some_helper[T](result T) ApiSuccessResponse[T] {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result : result
 	}
 	return response
 }

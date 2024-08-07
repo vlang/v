@@ -36,7 +36,7 @@ pub fn (mut node Node) save() ! {
 fn test_encode_with_mut_struct() {
 	mut n := Node{
 		platform: .osx
-		cputype: .unknown
+		cputype : .unknown
 	}
 	n.save() or { panic(err) }
 }

@@ -182,7 +182,7 @@ fn new_dtp(msg string) !&DTP {
 	}
 	ip, port := get_host_ip_from_dtp_message(msg)
 	mut dtp := &DTP{
-		ip: ip
+		ip  : ip
 		port: port
 		conn: 0
 	}

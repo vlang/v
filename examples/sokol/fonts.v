@@ -14,15 +14,15 @@ mut:
 
 fn main() {
 	state := &AppState{
-		pass_action: gfx.create_clear_pass_action(0.3, 0.3, 0.32, 1.0)
+		pass_action : gfx.create_clear_pass_action(0.3, 0.3, 0.32, 1.0)
 		font_context: unsafe { nil } // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := sapp.Desc{
-		user_data: state
-		init_userdata_cb: init
+		user_data        : state
+		init_userdata_cb : init
 		frame_userdata_cb: frame
-		window_title: title.str
+		window_title     : title.str
 		html5_canvas_name: title.str
 	}
 	sapp.run(&desc)

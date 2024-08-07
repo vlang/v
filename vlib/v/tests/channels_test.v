@@ -15,7 +15,7 @@ fn test_printing_of_channels() {
 	ch := chan St1{cap: 10}
 	fch := chan f64{cap: 100}
 	ch <- St1{
-		val: 1000
+		val    : 1000
 		another: fch
 	}
 	res := (spawn fn1(ch)).wait()

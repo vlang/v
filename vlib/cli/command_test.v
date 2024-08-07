@@ -2,7 +2,7 @@ import cli
 
 fn test_if_command_parses_empty_args() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: empty_func
 	}
 	cmd.parse(['command'])
@@ -11,7 +11,7 @@ fn test_if_command_parses_empty_args() {
 
 fn test_if_command_parses_args() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: empty_func
 	}
 	cmd.parse(['command', 'arg0', 'arg1'])
@@ -23,7 +23,7 @@ fn test_if_subcommands_parse_args() {
 		name: 'command'
 	}
 	subcmd := cli.Command{
-		name: 'subcommand'
+		name   : 'subcommand'
 		execute: if_subcommands_parse_args_func
 	}
 	cmd.add_command(subcmd)
@@ -43,7 +43,7 @@ fn test_default_subcommands() {
 	assert cmd.commands.any(it.name == 'man')
 
 	cmd = cli.Command{
-		name: 'command'
+		name   : 'command'
 		version: '1.0.0'
 	}
 	cmd.parse(['command'])
@@ -57,7 +57,7 @@ fn flag_should_be_set(cmd cli.Command) ! {
 
 fn test_if_flag_gets_set() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: flag_should_be_set
 	}
 	cmd.add_flag(cli.Flag{
@@ -69,12 +69,12 @@ fn test_if_flag_gets_set() {
 
 fn test_if_flag_gets_set_with_abbrev() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: flag_should_be_set
 	}
 	cmd.add_flag(cli.Flag{
-		flag: .string
-		name: 'flag'
+		flag  : .string
+		name  : 'flag'
 		abbrev: 'f'
 	})
 	cmd.parse(['command', '-f', 'value'])
@@ -82,13 +82,13 @@ fn test_if_flag_gets_set_with_abbrev() {
 
 fn test_if_flag_gets_set_with_long_arg() {
 	mut cmd := cli.Command{
-		name: 'command'
-		execute: flag_should_be_set
+		name      : 'command'
+		execute   : flag_should_be_set
 		posix_mode: true
 	}
 	cmd.add_flag(cli.Flag{
-		flag: .string
-		name: 'flag'
+		flag  : .string
+		name  : 'flag'
 		abbrev: 'f'
 	})
 	cmd.parse(['command', '--flag', 'value'])
@@ -105,7 +105,7 @@ fn assert_flags(cmd cli.Command) ! {
 
 fn test_if_multiple_flags_get_set() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: assert_flags
 	}
 	cmd.add_flag(cli.Flag{
@@ -125,7 +125,7 @@ fn test_if_multiple_flags_get_set() {
 
 fn test_if_required_flags_get_set() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: assert_flags
 	}
 	cmd.add_flag(cli.Flag{
@@ -137,8 +137,8 @@ fn test_if_required_flags_get_set() {
 		name: 'flag-2'
 	})
 	cmd.add_flag(cli.Flag{
-		flag: .int
-		name: 'value'
+		flag    : .int
+		name    : 'value'
 		required: true
 	})
 	cmd.parse(['command', '-flag', 'value', '-value', '42', '-flag-2', 'value-2'])
@@ -151,11 +151,11 @@ fn flag_is_set_in_subcommand(cmd cli.Command) ! {
 
 fn test_if_flag_gets_set_in_subcommand() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: empty_func
 	}
 	mut subcmd := cli.Command{
-		name: 'subcommand'
+		name   : 'subcommand'
 		execute: flag_is_set_in_subcommand
 	}
 	subcmd.add_flag(cli.Flag{
@@ -168,16 +168,16 @@ fn test_if_flag_gets_set_in_subcommand() {
 
 fn test_if_global_flag_gets_set_in_subcommand() {
 	mut cmd := cli.Command{
-		name: 'command'
+		name   : 'command'
 		execute: empty_func
 	}
 	cmd.add_flag(cli.Flag{
-		flag: .string
-		name: 'flag'
+		flag  : .string
+		name  : 'flag'
 		global: true
 	})
 	subcmd := cli.Command{
-		name: 'subcommand'
+		name   : 'subcommand'
 		execute: flag_is_set_in_subcommand
 	}
 	cmd.add_command(subcmd)
@@ -186,10 +186,10 @@ fn test_if_global_flag_gets_set_in_subcommand() {
 
 fn test_command_setup() {
 	mut cmd := cli.Command{
-		name: 'root'
+		name    : 'root'
 		commands: [
 			cli.Command{
-				name: 'child'
+				name    : 'child'
 				commands: [
 					cli.Command{
 						name: 'child-child'

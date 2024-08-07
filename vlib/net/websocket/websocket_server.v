@@ -49,9 +49,9 @@ pub:
 // new_server instance a new websocket server on provided port and route
 pub fn new_server(family net.AddrFamily, port int, route string, opt ServerOpt) &Server {
 	return &Server{
-		ls: unsafe { nil }
+		ls    : unsafe { nil }
 		family: family
-		port: port
+		port  : port
 		logger: opt.logger
 	}
 }
@@ -143,21 +143,21 @@ pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&Serve
 	mut logger := &log.Log{}
 	logger.set_level(.debug)
 	mut c := &Client{
-		is_server: true
-		conn: conn
-		is_ssl: false
-		logger: logger
+		is_server   : true
+		conn        : conn
+		is_ssl      : false
+		logger      : logger
 		client_state: ClientState{
 			state: .open
 		}
 		last_pong_ut: time.now().unix()
-		id: rand.uuid_v4()
+		id          : rand.uuid_v4()
 	}
 	mut server_client := &ServerClient{
 		resource_name: 'GET'
-		client_key: key
-		client: unsafe { c }
-		server: unsafe { &s }
+		client_key   : key
+		client       : unsafe { c }
+		server       : unsafe { &s }
 	}
 	digest := create_key_challenge_response(key)!
 	handshake_response := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${digest}\r\n\r\n'
@@ -218,15 +218,15 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 fn (mut s Server) accept_new_client() !&Client {
 	mut new_conn := s.ls.accept()!
 	c := &Client{
-		is_server: true
-		conn: new_conn
-		ssl_conn: ssl.new_ssl_conn()!
-		logger: s.logger
+		is_server   : true
+		conn        : new_conn
+		ssl_conn    : ssl.new_ssl_conn()!
+		logger      : s.logger
 		client_state: ClientState{
 			state: .open
 		}
 		last_pong_ut: time.now().unix()
-		id: rand.uuid_v4()
+		id          : rand.uuid_v4()
 	}
 	return c
 }

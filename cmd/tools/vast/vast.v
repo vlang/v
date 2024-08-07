@@ -126,9 +126,9 @@ fn json(file string) string {
 	pref_.is_fmt = true
 	//
 	mut t := Tree{
-		root: new_object()
+		root : new_object()
 		table: ast.new_table()
-		pref: pref_
+		pref : pref_
 	}
 	// parse file with comment
 	ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)

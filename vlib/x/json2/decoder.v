@@ -80,8 +80,8 @@ fn (mut p Parser) next_with_err() ! {
 	p.next()
 	if p.tok.kind == .error {
 		return DecodeError{
-			line: p.tok.line
-			column: p.tok.full_col()
+			line   : p.tok.line
+			column : p.tok.full_col()
 			message: p.tok.lit.bytestr()
 		}
 	}
@@ -473,7 +473,7 @@ fn (mut p Parser) decode_array() !Any {
 		} else if p.tok.kind != .rsbr {
 			return UnknownTokenError{
 				token: p.tok
-				kind: .array
+				kind : .array
 			}
 		}
 	}
@@ -491,7 +491,7 @@ fn (mut p Parser) decode_object() !Any {
 		// step 1 -> key
 		if p.tok.kind != .str_ {
 			return InvalidTokenError{
-				token: p.tok
+				token   : p.tok
 				expected: .str_
 			}
 		}
@@ -501,7 +501,7 @@ fn (mut p Parser) decode_object() !Any {
 		// step 2 -> colon separator
 		if p.tok.kind != .colon {
 			return InvalidTokenError{
-				token: p.tok
+				token   : p.tok
 				expected: .colon
 			}
 		}
@@ -511,7 +511,7 @@ fn (mut p Parser) decode_object() !Any {
 		fields[cur_key] = p.decode_value()!
 		if p.tok.kind !in [.comma, .rcbr] {
 			return InvalidTokenError{
-				token: p.tok
+				token   : p.tok
 				expected: .comma
 			}
 		} else if p.tok.kind == .comma {

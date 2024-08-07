@@ -44,7 +44,7 @@ fn test_interface_struct() {
 	bz1.sp.speak('Hello world!')
 	bz2 := Baz{
 		sp: Cat{
-			name: 'Grungy'
+			name : 'Grungy'
 			breed: 'Persian Cat'
 		}
 	}
@@ -61,7 +61,7 @@ fn test_interface_mut_struct() {
 	}
 	assert mbaz.sp.say_hello() == "Hello, My name is Derek and I'm the bawz"
 	mbaz.sp = Cat{
-		name: 'Dog'
+		name : 'Dog'
 		breed: 'Not a dog'
 	}
 	assert mbaz.sp.say_hello() == 'Meow meow Dog the Not a dog meow'
@@ -71,7 +71,7 @@ fn test_interface_struct_from_array() {
 	bazs := [
 		Baz{
 			sp: Cat{
-				name: 'Kitty'
+				name : 'Kitty'
 				breed: 'Catty Koo'
 			}
 		},
@@ -89,7 +89,7 @@ fn test_interface_struct_from_mut_array() {
 	mut bazs := [
 		Baz{
 			sp: Cat{
-				name: 'Kitty'
+				name : 'Kitty'
 				breed: 'Catty Koo'
 			}
 		},
@@ -105,7 +105,7 @@ fn test_interface_struct_from_mut_array() {
 	}
 
 	bazs[1].sp = Cat{
-		name: 'Doggy'
+		name : 'Doggy'
 		breed: 'Doggy Doo'
 	}
 

@@ -48,7 +48,7 @@ pub:
 pub fn new_scanner(config Config) !&Scanner {
 	mut s := &Scanner{
 		config: config
-		text: config.input.read_input()!
+		text  : config.input.read_input()!
 	}
 	return s
 }
@@ -57,7 +57,7 @@ pub fn new_scanner(config Config) !&Scanner {
 pub fn new_simple(config Config) !Scanner {
 	return Scanner{
 		config: config
-		text: config.input.read_input()!
+		text  : config.input.read_input()!
 	}
 }
 
@@ -72,7 +72,7 @@ pub fn new_simple_text(text string) !Scanner {
 	}
 	return Scanner{
 		config: config
-		text: config.input.read_input()!
+		text  : config.input.read_input()!
 	}
 }
 
@@ -87,7 +87,7 @@ pub fn new_simple_file(path string) !Scanner {
 	}
 	return Scanner{
 		config: config
-		text: config.input.read_input()!
+		text  : config.input.read_input()!
 	}
 }
 
@@ -341,12 +341,12 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 		col -= s.header_len
 	}
 	return token.Token{
-		kind: kind
-		lit: lit
-		col: if col < 1 { 1 } else { col }
+		kind   : kind
+		lit    : lit
+		col    : if col < 1 { 1 } else { col }
 		line_nr: s.line_nr + 1
-		pos: s.pos - s.header_len - len + 1
-		len: len
+		pos    : s.pos - s.header_len - len + 1
+		len    : len
 	}
 }
 
@@ -663,9 +663,9 @@ pub fn (s Scanner) excerpt(pos int, margin int) string {
 // state returns a read-only view of the scanner's internal state.
 pub fn (s Scanner) state() State {
 	return State{
-		col: s.col
+		col    : s.col
 		line_nr: s.line_nr
-		pos: s.pos
+		pos    : s.pos
 	}
 }
 

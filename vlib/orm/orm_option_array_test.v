@@ -24,12 +24,12 @@ fn test_main() {
 		create table Child
 	} or { println(err) }
 	new_member := Member{
-		id: 1
+		id      : 1
 		children: [Child{
-			id: 1
+			id       : 1
 			parent_id: 1
 		}, Child{
-			id: 2
+			id       : 2
 			parent_id: 1
 		}]
 	}

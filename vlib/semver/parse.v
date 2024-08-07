@@ -32,8 +32,8 @@ fn parse(input string) RawVersion {
 	raw_ints := raw_version.split('.')
 	return RawVersion{
 		prerelease: prerelease
-		metadata: metadata
-		raw_ints: raw_ints
+		metadata  : metadata
+		raw_ints  : raw_ints
 	}
 }
 
@@ -66,8 +66,8 @@ fn (raw_ver RawVersion) complete() RawVersion {
 	}
 	return RawVersion{
 		prerelease: raw_ver.prerelease
-		metadata: raw_ver.metadata
-		raw_ints: raw_ints
+		metadata  : raw_ver.metadata
+		raw_ints  : raw_ints
 	}
 }
 

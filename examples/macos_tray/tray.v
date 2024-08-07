@@ -52,10 +52,10 @@ fn main() {
 
 	my_app.tray_info = C.tray_app_init(TrayParams{
 		items: [TrayMenuItem{
-			id: 'hello'
+			id  : 'hello'
 			text: 'Hello'
 		}, TrayMenuItem{
-			id: 'quit'
+			id  : 'quit'
 			text: 'Quit!'
 		}]
 		on_click: my_app.on_menu_item_click

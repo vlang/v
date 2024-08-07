@@ -191,9 +191,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					used_embed_fields << fields_to_embed.map(it.name)
 					default_init := ast.StructInit{
 						...node
-						typ: embed
+						typ            : embed
 						is_update_embed: true
-						init_fields: init_fields_to_embed
+						init_fields    : init_fields_to_embed
 					}
 					inside_cast_in_heap := g.inside_cast_in_heap
 					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
@@ -341,10 +341,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 
 		g.fixed_array_init(ast.ArrayInit{
-			pos: node.pos
-			is_fixed: true
-			typ: g.unwrap_generic(node.typ)
-			exprs: [ast.empty_expr]
+			pos      : node.pos
+			is_fixed : true
+			typ      : g.unwrap_generic(node.typ)
+			exprs    : [ast.empty_expr]
 			elem_type: arr_info.elem_type
 		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
 		initialized = true

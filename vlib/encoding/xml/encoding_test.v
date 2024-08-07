@@ -5,14 +5,14 @@ import encoding.xml
 fn test_node() {
 	nodes := [
 		xml.XMLNode{
-			name: 'test'
+			name      : 'test'
 			attributes: {
 				'test:key':   ' test_value '
 				'test:other': '123456'
 			}
 			children: [
 				xml.XMLNode{
-					name: 'child'
+					name      : 'child'
 					attributes: {
 						'child:key': 'child_value'
 					}
@@ -21,14 +21,14 @@ fn test_node() {
 			]
 		},
 		xml.XMLNode{
-			name: 's'
+			name      : 's'
 			attributes: {
 				'k': 'v'
 			}
 			children: [
 				'Hello, world!',
 				xml.XMLNode{
-					name: 'c'
+					name      : 'c'
 					attributes: {
 						'k2': 'v2'
 					}
@@ -36,53 +36,53 @@ fn test_node() {
 			]
 		},
 		xml.XMLNode{
-			name: 'ext'
+			name      : 'ext'
 			attributes: {
 				'uri':          '{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}'
 				'xmlns:xcalcf': 'http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures'
 			}
 			children: [
 				xml.XMLNode{
-					name: 'xcalcf:calcFeatures'
+					name    : 'xcalcf:calcFeatures'
 					children: [
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:RD'
 							}
 						},
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:Single'
 							}
 						},
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:FV'
 							}
 						},
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:CNMTM'
 							}
 						},
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:LET_WF'
 							}
 						},
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:LAMBDA_WF'
 							}
 						},
 						xml.XMLNode{
-							name: 'xcalcf:feature'
+							name      : 'xcalcf:feature'
 							attributes: {
 								'name': 'microsoft.com:ARRAYTEXT_WF'
 							}
@@ -125,14 +125,14 @@ fn test_doc() {
 	docs := [
 		xml.XMLDocument{
 			root: xml.XMLNode{
-				name: 'test'
+				name      : 'test'
 				attributes: {
 					'test:key':   ' test_value '
 					'test:other': '123456'
 				}
 				children: [
 					xml.XMLNode{
-						name: 'child'
+						name      : 'child'
 						attributes: {
 							'child:key': 'child_value'
 						}
@@ -143,14 +143,14 @@ fn test_doc() {
 		},
 		xml.XMLDocument{
 			root: xml.XMLNode{
-				name: 's'
+				name      : 's'
 				attributes: {
 					'k': 'v'
 				}
 				children: [
 					'Hello, world!',
 					xml.XMLNode{
-						name: 'c'
+						name      : 'c'
 						attributes: {
 							'k2': 'v2'
 						}

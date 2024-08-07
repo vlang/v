@@ -43,7 +43,7 @@ fn test_all_v_repl_files() {
 	}
 	mut session := &Session{
 		options: runner.new_options()
-		bmark: benchmark.new_benchmark()
+		bmark  : benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
 	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/slow_tests/repl/nothing.repl') or {

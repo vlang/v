@@ -99,7 +99,7 @@ fn test_all() {
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
 	mut tasks := Tasks{
-		vexe: vexe
+		vexe : vexe
 		label: 'all tests'
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
@@ -118,9 +118,9 @@ fn test_all() {
 	//
 	if os.user_os() == 'linux' {
 		mut skip_unused_tasks := Tasks{
-			vexe: vexe
+			vexe         : vexe
 			parallel_jobs: 1
-			label: '-skip-unused tests'
+			label        : '-skip-unused tests'
 		}
 		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
 			false)
@@ -134,9 +134,9 @@ fn test_all() {
 		// Note: the tasks should be run serially, since they depend on
 		// setting and using environment variables.
 		mut cte_tasks := Tasks{
-			vexe: vexe
+			vexe         : vexe
 			parallel_jobs: 1
-			label: 'comptime env tests'
+			label        : 'comptime env tests'
 		}
 		cte_dir := '${checker_dir}/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
@@ -148,9 +148,9 @@ fn test_all() {
 		cte_tasks.run()
 	}
 	mut ct_tasks := Tasks{
-		vexe: vexe
+		vexe         : vexe
 		parallel_jobs: 1
-		label: 'comptime define tests'
+		label        : 'comptime define tests'
 	}
 	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
 		'custom_comptime_define_error.vv',
@@ -193,14 +193,14 @@ fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, vop
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
-			evars: evars
-			vexe: if custom_vexe != '' { custom_vexe } else { tasks.vexe }
-			dir: dir
-			voptions: voptions
+			evars           : evars
+			vexe            : if custom_vexe != '' { custom_vexe } else { tasks.vexe }
+			dir             : dir
+			voptions        : voptions
 			result_extension: result_extension
-			path: path
-			is_module: is_module
-			max_ntries: max_ntries
+			path            : path
+			is_module       : is_module
+			max_ntries      : max_ntries
 		}
 	}
 }

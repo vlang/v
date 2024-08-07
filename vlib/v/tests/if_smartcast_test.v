@@ -53,7 +53,7 @@ struct BarWrapper {
 fn test_nested_selector_smartcast() {
 	f := BarWrapper{
 		y: Bar(Test{
-			x: 'Hi'
+			x  : 'Hi'
 			xya: Xya(int(5))
 		})
 	}

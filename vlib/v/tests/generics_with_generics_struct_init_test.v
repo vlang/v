@@ -14,12 +14,12 @@ mut:
 fn create[T](arr []T) &List[T] {
 	assert arr.len > 0
 	mut n := &ListNode[T]{
-		val: arr[0]
+		val : arr[0]
 		next: 0
 	}
 	mut l := &List[T]{
 		first: n
-		last: n
+		last : n
 		count: 1
 	}
 	return l

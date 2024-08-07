@@ -33,16 +33,16 @@ mut:
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width      : w
+		height     : h
 		num_mipmaps: 0
 		// usage: .dynamic
-		label: &u8(0)
+		label        : &u8(0)
 		d3d11_texture: 0
 	}
 	// comment, if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr : buf
 		size: usize(sz)
 	}
 
@@ -51,8 +51,8 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u    : .clamp_to_edge
+		wrap_v    : .clamp_to_edge
 	}
 
 	sg_smp := gfx.make_sampler(&smp_desc)
@@ -68,7 +68,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr : buf
 		size: usize(sz)
 	}
 	gfx.update_image(sg_img, &tmp_sbc)
@@ -311,7 +311,7 @@ fn my_init(mut app App) {
 
 	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled       : true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
@@ -320,7 +320,7 @@ fn my_init(mut app App) {
 
 	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: .less_equal
+		compare      : .less_equal
 	}
 	pipdesc.cull_mode = .back
 	app.pip_3d = sgl.make_pipeline(&pipdesc)
@@ -381,15 +381,15 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width        : win_width
+		height       : win_height
 		create_window: true
-		window_title: '3D Cube Demo'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: my_init
-		event_fn: my_event_manager
+		window_title : '3D Cube Demo'
+		user_data    : app
+		bg_color     : bg_color
+		frame_fn     : frame
+		init_fn      : my_init
+		event_fn     : my_event_manager
 	)
 	app.gg.run()
 }

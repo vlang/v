@@ -44,16 +44,16 @@ fn init_settings() VpmSettings {
 	}
 
 	return VpmSettings{
-		is_help: '-h' in opts || '--help' in opts || 'help' in cmds
-		is_once: '--once' in opts
-		is_verbose: '-v' in opts || '--verbose' in opts
-		is_force: '-f' in opts || '--force' in opts
-		server_urls: cmdline.options(args, '--server-urls')
-		vcs: if '--hg' in opts { .hg } else { .git }
-		vmodules_path: vmodules_path
-		tmp_path: os.join_path(os.vtmp_dir(), 'vpm_modules')
+		is_help              : '-h' in opts || '--help' in opts || 'help' in cmds
+		is_once              : '--once' in opts
+		is_verbose           : '-v' in opts || '--verbose' in opts
+		is_force             : '-f' in opts || '--force' in opts
+		server_urls          : cmdline.options(args, '--server-urls')
+		vcs                  : if '--hg' in opts { .hg } else { .git }
+		vmodules_path        : vmodules_path
+		tmp_path             : os.join_path(os.vtmp_dir(), 'vpm_modules')
 		no_dl_count_increment: is_ci || is_no_inc
-		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''
-		logger: logger
+		fail_on_prompt       : os.getenv('VPM_FAIL_ON_PROMPT') != ''
+		logger               : logger
 	}
 }

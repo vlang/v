@@ -14,13 +14,13 @@ pub fn unix(epoch i64) Time {
 	year, month, day := calculate_date_from_day_offset(day_offset)
 	hr, min, sec := calculate_time_from_second_offset(epoch % seconds_per_day)
 	return Time{
-		year: year
-		month: month
-		day: day
-		hour: hr
+		year  : year
+		month : month
+		day   : day
+		hour  : hr
 		minute: min
 		second: sec
-		unix: epoch
+		unix  : epoch
 	}
 }
 
@@ -47,14 +47,14 @@ pub fn unix_nanosecond(abs_unix_timestamp i64, nanosecond int) Time {
 	year, month, day := calculate_date_from_day_offset(day_offset)
 	hour_, minute_, second_ := calculate_time_from_second_offset(abs_unix_timestamp % seconds_per_day)
 	return Time{
-		year: year
-		month: month
-		day: day
-		hour: hour_
-		minute: minute_
-		second: second_
+		year      : year
+		month     : month
+		day       : day
+		hour      : hour_
+		minute    : minute_
+		second    : second_
 		nanosecond: nanosecond
-		unix: abs_unix_timestamp
+		unix      : abs_unix_timestamp
 	}
 }
 

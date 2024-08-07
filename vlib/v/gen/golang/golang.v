@@ -48,9 +48,9 @@ pub mut:
 pub fn gen(files []&ast.File, mut table ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
-		pref: pref_
+		pref : pref_
 		// is_debug: is_debug
-		out: strings.new_builder(1000)
+		out        : strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
 	for file in files {

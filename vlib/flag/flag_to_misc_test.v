@@ -114,7 +114,7 @@ fn test_long_flags() {
 fn test_flag_error_messages() {
 	// Test error for GNU long flag in .short (Posix) mode
 	if _, _ := flag.to_struct[Config](posix_and_gnu_args_with_subcmd,
-		skip: 1
+		skip : 1
 		style: .short
 	)
 	{

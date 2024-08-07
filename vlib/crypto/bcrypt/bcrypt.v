@@ -53,9 +53,9 @@ pub fn compare_hash_and_password(password []u8, hashed_password []u8) ! {
 	p.salt << `=`
 	other_hash := bcrypt(password, p.cost, p.salt) or { return error('err') }
 	mut other_p := Hashed{
-		hash: other_hash
-		salt: p.salt
-		cost: p.cost
+		hash : other_hash
+		salt : p.salt
+		cost : p.cost
 		major: p.major
 		minor: p.minor
 	}

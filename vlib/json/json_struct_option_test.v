@@ -9,7 +9,7 @@ pub mut:
 fn test_gn_struct_string() ! {
 	a := MyStruct[string]{
 		result: 'test'
-		id: 'some id'
+		id    : 'some id'
 	}
 
 	encoded_string := json.encode(a)
@@ -22,7 +22,7 @@ fn test_gn_struct_string() ! {
 fn test_gn_struct_int() ! {
 	a := MyStruct[int]{
 		result: 1
-		id: 'some id'
+		id    : 'some id'
 	}
 
 	encoded_string := json.encode(a)
@@ -35,7 +35,7 @@ fn test_gn_struct_int() ! {
 fn test_gn_struct_f64() ! {
 	a := MyStruct[f64]{
 		result: 1.2
-		id: 'some id'
+		id    : 'some id'
 	}
 
 	encoded_string := json.encode(a)

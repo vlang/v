@@ -127,7 +127,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 			// Control frames can interject other frames
 			// and need to be returned immediately
 			msg := Message{
-				opcode: OPCode(frame.opcode)
+				opcode : OPCode(frame.opcode)
 				payload: frame_payload.clone()
 			}
 			unsafe { frame_payload.free() }
@@ -137,7 +137,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 		// a fragment is allowed to have zero size payload
 		if !frame.fin {
 			ws.fragments << &Fragment{
-				data: frame_payload.clone()
+				data  : frame_payload.clone()
 				opcode: frame.opcode
 			}
 			unsafe { frame_payload.free() }
@@ -150,7 +150,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 				return err
 			}
 			msg := Message{
-				opcode: OPCode(frame.opcode)
+				opcode : OPCode(frame.opcode)
 				payload: frame_payload.clone()
 			}
 			unsafe { frame_payload.free() }
@@ -167,7 +167,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 		opcode := ws.opcode_from_fragments()
 		ws.validate_utf_8(opcode, payload)!
 		msg := Message{
-			opcode: opcode
+			opcode : opcode
 			payload: payload.clone()
 		}
 		unsafe {

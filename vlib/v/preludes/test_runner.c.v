@@ -45,7 +45,7 @@ struct VTestFileMetaInfo {
 // to fill in the .file_test_info field of the runner interface.
 fn vtest_new_filemetainfo(file string, tests int) VTestFileMetaInfo {
 	return VTestFileMetaInfo{
-		file: file
+		file : file
 		tests: tests
 	}
 }
@@ -69,9 +69,9 @@ struct VTestFnMetaInfo {
 // vtest_new_metainfo will be called once per each test function.
 fn vtest_new_metainfo(name string, mod string, file string, line_nr int) VTestFnMetaInfo {
 	return VTestFnMetaInfo{
-		name: name
-		mod: mod
-		file: file
+		name   : name
+		mod    : mod
+		file   : file
 		line_nr: line_nr
 	}
 }

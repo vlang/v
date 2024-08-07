@@ -35,8 +35,8 @@ pub mut:
 pub fn new_scanner(prefs &pref.Preferences, mode Mode) &Scanner {
 	unsafe {
 		return &Scanner{
-			pref: prefs
-			mode: mode
+			pref              : prefs
+			mode              : mode
 			skip_interpolation: mode.has(.skip_interpolation)
 		}
 	}

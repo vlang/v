@@ -26,8 +26,8 @@ pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	}
 	return StopWatch{
 		elapsed: 0
-		start: initial
-		end: 0
+		start  : initial
+		end    : 0
 	}
 }
 

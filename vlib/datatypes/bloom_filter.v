@@ -39,10 +39,10 @@ fn (b &BloomFilter[T]) free() {
 // new_bloom_filter_fast creates a new bloom_filter. `table_size` is 16384, and `num_functions` is 4.
 pub fn new_bloom_filter_fast[T](hash_func fn (T) u32) &BloomFilter[T] {
 	return &BloomFilter[T]{
-		hash_func: hash_func
-		table_size: 16384
+		hash_func    : hash_func
+		table_size   : 16384
 		num_functions: 4
-		table: []u8{len: (16384 + 7) / 8}
+		table        : []u8{len: (16384 + 7) / 8}
 	}
 }
 
@@ -56,10 +56,10 @@ pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions i
 	}
 
 	return &BloomFilter[T]{
-		hash_func: hash_func
-		table_size: table_size
+		hash_func    : hash_func
+		table_size   : table_size
 		num_functions: num_functions
-		table: []u8{len: (table_size + 7) / 8}
+		table        : []u8{len: (table_size + 7) / 8}
 	}
 }
 
@@ -99,10 +99,10 @@ pub fn (l &BloomFilter[T]) @union(r &BloomFilter[T]) !&BloomFilter[T] {
 	}
 
 	mut new_f := BloomFilter[T]{
-		hash_func: l.hash_func
-		table_size: l.table_size
+		hash_func    : l.hash_func
+		table_size   : l.table_size
 		num_functions: l.num_functions
-		table: []u8{len: (l.table_size + 7) / 8}
+		table        : []u8{len: (l.table_size + 7) / 8}
 	}
 	for i in 0 .. l.table.len {
 		new_f.table[i] = l.table[i] | r.table[i]
@@ -119,10 +119,10 @@ pub fn (l &BloomFilter[T]) intersection(r &BloomFilter[T]) !&BloomFilter[T] {
 	}
 
 	mut new_f := BloomFilter[T]{
-		hash_func: l.hash_func
-		table_size: l.table_size
+		hash_func    : l.hash_func
+		table_size   : l.table_size
 		num_functions: l.num_functions
-		table: []u8{len: (l.table_size + 7) / 8}
+		table        : []u8{len: (l.table_size + 7) / 8}
 	}
 	for i in 0 .. l.table.len {
 		new_f.table[i] = l.table[i] & r.table[i]

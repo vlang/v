@@ -288,10 +288,10 @@ fn raw_callback(fd int, events int, context voidptr) {
 			response_buffer += fd * pv.max_write // pointer magic
 		}
 		mut res := picohttpparser.Response{
-			fd: fd
+			fd       : fd
 			buf_start: response_buffer
-			buf: response_buffer
-			date: pv.date.str
+			buf      : response_buffer
+			date     : pv.date.str
 		}
 
 		for {
@@ -356,15 +356,15 @@ pub fn new(config Config) !&Picoev {
 	}
 
 	mut pv := &Picoev{
-		num_loops: 1
-		cb: config.cb
+		num_loops     : 1
+		cb            : config.cb
 		error_callback: config.err_cb
-		raw_callback: config.raw_cb
-		user_data: config.user_data
-		timeout_secs: config.timeout_secs
-		max_headers: config.max_headers
-		max_read: config.max_read
-		max_write: config.max_write
+		raw_callback  : config.raw_cb
+		user_data     : config.user_data
+		timeout_secs  : config.timeout_secs
+		max_headers   : config.max_headers
+		max_read      : config.max_read
+		max_write     : config.max_write
 	}
 
 	if isnil(pv.raw_callback) {

@@ -44,8 +44,8 @@ pub fn connect_stream(socket_path string) !&StreamConn {
 	s.connect(socket_path)!
 
 	return &StreamConn{
-		sock: s
-		read_timeout: unix.unix_default_read_timeout
+		sock         : s
+		read_timeout : unix.unix_default_read_timeout
 		write_timeout: unix.unix_default_write_timeout
 	}
 }
@@ -277,9 +277,9 @@ pub fn listen_stream(socket_path string, options ListenOptions) !&StreamListener
 	net.socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${socket_path} failed')!
 	net.socket_error_message(C.listen(s.handle, options.backlog), 'listening on ${socket_path} with maximum backlog pending queue of ${options.backlog}, failed')!
 	return &StreamListener{
-		sock: s
+		sock           : s
 		accept_deadline: no_deadline
-		accept_timeout: infinite_timeout
+		accept_timeout : infinite_timeout
 	}
 }
 
@@ -307,8 +307,8 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 	}
 
 	mut c := &StreamConn{
-		handle: new_handle
-		read_timeout: unix.unix_default_read_timeout
+		handle       : new_handle
+		read_timeout : unix.unix_default_read_timeout
 		write_timeout: unix.unix_default_write_timeout
 	}
 	c.sock = stream_socket_from_handle(c.handle)!
@@ -387,7 +387,7 @@ fn new_stream_socket(socket_path string) !StreamSocket {
 		net.socket_error(C.socket(.unix, .tcp, 0))!
 	}
 	mut s := StreamSocket{
-		handle: handle
+		handle     : handle
 		socket_path: socket_path
 	}
 

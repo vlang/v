@@ -148,12 +148,12 @@ fn test_option_struct_fields_and_none() {
 	assert res1.len == 1
 	assert res1[0] == Foo{
 		id: 1
-		a: ''
-		c: none
-		d: 'hi'
-		e: 0
-		g: none
-		h: 55
+		a : ''
+		c : none
+		d : 'hi'
+		e : 0
+		g : none
+		h : 55
 	}
 
 	sql db {
@@ -175,12 +175,12 @@ fn test_option_struct_fields_and_none() {
 	assert res2.len == 1
 	assert res2[0] == Foo{
 		id: 1
-		a: ''
-		c: 'yo'
-		d: none
-		e: 0
-		g: 44
-		h: none
+		a : ''
+		c : 'yo'
+		d : none
+		e : 0
+		g : 44
+		h : none
 	}
 
 	assert sql db {
@@ -254,11 +254,11 @@ fn test_inserting_passed_optionals() {
 	entry1 := Bar{}
 	entry2 := Bar{
 		name: 'Alice'
-		age: 55
+		age : 55
 	}
 	entry3 := Bar{
 		name: 'Bob'
-		age: 66
+		age : 66
 	}
 	sql db {
 		create table Bar

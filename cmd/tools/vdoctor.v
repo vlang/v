@@ -51,7 +51,7 @@ fn (mut a App) collect_info() {
 	if os_kind == 'windows' {
 		arch_details << a.cmd(
 			command: 'wmic cpu get name /format:table'
-			line: 1
+			line   : 1
 		)
 	}
 	//
@@ -87,7 +87,7 @@ fn (mut a App) collect_info() {
 	} else if os_kind == 'windows' {
 		wmic_info := a.cmd(
 			command: 'wmic os get * /format:value'
-			line: -1
+			line   : -1
 		)
 		p := a.parse(wmic_info, '=')
 		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']

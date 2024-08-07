@@ -111,10 +111,10 @@ pub:
 
 pub fn new_pool(table &ast.Table, opts PoolOpts) Pool {
 	return Pool{
-		table: table
+		table          : table
 		null_terminated: opts.null_terminated
-		intern_strings: opts.intern_strings
-		store_relocs: opts.store_relocs
+		intern_strings : opts.intern_strings
+		store_relocs   : opts.store_relocs
 	}
 }
 
@@ -426,7 +426,7 @@ fn (mut p Pool) ptr(offset int) int {
 
 	if p.store_relocs {
 		p.relocs << Reloc{
-			pos: pos
+			pos   : pos
 			offset: offset
 		}
 	}

@@ -6,43 +6,43 @@ fn test_valid_parsing() ! {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'CATALOG'
+			name    : 'CATALOG'
 			children: [
 				xml.XMLNode{
-					name: 'CD'
+					name    : 'CD'
 					children: [
 						xml.XMLNode{
-							name: 'TITLE'
+							name    : 'TITLE'
 							children: [
 								'Empire Burlesque',
 							]
 						},
 						xml.XMLNode{
-							name: 'ARTIST'
+							name    : 'ARTIST'
 							children: [
 								'Bob Dylan',
 							]
 						},
 						xml.XMLNode{
-							name: 'COUNTRY'
+							name    : 'COUNTRY'
 							children: [
 								'USA',
 							]
 						},
 						xml.XMLNode{
-							name: 'COMPANY'
+							name    : 'COMPANY'
 							children: [
 								'Columbia',
 							]
 						},
 						xml.XMLNode{
-							name: 'PRICE'
+							name    : 'PRICE'
 							children: [
 								'10.90',
 							]
 						},
 						xml.XMLNode{
-							name: 'YEAR'
+							name    : 'YEAR'
 							children: [
 								'1985',
 							]
@@ -50,40 +50,40 @@ fn test_valid_parsing() ! {
 					]
 				},
 				xml.XMLNode{
-					name: 'CD'
+					name    : 'CD'
 					children: [
 						xml.XMLNode{
-							name: 'TITLE'
+							name    : 'TITLE'
 							children: [
 								'Hide your heart',
 							]
 						},
 						xml.XMLNode{
-							name: 'ARTIST'
+							name    : 'ARTIST'
 							children: [
 								'Bonnie Tyler',
 							]
 						},
 						xml.XMLNode{
-							name: 'COUNTRY'
+							name    : 'COUNTRY'
 							children: [
 								'UK',
 							]
 						},
 						xml.XMLNode{
-							name: 'COMPANY'
+							name    : 'COMPANY'
 							children: [
 								'CBS Records',
 							]
 						},
 						xml.XMLNode{
-							name: 'PRICE'
+							name    : 'PRICE'
 							children: [
 								'9.90',
 							]
 						},
 						xml.XMLNode{
-							name: 'YEAR'
+							name    : 'YEAR'
 							children: [
 								'1988',
 							]
@@ -91,40 +91,40 @@ fn test_valid_parsing() ! {
 					]
 				},
 				xml.XMLNode{
-					name: 'CD'
+					name    : 'CD'
 					children: [
 						xml.XMLNode{
-							name: 'TITLE'
+							name    : 'TITLE'
 							children: [
 								'Greatest Hits',
 							]
 						},
 						xml.XMLNode{
-							name: 'ARTIST'
+							name    : 'ARTIST'
 							children: [
 								'Dolly Parton',
 							]
 						},
 						xml.XMLNode{
-							name: 'COUNTRY'
+							name    : 'COUNTRY'
 							children: [
 								'USA',
 							]
 						},
 						xml.XMLNode{
-							name: 'COMPANY'
+							name    : 'COMPANY'
 							children: [
 								'RCA',
 							]
 						},
 						xml.XMLNode{
-							name: 'PRICE'
+							name    : 'PRICE'
 							children: [
 								'9.90',
 							]
 						},
 						xml.XMLNode{
-							name: 'YEAR'
+							name    : 'YEAR'
 							children: [
 								'1982',
 							]
@@ -132,40 +132,40 @@ fn test_valid_parsing() ! {
 					]
 				},
 				xml.XMLNode{
-					name: 'CD'
+					name    : 'CD'
 					children: [
 						xml.XMLNode{
-							name: 'TITLE'
+							name    : 'TITLE'
 							children: [
 								'Still got the blues',
 							]
 						},
 						xml.XMLNode{
-							name: 'ARTIST'
+							name    : 'ARTIST'
 							children: [
 								'Gary Moore',
 							]
 						},
 						xml.XMLNode{
-							name: 'COUNTRY'
+							name    : 'COUNTRY'
 							children: [
 								'UK',
 							]
 						},
 						xml.XMLNode{
-							name: 'COMPANY'
+							name    : 'COMPANY'
 							children: [
 								'Virgin records',
 							]
 						},
 						xml.XMLNode{
-							name: 'PRICE'
+							name    : 'PRICE'
 							children: [
 								'10.20',
 							]
 						},
 						xml.XMLNode{
-							name: 'YEAR'
+							name    : 'YEAR'
 							children: [
 								'1990',
 							]

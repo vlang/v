@@ -111,7 +111,7 @@ fn test_cache_handler() {
 		}
 		dtmi.id_to_handlered = 1
 		dtmi.ch_cache_handler <- TemplateCache{
-			id: 1
+			id           : 1
 			cache_request: .delete
 		}
 		dtmi.sync_cache()
@@ -136,10 +136,10 @@ fn init_dtm(b bool, m int) &DynamicTemplateManager {
 	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
 
 	init_params := DynamicTemplateManagerInitialisationParams{
-		active_cache_server: b
+		active_cache_server : b
 		max_size_data_in_mem: m
-		test_cache_dir: vcache_path
-		test_template_dir: templates_path
+		test_cache_dir      : vcache_path
+		test_template_dir   : templates_path
 	}
 
 	dtm := initialize(init_params)

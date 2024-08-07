@@ -11,7 +11,7 @@ mut:
 pub fn new(fileName string) FileLock {
 	return FileLock{
 		name: fileName
-		fd: -1
+		fd  : -1
 	}
 }
 

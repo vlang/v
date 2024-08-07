@@ -294,8 +294,8 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 			continue
 		}
 		replacements << StringifyModReplacement{
-			mod: mod
-			alias: alias
+			mod   : mod
+			alias : alias
 			weight: mod.count('.') * 100 + mod.len
 		}
 	}

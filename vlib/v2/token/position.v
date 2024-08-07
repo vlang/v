@@ -174,9 +174,9 @@ pub fn (f &File) position(pos Pos) Position {
 	line, column := f.find_line_and_column(offset)
 	return Position{
 		filename: f.name
-		offset: offset
-		line: line
-		column: column
+		offset  : offset
+		line    : line
+		column  : column
 	}
 }
 

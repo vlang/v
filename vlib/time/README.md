@@ -25,12 +25,12 @@ println(time.now())
 import time
 
 const time_to_test = time.Time{
-	year: 1980
-	month: 7
-	day: 11
-	hour: 21
-	minute: 23
-	second: 42
+	year      : 1980
+	month     : 7
+	day       : 11
+	hour      : 21
+	minute    : 23
+	second    : 42
 	nanosecond: 123456789
 }
 

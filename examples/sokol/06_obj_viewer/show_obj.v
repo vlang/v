@@ -90,9 +90,9 @@ fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) obj.Ma
 	mvp := mv * view_proj // model view projection
 
 	return obj.Mats{
-		mv: mv
+		mv : mv
 		mvp: mvp
-		nm: nm
+		nm : nm
 	}
 }
 
@@ -119,9 +119,9 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	mats := calc_matrices(dw, dh, rot[0], rot[1], zoom_scale, model_pos)
 
 	mut tmp_vs_param := obj.Tmp_vs_param{
-		mv: mats.mv
+		mv : mats.mv
 		mvp: mats.mvp
-		nm: mats.nm
+		nm : mats.nm
 	}
 
 	// *** fragment shader uniforms ***
@@ -135,9 +135,9 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 
 	sd := obj.Shader_data{
 		vs_data: unsafe { &tmp_vs_param }
-		vs_len: int(sizeof(tmp_vs_param))
+		vs_len : int(sizeof(tmp_vs_param))
 		fs_data: unsafe { &tmp_fs_params }
-		fs_len: int(sizeof(tmp_fs_params))
+		fs_len : int(sizeof(tmp_fs_params))
 	}
 
 	return app.obj_part.bind_and_draw_all(sd)
@@ -292,16 +292,16 @@ fn main() {
 	}
 
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width        : win_width
+		height       : win_height
 		create_window: true
-		window_title: 'V Wavefront OBJ viewer - Use the mouse wheel to zoom'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: my_init
-		cleanup_fn: cleanup
-		event_fn: my_event_manager
+		window_title : 'V Wavefront OBJ viewer - Use the mouse wheel to zoom'
+		user_data    : app
+		bg_color     : bg_color
+		frame_fn     : frame
+		init_fn      : my_init
+		cleanup_fn   : cleanup
+		event_fn     : my_event_manager
 	)
 
 	app.ticks = time.ticks()

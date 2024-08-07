@@ -64,8 +64,8 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	// Note: the current approach of filtering the gcboehm keys may interfere with (potential) other gc modes.
 	original_vopts := deduped_opts_keys.join('|')
 	return CacheManager{
-		basepath: vcache_basepath
-		vopts: original_vopts
+		basepath      : vcache_basepath
+		vopts         : original_vopts
 		original_vopts: original_vopts
 	}
 }

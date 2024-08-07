@@ -319,7 +319,7 @@ pub fn (hd HeapData) to_primeset() PrimeSet {
 
 pub fn (hd HeapData) from_primeset(p PrimeSet) DataI {
 	return DataI(HeapData{
-		r: bi_from_decimal_string(p.r)
+		r : bi_from_decimal_string(p.r)
 		aa: bi_from_decimal_string(p.a)
 		bb: bi_from_decimal_string(p.b)
 	})
@@ -342,7 +342,7 @@ pub fn (sd StackData) to_primeset() PrimeSet {
 
 pub fn (sd StackData) from_primeset(p PrimeSet) DataI {
 	return DataI(StackData{
-		r: bi_from_decimal_string(p.r)
+		r : bi_from_decimal_string(p.r)
 		aa: bi_from_decimal_string(p.a)
 		bb: bi_from_decimal_string(p.b)
 	})

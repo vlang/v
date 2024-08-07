@@ -67,9 +67,9 @@ fn assert_parse_invalid_flag(mut t ast.Table, flag string) {
 
 fn make_flag(os string, name string, value string) cflag.CFlag {
 	return cflag.CFlag{
-		mod: module_name
-		os: os
-		name: name
+		mod  : module_name
+		os   : os
+		name : name
 		value: value
 	}
 }

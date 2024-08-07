@@ -21,7 +21,7 @@ mut:
 
 fn main() {
 	mut person := Person{
-		name: 'Bob'
+		name    : 'Bob'
 		birthday: time.now()
 	}
 	person_json := json2.encode[Person](person)

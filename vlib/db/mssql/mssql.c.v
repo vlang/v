@@ -74,7 +74,7 @@ pub fn (mut conn Connection) query(q string) !Result {
 	raw_rows := hstmt.read_rows()!
 
 	mut res := Result{
-		rows: []Row{}
+		rows             : []Row{}
 		num_rows_affected: affected
 	}
 

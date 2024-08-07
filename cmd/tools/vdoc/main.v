@@ -55,7 +55,7 @@ fn main() {
 	}
 	// Config is immutable from this point on
 	mut vd := &VDoc{
-		cfg: cfg
+		cfg     : cfg
 		manifest: vmod.Manifest{}
 	}
 	vd.vprintln('Setting output type to "${cfg.output_type}"')

@@ -27,7 +27,7 @@ fn (item PossOwner) check() ?int {
 
 fn somefun() ?int {
 	t := PossOwner{
-		name: 'x'
+		name   : 'x'
 		details: Poss1{}
 	}
 
