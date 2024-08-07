@@ -4839,9 +4839,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 				return
 			}
 		}
-		if node.name == 'map_fn' {
-			println('>1 ${node}')
-		}
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
@@ -4913,9 +4910,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write(')')
 				}
 			}
-			if node.name == 'map_fn' {
-				println('>2 ${node}')
-			}
 			return
 		}
 		if !g.is_assign_lhs && node.info.share == .shared_t {
@@ -4924,9 +4918,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		is_option = node.info.is_option || (node.obj is ast.Var && node.obj.typ.has_flag(.option))
 		if node.obj is ast.Var {
-			if node.name == 'map_fn' {
-				println('>3 ${node}')
-			}
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {
