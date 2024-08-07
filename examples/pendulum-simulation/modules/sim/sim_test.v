@@ -1,12 +1,12 @@
 module sim
 
 const sim_test_mock_params = SimParams{
-	rope_length: 0.25
-	bearing_mass: 0.03
-	magnet_spacing: 0.05
-	magnet_height: 0.03
+	rope_length    : 0.25
+	bearing_mass   : 0.03
+	magnet_spacing : 0.05
+	magnet_height  : 0.03
 	magnet_strength: 10
-	gravity: 4.9
+	gravity        : 4.9
 }
 const sim_test_mock_state = SimState{
 	position: vector(

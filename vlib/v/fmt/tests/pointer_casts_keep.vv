@@ -32,7 +32,7 @@ fn main() {
 	}
 	ss := &Struct{
 		name: 'abc'
-		x: 123
+		x   : 123
 	}
 	dump(ss)
 	pss := voidptr(ss)

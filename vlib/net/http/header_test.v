@@ -2,7 +2,7 @@ module http
 
 fn test_header_new() {
 	h := new_header(HeaderConfig{ key: .accept, value: 'nothing' },
-		key: .expires
+		key  : .expires
 		value: 'yesterday'
 	)
 	assert h.contains(.accept)
@@ -50,7 +50,7 @@ fn test_header_get() {
 
 fn test_header_set() {
 	mut h := new_header(HeaderConfig{ key: .dnt, value: 'one' },
-		key: .dnt
+		key  : .dnt
 		value: 'two'
 	)
 	assert h.values(.dnt) == ['one', 'two']
@@ -60,7 +60,7 @@ fn test_header_set() {
 
 fn test_header_delete() {
 	mut h := new_header(HeaderConfig{ key: .dnt, value: 'one' },
-		key: .dnt
+		key  : .dnt
 		value: 'two'
 	)
 	assert h.values(.dnt) == ['one', 'two']

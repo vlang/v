@@ -29,7 +29,7 @@ fn (e MyError) code() int {
 // An example function that returns a custom error.
 fn foo() !string {
 	return MyError{
-		msg: 'foo'
+		msg : 'foo'
 		blah: 'world'
 	}
 }

@@ -24,7 +24,7 @@ pub struct User {
 
 const default_user = User{
 	name: 'john'
-	age: 99
+	age : 99
 }
 const default_user_encoded = json.encode(default_user)
 

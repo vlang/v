@@ -38,7 +38,7 @@ fn main() {
 	spawn exit_after_timeout(timeout)
 
 	mut app := &App{
-		timeout: timeout
+		timeout    : timeout
 		controllers: [
 			vweb.controller('/admin', &Admin{}),
 			vweb.controller('/other', &Other{}),

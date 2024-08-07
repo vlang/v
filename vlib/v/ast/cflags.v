@@ -74,9 +74,9 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 			return error('bad #flag `${flag_orig}`: missing ${hint} after `${name}`')
 		}
 		cf := cflag.CFlag{
-			mod: mod
-			os: fos
-			name: name
+			mod  : mod
+			os   : fos
+			name : name
 			value: value
 		}
 		if !t.has_cflag(cf) {

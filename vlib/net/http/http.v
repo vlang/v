@@ -49,8 +49,8 @@ pub fn new_request(method Method, url_ string, data string) Request {
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method
-		url: url
-		data: data
+		url   : url
+		data  : data
 		/*
 		headers: {
 			'Accept-Encoding': 'compress'
@@ -68,8 +68,8 @@ pub fn get(url string) !Response {
 pub fn post(url string, data string) !Response {
 	return fetch(
 		method: .post
-		url: url
-		data: data
+		url   : url
+		data  : data
 		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
@@ -78,8 +78,8 @@ pub fn post(url string, data string) !Response {
 pub fn post_json(url string, data string) !Response {
 	return fetch(
 		method: .post
-		url: url
-		data: data
+		url   : url
+		data  : data
 		header: new_header(key: .content_type, value: 'application/json')
 	)
 }
@@ -89,18 +89,18 @@ pub fn post_json(url string, data string) !Response {
 pub fn post_form(url string, data map[string]string) !Response {
 	return fetch(
 		method: .post
-		url: url
+		url   : url
 		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
-		data: url_encode_form_data(data)
+		data  : url_encode_form_data(data)
 	)
 }
 
 pub fn post_form_with_cookies(url string, data map[string]string, cookies map[string]string) !Response {
 	return fetch(
-		method: .post
-		url: url
-		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
-		data: url_encode_form_data(data)
+		method : .post
+		url    : url
+		header : new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
+		data   : url_encode_form_data(data)
 		cookies: cookies
 	)
 }
@@ -122,9 +122,9 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
 	return fetch(
 		method: .post
-		url: url
+		url   : url
 		header: header
-		data: body
+		data  : body
 	)
 }
 
@@ -132,8 +132,8 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 pub fn put(url string, data string) !Response {
 	return fetch(
 		method: .put
-		url: url
-		data: data
+		url   : url
+		data  : data
 		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
@@ -142,8 +142,8 @@ pub fn put(url string, data string) !Response {
 pub fn patch(url string, data string) !Response {
 	return fetch(
 		method: .patch
-		url: url
-		data: data
+		url   : url
+		data  : data
 		header: new_header(key: .content_type, value: http.content_type_default)
 	)
 }
@@ -167,28 +167,28 @@ pub fn prepare(config FetchConfig) !Request {
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url ${config.url}') }
 	req := Request{
-		method: config.method
-		url: url
-		data: config.data
-		header: config.header
-		cookies: config.cookies
-		user_agent: config.user_agent
-		user_ptr: config.user_ptr
-		verbose: config.verbose
-		validate: config.validate
-		verify: config.verify
-		cert: config.cert
-		proxy: config.proxy
-		cert_key: config.cert_key
+		method                : config.method
+		url                   : url
+		data                  : config.data
+		header                : config.header
+		cookies               : config.cookies
+		user_agent            : config.user_agent
+		user_ptr              : config.user_ptr
+		verbose               : config.verbose
+		validate              : config.validate
+		verify                : config.verify
+		cert                  : config.cert
+		proxy                 : config.proxy
+		cert_key              : config.cert_key
 		in_memory_verification: config.in_memory_verification
-		allow_redirect: config.allow_redirect
-		max_retries: config.max_retries
-		on_progress: config.on_progress
-		on_progress_body: config.on_progress_body
-		on_redirect: config.on_redirect
-		on_finish: config.on_finish
-		stop_copying_limit: config.stop_copying_limit
-		stop_receiving_limit: config.stop_receiving_limit
+		allow_redirect        : config.allow_redirect
+		max_retries           : config.max_retries
+		on_progress           : config.on_progress
+		on_progress_body      : config.on_progress_body
+		on_redirect           : config.on_redirect
+		on_finish             : config.on_finish
+		stop_copying_limit    : config.stop_copying_limit
+		stop_receiving_limit  : config.stop_receiving_limit
 	}
 	return req
 }

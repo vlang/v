@@ -35,51 +35,51 @@ pub const headers_close = http.new_custom_header_from_map({
 
 pub const http_302 = http.new_response(
 	status: .found
-	body: '302 Found'
+	body  : '302 Found'
 	header: headers_close
 )
 
 pub const http_400 = http.new_response(
 	status: .bad_request
-	body: '400 Bad Request'
+	body  : '400 Bad Request'
 	header: http.new_header(
-		key: .content_type
+		key  : .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 
 pub const http_404 = http.new_response(
 	status: .not_found
-	body: '404 Not Found'
+	body  : '404 Not Found'
 	header: http.new_header(
-		key: .content_type
+		key  : .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 
 pub const http_408 = http.new_response(
 	status: .request_timeout
-	body: '408 Request Timeout'
+	body  : '408 Request Timeout'
 	header: http.new_header(
-		key: .content_type
+		key  : .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 
 pub const http_413 = http.new_response(
 	status: .request_entity_too_large
-	body: '413 Request entity is too large'
+	body  : '413 Request entity is too large'
 	header: http.new_header(
-		key: .content_type
+		key  : .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 
 pub const http_500 = http.new_response(
 	status: .internal_server_error
-	body: '500 Internal Server Error'
+	body  : '500 Internal Server Error'
 	header: http.new_header(
-		key: .content_type
+		key  : .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
@@ -192,8 +192,8 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 
 			mut route := Route{
 				methods: http_methods
-				path: route_path
-				host: host
+				path   : route_path
+				host   : host
 			}
 
 			$if A is MiddlewareApp {
@@ -305,9 +305,9 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	flush_stdout()
 
 	mut pico_context := &RequestParams{
-		global_app: unsafe { global_app }
-		controllers: controllers_sorted
-		routes: &routes
+		global_app        : unsafe { global_app }
+		controllers       : controllers_sorted
+		routes            : &routes
 		timeout_in_seconds: params.timeout_in_seconds
 	}
 
@@ -322,12 +322,12 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	pico_context.string_responses = []StringResponse{len: picoev.max_fds}
 
 	mut pico := picoev.new(
-		port: params.port
-		raw_cb: ev_callback[A, X]
-		user_data: pico_context
+		port        : params.port
+		raw_cb      : ev_callback[A, X]
+		user_data   : pico_context
 		timeout_secs: params.timeout_in_seconds
-		family: params.family
-		host: params.host
+		family      : params.family
+		host        : params.host
 	)!
 
 	$if A is BeforeAcceptApp {
@@ -379,8 +379,8 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 
 fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock       : net.tcp_socket_from_handle_raw(fd)
+		handle     : fd
 		is_blocking: false
 	}
 
@@ -409,8 +409,8 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		}
 
 		mut conn := &net.TcpConn{
-			sock: net.tcp_socket_from_handle_raw(fd)
-			handle: fd
+			sock       : net.tcp_socket_from_handle_raw(fd)
+			handle     : fd
 			is_blocking: false
 		}
 
@@ -445,8 +445,8 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock       : net.tcp_socket_from_handle_raw(fd)
+		handle     : fd
 		is_blocking: false
 	}
 
@@ -475,8 +475,8 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 @[direct_array_access; manualfree]
 fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock       : net.tcp_socket_from_handle_raw(fd)
+		handle     : fd
 		is_blocking: false
 	}
 
@@ -553,9 +553,9 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		if (n == 0 && params.idx[fd] != 0) || params.idx[fd] + n > content_length.int() {
 			fast_send_resp(mut conn, http.new_response(
 				status: .bad_request
-				body: 'Mismatch of body length and Content-Length header'
+				body  : 'Mismatch of body length and Content-Length header'
 				header: http.new_header(
-					key: .content_type
+					key  : .content_type
 					value: 'text/plain'
 				).join(vweb.headers_close)
 			)) or {}
@@ -700,12 +700,12 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 
 	// Create Context with request data
 	mut ctx := &Context{
-		req: req
+		req           : req
 		page_gen_start: page_gen_start
-		conn: conn
-		query: query
-		form: form
-		files: files
+		conn          : conn
+		query         : query
+		form          : form
+		files         : files
 	}
 
 	if connection_header := req.header.get(.connection) {

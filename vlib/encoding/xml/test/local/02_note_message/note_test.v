@@ -6,28 +6,28 @@ fn test_valid_parsing() ! {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'note'
+			name    : 'note'
 			children: [
 				xml.XMLNode{
-					name: 'to'
+					name    : 'to'
 					children: [
 						'Tove',
 					]
 				},
 				xml.XMLNode{
-					name: 'from'
+					name    : 'from'
 					children: [
 						'Jani',
 					]
 				},
 				xml.XMLNode{
-					name: 'heading'
+					name    : 'heading'
 					children: [
 						'Reminder',
 					]
 				},
 				xml.XMLNode{
-					name: 'body'
+					name    : 'body'
 					children: [
 						"Don't forget me this weekend!",
 					]

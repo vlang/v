@@ -58,7 +58,7 @@ fn test_return_cache_info_isexistent() {
 	path_template := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
 	lock dtmi.template_caches {
 		dtmi.template_caches << TemplateCache{
-			id: 1
+			id  : 1
 			path: path_template
 		}
 	}
@@ -72,22 +72,22 @@ fn test_return_cache_info_isexistent() {
 	lock dtmi.template_caches {
 		dtmi.template_caches[0].id_redirection = 2
 		dtmi.template_caches << TemplateCache{
-			id: 2
-			path: path_template
+			id            : 2
+			path          : path_template
 			id_redirection: 3
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 3
-			path: path_template
+			id            : 3
+			path          : path_template
 			id_redirection: 4
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 4
-			path: path_template
+			id            : 4
+			path          : path_template
 			id_redirection: 5
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 5
+			id  : 5
 			path: path_template
 		}
 	}
@@ -160,49 +160,49 @@ fn test_chandler_prevent_cache_duplicate_request() {
 
 	lock dtmi.template_caches {
 		dtmi.template_caches << TemplateCache{
-			id: 1
-			path: temp_html_file
+			id           : 1
+			path         : temp_html_file
 			cache_request: .new
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 2
-			path: temp_html_file
-			cache_request: .update
+			id               : 2
+			path             : temp_html_file
+			cache_request    : .update
 			last_template_mod: i64(1)
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 3
-			path: temp_html_file
-			cache_request: .exp_update
+			id               : 3
+			path             : temp_html_file
+			cache_request    : .exp_update
 			last_template_mod: i64(1)
-			generate_at: i64(100)
+			generate_at      : i64(100)
 		}
 		dtmi.template_caches << TemplateCache{
-			id: 4
+			id           : 4
 			cache_request: .delete
 		}
 	}
 	new_cache := TemplateCache{
-		id: 5
-		path: temp_html_file
+		id           : 5
+		path         : temp_html_file
 		cache_request: .new
 	}
 	update_cache := TemplateCache{
-		id: 6
-		path: temp_html_file
-		cache_request: .update
+		id               : 6
+		path             : temp_html_file
+		cache_request    : .update
 		last_template_mod: i64(1)
 	}
 	exp_update_cache := TemplateCache{
-		id: 7
-		path: temp_html_file
-		cache_request: .exp_update
-		last_template_mod: i64(1)
-		generate_at: i64(10)
+		id                    : 7
+		path                  : temp_html_file
+		cache_request         : .exp_update
+		last_template_mod     : i64(1)
+		generate_at           : i64(10)
 		cache_delay_expiration: i64(10)
 	}
 	delete_cache := TemplateCache{
-		id: 4
+		id           : 4
 		cache_request: .delete
 	}
 	mut is_duplicate := dtmi.chandler_prevent_cache_duplicate_request(&new_cache)
@@ -226,18 +226,18 @@ fn test_chandler_remaining_cache_template_used() {
 	mut dtmi := init_dtm(false, 0)
 	lock dtmi.nbr_of_remaining_template_request {
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
-			id: 1
+			id                      : 1
 			nbr_of_remaining_request: 0
 		}
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
-			id: 2
+			id                      : 2
 			nbr_of_remaining_request: 1
-			need_to_delete: true
+			need_to_delete          : true
 		}
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
-			id: 3
+			id                      : 3
 			nbr_of_remaining_request: 0
-			need_to_delete: true
+			need_to_delete          : true
 		}
 	}
 	mut can_delete := dtmi.chandler_remaining_cache_template_used(CacheRequest.update,
@@ -326,9 +326,9 @@ fn init_dtm(b bool, m int) &DynamicTemplateManager {
 	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
 
 	init_params := DynamicTemplateManagerInitialisationParams{
-		active_cache_server: b
+		active_cache_server : b
 		max_size_data_in_mem: m
-		test_template_dir: templates_path
+		test_template_dir   : templates_path
 	}
 
 	dtm := initialize(init_params)

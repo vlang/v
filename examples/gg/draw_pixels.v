@@ -28,12 +28,12 @@ fn main() {
 		pixels: pixels
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
-		width: 100
-		height: 100
+		bg_color    : gx.rgb(174, 198, 255)
+		width       : 100
+		height      : 100
 		window_title: 'Set Pixels'
-		frame_fn: frame
-		user_data: app
+		frame_fn    : frame
+		user_data   : app
 	)
 	app.gg.run()
 }

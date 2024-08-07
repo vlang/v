@@ -60,9 +60,9 @@ mut:
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {
 	return &Checker{
-		pref: unsafe { prefs }
+		pref    : unsafe { prefs }
 		file_set: unsafe { file_set }
-		env: unsafe { env }
+		env     : unsafe { env }
 	}
 }
 
@@ -235,7 +235,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			for field in decl.fields {
 				// c.log('const decl: $field.name')
 				obj := Const{
-					mod: c.mod
+					mod : c.mod
 					name: field.name
 					// typ: c.expr(field.value)
 				}
@@ -266,8 +266,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// as_type := decl.as_type !is ast.EmptyExpr { c.expr(decl.as_type) } else { Type(int_) }
 			obj := Enum{
 				is_flag: decl.attributes.has('flag')
-				name: decl.name
-				fields: fields
+				name   : decl.name
+				fields : fields
 			}
 			c.scope.insert(obj.name, Type(obj))
 		}
@@ -311,7 +311,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				for field in interface_decl.fields {
 					fields << Field{
 						name: field.name
-						typ: c.expr(field.typ)
+						typ : c.expr(field.typ)
 					}
 				}
 				if mut id := scope.lookup(interface_decl.name) {
@@ -333,7 +333,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				for field in struct_decl.fields {
 					fields << Field{
 						name: field.name
-						typ: c.expr(field.typ)
+						typ : c.expr(field.typ)
 					}
 				}
 				mut embedded := []Struct{}
@@ -501,7 +501,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				c.expected_type = expected_type_prev
 				return if is_fixed {
 					ArrayFixed{
-						len: expr.exprs.len
+						len      : expr.exprs.len
 						elem_type: first_elem_type
 					}
 				} else {
@@ -616,7 +616,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 
 			return Struct{
-				name: name
+				name          : name
 				generic_params: args
 			}
 		}
@@ -739,7 +739,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			key0_type := c.expr(expr.keys[0])
 			value0_type := c.expr(expr.vals[0])
 			return Map{
-				key_type: key0_type
+				key_type  : key0_type
 				value_type: value0_type
 			}
 		}
@@ -890,7 +890,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				}
 				ast.MapType {
 					return Map{
-						key_type: c.expr(expr.key_type)
+						key_type  : c.expr(expr.key_type)
 						value_type: c.expr(expr.value_type)
 					}
 				}
@@ -980,7 +980,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 				}
 				obj := Global{
 					name: field.name
-					typ: field_type
+					typ : field_type
 				}
 				c.scope.insert(field.name, obj)
 			}
@@ -1057,8 +1057,8 @@ fn (mut c Checker) stmt_list(stmts []ast.Stmt) {
 
 fn (mut c Checker) later(func fn (), kind DeferredKind) {
 	c.deferred << Deferred{
-		kind: kind
-		func: func
+		kind : kind
+		func : func
 		scope: c.scope
 	}
 }
@@ -1254,7 +1254,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	mut typ := Type(c.fn_type(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes)))
 	obj := Fn{
 		name: decl.name
-		typ: typ
+		typ : typ
 	}
 	// TODO:
 	if decl.is_method {
@@ -1473,13 +1473,13 @@ fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexE
 	// expr_type := c.expr(expr.expr)
 	if lhs_type is FnType {
 		return ast.GenericArgs{
-			lhs: expr.lhs
+			lhs : expr.lhs
 			args: [expr.expr]
 		}
 	} else {
 		// c.unwrap_lhs_expr(ast.IndexExpr{lhs: expr.lhs, expr: expr.expr})
 		return ast.IndexExpr{
-			lhs: expr.lhs
+			lhs : expr.lhs
 			expr: expr.expr
 		}
 	}
@@ -1490,16 +1490,16 @@ fn (mut c Checker) resolve_call_or_cast_expr(expr ast.CallOrCastExpr) ast.Expr {
 	// expr_type := c.expr(expr.expr)
 	if lhs_type is FnType {
 		return ast.CallExpr{
-			lhs: expr.lhs
+			lhs : expr.lhs
 			args: [expr.expr]
-			pos: expr.pos
+			pos : expr.pos
 		}
 	} else {
 		// c.log(expr)
 		return ast.CastExpr{
-			typ: expr.lhs
+			typ : expr.lhs
 			expr: expr.expr
-			pos: expr.pos
+			pos : expr.pos
 		}
 	}
 }
@@ -1693,7 +1693,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// c.log('#### ${expr.lhs.rhs.name}')
 			fn_ = FnType{
 				return_type: Type(Alias{
-					name: 'Duration'
+					name     : 'Duration'
 					base_type: i64_
 				})
 			}
@@ -1872,7 +1872,7 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 		params << Parameter{
 			name: param.name
 			// typ: c.expr(param.typ)
-			typ: param_type
+			typ   : param_type
 			is_mut: param.is_mut
 		}
 		c.scope.insert(param.name, param_type)
@@ -1888,11 +1888,11 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 
 	mut typ := FnType{
 		generic_params: generic_params
-		params: params
+		params        : params
 		// return_type: return_type
 		return_type: c.expr(fn_type.return_type)
 		is_variadic: is_variadic
-		attributes: attributes
+		attributes : attributes
 		// scope: c.scope
 	}
 	if generic_params.len > 0 {

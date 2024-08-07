@@ -22,16 +22,16 @@ pub mut:
 pub fn (mut q Quadtree) create(x f64, y f64, width f64, height f64, capacity int, depth int, level int) Quadtree {
 	return Quadtree{
 		perimeter: AABB{
-			x: x
-			y: y
-			width: width
+			x     : x
+			y     : y
+			width : width
 			height: height
 		}
-		capacity: capacity
-		depth: depth
-		level: level
+		capacity : capacity
+		depth    : depth
+		level    : level
 		particles: []AABB{}
-		nodes: []Quadtree{len: 0, cap: 4}
+		nodes    : []Quadtree{len: 0, cap: 4}
 	}
 }
 
@@ -114,61 +114,61 @@ fn (mut q Quadtree) split() {
 	//(0)
 	q.nodes << Quadtree{
 		perimeter: AABB{
-			x: x + child_width
-			y: y
-			width: child_width
+			x     : x + child_width
+			y     : y
+			width : child_width
 			height: child_height
 		}
-		capacity: q.capacity
-		depth: q.depth
-		level: next_level
+		capacity : q.capacity
+		depth    : q.depth
+		level    : next_level
 		particles: []AABB{}
-		nodes: []Quadtree{len: 0, cap: 4}
+		nodes    : []Quadtree{len: 0, cap: 4}
 	}
 
 	//(1)
 	q.nodes << Quadtree{
 		perimeter: AABB{
-			x: x
-			y: y
-			width: child_width
+			x     : x
+			y     : y
+			width : child_width
 			height: child_height
 		}
-		capacity: q.capacity
-		depth: q.depth
-		level: next_level
+		capacity : q.capacity
+		depth    : q.depth
+		level    : next_level
 		particles: []AABB{}
-		nodes: []Quadtree{len: 0, cap: 4}
+		nodes    : []Quadtree{len: 0, cap: 4}
 	}
 
 	//(2)
 	q.nodes << Quadtree{
 		perimeter: AABB{
-			x: x
-			y: y + child_height
-			width: child_width
+			x     : x
+			y     : y + child_height
+			width : child_width
 			height: child_height
 		}
-		capacity: q.capacity
-		depth: q.depth
-		level: next_level
+		capacity : q.capacity
+		depth    : q.depth
+		level    : next_level
 		particles: []AABB{}
-		nodes: []Quadtree{len: 0, cap: 4}
+		nodes    : []Quadtree{len: 0, cap: 4}
 	}
 
 	//(3)
 	q.nodes << Quadtree{
 		perimeter: AABB{
-			x: x + child_width
-			y: y + child_height
-			width: child_width
+			x     : x + child_width
+			y     : y + child_height
+			width : child_width
 			height: child_height
 		}
-		capacity: q.capacity
-		depth: q.depth
-		level: next_level
+		capacity : q.capacity
+		depth    : q.depth
+		level    : next_level
 		particles: []AABB{}
-		nodes: []Quadtree{len: 0, cap: 4}
+		nodes    : []Quadtree{len: 0, cap: 4}
 	}
 }
 

@@ -14,7 +14,7 @@ fn (flip Flip) exec() ! {
 
 fn test_struct_field_default_fn_type_value() {
 	fl := Flip{
-		name: 'a function'
+		name   : 'a function'
 		execute: fn () ! {
 			println('Hello, World!')
 		}

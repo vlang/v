@@ -24,7 +24,7 @@ pub fn start_in_background(http_port int, timeout time.Duration) ! {
 		max_ping: 50
 	}
 	app := &App{
-		port: http_port
+		port         : http_port
 		global_config: config
 	}
 	linfo('>> webserver: pid: ${os.getpid()}, started on http://localhost:${app.port}/ , with maximum runtime of ${timeout.milliseconds()} ms.')

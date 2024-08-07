@@ -36,7 +36,7 @@ pub fn serve(params StaticServeParams) {
 		handler: StaticHttpHandler{
 			params: nparams
 		}
-		addr: params.on
+		addr      : params.on
 		worker_num: params.workers
 	}
 	if params.shutdown_after != time.infinite {

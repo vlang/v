@@ -16,7 +16,7 @@ fn test_struct_init_and_assign() {
 	sql_.conn = Foo{
 		username: 'username'
 		password: 'abc'
-		dbname: 'test'
+		dbname  : 'test'
 	}
 	assert sql_.conn.host == '127.0.0.1'
 	assert sql_.conn.port == 3306

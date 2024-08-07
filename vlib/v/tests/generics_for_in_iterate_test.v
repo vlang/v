@@ -8,8 +8,8 @@ mut:
 pub fn new[T]() Vec[T] {
 	return Vec[T]{
 		data: unsafe { nil }
-		cap: 0
-		len: 0
+		cap : 0
+		len : 0
 	}
 }
 

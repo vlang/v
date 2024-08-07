@@ -50,7 +50,7 @@ pub fn (mut rocket Rocket) tick(mut ctx gg.Context) {
 pub fn new_rocket() Rocket {
 	return Rocket{
 		color: random_color()
-		pos: Vector{
+		pos  : Vector{
 			x: rand.f32_in_range(50, get_params().width - 50) or { 50 }
 		}
 		vel: Vector{
@@ -63,7 +63,7 @@ pub fn new_rocket() Rocket {
 pub fn (mut rocket Rocket) spawn_particle() {
 	rocket.particles << Particle{
 		color: rocket.color
-		pos: rocket.pos
+		pos  : rocket.pos
 		accel: random_vector_in_circle().mult(2)
 	}
 }

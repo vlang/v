@@ -42,10 +42,10 @@ fn test_pg_orm() {
 		return
 	}
 	mut db := pg.connect(
-		host: 'localhost'
-		user: 'postgres'
+		host    : 'localhost'
+		user    : 'postgres'
 		password: 'password'
-		dbname: 'postgres'
+		dbname  : 'postgres'
 	) or { panic(err) }
 
 	defer {
@@ -55,65 +55,65 @@ fn test_pg_orm() {
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: typeof[string]().idx
+			typ : typeof[string]().idx
 			//			is_time: false
 			default_val: ''
-			is_arr: false
-			attrs: [
+			is_arr     : false
+			attrs      : [
 				VAttribute{
-					name: 'primary'
+					name   : 'primary'
 					has_arg: false
-					arg: ''
-					kind: .plain
+					arg    : ''
+					kind   : .plain
 				},
 				VAttribute{
-					name: 'sql'
+					name   : 'sql'
 					has_arg: true
-					arg: 'serial'
-					kind: .plain
+					arg    : 'serial'
+					kind   : .plain
 				},
 			]
 		},
 		orm.TableField{
 			name: 'name'
-			typ: typeof[string]().idx
+			typ : typeof[string]().idx
 			//			is_time: false
 			default_val: ''
-			is_arr: false
-			attrs: []
+			is_arr     : false
+			attrs      : []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: typeof[i64]().idx
+			typ : typeof[i64]().idx
 			//			is_time: false
 			default_val: ''
-			is_arr: false
-			attrs: []
+			is_arr     : false
+			attrs      : []
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
+		data  : [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
 	res := db.@select(orm.SelectConfig{
-		table: 'Test'
-		is_count: false
-		has_where: true
-		has_order: false
-		order: ''
+		table     : 'Test'
+		is_count  : false
+		has_where : true
+		has_order : false
+		order     : ''
 		order_type: .asc
-		has_limit: false
-		primary: 'id'
+		has_limit : false
+		primary   : 'id'
 		has_offset: false
-		fields: ['id', 'name', 'age']
-		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		fields    : ['id', 'name', 'age']
+		types     : [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), orm.Primitive(101)]
-		types: []
-		kinds: [.eq, .eq]
+		data  : [orm.Primitive('Louis'), orm.Primitive(101)]
+		types : []
+		kinds : [.eq, .eq]
 		is_and: [true]
 	}) or { panic(err) }
 
@@ -178,7 +178,7 @@ fn test_pg_orm() {
 	}
 
 	model := TestTimeType{
-		username: 'hitalo'
+		username  : 'hitalo'
 		created_at: today
 		updated_at: today.str()
 		deleted_at: today

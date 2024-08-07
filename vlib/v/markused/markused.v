@@ -327,12 +327,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	mut walker := Walker{
-		table: table
-		files: ast_files
-		all_fns: all_fns
-		all_consts: all_consts
+		table      : table
+		files      : ast_files
+		all_fns    : all_fns
+		all_consts : all_consts
 		all_globals: all_globals
-		pref: pref_
+		pref       : pref_
 	}
 	// println( all_fns.keys() )
 	walker.mark_markused_fns() // tagged with `@[markused]`

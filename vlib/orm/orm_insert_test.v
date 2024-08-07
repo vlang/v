@@ -74,7 +74,7 @@ fn test_set_primary_value() {
 	}!
 
 	child := Child{
-		id: 10
+		id       : 10
 		parent_id: 20
 	}
 
@@ -98,7 +98,7 @@ fn test_uuid_primary_key() {
 	}!
 
 	entity := Entity{
-		uuid: uuid
+		uuid       : uuid
 		description: 'Test'
 	}
 
@@ -130,7 +130,7 @@ fn test_float_primary_key() {
 	}!
 
 	entity := EntityWithFloatPrimary{
-		id: id
+		id  : id
 		name: 'Test'
 	}
 
@@ -184,7 +184,7 @@ fn test_insert_empty_mandatory_field() {
 	}!
 
 	package := Package{
-		name: 'xml'
+		name  : 'xml'
 		author: User{}
 	}
 
@@ -232,7 +232,7 @@ fn test_insert_empty_optional_field() {
 	}!
 
 	package := Delivery{
-		name: 'bob'
+		name  : 'bob'
 		author: User{}
 	}
 
@@ -296,7 +296,7 @@ fn test_orm_insert_with_multiple_child_elements() {
 	}!
 
 	new_parent := Parent{
-		name: 'test'
+		name    : 'test'
 		children: [
 			Child{
 				name: 'Lisa'
@@ -356,7 +356,7 @@ fn test_orm_insert_with_child_element_and_no_table() {
 	}!
 
 	new_parent := Parent{
-		name: 'test'
+		name    : 'test'
 		children: [
 			Child{
 				name: 'Lisa'
@@ -377,7 +377,7 @@ fn test_orm_insert_with_child_element_and_no_table() {
 	} or { assert false }
 
 	new_parent_two := Parent{
-		name: 'retest'
+		name    : 'retest'
 		children: [
 			Child{
 				name: 'Sophia'

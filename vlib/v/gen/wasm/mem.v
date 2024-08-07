@@ -155,8 +155,8 @@ pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	wtyp := g.get_wasm_type(typ)
 
 	mut v := Var{
-		name: name
-		typ: typ
+		name      : name
+		typ       : typ
 		is_address: is_address
 	}
 
@@ -261,12 +261,12 @@ pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_glob
 
 	mut glbl := Global{
 		init: init_expr
-		v: Var{
-			name: name
-			typ: typ
+		v   : Var{
+			name      : name
+			typ       : typ
 			is_address: is_address
-			is_global: true
-			g_idx: g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ),
+			is_global : true
+			g_idx     : g.mod.new_global(g.dbg_type_name(name, typ), false, g.get_wasm_type_int_literal(typ),
 				is_mut, cexpr)
 		}
 	}
@@ -419,8 +419,8 @@ pub fn (mut g Gen) set_set(v Var) {
 	}
 
 	from := Var{
-		typ: v.typ
-		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		typ       : v.typ
+		idx       : g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 		is_address: v.is_address
 	}
 
@@ -461,8 +461,8 @@ pub fn (mut g Gen) set(v Var) {
 	}
 
 	from := Var{
-		typ: v.typ
-		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		typ       : v.typ
+		idx       : g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 		is_address: v.is_address
 	}
 
@@ -491,8 +491,8 @@ pub fn (mut g Gen) tee(v Var) {
 	}
 
 	from := Var{
-		typ: v.typ
-		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		typ       : v.typ
+		idx       : g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 		is_address: v.is_address
 	}
 
@@ -529,7 +529,7 @@ pub fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 
 	nv := Var{
 		...v
-		typ: typ
+		typ   : typ
 		offset: v.offset + offset
 	}
 
@@ -786,8 +786,8 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			}
 
 			from := Var{
-				typ: v.typ
-				idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+				typ       : v.typ
+				idx       : g.func.new_local_named(.i32_t, '__tmp<voidptr>')
 				is_address: v.is_address // true
 			}
 

@@ -159,9 +159,9 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	for c, x in lst {
 		pt := '${path}${item_list.path_sep}${x}'
 		mut item := Item{
-			path: path
-			name: x
-			container_index: in_index
+			path                : path
+			name                : x
+			container_index     : in_index
 			container_item_index: c
 		}
 		if os.is_dir(pt) {
@@ -189,8 +189,8 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	for x in folder_list {
 		pt := '${path}${item_list.path_sep}${x}'
 		item := Item{
-			path: path
-			name: x
+			path  : path
+			name  : x
 			i_type: .folder
 		}
 		item_list.lst << item
@@ -224,10 +224,10 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 		// scan folder
 		if os.is_dir(x) {
 			mut item := Item{
-				path: x
-				name: x
+				path           : x
+				name           : x
 				container_index: item_list.lst.len
-				i_type: .folder
+				i_type         : .folder
 			}
 			item_list.lst << item
 			item_list.scan_folder(x, item_list.lst.len - 1) or {
@@ -236,8 +236,8 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 			}
 		} else {
 			mut item := Item{
-				path: ''
-				name: x
+				path           : ''
+				name           : x
 				container_index: -1
 			}
 			ext := get_extension(x)

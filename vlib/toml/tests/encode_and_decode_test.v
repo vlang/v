@@ -214,14 +214,14 @@ fn test_encode_for_exotic_types() {
 
 fn test_array_encode_decode() {
 	a := Arrs{
-		strs: ['foo', 'bar']
+		strs : ['foo', 'bar']
 		bools: [true, false]
-		ints: [-1, 2]
-		i64s: [i64(-2)]
-		u64s: [u64(123)]
-		f32s: [f32(1.0), f32(2.5)]
-		f64s: [100000.5, -123.0]
-		dts: [toml.DateTime{'1979-05-27T07:32:00Z'}, toml.DateTime{'1979-05-27T07:32:00Z'}]
+		ints : [-1, 2]
+		i64s : [i64(-2)]
+		u64s : [u64(123)]
+		f32s : [f32(1.0), f32(2.5)]
+		f64s : [100000.5, -123.0]
+		dts  : [toml.DateTime{'1979-05-27T07:32:00Z'}, toml.DateTime{'1979-05-27T07:32:00Z'}]
 		dates: [toml.Date{'1979-05-27'}, toml.Date{'2022-12-31'}]
 		times: [toml.Time{'07:32:59'}, toml.Time{'17:32:04'}]
 	}

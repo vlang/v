@@ -34,8 +34,8 @@ struct Vertex_t {
 
 fn main() {
 	mut app := &App{
-		width: 800
-		height: 400
+		width      : 800
+		height     : 400
 		pass_action: gfx.create_clear_pass_action(0.0, 0.0, 0.0, 1.0) // This will create a black color as a default pass (window background color)
 	}
 	app.run()
@@ -53,15 +53,15 @@ mut:
 fn (mut a App) run() {
 	title := 'V Simple Shader Example'
 	desc := sapp.Desc{
-		width: a.width
-		height: a.height
-		user_data: a
-		init_userdata_cb: init
-		frame_userdata_cb: frame
-		window_title: title.str
-		html5_canvas_name: title.str
+		width              : a.width
+		height             : a.height
+		user_data          : a
+		init_userdata_cb   : init
+		frame_userdata_cb  : frame
+		window_title       : title.str
+		html5_canvas_name  : title.str
 		cleanup_userdata_cb: cleanup
-		sample_count: 4 // Enables MSAA (Multisample anti-aliasing) x4 on rendered output, this can be omitted.
+		sample_count       : 4 // Enables MSAA (Multisample anti-aliasing) x4 on rendered output, this can be omitted.
 	}
 	sapp.run(&desc)
 }
@@ -100,7 +100,7 @@ fn init(user_data voidptr) {
 
 	vertex_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
 	vertex_buffer_desc.data = gfx.Range{
-		ptr: vertices.data
+		ptr : vertices.data
 		size: vertex_buffer_desc.size
 	}
 

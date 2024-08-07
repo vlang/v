@@ -33,11 +33,11 @@ fn test_create_without_id_field() {
 	}!
 
 	first := Entity{
-		name: 'First'
+		name       : 'First'
 		description: 'Such wow! No `id` field'
 	}
 	second := Entity{
-		name: 'Second'
+		name       : 'Second'
 		description: 'Such wow! No `id` field again'
 	}
 

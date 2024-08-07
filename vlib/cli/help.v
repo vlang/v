@@ -10,19 +10,19 @@ const spacing = 2
 fn help_flag(with_abbrev bool) Flag {
 	sabbrev := if with_abbrev { 'h' } else { '' }
 	return Flag{
-		flag: .bool
-		name: 'help'
-		abbrev: sabbrev
+		flag       : .bool
+		name       : 'help'
+		abbrev     : sabbrev
 		description: 'Prints help information.'
 	}
 }
 
 fn help_cmd() Command {
 	return Command{
-		name: 'help'
-		usage: '<command>'
+		name       : 'help'
+		usage      : '<command>'
 		description: 'Prints help information.'
-		execute: print_help_for_command
+		execute    : print_help_for_command
 	}
 }
 

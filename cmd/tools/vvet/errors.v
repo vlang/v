@@ -41,12 +41,12 @@ fn (mut vt Vet) error(msg string, line int, fix FixKind) {
 		line_nr: line + 1
 	}
 	vt.errors << VetError{
-		message: msg
+		message  : msg
 		file_path: vt.file
-		pos: pos
-		kind: .error
-		fix: fix
-		typ: .default
+		pos      : pos
+		kind     : .error
+		fix      : fix
+		typ      : .default
 	}
 }
 
@@ -55,12 +55,12 @@ fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
 		line_nr: line + 1
 	}
 	mut w := VetError{
-		message: msg
+		message  : msg
 		file_path: vt.file
-		pos: pos
-		kind: .warning
-		fix: fix
-		typ: .default
+		pos      : pos
+		kind     : .warning
+		fix      : fix
+		typ      : .default
 	}
 	if vt.opt.is_werror {
 		w.kind = .error
@@ -75,12 +75,12 @@ fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
 		line_nr: line + 1
 	}
 	vt.notices << VetError{
-		message: msg
+		message  : msg
 		file_path: vt.file
-		pos: pos
-		kind: .notice
-		fix: fix
-		typ: .default
+		pos      : pos
+		kind     : .notice
+		fix      : fix
+		typ      : .default
 	}
 }
 

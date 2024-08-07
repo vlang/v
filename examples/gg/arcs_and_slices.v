@@ -33,14 +33,14 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width        : win_width
+		height       : win_height
 		create_window: true
-		window_title: 'Arcs and Slices'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: on_frame
-		event_fn: on_event
+		window_title : 'Arcs and Slices'
+		user_data    : app
+		bg_color     : bg_color
+		frame_fn     : on_frame
+		event_fn     : on_event
 	)
 	app.gg.run()
 }

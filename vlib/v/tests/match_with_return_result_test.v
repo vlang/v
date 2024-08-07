@@ -20,7 +20,7 @@ fn User.parse(j json2.Any) !User {
 	match j {
 		map[string]json2.Any {
 			return User{
-				id: j['id']! as int
+				id  : j['id']! as int
 				name: j['name']! as string
 			}
 		}

@@ -33,16 +33,16 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 			return ArrayInit{
 				// TODO: mod is not being set for now, we could need this in future
 				// mod: mod
-				pos: node.pos
-				typ: typ
+				pos      : node.pos
+				typ      : typ
 				elem_type: sym.info.elem_type
-				has_len: has_len
-				has_cap: has_cap
-				has_init: has_init
-				len_expr: len_expr
-				cap_expr: cap_expr
+				has_len  : has_len
+				has_cap  : has_cap
+				has_init : has_init
+				len_expr : len_expr
+				cap_expr : cap_expr
 				init_expr: init_expr
-				exprs: exprs
+				exprs    : exprs
 			}
 		}
 		Map {
@@ -55,11 +55,11 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 				vals << field.expr
 			}
 			return MapInit{
-				typ: typ
-				key_type: sym.info.key_type
+				typ       : typ
+				key_type  : sym.info.key_type
 				value_type: sym.info.value_type
-				keys: keys
-				vals: vals
+				keys      : keys
+				vals      : vals
 			}
 		}
 		else {

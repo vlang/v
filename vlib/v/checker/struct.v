@@ -687,13 +687,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.expr.pos())
 						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
 						mut right := ast.CallExpr{
-							name: 'clone'
-							left: init_field.expr
-							left_type: got_type
-							is_method: true
+							name         : 'clone'
+							left         : init_field.expr
+							left_type    : got_type
+							is_method    : true
 							receiver_type: got_type.ref()
-							return_type: got_type
-							scope: c.fn_scope
+							return_type  : got_type
+							scope        : c.fn_scope
 						}
 						got_type = c.expr(mut right)
 						node.init_fields[i].expr = right

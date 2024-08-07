@@ -51,7 +51,7 @@ pub fn (mut app App) index() vweb.Result {
 
 	// You can also modify the HTML template file directly without having to recompile the application.
 	html_content := app.dtmi.expand('index.html',
-		placeholders: &tmpl_var
+		placeholders          : &tmpl_var
 		cache_delay_expiration: dtm.cache_delay_expiration_at_min
 	)
 	return app.html(html_content)

@@ -155,15 +155,15 @@ fn main() {
 	mut app := &App{}
 
 	app.gg = gg.new_context(
-		width: design_size
-		height: design_size
+		width       : design_size
+		height      : design_size
 		window_title: 'Clock!'
-		bg_color: gx.white
-		user_data: app
-		frame_fn: on_frame
-		event_fn: on_event
-		init_fn: on_init
-		font_path: font_path
+		bg_color    : gx.white
+		user_data   : app
+		frame_fn    : on_frame
+		event_fn    : on_event
+		init_fn     : on_init
+		font_path   : font_path
 	)
 
 	app.gg.run()

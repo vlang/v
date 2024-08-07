@@ -69,23 +69,23 @@ fn parse_sequential_args() !SequentialArgs {
 	}
 
 	params := sim.sim_params(
-		rope_length: rope_length
-		bearing_mass: bearing_mass
-		magnet_spacing: magnet_spacing
-		magnet_height: magnet_height
+		rope_length    : rope_length
+		bearing_mass   : bearing_mass
+		magnet_spacing : magnet_spacing
+		magnet_height  : magnet_height
 		magnet_strength: magnet_strength
-		gravity: gravity
+		gravity        : gravity
 	)
 
 	grid := sim.new_grid_settings(
-		width: width
+		width : width
 		height: height
 	)
 
 	args := SequentialArgs{
-		params: params
+		params  : params
 		filename: filename
-		grid: grid
+		grid    : grid
 	}
 
 	sim.log('${args}')
@@ -122,24 +122,24 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	}
 
 	params := sim.sim_params(
-		rope_length: rope_length
-		bearing_mass: bearing_mass
-		magnet_spacing: magnet_spacing
-		magnet_height: magnet_height
+		rope_length    : rope_length
+		bearing_mass   : bearing_mass
+		magnet_spacing : magnet_spacing
+		magnet_height  : magnet_height
 		magnet_strength: magnet_strength
-		gravity: gravity
+		gravity        : gravity
 	)
 
 	grid := sim.new_grid_settings(
-		width: width
+		width : width
 		height: height
 	)
 
 	args := ParallelArgs{
-		params: params
+		params  : params
 		filename: filename
-		grid: grid
-		workers: get_workers(workers, extra_workers)
+		grid    : grid
+		workers : get_workers(workers, extra_workers)
 	}
 	sim.log('${args}')
 

@@ -8,7 +8,7 @@ mut:
 pub fn new_some[T](value T) Optional[T] {
 	return Optional[T]{
 		value: value
-		some: true
+		some : true
 	}
 }
 
@@ -42,7 +42,7 @@ pub struct Foo {
 pub fn (f Foo) new_some[T](value T) Optional[T] {
 	return Optional[T]{
 		value: value
-		some: true
+		some : true
 	}
 }
 
@@ -78,7 +78,7 @@ mut:
 
 pub fn iter[T](arr []T) ArrayIterator[T] {
 	return ArrayIterator[T]{
-		data: arr
+		data : arr
 		index: 11
 	}
 }
@@ -95,7 +95,7 @@ fn test_generics_with_generics_struct_string() {
 
 fn test_generics_struct_insts_to_concrete() {
 	ai := ArrayIterator[int]{
-		data: [11, 22]
+		data : [11, 22]
 		index: 22
 	}
 	println(ai)

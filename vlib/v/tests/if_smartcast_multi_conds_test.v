@@ -31,13 +31,13 @@ fn ok(mapping_a Mapping, mapping_b Mapping) bool {
 fn test_if_smartcast_multi_conds() {
 	a := Mapping{
 		source_position: SourcePosition{
-			source_line: 11
+			source_line  : 11
 			source_column: 22
 		}
 	}
 	b := Mapping{
 		source_position: SourcePosition{
-			source_line: 22
+			source_line  : 22
 			source_column: 11
 		}
 	}

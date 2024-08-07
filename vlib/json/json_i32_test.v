@@ -8,7 +8,7 @@ pub struct StructB {
 fn test_json_i32() {
 	struct_b := json.decode(StructB, '{"kind": "Int32", "value": 100}')!
 	assert struct_b == StructB{
-		kind: 'Int32'
+		kind : 'Int32'
 		value: 100
 	}
 

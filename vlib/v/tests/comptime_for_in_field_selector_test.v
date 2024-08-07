@@ -50,10 +50,10 @@ struct Foo {
 
 fn test_comptime_for_in_field_selector() {
 	bar := Foo{
-		name: 'Simon'
+		name    : 'Simon'
 		password: 'simon1234'
-		email: 'simon@gmail.com'
-		age: 15
+		email   : 'simon@gmail.com'
+		age     : 15
 	}
 	print_field_values[Foo](bar)
 }

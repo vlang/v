@@ -19,7 +19,7 @@ const default_paths = [
 
 fn main() {
 	mut dl_loader := loader.get_or_create_dynamic_lib_loader(
-		key: cfolder + '/library'
+		key  : cfolder + '/library'
 		paths: default_paths
 	)!
 	defer {

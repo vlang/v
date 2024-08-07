@@ -285,58 +285,61 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	}
 	mut reflection_strings := map[string]int{}
 	mut global_g := Gen{
-		file: unsafe { nil }
-		out: strings.new_builder(512000)
-		cheaders: strings.new_builder(15000)
-		includes: strings.new_builder(100)
-		preincludes: strings.new_builder(100)
-		typedefs: strings.new_builder(100)
-		enum_typedefs: strings.new_builder(100)
-		type_definitions: strings.new_builder(100)
-		alias_definitions: strings.new_builder(100)
-		hotcode_definitions: strings.new_builder(100)
-		channel_definitions: strings.new_builder(100)
-		thread_definitions: strings.new_builder(100)
+		file                : unsafe { nil }
+		out                 : strings.new_builder(512000)
+		cheaders            : strings.new_builder(15000)
+		includes            : strings.new_builder(100)
+		preincludes         : strings.new_builder(100)
+		typedefs            : strings.new_builder(100)
+		enum_typedefs       : strings.new_builder(100)
+		type_definitions    : strings.new_builder(100)
+		alias_definitions   : strings.new_builder(100)
+		hotcode_definitions : strings.new_builder(100)
+		channel_definitions : strings.new_builder(100)
+		thread_definitions  : strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
-		definitions: strings.new_builder(100)
-		gowrappers: strings.new_builder(100)
-		auto_str_funcs: strings.new_builder(100)
-		dump_funcs: strings.new_builder(100)
-		pcs_declarations: strings.new_builder(100)
-		cov_declarations: strings.new_builder(100)
-		embedded_data: strings.new_builder(1000)
-		out_options_forward: strings.new_builder(100)
-		out_options: strings.new_builder(100)
-		out_results_forward: strings.new_builder(100)
-		out_results: strings.new_builder(100)
-		shared_types: strings.new_builder(100)
-		shared_functions: strings.new_builder(100)
-		json_forward_decls: strings.new_builder(100)
-		sql_buf: strings.new_builder(100)
-		table: table
-		pref: pref_
-		fn_decl: unsafe { nil }
-		is_autofree: pref_.autofree
-		indent: -1
-		module_built: module_built
-		timers_should_print: timers_should_print
-		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
-		inner_loop: unsafe { &ast.empty_stmt }
-		field_data_type: ast.Type(table.find_type_idx('FieldData'))
-		enum_data_type: ast.Type(table.find_type_idx('EnumData'))
-		variant_data_type: ast.Type(table.find_type_idx('VariantData'))
-		is_cc_msvc: pref_.ccompiler == 'msvc'
+		definitions         : strings.new_builder(100)
+		gowrappers          : strings.new_builder(100)
+		auto_str_funcs      : strings.new_builder(100)
+		dump_funcs          : strings.new_builder(100)
+		pcs_declarations    : strings.new_builder(100)
+		cov_declarations    : strings.new_builder(100)
+		embedded_data       : strings.new_builder(1000)
+		out_options_forward : strings.new_builder(100)
+		out_options         : strings.new_builder(100)
+		out_results_forward : strings.new_builder(100)
+		out_results         : strings.new_builder(100)
+		shared_types        : strings.new_builder(100)
+		shared_functions    : strings.new_builder(100)
+		json_forward_decls  : strings.new_builder(100)
+		sql_buf             : strings.new_builder(100)
+		table               : table
+		pref                : pref_
+		fn_decl             : unsafe { nil }
+		is_autofree         : pref_.autofree
+		indent              : -1
+		module_built        : module_built
+		timers_should_print : timers_should_print
+		timers              : util.new_timers(
+			should_print: timers_should_print
+			label       : 'global_cgen'
+		)
+		inner_loop          : unsafe { &ast.empty_stmt }
+		field_data_type     : ast.Type(table.find_type_idx('FieldData'))
+		enum_data_type      : ast.Type(table.find_type_idx('EnumData'))
+		variant_data_type   : ast.Type(table.find_type_idx('VariantData'))
+		is_cc_msvc          : pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
-		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
-		has_reflection: 'v.reflection' in table.modules
-		has_debugger: 'v.debug' in table.modules
+		static_modifier   : if pref_.parallel_cc { 'static' } else { '' }
+		has_reflection    : 'v.reflection' in table.modules
+		has_debugger      : 'v.debug' in table.modules
 		reflection_strings: &reflection_strings
 	}
 
 	global_g.comptime = &comptime.ComptimeInfo{
 		resolver: &global_g
-		table: table
+		table   : table
 	}
 
 	/*
@@ -675,65 +678,65 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item[&ast.File](idx)
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
-		file: file
-		out: strings.new_builder(512000)
-		cheaders: strings.new_builder(15000)
-		includes: strings.new_builder(100)
-		typedefs: strings.new_builder(100)
-		type_definitions: strings.new_builder(100)
-		alias_definitions: strings.new_builder(100)
-		definitions: strings.new_builder(100)
-		gowrappers: strings.new_builder(100)
-		auto_str_funcs: strings.new_builder(100)
+		file                : file
+		out                 : strings.new_builder(512000)
+		cheaders            : strings.new_builder(15000)
+		includes            : strings.new_builder(100)
+		typedefs            : strings.new_builder(100)
+		type_definitions    : strings.new_builder(100)
+		alias_definitions   : strings.new_builder(100)
+		definitions         : strings.new_builder(100)
+		gowrappers          : strings.new_builder(100)
+		auto_str_funcs      : strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
-		pcs_declarations: strings.new_builder(100)
-		cov_declarations: strings.new_builder(100)
-		hotcode_definitions: strings.new_builder(100)
-		embedded_data: strings.new_builder(1000)
-		out_options_forward: strings.new_builder(100)
-		out_options: strings.new_builder(100)
-		out_results_forward: strings.new_builder(100)
-		out_results: strings.new_builder(100)
-		shared_types: strings.new_builder(100)
-		shared_functions: strings.new_builder(100)
-		channel_definitions: strings.new_builder(100)
-		thread_definitions: strings.new_builder(100)
-		json_forward_decls: strings.new_builder(100)
-		enum_typedefs: strings.new_builder(100)
-		sql_buf: strings.new_builder(100)
-		cleanup: strings.new_builder(100)
-		table: global_g.table
-		pref: global_g.pref
-		fn_decl: unsafe { nil }
-		indent: -1
-		module_built: global_g.module_built
-		timers: util.new_timers(
+		pcs_declarations    : strings.new_builder(100)
+		cov_declarations    : strings.new_builder(100)
+		hotcode_definitions : strings.new_builder(100)
+		embedded_data       : strings.new_builder(1000)
+		out_options_forward : strings.new_builder(100)
+		out_options         : strings.new_builder(100)
+		out_results_forward : strings.new_builder(100)
+		out_results         : strings.new_builder(100)
+		shared_types        : strings.new_builder(100)
+		shared_functions    : strings.new_builder(100)
+		channel_definitions : strings.new_builder(100)
+		thread_definitions  : strings.new_builder(100)
+		json_forward_decls  : strings.new_builder(100)
+		enum_typedefs       : strings.new_builder(100)
+		sql_buf             : strings.new_builder(100)
+		cleanup             : strings.new_builder(100)
+		table               : global_g.table
+		pref                : global_g.pref
+		fn_decl             : unsafe { nil }
+		indent              : -1
+		module_built        : global_g.module_built
+		timers              : util.new_timers(
 			should_print: global_g.timers_should_print
-			label: 'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
+			label       : 'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
-		inner_loop: &ast.empty_stmt
-		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
-		enum_data_type: ast.Type(global_g.table.find_type_idx('EnumData'))
-		array_sort_fn: global_g.array_sort_fn
-		waiter_fns: global_g.waiter_fns
-		threaded_fns: global_g.threaded_fns
-		str_fn_names: global_g.str_fn_names
-		options_forward: global_g.options_forward
-		results_forward: global_g.results_forward
-		done_options: global_g.done_options
-		done_results: global_g.done_results
-		is_autofree: global_g.pref.autofree
-		obf_table: global_g.obf_table
-		referenced_fns: global_g.referenced_fns
-		is_cc_msvc: global_g.is_cc_msvc
+		inner_loop          : &ast.empty_stmt
+		field_data_type     : ast.Type(global_g.table.find_type_idx('FieldData'))
+		enum_data_type      : ast.Type(global_g.table.find_type_idx('EnumData'))
+		array_sort_fn       : global_g.array_sort_fn
+		waiter_fns          : global_g.waiter_fns
+		threaded_fns        : global_g.threaded_fns
+		str_fn_names        : global_g.str_fn_names
+		options_forward     : global_g.options_forward
+		results_forward     : global_g.results_forward
+		done_options        : global_g.done_options
+		done_results        : global_g.done_results
+		is_autofree         : global_g.pref.autofree
+		obf_table           : global_g.obf_table
+		referenced_fns      : global_g.referenced_fns
+		is_cc_msvc          : global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
-		has_reflection: 'v.reflection' in global_g.table.modules
-		has_debugger: 'v.debug' in global_g.table.modules
-		reflection_strings: global_g.reflection_strings
+		has_reflection      : 'v.reflection' in global_g.table.modules
+		has_debugger        : 'v.debug' in global_g.table.modules
+		reflection_strings  : global_g.reflection_strings
 	}
 	g.comptime = &comptime.ComptimeInfo{
 		resolver: g
-		table: global_g.table
+		table   : global_g.table
 	}
 	g.gen_file()
 	return g
@@ -2425,7 +2428,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
-		got: if got_.has_flag(.option) {
+		got    : if got_.has_flag(.option) {
 			new_got := ast.Type(got_sym.idx).set_flag(.option)
 			new_got
 		} else {
@@ -3516,9 +3519,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			old_is_arraymap_set := g.is_arraymap_set
 			g.is_arraymap_set = false
 			g.spawn_and_go_expr(ast.SpawnExpr{
-				pos: node.pos
+				pos      : node.pos
 				call_expr: node.call_expr
-				is_expr: node.is_expr
+				is_expr  : node.is_expr
 			}, .go_)
 			g.is_arraymap_set = old_is_arraymap_set
 		}
@@ -5881,8 +5884,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					styp := g.typ(field.expr.typ)
 					val := g.expr_string(field.expr)
 					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
-						mod: field.mod
-						def: '${styp} ${const_name} = ${val}; // fixed array const'
+						mod      : field.mod
+						def      : '${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
 				} else if field.expr.is_fixed && !field.expr.has_index
@@ -5898,9 +5901,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.StringLiteral {
 				val := g.expr_string(field.expr)
 				g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
-					mod: field.mod
-					def: 'string ${const_name}; // a string literal, inited later'
-					init: '\t${const_name} = ${val};'
+					mod  : field.mod
+					def  : 'string ${const_name}; // a string literal, inited later'
+					init : '\t${const_name} = ${val};'
 					order: -1
 				}
 			}
@@ -5948,8 +5951,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 							styp := g.typ(field.expr.typ)
 							val := g.expr_string(field.expr.expr)
 							g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
-								mod: field.mod
-								def: '${styp} ${const_name} = ${val}; // fixed array const'
+								mod      : field.mod
+								def      : '${styp} ${const_name} = ${val}; // fixed array const'
 								dep_names: g.table.dependent_names_in_expr(field_expr)
 							}
 							continue
@@ -6042,8 +6045,8 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 				escval := util.smart_quote(u8(rune_code).ascii_str(), false)
 
 				g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
-					mod: mod
-					def: "#define ${cname} '${escval}'"
+					mod  : mod
+					def  : "#define ${cname} '${escval}'"
 					order: -1
 				}
 			} else {
@@ -6057,9 +6060,9 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
 			g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
-				mod: mod
-				def: '${styp} ${cname}; // str inited later'
-				init: '\t${cname} = _SLIT("${escaped_val}");'
+				mod  : mod
+				def  : '${styp} ${cname}; // str inited later'
+				init : '\t${cname} = _SLIT("${escaped_val}");'
 				order: -1
 			}
 			if g.is_autofree {
@@ -6083,8 +6086,8 @@ fn (mut g Gen) const_decl_write_precomputed(mod string, styp string, cname strin
 		//
 		// If you change it, please also test with `v -live run examples/hot_reload/graph.v` which uses `math.pi` .
 		g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
-			mod: mod
-			def: '#define ${cname} ${ct_value} // precomputed3, -live mode'
+			mod  : mod
+			def  : '#define ${cname} ${ct_value} // precomputed3, -live mode'
 			order: -1
 		}
 		return
@@ -6113,14 +6116,14 @@ fn (mut g Gen) const_decl_simple_define(mod string, name string, val string) {
 	}
 	if g.pref.translated {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
-			mod: mod
-			def: 'const int ${x} = ${val};'
+			mod  : mod
+			def  : 'const int ${x} = ${val};'
 			order: -1
 		}
 	} else {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
-			mod: mod
-			def: '#define ${x} ${val}'
+			mod  : mod
+			def  : '#define ${x} ${val}'
 			order: -1
 		}
 	}
@@ -6162,9 +6165,9 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		def = g.fn_var_signature(func.return_type, func.params.map(it.typ), cname)
 	}
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
-		mod: mod
-		def: '${def}; // inited later'
-		init: init.str().trim_right('\n')
+		mod      : mod
+		def      : '${def}; // inited later'
+		init     : init.str().trim_right('\n')
 		dep_names: g.table.dependent_names_in_expr(expr)
 	}
 	if g.is_autofree {
@@ -6195,9 +6198,9 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 	}
 	mut def := '${styp} ${cname}'
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
-		mod: mod
-		def: '${def}; // inited later'
-		init: init.str().trim_right('\n')
+		mod      : mod
+		def      : '${def}; // inited later'
+		init     : init.str().trim_right('\n')
 		dep_names: g.table.dependent_names_in_expr(expr)
 	}
 	if g.is_autofree {
@@ -6260,8 +6263,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			g.gen_anon_fn_decl(mut anon_fn_expr)
 			fn_type_name := g.get_anon_fn_type_name(mut anon_fn_expr, field.name)
 			g.global_const_defs[util.no_dots(fn_type_name)] = GlobalConstDef{
-				mod: node.mod
-				def: '${fn_type_name} = ${g.table.sym(field.typ).name}; // global2'
+				mod  : node.mod
+				def  : '${fn_type_name} = ${g.table.sym(field.typ).name}; // global2'
 				order: -1
 			}
 			continue
@@ -6274,8 +6277,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if cextern {
 			def_builder.writeln('; // global5')
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
-				mod: node.mod
-				def: def_builder.str()
+				mod  : node.mod
+				def  : def_builder.str()
 				order: -1
 			}
 			continue
@@ -6322,9 +6325,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		def_builder.writeln('; // global4')
 		g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
-			mod: node.mod
-			def: def_builder.str()
-			init: init
+			mod      : node.mod
+			def      : def_builder.str()
+			init     : init
 			dep_names: g.table.dependent_names_in_expr(field.expr)
 		}
 	}

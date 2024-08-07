@@ -93,21 +93,21 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
-		name: fn_name
-		name_pos: first_pos
-		args: args
-		mod: p.mod
-		pos: pos
-		language: language
-		concrete_types: concrete_types
-		concrete_list_pos: concrete_list_pos
+		name              : fn_name
+		name_pos          : first_pos
+		args              : args
+		mod               : p.mod
+		pos               : pos
+		language          : language
+		concrete_types    : concrete_types
+		concrete_list_pos : concrete_list_pos
 		raw_concrete_types: concrete_types
-		or_block: ast.OrExpr{
+		or_block          : ast.OrExpr{
 			stmts: or_stmts
-			kind: or_kind
-			pos: or_pos
+			kind : or_kind
+			pos  : or_pos
 		}
-		scope: p.scope
+		scope   : p.scope
 		comments: comments
 	}
 }
@@ -146,7 +146,7 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		if array_decompose {
 			expr = ast.ArrayDecompose{
 				expr: expr
-				pos: p.tok.pos()
+				pos : p.tok.pos()
 			}
 		}
 		if mut expr is ast.StructInit {
@@ -156,11 +156,11 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		pos := arg_start_pos.extend(p.prev_tok.pos())
 		comments << p.eat_comments()
 		args << ast.CallArg{
-			is_mut: is_mut
-			share: ast.sharetype_from_flags(is_shared, is_atomic)
-			expr: expr
+			is_mut  : is_mut
+			share   : ast.sharetype_from_flags(is_shared, is_atomic)
+			expr    : expr
 			comments: comments
-			pos: pos
+			pos     : pos
 		}
 		if p.tok.kind == .comma {
 			p.next()
@@ -288,7 +288,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	// Receiver?
 	mut rec := ReceiverParsingInfo{
-		typ: ast.void_type
+		typ     : ast.void_type
 		language: language
 	}
 	mut is_method := false
@@ -430,15 +430,15 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 			p.scope.register(ast.Var{
-				name: param.name
-				typ: param.typ
-				is_mut: param.is_mut
+				name         : param.name
+				typ          : param.typ
+				is_mut       : param.is_mut
 				is_auto_deref: param.is_mut || param.is_auto_rec
-				is_stack_obj: is_stack_obj
-				pos: param.pos
-				is_used: true
-				is_arg: true
-				ct_type_var: if (!is_method || k > 0) && param.typ.has_flag(.generic)
+				is_stack_obj : is_stack_obj
+				pos          : param.pos
+				is_used      : true
+				is_arg       : true
+				ct_type_var  : if (!is_method || k > 0) && param.typ.has_flag(.generic)
 					&& !param.typ.has_flag(.variadic) {
 					.generic_param
 				} else {
@@ -512,30 +512,30 @@ run them via `v file.v` instead',
 			}
 		}
 		type_sym_method_idx = type_sym.register_method(ast.Fn{
-			name: name
-			file_mode: file_mode
-			params: params
-			return_type: return_type
-			is_variadic: is_variadic
+			name         : name
+			file_mode    : file_mode
+			params       : params
+			return_type  : return_type
+			is_variadic  : is_variadic
 			generic_names: generic_names
-			is_pub: is_pub
+			is_pub       : is_pub
 			is_deprecated: is_deprecated
-			is_noreturn: is_noreturn
-			is_unsafe: is_unsafe
-			is_main: is_main
-			is_test: is_test
+			is_noreturn  : is_noreturn
+			is_unsafe    : is_unsafe
+			is_main      : is_main
+			is_test      : is_test
 			is_keep_alive: is_keep_alive
-			is_method: true
+			is_method    : true
 			receiver_type: rec.typ
 			//
-			attrs: p.attrs
+			attrs         : p.attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
-			ctdefine_idx: conditional_ctdefine_idx
+			ctdefine_idx  : conditional_ctdefine_idx
 			//
-			no_body: no_body
-			mod: p.mod
-			file: p.file_path
-			pos: start_pos
+			no_body : no_body
+			mod     : p.mod
+			file    : p.file_path
+			pos     : start_pos
 			language: language
 		})
 	} else {
@@ -560,34 +560,34 @@ run them via `v file.v` instead',
 			}
 		}
 		p.table.register_fn(ast.Fn{
-			name: name
-			file_mode: file_mode
-			params: params
-			return_type: return_type
-			is_variadic: is_variadic
-			is_c_variadic: is_c_variadic
-			generic_names: generic_names
-			is_pub: is_pub
-			is_deprecated: is_deprecated
-			is_noreturn: is_noreturn
-			is_ctor_new: is_ctor_new
-			is_unsafe: is_unsafe
-			is_main: is_main
-			is_test: is_test
-			is_keep_alive: is_keep_alive
-			is_method: false
+			name                 : name
+			file_mode            : file_mode
+			params               : params
+			return_type          : return_type
+			is_variadic          : is_variadic
+			is_c_variadic        : is_c_variadic
+			generic_names        : generic_names
+			is_pub               : is_pub
+			is_deprecated        : is_deprecated
+			is_noreturn          : is_noreturn
+			is_ctor_new          : is_ctor_new
+			is_unsafe            : is_unsafe
+			is_main              : is_main
+			is_test              : is_test
+			is_keep_alive        : is_keep_alive
+			is_method            : false
 			is_static_type_method: is_static_type_method
-			receiver_type: if is_static_type_method { rec.typ } else { 0 } // used only if is static type method
-			is_file_translated: p.is_translated
+			receiver_type        : if is_static_type_method { rec.typ } else { 0 } // used only if is static type method
+			is_file_translated   : p.is_translated
 			//
-			attrs: p.attrs
+			attrs         : p.attrs
 			is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
-			ctdefine_idx: conditional_ctdefine_idx
+			ctdefine_idx  : conditional_ctdefine_idx
 			//
-			no_body: no_body
-			mod: p.mod
-			file: p.file_path
-			pos: start_pos
+			no_body : no_body
+			mod     : p.mod
+			file    : p.file_path
+			pos     : start_pos
 			language: language
 		})
 	}
@@ -615,55 +615,55 @@ run them via `v file.v` instead',
 	// 	p.error_with_pos('did you mean C.$name instead of $name', start_pos)
 	// }
 	fn_decl := ast.FnDecl{
-		name: name
-		short_name: short_fn_name
-		mod: p.mod
-		stmts: stmts
-		return_type: return_type
-		return_type_pos: return_type_pos
-		params: params
-		is_noreturn: is_noreturn
-		is_manualfree: is_manualfree
-		is_deprecated: is_deprecated
-		is_exported: is_exported
-		is_direct_arr: is_direct_arr
-		is_pub: is_pub
-		is_variadic: is_variadic
-		is_c_variadic: is_c_variadic
-		is_main: is_main
-		is_test: is_test
-		is_keep_alive: is_keep_alive
-		is_unsafe: is_unsafe
-		is_markused: is_markused
+		name              : name
+		short_name        : short_fn_name
+		mod               : p.mod
+		stmts             : stmts
+		return_type       : return_type
+		return_type_pos   : return_type_pos
+		params            : params
+		is_noreturn       : is_noreturn
+		is_manualfree     : is_manualfree
+		is_deprecated     : is_deprecated
+		is_exported       : is_exported
+		is_direct_arr     : is_direct_arr
+		is_pub            : is_pub
+		is_variadic       : is_variadic
+		is_c_variadic     : is_c_variadic
+		is_main           : is_main
+		is_test           : is_test
+		is_keep_alive     : is_keep_alive
+		is_unsafe         : is_unsafe
+		is_markused       : is_markused
 		is_file_translated: p.is_translated
 		//
-		attrs: p.attrs
+		attrs         : p.attrs
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
-		ctdefine_idx: conditional_ctdefine_idx
+		ctdefine_idx  : conditional_ctdefine_idx
 		//
 		receiver: ast.StructField{
 			name: rec.name
-			typ: rec.typ
+			typ : rec.typ
 		}
-		generic_names: generic_names
-		receiver_pos: rec.pos
-		is_method: is_method
+		generic_names        : generic_names
+		receiver_pos         : rec.pos
+		is_method            : is_method
 		is_static_type_method: is_static_type_method
-		static_type_pos: static_type_pos
-		method_type_pos: rec.type_pos
-		method_idx: type_sym_method_idx
-		rec_mut: rec.is_mut
-		language: language
-		no_body: no_body
-		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
-		name_pos: name_pos
-		body_pos: body_start_pos
-		file: p.file_path
-		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
-		scope: p.scope
-		label_names: p.label_names
-		end_comments: p.eat_comments(same_line: true)
-		comments: comments
+		static_type_pos      : static_type_pos
+		method_type_pos      : rec.type_pos
+		method_idx           : type_sym_method_idx
+		rec_mut              : rec.is_mut
+		language             : language
+		no_body              : no_body
+		pos                  : start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
+		name_pos             : name_pos
+		body_pos             : body_start_pos
+		file                 : p.file_path
+		is_builtin           : p.builtin_mod || p.mod in util.builtin_module_parts
+		scope                : p.scope
+		label_names          : p.label_names
+		end_comments         : p.eat_comments(same_line: true)
+		comments             : comments
 	}
 	if generic_names.len > 0 {
 		p.table.register_fn_generic_types(fn_decl.fkey())
@@ -754,14 +754,14 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	}
 
 	params << ast.Param{
-		pos: rec_start_pos
-		name: rec.name
-		is_mut: rec.is_mut
-		is_atomic: is_atomic
-		is_shared: is_shared
+		pos        : rec_start_pos
+		name       : rec.name
+		is_mut     : rec.is_mut
+		is_atomic  : is_atomic
+		is_shared  : is_shared
 		is_auto_rec: is_auto_rec
-		typ: rec.typ
-		type_pos: rec.type_pos
+		typ        : rec.typ
+		type_pos   : rec.type_pos
 	}
 }
 
@@ -801,14 +801,14 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		}
 		is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 		p.scope.register(ast.Var{
-			name: param.name
-			typ: param.typ
-			is_mut: param.is_mut
+			name         : param.name
+			typ          : param.typ
+			is_mut       : param.is_mut
 			is_auto_deref: param.is_mut || param.is_auto_rec
-			pos: param.pos
-			is_used: true
-			is_arg: true
-			is_stack_obj: is_stack_obj
+			pos          : param.pos
+			is_used      : true
+			is_arg       : true
+			is_stack_obj : is_stack_obj
 		})
 	}
 	mut same_line := p.tok.line_nr == p.prev_tok.line_nr
@@ -835,10 +835,10 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	mut label_names := []string{}
 	mut func := ast.Fn{
-		params: params
+		params     : params
 		is_variadic: is_variadic
 		return_type: return_type
-		is_method: false
+		is_method  : false
 	}
 	name := p.table.get_anon_fn_name(p.unique_prefix, func, p.tok.pos)
 	keep_fn_name := p.cur_fn_name
@@ -858,25 +858,25 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
-			name: name
-			short_name: ''
-			mod: p.mod
-			stmts: stmts
-			return_type: return_type
+			name           : name
+			short_name     : ''
+			mod            : p.mod
+			stmts          : stmts
+			return_type    : return_type
 			return_type_pos: return_type_pos
-			params: params
-			is_variadic: is_variadic
-			is_method: false
-			generic_names: generic_names
-			is_anon: true
-			no_body: no_body
-			pos: pos.extend(p.prev_tok.pos())
-			file: p.file_path
-			scope: p.scope
-			label_names: label_names
+			params         : params
+			is_variadic    : is_variadic
+			is_method      : false
+			generic_names  : generic_names
+			is_anon        : true
+			no_body        : no_body
+			pos            : pos.extend(p.prev_tok.pos())
+			file           : p.file_path
+			scope          : p.scope
+			label_names    : label_names
 		}
 		inherited_vars: inherited_vars
-		typ: typ
+		typ           : typ
 	}
 }
 
@@ -987,11 +987,11 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				p.check_for_impure_v(alanguage, pos)
 			}
 			params << ast.Param{
-				pos: pos
-				name: name
-				is_mut: is_mut
-				typ: param_type
-				type_pos: type_pos
+				pos       : pos
+				name      : name
+				is_mut    : is_mut
+				typ       : param_type
+				type_pos  : type_pos
 				on_newline: prev_param_newline != pos.line_nr
 			}
 			prev_param_newline = pos.line_nr
@@ -1105,13 +1105,13 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					p.check_for_impure_v(alanguage, type_pos[i])
 				}
 				params << ast.Param{
-					pos: param_pos[i]
-					name: para_name
-					is_mut: is_mut
-					is_atomic: is_atomic
-					is_shared: is_shared
-					typ: typ
-					type_pos: type_pos[i]
+					pos       : param_pos[i]
+					name      : para_name
+					is_mut    : is_mut
+					is_atomic : is_atomic
+					is_shared : is_shared
+					typ       : typ
+					type_pos  : type_pos[i]
 					on_newline: prev_param_newline != param_pos[i].line_nr
 				}
 				prev_param_newline = param_pos[i].line_nr
@@ -1152,7 +1152,7 @@ fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	p.table.gostmts++
 	return ast.SpawnExpr{
 		call_expr: call_expr
-		pos: pos
+		pos      : pos
 	}
 }
 
@@ -1173,7 +1173,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	p.table.gostmts++
 	return ast.GoExpr{
 		call_expr: call_expr
-		pos: pos
+		pos      : pos
 	}
 }
 
@@ -1206,17 +1206,17 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		}
 		p.scope.register(ast.Var{
 			...(*var)
-			pos: var_pos
-			is_inherited: true
+			pos          : var_pos
+			is_inherited : true
 			has_inherited: var.is_inherited
-			is_used: false
-			is_changed: false
-			is_mut: is_mut
+			is_used      : false
+			is_changed   : false
+			is_mut       : is_mut
 		})
 		vars << ast.Param{
-			pos: var_pos
-			name: var_name
-			is_mut: is_mut
+			pos      : var_pos
+			name     : var_name
+			is_mut   : is_mut
 			is_atomic: is_atomic
 			is_shared: is_shared
 		}

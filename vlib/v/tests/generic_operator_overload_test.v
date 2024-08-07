@@ -7,8 +7,8 @@ mut:
 
 fn from_array[T](arr [][]T) Matrix[T] {
 	return Matrix[T]{
-		row: arr.len
-		col: arr[0].len
+		row : arr.len
+		col : arr[0].len
 		data: arr.clone()
 	}
 }

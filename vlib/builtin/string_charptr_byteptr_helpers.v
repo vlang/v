@@ -24,8 +24,8 @@ pub fn (bp byteptr) vstring() string {
 @[unsafe]
 pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
-		str: bp
-		len: len
+		str   : bp
+		len   : len
 		is_lit: 0
 	}
 }
@@ -35,8 +35,8 @@ pub fn (bp byteptr) vstring_with_len(len int) string {
 @[unsafe]
 pub fn (cp charptr) vstring() string {
 	return string{
-		str: byteptr(cp)
-		len: unsafe { vstrlen_char(cp) }
+		str   : byteptr(cp)
+		len   : unsafe { vstrlen_char(cp) }
 		is_lit: 0
 	}
 }
@@ -46,8 +46,8 @@ pub fn (cp charptr) vstring() string {
 @[unsafe]
 pub fn (cp charptr) vstring_with_len(len int) string {
 	return string{
-		str: byteptr(cp)
-		len: len
+		str   : byteptr(cp)
+		len   : len
 		is_lit: 0
 	}
 }
@@ -62,8 +62,8 @@ pub fn (cp charptr) vstring_with_len(len int) string {
 @[unsafe]
 pub fn (bp byteptr) vstring_literal() string {
 	return string{
-		str: bp
-		len: unsafe { vstrlen(bp) }
+		str   : bp
+		len   : unsafe { vstrlen(bp) }
 		is_lit: 1
 	}
 }
@@ -73,8 +73,8 @@ pub fn (bp byteptr) vstring_literal() string {
 @[unsafe]
 pub fn (bp byteptr) vstring_literal_with_len(len int) string {
 	return string{
-		str: bp
-		len: len
+		str   : bp
+		len   : len
 		is_lit: 1
 	}
 }
@@ -85,8 +85,8 @@ pub fn (bp byteptr) vstring_literal_with_len(len int) string {
 @[unsafe]
 pub fn (cp charptr) vstring_literal() string {
 	return string{
-		str: byteptr(cp)
-		len: unsafe { vstrlen_char(cp) }
+		str   : byteptr(cp)
+		len   : unsafe { vstrlen_char(cp) }
 		is_lit: 1
 	}
 }
@@ -97,8 +97,8 @@ pub fn (cp charptr) vstring_literal() string {
 @[unsafe]
 pub fn (cp charptr) vstring_literal_with_len(len int) string {
 	return string{
-		str: byteptr(cp)
-		len: len
+		str   : byteptr(cp)
+		len   : len
 		is_lit: 1
 	}
 }

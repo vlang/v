@@ -6,7 +6,7 @@ struct Abc {
 fn abc() !Abc {
 	return Abc{
 		version: 'abc'
-		name: 'xyz'
+		name   : 'xyz'
 	}
 }
 

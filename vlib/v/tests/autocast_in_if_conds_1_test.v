@@ -12,7 +12,7 @@ struct S2 {
 fn test_autocast_in_if_conds() {
 	s := MySumType(S1{
 		is_name: true
-		name: 'bob'
+		name   : 'bob'
 	})
 
 	if s is S1 && s.is_name && s.name == 'bob' {

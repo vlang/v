@@ -50,8 +50,8 @@ pub fn (mut s StateMachine) get_state() string {
 pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn, exit EventHandlerFn) {
 	s.states[name] = State{
 		entry_handler: entry
-		run_handler: run
-		exit_handler: exit
+		run_handler  : run
+		exit_handler : exit
 	}
 	if s.states.len == 1 {
 		s.current_state = name
@@ -60,7 +60,7 @@ pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run Eve
 
 pub fn (mut s StateMachine) add_transition(from string, to string, condition_handler ConditionFn) {
 	t := Transition{
-		to: to
+		to               : to
 		condition_handler: condition_handler
 	}
 	if from in s.transitions {

@@ -1582,12 +1582,12 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 			fn_name
 		}
 		c.table.cur_fn.trace_fns[hash_fn] = ast.FnTrace{
-			name: calling_fn
-			file: c.file.path
-			line: node.pos.line_nr + 1
+			name       : calling_fn
+			file       : c.file.path
+			line       : node.pos.line_nr + 1
 			return_type: node.return_type
-			func: &func
-			is_fn_var: node.is_fn_var
+			func       : &func
+			is_fn_var  : node.is_fn_var
 		}
 	}
 }
@@ -3101,11 +3101,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
 		//       to parameter of type 'int (*)(voidptr, voidptr)' (aka 'int (*)(void *, void *)')
 		node.args[0].expr = ast.CastExpr{
-			expr: node.args[0].expr
-			typ: ast.voidptr_type
-			typname: 'voidptr'
+			expr     : node.args[0].expr
+			typ      : ast.voidptr_type
+			typname  : 'voidptr'
 			expr_type: c.expr(mut node.args[0].expr)
-			pos: node.pos
+			pos      : node.pos
 		}
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
@@ -3177,9 +3177,9 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 
 fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name: name
-		pos: pos
-		typ: typ
+		name   : name
+		pos    : pos
+		typ    : typ
 		is_used: true
 	})
 }

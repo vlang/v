@@ -22,8 +22,8 @@ pub:
 // new_writer returns a reference to a Writer
 pub fn new_writer(config WriterConfig) &Writer {
 	return &Writer{
-		sb: strings.new_builder(200)
-		use_crlf: config.use_crlf
+		sb       : strings.new_builder(200)
+		use_crlf : config.use_crlf
 		delimiter: config.delimiter
 	}
 }

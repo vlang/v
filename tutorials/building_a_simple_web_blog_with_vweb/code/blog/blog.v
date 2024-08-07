@@ -55,7 +55,7 @@ pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	}
 	article := Article{
 		title: title
-		text: text
+		text : text
 	}
 	println('posting article')
 	println(article)

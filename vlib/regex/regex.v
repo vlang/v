@@ -2272,12 +2272,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					// println("save the state!!")
 					mut dot_state := StateObj{
 						group_index: state.group_index
-						match_flag: state.match_flag
+						match_flag : state.match_flag
 						match_index: state.match_index
 						first_match: state.first_match
-						pc: state.pc
-						i: state.i + char_len
-						char_len: char_len
+						pc         : state.pc
+						i          : state.i + char_len
+						char_len   : char_len
 						last_dot_pc: state.pc
 					}
 					// if we are mananging a .* stay on the same char on return
@@ -2358,12 +2358,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					// println("save the state!!")
 					mut dot_state := StateObj{
 						group_index: state.group_index
-						match_flag: state.match_flag
+						match_flag : state.match_flag
 						match_index: state.match_index
 						first_match: state.first_match
-						pc: state.pc
-						i: state.i + char_len
-						char_len: char_len
+						pc         : state.pc
+						i          : state.i + char_len
+						char_len   : char_len
 						last_dot_pc: state.pc
 					}
 					// if we are managing a \[something]* stay on the same char on return
@@ -2471,12 +2471,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					// println("save the state!!")
 					mut dot_state := StateObj{
 						group_index: state.group_index
-						match_flag: state.match_flag
+						match_flag : state.match_flag
 						match_index: state.match_index
 						first_match: state.first_match
-						pc: state.pc
-						i: state.i + char_len
-						char_len: char_len
+						pc         : state.pc
+						i          : state.i + char_len
+						char_len   : char_len
 						last_dot_pc: state.pc
 					}
 					// if we are managing a \[something]* stay on the same char on return

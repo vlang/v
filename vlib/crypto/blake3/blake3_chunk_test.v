@@ -45,15 +45,15 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ''
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: iv
-			block_words: [u32(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-			flags: 0x0b
+			block_words   : [u32(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			flags         : 0x0b
 		}
 		words: [u32(0xb94913af), 0xa6a1f9f5, 0xea4d40a0, 0x49c9dc36, 0xc925cb9b, 0xb712c1ad,
 			0xca939acc, 0x62321fe4, 0xe7030fe0, 0x6bf29ab6, 0x9ff0aa7f, 0x503033cd, 0xe0df8d33,
@@ -63,15 +63,15 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: 'A'
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: iv
-			block_words: [u32(0x00000041), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-			flags: 0x0b
+			block_words   : [u32(0x00000041), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			flags         : 0x0b
 		}
 		words: [u32(0xfa4b6832), 0x4dc8c028, 0x1105216f, 0xfc0eceaa, 0x88c77151, 0x89ba4891,
 			0xa25a8d20, 0x98fa0597, 0x4c0088e3, 0xafa7cbb8, 0xc586c5f7, 0x66dbef0e, 0x8c91d56a,
@@ -81,15 +81,15 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: 'abc'
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: iv
-			block_words: [u32(0x00636261), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-			flags: 0x0b
+			block_words   : [u32(0x00636261), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			flags         : 0x0b
 		}
 		words: [u32(0xacb33764), 0x33514638, 0x753bb6ff, 0xb58d3a27, 0x4658c548, 0x03db795d,
 			0x6c9c35fd, 0x859dbdd5, 0xae50b21f, 0xd0f59373, 0x5db61328, 0x490d1a52, 0x9ca09b2d,
@@ -99,16 +99,16 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ll[..63]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: iv
-			block_words: [u32(0x44434241), 0x48474645, 0x4c4b4a49, 0x504f4e4d, 0x54535251, 0x58575655,
-				0x61205a59, 0x65646362, 0x69686766, 0x6d6c6b6a, 0x71706f6e, 0x75747372, 0x79787776,
-				0x3130207a, 0x35343332, 0x00383736]
+			block_words   : [u32(0x44434241), 0x48474645, 0x4c4b4a49, 0x504f4e4d, 0x54535251,
+				0x58575655, 0x61205a59, 0x65646362, 0x69686766, 0x6d6c6b6a, 0x71706f6e, 0x75747372,
+				0x79787776, 0x3130207a, 0x35343332, 0x00383736]
 			flags: 0x0b
 		}
 		words: [u32(0x39c41fc6), 0x2dd7c57b, 0xb8b16421, 0x360cbedb, 0x462d5672, 0x56713bb5,
@@ -119,16 +119,16 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ll[..64]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: iv
-			block_words: [u32(0x44434241), 0x48474645, 0x4c4b4a49, 0x504f4e4d, 0x54535251, 0x58575655,
-				0x61205a59, 0x65646362, 0x69686766, 0x6d6c6b6a, 0x71706f6e, 0x75747372, 0x79787776,
-				0x3130207a, 0x35343332, 0x39383736]
+			block_words   : [u32(0x44434241), 0x48474645, 0x4c4b4a49, 0x504f4e4d, 0x54535251,
+				0x58575655, 0x61205a59, 0x65646362, 0x69686766, 0x6d6c6b6a, 0x71706f6e, 0x75747372,
+				0x79787776, 0x3130207a, 0x35343332, 0x39383736]
 			flags: 0x0b
 		}
 		words: [u32(0x6010817a), 0x21deb495, 0x0826485b, 0x6f895da5, 0x9363242a, 0x176b60a9,
@@ -139,16 +139,16 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ll[..65]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: [u32(0xbb99f549), 0x3b4b2903, 0x436d199e, 0x6eea5980, 0x82ebb968,
 				0x33cc3c4a, 0x90f4944b, 0x9480e10a]
 			block_words: [u32(0x00000020), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-			flags: 0x0a
+			flags      : 0x0a
 		}
 		words: [u32(0xb06cf0f5), 0xd6f8f23d, 0x0f06389e, 0x20dec0a4, 0x69a20569, 0xdbbb4453,
 			0x09f0bb52, 0xe22c6707, 0x6b530f62, 0x9ac8bfbd, 0xc0aa57b0, 0xdb30223c, 0xd6e52c79,
@@ -158,12 +158,12 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ll[..127]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: [u32(0xbb99f549), 0x3b4b2903, 0x436d199e, 0x6eea5980, 0x82ebb968,
 				0x33cc3c4a, 0x90f4944b, 0x9480e10a]
 			block_words: [u32(0x37383920), 0x33343536, 0x20303132, 0x7778797a, 0x73747576, 0x6f707172,
@@ -179,12 +179,12 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ll[..128]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: [u32(0xbb99f549), 0x3b4b2903, 0x436d199e, 0x6eea5980, 0x82ebb968,
 				0x33cc3c4a, 0x90f4944b, 0x9480e10a]
 			block_words: [u32(0x37383920), 0x33343536, 0x20303132, 0x7778797a, 0x73747576, 0x6f707172,
@@ -200,16 +200,16 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: ll[..129]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: [u32(0xccf04979), 0x9cbf983e, 0x9e274997, 0xb88c707b, 0x482b00d8,
 				0x7aedc034, 0x1efdc297, 0x4de9f7c5]
 			block_words: [u32(0x00000041), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-			flags: 0x0a
+			flags      : 0x0a
 		}
 		words: [u32(0xa896b53e), 0x1a64b264, 0xb08c7ea7, 0x09990e6d, 0x30470999, 0x762e9f2c,
 			0xb6c7bf5f, 0x64fd723a, 0x6cb02e2f, 0xa3849bf2, 0xede8ea18, 0x14c88505, 0xfbf2ad67,
@@ -219,12 +219,12 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: lb[..1023]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: [u32(0x78fd494b), 0xcd7eeddd, 0x0cb98e9b, 0x7a6a754e, 0x38ff2d32,
 				0x88c4ca4c, 0xbc7baf18, 0xf7684da9]
 			block_words: [u32(0x207a7978), 0x33323130, 0x37363534, 0x39203938, 0x35363738, 0x31323334,
@@ -240,12 +240,12 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: lb[..1024]
-			key_words: iv
+			key_words   : iv
 			chunk_number: 0
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 0
+			chunk_number  : 0
 			chaining_value: [u32(0x78fd494b), 0xcd7eeddd, 0x0cb98e9b, 0x7a6a754e, 0x38ff2d32,
 				0x88c4ca4c, 0xbc7baf18, 0xf7684da9]
 			block_words: [u32(0x207a7978), 0x33323130, 0x37363534, 0x39203938, 0x35363738, 0x31323334,
@@ -263,15 +263,15 @@ const test_cases = [
 	TestCase{
 		input: TestInput{
 			input_string: 'O'
-			key_words: iv
+			key_words   : iv
 			chunk_number: 1
-			flags: 0
+			flags       : 0
 		}
 		results: Chunk{
-			chunk_number: 1
+			chunk_number  : 1
 			chaining_value: iv
-			block_words: [u32(0x0000004f), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-			flags: 0x0b
+			block_words   : [u32(0x0000004f), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			flags         : 0x0b
 		}
 		words: [u32(0xfd795319), 0x4448fd94, 0xa8054dbb, 0x526517ad, 0x7e8e2e4c, 0xf54cf835,
 			0xb498c9a7, 0x341396fa, 0x753298b2, 0xd721328c, 0x4013c5d6, 0xaf64d891, 0x77893790,

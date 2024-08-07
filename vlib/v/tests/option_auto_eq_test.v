@@ -20,7 +20,7 @@ pub fn PartialEmoji.parse(j json2.Any) !PartialEmoji {
 				} else {
 					none
 				}
-				name: j['name']! as string
+				name    : j['name']! as string
 				animated: if b := j['animated'] {
 					b as bool
 				} else {

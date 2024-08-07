@@ -116,8 +116,8 @@ fn test_shutdown() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
 	x := http.fetch(
-		url: 'http://${localserver}/shutdown'
-		method: .get
+		url    : 'http://${localserver}/shutdown'
+		method : .get
 		cookies: {
 			'skey': 'superman'
 		}

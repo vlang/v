@@ -45,7 +45,7 @@ fn test_struct_pointer_casts() {
 fn test_struct_pointer_casts_with_field_selectors() {
 	ss := &Struct{
 		name: 'abc'
-		x: 123
+		x   : 123
 	}
 	dump(ss)
 	pss := voidptr(ss)

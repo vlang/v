@@ -271,8 +271,8 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) IdentVar {
 			offset := g.get_var_offset(obj.name)
 			return LocalVar{
 				offset: offset
-				typ: obj.typ
-				name: obj.name
+				typ   : obj.typ
+				name  : obj.name
 			}
 		}
 		else {
@@ -302,7 +302,7 @@ fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 		}
 		.amd64 {
 			return Amd64{
-				fn_arg_registers: amd64_get_call_regs(target_os)
+				fn_arg_registers    : amd64_get_call_regs(target_os)
 				fn_arg_sse_registers: amd64_get_call_sseregs(target_os)
 			}
 		}
@@ -328,18 +328,18 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 		out_name
 	}
 	mut g := &Gen{
-		table: table
+		table               : table
 		sect_header_name_pos: 0
-		out_name: exe_name
-		pref: pref_
-		files: files
+		out_name            : exe_name
+		pref                : pref_
+		files               : files
 		// TODO: workaround, needs to support recursive init
 		code_gen: get_backend(pref_.arch, pref_.os) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
 		structs: []Struct{len: table.type_symbols.len}
-		eval: eval.new_eval(table, pref_)
+		eval   : eval.new_eval(table, pref_)
 	}
 
 	g.code_gen.g = g
@@ -368,9 +368,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 // used in macho_test.v
 pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 	mut g := Gen{
-		pref: p
+		pref    : p
 		out_name: out_name
-		table: ast.new_table()
+		table   : ast.new_table()
 		code_gen: Amd64{}
 	}
 	g.code_gen.g = &mut g
@@ -1114,9 +1114,9 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	} else {
 		g.warnings << errors.Warning{
 			file_path: g.current_file.path
-			pos: pos
-			reporter: .gen
-			message: s
+			pos      : pos
+			reporter : .gen
+			message  : s
 		}
 	}
 }
@@ -1132,9 +1132,9 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	} else {
 		g.errors << errors.Error{
 			file_path: g.current_file.path
-			pos: pos
-			reporter: .gen
-			message: s
+			pos      : pos
+			reporter : .gen
+			message  : s
 		}
 	}
 }
@@ -1146,7 +1146,7 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	// construct a struct variable contains the return value
 	var := LocalVar{
 		offset: g.allocate_by_type('', typ)
-		typ: typ
+		typ   : typ
 	}
 
 	g.code_gen.zero_fill(size, var)
@@ -1158,7 +1158,7 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 		// TODO: expr not on rax
 		g.code_gen.mov_reg_to_var(var, main_reg,
 			offset: offset
-			typ: ts.mr_info().types[i]
+			typ   : ts.mr_info().types[i]
 		)
 	}
 	// store the multi return struct value

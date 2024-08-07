@@ -38,39 +38,39 @@ a,"b,c,d",0,#,3,"pippo"
 
 const target_header_list = [
 	csv.HeaderItem{
-		label: 'a'
+		label : 'a'
 		column: 0
-		htype: .int
+		htype : .int
 	},
 	csv.HeaderItem{
-		label: 'b'
+		label : 'b'
 		column: 1
-		htype: .string
+		htype : .string
 	},
 	csv.HeaderItem{
-		label: 'c'
+		label : 'c'
 		column: 2
-		htype: .f32
+		htype : .f32
 	},
 	csv.HeaderItem{
-		label: 'd'
+		label : 'd'
 		column: 3
-		htype: .f32
+		htype : .f32
 	},
 	csv.HeaderItem{
-		label: 'e'
+		label : 'e'
 		column: 4
-		htype: .int
+		htype : .int
 	},
 	csv.HeaderItem{
-		label: 'f'
+		label : 'f'
 		column: 5
-		htype: .string
+		htype : .string
 	},
 	csv.HeaderItem{
-		label: 'g'
+		label : 'g'
 		column: 6
-		htype: .int
+		htype : .int
 	},
 ]
 
@@ -146,7 +146,7 @@ fn test_csv_sequential() {
 	f.close()
 
 	csvr = csv.csv_sequential_reader(
-		file_path: file_path_str
+		file_path   : file_path_str
 		mem_buf_size: 64
 		end_line_len: csv.endline_crlf_len
 	)!
@@ -267,7 +267,7 @@ fn test_csv_string() {
 
 	// parse the temp file
 	csvr = csv.csv_reader(
-		file_path: file_path_str
+		file_path   : file_path_str
 		mem_buf_size: 32
 		end_line_len: csv.endline_crlf_len
 	)!
@@ -283,8 +283,8 @@ fn test_csv_string() {
 
 	// test crlf endline
 	csvr = csv.csv_reader(
-		scr_buf: txt3.str
-		scr_buf_len: txt3.len
+		scr_buf     : txt3.str
+		scr_buf_len : txt3.len
 		end_line_len: csv.endline_crlf_len
 	)!
 	perform_test3(mut csvr)!
@@ -321,7 +321,7 @@ fn test_coherence() {
 
 	// parse the temp file
 	mut csvr := csv.csv_reader(
-		file_path: file_path_str
+		file_path   : file_path_str
 		mem_buf_size: 32
 		end_line_len: csv.endline_cr_len
 	)!

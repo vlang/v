@@ -48,12 +48,12 @@ struct Theme {
 
 const themes = [
 	&Theme{
-		bg_color: gx.rgb(250, 248, 239)
-		padding_color: gx.rgb(143, 130, 119)
-		victory_color: gx.rgb(100, 160, 100)
+		bg_color       : gx.rgb(250, 248, 239)
+		padding_color  : gx.rgb(143, 130, 119)
+		victory_color  : gx.rgb(100, 160, 100)
 		game_over_color: gx.rgb(190, 50, 50)
-		text_color: gx.black
-		tile_colors: [
+		text_color     : gx.black
+		tile_colors    : [
 			gx.rgb(205, 193, 180), // Empty / 0 tile
 			gx.rgb(238, 228, 218), // 2
 			gx.rgb(237, 224, 200), // 4
@@ -69,12 +69,12 @@ const themes = [
 		]
 	},
 	&Theme{
-		bg_color: gx.rgb(55, 55, 55)
-		padding_color: gx.rgb(68, 60, 59)
-		victory_color: gx.rgb(100, 160, 100)
+		bg_color       : gx.rgb(55, 55, 55)
+		padding_color  : gx.rgb(68, 60, 59)
+		victory_color  : gx.rgb(100, 160, 100)
 		game_over_color: gx.rgb(190, 50, 50)
-		text_color: gx.white
-		tile_colors: [
+		text_color     : gx.white
+		tile_colors    : [
 			gx.rgb(123, 115, 108),
 			gx.rgb(142, 136, 130),
 			gx.rgb(142, 134, 120),
@@ -90,12 +90,12 @@ const themes = [
 		]
 	},
 	&Theme{
-		bg_color: gx.rgb(38, 38, 66)
-		padding_color: gx.rgb(58, 50, 74)
-		victory_color: gx.rgb(100, 160, 100)
+		bg_color       : gx.rgb(38, 38, 66)
+		padding_color  : gx.rgb(58, 50, 74)
+		victory_color  : gx.rgb(100, 160, 100)
 		game_over_color: gx.rgb(190, 50, 50)
-		text_color: gx.white
-		tile_colors: [
+		text_color     : gx.white
+		tile_colors    : [
 			gx.rgb(92, 86, 140),
 			gx.rgb(106, 99, 169),
 			gx.rgb(106, 97, 156),
@@ -489,56 +489,56 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 	match kind {
 		.keys {
 			return gx.TextCfg{
-				color: gx.Color{150, 150, 255, 200}
-				align: .center
+				color         : gx.Color{150, 150, 255, 200}
+				align         : .center
 				vertical_align: .bottom
-				size: app.ui.font_size / 4
+				size          : app.ui.font_size / 4
 			}
 		}
 		.points {
 			return gx.TextCfg{
 				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .left
-				size: app.ui.font_size / 2
+				size : app.ui.font_size / 2
 			}
 		}
 		.moves {
 			return gx.TextCfg{
 				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .right
-				size: app.ui.font_size / 2
+				size : app.ui.font_size / 2
 			}
 		}
 		.tile {
 			return gx.TextCfg{
-				color: app.theme.text_color
-				align: .center
+				color         : app.theme.text_color
+				align         : .center
 				vertical_align: .middle
-				size: app.ui.font_size
+				size          : app.ui.font_size
 			}
 		}
 		.victory {
 			return gx.TextCfg{
-				color: app.theme.victory_color
-				align: .center
+				color         : app.theme.victory_color
+				align         : .center
 				vertical_align: .middle
-				size: app.ui.font_size * 2
+				size          : app.ui.font_size * 2
 			}
 		}
 		.game_over {
 			return gx.TextCfg{
-				color: app.theme.game_over_color
-				align: .center
+				color         : app.theme.game_over_color
+				align         : .center
 				vertical_align: .middle
-				size: app.ui.font_size * 2
+				size          : app.ui.font_size * 2
 			}
 		}
 		.score_end {
 			return gx.TextCfg{
-				color: gx.white
-				align: .center
+				color         : gx.white
+				align         : .center
 				vertical_align: .middle
-				size: app.ui.font_size * 3 / 4
+				size          : app.ui.font_size * 3 / 4
 			}
 		}
 	}
@@ -597,7 +597,7 @@ fn (app &App) draw() {
 		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, gx.TextCfg{
 			...f
 			color: gx.white
-			size: f.size * 3 / 4
+			size : f.size * 3 / 4
 		})
 	}
 	if app.state == .victory {
@@ -660,7 +660,7 @@ fn (app &App) draw_tiles() {
 						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
 							'${tidx}', gx.TextCfg{
 							...fmt
-							size: fs2
+							size : fs2
 							align: gx.HorizontalAlign.left
 						})
 					}
@@ -900,16 +900,16 @@ fn main() {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
 	app.gg = gg.new_context(
-		bg_color: app.theme.bg_color
-		width: default_window_width
-		height: default_window_height
+		bg_color    : app.theme.bg_color
+		width       : default_window_width
+		height      : default_window_height
 		sample_count: 2 // higher quality curves
 		window_title: 'V 2048'
-		frame_fn: frame
-		event_fn: on_event
-		init_fn: init
-		user_data: app
-		font_path: font_path
+		frame_fn    : frame
+		event_fn    : on_event
+		init_fn     : init
+		user_data   : app
+		font_path   : font_path
 	)
 	app.gg.run()
 }

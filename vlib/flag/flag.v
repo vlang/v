@@ -140,11 +140,11 @@ pub fn new_flag_parser(args []string) &FlagParser {
 		}
 	}
 	return &FlagParser{
-		original_args: original_args
-		idx_dashdash: idx_dashdash
+		original_args     : original_args
+		idx_dashdash      : idx_dashdash
 		all_after_dashdash: all_after_dashdash
-		args: all_before_dashdash
-		max_free_args: flag.max_args_number
+		args              : all_before_dashdash
+		max_free_args     : flag.max_args_number
 	}
 }
 
@@ -200,9 +200,9 @@ pub fn (mut fs FlagParser) allow_unknown_args() {
 // This version supports abbreviations.
 fn (mut fs FlagParser) add_flag(name string, abbr u8, usage string, desc string) {
 	fs.flags << Flag{
-		name: name
-		abbr: abbr
-		usage: usage
+		name    : name
+		abbr    : abbr
+		usage   : usage
 		val_desc: desc
 	}
 }
@@ -611,13 +611,13 @@ pub fn (mut fs FlagParser) finalize() ![]string {
 	if fs.min_free_args > remaining.len {
 		return &ArgsCountError{
 			want: fs.min_free_args
-			got: remaining.len
+			got : remaining.len
 		}
 	}
 	if fs.max_free_args < remaining.len {
 		return &ArgsCountError{
 			want: fs.max_free_args
-			got: remaining.len
+			got : remaining.len
 		}
 	}
 	return remaining

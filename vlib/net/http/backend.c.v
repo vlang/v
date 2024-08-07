@@ -15,10 +15,10 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 
 fn net_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
 	mut ssl_conn := ssl.new_ssl_conn(
-		verify: req.verify
-		cert: req.cert
-		cert_key: req.cert_key
-		validate: req.validate
+		verify                : req.verify
+		cert                  : req.cert
+		cert_key              : req.cert_key
+		validate              : req.validate
 		in_memory_verification: req.in_memory_verification
 	)!
 	mut retries := 0

@@ -90,8 +90,8 @@ fn new_repl(folder string) Repl {
 		readline: readline.Readline{
 			skip_empty: true
 		}
-		folder: folder
-		modules: ['os', 'time', 'math']
+		folder        : folder
+		modules       : ['os', 'time', 'math']
 		vstartup_lines: vstartup_source
 		// Test file used to check if a function as a void return or a value return.
 		eval_func_lines: vstartup_source

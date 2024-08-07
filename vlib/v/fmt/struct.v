@@ -313,12 +313,44 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				} else {
 					f.writeln('')
 				}
-				f.comments(node.update_expr_comments, same_line: true, has_nl: true, level: .keep)
+				f.comments(node.update_expr_comments,
+					same_line: true
+					has_nl   : true
+					level    : .keep
+				)
 			}
+			mut value_aligns := []AlignInfo{}
+			mut comment_aligns := []AlignInfo{}
+			for init_field in node.init_fields {
+				value_aligns.add_info(init_field.name.len, init_field.pos.line_nr)
+				if init_field.comments.len > 0 {
+					comment_aligns.add_info(init_field.expr.str().len + 1, init_field.pos.line_nr)
+				}
+			}
+			mut value_align_i := 0
+			mut comment_align_i := 0
 			for i, init_field in node.init_fields {
-				f.write('${init_field.name}: ')
+				f.write(init_field.name)
+
+				if value_aligns[value_align_i].line_nr < init_field.pos.line_nr {
+					value_align_i++
+				}
+				if !single_line_fields {
+					f.write(strings.repeat(` `, value_aligns[value_align_i].max_len - init_field.name.len))
+				}
+				f.write(': ')
 				f.expr(init_field.expr)
-				f.comments(init_field.comments, same_line: true, has_nl: false, level: .indent)
+				if init_field.comments.len > 0 {
+					if comment_aligns[comment_align_i].line_nr < init_field.pos.line_nr {
+						comment_align_i++
+					}
+					f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - init_field.expr.str().len - 1))
+					f.comments(init_field.comments,
+						same_line: true
+						has_nl   : false
+						level    : .indent
+					)
+				}
 				if single_line_fields {
 					if i < node.init_fields.len - 1 {
 						f.write(', ')

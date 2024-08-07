@@ -138,7 +138,7 @@ fn (mut kn KqueueNotifier) wait(timeout time.Duration) []FdEvent {
 				panic('encountered an empty event kind; this is most likely due to using tcc')
 			}
 			arr << &KqueueEvent{
-				fd: fd
+				fd  : fd
 				kind: kind
 			}
 		}

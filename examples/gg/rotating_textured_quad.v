@@ -43,12 +43,12 @@ fn main() {
 	mut window := &Window{}
 	window.ctx = gg.new_context(
 		window_title: 'Rotating V logo'
-		bg_color: gx.light_green
-		width: 800
-		height: 800
-		user_data: window
-		init_fn: window.init
-		frame_fn: window.draw
+		bg_color    : gx.light_green
+		width       : 800
+		height      : 800
+		user_data   : window
+		init_fn     : window.init
+		frame_fn    : window.draw
 	)
 	window.ctx.run()
 }

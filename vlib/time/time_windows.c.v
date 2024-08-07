@@ -105,25 +105,25 @@ pub fn (t Time) local() Time {
 		return t
 	}
 	st_utc := SystemTime{
-		year: u16(t.year)
-		month: u16(t.month)
-		day: u16(t.day)
-		hour: u16(t.hour)
-		minute: u16(t.minute)
-		second: u16(t.second)
+		year       : u16(t.year)
+		month      : u16(t.month)
+		day        : u16(t.day)
+		hour       : u16(t.hour)
+		minute     : u16(t.minute)
+		second     : u16(t.second)
 		millisecond: u16(t.nanosecond / 1_000_000)
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(unsafe { nil }, voidptr(&st_utc), voidptr(&st_local))
 	t_local := Time{
-		year: st_local.year
-		month: st_local.month
-		day: st_local.day
-		hour: st_local.hour
-		minute: st_local.minute
-		second: st_local.second // These are the same
+		year      : st_local.year
+		month     : st_local.month
+		day       : st_local.day
+		hour      : st_local.hour
+		minute    : st_local.minute
+		second    : st_local.second // These are the same
 		nanosecond: int(st_local.millisecond) * 1_000_000
-		unix: st_local.unix()
+		unix      : st_local.unix()
 	}
 	return t_local
 }
@@ -139,15 +139,15 @@ fn win_now() Time {
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(unsafe { nil }, voidptr(&st_utc), voidptr(&st_local))
 	t := Time{
-		year: st_local.year
-		month: st_local.month
-		day: st_local.day
-		hour: st_local.hour
-		minute: st_local.minute
-		second: st_local.second
+		year      : st_local.year
+		month     : st_local.month
+		day       : st_local.day
+		hour      : st_local.hour
+		minute    : st_local.minute
+		second    : st_local.second
 		nanosecond: int(st_local.millisecond) * 1_000_000
-		unix: st_local.unix()
-		is_local: true
+		unix      : st_local.unix()
+		is_local  : true
 	}
 	return t
 }
@@ -161,15 +161,15 @@ fn win_utc() Time {
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, voidptr(&st_utc))
 	t := Time{
-		year: st_utc.year
-		month: st_utc.month
-		day: st_utc.day
-		hour: st_utc.hour
-		minute: st_utc.minute
-		second: st_utc.second
+		year      : st_utc.year
+		month     : st_utc.month
+		day       : st_utc.day
+		hour      : st_utc.hour
+		minute    : st_utc.minute
+		second    : st_utc.second
 		nanosecond: int(st_utc.millisecond) * 1_000_000
-		unix: st_utc.unix()
-		is_local: false
+		unix      : st_utc.unix()
+		is_local  : false
 	}
 	return t
 }
@@ -183,11 +183,11 @@ fn (st SystemTime) unix_time() i64 {
 // unix returns Unix time.
 fn (st SystemTime) unix() i64 {
 	tt := C.tm{
-		tm_sec: st.second
-		tm_min: st.minute
+		tm_sec : st.second
+		tm_min : st.minute
 		tm_hour: st.hour
 		tm_mday: st.day
-		tm_mon: st.month - 1
+		tm_mon : st.month - 1
 		tm_year: st.year - 1900
 	}
 	return make_unix_time(tt)

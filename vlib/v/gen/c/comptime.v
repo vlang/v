@@ -731,17 +731,17 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 // push_new_comptime_info saves the current comptime information
 fn (mut g Gen) push_new_comptime_info() {
 	g.comptime_info_stack << comptime.ComptimeInfo{
-		resolver: g.comptime.resolver
-		table: g.comptime.table
-		type_map: g.comptime.type_map.clone()
-		inside_comptime_for: g.comptime.inside_comptime_for
-		comptime_for_variant_var: g.comptime.comptime_for_variant_var
-		comptime_for_field_var: g.comptime.comptime_for_field_var
-		comptime_for_field_type: g.comptime.comptime_for_field_type
-		comptime_for_field_value: g.comptime.comptime_for_field_value
-		comptime_for_enum_var: g.comptime.comptime_for_enum_var
-		comptime_for_method_var: g.comptime.comptime_for_method_var
-		comptime_for_method: g.comptime.comptime_for_method
+		resolver                    : g.comptime.resolver
+		table                       : g.comptime.table
+		type_map                    : g.comptime.type_map.clone()
+		inside_comptime_for         : g.comptime.inside_comptime_for
+		comptime_for_variant_var    : g.comptime.comptime_for_variant_var
+		comptime_for_field_var      : g.comptime.comptime_for_field_var
+		comptime_for_field_type     : g.comptime.comptime_for_field_type
+		comptime_for_field_value    : g.comptime.comptime_for_field_value
+		comptime_for_enum_var       : g.comptime.comptime_for_enum_var
+		comptime_for_method_var     : g.comptime.comptime_for_method_var
+		comptime_for_method         : g.comptime.comptime_for_method
 		comptime_for_method_ret_type: g.comptime.comptime_for_method_ret_type
 	}
 }

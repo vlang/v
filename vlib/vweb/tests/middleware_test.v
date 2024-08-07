@@ -122,7 +122,7 @@ fn test_single_post_middleware() {
 	json_test := json.encode(test_object)
 
 	received := simple_tcp_client_post_json(
-		path: '/single_post'
+		path   : '/single_post'
 		headers: 'Content-Length: ${json_test.len}\r\n'
 		content: json_test
 	) or {
@@ -141,7 +141,7 @@ fn test_multiple_post_middleware() {
 	json_test := json.encode(test_object)
 
 	received := simple_tcp_client_post_json(
-		path: '/multiple_post'
+		path   : '/multiple_post'
 		headers: 'Content-Length: ${json_test.len}\r\n'
 		content: json_test
 	) or {
@@ -160,7 +160,7 @@ fn test_combined_post_middleware() {
 	json_test := json.encode(test_object)
 
 	received := simple_tcp_client_post_json(
-		path: '/combined_post'
+		path   : '/combined_post'
 		headers: 'Content-Length: ${json_test.len}\r\n'
 		content: json_test
 	) or {
@@ -178,7 +178,7 @@ fn test_nested_post_middleware() {
 	json_test := json.encode(test_object)
 
 	received := simple_tcp_client_post_json(
-		path: '/admin/nested_post'
+		path   : '/admin/nested_post'
 		headers: 'Content-Length: ${json_test.len}\r\n'
 		content: json_test
 	) or {
@@ -249,8 +249,8 @@ fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
 	x := http.fetch(
-		url: 'http://${localserver}/shutdown'
-		method: .get
+		url    : 'http://${localserver}/shutdown'
+		method : .get
 		cookies: {
 			'skey': 'superman'
 		}

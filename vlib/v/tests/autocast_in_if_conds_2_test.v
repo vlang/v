@@ -20,7 +20,7 @@ fn get_name(name string) string {
 fn test_autocast_in_if_conds() {
 	s := MySumType(S1{
 		is_info: false
-		info: Info{'foo'}
+		info   : Info{'foo'}
 	})
 
 	if s is S1 && !s.is_info && get_name(s.info.name) == 'foo' {

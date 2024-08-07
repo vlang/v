@@ -338,15 +338,15 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	}
 
 	func := ast.Fn{
-		name: name
-		params: params
-		is_variadic: is_variadic
-		is_c_variadic: is_c_variadic
-		return_type: return_type
+		name           : name
+		params         : params
+		is_variadic    : is_variadic
+		is_c_variadic  : is_c_variadic
+		return_type    : return_type
 		return_type_pos: return_type_pos
-		generic_names: generic_names
-		is_method: false
-		attrs: p.attrs
+		generic_names  : generic_names
+		is_method      : false
+		attrs          : p.attrs
 	}
 	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
@@ -438,12 +438,12 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 			return ast.new_type(idx)
 		}
 		idx = p.table.register_sym(ast.TypeSymbol{
-			kind: .sum_type
-			name: prepend_mod_name
+			kind : .sum_type
+			name : prepend_mod_name
 			cname: util.no_dots(prepend_mod_name)
-			mod: p.mod
-			info: ast.SumType{
-				is_anon: true
+			mod  : p.mod
+			info : ast.SumType{
+				is_anon : true
 				variants: variant_types
 			}
 		})
@@ -471,8 +471,8 @@ fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 		type_end_pos := prev_tok.pos()
 		type_pos := type_start_pos.extend(type_end_pos)
 		types << ast.TypeNode{
-			typ: typ
-			pos: type_pos
+			typ         : typ
+			pos         : type_pos
 			end_comments: end_comments
 		}
 
@@ -833,8 +833,8 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					} else {
 						idx = p.table.register_sym(ast.TypeSymbol{
 							...sym
-							name: sym_name
-							rname: sym.name
+							name         : sym_name
+							rname        : sym.name
 							generic_types: p.struct_init_generic_types.clone()
 						})
 					}
@@ -856,10 +856,10 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 		return ast.new_type(idx).set_flag(.generic)
 	}
 	idx = p.table.register_sym(ast.TypeSymbol{
-		name: name
-		cname: util.no_dots(name)
-		mod: p.mod
-		kind: .any
+		name  : name
+		cname : util.no_dots(name)
+		mod   : p.mod
+		kind  : .any
 		is_pub: true
 	})
 	return ast.new_type(idx).set_flag(.generic)
@@ -950,12 +950,12 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		}
 
 		idx := p.table.register_sym(ast.TypeSymbol{
-			kind: .generic_inst
-			name: bs_name
+			kind : .generic_inst
+			name : bs_name
 			cname: util.no_dots(bs_cname)
-			mod: p.mod
-			info: ast.GenericInst{
-				parent_idx: parent_idx
+			mod  : p.mod
+			info : ast.GenericInst{
+				parent_idx    : parent_idx
 				concrete_types: concrete_types
 			}
 		})

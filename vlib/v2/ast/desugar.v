@@ -16,13 +16,13 @@ pub fn (match_expr &MatchExpr) desugar() Expr {
 			op := if cond in [Ident, SelectorExpr] { token.Token.key_is } else { token.Token.eq }
 			c := InfixExpr{
 				lhs: match_expr.expr
-				op: op
+				op : op
 				rhs: cond
 			}
 			if branch_cond !is EmptyExpr {
 				branch_cond = InfixExpr{
 					lhs: branch_cond
-					op: .logical_or
+					op : .logical_or
 					rhs: c
 				}
 			} else {
@@ -30,7 +30,7 @@ pub fn (match_expr &MatchExpr) desugar() Expr {
 			}
 		}
 		if_expr2 := IfExpr{
-			cond: branch_cond
+			cond : branch_cond
 			stmts: branch.stmts
 		}
 		if i == 0 {
@@ -61,7 +61,7 @@ pub fn (or_expr &OrExpr) desugar() Expr {
 						name: 'len'
 					}
 				}
-				op: .gt
+				op : .gt
 				rhs: or_expr.expr.expr
 			}
 			stmts: [ExprStmt{
@@ -75,7 +75,7 @@ pub fn (or_expr &OrExpr) desugar() Expr {
 		return IfExpr{
 			cond: InfixExpr{
 				lhs: or_expr.expr
-				op: .eq
+				op : .eq
 				rhs: BasicLiteral{
 					kind: .key_true
 				}

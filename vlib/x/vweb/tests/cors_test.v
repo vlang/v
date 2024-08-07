@@ -8,7 +8,7 @@ const localserver = 'http://localhost:${port}'
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'
 const cors_options = vweb.CorsOptions{
-	origins: [allowed_origin]
+	origins        : [allowed_origin]
 	allowed_methods: [.get, .head]
 }
 
@@ -53,7 +53,7 @@ fn testsuite_begin() {
 
 fn test_valid_cors() {
 	x := http.fetch(http.FetchConfig{
-		url: localserver
+		url   : localserver
 		method: .get
 		header: http.new_header_from_map({
 			.origin: allowed_origin
@@ -66,7 +66,7 @@ fn test_valid_cors() {
 
 fn test_preflight() {
 	x := http.fetch(http.FetchConfig{
-		url: localserver
+		url   : localserver
 		method: .options
 		header: http.new_header_from_map({
 			.origin: allowed_origin
@@ -84,7 +84,7 @@ fn test_preflight() {
 
 fn test_invalid_origin() {
 	x := http.fetch(http.FetchConfig{
-		url: localserver
+		url   : localserver
 		method: .get
 		header: http.new_header_from_map({
 			.origin: 'https://google.com'
@@ -96,7 +96,7 @@ fn test_invalid_origin() {
 
 fn test_invalid_method() {
 	x := http.fetch(http.FetchConfig{
-		url: '${localserver}/post'
+		url   : '${localserver}/post'
 		method: .post
 		header: http.new_header_from_map({
 			.origin: allowed_origin

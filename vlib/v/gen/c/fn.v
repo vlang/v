@@ -2263,8 +2263,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// prepend the receiver for now (TODO turn the receiver into a CallArg everywhere?)
 	mut args := [
 		ast.CallArg{
-			typ: node.receiver_type
-			expr: node.left
+			typ            : node.receiver_type
+			expr           : node.left
 			is_tmp_autofree: node.free_receiver
 		},
 	]
@@ -2298,10 +2298,10 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			s = '${t} = '
 		} else {
 			scope.register(ast.Var{
-				name: t
-				typ: ast.string_type
+				name           : t
+				typ            : ast.string_type
 				is_autofree_tmp: true
-				pos: node.pos
+				pos            : node.pos
 			})
 			s = 'string ${t} = '
 		}

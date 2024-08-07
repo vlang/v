@@ -63,7 +63,7 @@ pub fn from_file(vmod_path string) !Manifest {
 pub fn decode(contents string) !Manifest {
 	mut parser := Parser{
 		scanner: Scanner{
-			pos: 0
+			pos : 0
 			text: contents
 		}
 	}

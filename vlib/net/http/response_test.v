@@ -3,7 +3,7 @@ module http
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok
-		body: 'Foo'
+		body  : 'Foo'
 	)
 	assert resp.bytestr() == 'HTTP/1.1 200 OK\r\n' + 'Content-Length: 3\r\n' + '\r\n' + 'Foo'
 }
@@ -11,7 +11,7 @@ fn test_response_bytestr_1() {
 fn test_response_bytestr_2() {
 	resp := new_response(
 		status: .found
-		body: 'Foo'
+		body  : 'Foo'
 		header: new_header(key: .location, value: '/')
 	)
 	lines := resp.bytestr().split_into_lines()

@@ -17,18 +17,18 @@ fn join[T](mut old T, new T) {
 
 fn test_main() {
 	mut a := Abc{
-		name: 'Peter'
+		name  : 'Peter'
 		letter: 'a'
 	}
 	b := Abc{
-		id: 1
+		id    : 1
 		letter: 'b'
 	}
 	join(mut a, b)
 
 	assert a == Abc{
-		name: 'Peter'
-		id: 1
+		name  : 'Peter'
+		id    : 1
 		letter: 'b'
 	}
 }

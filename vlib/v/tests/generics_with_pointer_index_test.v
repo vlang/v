@@ -17,8 +17,8 @@ pub fn with_cap[T](cap int) Vec[T] {
 
 	return Vec[T]{
 		data: new_data
-		cap: cap
-		len: 0
+		cap : cap
+		len : 0
 	}
 }
 

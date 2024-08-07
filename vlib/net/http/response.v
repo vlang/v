@@ -45,10 +45,10 @@ pub fn parse_response(resp string) !Response {
 	}
 	return Response{
 		http_version: version
-		status_code: status_code
-		status_msg: status_msg
-		header: header
-		body: body
+		status_code : status_code
+		status_msg  : status_msg
+		header      : header
+		body        : body
 	}
 }
 
@@ -128,7 +128,7 @@ pub:
 // function will add a Content-Length header if body is not empty.
 pub fn new_response(conf ResponseConfig) Response {
 	mut resp := Response{
-		body: conf.body
+		body  : conf.body
 		header: conf.header
 	}
 	if resp.body != '' && !resp.header.contains(.content_length) {

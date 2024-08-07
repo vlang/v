@@ -155,12 +155,12 @@ pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB
 	code := C.sqlite3_open_v2(&char(path.str), &db, flags, vfs_name.str)
 	if code != 0 {
 		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			msg : unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
 			code: code
 		}
 	}
 	return DB{
-		conn: db
+		conn   : db
 		is_open: true
 	}
 }

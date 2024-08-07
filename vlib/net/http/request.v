@@ -84,7 +84,7 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 
 	if value := req.cookies[name] {
 		return Cookie{
-			name: name
+			name : name
 			value: value
 		}
 	}
@@ -417,10 +417,10 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	}
 
 	return Request{
-		method: method
-		url: target.str()
-		header: header
-		host: header.get(.host) or { '' }
+		method : method
+		url    : target.str()
+		header : header
+		host   : header.get(.host) or { '' }
 		version: version
 		cookies: request_cookies
 	}
@@ -602,9 +602,9 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
 			files[name] << FileData{
-				filename: filename
+				filename    : filename
 				content_type: content_type
-				data: data
+				data        : data
 			}
 			continue
 		}

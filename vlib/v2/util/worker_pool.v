@@ -16,7 +16,7 @@ mut:
 
 pub fn WorkerPool.new[T, Y]() &WorkerPool[T, Y] {
 	return &WorkerPool[T, Y]{
-		ch_in: chan T{cap: 1000}
+		ch_in : chan T{cap: 1000}
 		ch_out: chan Y{cap: 1000}
 	}
 }

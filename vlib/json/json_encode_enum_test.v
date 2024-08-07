@@ -61,7 +61,7 @@ struct Test4 {
 
 fn test_encode_with_enum() {
 	out := json.encode(TestStruct{
-		test: [TestEnum.one, TestEnum.one]
+		test : [TestEnum.one, TestEnum.one]
 		test2: TestEnum.two
 		test3: TestEnum.one
 		test4: TestEnum.two
@@ -76,7 +76,7 @@ fn test_encode_direct_enum() {
 
 fn test_encode_alias_and_sumtype() {
 	assert json.decode(TestStruct, '{"test":["one","one"],"test2":"two","test3": "one", "test4": "two", "test5":4}')! == TestStruct{
-		test: [.one, .one]
+		test : [.one, .one]
 		test2: .two
 		test3: TestAlias(.one)
 		test4: TestSum('two')

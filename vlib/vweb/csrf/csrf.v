@@ -81,14 +81,14 @@ pub fn set_token(mut ctx vweb.Context, config &CsrfConfig) string {
 	// the hmac key is set as a cookie and later validated with `app.token` that must
 	// be in an html form
 	ctx.set_cookie(http.Cookie{
-		name: config.cookie_name
-		value: cookie
+		name     : config.cookie_name
+		value    : cookie
 		same_site: config.same_site
 		http_only: true
-		secure: true
-		path: config.cookie_path
-		expires: expire_time
-		max_age: config.max_age
+		secure   : true
+		path     : config.cookie_path
+		expires  : expire_time
+		max_age  : config.max_age
 	})
 
 	return token

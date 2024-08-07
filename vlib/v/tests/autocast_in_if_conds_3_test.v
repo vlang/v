@@ -29,7 +29,7 @@ fn test_autocast_in_if_conds() {
 	node := Node{
 		left: MySumType(S1{
 			is_info: false
-			info: Info{'foo'}
+			info   : Info{'foo'}
 		})
 	}
 

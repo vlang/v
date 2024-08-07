@@ -70,8 +70,8 @@ pub fn run(params SimParams, settings RunnerSettings) {
 
 			state.satisfy_rope_constraint(params)
 			request := &SimRequest{
-				id: index
-				state: state
+				id    : index
+				state : state
 				params: params
 			}
 			settings.on_request(request) or {

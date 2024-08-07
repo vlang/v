@@ -60,14 +60,14 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 		// ctx.image_queue << file
 		stb_img := stbi.load(file)!
 		img := Image{
-			width: stb_img.width
-			height: stb_img.height
+			width      : stb_img.width
+			height     : stb_img.height
 			nr_channels: stb_img.nr_channels
-			ok: false
-			data: stb_img.data
-			ext: stb_img.ext
-			path: file
-			id: ctx.image_cache.len
+			ok         : false
+			data       : stb_img.data
+			ext        : stb_img.ext
+			path       : file
+			id         : ctx.image_cache.len
 		}
 		unsafe {
 			ctx.image_cache << img
@@ -87,12 +87,12 @@ pub fn (mut ctx Context) create_image(file string) !Image {
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image $img.path ok=$img.simg_ok')
 	mut img_desc := gfx.ImageDesc{
-		width: img.width
-		height: img.height
+		width      : img.width
+		height     : img.height
 		num_mipmaps: 0
 		// wrap_u: .clamp_to_edge // XTODO SAMPLER
 		// wrap_v: .clamp_to_edge
-		label: &char(img.path.str)
+		label        : &char(img.path.str)
 		d3d11_texture: 0
 	}
 
@@ -109,7 +109,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	// all other stbi supported formats.
 	img_size := usize(4 * img.width * img.height)
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: img.data
+		ptr : img.data
 		size: img_size
 	}
 	img.simg = gfx.make_image(&img_desc)
@@ -117,8 +117,8 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u    : .clamp_to_edge
+		wrap_v    : .clamp_to_edge
 	}
 
 	img.ssmp = gfx.make_sampler(&smp_desc)
@@ -131,8 +131,8 @@ pub fn (mut img Image) init_sokol_image() &Image {
 // draw_image draws the provided image onto the screen.
 pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
 	ctx.draw_image_with_config(
-		img: img_
-		img_rect: Rect{x, y, width, height}
+		img      : img_
+		img_rect : Rect{x, y, width, height}
 		part_rect: Rect{0, 0, img_.width, img_.height}
 	)
 }
@@ -150,24 +150,24 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 	img.height = h
 	img.nr_channels = channels // 4 bytes per pixel for .rgba8, see pixel_format
 	mut img_desc := gfx.ImageDesc{
-		width: img.width
-		height: img.height
+		width       : img.width
+		height      : img.height
 		pixel_format: sicfg.pixel_format
-		num_slices: 1
-		num_mipmaps: 1
-		usage: .stream
-		label: &char(img.path.str)
+		num_slices  : 1
+		num_mipmaps : 1
+		usage       : .stream
+		label       : &char(img.path.str)
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: 0
+		ptr : 0
 		size: usize(0)
 	}
 	img.simg = gfx.make_image(&img_desc)
 
 	mut smp_desc := gfx.SamplerDesc{
-		wrap_u: sicfg.wrap_u // SAMPLER
-		wrap_v: sicfg.wrap_v
+		wrap_u    : sicfg.wrap_u // SAMPLER
+		wrap_v    : sicfg.wrap_v
 		min_filter: sicfg.min_filter
 		mag_filter: sicfg.mag_filter
 	}
@@ -205,14 +205,14 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 		// ctx.image_queue << file
 		stb_img := stbi.load(file) or { return Image{} }
 		img := Image{
-			width: width
-			height: height
+			width      : width
+			height     : height
 			nr_channels: stb_img.nr_channels
-			ok: false
-			data: stb_img.data
-			ext: stb_img.ext
-			path: file
-			id: ctx.image_cache.len
+			ok         : false
+			data       : stb_img.data
+			ext        : stb_img.ext
+			path       : file
+			id         : ctx.image_cache.len
 		}
 		ctx.image_cache << img
 		return img
@@ -233,13 +233,13 @@ fn create_image(file string) Image {
 	}
 	stb_img := stbi.load(file) or { return Image{} }
 	mut img := Image{
-		width: stb_img.width
-		height: stb_img.height
+		width      : stb_img.width
+		height     : stb_img.height
 		nr_channels: stb_img.nr_channels
-		ok: stb_img.ok
-		data: stb_img.data
-		ext: stb_img.ext
-		path: file
+		ok         : stb_img.ok
+		data       : stb_img.data
+		ext        : stb_img.ext
+		path       : file
 	}
 	img.init_sokol_image()
 	return img
@@ -252,13 +252,13 @@ fn create_image(file string) Image {
 pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) !Image {
 	stb_img := stbi.load_from_memory(buf, bufsize)!
 	mut img := Image{
-		width: stb_img.width
-		height: stb_img.height
+		width      : stb_img.width
+		height     : stb_img.height
 		nr_channels: stb_img.nr_channels
-		ok: stb_img.ok
-		data: stb_img.data
-		ext: stb_img.ext
-		id: ctx.image_cache.len
+		ok         : stb_img.ok
+		data       : stb_img.data
+		ext        : stb_img.ext
+		id         : ctx.image_cache.len
 	}
 	ctx.image_cache << img
 	return img

@@ -18,7 +18,7 @@ pub:
 
 fn test_string() {
 	t := DocumentFindFilter[string]{
-		selector: 'aa'
+		selector : 'aa'
 		selector2: ['a', 'b']
 		selector3: ['z']!
 	}
@@ -29,7 +29,7 @@ fn test_string() {
 
 fn test_int() ! {
 	t := DocumentFindFilter[int]{
-		selector: 1
+		selector : 1
 		selector2: [1, 2]
 		selector3: [3]!
 	}

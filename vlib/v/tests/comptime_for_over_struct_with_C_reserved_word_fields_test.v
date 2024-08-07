@@ -7,8 +7,8 @@ struct StructWithCReservedWord {
 
 fn test_structs_that_have_fields_that_are_reserved_c_words_can_be_iterated() {
 	foo := StructWithCReservedWord{
-		error: 'this is an error message'
-		while: 123
+		error : 'this is an error message'
+		while : 123
 		extern: 456
 		switch: true
 	}

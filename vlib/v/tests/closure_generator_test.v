@@ -27,45 +27,45 @@ struct ReturnType {
 
 const return_types = [
 	ReturnType{
-		name: ''
-		init: ''
-		assertion: ''
+		name        : ''
+		init        : ''
+		assertion   : ''
 		no_assert_kw: true
 	},
 	ReturnType{
-		name: 'int'
-		init: '-123'
+		name     : 'int'
+		init     : '-123'
 		assertion: ' == -123'
 	},
 	ReturnType{
-		name: 'u64'
-		init: '123'
+		name     : 'u64'
+		init     : '123'
 		assertion: ' == 123'
 	},
 	ReturnType{
-		name: 'voidptr'
-		init: 'voidptr(123)'
+		name     : 'voidptr'
+		init     : 'voidptr(123)'
 		assertion: ' == voidptr(123)'
 	},
 	ReturnType{
-		name: 'string'
-		init: "'hello'"
+		name     : 'string'
+		init     : "'hello'"
 		assertion: " == 'hello'"
 	},
 	ReturnType{
-		name: '!'
-		init: "error('an error')"
-		assertion: " or { assert err.msg() == 'an error' return }\npanic('got no error')"
+		name        : '!'
+		init        : "error('an error')"
+		assertion   : " or { assert err.msg() == 'an error' return }\npanic('got no error')"
 		no_assert_kw: true
 	},
 	ReturnType{
-		name: '?string'
-		init: "'hello'"
+		name     : '?string'
+		init     : "'hello'"
 		assertion: "? == 'hello'"
 	},
 	ReturnType{
-		name: 'BigStruct'
-		init: 'BigStruct{ a3: 56, a27: 1234, a61: 5555 }'
+		name     : 'BigStruct'
+		init     : 'BigStruct{ a3: 56, a27: 1234, a61: 5555 }'
 		assertion: ' == BigStruct{ a3: 56, a27: 1234, a61: 5555 }'
 	},
 ]

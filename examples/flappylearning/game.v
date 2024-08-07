@@ -153,13 +153,13 @@ fn (mut app App) update() {
 		holl_position := math.round(rand.f64() * (app.height - delta_bord * 2.0 - pipe_holl)) +
 			delta_bord
 		app.pipes << Pipe{
-			x: app.width
-			y: 0
+			x     : app.width
+			y     : 0
 			height: holl_position
 		}
 		app.pipes << Pipe{
-			x: app.width
-			y: holl_position + pipe_holl
+			x     : app.width
+			y     : holl_position + pipe_holl
 			height: app.height
 		}
 	}
@@ -178,20 +178,20 @@ fn main() {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		width: win_width
-		height: win_height
+		bg_color     : gx.white
+		width        : win_width
+		height       : win_height
 		create_window: true
-		window_title: 'flappylearning-v'
-		frame_fn: frame
-		event_fn: on_event
-		user_data: app
-		init_fn: app.init_images_wrapper
-		font_path: font_path
+		window_title : 'flappylearning-v'
+		frame_fn     : frame
+		event_fn     : on_event
+		user_data    : app
+		init_fn      : app.init_images_wrapper
+		font_path    : font_path
 	)
 	app.nv = neuroevolution.Generations{
 		population: 50
-		network: [2, 2, 1]
+		network   : [2, 2, 1]
 	}
 	app.start()
 	spawn app.run()

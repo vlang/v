@@ -14,12 +14,12 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
-		width: 600
-		height: 400
+		bg_color    : gx.rgb(174, 198, 255)
+		width       : 600
+		height      : 400
 		window_title: 'Cubic Bézier curve'
-		frame_fn: frame
-		user_data: app
+		frame_fn    : frame
+		user_data   : app
 	)
 	app.gg.run()
 }

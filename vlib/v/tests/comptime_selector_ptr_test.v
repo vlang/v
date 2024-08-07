@@ -18,7 +18,7 @@ fn (e &Encoder) encode_struct[U](val U, mut wr Writer) ! {
 		$if field.typ is &Association {
 			assert get_value_from_ref(val.$(field.name)) == Association{
 				association: unsafe { nil }
-				price: APrice{}
+				price      : APrice{}
 			}
 		}
 	}
@@ -39,7 +39,7 @@ fn test_main() {
 		price: APrice{}
 	}) == Association{
 		association: unsafe { nil }
-		price: APrice{}
+		price      : APrice{}
 	}
 
 	e.encode_struct(value, mut sb)!

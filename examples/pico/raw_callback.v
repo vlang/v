@@ -10,7 +10,7 @@ const http_response = 'HTTP/1.1 200 OK\r\nContent-type: text/html\r\nContent-len
 fn main() {
 	println('Starting webserver on http://localhost:${port}/ ...')
 	mut pico := picoev.new(
-		port: port
+		port  : port
 		raw_cb: handle_conn
 	)!
 	pico.serve()
@@ -19,8 +19,8 @@ fn main() {
 fn handle_conn(mut pv picoev.Picoev, fd int, events int) {
 	// setup a nonblocking tcp connection
 	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
+		sock       : net.tcp_socket_from_handle_raw(fd)
+		handle     : fd
 		is_blocking: false
 	}
 

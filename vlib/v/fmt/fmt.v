@@ -62,11 +62,11 @@ pub:
 
 pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
-		file: file
-		table: table
-		pref: pref_
-		is_debug: is_debug
-		out: strings.new_builder(1000)
+		file       : file
+		table      : table
+		pref       : pref_
+		is_debug   : is_debug
+		out        : strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
 	f.source_text = options.source_text
@@ -2033,8 +2033,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
 					source_name: node.left.name
-					mod: node.left.name
-					alias: node.left.name
+					mod        : node.left.name
+					alias      : node.left.name
 				}
 				f.used_imports[node.left.name] = true
 			}
@@ -2453,7 +2453,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	if node.post_comments.len > 0 {
 		f.writeln('')
 		f.comments(node.post_comments,
-			has_nl: false
+			has_nl   : false
 			prev_line: node.branches.last().body_pos.last_line
 		)
 	}
@@ -2750,7 +2750,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		f.expr(node.update_expr)
 		f.comments(node.update_expr_comments,
 			prev_line: node.update_expr_pos.last_line
-			has_nl: false
+			has_nl   : false
 		)
 		f.writeln('')
 	}

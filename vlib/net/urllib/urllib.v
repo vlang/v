@@ -336,8 +336,8 @@ pub fn (url &URL) debug() string {
 // and no password set.
 pub fn user(username string) &Userinfo {
 	return &Userinfo{
-		username: username
-		password: ''
+		username    : username
+		password    : ''
 		password_set: false
 	}
 }

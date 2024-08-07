@@ -186,11 +186,11 @@ fn Digest.new(key_words []u32, flags u32) !Digest {
 	}
 
 	return Digest{
-		key_words: key_words
-		flags: flags
+		key_words    : key_words
+		flags        : flags
 		chunk_counter: 0
-		input: []u8{}
-		binary_edge: []TreeNode{}
+		input        : []u8{}
+		binary_edge  : []TreeNode{}
 	}
 }
 
@@ -238,11 +238,11 @@ fn (mut d Digest) checksum_internal(size u64) []u8 {
 	// top of the tree.
 
 	mut state := HashState{
-		words: words
+		words         : words
 		chaining_value: chunk.chaining_value
-		block_words: chunk.block_words
-		block_len: chunk.block_len
-		flags: chunk.flags
+		block_words   : chunk.block_words
+		block_len     : chunk.block_len
+		flags         : chunk.flags
 	}
 
 	mut right_node := Node{

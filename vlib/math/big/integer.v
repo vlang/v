@@ -33,8 +33,8 @@ fn (mut x Integer) free() {
 
 fn (x Integer) clone() Integer {
 	return Integer{
-		digits: x.digits.clone()
-		signum: x.signum
+		digits  : x.digits.clone()
+		signum  : x.signum
 		is_const: false
 	}
 }

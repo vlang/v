@@ -157,18 +157,18 @@ fn (mut g Gen) default_elf_header() ElfHeader {
 	}
 
 	return ElfHeader{
-		ident_class: native.elf_class64
-		ident_data: native.elf_data_le
-		ident_version: native.elf_version
-		ident_osabi: native.elf_osabi_none
+		ident_class     : native.elf_class64
+		ident_data      : native.elf_data_le
+		ident_version   : native.elf_version
+		ident_osabi     : native.elf_osabi_none
 		ident_abiversion: native.elf_abiversion
-		typ: native.elf_type_none
-		machine: i16(machine)
-		version: native.elf_version
-		phoff: native.elf_header_size
-		ehsize: native.elf_header_size
-		phentsize: native.elf_phentry_size
-		shentsize: native.elf_shentry_size
+		typ             : native.elf_type_none
+		machine         : i16(machine)
+		version         : native.elf_version
+		phoff           : native.elf_header_size
+		ehsize          : native.elf_header_size
+		phentsize       : native.elf_phentry_size
+		shentsize       : native.elf_shentry_size
 	}
 }
 
@@ -231,7 +231,7 @@ mut:
 
 fn (mut g Gen) create_program_header(typ i32, flags i32, align i64) ProgramHeader {
 	return ProgramHeader{
-		typ: typ
+		typ  : typ
 		flags: flags
 		align: align
 	}
@@ -304,11 +304,11 @@ fn (mut g Gen) create_symbol_table_section(str_name string, info u8, bind u8, ot
 	shndx i16) SymbolTableSection {
 	return SymbolTableSection{
 		str_name: str_name
-		info: i8(info | bind << 4)
-		other: other
-		value: value
-		size: size
-		shndx: shndx
+		info    : i8(info | bind << 4)
+		other   : other
+		value   : value
+		size    : size
+		shndx   : shndx
 	}
 }
 
@@ -340,9 +340,9 @@ mut:
 
 fn (mut g Gen) create_rela_section(name string, offset i64, sym i32, typ u32, addend i64) RelASection {
 	return RelASection{
-		name: name
+		name  : name
 		offset: offset
-		info: i64((u64(sym) << 32) + typ)
+		info  : i64((u64(sym) << 32) + typ)
 		addend: addend
 	}
 }
@@ -379,9 +379,9 @@ fn (mut g Gen) create_note_section(typ i32, name string, desc string) NoteSectio
 	return NoteSection{
 		namesz: i32(name.len)
 		descsz: i32(desc.len)
-		typ: typ
-		name: name.bytes()
-		desc: desc.bytes()
+		typ   : typ
+		name  : name.bytes()
+		desc  : desc.bytes()
 	}
 }
 
@@ -402,7 +402,7 @@ mut:
 fn (mut g Gen) create_rel_section(offset i64, sym u32, typ u32) RelSection {
 	return RelSection{
 		offset: offset
-		info: i64((u64(sym) << 32) + typ)
+		info  : i64((u64(sym) << 32) + typ)
 	}
 }
 
@@ -445,13 +445,13 @@ mut:
 
 fn (mut g Gen) create_section(name string, typ i32, link i32, info i32, addralign i64, entsize i64, data SectionData) Section {
 	return Section{
-		name: name
+		name  : name
 		header: SectionHeader{
-			typ: typ
-			link: link
-			info: info
+			typ      : typ
+			link     : link
+			info     : info
 			addralign: addralign
-			entsize: entsize
+			entsize  : entsize
 		}
 		data: data
 	}

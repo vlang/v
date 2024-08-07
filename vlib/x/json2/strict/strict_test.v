@@ -23,26 +23,26 @@ fn test_get_keys_from_json() {
 
 	assert key_structs == [
 		strict.KeyStruct{
-			key: 'val'
+			key       : 'val'
 			value_type: .literal
-			token_pos: 1
+			token_pos : 1
 		},
 		strict.KeyStruct{
-			key: 'val1'
+			key       : 'val1'
 			value_type: .map
-			token_pos: 5
+			token_pos : 5
 		},
 	]
 }
 
 fn test_strict_check() {
 	assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val": ""}') == strict.StructCheckResult{
-		duplicates: ['val']
+		duplicates : ['val']
 		superfluous: []
 	}
 
 	assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val2": ""}') == strict.StructCheckResult{
-		duplicates: []
+		duplicates : []
 		superfluous: ['val2']
 	}
 }

@@ -2,11 +2,11 @@ import db.mysql
 
 fn main() {
 	mut conn := mysql.connect(
-		host: 'localhost'
-		port: 3306
+		host    : 'localhost'
+		port    : 3306
 		username: 'root'
 		password: ''
-		dbname: 'mysql'
+		dbname  : 'mysql'
 	)!
 	res := conn.query('show tables')!
 	for row in res.rows() {

@@ -134,12 +134,12 @@ fn vweb_tmpl_${fn_name}() string {
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
 			p.error_with_error(errors.Error{
-				message: "Please use @include 'header' instead of @header (deprecated)"
+				message  : "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
-				pos: token.Pos{
-					len: '@header'.len
-					line_nr: tline_number
-					pos: start_of_line_pos + position
+				pos      : token.Pos{
+					len      : '@header'.len
+					line_nr  : tline_number
+					pos      : start_of_line_pos + position
 					last_line: lines.len
 				}
 				reporter: .parser
@@ -149,12 +149,12 @@ fn vweb_tmpl_${fn_name}() string {
 		if line.contains('@footer') {
 			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
-				message: "Please use @include 'footer' instead of @footer (deprecated)"
+				message  : "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
-				pos: token.Pos{
-					len: '@footer'.len
-					line_nr: tline_number
-					pos: start_of_line_pos + position
+				pos      : token.Pos{
+					len      : '@footer'.len
+					line_nr  : tline_number
+					pos      : start_of_line_pos + position
 					last_line: lines.len
 				}
 				reporter: .parser
@@ -172,13 +172,13 @@ fn vweb_tmpl_${fn_name}() string {
 				s := '@include '
 				position := line.index(s) or { 0 }
 				p.error_with_error(errors.Error{
-					message: 'path for @include must be quoted with \' or "'
+					message  : 'path for @include must be quoted with \' or "'
 					file_path: template_file
-					pos: token.Pos{
-						len: s.len
-						line_nr: tline_number
-						pos: start_of_line_pos + position + s.len
-						col: position + s.len
+					pos      : token.Pos{
+						len      : s.len
+						line_nr  : tline_number
+						pos      : start_of_line_pos + position + s.len
+						col      : position + s.len
 						last_line: lines.len + 1
 					}
 					reporter: .parser
@@ -203,13 +203,13 @@ fn vweb_tmpl_${fn_name}() string {
 			file_content := os.read_file(file_path) or {
 				position := line.index('@include ') or { 0 } + '@include '.len
 				p.error_with_error(errors.Error{
-					message: 'Reading file ${file_name} from path: ${file_path} failed'
-					details: "Failed to @include '${file_name}'"
+					message  : 'Reading file ${file_name} from path: ${file_path} failed'
+					details  : "Failed to @include '${file_name}'"
 					file_path: template_file
-					pos: token.Pos{
-						len: '@include '.len + file_name.len
-						line_nr: tline_number
-						pos: start_of_line_pos + position
+					pos      : token.Pos{
+						len      : '@include '.len + file_name.len
+						line_nr  : tline_number
+						pos      : start_of_line_pos + position
 						last_line: lines.len
 					}
 					reporter: .parser

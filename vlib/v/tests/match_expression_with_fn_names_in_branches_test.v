@@ -43,9 +43,9 @@ pub fn new_context(cfg Config) fn (&Note, f32, f32) f32 {
 
 fn test_match_expression_returning_fns() {
 	note := &Note{
-		freq: 432
-		vol: 80
-		step: 3
+		freq  : 432
+		vol   : 80
+		step  : 3
 		paused: false
 	}
 

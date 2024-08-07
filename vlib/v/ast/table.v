@@ -662,13 +662,13 @@ pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
 }
 
 pub const invalid_type_symbol = &TypeSymbol{
-	idx: invalid_type_idx
+	idx       : invalid_type_idx
 	parent_idx: invalid_type_idx
-	language: .v
-	mod: 'builtin'
-	kind: .placeholder
-	name: 'InvalidType'
-	cname: 'InvalidType'
+	language  : .v
+	mod       : 'builtin'
+	kind      : .placeholder
+	name      : 'InvalidType'
+	cname     : 'InvalidType'
 }
 
 @[inline]
@@ -744,7 +744,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		t.type_symbols[existing_idx] = &TypeSymbol{
 			...typ
 			methods: existing_symbol.methods
-			idx: existing_idx
+			idx    : existing_idx
 		}
 		return existing_idx
 	}
@@ -758,7 +758,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 				*existing_symbol = &TypeSymbol{
 					...typ
 					kind: existing_symbol.kind
-					idx: existing_idx
+					idx : existing_idx
 				}
 			}
 		} else {
@@ -1031,12 +1031,12 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 	// register
 	chan_typ := TypeSymbol{
 		parent_idx: chan_type_idx
-		kind: .chan
-		name: name
-		cname: cname
-		info: Chan{
+		kind      : .chan
+		name      : name
+		cname     : cname
+		info      : Chan{
 			elem_type: elem_type
-			is_mut: is_mut
+			is_mut   : is_mut
 		}
 	}
 	return t.register_sym(chan_typ)
@@ -1053,11 +1053,11 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	// register
 	map_typ := TypeSymbol{
 		parent_idx: map_type_idx
-		kind: .map
-		name: name
-		cname: cname
-		info: Map{
-			key_type: key_type
+		kind      : .map
+		name      : name
+		cname     : cname
+		info      : Map{
+			key_type  : key_type
 			value_type: value_type
 		}
 	}
@@ -1075,10 +1075,10 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 	// register
 	thread_typ := TypeSymbol{
 		parent_idx: thread_type_idx
-		kind: .thread
-		name: name
-		cname: cname
-		info: Thread{
+		kind      : .thread
+		name      : name
+		cname     : cname
+		info      : Thread{
 			return_type: return_type
 		}
 	}
@@ -1097,10 +1097,10 @@ pub fn (mut t Table) find_or_register_promise(return_type Type) int {
 
 	promise_type := TypeSymbol{
 		parent_idx: t.type_idxs['Promise']
-		kind: .struct_
-		name: name
-		cname: cname
-		info: Struct{
+		kind      : .struct_
+		name      : name
+		cname     : cname
+		info      : Struct{
 			concrete_types: [return_type, t.type_idxs['JS.Any']]
 		}
 	}
@@ -1120,11 +1120,11 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 	// register
 	array_type_ := TypeSymbol{
 		parent_idx: array_type_idx
-		kind: .array
-		name: name
-		cname: cname
-		info: Array{
-			nr_dims: 1
+		kind      : .array
+		name      : name
+		cname     : cname
+		info      : Array{
+			nr_dims  : 1
 			elem_type: elem_type
 		}
 	}
@@ -1149,12 +1149,12 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 	cname := prefix + t.array_fixed_cname(elem_type, size)
 	// register
 	array_fixed_type := TypeSymbol{
-		kind: .array_fixed
-		name: name
+		kind : .array_fixed
+		name : name
 		cname: cname
-		info: ArrayFixed{
+		info : ArrayFixed{
 			elem_type: elem_type
-			size: size
+			size     : size
 			size_expr: size_expr
 			is_fn_ret: is_fn_ret
 		}
@@ -1186,10 +1186,10 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	}
 	// register
 	mr_type := TypeSymbol{
-		kind: .multi_return
-		name: name
+		kind : .multi_return
+		name : name
 		cname: cname
-		info: MultiReturn{
+		info : MultiReturn{
 			types: mr_typs
 		}
 	}
@@ -1209,14 +1209,14 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 		return existing_idx
 	}
 	return t.register_sym(
-		kind: .function
-		name: name
+		kind : .function
+		name : name
 		cname: cname
-		mod: f.mod
-		info: FnType{
-			is_anon: anon
+		mod  : f.mod
+		info : FnType{
+			is_anon : anon
 			has_decl: has_decl
-			func: f
+			func    : f
 		}
 	)
 }
@@ -1227,11 +1227,11 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		modname = name.all_before_last('.')
 	}
 	ph_type := TypeSymbol{
-		kind: .placeholder
-		name: name
-		cname: util.no_dots(name).replace_each(['&', ''])
+		kind    : .placeholder
+		name    : name
+		cname   : util.no_dots(name).replace_each(['&', ''])
 		language: language
-		mod: modname
+		mod     : modname
 	}
 	return t.register_sym(ph_type)
 }
@@ -2015,11 +2015,11 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
 			new_idx := t.register_sym(
-				kind: .struct_
-				name: nrt
-				cname: util.no_dots(c_nrt)
-				mod: ts.mod
-				info: info
+				kind  : .struct_
+				name  : nrt
+				cname : util.no_dots(c_nrt)
+				mod   : ts.mod
+				info  : info
 				is_pub: ts.is_pub
 			)
 			for typ_ in needs_unwrap_types {
@@ -2051,11 +2051,11 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.fields = fields
 			info.variants = variants
 			new_idx := t.register_sym(
-				kind: .sum_type
-				name: nrt
-				cname: util.no_dots(c_nrt)
-				mod: ts.mod
-				info: info
+				kind  : .sum_type
+				name  : nrt
+				cname : util.no_dots(c_nrt)
+				mod   : ts.mod
+				info  : info
 				is_pub: ts.is_pub
 			)
 			for typ_ in needs_unwrap_types {
@@ -2095,11 +2095,11 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.fields = fields
 			info.methods = imethods
 			new_idx := t.register_sym(
-				kind: .interface_
-				name: nrt
-				cname: util.no_dots(c_nrt)
-				mod: ts.mod
-				info: info
+				kind  : .interface_
+				name  : nrt
+				cname : util.no_dots(c_nrt)
+				mod   : ts.mod
+				info  : info
 				is_pub: ts.is_pub
 			)
 			mut ts_copy := t.sym(new_idx)
@@ -2162,7 +2162,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
 						sym.info = Struct{
 							...parent_info
-							is_generic: false
+							is_generic    : false
 							concrete_types: info.concrete_types.clone()
 						}
 						sym.is_pub = true
@@ -2222,11 +2222,11 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						}
 						sym.info = Interface{
 							...parent_info
-							is_generic: false
+							is_generic    : false
 							concrete_types: info.concrete_types.clone()
-							fields: fields
-							methods: imethods
-							parent_type: new_type(info.parent_idx).set_flag(.generic)
+							fields        : fields
+							methods       : imethods
+							parent_type   : new_type(info.parent_idx).set_flag(.generic)
 						}
 						sym.is_pub = true
 						sym.kind = parent.kind
@@ -2269,11 +2269,11 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						}
 						sym.info = SumType{
 							...parent_info
-							is_generic: false
+							is_generic    : false
 							concrete_types: info.concrete_types.clone()
-							fields: fields
-							variants: variants
-							parent_type: new_type(info.parent_idx).set_flag(.generic)
+							fields        : fields
+							variants      : variants
+							parent_type   : new_type(info.parent_idx).set_flag(.generic)
 						}
 						sym.is_pub = true
 						sym.kind = parent.kind

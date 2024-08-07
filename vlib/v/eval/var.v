@@ -28,9 +28,9 @@ pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ ast.Type) {
 		ast.Ident {
 			if init {
 				e.local_vars[expr.name] = Var{
-					val: val
+					val      : val
 					scope_idx: e.scope_idx
-					typ: typ
+					typ      : typ
 				}
 			} else {
 				e.local_vars[expr.name].val = val

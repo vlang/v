@@ -134,7 +134,7 @@ fn (mut vd VDoc) collect_search_index(out Output) {
 		}
 		vd.search_module_data << SearchModuleResult{
 			description: trim_doc_node_description(mod, comments)
-			link: vd.get_file_name(mod, out)
+			link       : vd.get_file_name(mod, out)
 		}
 		for _, dn in doc.contents {
 			vd.create_search_results(mod, dn, out)
@@ -155,10 +155,14 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(dn.name, comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' { '${dn.kind} (${dn.parent_name})' } else { '${dn.kind} ' }
+		prefix     : if dn.parent_name != '' {
+			'${dn.kind} (${dn.parent_name})'
+		} else {
+			'${dn.kind} '
+		}
 		description: dn_description
-		badge: mod
-		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
+		badge      : mod
+		link       : vd.get_file_name(mod, out) + '#' + get_node_id(dn)
 	}
 	for child in dn.children {
 		vd.create_search_results(mod, child, out)
