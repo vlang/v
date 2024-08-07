@@ -402,7 +402,7 @@ fn test_parse_ordinal_weekday_d() {
 	dt := '0 Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
 	tm_s := tm.custom_format(format)
-	assert tm_s != dt
+	assert tm_s == '4 Jan 01 00:00:00 1970'
 }
 
 fn test_parse_ordinal_weekday_c() {
@@ -410,7 +410,7 @@ fn test_parse_ordinal_weekday_c() {
 	dt := '7 Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
 	tm_s := tm.custom_format(format)
-	assert tm_s != dt
+	assert tm_s == '4 Jan 01 00:00:00 1970'
 }
 
 fn test_parse_two_letters_weekday() {
@@ -418,7 +418,7 @@ fn test_parse_two_letters_weekday() {
 	dt := 'Su Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
 	tm_s := tm.custom_format(format)
-	assert tm_s != dt
+	assert tm_s == 'Th Jan 01 00:00:00 1970'
 }
 
 fn test_parse_three_letters_weekday() {
@@ -426,7 +426,7 @@ fn test_parse_three_letters_weekday() {
 	dt := 'Sun Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
 	tm_s := tm.custom_format(format)
-	assert tm_s != dt
+	assert tm_s == 'Thu Jan 01 00:00:00 1970'
 }
 
 fn test_parse_weekday() {
@@ -434,5 +434,5 @@ fn test_parse_weekday() {
 	dt := 'Sunday Jan 01 00:00:00 1970'
 	tm := time.parse_format(dt, format)!
 	tm_s := tm.custom_format(format)
-	assert tm_s != dt
+	assert tm_s == 'Thursday Jan 01 00:00:00 1970'
 }
