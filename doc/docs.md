@@ -3443,7 +3443,7 @@ Enums can be created from string or integer value and converted into string
 ```v
 enum Cycle {
 	one
-	two   = 2
+	two = 2
 	three
 }
 
@@ -5852,7 +5852,7 @@ You can read [Enum](#enums) values and their attributes.
 
 ```v
 enum Color {
-	red  @[RED] // first attribute
+	red   @[RED]  // first attribute
 	blue  @[BLUE] // second attribute
 }
 

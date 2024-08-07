@@ -824,13 +824,13 @@ pub mut:
 }
 
 pub enum ComptimeVarKind {
-	no_comptime // it is not a comptime var
-	key_var // map key from `for k,v in t.$(field.name)`
-	value_var // map value from `for k,v in t.$(field.name)`
-	field_var // comptime field var `a := t.$(field.name)`
+	no_comptime   // it is not a comptime var
+	key_var       // map key from `for k,v in t.$(field.name)`
+	value_var     // map value from `for k,v in t.$(field.name)`
+	field_var     // comptime field var `a := t.$(field.name)`
 	generic_param // generic fn parameter
-	generic_var // generic var
-	smartcast // smart cast when used in `is v` (when `v` is from $for .variants)
+	generic_var   // generic var
+	smartcast     // smart cast when used in `is v` (when `v` is from $for .variants)
 }
 
 @[minify]
@@ -1644,13 +1644,13 @@ pub mut:
 // addressing modes:
 pub enum AddressingMode {
 	invalid
-	displacement // displacement
-	base // base
-	base_plus_displacement // base + displacement
-	index_times_scale_plus_displacement // (index ∗ scale) + displacement
-	base_plus_index_plus_displacement // base + (index ∗ scale) + displacement
+	displacement                                  // displacement
+	base                                          // base
+	base_plus_displacement                        // base + displacement
+	index_times_scale_plus_displacement           // (index ∗ scale) + displacement
+	base_plus_index_plus_displacement             // base + (index ∗ scale) + displacement
 	base_plus_index_times_scale_plus_displacement // base + index + displacement
-	rip_plus_displacement // rip + displacement
+	rip_plus_displacement                         // rip + displacement
 }
 
 pub struct AsmClobbered {

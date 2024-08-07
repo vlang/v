@@ -14,8 +14,8 @@ enum State {
 	// for example for interpolating arbitrary source code (even V source) templates.
 	//
 	html // default, only when the template extension is .html
-	css // <style>
-	js // <script>
+	css  // <style>
+	js   // <script>
 	// span // span.{
 }
 

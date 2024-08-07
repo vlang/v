@@ -108,11 +108,11 @@ fn is_exp(x u8) bool {
 
 // Possible parser return values.
 enum ParserState {
-	ok // parser finished OK
-	pzero // no digits or number is smaller than +-2^-1022
-	mzero // number is negative, module smaller
-	pinf // number is higher than +HUGE_VAL
-	minf // number is lower than -HUGE_VAL
+	ok             // parser finished OK
+	pzero          // no digits or number is smaller than +-2^-1022
+	mzero          // number is negative, module smaller
+	pinf           // number is higher than +HUGE_VAL
+	minf           // number is lower than -HUGE_VAL
 	invalid_number // invalid number, used for '#@%^' for example
 }
 

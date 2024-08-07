@@ -877,11 +877,11 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 //
 enum Group_parse_state {
 	start
-	q_mark // (?
-	q_mark1 // (?:|P  checking
-	p_status // (?P
-	p_start // (?P<
-	p_end // (?P<...>
+	q_mark    // (?
+	q_mark1   // (?:|P  checking
+	p_status  // (?P
+	p_start   // (?P<
+	p_end     // (?P<...>
 	p_in_name // (?P<...
 	finish
 }
@@ -1775,15 +1775,15 @@ fn (mut re RE) group_continuous_save(g_index int) {
 *
 ******************************************************************************/
 enum Match_state {
-	start        = 0
+	start = 0
 	stop
 	end
 	new_line
-	ist_load // load and execute instruction
-	ist_next // go to next instruction
-	ist_next_ks // go to next instruction without clenaning the state
-	ist_quant_p // match positive ,quantifier check
-	ist_quant_n // match negative, quantifier check
+	ist_load     // load and execute instruction
+	ist_next     // go to next instruction
+	ist_next_ks  // go to next instruction without clenaning the state
+	ist_quant_p  // match positive ,quantifier check
+	ist_quant_n  // match negative, quantifier check
 	ist_quant_pg // match positive ,group quantifier check
 	ist_quant_ng // match negative ,group quantifier check
 }

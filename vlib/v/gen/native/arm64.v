@@ -6,16 +6,16 @@ module native
 import v.ast
 
 enum Arm64Register {
-	x0 // v----
-	x1 // |
-	x2 // |
-	x3 // | parameter and result registers
-	x4 // |
-	x5 // |
-	x6 // |
-	x7 // ^----
-	x8 // XR - indirect result location register
-	x9 //  v----
+	x0  // v----
+	x1  // |
+	x2  // |
+	x3  // | parameter and result registers
+	x4  // |
+	x5  // |
+	x6  // |
+	x7  // ^----
+	x8  // XR - indirect result location register
+	x9  //  v----
 	x10 // |
 	x11 // |
 	x12 // | caller saved registers

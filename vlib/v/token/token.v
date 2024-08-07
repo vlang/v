@@ -21,71 +21,71 @@ pub:
 pub enum Kind {
 	unknown
 	eof
-	name // user
-	number // 123
-	string // 'foo'
-	str_inter // 'name=$user.name'
-	chartoken // `A` - rune
-	plus // +
-	minus // -
-	mul // *
-	div // /
-	mod // %
-	xor // ^
-	pipe // |
-	inc // ++
-	dec // --
-	and // &&
+	name       // user
+	number     // 123
+	string     // 'foo'
+	str_inter  // 'name=$user.name'
+	chartoken  // `A` - rune
+	plus       // +
+	minus      // -
+	mul        // *
+	div        // /
+	mod        // %
+	xor        // ^
+	pipe       // |
+	inc        // ++
+	dec        // --
+	and        // &&
 	logical_or // ||
-	not // !
-	bit_not // ~
-	question // ?
-	comma // ,
-	semicolon // ;
-	colon // :
-	arrow // <-
-	amp // &
-	hash // #
-	dollar // $
-	at // @
+	not        // !
+	bit_not    // ~
+	question   // ?
+	comma      // ,
+	semicolon  // ;
+	colon      // :
+	arrow      // <-
+	amp        // &
+	hash       // #
+	dollar     // $
+	at         // @
 	str_dollar
-	left_shift // <<
-	right_shift // >>
-	unsigned_right_shift // >>>
-	not_in // !in
-	not_is // !is
-	assign // =
-	decl_assign // :=
-	plus_assign // +=
-	minus_assign // -=
-	div_assign // /=
-	mult_assign // *=
-	xor_assign // ^=
-	mod_assign // %=
-	or_assign // |=
-	and_assign // &=
-	right_shift_assign // <<=
-	left_shift_assign // >>=
+	left_shift                  // <<
+	right_shift                 // >>
+	unsigned_right_shift        // >>>
+	not_in                      // !in
+	not_is                      // !is
+	assign                      // =
+	decl_assign                 // :=
+	plus_assign                 // +=
+	minus_assign                // -=
+	div_assign                  // /=
+	mult_assign                 // *=
+	xor_assign                  // ^=
+	mod_assign                  // %=
+	or_assign                   // |=
+	and_assign                  // &=
+	right_shift_assign          // <<=
+	left_shift_assign           // >>=
 	unsigned_right_shift_assign // >>>=
-	boolean_and_assign // &&=
-	boolean_or_assign // ||=
-	lcbr // {
-	rcbr // }
-	lpar // (
-	rpar // )
-	lsbr // [
-	nilsbr // #[
-	rsbr // ]
-	eq // ==
-	ne // !=
-	gt // >
-	lt // <
-	ge // >=
-	le // <=
+	boolean_and_assign          // &&=
+	boolean_or_assign           // ||=
+	lcbr                        // {
+	rcbr                        // }
+	lpar                        // (
+	rpar                        // )
+	lsbr                        // [
+	nilsbr                      // #[
+	rsbr                        // ]
+	eq                          // ==
+	ne                          // !=
+	gt                          // >
+	lt                          // <
+	ge                          // >=
+	le                          // <=
 	comment
 	nl
-	dot // .
-	dotdot // ..
+	dot      // .
+	dotdot   // ..
 	ellipsis // ...
 	keyword_beg
 	key_as
@@ -414,15 +414,15 @@ pub enum Precedence {
 	cond // OR or AND
 	in_as
 	assign // =
-	eq // == or !=
+	eq     // == or !=
 	// less_greater // > or <
-	sum // + - | ^
+	sum     // + - | ^
 	product // * / << >> >>> &
 	// mod // %
-	prefix // -X or !X; TODO: seems unused
+	prefix  // -X or !X; TODO: seems unused
 	postfix // ++ or --
-	call // func(X) or foo.method(X)
-	index // array[index], map[key]
+	call    // func(X) or foo.method(X)
+	index   // array[index], map[key]
 	highest
 }
 
