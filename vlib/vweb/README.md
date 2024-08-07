@@ -444,7 +444,7 @@ fn get_session(mut ctx vweb.Context) bool {
 	// implement your own logic to get the user
 	user := User{
 		session_id: '123456'
-		name: 'Vweb'
+		name      : 'Vweb'
 	}
 
 	// set the user
@@ -854,7 +854,7 @@ fn main() {
 	mut db := sqlite.connect('db')!
 
 	mut app := &App{
-		db: db
+		db         : db
 		controllers: [
 			vweb.controller('/admin', &Admin{
 				db: db
@@ -898,7 +898,7 @@ fn main() {
 	pool := vweb.database_pool(handler: get_database_connection)
 
 	mut app := &App{
-		db_handle: pool
+		db_handle  : pool
 		controllers: [
 			vweb.controller('/admin', &Admin{
 				db_handle: pool

@@ -211,12 +211,12 @@ fn main() {
 
 	first_article := Article{
 		title: 'Hello, world!'
-		text: 'V is great.'
+		text : 'V is great.'
 	}
 
 	second_article := Article{
 		title: 'Second post.'
-		text: 'Hm... what should I write about?'
+		text : 'Hm... what should I write about?'
 	}
 
 	sql app.db {
