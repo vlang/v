@@ -182,7 +182,7 @@ fn (mut l SSLListener) init() ! {
 	}
 }
 
-		
+// setup SNI callback
 fn (mut l SSLListener) init_sni(get_cert_callback fn (string) !SNICerts) {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
