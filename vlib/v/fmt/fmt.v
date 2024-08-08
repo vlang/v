@@ -1068,7 +1068,30 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	mut value_align_i := 0
 	mut attr_align_i := 0
 	mut comment_align_i := 0
-	for field in node.fields {
+	for i, field in node.fields {
+		if i > 0 {
+			// keep one empty line between fields
+			last_field := node.fields[i - 1]
+			before_last_line := if last_field.comments.len > 0
+				&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
+				last_field.comments.last().pos.last_line
+			} else if last_field.has_expr {
+				last_field.expr.pos().last_line
+			} else {
+				last_field.pos.line_nr
+			}
+
+			next_first_line := if field.comments.len > 0
+				&& field.pos.line_nr > field.comments[0].pos.line_nr {
+				field.comments[0].pos.line_nr
+			} else {
+				field.pos.line_nr
+			}
+
+			if next_first_line - before_last_line > 1 {
+				f.writeln('')
+			}
+		}
 		f.write('\t${field.name}')
 		if field.has_expr {
 			if value_aligns[value_align_i].line_nr < field.pos.line_nr {
