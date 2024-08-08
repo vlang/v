@@ -3,7 +3,10 @@
 // that can be found in the LICENSE file.
 module hash
 
+import io
+
 pub interface Hash {
+	io.Writer
 mut:
 	// Sum appends the current hash to b and returns the resulting array.
 	// It does not change the underlying hash state.
@@ -12,7 +15,6 @@ mut:
 	block_size() int
 	free()
 	reset()
-	write(p []u8) !int
 }
 
 interface Hash32er {
