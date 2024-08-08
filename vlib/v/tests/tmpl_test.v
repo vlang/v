@@ -109,7 +109,7 @@ fn my_fn(s string) string {
 	return s
 }
 
-// Add more examples of potentially buggy patterns in vlib/v/parser/templates/index.html
+// Add more examples of potentially buggy patterns in vlib/v/tests/tmpl/index.html
 fn test_tmpl_comptime() {
 	index := $tmpl('tmpl/index.html').trim_space()
 	// dump(index)
