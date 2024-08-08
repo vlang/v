@@ -1068,7 +1068,10 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	mut value_align_i := 0
 	mut attr_align_i := 0
 	mut comment_align_i := 0
-	for field in node.fields {
+	for i, field in node.fields {
+		if i > 0 && field.has_prev_newline {
+			f.writeln('')
+		}
 		f.write('\t${field.name}')
 		if field.has_expr {
 			if value_aligns[value_align_i].line_nr < field.pos.line_nr {
