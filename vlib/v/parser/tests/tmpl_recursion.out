@@ -1,0 +1,5 @@
+vlib/v/parser/tests/tmpl/recursive_fail2.html:2:1: error: A recursive call is being made on template recursive_fail
+    1 | <p>This makes a recursive call</p>
+    2 | @include 'recursive_fail'
+      | ~~~~~~~~~
+
