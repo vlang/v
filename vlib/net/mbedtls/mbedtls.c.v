@@ -186,7 +186,7 @@ fn C.mbedtls_ssl_conf_sni(&C.mbedtls_ssl_config, fn (voidptr, &C.mbedtls_ssl_con
 fn C.mbedtls_ssl_set_hs_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
 fn C.mbedtls_ssl_set_hs_own_cert(&C.mbedtls_ssl_context, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) int
 fn C.mbedtls_ssl_set_hs_authmode(&C.mbedtls_ssl_context, int)
-	
+
 fn C.mbedtls_pk_init(&C.mbedtls_pk_context)
 fn C.mbedtls_pk_free(&C.mbedtls_pk_context)
 fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, usize, &u8, usize, fn (voidptr, &u8, usize) int,
@@ -208,4 +208,3 @@ fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, usize) int
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) int
 
 fn C.mbedtls_high_level_strerr(int) &char
-
