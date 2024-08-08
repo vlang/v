@@ -107,7 +107,7 @@ fn (mut p DateTimeParser) must_be_valid_week_day() !int {
 			weekday := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == weekday {
 				p.current_pos_datetime += v.len
-				return long_months.index(weekday) + 1
+				return long_days.index(weekday) + 1
 			}
 		}
 	}
