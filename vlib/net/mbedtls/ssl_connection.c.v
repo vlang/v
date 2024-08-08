@@ -174,6 +174,43 @@ fn (mut l SSLListener) init() ! {
 	if ret != 0 {
 		return error_with_code("can't setup ssl", ret)
 	}
+
+	if get_cert_callback := l.config.get_certificate {
+		// callback implemented, set ud SNI to use callback
+		// to set correct certificate based on host name
+		l.init_sni(get_cert_callback)
+	}
+}
+
+		
+fn (mut l SSLListener) init_sni(get_cert_callback fn (string) !SNICerts) {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, l] (param voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
+		host := unsafe { name.vstring_literal_with_len(lng) }
+		if c := get_cert_callback(host) {
+			// got a certificate from the callback
+			C.mbedtls_x509_crt_init(&l.certs.client_cert)
+			C.mbedtls_pk_init(&l.certs.client_key)
+
+			r1 := C.mbedtls_x509_crt_parse(&l.certs.client_cert, c.cert.str, c.cert.len + 1)
+			if r1 != 0 {
+				eprintln('${@METHOD} mbedtls_x509_crt_parse err: ${r1}')
+				return -1
+			}
+			r2 := C.mbedtls_pk_parse_key(&l.certs.client_key, c.key.str, c.key.len + 1,
+				0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			if r2 != 0 {
+				eprintln('${@METHOD} mbedtls_pk_parse_key err: ${r2}')
+				return -1
+			}
+			return 0
+		} else {
+			eprintln('${@METHOD} err: ${err}')
+		}
+		return -1
+	}, unsafe { nil })
 }
 
 // accepts a new connection and returns a SSLConn of the connected client
@@ -223,6 +260,15 @@ pub:
 	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+
+	get_certificate ?fn (string) !SNICerts
+}
+
+pub struct SNICerts {
+pub:
+	cacert string
+	cert   string
+	key    string
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.
