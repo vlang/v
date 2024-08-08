@@ -4101,6 +4101,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut fields := []ast.EnumField{}
 	mut uses_exprs := false
 	mut enum_attrs := map[string][]ast.Attr{}
+	mut prev_last_line_nr := 0
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
 		val := p.check_name()
@@ -4123,12 +4124,19 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		comments := p.eat_comments(same_line: true)
 		next_comments := p.eat_comments()
+		has_prev_newline := prev_last_line_nr > 0 && pos.line_nr - prev_last_line_nr > 1
+		if next_comments.len > 0 {
+			prev_last_line_nr = next_comments.last().pos.last_line
+		} else {
+			prev_last_line_nr = pos.last_line
+		}
 		fields << ast.EnumField{
 			name: val
 			source_name: source_name(val)
 			pos: pos
 			expr: expr
 			has_expr: has_expr
+			has_prev_newline: has_prev_newline
 			comments: comments
 			next_comments: next_comments
 			attrs: attrs
