@@ -1072,9 +1072,9 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		if i > 0 {
 			// keep one empty line between fields
 			last_field := node.fields[i - 1]
-			before_last_line := if last_field.comments.len > 0
-				&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
-				last_field.comments.last().pos.last_line
+			before_last_line := if last_field.next_comments.len > 0
+				&& last_field.pos.line_nr < last_field.next_comments.last().pos.last_line {
+				last_field.next_comments.last().pos.last_line
 			} else if last_field.has_expr {
 				last_field.expr.pos().last_line
 			} else {

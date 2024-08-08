@@ -3,6 +3,8 @@ enum Info {
 	bbb // bbb
 
 	cccc = 5 // cccc
+	//
+	ddddd = 10 // ddddd
 }
 
 fn main() {}
