@@ -101,13 +101,13 @@ fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
 	return error_invalid_time(0, 'invalid three letter month, at: ${p.current_pos_datetime}')
 }
 
-fn (mut p DateTimeParser) must_be_valid_week_day() !int {
+fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 	for v in long_days {
 		if p.current_pos_datetime + v.len < p.datetime.len {
 			weekday := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == weekday {
 				p.current_pos_datetime += v.len
-				return long_days.index(weekday) + 1
+				return weekday
 			}
 		}
 	}
