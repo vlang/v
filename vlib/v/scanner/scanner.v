@@ -1445,6 +1445,10 @@ fn (mut s Scanner) decode_o_escapes(sinput string, start int, escapes_pos []int)
 
 fn (mut s Scanner) decode_u16_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 6 // "\uXXXX".len == 6
+	if idx + 2 > str.len || end_idx > str.len {
+		s.error_with_pos('unfinished u16 escape started at', s.current_pos())
+		return 0, ''
+	}
 	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
 	// Check if Escaped Code Point is invalid or not
 	if rune(escaped_code_point).length_in_bytes() == -1 {
@@ -1468,6 +1472,10 @@ fn (mut s Scanner) decode_u16erune(str string) string {
 
 fn (mut s Scanner) decode_u32_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 10 // "\uXXXXXXXX".len == 10
+	if idx + 2 > str.len || end_idx > str.len {
+		s.error_with_pos('unfinished u32 escape started at', s.current_pos())
+		return 0, ''
+	}
 	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
 	// Check if Escaped Code Point is invalid or not
 	if rune(escaped_code_point).length_in_bytes() == -1 {
