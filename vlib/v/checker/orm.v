@@ -338,6 +338,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 				field := node.fields.filter(it.name == column)[0]
 				c.expected_type = field.typ
 			}
+			if mut expr is ast.Ident {
+				for field in fields {
+					if expr.name == field.name {
+						c.error('unknown V identifier `${field.name}`', expr.pos)
+					}
+				}
+			}
 			c.expr(mut expr)
 		}
 	}
