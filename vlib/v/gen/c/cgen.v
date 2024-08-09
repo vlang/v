@@ -1185,6 +1185,9 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	}
 	mut styp := ''
 	sym := g.table.sym(t)
+	if sym.kind == .placeholder {
+		return '', ''
+	}
 	if sym.info is ast.FnType {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
@@ -1278,7 +1281,7 @@ fn (mut g Gen) write_results() {
 		done = g.done_results.clone()
 	}
 	for base, styp in g.results {
-		if base in done {
+		if base in done || base == '' { // done or placeholder
 			continue
 		}
 		done << base
