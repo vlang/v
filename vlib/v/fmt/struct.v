@@ -77,28 +77,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			i == node.module_pos {
 				f.writeln('module:')
 			}
-			i > 0 {
-				// keep one empty line between fields (exclude one after mut:, pub:, ...)
-				last_field := node.fields[i - 1]
-				before_last_line := if last_field.comments.len > 0
-					&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
-					last_field.comments.last().pos.last_line
-				} else if last_field.has_default_expr {
-					last_field.default_expr.pos().last_line
-				} else {
-					last_field.pos.line_nr
-				}
-
-				next_first_line := if field.comments.len > 0
-					&& field.pos.line_nr > field.comments[0].pos.line_nr {
-					field.comments[0].pos.line_nr
-				} else {
-					field.pos.line_nr
-				}
-
-				if next_first_line - before_last_line > 1 {
-					f.writeln('')
-				}
+			i > 0 && field.has_prev_newline {
+				f.writeln('')
 			}
 			else {}
 		}
