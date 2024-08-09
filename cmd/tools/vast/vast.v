@@ -124,7 +124,7 @@ fn json(file string) string {
 	pref_.fill_with_defaults()
 	pref_.enable_globals = true
 	pref_.is_fmt = true
-	//
+
 	mut t := Tree{
 		root: new_object()
 		table: ast.new_table()

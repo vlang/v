@@ -31,7 +31,7 @@ fn test_wasm() {
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot, 'vlib/v/gen/wasm/tests')
 	files := os.ls(dir)!
-	//
+
 	wrkdir := os.join_path(os.vtmp_dir(), 'wasm_tests')
 	os.mkdir_all(wrkdir)!
 	defer {

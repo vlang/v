@@ -185,22 +185,21 @@ pub mut:
 	path             string // Path to file/folder to compile
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo            LineInfo
-	//
+
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
-	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string          // just ['vfmt']
 	compile_defines_all []string          // contains both: ['vfmt','another']
 	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
-	//
+
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
-	//
+
 	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
 	print_watched_files bool // when true, just print the list of all parsed .v files + all the compiled $tmpl files, then stop. Used by `v watch run webserver.v`
-	//
+
 	skip_running     bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
 	skip_notes       bool // force notices to be ignored/not shown.
@@ -211,14 +210,14 @@ pub mut:
 	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
 	no_std           bool // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
-	//
+
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
 	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
 	only_check_syntax bool // when true, just parse the files, then stop, before running checker
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
 	skip_unused       bool // skip generating C code for functions, that are not used
-	//
+
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
@@ -289,11 +288,11 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 	command_options := cmdline.options_after(args, [option_name])[1..].join(' ')
 	vexe := vexe_path()
 	tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
-	//
+
 	res.vrun_elog('tmp_cmd: ${tmp_cmd}')
 	tmp_result := os.system(tmp_cmd)
 	res.vrun_elog('exit code: ${tmp_result}')
-	//
+
 	if output_option != '' {
 		res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
 		os.rm(tmp_exe_file_path) or {}

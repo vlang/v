@@ -113,7 +113,7 @@ fn test_http_client_settings_page() {
 	x := http.get('http://${localserver}/bilbo/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo'
-	//
+
 	y := http.get('http://${localserver}/kent/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent'
@@ -123,11 +123,11 @@ fn test_http_client_user_repo_settings_page() {
 	x := http.get('http://${localserver}/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x)!
 	assert x.body == 'username: bilbo | repository: gostamp'
-	//
+
 	y := http.get('http://${localserver}/kent/golang/settings') or { panic(err) }
 	assert_common_http_headers(y)!
 	assert y.body == 'username: kent | repository: golang'
-	//
+
 	z := http.get('http://${localserver}/missing/golang/settings') or { panic(err) }
 	assert z.status() == .not_found
 }
@@ -151,7 +151,7 @@ fn test_http_client_json_post() {
 	assert x.body == json_for_ouser
 	nuser := json.decode(User, x.body) or { User{} }
 	assert '${ouser}' == '${nuser}'
-	//
+
 	x = http.post_json('http://${localserver}/json', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: ${x}')

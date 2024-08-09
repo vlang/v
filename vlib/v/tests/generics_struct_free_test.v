@@ -18,7 +18,6 @@ fn listnode_new[T]() &ListNode[T] {
 }
 
 fn (mut l List[T]) free() {
-	//
 }
 
 fn test_generic_struct_free() {

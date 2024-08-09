@@ -3,12 +3,12 @@ struct Abc {
 	b string
 	c string
 	d string
-	//
+
 	e string
 	f string
 	g string
 	h string
-	//
+
 	x int // number of fields must be > 8
 }
 

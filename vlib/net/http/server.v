@@ -38,11 +38,11 @@ pub mut:
 	pool_channel_slots int           = 1024
 	worker_num         int           = runtime.nr_jobs()
 	listener           net.TcpListener
-	//
+
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
 	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
-	//
+
 	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
 }
 

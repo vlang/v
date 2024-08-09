@@ -18,16 +18,16 @@ struct Complex {
 	ch_i     chan int
 	atomic_i atomic int
 	my_alias MyInt = 144
-	//
+
 	pointer1_i &int   = unsafe { nil }
 	pointer2_i &&int  = unsafe { nil }
 	pointer3_i &&&int = unsafe { nil }
-	//
+
 	array_i          []int
 	map_i            map[int]int
 	my_struct        Abc
 	my_struct_shared shared Abc
-	//
+
 	o_s        ?string
 	o_i        ?int
 	o_ch_i     ?chan int = chan int{cap: 10}
@@ -36,7 +36,7 @@ struct Complex {
 	o_pointer1_i ?&int
 	o_pointer2_i ?&&int
 	o_pointer3_i ?&&&int
-	//
+
 	o_array_i          ?[]int
 	o_map_i            ?map[int]int
 	o_my_struct        ?Abc

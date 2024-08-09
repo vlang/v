@@ -93,7 +93,7 @@ pub mut:
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
-	//
+
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 }
 
@@ -368,7 +368,7 @@ pub fn (mut ts TestSession) test() {
 	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
 		ts.root_relative = true
 	}
-	//
+
 	ts.init()
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {

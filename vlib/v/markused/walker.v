@@ -530,7 +530,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	w.expr(node.left)
 	w.or_block(node.or_block)
-	//
+
 	fn_name := node.fkey()
 	if w.used_fns[fn_name] {
 		return

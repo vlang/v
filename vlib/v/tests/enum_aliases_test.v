@@ -12,7 +12,7 @@ fn test_enum_aliases() {
 	a := MyEnumAlias.something
 	dump(a)
 	assert x == a
-	//
+
 	dump(MyEnum.third)
 	dump(MyEnumAlias.third)
 	dump(int(MyEnum.third))

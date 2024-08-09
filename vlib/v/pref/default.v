@@ -21,7 +21,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 	}
 	p.vlib = os.join_path(p.vroot, 'vlib')
 	p.vmodules_paths = os.vmodules_paths()
-	//
+
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
@@ -143,7 +143,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// No OS specified? Use current system
 		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
 	}
-	//
+
 	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.default_c_compiler()

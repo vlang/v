@@ -121,7 +121,7 @@ fn test_burnt_sushi_tomltest() {
 	invalid_folder := 'invalid'
 	invalid_test_files := os.walk_ext('${test_root}/invalid', '.toml').map(it.replace('\\',
 		'/')).sorted()
-	//
+
 	println('\nTesting ${valid_test_files.len} valid TOML files...')
 	mut valid := 0
 	mut e := 0

@@ -229,7 +229,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-	//
+
 	mut resp := http.Response{
 		body: res
 	}
@@ -244,7 +244,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		http.CommonHeader.content_length: resp.body.len.str()
 	}).join(ctx.header)
 	resp.header = header.join(vweb.headers_close)
-	//
+
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
 	// send_string(mut ctx.conn, resp.bytestr()) or { return false }

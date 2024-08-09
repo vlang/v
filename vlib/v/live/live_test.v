@@ -175,7 +175,7 @@ fn test_live_program_can_be_compiled() {
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
 	eprintln('> compile_cmd: ${compile_cmd}')
 	os.system(compile_cmd)
-	//
+
 	cmd := '${os.quoted_path(genexe_file)} > /dev/null &'
 	eprintln('Running with: ${cmd}')
 	res := os.system(cmd)
