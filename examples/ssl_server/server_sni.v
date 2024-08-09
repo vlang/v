@@ -13,6 +13,7 @@ fn get_cert(host string) !mbedtls.SNICerts {
 		cert: os.read_file('cert/server.crt') or { return error('Failed to read certificate') }
 		key: os.read_file('cert/server.key') or { return error('Failed to read key') }
 	}
+	println('return certs')
 	return sni_certs
 }
 
@@ -25,7 +26,10 @@ fn main() {
 		get_certificate: get_cert // set the SNI callback to enable this feature
 	})!
 
-	mut client := server.accept()!
+	mut client := server.accept() or {
+		println('accept error: ${err}')
+		return
+	}
 	mut reader := io.new_buffered_reader(reader: client)
 	mut request := reader.read_line()!
 	println(request)
