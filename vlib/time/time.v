@@ -46,7 +46,7 @@ pub:
 	second     int
 	nanosecond int
 	is_local   bool // used to make time.now().local().local() == time.now().local()
-	//
+
 	microsecond int @[deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
 }
 

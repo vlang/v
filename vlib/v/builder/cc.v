@@ -113,13 +113,13 @@ struct CcompilerOptions {
 mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
-	//
+
 	debug_mode bool
 	cc         CC
-	//
+
 	env_cflags  string // prepended *before* everything else
 	env_ldflags string // appended *after* everything else
-	//
+
 	args         []string // ordinary C options like `-O2`
 	wargs        []string // for `-Wxyz` *exclusively*
 	pre_args     []string // options that should go before .o_args
@@ -132,7 +132,7 @@ mut:
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut ccoptions := CcompilerOptions{}
-	//
+
 	mut debug_options := ['-g']
 	mut optimization_options := ['-O2']
 	// arguments for the C compiler
@@ -263,7 +263,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 		optimization_options = ['-Ofast']
 	}
-	//
+
 	if ccoptions.debug_mode {
 		ccoptions.args << debug_options
 	}
@@ -287,7 +287,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.is_o {
 		ccoptions.args << '-c'
 	}
-	//
+
 	ccoptions.shared_postfix = '.so'
 	if v.pref.os == .macos {
 		ccoptions.shared_postfix = '.dylib'
@@ -606,7 +606,7 @@ pub fn (mut v Builder) cc() {
 			return
 		}
 	}
-	//
+
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
@@ -948,7 +948,7 @@ fn (mut c Builder) cc_windows_cross() {
 		eprintln('See https://github.com/vlang/v/blob/master/doc/docs.md#cross-compilation for instructions on how to fix that.')
 		exit(1)
 	}
-	//
+
 	c.setup_ccompiler_options(c.pref.ccompiler)
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
@@ -956,7 +956,7 @@ fn (mut c Builder) cc_windows_cross() {
 	args << '${c.pref.cflags}'
 	args << '-o ${os.quoted_path(c.pref.out_name)}'
 	args << '-w -L.'
-	//
+
 	cflags := c.get_os_cflags()
 	// -I flags
 	if c.pref.ccompiler == 'msvc' {
@@ -999,14 +999,14 @@ fn (mut c Builder) cc_windows_cross() {
 		println(builder.current_os)
 		panic('your platform is not supported yet')
 	}
-	//
+
 	mut all_args := []string{}
 	all_args << '-std=gnu11'
 	all_args << optimization_options
 	all_args << debug_options
-	//
+
 	all_args << args
-	//
+
 	all_args << '-municode'
 	all_args << c.ccoptions.linker_flags
 	all_args << '${c.pref.ldflags}'
@@ -1077,7 +1077,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
 	current_folder := os.getwd()
 	os.chdir(v.pref.vroot) or {}
-	//
+
 	mut all_options := []string{}
 	all_options << v.pref.third_party_option
 	all_options << moduleflags.c_options_before_target()

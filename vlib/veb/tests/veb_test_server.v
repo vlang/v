@@ -41,7 +41,7 @@ fn main() {
 	timeout := os.args[2].int()
 	assert timeout > 0
 	spawn exit_after_timeout(timeout)
-	//
+
 	mut app := &ServerApp{
 		port: http_port
 		timeout: timeout

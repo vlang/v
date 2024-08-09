@@ -85,7 +85,7 @@ fn str_replace() {
 	mut s := 'hello world'
 	s = s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
 	println(s)
-	//
+
 	mut s2 := 'aa' + 'bb'
 	s2 = s2.replace('a', 'c')
 	println(s2)
@@ -115,7 +115,7 @@ fn reassign_str() {
 	}
 	mut x := 'a'
 	x = 'b' // nothing has to be freed here
-	//
+
 	mut s := 'a' + 'b'
 	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
 	s = s + '!' // old s ref must be copied and freed after the assignment, since s is still used in the right expr

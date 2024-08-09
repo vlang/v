@@ -79,7 +79,7 @@ const fixedbytes = [100]u8{}
 fn test_unsafe_pointers() {
 	fsize := fixedbytes.len
 	src := &fixedbytes[0]
-	//
+
 	b := []u8{}
 	eprintln('b.data before: ${b.data}')
 	eprintln('b.len before: ${b.len}')

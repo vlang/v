@@ -236,7 +236,7 @@ fn converter(mut pn PrepNumber) u64 {
 	mut r2 := u32(0)
 	mut r1 := u32(0)
 	mut r0 := u32(0)
-	//
+
 	mask28 := u32(u64(0xF) << 28)
 	mut result := u64(0)
 	// working on 3 u32 to have 96 bit precision

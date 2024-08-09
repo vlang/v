@@ -204,7 +204,7 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		1,
 	]
 	sgl.mult_matrix(m)
-	//
+
 	sgl.load_pipeline(ctx.pipeline.alpha)
 	sgl.enable_texture()
 	sgl.texture(tf_skl.sg_img, tf_skl.sg_smp)

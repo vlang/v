@@ -18,7 +18,7 @@ pub mut:
 	z         f32
 	color     gx.Color    = gx.white
 	effect    ImageEffect = .alpha
-	//
+
 	rotation f32 // the amount to rotate the image in degrees, counterclockwise. Use a negative value, to rotate it clockwise.
 }
 

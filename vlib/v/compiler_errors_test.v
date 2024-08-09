@@ -87,7 +87,7 @@ fn test_all() {
 	global_run_dir := '${checker_dir}/globals_run'
 	run_dir := '${checker_dir}/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
-	//
+
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
@@ -115,7 +115,7 @@ fn test_all() {
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.run()
-	//
+
 	if os.user_os() == 'linux' {
 		mut skip_unused_tasks := Tasks{
 			vexe: vexe
@@ -128,7 +128,7 @@ fn test_all() {
 			'.skip_unused.run.out', skip_unused_dir_tests, false)
 		skip_unused_tasks.run()
 	}
-	//
+
 	if github_job == 'ubuntu-tcc' {
 		// This is done with tcc only, because the error output is compiler specific.
 		// Note: the tasks should be run serially, since they depend on

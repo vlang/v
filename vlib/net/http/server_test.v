@@ -136,9 +136,9 @@ fn test_server_custom_handler() {
 	assert x.status_msg == 'OK'
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
-	//
+
 	http.fetch(url: 'http://${server.addr}/something/else')!
-	//
+
 	big_url := 'http://${server.addr}/redirect_to_big'
 	mut progress_calls := &ProgressCalls{}
 	z := http.fetch(
@@ -173,10 +173,10 @@ fn test_server_custom_handler() {
 	assert progress_calls.chunks[1].bytestr().starts_with('HTTP/1.1 200 OK')
 	assert progress_calls.chunks.last().bytestr().contains('xyz def')
 	assert progress_calls.redirected_to == ['http://${server.addr}/big']
-	//
+
 	server.stop()
 	t.wait()
-	//
+
 	assert handler.counter == 5
 	assert handler.oks == 3
 	assert handler.not_founds == 1

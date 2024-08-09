@@ -14,7 +14,7 @@ pub fn start_in_background(http_port int, timeout time.Duration) ! {
 	linfo('>> ${@FN}, http_port: ${http_port}, timeout: ${timeout}')
 	assert http_port > 0
 	assert timeout > 0
-	//
+
 	spawn fn (timeout time.Duration) {
 		time.sleep(timeout)
 		linfo('>> webserver: pid: ${os.getpid()}, exiting cleanly after ${timeout.milliseconds()}ms ...')

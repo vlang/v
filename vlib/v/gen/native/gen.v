@@ -1091,7 +1091,7 @@ fn (mut g Gen) println(comment string) {
 		sb.write_string(hexstr)
 	}
 	g.debug_pos = i32(g.buf.len)
-	//
+
 	colored := sb.str()
 	plain := term.strip_ansi(colored)
 	padding := ' '.repeat(mu.max(1, 40 - plain.len))

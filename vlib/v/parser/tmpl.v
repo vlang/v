@@ -232,13 +232,13 @@ fn vweb_tmpl_${fn_name}() string {
 
 ')
 	source.write_string(tmpl_str_start)
-	//
+
 	mut state := State.simple
 	template_ext := os.file_ext(template_file)
 	if template_ext.to_lower() == '.html' {
 		state = .html
 	}
-	//
+
 	mut in_span := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0

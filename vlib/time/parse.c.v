@@ -80,7 +80,7 @@ pub fn parse(s string) !Time {
 	hour_ := hms[0][1..]
 	minute_ := hms[1]
 	second_ := hms[2]
-	//
+
 	iyear := strconv.atoi(ymd[0]) or {
 		return error_invalid_time(0, 'invalid year format: ${ymd[0]}')
 	}

@@ -532,7 +532,7 @@ pub type FrameStatsWGPU = C.sg_frame_stats_wgpu
 @[typedef]
 pub struct C.sg_frame_stats {
 	frame_index u32 // current frame counter, starts at 0
-	//
+
 	num_passes             u32
 	num_apply_viewport     u32
 	num_apply_scissor_rect u32
@@ -543,12 +543,12 @@ pub struct C.sg_frame_stats {
 	num_update_buffer      u32
 	num_append_buffer      u32
 	num_update_image       u32
-	//
+
 	size_apply_uniforms u32
 	size_update_buffer  u32
 	size_append_buffer  u32
 	size_update_image   u32
-	//
+
 	gl    FrameStatsGL
 	d3d11 FrameStatsD3D11
 	metal FrameStatsMetal

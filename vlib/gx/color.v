@@ -236,7 +236,7 @@ pub fn (a Color) over(b Color) Color {
 	aa := f32(a.a) / 255
 	ab := f32(b.a) / 255
 	ar := aa + ab * (1 - aa)
-	//
+
 	rr := (f32(a.r) * aa + f32(b.r) * ab * (1 - aa)) / ar
 	gr := (f32(a.g) * aa + f32(b.g) * ab * (1 - aa)) / ar
 	br := (f32(a.b) * aa + f32(b.b) * ab * (1 - aa)) / ar

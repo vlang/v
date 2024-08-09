@@ -7,14 +7,14 @@ pub enum MessageKind {
 	compile_end   // sent right after *each* _test.v file compilation, the message contains the output of that compilation
 	cmd_begin     // sent right before *each* _test.v file execution, the resulting status is not known yet, but the _test.v file itself is
 	cmd_end       // sent right after *each* _test.v file execution, the message contains the output of that execution
-	//
+
 	ok   // success of a _test.v file
 	fail // failed _test.v file, one or more assertions failed
 	skip // the _test.v file was skipped for some reason
 	info // a generic information message, detailing the actions of the `v test` program (some tests could be repeated for example, and the details are sent with an .info status)
-	//
+
 	cannot_compile // when the _test.v file compiled with errors
-	//
+
 	sentinel // send just once after all executions are done; it signals that the reporting/printing thread should stop the loop and exit
 }
 

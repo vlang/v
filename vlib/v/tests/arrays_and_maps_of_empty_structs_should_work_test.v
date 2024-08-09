@@ -7,7 +7,7 @@ fn test_array_append_empty_struct() {
 	names << EmptyStruct{}
 	dump(names)
 	assert (EmptyStruct{} in names) == true
-	//
+
 	mut fa := [EmptyStruct{}, EmptyStruct{}]!
 	assert fa.len == 2
 	dump(fa[0])

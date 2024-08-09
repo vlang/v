@@ -16,7 +16,7 @@ fn test_add() {
 	b := gx.rgba(100, 100, 100, 100)
 	r := gx.rgba(200, 200, 200, 200)
 	assert (a + b) == r
-	//
+
 	assert gx.red + gx.green == gx.yellow
 	assert gx.red + gx.blue == gx.magenta
 	assert gx.green + gx.blue == gx.cyan
@@ -27,7 +27,7 @@ fn test_sub() {
 	b := gx.rgba(100, 100, 100, 100)
 	r := gx.rgba(0, 0, 0, 100)
 	assert (a - b) == r
-	//
+
 	assert gx.white - gx.green == gx.magenta
 	assert gx.white - gx.blue == gx.yellow
 	assert gx.white - gx.red == gx.cyan

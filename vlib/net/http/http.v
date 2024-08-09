@@ -24,7 +24,7 @@ pub mut:
 	user_ptr   voidptr = unsafe { nil }
 	verbose    bool
 	proxy      &HttpProxy = unsafe { nil }
-	//
+
 	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert                   string // the path to a cert.pem file, containing client certificate(s) for the request
@@ -37,7 +37,7 @@ pub mut:
 	on_progress      RequestProgressFn     = unsafe { nil }
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
 	on_finish        RequestFinishFn       = unsafe { nil }
-	//
+
 	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }

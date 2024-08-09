@@ -35,7 +35,7 @@ fn main() {
 	eprintln('> m.len: ${m.len} | a_as_first.len: ${a_as_first.len} | a_as_last.len: ${a_as_last.len} | a_as_middle.len: ${a_as_middle.len}')
 
 	mut b := benchmark.start()
-	//
+
 	sum = 0
 	for _ in 0 .. max_iterations {
 		sum += int(m[key])
@@ -48,10 +48,8 @@ fn main() {
 	}
 	b.measure('sum: ${sum} | key in m')
 
-	//
 	b = benchmark.start()
 
-	//
 	sum = 0
 	for _ in 0 .. max_iterations {
 		sum += int(key in a_as_last)
