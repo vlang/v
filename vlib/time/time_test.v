@@ -396,3 +396,43 @@ fn test_parse_three_letters_month() {
 	tm_tm := time.parse_format(tm_s, format)!
 	assert tm_tm.month == tm.month
 }
+
+fn test_parse_ordinal_weekday_d() {
+	format := 'd MMM DD HH:mm:ss YYYY'
+	dt := '0 Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == '4 Jan 01 00:00:00 1970'
+}
+
+fn test_parse_ordinal_weekday_c() {
+	format := 'c MMM DD HH:mm:ss YYYY'
+	dt := '7 Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == '4 Jan 01 00:00:00 1970'
+}
+
+fn test_parse_two_letters_weekday() {
+	format := 'dd MMM DD HH:mm:ss YYYY'
+	dt := 'Su Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == 'Th Jan 01 00:00:00 1970'
+}
+
+fn test_parse_three_letters_weekday() {
+	format := 'ddd MMM DD HH:mm:ss YYYY'
+	dt := 'Sun Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == 'Thu Jan 01 00:00:00 1970'
+}
+
+fn test_parse_weekday() {
+	format := 'dddd MMM DD HH:mm:ss YYYY'
+	dt := 'Sunday Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == 'Thursday Jan 01 00:00:00 1970'
+}

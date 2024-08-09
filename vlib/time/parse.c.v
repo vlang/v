@@ -139,6 +139,11 @@ pub fn parse(s string) !Time {
 // MMMM - name of month
 // D - day of the month, 1..31
 // DD - day of the month, 01..31
+// d - day of week, 0..6
+// c - day of week, 1..7
+// dd - day of week, Su..Sa
+// ddd - day of week, Sun..Sat
+// dddd - day of week, Sunday..Saturday
 // H - hour, 0..23
 // HH - hour, 00..23
 // h - hour, 0..23
