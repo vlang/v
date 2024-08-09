@@ -186,11 +186,13 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
+			has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
 			mut field_name := ''
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
 			mut option_pos := token.Pos{}
+
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.pos()
@@ -305,6 +307,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					i: i
 					default_expr: default_expr
 					has_default_expr: has_default_expr
+					has_prev_newline: has_prev_newline
 					attrs: p.attrs
 					is_pub: is_embed || is_field_pub
 					is_mut: is_embed || is_field_mut

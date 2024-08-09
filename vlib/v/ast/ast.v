@@ -333,6 +333,7 @@ pub:
 	comments         []Comment
 	i                int
 	has_default_expr bool
+	has_prev_newline bool
 	attrs            []Attr
 	is_pub           bool
 	default_val      string
