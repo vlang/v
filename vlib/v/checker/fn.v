@@ -4,6 +4,8 @@ import v.ast
 import v.util
 import v.token
 
+const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
+
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	$if trace_post_process_generic_fns_types ? {
 		if node.generic_names.len > 0 {
@@ -606,6 +608,18 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
+	if node.nr_ret_values == -1 && node.return_type != 0 {
+		if node.return_type == ast.void_type {
+			node.nr_ret_values = 0
+		} else {
+			ret_sym := c.table.sym(node.return_type)
+			if ret_sym.info is ast.MultiReturn {
+				node.nr_ret_values = ret_sym.info.types.len
+			} else {
+				node.nr_ret_values = 1
+			}
+		}
+	}
 	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 	c.expected_or_type = ast.void_type
@@ -632,7 +646,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
 	c.inside_interface_deref = true
 	c.expected_type = ast.string_type
-	node.args[0].typ = c.expr(mut node.args[0].expr)
+	if !(node.language != .js && node.args[0].expr is ast.CallExpr) {
+		node.args[0].typ = c.expr(mut node.args[0].expr)
+	}
 	arg := node.args[0]
 	c.check_expr_option_or_result_call(arg.expr, arg.typ)
 	if arg.typ.is_void() {
@@ -1005,7 +1021,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	if is_native_builtin {
-		if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+		if node.args.len > 0 && fn_name in checker.print_everything_fns {
 			c.builtin_args(mut node, fn_name, func)
 			return func.return_type
 		}
@@ -1160,12 +1176,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		&& func.ctdefine_idx != ast.invalid_type_idx {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
+
 	// dont check number of args for JS functions since arguments are not required
 	if node.language != .js {
+		for i, mut call_arg in node.args {
+			if call_arg.expr is ast.CallExpr {
+				node.args[i].typ = c.expr(mut call_arg.expr)
+			}
+		}
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
-	if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+	if node.args.len > 0 && fn_name in checker.print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
 		return func.return_type
 	}
@@ -1203,6 +1225,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		has_decompose = call_arg.expr is ast.ArrayDecompose
+		already_checked := node.language != .js && call_arg.expr is ast.CallExpr
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
@@ -1210,7 +1233,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				expected_type = param_sym.info.elem_type
 				c.expected_type = expected_type
 			}
-			typ := c.expr(mut call_arg.expr)
+			typ := if already_checked && mut call_arg.expr is ast.CallExpr {
+				call_arg.expr.return_type
+			} else {
+				c.expr(mut call_arg.expr)
+			}
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
 					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
@@ -1240,8 +1267,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('cannot initialize a map with a struct', call_arg.pos)
 			continue
 		}
-
-		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked {
+			node.args[i].typ
+		} else {
+			c.expr(mut call_arg.expr)
+		})
 		if call_arg.expr is ast.StructInit {
 			arg_typ = c.expr(mut call_arg.expr)
 		}
@@ -1365,6 +1395,23 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					&& param_elem_type == arg_elem_type {
 					continue
 				}
+			} else if arg_typ_sym.info is ast.MultiReturn {
+				arg_typs := arg_typ_sym.info.types
+				out: for n in 0 .. arg_typ_sym.info.types.len {
+					curr_arg := arg_typs[n]
+					multi_param := if func.is_variadic && i >= func.params.len - 1 {
+						func.params.last()
+					} else {
+						func.params[n + i]
+					}
+					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
+						node.language, call_arg) or {
+						c.error('${err.msg()} in argument ${i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
+							call_arg.pos)
+						continue out
+					}
+				}
+				continue
 			}
 			if c.pref.translated || c.file.is_translated {
 				// in case of variadic make sure to use array elem type for checks
@@ -1480,7 +1527,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func.params[i]
 			}
 			c.expected_type = param.typ
-			typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+			already_checked := node.language != .js && call_arg.expr is ast.CallExpr
+			typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
+				&& mut call_arg.expr is ast.CallExpr {
+				call_arg.expr.return_type
+			} else {
+				c.expr(mut call_arg.expr)
+			})
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
@@ -2691,7 +2744,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 }
 
 fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
-	nr_args := node.args.len
+	mut nr_args := node.args.len
 	nr_params := if node.is_method && f.params.len > 0 { f.params.len - 1 } else { f.params.len }
 	mut min_required_params := f.params.len
 	if node.is_method {
@@ -2704,6 +2757,20 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 		if has_decompose {
 			// if call(...args) is present
 			min_required_params = nr_args - 1
+		}
+	}
+	// check if multi-return is used as unique argument to the function
+	if node.args.len == 1 && mut node.args[0].expr is ast.CallExpr {
+		is_multi := node.args[0].expr.nr_ret_values > 1
+		if is_multi && node.name !in checker.print_everything_fns {
+			// it is a multi-return argument
+			nr_args = node.args[0].expr.nr_ret_values
+			if nr_args != nr_params {
+				unexpected_args_pos := node.args[0].pos.extend(node.args.last().pos)
+				c.error('expected ${min_required_params} arguments, but got ${nr_args} from multi-return ${c.table.type_to_str(node.args[0].expr.return_type)}',
+					unexpected_args_pos)
+				return error('')
+			}
 		}
 	}
 	if min_required_params < 0 {
