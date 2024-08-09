@@ -4103,7 +4103,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut enum_attrs := map[string][]ast.Attr{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
-		has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr > 1
+		has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
 		val := p.check_name()
 		vals << val
 		mut expr := ast.empty_expr
