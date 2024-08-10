@@ -142,6 +142,9 @@ pub const mime_types = {
 	'.3gp':    'video/3gpp'
 	'.3g2':    'video/3gpp2'
 	'.7z':     'application/x-7z-compressed'
+	'.m3u8':   'application/vnd.apple.mpegurl'
+	'.vsh':    'text/x-vlang'
+	'.v':      'text/x-vlang'
 }
 pub const max_http_post_size = 1024 * 1024
 pub const default_port = 8080
@@ -150,8 +153,8 @@ pub const default_port = 8080
 // It has fields for the query, form, files.
 pub struct Context {
 mut:
-	content_type string = 'text/plain'
-	status       string = '200 OK'
+	content_type string          = 'text/plain'
+	status       string          = '200 OK'
 	ctx          context.Context = context.EmptyContext{}
 pub mut:
 	// HTTP Request
@@ -667,7 +670,8 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 }
 
 @[manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route, tid int) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route,
+	tid int) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -1218,7 +1222,7 @@ fn (mut w Worker[T]) process_incoming_requests() {
 pub struct PoolParams[T] {
 pub:
 	handler    fn () T = unsafe { nil } @[required]
-	nr_workers int = runtime.nr_jobs()
+	nr_workers int     = runtime.nr_jobs()
 }
 
 // database_pool creates a pool of database connections

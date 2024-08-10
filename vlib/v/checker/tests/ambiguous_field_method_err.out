@@ -31,7 +31,7 @@ vlib/v/checker/tests/ambiguous_field_method_err.vv:23:9: error: type `Bar` has n
    23 |     n := b.name
       |            ~~~~
    24 | }
-vlib/v/checker/tests/ambiguous_field_method_err.vv:23:4: error: assignment mismatch: 1 variable(s) 0 value(s)
+vlib/v/checker/tests/ambiguous_field_method_err.vv:23:4: error: assignment mismatch: 1 variable 0 values
    21 |     b := Bar{}
    22 |     b.test()
    23 |     n := b.name

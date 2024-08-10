@@ -25,7 +25,7 @@ mut:
 	c_oflag  TcFlag
 	c_cflag  TcFlag
 	c_lflag  TcFlag
-	c_cc     [cclen]Cc
+	c_cc     [termios.cclen]Cc
 	reserved [3]u32
 	c_ispeed Speed
 	c_ospeed Speed
@@ -35,7 +35,7 @@ fn C.tcgetattr(fd int, termios_p &C.termios) int
 
 fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
 
-fn C.ioctl(fd int, request u64, arg voidptr) int
+fn C.ioctl(fd int, request u64, args ...voidptr) int
 
 // flag provides a termios flag of the correct size
 // for the underlying C.termios structure
@@ -57,7 +57,7 @@ pub mut:
 	c_oflag  TcFlag
 	c_cflag  TcFlag
 	c_lflag  TcFlag
-	c_cc     [cclen]Cc
+	c_cc     [termios.cclen]Cc
 	reserved [3]u32
 	c_ispeed Speed
 	c_ospeed Speed

@@ -88,7 +88,7 @@ pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[stri
 	return f.str()
 }
 
-pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string) string {
+pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string, needs_wrap bool) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -138,7 +138,6 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 
 fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
-	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
 		if node.is_method {
 			sym := t.sym(node.params[0].typ)
@@ -162,6 +161,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 	}
 	f.write_string('(')
+	mut old_pline := node.pos.line_nr
+	mut pline := node.pos.line_nr
+	mut nparams_on_pline := 0
 	for i, param in node.params {
 		// skip receiver
 		if node.is_method && i == 0 {
@@ -172,21 +174,13 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 		is_last_param := i == node.params.len - 1
 		is_type_only := param.name == ''
-		should_add_type := true // is_last_param || is_type_only || node.params[i + 1].typ != param.typ ||
-		// (node.is_variadic && i == node.params.len - 2)
-		pre_comments := param.comments.filter(it.pos.pos < param.pos.pos)
-		if pre_comments.len > 0 {
-			if i == 0 {
-				is_wrap_needed = true
-				f.write_string('\n\t')
-			}
-			write_comments(pre_comments, mut f)
-			if !f.last_n(1)[0].is_space() {
-				f.write_string(' ')
-			}
+		if param.on_newline {
+			f.write_string('\n\t')
+			pline++
+			nparams_on_pline = 0
 		}
-		if is_wrap_needed {
-			f.write_string('\t')
+		if pline == old_pline && nparams_on_pline > 0 {
+			f.write_string(' ')
 		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
@@ -210,25 +204,31 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			mut s := t.type_to_str(param.typ.clear_flag(.shared_f))
 			if param.is_mut {
 				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
-					|| node.language != .v) {
+					|| node.language != .v
+					|| (param.typ.is_ptr() && t.sym(param.typ).kind == .struct_)) {
 					s = s[1..]
+				} else if param.typ.is_ptr() && t.sym(param.typ).kind == .struct_
+					&& !s.contains('[') {
+					s = t.type_to_str(param.typ.clear_flag(.shared_f).deref())
 				}
 			}
 			s = util.no_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
-			if should_add_type {
-				if !is_type_only {
-					f.write_string(' ')
-				}
-				if node.is_variadic && is_last_param {
-					f.write_string('...')
-				}
-				f.write_string(s)
+			if !is_type_only {
+				f.write_string(' ')
 			}
+			if node.is_variadic && is_last_param && !node.is_c_variadic {
+				f.write_string('...')
+			}
+			f.write_string(s)
 		}
 		if !is_last_param {
-			f.write_string(', ')
+			f.write_string(',')
+		} else if node.is_c_variadic {
+			f.write_string(', ...')
 		}
+		nparams_on_pline++
+		old_pline = pline
 	}
 	f.write_string(')')
 	if node.return_type != void_type {
@@ -498,6 +498,12 @@ pub fn (x Expr) str() string {
 			return 'spawn ${x.call_expr}'
 		}
 		Ident {
+			if obj := x.scope.find('${x.mod}.${x.name}') {
+				if obj is ConstField && x.mod != 'main' {
+					last_mod := x.mod.all_after_last('.')
+					return '${last_mod}.${x.name}'
+				}
+			}
 			return x.name.clone()
 		}
 		IfExpr {
@@ -661,7 +667,7 @@ pub fn (x Expr) str() string {
 			return 'ast.ChanInit'
 		}
 		ComptimeCall {
-			return 'ast.ComptimeCall'
+			return x.expr_str()
 		}
 		EmptyExpr {
 			return 'ast.EmptyExpr'

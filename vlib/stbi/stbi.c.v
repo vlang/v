@@ -42,7 +42,7 @@ pub mut:
 	height      int
 	nr_channels int
 	ok          bool
-	data        voidptr
+	data        &u8 = unsafe { nil }
 	ext         string
 }
 
@@ -124,7 +124,6 @@ pub fn load(path string, params LoadParams) !Image {
 	mut res := Image{
 		ok: true
 		ext: ext
-		data: 0
 	}
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
 		params.desired_channels)
@@ -139,7 +138,6 @@ pub fn load(path string, params LoadParams) !Image {
 pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 	mut res := Image{
 		ok: true
-		data: 0
 	}
 	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels,
 		params.desired_channels)
@@ -154,14 +152,14 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 // Resize functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8, output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
+fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8,
+	output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
 
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 	mut res := Image{
 		ok: true
 		ext: img.ext
-		data: 0
 		width: output_w
 		height: output_h
 		nr_channels: img.nr_channels

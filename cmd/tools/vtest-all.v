@@ -74,10 +74,10 @@ mut:
 	errmsg      string
 	rmfile      string
 	runcmd      RunCommandKind = .system
-	expect      string = expect_nothing
-	starts_with string = starts_with_nothing
-	ends_with   string = ends_with_nothing
-	contains    string = contains_nothing
+	expect      string         = expect_nothing
+	starts_with string         = starts_with_nothing
+	ends_with   string         = ends_with_nothing
+	contains    string         = contains_nothing
 	output      string
 	before_cb   FnCheck = unsafe { nil }
 	after_cb    FnCheck = unsafe { nil }
@@ -110,6 +110,10 @@ fn get_all_commands() []Command {
 		line: '${vexe} -skip-unused examples/hello_world.v'
 		okmsg: 'V can compile hello world with -skip-unused.'
 		rmfile: 'examples/hello_world'
+	}
+	res << Command{
+		line: '${vexe} -skip-unused test vlib/builtin'
+		okmsg: 'V can test vlib/builtin with -skip-unused'
 	}
 	res << Command{
 		line: '${vexe} -skip-unused -profile - examples/hello_world.v'
@@ -360,6 +364,22 @@ fn get_all_commands() []Command {
 	res << Command{
 		line: '${vexe} install nedpals.args'
 		okmsg: '`v install` works.'
+	}
+	res << Command{
+		okmsg: 'Running net.http with -d trace_http_request works.'
+		line: '${vexe} -d trace_http_request -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
+		runcmd: .execute
+		starts_with: '> GET /some/unknown/url HTTP/1.1'
+		contains: 'User-Agent: v.http'
+		ends_with: '404\n'
+	}
+	res << Command{
+		okmsg: 'Running net.http with -d trace_http_response works.'
+		line: '${vexe} -d trace_http_response -e \'import net.http; x := http.fetch(url: "https://vpm.url4e.com/some/unknown/url")!; println(x.status_code)\''
+		runcmd: .execute
+		starts_with: '< HTTP/1.1 404 Not Found'
+		contains: 'Server: nginx'
+		ends_with: '404\n'
 	}
 	res << Command{
 		line: '${vexe} -usecache -cg examples/hello_world.v'

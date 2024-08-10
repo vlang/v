@@ -16,9 +16,23 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	}
 	mut convertor := ''
 	mut typename_ := ''
+	mut got_int_str := false
 	if sym.parent_idx in ast.integer_type_idxs {
 		convertor = 'int'
 		typename_ = 'int'
+		$if new_int ? {
+			if str_fn_name == 'i64_str' {
+				if got_int_str {
+					return
+				} else {
+					got_int_str = true
+				}
+			}
+
+			// if sym.parent_idx == ast.int_type_idx {
+			// return
+			//}
+		}
 	} else if sym.parent_idx == ast.f32_type_idx {
 		convertor = 'float'
 		typename_ = 'f32'
@@ -342,7 +356,7 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 	s := util.no_dots(styp)
 	g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { /* gen_str_for_enum */')
-	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
+	// Enums tagged with `@[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
 		clean_name := util.strip_main_name(styp.replace('__', '.'))
 		g.auto_str_funcs.writeln('\tstring ret = _SLIT("${clean_name}{");')
@@ -442,7 +456,12 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 		clean_sum_type_v_type_name = util.strip_main_name(typ_str)
 	}
 	fn_builder.writeln('\tswitch(x._typ) {')
+	mut idxs := []int{}
 	for typ in info.variants {
+		if typ in idxs {
+			continue
+		}
+		idxs << typ
 		typ_name := g.typ(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)
@@ -801,6 +820,11 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${key_str_fn_name}(key));')
 	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT(": "));')
+	_, str_method_expects_ptr, _ := val_sym.str_method_info()
+	_, deref_label := deref_kind(str_method_expects_ptr, val_typ.is_ptr(), val_typ)
+	if deref_label != '' {
+		g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT("${deref_label}"));')
+	}
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
@@ -1111,7 +1135,8 @@ fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
 	return ''
 }
 
-fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
+fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.Type, fn_name string, field_name string,
+	has_custom_str bool, expects_ptr bool) (string, bool) {
 	$if trace_autostr ? {
 		eprintln('> struct_auto_str_func: ${sym.name} | field_type.debug() | ${fn_name} | ${field_name} | ${has_custom_str} | ${expects_ptr}')
 	}
@@ -1141,8 +1166,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
-		obj := '${deref}it${op}${final_field_name}${sufix}'
-		return '${fn_name}(${obj})', true
+		return '${fn_name}()', true
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', true
 	} else if sym.kind == .thread {

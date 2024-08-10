@@ -38,7 +38,7 @@ fn error_msg(message string, val string) string {
 // reserved characters correctly. See golang.org/issue/5684.
 fn should_escape(c u8, mode EncodingMode) bool {
 	// §2.3 Unreserved characters (alphanum)
-	if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) || (`0` <= c && c <= `9`) {
+	if c.is_alnum() {
 		return false
 	}
 	if mode == .encode_host || mode == .encode_zone {
@@ -317,14 +317,14 @@ fn escape(s string, mode EncodingMode) string {
 pub struct URL {
 pub mut:
 	scheme      string
-	opaque      string    // encoded opaque data
+	opaque      string // encoded opaque data
 	user        &Userinfo = unsafe { nil } // username and password information
-	host        string    // host or host:port
-	path        string    // path (relative paths may omit leading slash)
-	raw_path    string    // encoded path hint (see escaped_path method)
-	force_query bool      // append a query ('?') even if raw_query is empty
-	raw_query   string    // encoded query values, without '?'
-	fragment    string    // fragment for references, without '#'
+	host        string // host or host:port
+	path        string // path (relative paths may omit leading slash)
+	raw_path    string // encoded path hint (see escaped_path method)
+	force_query bool   // append a query ('?') even if raw_query is empty
+	raw_query   string // encoded query values, without '?'
+	fragment    string // fragment for references, without '#'
 }
 
 // debug returns a string representation of *ALL* the fields of the given URL
@@ -388,9 +388,9 @@ fn (u &Userinfo) str() string {
 fn split_by_scheme(rawurl string) ![]string {
 	for i in 0 .. rawurl.len {
 		c := rawurl[i]
-		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
+		if c.is_letter() {
 			// do nothing
-		} else if (`0` <= c && c <= `9`) || (c == `+` || c == `-` || c == `.`) {
+		} else if c.is_digit() || c in [`+`, `-`, `.`] {
 			if i == 0 {
 				return ['', rawurl]
 			}
@@ -534,7 +534,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) !ParseAuthorityRes {
-	i := authority.index_u8_last(`@`)
+	i := authority.last_index_u8(`@`)
 	if i < 0 {
 		return ParseAuthorityRes{
 			host: parse_host(authority)!
@@ -564,7 +564,7 @@ fn parse_host(host string) !string {
 	if host.len > 0 && host[0] == `[` {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		i := host.index_u8_last(`]`)
+		i := host.last_index_u8(`]`)
 		if i == -1 {
 			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
@@ -586,7 +586,7 @@ fn parse_host(host string) !string {
 			return host1 + host2 + host3
 		}
 	} else {
-		i := host.index_u8_last(`:`)
+		i := host.last_index_u8(`:`)
 		if i != -1 {
 			colon_port := host[i..]
 			if !valid_optional_port(colon_port) {
@@ -859,7 +859,7 @@ fn resolve_path(base string, ref string) string {
 	if ref == '' {
 		full = base
 	} else if ref[0] != `/` {
-		i := base.index_u8_last(`/`)
+		i := base.last_index_u8(`/`)
 		full = base[..i + 1] + ref
 	} else {
 		full = ref
@@ -993,7 +993,7 @@ pub fn (u &URL) port() string {
 pub fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.index_u8_last(`:`)
+	colon := host.last_index_u8(`:`)
 	if colon != -1 {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]
@@ -1016,13 +1016,7 @@ pub fn split_host_port(hostport string) (string, string) {
 // It doesn't validate pct-encoded. The caller does that via fn unescape.
 pub fn valid_userinfo(s string) bool {
 	for r in s {
-		if `A` <= r && r <= `Z` {
-			continue
-		}
-		if `a` <= r && r <= `z` {
-			continue
-		}
-		if `0` <= r && r <= `9` {
+		if r.is_alnum() {
 			continue
 		}
 		match r {

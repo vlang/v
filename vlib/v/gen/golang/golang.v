@@ -905,7 +905,8 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias).replace('fn ', 'func '))
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, false).replace('fn ',
+		'func '))
 	f.fn_body(node)
 }
 
@@ -1135,7 +1136,7 @@ pub fn (mut f Gen) interface_field(field ast.StructField) {
 
 pub fn (mut f Gen) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias).after('fn '))
+	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).after('fn '))
 	f.writeln('')
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)

@@ -41,8 +41,8 @@ pub enum Language {
 	i386
 	arm64 // 64-bit arm
 	arm32 // 32-bit arm
-	rv64 // 64-bit risc-v
-	rv32 // 32-bit risc-v
+	rv64  // 64-bit risc-v
+	rv32  // 32-bit risc-v
 	wasm32
 }
 
@@ -923,6 +923,16 @@ pub fn (t &TypeSymbol) is_heap() bool {
 
 pub fn (t &ArrayFixed) is_compatible(t2 ArrayFixed) bool {
 	return t.size == t2.size && t.elem_type == t2.elem_type
+}
+
+pub fn (t &TypeSymbol) is_empty_struct_array() bool {
+	if t.info is ArrayFixed {
+		elem_sym := global_table.final_sym(t.info.elem_type)
+		if elem_sym.info is Struct {
+			return elem_sym.info.fields.len == 0
+		}
+	}
+	return false
 }
 
 pub fn (t &TypeSymbol) is_array_fixed() bool {

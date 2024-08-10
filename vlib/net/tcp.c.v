@@ -6,6 +6,21 @@ import strings
 pub const tcp_default_read_timeout = 30 * time.second
 pub const tcp_default_write_timeout = 30 * time.second
 
+// TCPDialer is a concrete instance of the Dialer interface,
+// for creating tcp connections.
+pub struct TCPDialer {}
+
+// dial will try to create a new abstract connection to the given address.
+// It will return an error, if that is not possible.
+pub fn (t TCPDialer) dial(address string) !Connection {
+	return dial_tcp(address)!
+}
+
+// default_tcp_dialer will give you an instance of Dialer, that is suitable for making new tcp connections.
+pub fn default_tcp_dialer() Dialer {
+	return &TCPDialer{}
+}
+
 @[heap]
 pub struct TcpConn {
 pub mut:
@@ -18,6 +33,7 @@ pub mut:
 	is_blocking    bool = true
 }
 
+// dial_tcp will try to create a new TcpConn to the given address.
 pub fn dial_tcp(oaddress string) !&TcpConn {
 	mut address := oaddress
 	$if windows {
@@ -75,7 +91,7 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 	return error(err_builder.str())
 }
 
-// bind local address and dial.
+// dial_tcp_with_bind will bind the given local address `laddr` and dial.
 pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 	addrs := resolve_addrs_fuzzy(saddr, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${saddr} in dial_tcp_with_bind')
@@ -111,6 +127,7 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 	return error('dial_tcp_with_bind failed for address ${saddr}')
 }
 
+// close closes the tcp connection
 pub fn (mut c TcpConn) close() ! {
 	$if trace_tcp ? {
 		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
@@ -118,6 +135,8 @@ pub fn (mut c TcpConn) close() ! {
 	c.sock.close()!
 }
 
+// read_ptr reads data from the tcp connection to the given buffer. It reads at most `len` bytes.
+// It returns the number of actually read bytes, which can vary between 0 to `len`.
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut should_ewouldblock := false
 	mut res := $if is_coroutine ? {
@@ -175,6 +194,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	return error('none')
 }
 
+// read reads data from the tcp connection into the mutable buffer `buf`.
+// The number of bytes read is limited to the length of the buffer `buf.len`.
+// The returned value is the number of read bytes (between 0 and `buf.len`).
 pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)!
 }
@@ -297,7 +319,15 @@ pub fn (c &TcpConn) peer_addr() !Addr {
 
 // peer_ip retrieves the ip address used by the peer, and returns it as a string
 pub fn (c &TcpConn) peer_ip() !string {
-	return c.peer_addr()!.str()
+	address := c.peer_addr()!.str()
+	if address.contains(']:') {
+		// ipv6 addresses similar to this: '[::1]:46098'
+		ip := address.all_before(']:').all_after('[')
+		return ip
+	}
+	// ipv4 addresses similar to '127.0.0.1:7346'
+	ip := address.all_before(':')
+	return ip
 }
 
 pub fn (c &TcpConn) addr() !Addr {

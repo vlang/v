@@ -92,7 +92,7 @@ enum PeMagic as u16 {
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#windows-subsystem
 enum PeSubsystem as u16 {
-	unknown                  = 0
+	unknown = 0
 	native
 	windows_gui
 	windows_cui
@@ -372,8 +372,8 @@ struct PeDataDir {
 
 struct PeDataDirs {
 mut:
-	debugnames [pe_num_data_dirs]string
-	dirs       [pe_num_data_dirs]PeDataDir
+	debugnames [native.pe_num_data_dirs]string
+	dirs       [native.pe_num_data_dirs]PeDataDir
 	base_addr  i64
 }
 

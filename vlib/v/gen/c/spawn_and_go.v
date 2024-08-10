@@ -12,6 +12,9 @@ enum SpawnGoMode {
 }
 
 fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
+	if node.call_expr.should_be_skipped {
+		return
+	}
 	is_spawn := mode == .spawn_
 	is_go := mode == .go_
 	if is_spawn {

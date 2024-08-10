@@ -64,7 +64,8 @@ fn (vd VDoc) render_search_index(out Output) {
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
 		js_search_index.write_string('"${title}",\n')
-		js_search_data.write_string('["${data.description}","${data.link}"],\n')
+		description := data.description.replace('\n', '').replace('\r', '') // fix multiline js string bug
+		js_search_data.write_string('["${description}","${data.link}"],\n')
 	}
 	js_search_index.writeln('];\n')
 	js_search_index.write_string('var searchIndex = [\n')
@@ -443,8 +444,8 @@ fn html_highlight(code string, tb &ast.Table) string {
 			else {
 				if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 					tok_typ = .keyword
-				} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-					|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
+				} else if tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational()
+					|| tok.kind.is_infix() || tok.kind.is_postfix() {
 					tok_typ = .operator
 				}
 			}

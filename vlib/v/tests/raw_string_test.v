@@ -17,6 +17,11 @@ fn test_raw_string_not_escaped_by_transformer() {
 	assert 'a\nb' + r'a\nb' == 'a\nba\\nb'
 }
 
+fn test_raw_string_backslash_u() {
+	assert r'\u0000004B' == r'\u0000004B'
+	println(r'\u0000004B')
+}
+
 // this test will cause test failure (see #12604)
 // fn test_many_pluses() {
 // 	a := r'x\n'

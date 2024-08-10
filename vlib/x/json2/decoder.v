@@ -267,6 +267,12 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					if json_name in res {
 						typ.$(field.name) = res[json_name]!.to_time()!
 					}
+				} $else $if field.typ is Any {
+					typ.$(field.name) = res[json_name]!
+				} $else $if field.typ is ?Any {
+					if json_name in res {
+						typ.$(field.name) = res[json_name]!
+					}
 				} $else $if field.is_array {
 					arr := res[field.name]! as []Any
 					// vfmt off
@@ -292,6 +298,8 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 						// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
 						[]time.Time { typ.$(field.name) = arr.map(it.to_time() or { time.Time{} }) }
 						[]?time.Time { typ.$(field.name) = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
+						[]Any { typ.$(field.name) = arr }
+						[]?Any { typ.$(field.name) = arr.map(?Any(it)) }
 						[]u8   { typ.$(field.name) = arr.map(it.u64()) }
 						[]?u8  { typ.$(field.name) = arr.map(?u8(it.u64())) }
 						[]u16  { typ.$(field.name) = arr.map(it.u64()) }
@@ -307,6 +315,7 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 				} $else $if field.is_alias {
 				} $else $if field.is_map {
+					typ.$(field.name) = decode_map(typ.$(field.name), res[field.name]!.as_map())!
 				} $else {
 					return error("The type of `${field.name}` can't be decoded. Please open an issue at https://github.com/vlang/v/issues/new/choose")
 				}
@@ -331,6 +340,45 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
+}
+
+fn decode_map[K, V](_ map[K]V, res map[string]Any) !map[K]V {
+	mut ret := map[K]V{}
+
+	for k, v in res {
+		$if V is $struct {
+			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+		} $else $if V is $map {
+			ret[k] = decode_map(V{}, res[k]!.as_map())!
+		} $else $if V is $sumtype {
+			ret[k] = decode_struct(V{}, res[k]!.as_map())!
+		} $else $if V is $string {
+			ret[k] = v.str()
+		} $else $if V is int {
+			ret[k] = v.int()
+		} $else $if V is i64 {
+			ret[k] = v.i64()
+		} $else $if V is u64 {
+			ret[k] = v.u64()
+		} $else $if V is i32 {
+			ret[k] = v.i32()
+		} $else $if V is u32 {
+			ret[k] = v.u32()
+		} $else $if V is i16 {
+			ret[k] = v.i16()
+		} $else $if V is u16 {
+			ret[k] = v.u16()
+		} $else $if V is i8 {
+			ret[k] = v.i8()
+		} $else $if V is u8 {
+			ret[k] = v.u8()
+		} $else $if V is bool {
+			ret[k] = v.bool()
+		} $else {
+			dump(v)
+		}
+	}
+	return ret
 }
 
 // decode - decodes provided JSON

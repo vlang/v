@@ -1,7 +1,26 @@
 module chacha20
 
+import crypto.cipher
 import rand
 import encoding.hex
+
+struct StreamCipher {
+mut:
+	cipher &cipher.Stream
+}
+
+// Verify chahca20.Cipher implements chiper.Stream correctly.
+fn test_chacha20_stream_cipher() ! {
+	mut key := []u8{len: 32}
+	mut nonce := []u8{len: 12}
+	rand.read(mut key)
+	rand.read(mut nonce)
+
+	mut c := new_cipher(key, nonce)!
+	s := StreamCipher{
+		cipher: c
+	}
+}
 
 fn test_chacha20_cipher_reset() ! {
 	mut key := []u8{len: 32}

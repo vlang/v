@@ -10,9 +10,12 @@ pub mut:
 }
 
 pub fn (mut window Window) init() {
-	window.img = window.ctx.create_image(os.resource_abs_path('../assets/logo.png')) or {
-		panic(err)
+	image_path := $if android {
+		'logo.png'
+	} $else {
+		os.resource_abs_path('../assets/logo.png')
 	}
+	window.img = window.ctx.create_image(image_path) or { panic(err) }
 }
 
 pub fn (mut window Window) draw() {

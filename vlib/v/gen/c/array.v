@@ -279,7 +279,8 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 }
 
 // `[]int{len: 6, cap: 10, init: index * index}`
-fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
+fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string,
+	var_name string) {
 	prev_inside_lambda := g.inside_lambda
 	g.inside_lambda = true
 	defer {
@@ -552,11 +553,17 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.Ident {
 			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
 			if expr.kind == .function {
+				if expr.obj is ast.Var && expr.obj.is_inherited {
+					g.write(closure_ctx + '->')
+				}
 				g.write('${c_name(expr.name)}(${var_name})')
 			} else if expr.kind == .variable {
 				var_info := expr.var_info()
 				sym := g.table.sym(var_info.typ)
 				if sym.kind == .function {
+					if expr.obj is ast.Var && expr.obj.is_inherited {
+						g.write(closure_ctx + '->')
+					}
 					g.write('${c_name(expr.name)}(${var_name})')
 				} else {
 					g.expr(expr)
@@ -938,6 +945,10 @@ fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
 
 fn (mut g Gen) gen_array_contains_methods() {
 	mut done := []ast.Type{}
+	mut got_int_str := false
+	$if new_int ? {
+		println(g.array_contains_types)
+	}
 	for t in g.array_contains_types {
 		left_final_sym := g.table.final_sym(t)
 		if left_final_sym.idx in done || g.table.sym(t).has_method('contains') {
@@ -947,6 +958,20 @@ fn (mut g Gen) gen_array_contains_methods() {
 		mut fn_builder := strings.new_builder(512)
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_contains'
+
+		$if new_int ? {
+			if fn_name == 'Array_i64_contains' {
+				if got_int_str {
+					continue
+				} else {
+					got_int_str = true
+				}
+			}
+
+			// if t == ast.int_type_idx || t == ast.i64_type_idx {
+			// continue
+			//}
+		}
 
 		if left_final_sym.kind == .array {
 			elem_type := (left_final_sym.info as ast.Array).elem_type
@@ -1393,7 +1418,8 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 	return has_infix_left_var_name
 }
 
-fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_type string, tmp string, i string) {
+fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_type string, tmp string,
+	i string) {
 	if g.table.sym(inp_info.elem_type).kind == .array_fixed {
 		g.writeln('${inp_elem_type} ${var_name};')
 		g.writeln('memcpy(&${var_name}, ((${inp_elem_type}*) ${tmp}_orig.data)[${i}], sizeof(${inp_elem_type}));')

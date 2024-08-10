@@ -13,7 +13,7 @@ const maximum_inline_sum_type_variants = 3
 fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
 	// fixed array
-	if p.tok.kind in [.number, .name] {
+	if p.tok.kind in [.number, .name, .dollar] {
 		mut fixed_size := 0
 		mut size_expr := p.expr(0)
 		mut size_unresolved := true
@@ -25,8 +25,24 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 					fixed_size = size_expr.val.int()
 					size_unresolved = false
 				}
+				ast.ComptimeCall {
+					if size_expr.is_compile_value {
+						size_expr.resolve_compile_value(p.pref.compile_values) or {
+							p.error_with_pos(err.msg(), size_expr.pos)
+						}
+						if size_expr.result_type != ast.i64_type {
+							p.error_with_pos('value from \$d() can only be positive integers when used as fixed size',
+								size_expr.pos)
+						}
+						fixed_size = size_expr.compile_value.int()
+						size_unresolved = false
+					} else {
+						p.error_with_pos('only \$d() is supported as fixed array size quantifier at compile time',
+							size_expr.pos)
+					}
+				}
 				ast.Ident {
-					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
+					if mut const_field := p.table.global_scope.find_const(size_expr.full_name()) {
 						if mut const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
 							size_unresolved = false
@@ -116,6 +132,11 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	}
 	p.next()
 	if p.tok.kind != .lsbr {
+		if p.inside_struct_field_decl {
+			p.error_with_pos('cannot use the map type without key and value definition',
+				p.prev_tok.pos())
+			return 0
+		}
 		return ast.map_type
 	}
 	p.check(.lsbr)
@@ -142,7 +163,9 @@ fn (mut p Parser) parse_map_type() ast.Type {
 	p.check(.rsbr)
 	if p.tok.kind == .lsbr {
 		if p.peek_tok.kind !in [.rsbr, .number] {
-			p.error_with_pos('maps can only have a single key', p.peek_tok.pos())
+			s := p.table.type_to_str(key_type)
+			p.error_with_pos('maps can only have a single key. To declare a map use `map[${s}]${p.peek_tok.lit}{}` instead',
+				p.peek_tok.pos())
 			return 0
 		}
 	}
@@ -288,11 +311,15 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 
 	mut has_generic := false
 	line_nr := p.tok.line_nr
-	params, _, is_variadic := p.fn_params()
+	params, _, is_variadic, is_c_variadic := p.fn_params()
 	for param in params {
 		if param.typ.has_flag(.generic) {
 			has_generic = true
 			break
+		}
+		if p.table.sym(param.typ).name == name {
+			p.error_with_pos('`${name}` cannot be a parameter as it references the fntype',
+				param.type_pos)
 		}
 	}
 	mut return_type := ast.void_type
@@ -314,6 +341,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 		name: name
 		params: params
 		is_variadic: is_variadic
+		is_c_variadic: is_c_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
 		generic_names: generic_names
@@ -323,6 +351,11 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	if has_generic && generic_types.len == 0 && name != '' {
 		p.error_with_pos('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
 			fn_type_pos)
+	}
+
+	if p.table.sym(return_type).name == name {
+		p.error_with_pos('`${name}` cannot be a return type as it references the fntype',
+			return_type_pos)
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
@@ -460,9 +493,22 @@ fn (mut p Parser) parse_type() ast.Type {
 	if p.tok.kind == .question {
 		p.next()
 		is_option = true
+		if p.tok.kind == .not {
+			p.next()
+			is_result = true
+		}
 	} else if p.tok.kind == .not {
 		p.next()
 		is_result = true
+		if p.tok.kind == .question {
+			p.next()
+			is_option = true
+		}
+	}
+
+	if is_option && is_result {
+		p.error_with_pos('the type must be Option or Result', p.prev_tok.pos())
+		return 0
 	}
 
 	if is_option || is_result {
@@ -537,6 +583,11 @@ fn (mut p Parser) parse_type() ast.Type {
 			return 0
 		}
 		sym := p.table.sym(typ)
+		if p.inside_fn_concrete_type && sym.info is ast.Struct {
+			if !typ.has_flag(.generic) && sym.info.generic_types.len > 0 {
+				p.error_with_pos('missing concrete type on generic type', option_pos.extend(p.prev_tok.pos()))
+			}
+		}
 		if is_option && sym.info is ast.SumType && sym.info.is_anon {
 			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}

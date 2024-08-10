@@ -34,9 +34,9 @@ mut:
 	peek_tok                  token.Token
 	language                  ast.Language
 	fn_language               ast.Language // .c for `fn C.abcd()` declarations
-	expr_level                int  // prevent too deep recursions for pathological programs
-	inside_vlib_file          bool // true for all vlib/ files
-	inside_test_file          bool // when inside _test.v or _test.vv file
+	expr_level                int          // prevent too deep recursions for pathological programs
+	inside_vlib_file          bool         // true for all vlib/ files
+	inside_test_file          bool         // when inside _test.v or _test.vv file
 	inside_if                 bool
 	inside_comptime_if        bool
 	inside_if_expr            bool
@@ -47,6 +47,7 @@ mut:
 	inside_for_expr           bool
 	inside_fn                 bool // true even with implicit main
 	inside_fn_return          bool
+	inside_fn_concrete_type   bool // parsing fn_name[concrete_type]() call expr
 	inside_call_args          bool // true inside f(  ....  )
 	inside_unsafe_fn          bool
 	inside_str_interp         bool
@@ -74,16 +75,16 @@ mut:
 	or_is_handled             bool              // ignore `or` in this expression
 	builtin_mod               bool              // are we in the `builtin` module?
 	mod                       string            // current module name
-	is_manualfree             bool              // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals               bool              // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated              bool              // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	is_translated             bool              // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
+	is_manualfree             bool              // true when `@[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals               bool              // `@[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated              bool              // `@[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated             bool              // `@[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
 	attrs                     []ast.Attr        // attributes before next decl stmt
 	expr_mod                  string            // for constructing full type names in parse_type()
 	imports                   map[string]string // alias => mod_name
 	ast_imports               []ast.Import      // mod_names
-	used_imports              []string // alias
-	auto_imports              []string // imports, the user does not need to specify
+	used_imports              []string          // alias
+	auto_imports              []string          // imports, the user does not need to specify
 	imported_symbols          map[string]string
 	is_amp                    bool // for generating the right code for `&Foo{}`
 	returns                   bool
@@ -2170,7 +2171,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return p.error('expecting `:=` (e.g. `mut x :=`)')
 	}
 	// TODO: remove translated
-	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
+	if p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
@@ -2788,34 +2789,43 @@ fn (mut p Parser) name_expr() ast.Expr {
 					got: '${p.prev_tok}'
 				)
 			}
-			node = p.call_expr(language, mod)
-			if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
-				p.next()
-				pos := p.tok.pos()
-				args := p.call_args()
-				p.check(.rpar)
-
-				mut or_kind := ast.OrKind.absent
-				mut or_stmts := []ast.Stmt{}
-				mut or_pos := p.tok.pos()
-				if p.tok.kind in [.not, .question] {
-					or_kind = if p.tok.kind == .not { .propagate_result } else { .propagate_option }
+			// mod.Enum.val
+			if p.peek_tok.kind == .dot && p.peek_token(3).kind in [.comma, .rpar] {
+				node = p.enum_val_expr(mod)
+			} else {
+				node = p.call_expr(language, mod)
+				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
 					p.next()
-				}
-				if p.tok.kind == .key_orelse {
-					// `foo() or {}``
-					or_kind = .block
-					or_stmts, or_pos = p.or_block(.with_err_var)
-				}
-				node = ast.CallExpr{
-					left: node
-					args: args
-					pos: pos
-					scope: p.scope
-					or_block: ast.OrExpr{
-						stmts: or_stmts
-						kind: or_kind
-						pos: or_pos
+					pos := p.tok.pos()
+					args := p.call_args()
+					p.check(.rpar)
+
+					mut or_kind := ast.OrKind.absent
+					mut or_stmts := []ast.Stmt{}
+					mut or_pos := p.tok.pos()
+					if p.tok.kind in [.not, .question] {
+						or_kind = if p.tok.kind == .not {
+							.propagate_result
+						} else {
+							.propagate_option
+						}
+						p.next()
+					}
+					if p.tok.kind == .key_orelse {
+						// `foo() or {}``
+						or_kind = .block
+						or_stmts, or_pos = p.or_block(.with_err_var)
+					}
+					node = ast.CallExpr{
+						left: node
+						args: args
+						pos: pos
+						scope: p.scope
+						or_block: ast.OrExpr{
+							stmts: or_stmts
+							kind: or_kind
+							pos: or_pos
+						}
 					}
 				}
 			}
@@ -2893,23 +2903,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-		// `Color.green`
-		mut enum_name := p.check_name()
-		enum_name_pos := p.prev_tok.pos()
-		if mod != '' {
-			enum_name = mod + '.' + enum_name
-		} else {
-			enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
-		}
-		p.check(.dot)
-		val := p.check_name()
-		p.expr_mod = ''
-		return ast.EnumVal{
-			enum_name: enum_name
-			val: val
-			pos: enum_name_pos.extend(p.prev_tok.pos())
-			mod: mod
-		}
+		return p.enum_val_expr(mod)
 	} else if language == .js && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
@@ -2979,6 +2973,26 @@ fn (mut p Parser) name_expr() ast.Expr {
 enum OrBlockErrVarMode {
 	no_err_var
 	with_err_var
+}
+
+fn (mut p Parser) enum_val_expr(mod string) ast.EnumVal {
+	// `Color.green`
+	mut enum_name := p.check_name()
+	enum_name_pos := p.prev_tok.pos()
+	if mod != '' {
+		enum_name = mod + '.' + enum_name
+	} else {
+		enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
+	}
+	p.check(.dot)
+	val := p.check_name()
+	p.expr_mod = ''
+	return ast.EnumVal{
+		enum_name: enum_name
+		val: val
+		pos: enum_name_pos.extend(p.prev_tok.pos())
+		mod: mod
+	}
 }
 
 fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos) {
@@ -3383,6 +3397,10 @@ fn (mut p Parser) parse_concrete_types() []ast.Type {
 	mut types := []ast.Type{}
 	if p.tok.kind !in [.lt, .lsbr] {
 		return types
+	}
+	p.inside_fn_concrete_type = true
+	defer {
+		p.inside_fn_concrete_type = false
 	}
 	end_kind := if p.tok.kind == .lt { token.Kind.gt } else { token.Kind.rsbr }
 	p.next() // `<`
@@ -4152,13 +4170,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.codegen('
 //
 @[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
-@[inline] ${pubfn} (    e &${enum_name}) has(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
-@[inline] ${pubfn} (    e &${enum_name}) all(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
-@[inline] ${pubfn} (mut e  ${enum_name}) set(flag ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
+@[inline] ${pubfn} (    e &${enum_name}) has(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) != 0 }
+@[inline] ${pubfn} (    e &${enum_name}) all(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) == ${senum_type}(flag_) }
+@[inline] ${pubfn} (mut e  ${enum_name}) set(flag_ ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag_))) } }
 @[inline] ${pubfn} (mut e  ${enum_name}) set_all()                   { unsafe{ *e = ${enum_name}(${all_bits_set_value}) } }
-@[inline] ${pubfn} (mut e  ${enum_name}) clear(flag ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) clear(flag_ ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag_))) } }
 @[inline] ${pubfn} (mut e  ${enum_name}) clear_all()                 { unsafe{ *e = ${enum_name}(0) } }
-@[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag_ ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag_))) } }
 //
 ')
 	}
@@ -4176,15 +4194,18 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
 	if is_flag {
 		isb.write_string('		if input == 0 { return val }\n')
+		all_bits_set_value := '0b' + '1'.repeat(fields.len)
+		isb.write_string('		if input & ~${all_bits_set_value} == 0 { return val }\n')
+	} else {
+		isb.write_string('		match val {\n')
+		for f in fields {
+			isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
+		}
+		if is_flag {
+			isb.write_string('			else{}\n')
+		}
+		isb.write_string('		}\n')
 	}
-	isb.write_string('		match val {\n')
-	for f in fields {
-		isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
-	}
-	if is_flag {
-		isb.write_string('			else{}\n')
-	}
-	isb.write_string('		}\n')
 	isb.write_string('	}\n')
 	isb.write_string('	\$if input is \$string {\n')
 	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`

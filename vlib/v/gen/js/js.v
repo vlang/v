@@ -64,7 +64,7 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	fn_decl                &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	generated_str_fns      []StrType
-	str_types              []StrType   // types that need automatic str() generation
+	str_types              []StrType // types that need automatic str() generation
 	copy_types             []StrType // types that need to be deep copied
 	generated_copy_fns     []StrType
 	array_fn_definitions   []string // array equality functions that have been defined
@@ -302,7 +302,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
 				mut current_column := u32(0)
-				last_nl_pos := current_segment.index_u8_last(`\n`)
+				last_nl_pos := current_segment.last_index_u8(`\n`)
 				if last_nl_pos != -1 {
 					current_column = u32(current_segment.len - last_nl_pos - 1)
 				}
@@ -536,7 +536,7 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 @[inline]
 fn get_ns(s string) string {
-	idx := s.index_u8_last(`.`)
+	idx := s.last_index_u8(`.`)
 	if idx == -1 {
 		return ''
 	}
@@ -1258,7 +1258,11 @@ fn (mut g JsGen) gen_assert_stmt(mut node ast.AssertStmt) {
 
 fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 	if stmt.left.len > stmt.right.len {
-		// multi return
+		// multi return, e.g.
+		// fn foo() (int, int, int) { return 0, 1, 2 }
+		// a, _, c := foo()
+
+		// TODO: const
 		g.write('let [')
 		for i, left in stmt.left {
 			if !left.is_blank_ident() {
@@ -1274,16 +1278,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			g.writeln(';')
 		}
 	} else {
-		// `a := 1` | `a,b := 1,2`
-		for i, left in stmt.left {
-			mut op := stmt.op
-			if stmt.op == .decl_assign {
-				op = .assign
-			}
-			is_assign := stmt.op in [.plus_assign, .minus_assign, .mult_assign, .div_assign,
-				.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign,
-				.left_shift_assign]
+		// e.g. `a := 1`, `a,b := 1,2`, `o['foo'] = 'bar'`
 
+		for i, left in stmt.left {
 			val := stmt.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
@@ -1304,107 +1301,66 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				g.doc.gen_typ(styp)
 			}
 			if stmt.op == .decl_assign {
-				if g.inside_loop || is_mut {
-					g.write('let ')
+				g.write(if g.inside_loop || is_mut {
+					'let '
 				} else {
-					g.write('const ')
-				}
+					'const '
+				})
 			}
+
 			mut array_set := false
 			mut map_set := false
-			match left {
-				ast.IndexExpr {
-					g.expr(left.left)
-					if left.left_type.is_ptr() {
-						g.write('.valueOf()')
-					}
-					array_set = true
+			if left is ast.IndexExpr {
+				g.expr(left.left)
+				if left.left_type.is_ptr() {
+					g.write('.valueOf()')
+				}
+				array_set = true
 
-					if g.table.sym(left.left_type).kind == .map {
-						g.writeln('.length++;')
-						g.expr(left.left)
-						g.write('.map[')
-						map_set = true
-					} else {
-						g.write('.arr.set(')
-					}
-					if map_set {
-						g.expr(left.index)
-						g.write('.\$toJS()] = ')
-					} else {
-						g.write('new int(')
-						g.cast_stack << ast.int_type_idx
-						g.expr(left.index)
-						g.write('.valueOf()')
-						g.cast_stack.delete_last()
-						g.write('),')
-					}
-				}
-				else {
-					g.expr(left)
-				}
-			}
-			mut is_ptr := false
-			if stmt.op == .assign && stmt.left_types[i].is_ptr() && !array_set {
-				is_ptr = true
-				g.write('.val')
-			}
-			mut floor := false
-			if false && g.inside_map_set && op == .assign {
-				g.inside_map_set = false
-				g.write('] = ')
-				g.expr(val)
-				if is_ptr {
-					g.write('.val')
+				if left.is_map {
+					map_set = true
+					// FIXME: if you update a key already in the map, it will still
+					// increment length, which it shouldn't since length should match
+					// the actual amount of elements in the map
+					// using a getter that calls JS Object.entries().length or
+					// Object.values().length to get the real length would probably
+					// work, but I'm hesitant about the amount of overhead this will
+					// introduce since those functions return arrays and not iterables,
+					// which might consume a lot of memory and cycles to set up
+					g.writeln('.length++;')
+					g.expr(left.left)
+					g.write('.map[')
+					g.expr(left.index)
+					g.write('.\$toJS()] = ')
+				} else {
+					g.write('.arr.set(')
+					g.write('new int(')
+					g.cast_stack << ast.int_type_idx
+					g.expr(left.index)
+					g.write('.valueOf()')
+					g.cast_stack.delete_last()
+					g.write('),')
 				}
 			} else {
-				if is_assign && array_set {
-					g.write('new ${styp}(')
+				g.expr(left)
+			}
 
-					g.expr(left)
-					l_sym := g.table.sym(stmt.left_types[i])
-					if l_sym.kind == .string {
-						g.write('.str')
-					} else {
-						g.write('.val')
+			is_ptr := stmt.op == .assign && stmt.left_types[i].is_ptr() && !array_set
+			if is_ptr {
+				g.write('.val')
+			}
+
+			mut floor := false
+			mut is_special_assign := false
+			match stmt.op {
+				.plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign, .mod_assign,
+				.or_assign, .and_assign, .right_shift_assign, .left_shift_assign {
+					is_special_assign = true
+					if array_set {
+						g.write('new ${styp}(')
+						g.expr(left)
 					}
 
-					match op {
-						.plus_assign {
-							g.write(' + ')
-						}
-						.minus_assign {
-							g.write(' - ')
-						}
-						.mult_assign {
-							g.write(' * ')
-						}
-						.div_assign {
-							g.write(' / ')
-						}
-						.mod_assign {
-							g.write(' % ')
-						}
-						.xor_assign {
-							g.write(' ^ ')
-						}
-						.and_assign {
-							g.write(' & ')
-						}
-						.right_shift_assign {
-							g.write(' >> ')
-						}
-						.left_shift_assign {
-							g.write(' << ')
-						}
-						.or_assign {
-							g.write(' | ')
-						}
-						else {
-							panic('unexpected op ${op}')
-						}
-					}
-				} else if is_assign && !array_set {
 					l_sym := g.table.sym(stmt.left_types[i])
 					if l_sym.kind == .string {
 						g.write('.str')
@@ -1414,83 +1370,61 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 					if !array_set {
 						g.write(' = ')
+						if (l_sym.name != 'f64' || l_sym.name != 'f32')
+							&& (l_sym.name != 'i64' && l_sym.name != 'u64')
+							&& l_sym.name != 'string' {
+							g.write('Math.floor(')
+							floor = true
+						}
+						g.expr(left)
 					}
-					if (l_sym.name != 'f64' || l_sym.name != 'f32')
-						&& (l_sym.name != 'i64' && l_sym.name != 'u64') && l_sym.name != 'string' {
-						g.write('Math.floor(')
-						floor = true
-					}
-					g.expr(left)
 
-					match op {
-						.plus_assign {
-							g.write(' + ')
-						}
-						.minus_assign {
-							g.write(' - ')
-						}
-						.mult_assign {
-							g.write(' * ')
-						}
-						.div_assign {
-							g.write(' / ')
-						}
-						.mod_assign {
-							g.write(' % ')
-						}
-						.xor_assign {
-							g.write(' ^ ')
-						}
-						.and_assign {
-							g.write(' & ')
-						}
-						.right_shift_assign {
-							g.write(' >> ')
-						}
-						.left_shift_assign {
-							g.write(' << ')
-						}
-						.or_assign {
-							g.write(' | ')
-						}
-						else {
-							panic('unexpected op ${op}')
-						}
-					}
-				} else {
-					if op == .assign && array_set {
-					} else {
-						g.write(' ${op} ')
+					g.write(match stmt.op {
+						.plus_assign { ' + ' }
+						.minus_assign { ' - ' }
+						.mult_assign { ' * ' }
+						.div_assign { ' / ' }
+						.mod_assign { ' % ' }
+						.xor_assign { ' ^ ' }
+						.and_assign { ' & ' }
+						.right_shift_assign { ' >> ' }
+						.left_shift_assign { ' << ' }
+						.or_assign { ' | ' }
+						else { panic('unexpected op ${stmt.op}') }
+					})
+				}
+				.assign, .decl_assign {
+					if !array_set {
+						g.write(' = ')
 					}
 				}
-				// TODO: Multiple types??
+				else {
+					panic('unsupported assignment operator provided: ${stmt.op}')
+				}
+			}
 
-				should_cast := if stmt.left_types.len == 0 {
-					false
-				} else {
-					g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
-						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
-				}
+			// TODO: Multiple types??
 
-				if should_cast {
-					g.cast_stack << stmt.left_types.first()
-					g.write('new ')
-					g.write('${g.typ(stmt.left_types.first())}(')
-				}
-				g.expr(val)
-				if is_ptr {
-					g.write('.val')
-				}
-				if should_cast {
-					g.write(')')
-					g.cast_stack.delete_last()
-				}
-				if is_assign && array_set {
-					g.write(')')
-				}
-				if floor {
-					g.write(')')
-				}
+			should_cast := stmt.left_types.len != 0
+				&& g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
+				&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+			if should_cast {
+				g.cast_stack << stmt.left_types.first()
+				g.write('new ${g.typ(stmt.left_types.first())}(')
+			}
+			g.expr(val)
+			if is_ptr {
+				g.write('.val')
+			}
+			if should_cast {
+				g.write(')')
+				g.cast_stack.delete_last()
+			}
+			if is_special_assign && array_set {
+				g.write(')')
+			}
+			if floor {
+				g.write(')')
 			}
 			if array_set && !map_set {
 				g.write(')')
@@ -2623,7 +2557,8 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 	}
 }
 
-fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string, enum_typ ast.TypeSymbol) {
+fn (mut g JsGen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var MatchCond, tmp_var string,
+	enum_typ ast.TypeSymbol) {
 	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
 	mut default_generated := false
 	g.empty_line = true
@@ -3382,14 +3317,8 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 }
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
-	mut text := it.val.replace("'", "'")
-	text = text.replace('"', '\\"')
-	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
-	if true || should_cast {
-		g.write('new ')
-
-		g.write('string(')
-	}
+	text := it.val.replace("'", "'").replace('"', '\\"')
+	g.write('new string(')
 	if it.is_raw {
 		g.writeln('(function() { let s = String(); ')
 		for x in text {
@@ -3407,9 +3336,7 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		}
 		g.write('"')
 	}
-	if true || should_cast {
-		g.write(')')
-	}
+	g.write(')')
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {

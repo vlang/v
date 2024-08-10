@@ -29,6 +29,13 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
+	if node.is_compile_value {
+		node.resolve_compile_value(c.pref.compile_values) or {
+			c.error(err.msg(), node.pos)
+			return ast.void_type
+		}
+		return node.result_type
+	}
 	if node.is_embed {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
@@ -104,7 +111,17 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.table.cur_fn = save_cur_fn
 	}
 	if node.method_name == 'html' {
-		rtyp := c.table.find_type_idx('vweb.Result')
+		ret_sym := c.table.sym(c.table.cur_fn.return_type)
+		if ret_sym.cname !in ['veb__Result', 'vweb__Result', 'x__vweb__Result'] {
+			ct_call := if node.is_veb { 'veb' } else { 'vweb' }
+			c.error('`\$${ct_call}.html()` must be called inside a web method, e.g. `fn (mut app App) foo(mut ctx Context) ${ct_call}.Result { return \$${ct_call}.html(\'index.html\') }`',
+				node.pos)
+		}
+		rtyp := if node.is_veb {
+			c.table.find_type_idx('veb.Result')
+		} else {
+			c.table.find_type_idx('vweb.Result')
+		}
 		node.result_type = rtyp
 		return rtyp
 	}
@@ -116,7 +133,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			// check each arg expression
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
-		c.stmts_ending_with_expression(mut node.or_block.stmts)
+		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.comptime.get_comptime_var_type(node)
 	}
 	if node.method_name == 'res' {
@@ -543,7 +560,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			for i in 0 .. expr.branches.len {
 				mut branch := expr.branches[i]
 				if !expr.has_else || i < expr.branches.len - 1 {
-					if c.comptime_if_branch(mut branch.cond, branch.pos) == .eval {
+					if c.comptime_if_cond(mut branch.cond, branch.pos) == .eval {
 						last_stmt := branch.stmts.last()
 						if last_stmt is ast.ExprStmt {
 							return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
@@ -642,7 +659,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 			return node.ct_skip
 		} else {
 			if node.ct_expr.name !in ast.valid_comptime_not_user_defined {
-				c.note('`[if ${node.ct_expr.name}]` is deprecated. Use `[if ${node.ct_expr.name} ?]` instead',
+				c.note('`[if ${node.ct_expr.name}]` is deprecated. Use `@[if ${node.ct_expr.name} ?]` instead',
 					node.pos)
 				node.ct_skip = node.ct_expr.name !in c.pref.compile_defines
 				node.ct_evaled = true
@@ -658,7 +675,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	node.ct_skip = if c.comptime_if_branch(mut node.ct_expr, node.pos) == .skip {
+	node.ct_skip = if c.comptime_if_cond(mut node.ct_expr, node.pos) == .skip {
 		true
 	} else {
 		false
@@ -674,9 +691,9 @@ enum ComptimeBranchSkipState {
 	unknown
 }
 
-// comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
+// comptime_if_cond checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
+fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
 	mut should_record_ident := false
 	mut is_user_ident := false
 	mut ident_name := ''
@@ -695,13 +712,13 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 			return if cond.val { .eval } else { .skip }
 		}
 		ast.ParExpr {
-			return c.comptime_if_branch(mut cond.expr, pos)
+			return c.comptime_if_cond(mut cond.expr, pos)
 		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-			reversed := c.comptime_if_branch(mut cond.right, cond.pos)
+			reversed := c.comptime_if_cond(mut cond.right, cond.pos)
 			return if reversed == .eval {
 				.skip
 			} else if reversed == .skip {
@@ -725,16 +742,16 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 		ast.InfixExpr {
 			match cond.op {
 				.and {
-					l := c.comptime_if_branch(mut cond.left, cond.pos)
-					r := c.comptime_if_branch(mut cond.right, cond.pos)
+					l := c.comptime_if_cond(mut cond.left, cond.pos)
+					r := c.comptime_if_cond(mut cond.right, cond.pos)
 					if l == .unknown || r == .unknown {
 						return .unknown
 					}
 					return if l == .eval && r == .eval { .eval } else { .skip }
 				}
 				.logical_or {
-					l := c.comptime_if_branch(mut cond.left, cond.pos)
-					r := c.comptime_if_branch(mut cond.right, cond.pos)
+					l := c.comptime_if_cond(mut cond.left, cond.pos)
+					r := c.comptime_if_cond(mut cond.right, cond.pos)
 					if l == .unknown || r == .unknown {
 						return .unknown
 					}
@@ -969,6 +986,16 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					return .skip
 				}
 				m.run() or { return .skip }
+				return .eval
+			}
+			if cond.is_compile_value {
+				t := c.expr(mut cond)
+				if t != ast.bool_type {
+					c.error('inside \$if, only \$d() expressions that return bool are allowed',
+						cond.pos)
+					return .skip
+				}
+				return .unknown // always fully generate the code for that branch
 			}
 			return .eval
 		}

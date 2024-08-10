@@ -75,6 +75,8 @@ jobs:
         run: v -showcc -skip-unused -prod cmd/tools/vdoctor.v
       - name: compile vup.v with -skip-unused and -prod
         run: v -showcc -skip-unused -prod cmd/tools/vup.v
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
 
   msvc:
     runs-on: windows-2019
@@ -122,6 +124,8 @@ jobs:
         run: v build-examples
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
 
   tcc:
     runs-on: windows-2019
@@ -176,6 +180,8 @@ jobs:
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
       - name: v2 self compilation with -gc boehm
         run: v -o v2.exe -gc boehm cmd/v && .\v2.exe -o v3.exe -gc boehm cmd/v && .\v3.exe -o v4.exe -gc boehm cmd/v
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
 
         ## tcc32
         # - name: Build with make.bat -tcc32

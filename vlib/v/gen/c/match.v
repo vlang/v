@@ -403,7 +403,8 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 				should_check_low_bound = false
 			}
 		} else if expr.low is ast.Ident {
-			if mut obj := g.table.global_scope.find_const(expr.low.name) {
+			mut elow := unsafe { expr.low }
+			if mut obj := g.table.global_scope.find_const(elow.full_name()) {
 				if mut obj.expr is ast.IntegerLiteral {
 					if obj.expr.val == '0' {
 						should_check_low_bound = false

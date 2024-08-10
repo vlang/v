@@ -49,7 +49,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.fn_level++
 	c.in_for_count = 0
 	c.inside_defer = false
-	c.inside_unsafe = false
+	c.inside_unsafe = node.is_unsafe
 	c.returns = false
 	defer {
 		c.stmt_level = prev_stmt_level
@@ -311,6 +311,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if !c.is_builtin_mod && node.mod == 'main'
 				&& node.name.after_char(`.`) in reserved_type_names {
 				c.error('top level declaration cannot shadow builtin type', node.pos)
+			}
+			if _ := node.name.index('__static__') {
+				if sym := c.table.find_sym(node.name.all_before('__static__')) {
+					if sym.kind == .placeholder {
+						c.error('unknown type `${sym.name}`', node.static_type_pos)
+					}
+				}
 			}
 		}
 	}
@@ -600,7 +607,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	c.expected_or_type = node.return_type.clear_flag(.result)
-	c.stmts_ending_with_expression(mut node.or_block.stmts)
+	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 	c.expected_or_type = ast.void_type
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
@@ -1509,6 +1516,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	} else {
 		node.return_type = func.return_type
 	}
+	if func.return_type.has_flag(.generic) {
+		node.return_type_generic = func.return_type
+	}
 	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
@@ -1582,6 +1592,35 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 	}
 }
 
+// is_generic_expr checks if the expr relies on fn generic argument
+fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
+	return match node {
+		ast.Ident {
+			// variable declared as generic type
+			c.comptime.is_generic_param_var(node)
+		}
+		ast.IndexExpr {
+			// generic_var[N]
+			c.comptime.is_generic_param_var(node.left)
+		}
+		ast.CallExpr {
+			// fn which has any generic dependent expr
+			if node.args.any(c.comptime.is_generic_param_var(it.expr)) {
+				return true
+			}
+			// fn[T]() or generic_var.fn[T]()
+			node.concrete_types.any(it.has_flag(.generic))
+		}
+		ast.SelectorExpr {
+			// generic_var.property
+			c.comptime.is_generic_param_var(node.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
@@ -1595,14 +1634,14 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 			} else {
 				func.params[offset + i]
 			}
-			k++
 			if !param.typ.has_flag(.generic) {
 				continue
 			}
+			k++
 			param_typ := param.typ
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
-					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
+					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
 						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
@@ -1795,6 +1834,19 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 }
 
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
+	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
+	mut left_expr := node.left
+	for mut left_expr is ast.ParExpr {
+		left_expr = left_expr.expr
+	}
+	if mut left_expr is ast.IfExpr {
+		if left_expr.branches.len > 0 && left_expr.has_else {
+			mut last_stmt := left_expr.branches[0].stmts.last()
+			if mut last_stmt is ast.ExprStmt {
+				c.expected_type = c.expr(mut last_stmt.expr)
+			}
+		}
+	}
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
 		c.error('cannot call a method using an invalid expression', node.pos)
@@ -2159,6 +2211,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	node.is_noreturn = method.is_noreturn
 	node.is_ctor_new = method.is_ctor_new
 	node.return_type = method.return_type
+	if method.return_type.has_flag(.generic) {
+		node.return_type_generic = method.return_type
+	}
 	if !method.is_pub && method.mod != c.mod {
 		// If a private method is called outside of the module
 		// its receiver type is defined in, show an error.
@@ -2536,6 +2591,10 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
+			if arg.typ == 0 {
+				c.error('invalid expr', node.pos)
+				return 0
+			}
 			if c.table.final_sym(arg.typ).kind == .array {
 				// allow mutable []array to be passed as mut
 				continue

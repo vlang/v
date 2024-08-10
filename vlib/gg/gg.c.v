@@ -49,44 +49,44 @@ pub mut:
 
 pub struct Config {
 pub:
-	width         int
-	height        int
-	retina        bool
-	resizable     bool
-	user_data     voidptr
-	font_size     int
-	create_window bool
+	width         int     // desired start width of the window
+	height        int     // desired start height of the window
+	retina        bool    // TODO: implement or deprecate
+	resizable     bool    // TODO: implement or deprecate
+	user_data     voidptr // a custom pointer to the application data/instance
+	font_size     int     // TODO: implement or deprecate
+	create_window bool    // TODO: implement or deprecate
 	// window_user_ptr voidptr
-	window_title      string
+	window_title      string // the desired title of the window
 	html5_canvas_name string = 'canvas'
-	borderless_window bool
-	always_on_top     bool
-	bg_color          gx.Color
-	init_fn           FNCb   = unsafe { nil }
-	frame_fn          FNCb   = unsafe { nil }
+	borderless_window bool     // TODO: implement or deprecate
+	always_on_top     bool     // TODO: implement or deprecate
+	bg_color          gx.Color // The background color of the window. By default, the first thing gg does in ctx.begin(), is clear the whole buffer with that color.
+	init_fn           FNCb   = unsafe { nil } // Called once, after Sokol has finished its setup. Some gg and Sokol functions have to be called *in this* callback, or after this callback, but not before
+	frame_fn          FNCb   = unsafe { nil } // Called once per frame, usually 60 times a second (depends on swap_interval). See also https://dri.freedesktop.org/wiki/ConfigurationOptions/#synchronizationwithverticalrefreshswapintervals
 	native_frame_fn   FNCb   = unsafe { nil }
-	cleanup_fn        FNCb   = unsafe { nil }
-	fail_fn           FNFail = unsafe { nil }
+	cleanup_fn        FNCb   = unsafe { nil } // Called once, after Sokol determines that the application is finished/closed. Put your app specific cleanup/free actions here.
+	fail_fn           FNFail = unsafe { nil } // Called once per Sokol error/log message. TODO: currently it does nothing with latest Sokol, reimplement using Sokol's new sapp_logger APIs.
 	//
-	event_fn FNEvent  = unsafe { nil }
-	on_event FNEvent2 = unsafe { nil }
-	quit_fn  FNEvent  = unsafe { nil }
+	event_fn FNEvent  = unsafe { nil } // Called once per each user initiated event, received by Sokol/GG.
+	on_event FNEvent2 = unsafe { nil } // Called once per each user initiated event, received by Sokol/GG. Same as event_fn, just the parameter order is different. TODO: deprecate this, in favor of event_fn
+	quit_fn  FNEvent  = unsafe { nil } // Called when the user closes the app window.
 	//
-	keydown_fn FNKeyDown = unsafe { nil }
-	keyup_fn   FNKeyUp   = unsafe { nil }
-	char_fn    FNChar    = unsafe { nil }
+	keydown_fn FNKeyDown = unsafe { nil } // Called once per key press, no matter how long the key is held down. Note that here you can access the scan code/physical key, but not the logical character.
+	keyup_fn   FNKeyUp   = unsafe { nil } // Called once per key press, when the key is released.
+	char_fn    FNChar    = unsafe { nil } // Called once per character (after the key is pressed down, and then released). Note that you can access the character/utf8 rune here, not just the scan code.
 	//
-	move_fn    FNMove    = unsafe { nil }
-	click_fn   FNClick   = unsafe { nil }
-	unclick_fn FNUnClick = unsafe { nil }
-	leave_fn   FNEvent   = unsafe { nil }
-	enter_fn   FNEvent   = unsafe { nil }
-	resized_fn FNEvent   = unsafe { nil }
-	scroll_fn  FNEvent   = unsafe { nil }
+	move_fn    FNMove    = unsafe { nil } // Called while the mouse/touch point is moving.
+	click_fn   FNClick   = unsafe { nil } // Called once when the mouse/touch button is clicked.
+	unclick_fn FNUnClick = unsafe { nil } // Called once when the mouse/touch button is released.
+	leave_fn   FNEvent   = unsafe { nil } // Called once when the mouse/touch point leaves the window.
+	enter_fn   FNEvent   = unsafe { nil } // Called once when the mouse/touch point enters again the window.
+	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
+	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen    bool
+	fullscreen    bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
 	scale         f32 = 1.0
-	sample_count  int
+	sample_count  int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
 	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
 	// ved needs this
 	// init_text bool
@@ -101,11 +101,11 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
+	max_dropped_files            int = 1    // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	//
-	min_width  int
-	min_height int
+	min_width  int // desired minimum width of the window
+	min_height int // desired minimum height of the window
 }
 
 @[heap]
@@ -179,8 +179,8 @@ pub mut:
 	scroll_x      int
 	scroll_y      int
 	//
-	key_modifiers     Modifier // the current key modifiers
-	key_repeat        bool     // whether the pressed key was an autorepeated one
+	key_modifiers     Modifier           // the current key modifiers
+	key_repeat        bool               // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different
@@ -294,6 +294,12 @@ fn gg_frame_fn(mut ctx Context) {
 	}
 	if ctx.native_rendering {
 		// return
+	}
+	defer {
+		ctx.mouse_dx = 0
+		ctx.mouse_dy = 0
+		ctx.scroll_x = 0
+		ctx.scroll_y = 0
 	}
 
 	ctx.record_frame()
@@ -746,7 +752,7 @@ pub fn window_size() Size {
 
 // set_window_title sets main window's title
 pub fn set_window_title(title string) {
-	C.sapp_set_window_title(title.str)
+	C.sapp_set_window_title(&char(title.str))
 }
 
 // window_size_real_pixels returns the `Size` of the active window without scale

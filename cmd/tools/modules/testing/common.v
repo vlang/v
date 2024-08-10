@@ -87,9 +87,9 @@ pub mut:
 	show_stats    bool
 	show_asserts  bool
 	progress_mode bool
-	root_relative bool // used by CI runs, so that the output is stable everywhere
+	root_relative bool            // used by CI runs, so that the output is stable everywhere
 	nmessages     chan LogMessage // many publishers, single consumer/printer
-	nmessage_idx  int // currently printed message index
+	nmessage_idx  int             // currently printed message index
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup

@@ -209,7 +209,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						if lx.info.is_static {
 							if !p.pref.translated && !p.is_translated && !p.pref.is_fmt
 								&& !p.inside_unsafe_fn {
-								return p.error_with_pos('static variables are supported only in translated mode or in [unsafe] fn',
+								return p.error_with_pos('static variables are supported only in translated mode or in @[unsafe] fn',
 									lx.pos)
 							}
 							is_static = true
@@ -285,6 +285,14 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 			}
 		}
 	}
+	mut attr := ast.Attr{}
+	// This assign stmt has an attribute e.g. `x := [1,2,3] @[freed]`
+	if p.tok.kind == .at && p.tok.line_nr == p.prev_tok.line_nr {
+		p.check(.at)
+		p.check(.lsbr)
+		attr = p.parse_attr(true)
+		p.check(.rsbr)
+	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	p.expr_mod = ''
 	return ast.AssignStmt{
@@ -297,5 +305,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		is_simple: p.inside_for && p.tok.kind == .lcbr
 		is_static: is_static
 		is_volatile: is_volatile
+		attr: attr
 	}
 }

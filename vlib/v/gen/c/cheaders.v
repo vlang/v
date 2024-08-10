@@ -649,6 +649,11 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+typedef int64_t vint_t;
+#else
+typedef int32_t vint_t;
+#endif
 typedef int64_t i64;
 typedef int16_t i16;
 typedef int8_t i8;
@@ -681,15 +686,17 @@ typedef u8 array_fixed_byte_300 [300];
 
 typedef struct sync__Channel* chan;
 
-#ifndef __cplusplus
-	#ifndef bool
-		#ifdef CUSTOM_DEFINE_4bytebool
-			typedef int bool;
-		#else
-			typedef u8 bool;
+#ifndef CUSTOM_DEFINE_no_bool
+	#ifndef __cplusplus
+		#ifndef bool
+			#ifdef CUSTOM_DEFINE_4bytebool
+				typedef int bool;
+			#else
+				typedef u8 bool;
+			#endif
+			#define true 1
+			#define false 0
 		#endif
-		#define true 1
-		#define false 0
 	#endif
 #endif
 

@@ -14,8 +14,8 @@ pub:
 @[typedef]
 pub struct C.sfons_desc_t {
 pub:
-	width     int // initial width of font atlas texture (default: 512, must be power of 2)
-	height    int // initial height of font atlas texture (default: 512, must be power of 2)
+	width     int                 // initial width of font atlas texture (default: 512, must be power of 2)
+	height    int                 // initial height of font atlas texture (default: 512, must be power of 2)
 	allocator C.sfons_allocator_t // optional memory allocation overrides
 }
 

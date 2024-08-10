@@ -20,7 +20,7 @@ pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
 	module_path  string
 pub mut:
-	checker             &checker.Checker = unsafe { nil }
+	checker             &checker.Checker         = unsafe { nil }
 	transformer         &transformer.Transformer = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
@@ -42,8 +42,8 @@ pub mut:
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
-	crun_cache_keys       []string // target executable + top level source files; filled in by Builder.should_rebuild
-	executable_exists     bool     // if the executable already exists, don't remove new executable after `v run`
+	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {
@@ -465,15 +465,13 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		}
 	}
 	if b.checker.nr_errors > 0 && b.pref.path.ends_with('.v') && os.is_file(b.pref.path) {
-		for err in b.checker.errors {
-			if err.message.starts_with('unknown ') {
-				// Sometimes users try to `v main.v`, when they have several .v files in their project.
-				// Then, they encounter puzzling errors about missing or unknown types. In this case,
-				// the intended command may have been `v .` instead, so just suggest that:
-				old_cmd := util.bold('v ${b.pref.path}')
-				new_cmd := util.bold('v ${os.dir(b.pref.path)}')
-				eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
-			}
+		if b.checker.errors.any(it.message.starts_with('unknown ')) {
+			// Sometimes users try to `v main.v`, when they have several .v files in their project.
+			// Then, they encounter puzzling errors about missing or unknown types. In this case,
+			// the intended command may have been `v .` instead, so just suggest that:
+			old_cmd := util.bold('v ${b.pref.path}')
+			new_cmd := util.bold('v ${os.dir(b.pref.path)}')
+			eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
 		}
 	}
 }
@@ -593,7 +591,8 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{})
+							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{},
+								false)
 							redefines << FunctionRedefinition{
 								fpath: file.path
 								fline: stmt.pos.line_nr

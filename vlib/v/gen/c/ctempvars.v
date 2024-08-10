@@ -22,4 +22,5 @@ fn (mut g Gen) gen_ctemp_var(tvar ast.CTempVar) {
 	g.write('${styp} ${tvar.name} = ')
 	g.expr(tvar.orig)
 	g.writeln(';')
+	g.set_current_pos_as_last_stmt_pos()
 }

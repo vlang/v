@@ -59,7 +59,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
-				skip_state = c.comptime_if_branch(mut branch.cond, branch.pos)
+				skip_state = c.comptime_if_cond(mut branch.cond, branch.pos)
 				node.branches[i].pkg_exist = if skip_state == .eval { true } else { false }
 			} else {
 				// check condition type is boolean
@@ -324,7 +324,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if !c.skip_flags {
 				if node_is_expr {
-					c.stmts_ending_with_expression(mut branch.stmts)
+					c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 				} else {
 					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
@@ -341,7 +341,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					node.branches[i].stmts = []
 				}
 				if node_is_expr {
-					c.stmts_ending_with_expression(mut branch.stmts)
+					c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 				} else {
 					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
@@ -364,7 +364,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(mut branch.cond, mut branch.scope)
 			if node_is_expr {
-				c.stmts_ending_with_expression(mut branch.stmts)
+				c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 			} else {
 				c.stmts(mut branch.stmts)
 				c.check_non_expr_branch_last_stmt(branch.stmts)
@@ -420,7 +420,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if node.typ == ast.void_type {
 							// first branch of if expression
 							node.is_expr = true
-							node.typ = stmt.typ
+							if stmt.expr.is_auto_deref_var() {
+								node.typ = stmt.typ.deref()
+							} else {
+								node.typ = stmt.typ
+							}
 							continue
 						} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
 							if node.typ == ast.int_literal_type {
@@ -469,6 +473,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
 							node.pos)
 					} else {
+						if node.is_expr == false && c.comptime.is_generic_param_var(stmt.expr) {
+							// generic variable no yet type bounded
+							node.is_expr = true
+						}
 						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
 							&& stmt.typ != ast.voidptr_type {
 							if stmt.typ.is_ptr() != node.typ.is_ptr() {

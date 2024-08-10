@@ -120,10 +120,10 @@ pub enum DOMKeyCode {
 	x             = 88
 	y             = 89
 	z             = 90
-	left_bracket  = 91 //[
-	backslash     = 92 //\
-	right_bracket = 93 //]
-	grave_accent  = 96 //`
+	left_bracket  = 91  //[
+	backslash     = 92  //\
+	right_bracket = 93  //]
+	grave_accent  = 96  //`
 	world_1       = 161 // non-us #1
 	world_2       = 162 // non-us #2
 	escape        = 256
@@ -249,9 +249,9 @@ pub:
 	font_bytes_italic []u8
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
-	enable_dragndrop             bool   // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int    = 1 // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int    = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
+	max_dropped_files            int    = 1        // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int    = 2048     // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
 }
 
@@ -271,7 +271,7 @@ pub mut:
 	scale         f32 = 1.0
 	width         int
 	height        int
-	window        JS.Window    @[noinit]
+	window        JS.Window @[noinit]
 	config        Config
 	user_data     voidptr
 	ui_mode       bool
@@ -285,8 +285,8 @@ pub mut:
 	scroll_x      int
 	scroll_y      int
 	//
-	key_modifiers     Modifier // the current key modifiers
-	key_repeat        bool     // whether the pressed key was an autorepeated one
+	key_modifiers     Modifier           // the current key modifiers
+	key_repeat        bool               // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	context           JS.CanvasRenderingContext2D @[noinit]

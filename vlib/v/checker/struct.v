@@ -26,7 +26,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		}
 		for embed in node.embeds {
 			embed_sym := c.table.sym(embed.typ)
-			if embed_sym.kind != .struct_ {
+			if embed_sym.info is ast.Alias {
+				parent_sym := c.table.sym(embed_sym.info.parent_type)
+				if parent_sym.kind != .struct_ {
+					c.error('`${embed_sym.name}` (alias of `${parent_sym.name}`) is not a struct',
+						embed.pos)
+				}
+			} else if embed_sym.kind != .struct_ {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
 			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
 				struct_sym.info.is_heap = true
@@ -96,7 +102,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					sym := c.table.sym(field.typ)
 					if sym.kind == .function && !field.typ.has_flag(.option)
 						&& !field.has_default_expr && !field.attrs.contains('required') {
-						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `@[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
 						c.note(error_msg, field.pos)
 					}
 				}
@@ -105,6 +111,22 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
+				if field.typ.is_ptr() != field.default_expr_typ.is_ptr() {
+					match field.default_expr {
+						ast.CallExpr {
+							err_desc := if field.typ.is_ptr() { 'is' } else { 'is not' }
+							val_desc := if field.default_expr_typ.is_ptr() { 'is' } else { 'is not' }
+							c.error('field ${err_desc} reference but default value ${val_desc} reference',
+								field.default_expr.pos())
+						}
+						ast.StructInit {
+							c.error('reference field must be initialized with reference',
+								field.default_expr.pos())
+						}
+						else {}
+					}
+				}
+
 				// disallow map `mut a = b`
 				field_sym := c.table.sym(field.typ)
 				expr_sym := c.table.sym(field.default_expr_typ)
@@ -198,6 +220,15 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.expected_type = field.typ
 				if !field.typ.has_flag(.option) && !field.typ.has_flag(.result) {
 					c.check_expr_option_or_result_call(field.default_expr, field.default_expr_typ)
+				}
+				if sym.info is ast.ArrayFixed && field.typ == field.default_expr_typ {
+					if sym.info.size_expr is ast.ComptimeCall {
+						// field [$d('x' ,2)]int = [1 ,2]!
+						if sym.info.size_expr.method_name == 'd' {
+							c.error('cannot initialize a fixed size array field that uses `\$d()` as size quantifier since the size may change via -d',
+								field.default_expr.pos())
+						}
+					}
 				}
 				interface_implemented := sym.kind == .interface_
 					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
@@ -449,7 +480,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
-		pos := type_sym.name.index_u8_last(`.`)
+		pos := type_sym.name.last_index_u8(`.`)
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() && (type_sym.kind != .struct_
 			|| !(type_sym.info is ast.Struct && type_sym.info.is_anon))
@@ -545,10 +576,16 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					c.error('unknown struct: ${type_sym.name}', node.pos)
 					return ast.void_type
 				}
-				if sym.kind == .struct_ {
-					info = sym.info as ast.Struct
-				} else {
-					c.error('alias type name: ${sym.name} is not struct type', node.pos)
+				match sym.kind {
+					.struct_ {
+						info = sym.info as ast.Struct
+					}
+					.array, .array_fixed {
+						// we do allow []int{}, [10]int{}
+					}
+					else {
+						c.error('alias type name: ${sym.name} is not struct type', node.pos)
+					}
 				}
 			} else {
 				info = type_sym.info as ast.Struct
@@ -758,13 +795,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 									} else {
 										parts.last()
 									}
-									if !c.inside_unsafe {
-										c.add_error_detail('this will become an error after 2024-05-31')
-										c.warn('initalizing private field `${field.name}` of `${mod_type}`',
-											init_field.pos)
-										// c.error('cannot access private field `${field.name}` on `${mod_type}`', init_field.pos)
-										break
-									}
+									c.error('cannot access private field `${field.name}` on `${mod_type}`',
+										init_field.pos)
+									break
 								}
 							}
 						}
@@ -844,7 +877,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						node.pos)
 				}
 				*/
-				// Check for `[required]` struct attr
+				// Check for `@[required]` struct attr
 				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
 					&& node.init_fields.all(it.name != field.name) {
 					c.error('field `${type_sym.name}.${field.name}` must be initialized',
@@ -931,7 +964,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 }
 
 // Recursively check whether the struct type field is initialized
-fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
+fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type,
+	linked_name string, pos &token.Pos) {
 	if (c.pref.translated || c.file.is_translated) || struct_sym.language == .c {
 		return
 	}
@@ -973,7 +1007,8 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 // This method is temporary and will only be called by the do_check_elements_ref_fields_initialized() method.
 // The goal is to give only a notice, not an error, for now. After a while,
 // when we change the notice to error, we can remove this temporary method.
-fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
+fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type,
+	linked_name string, pos &token.Pos) {
 	if (c.pref.translated || c.file.is_translated) || struct_sym.language == .c {
 		return
 	}

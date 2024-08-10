@@ -5,6 +5,7 @@ import crypto.md5
 import crypto.sha1
 import crypto.sha256
 import crypto.sha512
+import crypto.sha3
 import crypto.blake2s
 import crypto.blake2b
 import crypto.blake3
@@ -13,10 +14,6 @@ import crypto.blake3
 // import crypto.md4
 // import crypto.md5sha1
 // import crypto.ripemd160
-// import crypto.sha3_224
-// import crypto.sha3_256
-// import crypto.sha3_384
-// import crypto.sha3_512
 
 const keys = [
 	[u8(0xb), 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb],
@@ -307,6 +304,78 @@ fn test_hmac_blake3_256() {
 	}
 }
 
+fn test_hmac_sha3_512() {
+	sha3_512_expected_results := [
+		'd2d9588c7e7886b08e09b56a7ac9d7e30a4badf13b37a041f5dfde34d87c086b5db1a7ec679bcfce81fa2eee982573c01dfb8d988e302f78d7b20d7d7ac2dfd7',
+		'5a4bfeab6166427c7a3647b747292b8384537cdb89afb3bf5665e4c5e709350b287baec921fd7ca0ee7a0c31d022a95e1fc92ba9d77df883960275beb4e62024',
+		'f25055024a17dfe15a25d6c40b00f45e8548f641844f2288170430ba0b7889bfaf04d9398121d165375300fe813f3cb6db9639921dcfb712b9177b8f5261d474',
+		'b27eab1d6e8d87461c29f7f5739dd58e98aa35f8e823ad38c5492a2088fa0281993bbfff9a0e9c6bf121ae9ec9bb09d84a5ebac817182ea974673fb133ca0d1d',
+		'69e9553223ede3637f08f9cc01ea9ded8f3b4202b5cc1feb60071e195a942f0ca0fa1cd70d3f1f9f24b2e18057b3001e7d5160e61eb6099f75ea4e0d6b849bd2',
+		'eea495d39d9a07154b1266b028e233b9fd84de884ac8f0578e679f095ef14da96d0a355ed4738565884aec755c1b3f5ff09a918b437f6526e17dd8e77f425b95',
+		'1488670c683959b5304fa17c172bea81724a249b44981a3eb52cfc66ff0758b7cd1204745131b8adbc714db7fc4550ce26af5f2326067ad1e699f05cae8bb792',
+	]
+
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], sha3.sum512, sha3.rate_512).hex()
+		assert result == sha3_512_expected_results[i]
+	}
+}
+
+fn test_hmac_sha3_384() {
+	sha3_384_expected_results := [
+		'b34fdb255dc7fb7f0c4bb2c1caeb0379b81ece60ec1b3cb2c5ec509141fcb77ca16d1e06f93049734be4948e24b932e3',
+		'f1101f8cbf9766fd6764d2ed61903f21ca9b18f57cf3e1a23ca13508a93243ce48c045dc007f26a21b3f5e0e9df4c20a',
+		'5bd8a0b98f9f4201eaec41d01fd1e274c266a2517527c1879b0460a692e1a430aefb82f0c9aea33406582ffeeef0bba6',
+		'3a5d7a879702c086bc96d1dd8aa15d9c46446b95521311c606fdc4e308f4b984da2d0f9449b3ba8425ec7fb8c31bc136',
+		'0cdfc206fd95ca1f27e8e8bd443164814460ca50f8d34d776b18f9eb300231a3d5bace731f694a59faa84c2e4ae7e235',
+		'7172a2a2bb002c22669a2f85b8faaacfcc4e8a19d47ef5ee7a97f79bf21e1d89403ab3768b43929f12eded01e3ddd604',
+		'45081e207f796f372aff5a098249f52d045e350ed5c805b3445a79ad0d4931c4b86d41bd1bb2ac935d1b32c344d56709',
+	]
+
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], sha3.sum384, sha3.rate_384).hex()
+		assert result == sha3_384_expected_results[i]
+	}
+}
+
+fn test_hmac_sha3_256() {
+	sha3_256_expected_results := [
+		'874d1d4e6e8302439bf707052e5d787d92bffcf0715853784e30da740a81e198',
+		'c7d4072e788877ae3596bbb0da73b887c9171f93095b294ae857fbe2645e1ba5',
+		'b55008323817b4df9398f32fd09d3ce624a3ac2a4f329c3b750c47647990de2a',
+		'57366a45e2305321a4bc5aa5fe2ef8a921f6af8273d7fe7be6cfedb3f0aea6d7',
+		'a0cd54f140b61480cd22120d600e30c2508c4ae0d335fd69770f2b4ddc80cd19',
+		'016a1a59d67944c350d992a9bc1e8e7f6d1ace9c9ff6be92eda103961fe897ab',
+		'415c2b5cde6b2aecd637fa2384aa87e5a0b0c5bc20d53550bbac5474b18769bf',
+	]
+
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], sha3.sum256, sha3.rate_256).hex()
+		assert result == sha3_256_expected_results[i]
+	}
+}
+
+fn test_hmac_sha3_224() {
+	sha3_224_expected_results := [
+		'f68da7f7bf577de799bb1224b7acfef9e8de015a63475ed5904a4693',
+		'7fdb8dd88bd2f60d1b798634ad386811c2cfc85bfaf5d52bbace5e66',
+		'3c9b90dbbd88c2af888fb1b43ec9d424c7fbf0d2b9d0140952b110b5',
+		'a9d7685a19c4e0dbd9df2556cc8a7d2a7733b67625ce594c78270eeb',
+		'f865c4fe082e4dd1873a9d83e1ca3bf827c3256d91274574a8b66f13',
+		'852c3fb04b18a04df20c007e608027c44230fdd440cf7a50a0bc4fd9',
+		'14db797c7f4c69fd1d4c0ababeb9f90971fc62622cc7852dee156265',
+	]
+
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], sha3.sum224, sha3.rate_224).hex()
+		assert result == sha3_224_expected_results[i]
+	}
+}
+
 fn test_hmac_equal() {
 	mac1_1 := '7641c48a3b4aa8f887c07b3e83f96affb89c978fed8c96fcbbf4ad596eebfe496f9f16da6cd080ba393c6f365ad72b50d15c71bfb1d6b81f66a911786c6ce932'.bytes()
 	mac1_2 := '7641c48a3b4aa8f887c07b3e83f96affb89c978fed8c96fcbbf4ad596eebfe496f9f16da6cd080ba393c6f365ad72b50d15c71bfb1d6b81f66a911786c6ce932'.bytes()
@@ -317,41 +386,3 @@ fn test_hmac_equal() {
 	assert !equal(mac1_1, mac2_1)
 	assert !equal(mac1_1, mac2_2)
 }
-
-// not yet supported by crypto module
-// sha3_224_expected_results  := [
-// 'f68da7f7bf577de799bb1224b7acfef9e8de015a63475ed5904a4693'
-// '7fdb8dd88bd2f60d1b798634ad386811c2cfc85bfaf5d52bbace5e66'
-// '3c9b90dbbd88c2af888fb1b43ec9d424c7fbf0d2b9d0140952b110b5'
-// 'a9d7685a19c4e0dbd9df2556cc8a7d2a7733b67625ce594c78270eeb'
-// 'f865c4fe082e4dd1873a9d83e1ca3bf827c3256d91274574a8b66f13'
-// '852c3fb04b18a04df20c007e608027c44230fdd440cf7a50a0bc4fd9'
-// '14db797c7f4c69fd1d4c0ababeb9f90971fc62622cc7852dee156265'
-// ]
-// sha3_256_expected_results  := [
-// '874d1d4e6e8302439bf707052e5d787d92bffcf0715853784e30da740a81e198'
-// 'c7d4072e788877ae3596bbb0da73b887c9171f93095b294ae857fbe2645e1ba5'
-// 'b55008323817b4df9398f32fd09d3ce624a3ac2a4f329c3b750c47647990de2a'
-// '57366a45e2305321a4bc5aa5fe2ef8a921f6af8273d7fe7be6cfedb3f0aea6d7'
-// 'a0cd54f140b61480cd22120d600e30c2508c4ae0d335fd69770f2b4ddc80cd19'
-// '016a1a59d67944c350d992a9bc1e8e7f6d1ace9c9ff6be92eda103961fe897ab'
-// '415c2b5cde6b2aecd637fa2384aa87e5a0b0c5bc20d53550bbac5474b18769bf'
-// ]
-// sha3_384_expected_results  := [
-// 'b34fdb255dc7fb7f0c4bb2c1caeb0379b81ece60ec1b3cb2c5ec509141fcb77ca16d1e06f93049734be4948e24b932e3'
-// 'f1101f8cbf9766fd6764d2ed61903f21ca9b18f57cf3e1a23ca13508a93243ce48c045dc007f26a21b3f5e0e9df4c20a'
-// '5bd8a0b98f9f4201eaec41d01fd1e274c266a2517527c1879b0460a692e1a430aefb82f0c9aea33406582ffeeef0bba6'
-// '3a5d7a879702c086bc96d1dd8aa15d9c46446b95521311c606fdc4e308f4b984da2d0f9449b3ba8425ec7fb8c31bc136'
-// '0cdfc206fd95ca1f27e8e8bd443164814460ca50f8d34d776b18f9eb300231a3d5bace731f694a59faa84c2e4ae7e235'
-// '7172a2a2bb002c22669a2f85b8faaacfcc4e8a19d47ef5ee7a97f79bf21e1d89403ab3768b43929f12eded01e3ddd604'
-// '45081e207f796f372aff5a098249f52d045e350ed5c805b3445a79ad0d4931c4b86d41bd1bb2ac935d1b32c344d56709'
-// ]
-// sha3_512_expected_results  := [
-// 'd2d9588c7e7886b08e09b56a7ac9d7e30a4badf13b37a041f5dfde34d87c086b5db1a7ec679bcfce81fa2eee982573c01dfb8d988e302f78d7b20d7d7ac2dfd7'
-// '5a4bfeab6166427c7a3647b747292b8384537cdb89afb3bf5665e4c5e709350b287baec921fd7ca0ee7a0c31d022a95e1fc92ba9d77df883960275beb4e62024'
-// 'f25055024a17dfe15a25d6c40b00f45e8548f641844f2288170430ba0b7889bfaf04d9398121d165375300fe813f3cb6db9639921dcfb712b9177b8f5261d474'
-// 'b27eab1d6e8d87461c29f7f5739dd58e98aa35f8e823ad38c5492a2088fa0281993bbfff9a0e9c6bf121ae9ec9bb09d84a5ebac817182ea974673fb133ca0d1d'
-// '69e9553223ede3637f08f9cc01ea9ded8f3b4202b5cc1feb60071e195a942f0ca0fa1cd70d3f1f9f24b2e18057b3001e7d5160e61eb6099f75ea4e0d6b849bd2'
-// 'eea495d39d9a07154b1266b028e233b9fd84de884ac8f0578e679f095ef14da96d0a355ed4738565884aec755c1b3f5ff09a918b437f6526e17dd8e77f425b95'
-// '1488670c683959b5304fa17c172bea81724a249b44981a3eb52cfc66ff0758b7cd1204745131b8adbc714db7fc4550ce26af5f2326067ad1e699f05cae8bb792'
-// ]

@@ -94,3 +94,5 @@ jobs:
         run: v test examples/password/
       - name: Test readline
         run: v test examples/readline/
+      - name: Test vlib modules with -skip-unused
+        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/

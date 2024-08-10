@@ -103,6 +103,9 @@ A meta-char can match different types of characters.
 - `\a` matches only a lowercase char `[a-z]`
 - `\A` matches only an uppercase char `[A-Z]`
 
+- `\x41`   match a byte of value 0x41, `A` in ascii code
+- `\X414C` match two consecutive bytes of value 0x414c, `AL` in ascii code
+
 ### Quantifier
 
 Each token can have a quantifier, that specifies how many times the character

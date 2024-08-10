@@ -43,7 +43,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut nbranches_without_return := 0
 	for mut branch in node.branches {
 		if node.is_expr {
-			c.stmts_ending_with_expression(mut branch.stmts)
+			c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 		} else {
 			c.stmts(mut branch.stmts)
 		}
@@ -114,6 +114,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							stmt.typ = ast.error_type
 						} else {
 							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+							if ret_type.is_number() && expr_type.is_number() && !c.inside_return {
+								ret_type = c.promote_num(ret_type, expr_type)
+							}
 						}
 					}
 					if stmt.typ != ast.error_type {
@@ -288,10 +291,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 		}
 	}
 	if mut expr is ast.Ident {
-		has_expr_mod_in_name := expr.name.contains('.')
-		expr_name := if has_expr_mod_in_name { expr.name } else { '${expr.mod}.${expr.name}' }
-
-		if mut obj := c.table.global_scope.find_const(expr_name) {
+		if mut obj := c.table.global_scope.find_const(expr.full_name()) {
 			if obj.typ == 0 {
 				obj.typ = c.expr(mut obj.expr)
 			}

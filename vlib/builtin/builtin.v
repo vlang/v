@@ -145,9 +145,9 @@ pub:
 }
 
 pub enum AttributeKind {
-	plain // [name]
-	string // ['name']
-	number // [123]
+	plain           // [name]
+	string          // ['name']
+	number          // [123]
 	comptime_define // [if name]
 }
 

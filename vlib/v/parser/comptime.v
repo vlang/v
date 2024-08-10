@@ -8,7 +8,7 @@ import v.ast
 import v.token
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-	'compile_warn', 'res']
+	'compile_warn', 'd', 'res']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
 	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'string']
 
@@ -106,12 +106,28 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()` and `\$res()` comptime functions are supported right now'
+	mut is_veb := false
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' && name != 'veb' {
 			p.error(error_msg)
 			return err_node
+		}
+		import_mods := p.ast_imports.map(it.mod)
+		if name == 'vweb' {
+			if 'vweb' !in import_mods && 'x.vweb' !in import_mods {
+				p.error_with_pos('`\$vweb` cannot be used without importing vweb', start_pos.extend(p.prev_tok.pos()))
+				return err_node
+			}
+			p.register_used_import('vweb')
+		} else if name == 'veb' {
+			if 'veb' !in import_mods {
+				p.error_with_pos('`\$veb` cannot be used without importing veb', start_pos.extend(p.prev_tok.pos()))
+				return err_node
+			}
+			p.register_used_import('veb')
+			is_veb = true
 		}
 		p.check(.dot)
 	}
@@ -122,7 +138,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	is_embed_file := method_name == 'embed_file'
 	is_html := method_name == 'html'
-	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
 	arg_pos := p.tok.pos()
 	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
@@ -158,6 +173,27 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		return ast.ComptimeCall{
 			scope: unsafe { nil }
 			method_name: method_name
+			pos: start_pos.extend(p.prev_tok.pos())
+		}
+	} else if method_name == 'd' {
+		const_string := p.tok.lit
+		// const_name_pos := p.tok.pos()
+		p.check(.string)
+		p.check(.comma)
+		arg_expr := p.expr(0)
+		args := [
+			ast.CallArg{
+				expr: arg_expr
+				pos: p.tok.pos()
+			},
+		]
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope: unsafe { nil }
+			is_compile_value: true
+			method_name: method_name
+			args_var: const_string
+			args: args
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
@@ -245,6 +281,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 				return ast.ComptimeCall{
 					scope: unsafe { nil }
 					is_vweb: true
+					is_veb: is_veb
 					method_name: method_name
 					args_var: literal_string_param
 					args: [arg]
@@ -265,7 +302,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
 	}
 	v_code := p.compile_template_file(path, tmp_fn_name)
-	$if print_vweb_template_expansions ? {
+	$if print_veb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
 			println('${path}:${i + 1}: ${line}')
@@ -286,6 +323,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	return ast.ComptimeCall{
 		scope: unsafe { nil }
 		is_vweb: true
+		is_veb: is_veb
 		vweb_tmpl: file
 		method_name: method_name
 		args_var: literal_string_param

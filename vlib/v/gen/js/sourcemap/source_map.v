@@ -10,10 +10,10 @@ type SourceMapJson = map[string]json2.Any
 
 pub struct SourceMap {
 pub mut:
-	version                int               @[json: version]
-	file                   string            @[json: file]
-	source_root            string            @[json: source_root]
-	sources                Sets              @[json: sources]
+	version                int    @[json: version]
+	file                   string @[json: file]
+	source_root            string @[json: source_root]
+	sources                Sets   @[json: sources]
 	sources_content        map[string]string
 	names                  Sets
 	mappings               Mappings
@@ -36,7 +36,8 @@ pub fn new_sourcemap(file string, source_root string, sources_content_inline boo
 }
 
 // Add a single mapping from original source line and column to the generated source's line and column for this source map being created.
-pub fn (mut sm SourceMap) add_mapping(source_name string, source_position SourcePositionType, gen_line u32, gen_column u32, name string) {
+pub fn (mut sm SourceMap) add_mapping(source_name string, source_position SourcePositionType, gen_line u32,
+	gen_column u32, name string) {
 	if source_name == '' {
 		panic('add_mapping, source_name should not be ""')
 	}

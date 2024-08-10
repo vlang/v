@@ -79,20 +79,20 @@ pub fn (s string) runes() []rune {
 // working with C style pointers to 0 terminated strings (i.e. `char*`).
 // It is recommended to use it, unless you *do* understand the implications of
 // tos/tos2/tos3/tos4/tos5 in terms of memory management and interactions with
-// -autofree and `[manualfree]`.
+// -autofree and `@[manualfree]`.
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
-pub fn cstring_to_vstring(s &char) string {
-	return unsafe { tos2(&u8(s)) }.clone()
+pub fn cstring_to_vstring(const_s &char) string {
+	return unsafe { tos2(&u8(const_s)) }.clone()
 }
 
 // tos_clone creates a new V string copy of the C style string, pointed by `s`.
 // See also cstring_to_vstring (it is the same as it, the only difference is,
-// that tos_clone expects `&byte`, while cstring_to_vstring expects &char).
+// that tos_clone expects `&u8`, while cstring_to_vstring expects &char).
 // It will panic, if the pointer `s` is 0.
 @[unsafe]
-pub fn tos_clone(s &u8) string {
-	return unsafe { tos2(s) }.clone()
+pub fn tos_clone(const_s &u8) string {
+	return unsafe { tos2(&u8(const_s)) }.clone()
 }
 
 // tos creates a V string, given a C style pointer to a 0 terminated block.
@@ -114,7 +114,7 @@ pub fn tos(s &u8, len int) string {
 // Note: the memory block pointed by s is *reused, not copied*!
 // It will calculate the length first, thus it is more costly than `tos`.
 // It will panic, when the pointer `s` is 0.
-// It is the same as `tos3`, but for &byte pointers, avoiding callsite casts.
+// It is the same as `tos3`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
 @[unsafe]
 pub fn tos2(s &u8) string {
@@ -148,7 +148,7 @@ pub fn tos3(s &char) string {
 // Note: the memory block pointed by s is *reused, not copied*!
 // It will calculate the length first, so it is more costly than tos.
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
-// It is the same as `tos5`, but for &byte pointers, avoiding callsite casts.
+// It is the same as `tos5`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
 @[unsafe]
 pub fn tos4(s &u8) string {
@@ -342,7 +342,13 @@ pub fn (s string) replace_once(rep string, with string) string {
 	if idx == -1 {
 		return s.clone()
 	}
-	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
+	// return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
+	//
+	// Avoid an extra allocation here by using substr_unsafe
+	// string_plus copies from both strings via vmemcpy, so it's safe.
+	//
+	// return s.substr_unsafe(0, idx) + with + s.substr_unsafe(idx + rep.len, s.len)
+	return s.substr_unsafe(0, idx).plus_two(with, s.substr_unsafe(idx + rep.len, s.len))
 }
 
 const replace_stack_buffer_size = 10
@@ -803,6 +809,25 @@ fn (s string) + (a string) string {
 	return res
 }
 
+// for `s + s2 + s3`, an optimization (faster than string_plus(string_plus(s1, s2), s3))
+@[direct_array_access]
+fn (s string) plus_two(a string, b string) string {
+	new_len := a.len + b.len + s.len
+	mut res := string{
+		str: unsafe { malloc_noscan(new_len + 1) }
+		len: new_len
+	}
+	unsafe {
+		vmemcpy(res.str, s.str, s.len)
+		vmemcpy(res.str + s.len, a.str, a.len)
+		vmemcpy(res.str + s.len + a.len, b.str, b.len)
+	}
+	unsafe {
+		res.str[new_len] = 0 // V strings are not null terminated, but just in case
+	}
+	return res
+}
+
 // split_any splits the string to an array by any of the `delim` chars.
 // Example: "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 // Split a string using the chars in the delimiter string as delimiters chars.
@@ -952,7 +977,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		else {
 			mut start := 0
 			// Add up to `nth` segments left of every occurrence of the delimiter.
-			for i := 0; i + delim.len <= s.len; i++ {
+			for i := 0; i + delim.len <= s.len; {
 				if unsafe { s.substr_unsafe(i, i + delim.len) } == delim {
 					if nth > 0 && res.len == nth - 1 {
 						break
@@ -960,6 +985,8 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 					res << s.substr(start, i)
 					i += delim.len
 					start = i
+				} else {
+					i++
 				}
 			}
 			// Then add the remaining part of the string as the last segment.
@@ -1340,23 +1367,22 @@ pub fn (s string) index_u8(c u8) int {
 
 // index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
 // It returns -1, if `c` is not found.
-@[direct_array_access]
+@[deprecated: 'use `.last_index_u8(c u8)` instead']
+@[deprecated_after: '2024-06-30']
+@[inline]
 pub fn (s string) index_u8_last(c u8) int {
+	return s.last_index_u8(c)
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
-		if unsafe { s.str[i] == c } {
+		if s[i] == c {
 			return i
 		}
 	}
 	return -1
-}
-
-// last_index_u8 returns the index of the last occurrence of byte `c` if found in the string.
-// It returns -1, if the byte `c` is not found.
-@[deprecated: 'use `.index_u8_last(c u8)` instead']
-@[deprecated_after: '2023-12-18']
-@[inline]
-pub fn (s string) last_index_u8(c u8) int {
-	return s.index_u8_last(c)
 }
 
 // count returns the number of occurrences of `substr` in the string.
@@ -1494,7 +1520,7 @@ pub fn (s string) to_lower() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
-			if s.str[i] >= `A` && s.str[i] <= `Z` {
+			if s.str[i].is_capital() {
 				b[i] = s.str[i] + 32
 			} else {
 				b[i] = s.str[i]
@@ -1613,7 +1639,7 @@ pub fn (s string) is_capital() bool {
 // Example: assert 'Hello. World.'.starts_with_capital() == true
 @[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
-	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+	if s.len == 0 || !s[0].is_capital() {
 		return false
 	}
 	return true
@@ -1654,7 +1680,7 @@ pub fn (s string) find_between(start string, end string) string {
 	val := s[start_pos + start.len..]
 	end_pos := val.index_(end)
 	if end_pos == -1 {
-		return val
+		return ''
 	}
 	return val[..end_pos]
 }
@@ -1664,6 +1690,20 @@ pub fn (s string) find_between(start string, end string) string {
 @[inline]
 pub fn (s string) trim_space() string {
 	return s.trim(' \n\t\v\f\r')
+}
+
+// trim_space_left strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start of the string.
+// Example: assert ' Hello V '.trim_space_left() == 'Hello V '
+@[inline]
+pub fn (s string) trim_space_left() string {
+	return s.trim_left(' \n\t\v\f\r')
+}
+
+// trim_space_right strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the end of the string.
+// Example: assert ' Hello V '.trim_space_right() == ' Hello V'
+@[inline]
+pub fn (s string) trim_space_right() string {
+	return s.trim_right(' \n\t\v\f\r')
 }
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
@@ -2019,7 +2059,7 @@ pub fn (c u8) is_digit() bool {
 // Example: assert u8(`F`).is_hex_digit() == true
 @[inline]
 pub fn (c u8) is_hex_digit() bool {
-	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
@@ -2605,5 +2645,119 @@ pub fn (name string) match_glob(pattern string) bool {
 // is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
 @[inline]
 pub fn (s string) is_ascii() bool {
-	return !s.bytes().any(it < u8(` `) || it > u8(`~`))
+	for i := 0; i < s.len; i++ {
+		if s[i] < u8(` `) || s[i] > u8(`~`) {
+			return false
+		}
+	}
+	return true
+}
+
+// camel_to_snake convert string from camelCase to snake_case
+// Example: assert 'Abcd'.camel_to_snake() == 'abcd'
+// Example: assert 'aaBB'.camel_to_snake() == 'aa_bb'
+// Example: assert 'BBaa'.camel_to_snake() == 'b_baa'
+// Example: assert 'aa_BB'.camel_to_snake() == 'aa_bb'
+@[direct_array_access]
+pub fn (s string) camel_to_snake() string {
+	if s.len == 0 {
+		return ''
+	}
+	if s.len == 1 {
+		return s.to_lower()
+	}
+	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
+	// Rather than checking whether the iterator variable is > 1 inside the loop,
+	// handle the first two chars separately to reduce load.
+	mut pos := 2
+	mut prev_is_upper := false
+	unsafe {
+		if s[0].is_capital() {
+			b[0] = s[0] + 32
+			b[1] = if s[1].is_capital() {
+				prev_is_upper = true
+				s[1] + 32
+			} else {
+				s[1]
+			}
+		} else {
+			b[0] = s[0]
+			if s[1].is_capital() {
+				prev_is_upper = true
+				if s[0] != `_` && s.len > 2 && !s[2].is_capital() {
+					b[1] = `_`
+					b[2] = s[1] + 32
+					pos = 3
+				} else {
+					b[1] = s[1] + 32
+				}
+			} else {
+				b[1] = s[1]
+			}
+		}
+	}
+	for i := 2; i < s.len; i++ {
+		c := s[i]
+		c_is_upper := c.is_capital()
+		// Cases: `aBcd == a_bcd` || `ABcd == ab_cd`
+		if ((c_is_upper && !prev_is_upper)
+			|| (!c_is_upper && prev_is_upper && s[i - 2].is_capital())) && c != `_` {
+			unsafe {
+				if b[pos - 1] != `_` {
+					b[pos] = `_`
+					pos++
+				}
+			}
+		}
+		lower_c := if c_is_upper { c + 32 } else { c }
+		unsafe {
+			b[pos] = lower_c
+		}
+		prev_is_upper = c_is_upper
+		pos++
+	}
+	unsafe {
+		b[pos] = 0
+	}
+	return unsafe { tos(b, pos) }
+}
+
+// snake_to_camel convert string from snake_case to camelCase
+// Example: assert 'abcd'.snake_to_camel() == 'Abcd'
+// Example: assert 'ab_cd'.snake_to_camel() == 'AbCd'
+// Example: assert '_abcd'.snake_to_camel() == 'Abcd'
+// Example: assert '_abcd_'.snake_to_camel() == 'Abcd'
+@[direct_array_access]
+pub fn (s string) snake_to_camel() string {
+	if s.len == 0 {
+		return ''
+	}
+	if s.len == 1 {
+		return s
+	}
+	mut need_upper := true
+	mut upper_c := `_`
+	mut b := unsafe { malloc_noscan(s.len + 1) }
+	mut i := 0
+	for c in s {
+		upper_c = if c >= `a` && c <= `z` { c - 32 } else { c }
+		if c == `_` {
+			need_upper = true
+		} else if need_upper {
+			unsafe {
+				b[i] = upper_c
+			}
+			i++
+			need_upper = false
+		} else {
+			unsafe {
+				b[i] = c
+			}
+			i++
+		}
+	}
+	unsafe {
+		b[i] = 0
+	}
+	return unsafe { tos(b, i) }
 }

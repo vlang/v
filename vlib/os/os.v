@@ -266,7 +266,7 @@ pub fn file_ext(opath string) string {
 		return ''
 	}
 	path := file_name(opath)
-	pos := path.index_u8_last(`.`)
+	pos := path.last_index_u8(`.`)
 	if pos == -1 {
 		return ''
 	}
@@ -337,7 +337,7 @@ pub fn input_opt(prompt string) ?string {
 }
 
 // input returns a one-line string from stdin, after printing a prompt.
-// Returns '<EOF>' in case of an error (end of input).
+// Returns `EOF` in case of an error (end of input).
 pub fn input(prompt string) string {
 	res := input_opt(prompt) or { return '<EOF>' }
 	return res

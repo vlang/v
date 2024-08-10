@@ -51,7 +51,7 @@ fn test_simple() {
 
 // struct Price {
 // 	net         f64
-// 	currency_id string [json: currencyId] = currency_id
+// 	currency_id string @[json: currencyId] = currency_id
 // }
 
 struct User2 {
@@ -393,7 +393,7 @@ fn test_encode_decode_sumtype() {
 
 struct Foo3 {
 	name string
-	age  int    @[omitempty]
+	age  int @[omitempty]
 }
 
 // fn test_omit_empty() {

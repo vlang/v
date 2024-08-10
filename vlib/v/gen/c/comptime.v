@@ -48,8 +48,21 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	}
 	if node.method_name == 'env' {
 		// $env('ENV_VAR_NAME')
+		// TODO: deprecate after support for $d() is stable
 		val := util.cescaped_path(os.getenv(node.args_var))
 		g.write('_SLIT("${val}")')
+		return
+	}
+	if node.method_name == 'd' {
+		// $d('some_string',<default value>), affected by `-d some_string=actual_value`
+		val := util.cescaped_path(node.compile_value)
+		if node.result_type == ast.string_type {
+			g.write('_SLIT("${val}")')
+		} else if node.result_type == ast.char_type {
+			g.write("'${val}'")
+		} else {
+			g.write('${val}')
+		}
 		return
 	}
 	if node.method_name == 'res' {
@@ -141,7 +154,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			arg := node.args.last()
 			param := m.params[node.args.len]
 
-			arg.expr is ast.Ident && g.table.type_to_str(arg.typ) == '[]string'
+			arg.expr in [ast.IndexExpr, ast.Ident] && g.table.type_to_str(arg.typ) == '[]string'
 				&& g.table.type_to_str(param.typ) != '[]string'
 		} else {
 			false
@@ -677,7 +690,22 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return true, false
 		}
 		ast.ComptimeCall {
-			g.write('${pkg_exist}')
+			if cond.method_name == 'pkgconfig' {
+				g.write('${pkg_exist}')
+				return true, false
+			}
+			if cond.method_name == 'd' {
+				if cond.result_type == ast.bool_type {
+					if cond.compile_value == 'true' {
+						g.write('1')
+					} else {
+						g.write('0')
+					}
+				} else {
+					g.write('defined(CUSTOM_DEFINE_${cond.args_var})')
+				}
+				return true, false
+			}
 			return true, false
 		}
 		ast.SelectorExpr {
@@ -739,6 +767,9 @@ fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.T
 	if (node is ast.Ident && g.comptime.is_comptime_var(node)) || node is ast.ComptimeSelector {
 		return g.comptime.get_comptime_var_type(node)
 	} else if node is ast.SelectorExpr && node.expr_type != 0 {
+		if node.expr is ast.Ident && g.comptime.is_comptime_selector_type(node) {
+			return g.comptime.get_type_from_comptime_var(node.expr)
+		}
 		sym := g.table.sym(g.unwrap_generic(node.expr_type))
 		if f := g.table.find_field_with_embeds(sym, node.field_name) {
 			return f.typ

@@ -24,7 +24,7 @@ vlib/v/checker/tests/append_err.vv:6:15: error: `(l << 3)` does not return a val
     6 |     _ = (l << 3).len
       |                  ~~~
     7 | }
-vlib/v/checker/tests/append_err.vv:6:4: error: assignment mismatch: 1 variable(s) 0 value(s)
+vlib/v/checker/tests/append_err.vv:6:4: error: assignment mismatch: 1 variable 0 values
     4 |     
     5 |     _ = l << 3
     6 |     _ = (l << 3).len

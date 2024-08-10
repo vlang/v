@@ -55,7 +55,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		name = name[3..]
 	}
 	dump_fn_name := '_v_dump_expr_${name}' +
-		(if expr_type.is_ptr() { '_ptr'.repeat(expr_type.nr_muls()) } else { '' })
+		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')
@@ -156,7 +156,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			str_dumparg_ret_type = str_dumparg_type
 		}
 		dump_fn_name := '_v_dump_expr_${name}' +
-			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
+			(if is_ptr { '__ptr'.repeat(typ.nr_muls()) } else { '' })
 
 		// protect against duplicate declarations:
 		if dump_already_generated_fns[dump_fn_name] {
@@ -227,11 +227,16 @@ fn (mut g Gen) dump_expr_definitions() {
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret {
 			tmp_var := g.new_tmp_var()
+			init_str := if dump_sym.is_empty_struct_array() {
+				'{EMPTY_STRUCT_INITIALIZATION}'
+			} else {
+				'{0}'
+			}
 			if typ.is_ptr() {
-				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.typ(typ.set_nr_muls(0))}, {0});')
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.typ(typ.set_nr_muls(0))}, ${init_str});')
 				dump_fns.writeln('\tmemcpy(${tmp_var}->ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
 			} else {
-				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = ${init_str};')
 				dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
 			}
 			dump_fns.writeln('\treturn ${tmp_var};')

@@ -44,50 +44,56 @@ pub fn (mut ct ComptimeInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind 
 	}
 }
 
+@[inline]
+pub fn (mut ct ComptimeInfo) is_generic_param_var(node ast.Expr) bool {
+	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
+		&& (node.obj as ast.Var).ct_type_var == .generic_param
+}
+
 // get_comptime_var_type retrieves the actual type from a comptime related ast node
 @[inline]
 pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && node.obj is ast.Var {
-		return match (node.obj as ast.Var).ct_type_var {
-			.generic_param {
-				// generic parameter from current function
-				node.obj.typ
-			}
-			.smartcast {
-				ctyp := ct.type_map['${ct.comptime_for_variant_var}.typ'] or { node.obj.typ }
-				return if (node.obj as ast.Var).is_unwrapped {
-					ctyp.clear_flag(.option)
-				} else {
-					ctyp
+	if node is ast.Ident {
+		if node.obj is ast.Var {
+			return match node.obj.ct_type_var {
+				.generic_param {
+					// generic parameter from current function
+					node.obj.typ
 				}
-			}
-			.key_var, .value_var {
-				// key and value variables from normal for stmt
-				ct.type_map[node.name] or { ast.void_type }
-			}
-			.field_var {
-				// field var from $for loop
-				ct.comptime_for_field_type
-			}
-			else {
-				ast.void_type
+				.generic_var {
+					// generic var used on fn call assignment
+					if node.obj.smartcasts.len > 0 {
+						node.obj.smartcasts.last()
+					} else {
+						ct.type_map['g.${node.name}.${node.obj.pos.pos}'] or { node.obj.typ }
+					}
+				}
+				.smartcast {
+					ctyp := ct.type_map['${ct.comptime_for_variant_var}.typ'] or { node.obj.typ }
+					return if (node.obj as ast.Var).is_unwrapped {
+						ctyp.clear_flag(.option)
+					} else {
+						ctyp
+					}
+				}
+				.key_var, .value_var {
+					// key and value variables from normal for stmt
+					ct.type_map[node.name] or { ast.void_type }
+				}
+				.field_var {
+					// field var from $for loop
+					ct.comptime_for_field_type
+				}
+				else {
+					ast.void_type
+				}
 			}
 		}
 	} else if node is ast.ComptimeSelector {
 		// val.$(field.name)
 		return ct.get_comptime_selector_type(node, ast.void_type)
 	} else if node is ast.SelectorExpr && ct.is_comptime_selector_type(node) {
-		if node.expr is ast.Ident {
-			match node.expr.name {
-				ct.comptime_for_variant_var {
-					return ct.type_map['${ct.comptime_for_variant_var}.typ']
-				}
-				else {
-					// field_var.typ from $for field
-					return ct.comptime_for_field_type
-				}
-			}
-		}
+		return ct.get_type_from_comptime_var(node.expr as ast.Ident)
 	} else if node is ast.ComptimeCall {
 		method_name := ct.comptime_for_method
 		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
@@ -99,6 +105,20 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 		return f.return_type
 	}
 	return ast.void_type
+}
+
+// get_type_from_comptime_var retrives the comptime type related to $for variable
+@[inline]
+pub fn (mut ct ComptimeInfo) get_type_from_comptime_var(var ast.Ident) ast.Type {
+	return match var.name {
+		ct.comptime_for_variant_var {
+			ct.type_map['${ct.comptime_for_variant_var}.typ']
+		}
+		else {
+			// field_var.typ from $for field
+			ct.comptime_for_field_type
+		}
+	}
 }
 
 pub fn (mut ct ComptimeInfo) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {

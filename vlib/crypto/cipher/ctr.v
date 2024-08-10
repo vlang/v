@@ -49,25 +49,25 @@ pub fn new_ctr(b Block, iv []u8) Ctr {
 	}
 }
 
-pub fn (x &Ctr) xor_key_stream(mut dst_ []u8, src_ []u8) {
+pub fn (mut x Ctr) xor_key_stream(mut dst []u8, src []u8) {
 	unsafe {
-		mut dst := *dst_
-		mut src := src_
-		if dst.len < src.len {
+		mut local_dst := *dst
+		mut local_src := src
+		if local_dst.len < local_src.len {
 			panic('crypto.cipher.xor_key_stream: output smaller than input')
 		}
 
-		if subtle.inexact_overlap(dst[..src.len], src) {
+		if subtle.inexact_overlap(local_dst[..local_src.len], local_src) {
 			panic('crypto.cipher.xor_key_stream: invalid buffer overlap')
 		}
 
-		for src.len > 0 {
+		for local_src.len > 0 {
 			if x.out_used == x.out.len {
 				x.b.encrypt(mut x.out, x.next)
 				x.out_used = 0
 			}
 
-			n := xor_bytes(mut dst, src, x.out[x.out_used..])
+			n := xor_bytes(mut local_dst, local_src, x.out[x.out_used..])
 
 			// increment counter
 			for i := x.next.len - 1; i >= 0; i-- {
@@ -77,8 +77,8 @@ pub fn (x &Ctr) xor_key_stream(mut dst_ []u8, src_ []u8) {
 				}
 			}
 
-			dst = dst[n..]
-			src = src[n..]
+			local_dst = local_dst[n..]
+			local_src = local_src[n..]
 			x.out_used += n
 		}
 	}

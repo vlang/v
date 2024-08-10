@@ -8,7 +8,7 @@ struct Foo {
     b int
 }
 
-fn (u User) + () {
+fn (u User) % () {
 }
 
 fn (u User) - (f Foo) User {

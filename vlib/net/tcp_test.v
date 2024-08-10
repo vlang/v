@@ -35,6 +35,9 @@ fn echo(address string) ! {
 
 	println('local: ' + c.addr()!.str())
 	println(' peer: ' + c.peer_addr()!.str())
+	ip := c.peer_ip()!
+	println('   ip: ${ip}')
+	assert ip in ['::1', 'localhost', '127.0.0.1']
 
 	data := 'Hello from vlib/net!'
 	c.write_string(data)!

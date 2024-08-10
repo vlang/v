@@ -85,7 +85,7 @@ pub fn (r Response) cookies() []Cookie {
 	return cookies
 }
 
-// status parses the status_code into a Status struct
+// status parses the status_code and returns a corresponding enum field of Status
 pub fn (r Response) status() Status {
 	return status_from_int(r.status_code)
 }

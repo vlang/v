@@ -847,6 +847,12 @@ fn (t Tree) arg(node ast.Param) &Node {
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
+	obj.add_terse('is_shared', t.bool_node(node.is_shared))
+	obj.add_terse('is_atomic', t.bool_node(node.is_atomic))
+	obj.add_terse('is_auto_rec', t.bool_node(node.is_auto_rec))
+	obj.add_terse('on_newline', t.bool_node(node.on_newline))
+	obj.add('pos', t.pos(node.pos))
+	obj.add('type_pos', t.pos(node.type_pos))
 	return obj
 }
 
@@ -1019,6 +1025,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('result_type', t.type_node(node.result_type))
 	obj.add('scope', t.scope(node.scope))
 	obj.add_terse('env_value', t.string_node(node.env_value))
+	obj.add_terse('compile_value', t.string_node(node.compile_value))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('args', t.array_node_call_arg(node.args))
 	obj.add_terse('or_block', t.or_expr(node.or_block))

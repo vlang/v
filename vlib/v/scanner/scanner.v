@@ -29,10 +29,10 @@ pub mut:
 	pos                         int    // current position in the file, first character is s.text[0]
 	line_nr                     int    // current line number
 	last_nl_pos                 int = -1 // for calculating column
-	is_crlf                     bool   // special check when computing columns
-	is_inside_string            bool   // set to true in a string, *at the start* of an $var or ${expr}
-	is_nested_string            bool   // '${'abc':-12s}'
-	is_inter_start              bool   // for hacky string interpolation TODO simplify
+	is_crlf                     bool // special check when computing columns
+	is_inside_string            bool // set to true in a string, *at the start* of an $var or ${expr}
+	is_nested_string            bool // '${'abc':-12s}'
+	is_inter_start              bool // for hacky string interpolation TODO simplify
 	is_inter_end                bool
 	is_enclosed_inter           bool
 	is_nested_enclosed_inter    bool
@@ -42,14 +42,14 @@ pub mut:
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
-	quote                       u8  // which quote is used to denote current string: ' or "
+	quote                       u8 // which quote is used to denote current string: ' or "
 	inter_quote                 u8
 	just_closed_inter           bool // if is_enclosed_inter was set to false on the previous character: `}`
 	nr_lines                    int  // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
-	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
+	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
@@ -239,7 +239,7 @@ fn (mut s Scanner) ident_name() string {
 	s.pos++
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+		if util.func_char_table[c] {
 			s.pos++
 			continue
 		}
@@ -537,7 +537,7 @@ fn (mut s Scanner) skip_whitespace() {
 			s.pos++
 			continue
 		}
-		if !(c == 32 || (c > 8 && c < 14) || c == 0x85 || c == 0xa0) {
+		if util.non_whitespace_table[c] {
 			return
 		}
 		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
@@ -686,7 +686,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 		c := s.text[s.pos]
 		nextc := s.look_ahead(1)
 		// name or keyword
-		if util.is_name_char(c) {
+		if util.name_char_table[c] {
 			name := s.ident_name()
 			// tmp hack to detect . in ${}
 			// Check if not .eof to prevent panic
@@ -872,6 +872,12 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				}
 			}
 			`&` {
+				if nextc == `&` {
+					if s.look_ahead(2) == `=` {
+						s.pos += 2
+						return s.new_token(.boolean_and_assign, '', 3)
+					}
+				}
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.and_assign, '', 2)
@@ -885,6 +891,10 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			}
 			`|` {
 				if nextc == `|` {
+					if s.look_ahead(2) == `=` {
+						s.pos += 2
+						return s.new_token(.boolean_or_assign, '', 3)
+					}
 					s.pos++
 					return s.new_token(.logical_or, '', 2)
 				}
@@ -1287,7 +1297,7 @@ pub fn (mut s Scanner) ident_string() string {
 				u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !is_escape_sequence(c) && !c.is_digit() && c != `\n` {
+			if !util.is_escape_sequence(c) && !c.is_digit() && c != `\n` {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1305,7 +1315,7 @@ pub fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if prevc == `$` && util.is_name_char(c) && !is_raw
+		if prevc == `$` && util.name_char_table[c] && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
@@ -1507,12 +1517,6 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-@[inline]
-fn is_escape_sequence(c u8) bool {
-	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
-		`}`, `'`, `"`, `U`]
-}
-
 /// ident_char is called when a backtick "single-char" is parsed from the code
 /// it is needed because some runes (chars) are written with escape sequences
 /// the string it returns should be a standardized, simplified version of the character
@@ -1633,7 +1637,7 @@ pub fn (mut s Scanner) ident_char() string {
 		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
 	} else if c.len > len {
 		ch := c[c.len - 1]
-		if !is_escape_sequence(ch) && !ch.is_digit() {
+		if !util.is_escape_sequence(ch) && !ch.is_digit() {
 			s.error('`${ch.ascii_str()}` unknown escape sequence')
 		}
 	}

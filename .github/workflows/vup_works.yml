@@ -9,6 +9,7 @@ on:
       - '**.out'
       - '!**/vup_works.yml'
       - '!cmd/tools/vup.v'
+      - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
       - '**.md'
@@ -17,6 +18,7 @@ on:
       - '**.out'
       - '!**/vup_works.yml'
       - '!cmd/tools/vup.v'
+      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

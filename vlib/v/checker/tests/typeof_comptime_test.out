@@ -1,0 +1,14 @@
+field> 8 int
+variant> 8 int
+SumType(123)
+field> 8 int
+field> 21 string
+variant> 8 int
+variant> 21 string
+SumType('foo')
+field> 8 int
+variant> 8 int
+field> 8 int
+field> 21 string
+variant> 8 int
+variant> 21 string

@@ -141,7 +141,7 @@ pub mut:
 	children    []DocNode
 	attrs       map[string]string @[json: attributes]
 	from_scope  bool
-	is_pub      bool              @[json: public]
+	is_pub      bool @[json: public]
 	platform    Platform
 }
 

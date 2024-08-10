@@ -12,7 +12,7 @@ fn vhalt() {
 }
 
 @[markused]
-fn v_segmentation_fault_handler(signal_number int) {
+fn v_segmentation_fault_handler(signal_number i32) {
 	$if freestanding {
 		eprintln('signal 11: segmentation fault')
 	} $else {
@@ -622,7 +622,6 @@ pub fn free(ptr voidptr) {
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
-
 @[unsafe]
 pub fn memdup(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
@@ -712,13 +711,31 @@ fn v_fixed_index(i int, len int) int {
 
 // NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
 // They are used internally by V's builtin; for user code, it is much
-// more convenient to just use `os.args` instead.
+// more convenient to just use `os.args` or call `arguments()` instead.
 
 @[markused]
 __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+// arguments returns the command line arguments, used for starting the current program as a V array of strings.
+// The first string in the array (index 0), is the name of the program, used for invoking the program.
+// The second string in the array (index 1), if it exists, is the first argument to the program, etc.
+// For example, if you started your program as `myprogram -option`, then arguments() will return ['myprogram', '-option'].
+// Note: if you `v run file.v abc def`, then arguments() will return ['file', 'abc', 'def'], or ['file.exe', 'abc', 'def'] (on Windows).
+pub fn arguments() []string {
+	argv := &&u8(g_main_argv)
+	mut res := []string{cap: g_main_argc}
+	for i in 0 .. g_main_argc {
+		$if windows {
+			res << unsafe { string_from_wide(&u16(argv[i])) }
+		} $else {
+			res << unsafe { tos_clone(argv[i]) }
+		}
+	}
+	return res
+}
 
 @[if vplayground ?]
 fn vplayground_mlimit(n isize) {

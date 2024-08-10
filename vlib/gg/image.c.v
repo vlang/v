@@ -92,7 +92,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		num_mipmaps: 0
 		// wrap_u: .clamp_to_edge // XTODO SAMPLER
 		// wrap_v: .clamp_to_edge
-		label: img.path.str
+		label: &char(img.path.str)
 		d3d11_texture: 0
 	}
 
@@ -141,6 +141,9 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 // can be updated *each frame* by calling:  gg.update_pixel_data(image_idx, buf)
 // ... where buf is a pointer to the actual pixel data for the image.
 // Note: you still need to call app.gg.draw_image after that, to actually draw it.
+// Note: Sokol needs to be setup, *before* calling this function. In practice,
+// this often means, that you have to call it once in the `init_fn` callback of
+// gg.new_context, or gg.start, and then store the result in your app instance.
 pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg StreamingImageConfig) int {
 	mut img := Image{}
 	img.width = w
@@ -153,7 +156,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		num_slices: 1
 		num_mipmaps: 1
 		usage: .stream
-		label: img.path.str
+		label: &char(img.path.str)
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
 	img_desc.data.subimage[0][0] = gfx.Range{
@@ -276,8 +279,8 @@ pub:
 	wrap_v       gfx.Wrap        = .clamp_to_edge
 	min_filter   gfx.Filter      = .linear
 	mag_filter   gfx.Filter      = .linear
-	num_mipmaps  int = 1
-	num_slices   int = 1
+	num_mipmaps  int             = 1
+	num_slices   int             = 1
 }
 
 // draw_image_with_config takes in a config that details how the
@@ -384,13 +387,13 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	sgl.enable_texture()
 	sgl.texture(img.simg, img.ssmp)
 
-	if config.rotate != 0 {
+	if config.rotation != 0 {
 		width := img_rect.width * ctx.scale
 		height := (if img_rect.height > 0 { img_rect.height } else { img.height }) * ctx.scale
 
 		sgl.push_matrix()
 		sgl.translate(x0 + (width / 2), y0 + (height / 2), 0)
-		sgl.rotate(sgl.rad(-config.rotate), 0, 0, 1)
+		sgl.rotate(sgl.rad(-config.rotation), 0, 0, 1)
 		sgl.translate(-x0 - (width / 2), -y0 - (height / 2), 0)
 	}
 
@@ -402,7 +405,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	sgl.v3f_t2f(x0, y1, config.z, u0f, v1f)
 	sgl.end()
 
-	if config.rotate != 0 {
+	if config.rotation != 0 {
 		sgl.pop_matrix()
 	}
 

@@ -27,11 +27,11 @@ pub enum AssertFailureMode {
 pub enum GarbageCollectionMode {
 	unknown
 	no_gc
-	boehm_full // full garbage collection mode
-	boehm_incr // incremental garbage collection mode
+	boehm_full     // full garbage collection mode
+	boehm_incr     // incremental garbage collection mode
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage collection mode
-	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
+	boehm_leak     // leak detection mode (makes `gc_check_leaks()` work)
 }
 
 pub enum OutputMode {
@@ -46,14 +46,14 @@ pub enum ColorOutput {
 }
 
 pub enum Backend {
-	c // The (default) C backend
-	golang // Go backend
-	interpret // Interpret the ast
-	js_node // The JavaScript NodeJS backend
-	js_browser // The JavaScript browser backend
+	c               // The (default) C backend
+	golang          // Go backend
+	interpret       // Interpret the ast
+	js_node         // The JavaScript NodeJS backend
+	js_browser      // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
-	native // The Native backend
-	wasm // The WebAssembly backend
+	native          // The Native backend
+	wasm            // The WebAssembly backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -122,15 +122,15 @@ pub mut:
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
 	coverage_dir       string   // the coverage files will be stored inside coverage_dir
-	profile_no_inline  bool     // when true, [inline] functions would not be profiled
+	profile_no_inline  bool     // when true, @[inline] functions would not be profiled
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	obfuscate          bool     // `v -obf program.v`, renames functions to "f_XXX"
 	hide_auto_str      bool     // `v -hide-auto-str program.v`, doesn't generate str() with struct data
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
-	sanitize               bool   // use Clang's new "-fsanitize" option
-	sourcemap              bool   // JS Backend: -sourcemap will create a source map - default false
+	sanitize               bool // use Clang's new "-fsanitize" option
+	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
 	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
 	sourcemap_src_included bool   // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
 	show_cc                bool   // -showcc, print cc command
@@ -143,7 +143,7 @@ pub mut:
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
-	use_os_system_to_run   bool   // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
+	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
 	cflags  string // Additional options which will be passed to the C compiler *before* other options.
@@ -191,8 +191,9 @@ pub mut:
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
-	compile_defines     []string // just ['vfmt']
-	compile_defines_all []string // contains both: ['vfmt','another']
+	compile_defines     []string          // just ['vfmt']
+	compile_defines_all []string          // contains both: ['vfmt','another']
+	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 	//
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list []string // a list of generated function names, whose source should be shown, for debugging
@@ -223,7 +224,7 @@ pub mut:
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
-	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
+	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	use_coroutines      bool // experimental coroutines
@@ -237,14 +238,16 @@ pub mut:
 	warn_about_allocs bool // -warn-about-allocs warngs about every single allocation, e.g. 'hi $name'. Mostly for low level development where manual memory management is used.
 	// temp
 	// use_64_int bool
+	// forwards compatibility settings:
+	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 }
 
 pub struct LineInfo {
 pub mut:
-	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
-	path         string // same, but stores the path being parsed
-	expr         string // "foo" or "foo.bar" V code (expression) which needs autocomplete
-	is_running   bool   // so that line info is fetched only on the second checker run
+	line_nr      int             // a quick single file run when called with v -line-info (contains line nr to inspect)
+	path         string          // same, but stores the path being parsed
+	expr         string          // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	is_running   bool            // so that line info is fetched only on the second checker run
 	vars_printed map[string]bool // to avoid dups
 }
 
@@ -269,7 +272,8 @@ fn detect_musl(mut res Preferences) {
 }
 
 @[noreturn]
-fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string, content string) {
+fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string,
+	content string) {
 	tmp_file_path := rand.ulid()
 	mut tmp_exe_file_path := res.out_name
 	mut output_option := ''
@@ -608,6 +612,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-no-preludes' {
 				res.no_preludes = true
 				res.build_options << arg
+			}
+			'-no-relaxed-gcc14' {
+				res.relaxed_gcc14 = false
 			}
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(args[i..], arg, '-')
@@ -962,12 +969,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				if res.is_vsh && command_idx < i {
-					// Allow for `script.vsh abc 123 -option`, because -option is for the .vsh program, not for v
-					continue
-				}
-				if command == 'doc' {
-					// Allow for `v doc -comments file.v`
+				if command_idx < i && (res.is_vsh || (is_source_file(command)
+					&& command in known_external_commands)) {
+					// When running programs, let them be responsible for the arguments passed to them.
+					// E.g.: `script.vsh cmd -opt` or `v run hello_world.v -opt`.
+					// But detect unknown arguments when building them. E.g.: `v hello_world.v -opt`.
 					continue
 				}
 				err_detail := if command == '' { '' } else { ' for command `${command}`' }
@@ -1166,39 +1172,37 @@ pub fn cc_from_string(s string) CompilerType {
 	}
 }
 
+fn (mut prefs Preferences) parse_compile_value(define string) {
+	if !define.contains('=') {
+		eprintln_exit('V error: Define argument value missing for ${define}.')
+		return
+	}
+	name := define.all_before('=')
+	value := define.all_after_first('=')
+	prefs.compile_values[name] = value
+}
+
 fn (mut prefs Preferences) parse_define(define string) {
-	define_parts := define.split('=')
-	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d ${define}'
 	}
-	if define_parts.len == 1 {
+	if !define.contains('=') {
+		prefs.compile_values[define] = 'true'
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
 		return
 	}
-	if define_parts.len == 2 {
-		prefs.compile_defines_all << define_parts[0]
-		match define_parts[1] {
-			'0' {}
-			'1' {
-				prefs.compile_defines << define_parts[0]
-			}
-			else {
-				eprintln_exit(
-					'V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-					' Expected `0` or `1`.')
-			}
+	dname := define.all_before('=')
+	dvalue := define.all_after_first('=')
+	prefs.compile_values[dname] = dvalue
+	prefs.compile_defines_all << dname
+	match dvalue {
+		'0' {}
+		'1' {
+			prefs.compile_defines << dname
 		}
-		return
+		else {}
 	}
-	eprintln_exit('V error: Unknown define argument: ${define}. Expected at most one `=`.')
-}
-
-fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
-	// if define_parts[0] == 'no_bounds_checking' {
-	// 	eprintln('`-d no_bounds_checking` was deprecated in 2022/10/30. Use `-no-bounds-checking` instead.')
-	// }
 }
 
 pub fn supported_test_runners_list() string {

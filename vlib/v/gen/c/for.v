@@ -307,7 +307,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		cond_sym := g.table.sym(node.cond_type)
+		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
 		g.writeln('for (int ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
 		if node.val_var != '_' {
@@ -450,9 +450,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('${t_expr});')
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
-		val_styp := g.typ(node.val_type)
+		val_styp := g.typ(ret_typ.clear_option_and_result())
 		if node.val_is_mut {
-			g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+			if ret_typ.has_flag(.option) {
+				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
+			} else {
+				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+			}
 		} else {
 			g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 		}

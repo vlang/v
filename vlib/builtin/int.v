@@ -53,8 +53,8 @@ pub const max_i16 = i16(32767)
 pub const min_i32 = i32(-2147483648)
 pub const max_i32 = i32(2147483647)
 
-pub const min_int = min_i32
-pub const max_int = max_i32
+pub const min_int = int(-2147483648)
+pub const max_int = int(2147483647)
 
 // -9223372036854775808 is wrong, because C compilers parse literal values
 // without sign first, and 9223372036854775808 overflows i64, hence the
@@ -155,14 +155,6 @@ pub fn (n i32) str() string {
 	return int(n).str_l(12)
 }
 
-// str returns the value of the `int` as a `string`.
-// Example: assert int(-2020).str() == '-2020'
-/*
-pub fn int_str(n int) string {
-	return i64(n).str()
-}
-*/
-
 pub fn (nn int) hex_full() string {
 	return u64_to_hex(u64(nn), 8)
 }
@@ -172,6 +164,10 @@ pub fn (nn int) hex_full() string {
 pub fn (n int) str() string {
 	return n.str_l(12)
 }
+
+// pub fn int_str(n int) string {
+// return i64(n).str()
+//}
 
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'

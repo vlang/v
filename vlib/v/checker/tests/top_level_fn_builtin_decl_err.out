@@ -26,7 +26,7 @@ vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:19:31: error: unexpected `
       |                                     ^
    20 | 
    21 |         assert got == 'a'[0]
-vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:19:15: error: assignment mismatch: 2 variable(s) but `a_char()` returns 0 value(s)
+vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:19:15: error: assignment mismatch: 2 variables but `a_char()` returns 0 values
    17 | 
    18 |     for i, input in inputs {
    19 |         got, remain := a_char(input)!

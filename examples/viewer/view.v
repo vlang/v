@@ -90,7 +90,7 @@ mut:
 	show_help_flag bool
 	// zip container
 	zip       &szip.Zip = unsafe { nil } // pointer to the szip structure
-	zip_index int       = -1 // index of the zip container item
+	zip_index int       = -1             // index of the zip container item
 	// memory buffer
 	mem_buf      voidptr // buffer used to load items from files/containers
 	mem_buf_size int     // size of the buffer

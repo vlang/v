@@ -135,7 +135,8 @@ fn example_vfs_access(vfs &sqlite.Sqlite3_vfs, zPath &char, flags int, pResOut &
 	return sqlite.sqlite_ok
 }
 
-fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &char, vfs_opened_file &sqlite.Sqlite3_file, in_flags int, out_flags &int) int {
+fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &char, vfs_opened_file &sqlite.Sqlite3_file,
+	in_flags int, out_flags &int) int {
 	println('open called')
 
 	mut is_temp := false

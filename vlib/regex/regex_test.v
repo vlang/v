@@ -193,6 +193,18 @@ match_test_suite = [
     // test has `\0` chars
     TestItem{"abcxyz", "^abc\0xyz$", -1,3},
     TestItem{"abc\0xyz", "^abc\0xyz$", 0,7},
+
+    // test hex byte chars
+    TestItem{"abc_xyz", r"abc\x5Fxyz", 0,7},
+    TestItem{"abc_xyz", r"^abc\x5fxyz$", 0,7},
+    TestItem{"abcAxyz", r"^abc\x41xyz$", 0,7},
+    TestItem{"abcAAxyz", r"^abc\x41+xyz$", 0,8},
+    TestItem{"abcALxyz", r"^abc\x41\x4Cxyz$", 0,8},
+    TestItem{"abcAAxyz", r"^abc\X4141xyz$", 0,8},
+    TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
+    TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
+    TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
+    
 ]
 )
 
@@ -419,14 +431,14 @@ const (
 	split_test_suite = [
 		Test_split{'abcd 1234 efgh 1234 ghkl1234 ab34546df', r'\d+', ['abcd ', ' efgh ', ' ghkl',
 			' ab', 'df']},
-		Test_split{'abcd 1234 efgh 1234 ghkl1234 ab34546df', r'\a+', [' 1234 ', ' 1234 ', '1234 ',
-			'34546']},
+		Test_split{'abcd 1234 efgh 1234 ghkl1234 ab34546df', r'\a+', ['', ' 1234 ', ' 1234 ', '1234 ',
+			'34546', '']},
 		Test_split{'oggi pippo è andato a casa di pluto ed ha trovato pippo', r'p[iplut]+o', [
-			'oggi ', ' è andato a casa di ', ' ed ha trovato ']},
+			'oggi ', ' è andato a casa di ', ' ed ha trovato ', '']},
 		Test_split{'oggi pibao è andato a casa di pbababao ed ha trovato pibabababao', r'(pi?(ba)+o)', [
-			'oggi ', ' è andato a casa di ', ' ed ha trovato ']},
+			'oggi ', ' è andato a casa di ', ' ed ha trovato ', '']},
 		Test_split{'Today is a good day and tomorrow will be for sure.', r'[Tt]o\w+', [
-			' is a good day and ', ' will be for sure.']},
+			'', ' is a good day and ', ' will be for sure.']},
 		Test_split{'pera\nurl = https://github.com/dario/pig.html\npippo', r'url *= *https?://[\w./]+', [
 			'pera\n', '\npippo']},
 		Test_split{'pera\nurl = https://github.com/dario/pig.html\npippo', r'url *= *https?://.*' +
@@ -434,14 +446,16 @@ const (
 		Test_split{'#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.', r'#[.#]{4}##[.#]{4}##[.#]{4}###', [
 			'#.#......##.#..#..##........#', '##.......#.....#..#......#...#........###.#..#.']},
 		Test_split{'#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.', r'.*#[.#]{4}##[.#]{4}##[.#]{4}###', [
-			'##.......#.....#..#......#...#........###.#..#.']},
-		Test_split{'1234 Aa dddd Aaf 12334 Aa opopo Aaf', r'Aa.+Aaf', ['1234 ', ' 12334 ']},
+			'', '##.......#.....#..#......#...#........###.#..#.']},
+		Test_split{'1234 Aa dddd Aaf 12334 Aa opopo Aaf', r'Aa.+Aaf', ['1234 ', ' 12334 ', '']},
 		Test_split{'@for something @endfor @for something else @endfor altro testo @for body @endfor uno due @for senza dire più @endfor pippo', r'@for.+@endfor', [
-			' ', ' altro testo ', ' uno due ', ' pippo']},
+			'', ' ', ' altro testo ', ' uno due ', ' pippo']},
 		Test_split{'+++pippo+++\n elvo +++ pippo2 +++ +++ oggi+++', r'\+{3}.*\+{3}', [
-			'\n elvo ', ' ']},
+			'', '\n elvo ', ' ', '']},
 		Test_split{'foobar', r'\d', ['foobar']},
-		Test_split{'1234', r'\d+', []},
+		Test_split{'1234', r'\d+', ['', '']},
+		Test_split{'a-', r'-', ['a', '']},
+		Test_split{'-a', r'-', ['', 'a']},
 	]
 )
 // vfmt on

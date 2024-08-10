@@ -51,7 +51,7 @@ pub fn (c rune) repeat(count int) string {
 		return c.str()
 	}
 	mut buffer := [5]u8{}
-	res := unsafe { utf32_to_str_no_malloc(u32(c), &buffer[0]) }
+	res := unsafe { utf32_to_str_no_malloc(u32(c), mut &buffer[0]) }
 	return res.repeat(count)
 }
 
@@ -59,7 +59,8 @@ pub fn (c rune) repeat(count int) string {
 @[manualfree]
 pub fn (c rune) bytes() []u8 {
 	mut res := []u8{cap: 5}
-	res.len = unsafe { utf32_decode_to_buffer(u32(c), &u8(res.data)) }
+	mut buf := &u8(res.data)
+	res.len = unsafe { utf32_decode_to_buffer(u32(c), mut buf) }
 	return res
 }
 

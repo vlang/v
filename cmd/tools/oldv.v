@@ -35,11 +35,11 @@ mut:
 	path_vc       string // the full path to the vc folder inside workdir.
 	cmd_to_run    string // the command that you want to run *in* the oldv repo
 	cc            string = 'cc' // the C compiler to use for bootstrapping.
-	cleanup       bool   // should the tool run a cleanup first
-	use_cache     bool   // use local cached copies for --vrepo and --vcrepo in
-	fresh_tcc     bool   // do use `make fresh_tcc`
-	is_bisect     bool   // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
-	show_vccommit bool   // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
+	cleanup       bool // should the tool run a cleanup first
+	use_cache     bool // use local cached copies for --vrepo and --vcrepo in
+	fresh_tcc     bool // do use `make fresh_tcc`
+	is_bisect     bool // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
+	show_vccommit bool // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 }
 
 fn (mut c Context) compile_oldv_if_needed() {

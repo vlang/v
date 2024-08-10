@@ -27,13 +27,14 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.writeln(' {}')
 		return
 	}
-	mut field_aligns := []AlignInfo{}
-	mut comment_aligns := []AlignInfo{}
+	mut type_aligns := []AlignInfo{}
 	mut default_expr_aligns := []AlignInfo{}
+	mut attr_aligns := []AlignInfo{}
+	mut comment_aligns := []AlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
 	// Calculate the alignments first
-	f.calculate_alignment(node.fields, mut field_aligns, mut comment_aligns, mut default_expr_aligns, mut
-		field_types)
+	f.calculate_alignment(node.fields, mut type_aligns, mut comment_aligns, mut default_expr_aligns, mut
+		attr_aligns, mut field_types)
 	f.writeln(' {')
 	if node.pre_comments.len > 0 {
 		f.comments_before_field(node.pre_comments)
@@ -54,9 +55,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		}
 	}
 	// Now handle each field
-	mut field_align_i := 0
+	mut type_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
+	mut attr_align_i := 0
 	mut inc_indent := false // for correct indents with multi line default exprs
 	for i, field in node.fields {
 		match true {
@@ -112,32 +114,23 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.comments_before_field(pre_cmts)
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 		f.write('\t${volatile_prefix}${field.name} ')
-		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
-			field_align_i++
+		if type_aligns[type_align_i].line_nr < field.pos.line_nr {
+			type_align_i++
 		}
-		field_align := field_aligns[field_align_i]
-		f.write(strings.repeat(` `, field_align.max_len - field.name.len))
+		type_align := type_aligns[type_align_i]
+		f.write(strings.repeat(` `, type_align.max_len - field.name.len))
 		// Handle anon structs recursively
 		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
 			f.write(field_types[i])
 		}
 		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
-		has_attrs := field.attrs.len > 0
-		// has_at := if has_attrs { field.attrs[0].has_at } else { false }
-		has_at := true
-		// TODO: this will get removed in next stage
-		if has_attrs && !has_at {
-			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
-			f.single_line_attrs(field.attrs, same_line: true)
-		}
 		if field.has_default_expr {
 			if default_expr_aligns[default_expr_align_i].line_nr < field.pos.line_nr {
 				default_expr_align_i++
 			}
 			align := default_expr_aligns[default_expr_align_i]
-			pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
-			f.write(strings.repeat(` `, pad_len))
+			f.write(strings.repeat(` `, align.max_len - field_types[i].len))
 			f.write(' = ')
 			if !expr_is_single_line(field.default_expr) {
 				f.indent++
@@ -149,19 +142,26 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 				inc_indent = false
 			}
 		}
-		if has_attrs && has_at {
-			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
+		if field.attrs.len > 0 {
+			if attr_aligns[attr_align_i].line_nr < field.pos.line_nr {
+				attr_align_i++
+			}
+			align := attr_aligns[attr_align_i]
+			f.write(strings.repeat(` `, align.max_len - field_types[i].len))
 			f.single_line_attrs(field.attrs, same_line: true)
 		}
 		// Handle comments at the end of the line
 		if end_cmts.len > 0 {
-			if !field.has_default_expr {
-				if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
-					comment_align_i++
-				}
-				align := comment_aligns[comment_align_i]
-				pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
-				f.write(strings.repeat(` `, pad_len))
+			if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
+				comment_align_i++
+			}
+			align := comment_aligns[comment_align_i]
+			if field.has_default_expr {
+				f.write(strings.repeat(` `, align.max_len - field.default_expr.str().len - 2))
+			} else if field.attrs.len > 0 {
+				f.write(strings.repeat(` `, align.max_len - attrs_len))
+			} else {
+				f.write(strings.repeat(` `, align.max_len - field_types[i].len))
 			}
 			f.write(' ')
 			f.comments(end_cmts, level: .indent)

@@ -171,8 +171,8 @@ pub:
 	y    int
 	text string
 
-	color          Color = gx.black
-	size           int   = 16
+	color          Color              = gx.black
+	size           int                = 16
 	align          gx.HorizontalAlign = .left
 	vertical_align gx.VerticalAlign   = .top
 	max_width      int

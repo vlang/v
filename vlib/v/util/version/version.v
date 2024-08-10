@@ -2,7 +2,7 @@ module version
 
 import os
 
-pub const v_version = '0.4.6'
+pub const v_version = '0.4.7'
 
 pub fn full_hash() string {
 	build_hash := vhash()

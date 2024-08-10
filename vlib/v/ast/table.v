@@ -30,14 +30,14 @@ pub mut:
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
-	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
+	used_vweb_types    []Type          // vweb context types, filled in by checker, when pref.skip_unused = true;
+	used_maps          int             // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
 	cur_fn             &FnDecl = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
-	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
-	gostmts            int     // how many `go` statements there were in the parsed files.
+	cur_concrete_types []Type // current concrete types, e.g. <int, string>
+	gostmts            int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
 	module_deprecated map[string]bool
@@ -1229,7 +1229,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
-		cname: util.no_dots(name)
+		cname: util.no_dots(name).replace_each(['&', ''])
 		language: language
 		mod: modname
 	}
@@ -2284,6 +2284,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 				FnType {
 					mut parent_info := parent.info as FnType
 					mut function := parent_info.func
+					function.params = function.params.clone()
 					for mut param in function.params {
 						if param.typ.has_flag(.generic) {
 							if t_typ := t.resolve_generic_to_concrete(param.typ, function.generic_names,

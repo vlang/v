@@ -121,8 +121,8 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 
 pub struct VGitContext {
 pub:
-	cc          string = 'cc' // what compiler to use
-	workdir     string = '/tmp' // the base working folder
+	cc          string = 'cc'     // what compiler to use
+	workdir     string = '/tmp'   // the base working folder
 	commit_v    string = 'master' // the commit-ish that needs to be prepared
 	path_v      string // where is the local working copy v repo
 	path_vc     string // where is the local working copy vc repo

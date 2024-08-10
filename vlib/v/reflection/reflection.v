@@ -25,8 +25,8 @@ pub enum VLanguage {
 	i386
 	arm64 // 64-bit arm
 	arm32 // 32-bit arm
-	rv64 // 64-bit risc-v
-	rv32 // 32-bit risc-v
+	rv64  // 64-bit risc-v
+	rv32  // 32-bit risc-v
 	wasm32
 }
 
@@ -131,7 +131,7 @@ pub:
 	name       string        // interface name
 	methods    []Function    // methods
 	fields     []StructField // fields
-	is_generic bool // is generic?
+	is_generic bool          // is generic?
 }
 
 pub struct None {
@@ -225,13 +225,13 @@ pub:
 	mod_name     string        // module name
 	name         string        // function/method name
 	args         []FunctionArg // function/method args
-	file_idx     int   // source file name
-	line_start   int   // decl start line
-	line_end     int   // decl end line
-	is_variadic  bool  // is variadic?
-	return_typ   VType // return type idx
-	receiver_typ VType // receiver type idx (is a method)
-	is_pub       bool  // is pub?
+	file_idx     int           // source file name
+	line_start   int           // decl start line
+	line_end     int           // decl end line
+	is_variadic  bool          // is variadic?
+	return_typ   VType         // return type idx
+	receiver_typ VType         // receiver type idx (is a method)
+	is_pub       bool          // is pub?
 }
 
 // API module

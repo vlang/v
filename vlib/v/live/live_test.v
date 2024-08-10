@@ -7,7 +7,7 @@ import time
 /*
 The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
 
-It does so by writing a new generated program containing a [live] fn pmessage() string {...} function,
+It does so by writing a new generated program containing a @[live] fn pmessage() string {...} function,
 (that program is in `vlib/v/live/live_test_template.vv`)
 then runs the generated program at the start *in the background*,
 waits some time, so that the program could run a few iterations, then modifies its source

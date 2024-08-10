@@ -40,7 +40,7 @@ mut:
 	heap_base              ?wasm.GlobalIndex
 	fn_local_idx_end       int
 	fn_name                string
-	stack_frame            int             // Size of the current stack frame, if needed
+	stack_frame            int // Size of the current stack frame, if needed
 	is_leaf_function       bool = true
 	loop_breakpoint_stack  []LoopBreakpoint
 	stack_top              int // position in linear memory
@@ -511,7 +511,8 @@ pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int,
+	existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
 	g.expr(curr.cond, ast.bool_type)

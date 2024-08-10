@@ -1,3 +1,6 @@
+Roadmap with big features.
+For a list of all features and fixes, check out the changelog.
+
 ## [Version 0.3]
 
 - [x] gc option
@@ -32,21 +35,26 @@
 
 ## [Version 0.5]
 
-- [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
-- [x] Parallel parser
-- [x] Parallel checker
-- [ ] Parallel C compilation
-- [ ] Direct C/C++ interop without generating wrappers
-- [ ] `recover()` from panics
-- [ ] -usecache on by default
-- [ ] -skip-unused on by default
+- [x] Parallel parser (not integrated yet)
+- [x] Parallel checker (not integrated yet)
+- [x] Parallel C compilation (not integrated yet)
 - [x] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes
-- [ ] `arr.first() or { }` like `arr[0] or { }`
-- [ ] ORM migrations
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
+
+## [Version 0.6]
+
+- [ ] Integrate the new parallel parser/checker/cgen
+- [ ] Incremental compilation
+- [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
+- [ ] Direct C/C++ interop without generating wrappers
+- [ ] `recover()` from panics
+- [ ] -usecache on by default
+- [ ] -skip-unused on by default
+- [ ] ORM migrations
+- [ ] Allow `$if` everywhere: top level, inside struct definitions, etc
 
 ## [Version 1.0]
 

@@ -9,7 +9,7 @@ pub fn maybe_map[T, X](a []T, f fn (T) !X) ![]X {
 }
 
 pub enum ApplicationCommandOptionType {
-	sub_command       = 1
+	sub_command = 1
 	sub_command_group
 	string
 	integer

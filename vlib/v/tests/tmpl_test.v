@@ -28,11 +28,9 @@ fn test_tmpl() {
 age: 25
 numbers: [1, 2, 3]
 
-
 1
 2
 3
-
 
 0 - 0
 2 - 1
@@ -44,7 +42,6 @@ numbers: [1, 2, 3]
 14 - 7
 16 - 8
 18 - 9
-
 
 vlang/ui, downloaded 3201 times.
 vlang/vtl, downloaded 123 times.
@@ -71,11 +68,9 @@ fn test_tmpl_in_anon_fn() {
 age: 25
 numbers: [1, 2, 3]
 
-
 1
 2
 3
-
 
 0 - 0
 2 - 1
@@ -87,7 +82,6 @@ numbers: [1, 2, 3]
 14 - 7
 16 - 8
 18 - 9
-
 
 vlang/ui, downloaded 3201 times.
 vlang/vtl, downloaded 123 times.

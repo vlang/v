@@ -42,7 +42,7 @@ struct App {
 mut:
 	gg        &gg.Context = unsafe { nil }
 	draw_flag bool        = true
-	dpi_scale f32 = 1.0
+	dpi_scale f32         = 1.0
 }
 
 fn on_frame(mut app App) {
