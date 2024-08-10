@@ -107,19 +107,16 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ConstDecl {
-			if stmt.is_public {
-				g.write('pub ')
-			}
-			g.writeln('const (')
-			g.indent++
 			for field in stmt.fields {
+				if stmt.is_public {
+					g.write('pub ')
+				}
+				g.writeln('const ')
 				g.write(field.name)
 				g.write(' = ')
 				g.expr(field.value)
 				g.writeln('')
 			}
-			g.indent--
-			g.writeln(')')
 		}
 		ast.ComptimeStmt {
 			g.write('$')

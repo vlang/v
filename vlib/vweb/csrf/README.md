@@ -88,15 +88,14 @@ import net.http
 import vweb
 import vweb.csrf
 
-const (
-	// the configuration moved here
-	csrf_config = csrf.CsrfConfig{
-		// change the secret
-		secret: 'my-64bytes-secret'
-		// change to which domains you want to allow
-		allowed_hosts: ['*']
-	}
-)
+// the configuration moved here
+const csrf_config = csrf.CsrfConfig{
+	// change the secret
+	secret: 'my-64bytes-secret'
+	// change to which domains you want to allow
+	allowed_hosts: ['*']
+}
+
 
 struct App {
 	vweb.Context
