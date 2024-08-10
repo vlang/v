@@ -1289,7 +1289,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		// type_name := if base_type is Interface { receiver_type.name() } else { base_type.name() }
 		// c.env.methods[type_name] << &obj
 		// c.env.methods[receiver_type.base_type().name()] << &obj
-		c.env.methods[method_owner_type.name()] << &obj
+		unsafe { c.env.methods[method_owner_type.name()] << &obj }
 		c.log('registering method: ${decl.name} for ${receiver_type.name()} - ${method_owner_type.name()} - ${receiver_base_type.name()}')
 		c.scope.insert(decl.receiver.name, c.expr(decl.receiver.typ))
 	} else {
