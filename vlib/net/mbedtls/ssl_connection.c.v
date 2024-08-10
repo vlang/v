@@ -24,10 +24,77 @@ fn init() {
 	}
 }
 
-struct SSLCerts {
+pub struct SSLCerts {
+pub mut:
 	cacert      C.mbedtls_x509_crt
 	client_cert C.mbedtls_x509_crt
 	client_key  C.mbedtls_pk_context
+}
+
+pub fn new_sslcerts() &SSLCerts {
+	mut certs := SSLCerts{}
+	C.mbedtls_x509_crt_init(&certs.cacert)
+	C.mbedtls_x509_crt_init(&certs.client_cert)
+	C.mbedtls_pk_init(&certs.client_key)
+	return &certs
+}
+
+pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSLCerts {
+	mut certs := new_sslcerts()
+	if verify != '' {
+		ret := C.mbedtls_x509_crt_parse(&certs.cacert, verify.str, verify.len + 1)
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert != '' {
+		ret := C.mbedtls_x509_crt_parse(&certs.client_cert, cert.str, cert.len + 1)
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert_key != '' {
+		unsafe {
+			ret := C.mbedtls_pk_parse_key(&certs.client_key, cert_key.str, cert_key.len + 1,
+				0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			if ret != 0 {
+				return error_with_code('v error', ret)
+			}
+		}
+	}
+	return certs
+}
+
+pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSLCerts {
+	mut certs := new_sslcerts()
+	if verify != '' {
+		ret := C.mbedtls_x509_crt_parse_file(&certs.cacert, &char(verify.str))
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert != '' {
+		ret := C.mbedtls_x509_crt_parse_file(&certs.client_cert, &char(cert.str))
+		if ret != 0 {
+			return error_with_code('mbedtls_x509_crt_parse error', ret)
+		}
+	}
+	if cert_key != '' {
+		unsafe {
+			ret := C.mbedtls_pk_parse_keyfile(&certs.client_key, &char(cert_key.str),
+				0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			if ret != 0 {
+				return error_with_code('v error', ret)
+			}
+		}
+	}
+	return certs
+}
+
+pub fn (mut c SSLCerts) cleanup() {
+	C.mbedtls_x509_crt_free(&c.cacert)
+	C.mbedtls_x509_crt_free(&c.client_cert)
+	C.mbedtls_pk_free(&c.client_key)
 }
 
 // SSLConn is the current connection
@@ -77,9 +144,7 @@ pub fn (mut l SSLListener) shutdown() ! {
 		eprintln(@METHOD)
 	}
 	if unsafe { l.certs != nil } {
-		C.mbedtls_x509_crt_free(&l.certs.cacert)
-		C.mbedtls_x509_crt_free(&l.certs.client_cert)
-		C.mbedtls_pk_free(&l.certs.client_key)
+		l.certs.cleanup()
 	}
 	C.mbedtls_ssl_free(&l.ssl)
 	C.mbedtls_ssl_config_free(&l.conf)
@@ -115,28 +180,12 @@ fn (mut l SSLListener) init() ! {
 	mut ret := 0
 
 	if l.config.in_memory_verification {
-		if l.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse(&l.certs.cacert, l.config.verify.str,
-				l.config.verify.len + 1)
-		}
-		if l.config.cert != '' {
-			ret = C.mbedtls_x509_crt_parse(&l.certs.client_cert, l.config.cert.str,
-				l.config.cert.len + 1)
-		}
-		if l.config.cert_key != '' {
-			unsafe {
-				ret = C.mbedtls_pk_parse_key(&l.certs.client_key, l.config.cert_key.str,
-					l.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
-			}
+		l.certs = new_sslcerts_in_memory(l.config.verify, l.config.cert, l.config.cert_key) or {
+			return error('Cert failure')
 		}
 	} else {
-		if l.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse_file(&l.certs.cacert, &char(l.config.verify.str))
-		}
-		ret = C.mbedtls_x509_crt_parse_file(&l.certs.client_cert, &char(l.config.cert.str))
-		unsafe {
-			ret = C.mbedtls_pk_parse_keyfile(&l.certs.client_key, &char(l.config.cert_key.str),
-				0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+		l.certs = new_sslcerts_from_file(l.config.verify, l.config.cert, l.config.cert_key) or {
+			return error('Cert failure')
 		}
 	}
 
@@ -176,41 +225,23 @@ fn (mut l SSLListener) init() ! {
 	}
 
 	if get_cert_callback := l.config.get_certificate {
-		// callback implemented, set ud SNI to use callback
-		// to set correct certificate based on host name
 		l.init_sni(get_cert_callback)
 	}
 }
 
 // setup SNI callback
-fn (mut l SSLListener) init_sni(get_cert_callback fn (string) !SNICerts) {
+fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !&SSLCerts) {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, l] (param voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
 		host := unsafe { name.vstring_literal_with_len(lng) }
-		if c := get_cert_callback(host) {
-			// got a certificate from the callback
-			C.mbedtls_x509_crt_init(&l.certs.client_cert)
-			C.mbedtls_pk_init(&l.certs.client_key)
-
-			r1 := C.mbedtls_x509_crt_parse(&l.certs.client_cert, c.cert.str, c.cert.len + 1)
-			if r1 != 0 {
-				eprintln('${@METHOD} mbedtls_x509_crt_parse err: ${r1}')
-				return -1
-			}
-			r2 := C.mbedtls_pk_parse_key(&l.certs.client_key, c.key.str, c.key.len + 1,
-				0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
-			if r2 != 0 {
-				eprintln('${@METHOD} mbedtls_pk_parse_key err: ${r2}')
-				return -1
-			}
-			return 0
+		if certs := get_cert_callback(mut l, host) {
+			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
 		} else {
-			eprintln('${@METHOD} err: ${err}')
+			return -1
 		}
-		return -1
-	}, unsafe { nil })
+	}, &l.conf)
 }
 
 // accepts a new connection and returns a SSLConn of the connected client
@@ -261,14 +292,7 @@ pub:
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 
-	get_certificate ?fn (string) !SNICerts
-}
-
-pub struct SNICerts {
-pub:
-	cacert string
-	cert   string
-	key    string
+	get_certificate ?fn (mut SSLListener, string) !&SSLCerts
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.

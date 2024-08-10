@@ -5,16 +5,20 @@ import net.mbedtls
 // Server Name Indication (SNI) is defined in RFC 6066.
 // See https://mbed-tls.readthedocs.io/en/latest/kb/how-to/use-sni/
 
-fn get_cert(host string) !mbedtls.SNICerts {
+fn get_cert(mut l mbedtls.SSLListener, host string) !&mbedtls.SSLCerts {
 	// callback to return the certificates to use for the connection
 
-	println('read certs for ${host}')
-	sni_certs := mbedtls.SNICerts{
-		cert: os.read_file('cert/server.crt') or { return error('Failed to read certificate') }
-		key: os.read_file('cert/server.key') or { return error('Failed to read key') }
+	cert := os.read_file('cert/server.crt') or {
+		return error('Failed to read certificate ${host}: ${err}')
 	}
-	println('return certs')
-	return sni_certs
+	key := os.read_file('cert/server.key') or { return error('Failed to read key ${host}: ${err}') }
+	println('read certs for ${host}')
+
+	if mut c := mbedtls.new_sslcerts_in_memory('', cert, key) {
+		return c
+	} else {
+		return error('mbedtls.new_sslcerts_in_memory err: ${err}')
+	}
 }
 
 fn main() {
