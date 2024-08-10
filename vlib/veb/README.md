@@ -393,7 +393,7 @@ have to add your MIME type to `.static_mime_types` yourself.
 
 **Example:**
 
-Let's say you have the following file structure:
+Given the following file structure:
 
 ```
 .
