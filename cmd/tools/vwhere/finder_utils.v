@@ -127,12 +127,11 @@ fn collect_v_files(path string, recursive bool) ![]string {
 	}
 	mut all_files := []string{}
 	mut entries := os.ls(path)!
-	mut local_path_separator := os.path_separator
-	if path.ends_with(os.path_separator) {
-		local_path_separator = ''
-	}
 	for entry in entries {
-		file := path + local_path_separator + entry
+		if entry == '.git' {
+			continue
+		}
+		file := os.join_path_single(path, entry)
 		if os.is_dir(file) && !os.is_link(file) && recursive {
 			all_files << collect_v_files(file, recursive)!
 		} else if os.exists(file) && (file.ends_with('.v') || file.ends_with('.vsh')) {
