@@ -1406,7 +1406,6 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.calculate_alignment(node.fields, mut type_aligns, mut comment_aligns, mut default_expr_aligns, mut
 		attr_aligns, mut field_types)
 
-	mut type_align_i := 0
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
 		f.interface_field(field, type_aligns.max_len(field.pos.line_nr))
