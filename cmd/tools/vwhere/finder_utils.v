@@ -131,11 +131,17 @@ fn collect_v_files(path string, recursive bool) ![]string {
 		if entry == '.git' {
 			continue
 		}
+		if entry == 'tests' {
+			continue
+		}
 		file := os.join_path_single(path, entry)
-		if os.is_dir(file) && !os.is_link(file) && recursive {
-			all_files << collect_v_files(file, recursive)!
-		} else if os.exists(file) && (file.ends_with('.v') || file.ends_with('.vsh')) {
+		if os.file_ext(entry) in ['.v', '.vsh'] {
 			all_files << file
+			continue
+		}
+		if recursive && os.is_dir(file) && !os.is_link(file) {
+			all_files << collect_v_files(file, recursive)!
+			continue
 		}
 	}
 	return all_files
