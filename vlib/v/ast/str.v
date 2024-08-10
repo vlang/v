@@ -756,8 +756,7 @@ pub fn (node Stmt) str() string {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(field_to_string)
-			return 'const (${fields.join(' ')})'
+			return node.fields.map(field_to_string).join('')
 		}
 		DeferStmt {
 			mut res := ''
@@ -870,7 +869,7 @@ pub fn (node Stmt) str() string {
 
 fn field_to_string(f ConstField) string {
 	x := f.name.trim_string_left(f.mod + '.')
-	return '${x} = ${f.expr}'
+	return 'const ${x} = ${f.expr};'
 }
 
 pub fn (e ComptimeForKind) str() string {

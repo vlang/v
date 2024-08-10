@@ -17,8 +17,7 @@ struct TestItem {
 }
 
 // vfmt off
-const(
-match_test_suite = [
+const match_test_suite = [
 	// minus in CC
 	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
 	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,4},
@@ -203,10 +202,8 @@ match_test_suite = [
     TestItem{"abcAAxyz", r"^abc\X4141xyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
-    TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
-    
+    TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},    
 ]
-)
 
 struct TestItemRe {
 	src string
@@ -215,8 +212,7 @@ struct TestItemRe {
 	r   string
 }
 
-const (
-match_test_suite_replace = [
+const match_test_suite_replace = [
 	// replace tests
 	TestItemRe{
 		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
@@ -250,7 +246,7 @@ match_test_suite_replace = [
 	},
 ]
 
-match_test_suite_replace_simple = [
+const match_test_suite_replace_simple = [
 	// replace tests
 	TestItemRe{
 		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
@@ -265,7 +261,6 @@ match_test_suite_replace_simple = [
 		"CIAO is a good day and CIAO will be for sure."
 	},
 ]
-)
 
 struct TestItemCGroup {
 	src string
@@ -276,8 +271,7 @@ struct TestItemCGroup {
 	cgn map[string]int
 }
 
-const (
-cgroups_test_suite = [
+const cgroups_test_suite = [
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+[\.|/])+",0,42,
@@ -316,7 +310,6 @@ cgroups_test_suite = [
 		map[string]int{}
 	},
 ]
-)
 
 struct Test_find_all {
 	src     string
@@ -325,8 +318,7 @@ struct Test_find_all {
 	res_str []string // ['find0','find1'...]
 }
 
-const (
-find_all_test_suite = [
+const find_all_test_suite = [
 	Test_find_all{
 		"abcd 1234 efgh 1234 ghkl1234 ab34546df",
 		r"\d+",
@@ -417,9 +409,8 @@ find_all_test_suite = [
 		[0, 2],
 		['ab']
 	}
-
 ]
-)
+
 
 struct Test_split {
 	src string
@@ -427,8 +418,7 @@ struct Test_split {
 	res []string // ['abc','def',...]
 }
 
-const (
-	split_test_suite = [
+const split_test_suite = [
 		Test_split{'abcd 1234 efgh 1234 ghkl1234 ab34546df', r'\d+', ['abcd ', ' efgh ', ' ghkl',
 			' ab', 'df']},
 		Test_split{'abcd 1234 efgh 1234 ghkl1234 ab34546df', r'\a+', ['', ' 1234 ', ' 1234 ', '1234 ',
@@ -457,7 +447,6 @@ const (
 		Test_split{'a-', r'-', ['a', '']},
 		Test_split{'-a', r'-', ['', 'a']},
 	]
-)
 // vfmt on
 
 fn test_regex() {

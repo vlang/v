@@ -1,5 +1,3 @@
 const int = 3
 
-const (
-	f64 = 'string'
-)
+const f64 = 'string'
