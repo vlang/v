@@ -10,16 +10,24 @@ mut:
 }
 
 @[params]
-struct AddInfoConfig {
+struct AlignConfig {
 pub:
-	use_threshold bool
-	threshold     int = 25
+	ignore_newline bool // ignore newline or comment
+	use_threshold  bool
+	threshold      int = 25
 }
 
 struct FieldAlign {
+	cfg AlignConfig
 mut:
 	infos   []AlignInfo
 	cur_idx int
+}
+
+fn new_field_align(cfg AlignConfig) FieldAlign {
+	return FieldAlign{
+		cfg: cfg
+	}
 }
 
 fn (mut fa FieldAlign) add_new_info(len int, line int) {
@@ -30,24 +38,24 @@ fn (mut fa FieldAlign) add_new_info(len int, line int) {
 }
 
 @[direct_array_access]
-fn (mut fa FieldAlign) add_info(len int, line int, cfg AddInfoConfig) {
+fn (mut fa FieldAlign) add_info(len int, line int) {
 	if fa.infos.len == 0 {
 		fa.add_new_info(len, line)
 		return
 	}
 	i := fa.infos.len - 1
-	if line - fa.infos[i].line_nr > 1 {
+	if !fa.cfg.ignore_newline && line - fa.infos[i].line_nr > 1 {
 		fa.add_new_info(len, line)
 		return
 	}
-	if cfg.use_threshold {
+	if fa.cfg.use_threshold {
 		len_diff := if fa.infos[i].max_len >= len {
 			fa.infos[i].max_len - len
 		} else {
 			len - fa.infos[i].max_len
 		}
 
-		if len_diff >= cfg.threshold {
+		if len_diff >= fa.cfg.threshold {
 			fa.add_new_info(len, line)
 			return
 		}
@@ -64,7 +72,6 @@ fn (mut fa FieldAlign) max_len(line_nr int) int {
 	}
 	if fa.cur_idx < fa.infos.len {
 		return fa.infos[fa.cur_idx].max_len
-	} else {
-		return 0
 	}
+	return 0
 }

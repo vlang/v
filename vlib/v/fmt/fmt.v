@@ -1039,28 +1039,28 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	f.writeln('enum ${name} {')
 	f.comments(node.comments, same_line: true, level: .indent)
 
-	mut value_aligns := FieldAlign{}
-	mut attr_aligns := FieldAlign{}
-	mut comment_aligns := FieldAlign{}
+	mut value_align := new_field_align()
+	mut attr_align := new_field_align()
+	mut comment_align := new_field_align()
 	for field in node.fields {
 		if field.has_expr {
-			value_aligns.add_info(field.name.len, field.pos.line_nr)
+			value_align.add_info(field.name.len, field.pos.line_nr)
 		}
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
 			if field.has_expr {
-				attr_aligns.add_info(field.expr.str().len + 2, field.pos.line_nr)
+				attr_align.add_info(field.expr.str().len + 2, field.pos.line_nr)
 			} else {
-				attr_aligns.add_info(field.name.len, field.pos.line_nr)
+				attr_align.add_info(field.name.len, field.pos.line_nr)
 			}
 		}
 		if field.comments.len > 0 {
 			if field.attrs.len > 0 {
-				comment_aligns.add_info(attrs_len, field.pos.line_nr)
+				comment_align.add_info(attrs_len, field.pos.line_nr)
 			} else if field.has_expr {
-				comment_aligns.add_info(field.expr.str().len + 2, field.pos.line_nr)
+				comment_align.add_info(field.expr.str().len + 2, field.pos.line_nr)
 			} else {
-				comment_aligns.add_info(field.name.len, field.pos.line_nr)
+				comment_align.add_info(field.name.len, field.pos.line_nr)
 			}
 		}
 	}
@@ -1071,16 +1071,16 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		}
 		f.write('\t${field.name}')
 		if field.has_expr {
-			f.write(strings.repeat(` `, value_aligns.max_len(field.pos.line_nr) - field.name.len))
+			f.write(strings.repeat(` `, value_align.max_len(field.pos.line_nr) - field.name.len))
 			f.write(' = ')
 			f.expr(field.expr)
 		}
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
 			if field.has_expr {
-				f.write(strings.repeat(` `, attr_aligns.max_len(field.pos.line_nr) - field.expr.str().len - 2))
+				f.write(strings.repeat(` `, attr_align.max_len(field.pos.line_nr) - field.expr.str().len - 2))
 			} else {
-				f.write(strings.repeat(` `, attr_aligns.max_len(field.pos.line_nr) - field.name.len))
+				f.write(strings.repeat(` `, attr_align.max_len(field.pos.line_nr) - field.name.len))
 			}
 			f.write(' ')
 			f.single_line_attrs(field.attrs, same_line: true)
@@ -1088,11 +1088,11 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		// f.comments(field.comments, same_line: true, has_nl: false, level: .indent)
 		if field.comments.len > 0 {
 			if field.attrs.len > 0 {
-				f.write(strings.repeat(` `, comment_aligns.max_len(field.pos.line_nr) - attrs_len))
+				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - attrs_len))
 			} else if field.has_expr {
-				f.write(strings.repeat(` `, comment_aligns.max_len(field.pos.line_nr) - field.expr.str().len - 2))
+				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - field.expr.str().len - 2))
 			} else {
-				f.write(strings.repeat(` `, comment_aligns.max_len(field.pos.line_nr) - field.name.len))
+				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - field.name.len))
 			}
 			f.write(' ')
 			f.comments(field.comments, same_line: true, has_nl: false)
@@ -1396,19 +1396,19 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 	}
 
-	mut type_aligns := FieldAlign{}
-	mut comment_aligns := FieldAlign{}
-	mut default_expr_aligns := FieldAlign{}
-	mut attr_aligns := FieldAlign{}
+	mut type_align := new_field_align()
+	mut comment_align := new_field_align()
+	mut default_expr_align := new_field_align()
+	mut attr_align := new_field_align()
 	mut field_types := []string{cap: node.fields.len}
 
 	// Calculate the alignments first
-	f.calculate_alignment(node.fields, mut type_aligns, mut comment_aligns, mut default_expr_aligns, mut
-		attr_aligns, mut field_types)
+	f.calculate_alignment(node.fields, mut type_align, mut comment_align, mut default_expr_align, mut
+		attr_align, mut field_types)
 
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
-		f.interface_field(field, type_aligns.max_len(field.pos.line_nr))
+		f.interface_field(field, type_align.max_len(field.pos.line_nr))
 	}
 	for method in immut_methods {
 		f.interface_method(method)
@@ -1416,7 +1416,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
 		for field in mut_fields {
-			f.interface_field(field, type_aligns.max_len(field.pos.line_nr))
+			f.interface_field(field, type_align.max_len(field.pos.line_nr))
 		}
 		for method in mut_methods {
 			f.interface_method(method)
@@ -1432,8 +1432,8 @@ enum AlignState {
 	has_everything
 }
 
-pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns FieldAlign, mut comment_aligns FieldAlign,
-	mut default_expr_aligns FieldAlign, mut attr_aligns FieldAlign, mut field_types []string) {
+pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align FieldAlign, mut comment_align FieldAlign,
+	mut default_expr_align FieldAlign, mut attr_align FieldAlign, mut field_types []string) {
 	// Calculate the alignments first
 	mut prev_state := AlignState.plain
 	for field in fields {
@@ -1442,45 +1442,36 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns
 		field_types << ft
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
-		type_aligns.add_info(field.name.len, field.pos.line_nr)
+		type_align.add_info(field.name.len, field.pos.line_nr)
 		if field.has_default_expr {
-			default_expr_aligns.add_info(ft.len, field.pos.line_nr,
-				use_threshold: true
-			)
+			default_expr_align.add_info(ft.len, field.pos.line_nr)
 		}
 		if field.attrs.len > 0 {
-			attr_aligns.add_info(ft.len, field.pos.line_nr, use_threshold: true)
+			attr_align.add_info(ft.len, field.pos.line_nr)
 		}
 		for comment in field.comments {
 			if comment.pos.pos >= end_pos {
 				if comment.pos.line_nr == field.pos.line_nr {
 					if field.attrs.len > 0 {
 						if prev_state != AlignState.has_attributes {
-							comment_aligns.add_new_info(attrs_len, comment.pos.line_nr)
+							comment_align.add_new_info(attrs_len, comment.pos.line_nr)
 						} else {
-							comment_aligns.add_info(attrs_len, comment.pos.line_nr,
-								use_threshold: true
-							)
+							comment_align.add_info(attrs_len, comment.pos.line_nr)
 						}
 						prev_state = AlignState.has_attributes
 					} else if field.has_default_expr {
 						if prev_state != AlignState.has_default_expression {
-							comment_aligns.add_new_info(field.default_expr.str().len + 2,
+							comment_align.add_new_info(field.default_expr.str().len + 2,
 								comment.pos.line_nr)
 						} else {
-							comment_aligns.add_info(field.default_expr.str().len + 2,
-								comment.pos.line_nr,
-								use_threshold: true
-							)
+							comment_align.add_info(field.default_expr.str().len + 2, comment.pos.line_nr)
 						}
 						prev_state = AlignState.has_default_expression
 					} else {
 						if prev_state != AlignState.has_everything {
-							comment_aligns.add_new_info(ft.len, comment.pos.line_nr)
+							comment_align.add_new_info(ft.len, comment.pos.line_nr)
 						} else {
-							comment_aligns.add_info(ft.len, comment.pos.line_nr,
-								use_threshold: true
-							)
+							comment_align.add_info(ft.len, comment.pos.line_nr)
 						}
 						prev_state = AlignState.has_everything
 					}
