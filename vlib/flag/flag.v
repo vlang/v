@@ -311,11 +311,24 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 	return error("parameter '${longhand}' not found")
 }
 
+@[params]
+pub struct FlagConfig {
+pub:
+	val_desc string // descriptive string for an argument
+}
+
 // bool_opt returns an option with the bool value of the given command line flag, named `name`.
 // It returns an error, when the flag is not given by the user.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string) !bool {
-	fs.add_flag(name, abbr, usage, '<bool>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string, c FlagConfig) !bool {
+	val_desc := if c.val_desc == '' {
+		'<bool>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	parsed := fs.parse_bool_value(name, abbr) or {
 		return error("parameter '${name}' not provided")
 	}
@@ -326,16 +339,24 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string) !bool {
 // If that flag is given by the user, then it returns its parsed bool value.
 // When it is not, it returns the default value in `bdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string) bool {
-	value := fs.bool_opt(name, abbr, usage) or { return bdefault }
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string, c FlagConfig) bool {
+	value := fs.bool_opt(name, abbr, usage, c) or { return bdefault }
 	return value
 }
 
 // int_multi returns all values associated with the provided flag in `name`.
 // When that flag has no values, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string) []int {
-	fs.add_flag(name, abbr, usage, '<multiple ints>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string, c FlagConfig) []int {
+	val_desc := if c.val_desc == '' {
+		'<multiple ints>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	parsed := fs.parse_value(name, abbr)
 	mut value := []int{}
 	for val in parsed {
@@ -347,8 +368,15 @@ pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string) []int {
 // int_opt returns an option with the integer value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string) !int {
-	fs.add_flag(name, abbr, usage, '<int>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string, c FlagConfig) !int {
+	val_desc := if c.val_desc == '' {
+		'<int>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	parsed := fs.parse_value(name, abbr)
 	if parsed.len == 0 {
 		return error("parameter '${name}' not provided")
@@ -361,16 +389,24 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string) !int {
 // When the flag is given by the user, it returns its parsed integer value.
 // When it is not, it returns the integer value in `idefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string) int {
-	value := fs.int_opt(name, abbr, usage) or { return idefault }
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string, c FlagConfig) int {
+	value := fs.int_opt(name, abbr, usage, c) or { return idefault }
 	return value
 }
 
 // float_multi returns all floating point values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string) []f64 {
-	fs.add_flag(name, abbr, usage, '<multiple floats>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string, c FlagConfig) []f64 {
+	val_desc := if c.val_desc == '' {
+		'<multiple floats>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	parsed := fs.parse_value(name, abbr)
 	mut value := []f64{}
 	for val in parsed {
@@ -382,8 +418,15 @@ pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string) []f64
 // float_opt returns an option with the floating point value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string) !f64 {
-	fs.add_flag(name, abbr, usage, '<float>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string, c FlagConfig) !f64 {
+	val_desc := if c.val_desc == '' {
+		'<float>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	parsed := fs.parse_value(name, abbr)
 	if parsed.len == 0 {
 		return error("parameter '${name}' not provided")
@@ -395,15 +438,10 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string) !f64 {
 // When the flag is given by the user, it returns its parsed floating point value.
 // When it is not, it returns the value in `fdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string) f64 {
-	value := fs.float_opt(name, abbr, usage) or { return fdefault }
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string, c FlagConfig) f64 {
+	value := fs.float_opt(name, abbr, usage, c) or { return fdefault }
 	return value
-}
-
-@[params]
-pub struct FlagConfig {
-pub:
-	val_desc string // descriptive string for an argument
 }
 
 // string_multi returns all string values, associated with the flag named `name`.
