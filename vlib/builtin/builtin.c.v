@@ -160,8 +160,8 @@ pub fn c_error_number_str(errnum int) string {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
 			err_msg = string{
-				str: &u8(c_msg)
-				len: unsafe { C.strlen(c_msg) }
+				str:    &u8(c_msg)
+				len:    unsafe { C.strlen(c_msg) }
 				is_lit: 1
 			}
 		}

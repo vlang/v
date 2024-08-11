@@ -37,7 +37,7 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	mut conn := &SSLConn{
 		config: config
 		sslctx: unsafe { nil }
-		ssl: unsafe { nil }
+		ssl:    unsafe { nil }
 		handle: 0
 	}
 	conn.init() or { return err }
@@ -399,7 +399,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		microseconds := (remaining_time % 1000) * 1000
 
 		tt := C.timeval{
-			tv_sec: u64(seconds)
+			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
 		timeval_timeout := if timeout < 0 {

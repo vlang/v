@@ -68,7 +68,7 @@ const epoll_exclusive = u32(C.EPOLLEXCLUSIVE)
 fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ! {
 	event := C.epoll_event{
 		events: mask
-		data: C.epoll_data_t{
+		data:   C.epoll_data_t{
 			fd: fd
 		}
 	}
@@ -118,7 +118,7 @@ fn (mut en EpollNotifier) wait(timeout time.Duration) []FdEvent {
 				panic('encountered an empty event kind; this is most likely due to using tcc')
 			}
 			arr << &EpollEvent{
-				fd: fd
+				fd:   fd
 				kind: kind
 			}
 		}

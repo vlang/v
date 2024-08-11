@@ -10,9 +10,9 @@ pub mut:
 
 fn test_simple() {
 	obj := MyStruct{
-		code: 1
+		code:    1
 		message: 'yes'
-		data2: 'a'
+		data2:   'a'
 	}
 	assert dump(json.encode(obj)) == '{"code":1,"message":"yes","data2":"a"}'
 }

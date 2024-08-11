@@ -58,7 +58,7 @@ pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
 pub fn (mut m Middleware[T]) route_use(route string, options MiddlewareOptions[T]) {
 	middleware := RouteMiddleware{
 		url_parts: route.split('/').filter(it != '')
-		handler: voidptr(options.handler)
+		handler:   voidptr(options.handler)
 	}
 
 	if options.after {
@@ -123,7 +123,7 @@ fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 // Example: app.use(veb.encode_gzip[Context]())
 pub fn encode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
-		after: true
+		after:   true
 		handler: fn [T](mut ctx T) bool {
 			// TODO: compress file in streaming manner, or precompress them?
 			if ctx.return_type == .file {

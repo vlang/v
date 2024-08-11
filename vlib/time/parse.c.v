@@ -27,9 +27,9 @@ pub fn parse_rfc3339(s string) !Time {
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
 		year, month, day := parse_iso8601_date(sn)!
 		t = new(Time{
-			year: year
+			year:  year
 			month: month
-			day: day
+			day:   day
 		})
 		return t
 	}
@@ -38,9 +38,9 @@ pub fn parse_rfc3339(s string) !Time {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])!
 		t = new(Time{
-			hour: hour_
-			minute: minute_
-			second: second_
+			hour:       hour_
+			minute:     minute_
+			second:     second_
 			nanosecond: nanosecond_
 		})
 		if is_local_time {
@@ -120,10 +120,10 @@ pub fn parse(s string) !Time {
 		return error_invalid_time(8, 'seconds must be between 0 and 60')
 	}
 	res := new(Time{
-		year: iyear
-		month: imonth
-		day: iday
-		hour: ihour
+		year:   iyear
+		month:  imonth
+		day:    iday
+		hour:   ihour
 		minute: iminute
 		second: isecond
 	})
@@ -182,12 +182,12 @@ pub fn parse_iso8601(s string) !Time {
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
 	}
 	mut t := new(
-		year: year
-		month: month
-		day: day
-		hour: hour_
-		minute: minute_
-		second: second_
+		year:       year
+		month:      month
+		day:        day
+		hour:       hour_
+		minute:     minute_
+		second:     second_
 		nanosecond: nanosecond_
 	)
 	if is_local_time {

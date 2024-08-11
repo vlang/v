@@ -27,10 +27,10 @@ pub mut:
 
 pub fn new_sourcemap(file string, source_root string, sources_content_inline bool) SourceMap {
 	return SourceMap{
-		version: sourcemap.source_map_version
-		file: file
-		source_root: source_root
-		mappings: new_mappings()
+		version:                sourcemap.source_map_version
+		file:                   file
+		source_root:            source_root
+		mappings:               new_mappings()
 		sources_content_inline: sources_content_inline
 	}
 }

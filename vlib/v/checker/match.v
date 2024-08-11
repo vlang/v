@@ -105,11 +105,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							&& c.table.sym(stmt.typ).kind == .struct_
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{
-								expr: stmt.expr
-								typname: 'IError'
-								typ: ast.error_type
+								expr:      stmt.expr
+								typname:   'IError'
+								typ:       ast.error_type
 								expr_type: stmt.typ
-								pos: node.pos
+								pos:       node.pos
 							}
 							stmt.typ = ast.error_type
 						} else {
@@ -482,13 +482,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						expr_type = existing_idx
 					} else {
 						expr_type = c.table.register_sym(ast.TypeSymbol{
-							name: name
+							name:  name
 							cname: agg_cname.str()
-							kind: .aggregate
-							mod: c.mod
-							info: ast.Aggregate{
+							kind:  .aggregate
+							mod:   c.mod
+							info:  ast.Aggregate{
 								sum_type: node.cond_type
-								types: expr_types.map(it.typ)
+								types:    expr_types.map(it.typ)
 							}
 						})
 					}

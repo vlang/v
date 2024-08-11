@@ -32,7 +32,7 @@ fn make[T](i int) EventController[T] {
 
 fn test_main() {
 	mut a := EventController[Foo]{
-		id: 1
+		id:        1
 		listeners: {
 			1: fn (a Foo) ! {
 				dump(1)

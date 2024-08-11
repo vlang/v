@@ -33,9 +33,9 @@ fn (node XMLNode) validate(elements map[string]DTDElement, entities map[string]s
 	}
 
 	return XMLNode{
-		name: node.name
+		name:       node.name
 		attributes: node.attributes
-		children: children
+		children:   children
 	}
 }
 
@@ -80,11 +80,11 @@ pub fn (doc XMLDocument) validate() !XMLDocument {
 			}
 
 			return XMLDocument{
-				version: doc.version
-				encoding: doc.encoding
-				doctype: doc.doctype
-				comments: doc.comments
-				root: new_root
+				version:                 doc.version
+				encoding:                doc.encoding
+				doctype:                 doc.doctype
+				comments:                doc.comments
+				root:                    new_root
 				parsed_reverse_entities: reverse_entities
 			}
 		}

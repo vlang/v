@@ -289,7 +289,7 @@ fn (t Type) typed_default() Type {
 		return Primitive{
 			...t
 			props: concrete_props
-			size: size
+			size:  size
 		}
 	}
 	return t

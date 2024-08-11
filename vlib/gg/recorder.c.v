@@ -30,7 +30,7 @@ fn new_gg_recorder_settings() &SSRecorderSettings {
 		folder := os.getenv('VGG_SCREENSHOT_FOLDER')
 		prefix := os.join_path_single(folder, os.file_name(os.executable()).all_before('.') + '_')
 		return &SSRecorderSettings{
-			stop_at_frame: stop_frame
+			stop_at_frame:     stop_frame
 			screenshot_frames: frames
 			screenshot_folder: folder
 			screenshot_prefix: prefix

@@ -461,11 +461,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							&& c.table.sym(stmt.typ).kind == .struct_
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{
-								expr: stmt.expr
-								typname: 'IError'
-								typ: ast.error_type
+								expr:      stmt.expr
+								typname:   'IError'
+								typ:       ast.error_type
 								expr_type: stmt.typ
-								pos: node.pos
+								pos:       node.pos
 							}
 							stmt.typ = ast.error_type
 							continue

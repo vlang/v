@@ -67,7 +67,7 @@ fn test_assign_multi_expr() {
 
 	// test practical complex expressions
 	val3 := Object{
-		name: 'initial'
+		name:  'initial'
 		value: 19
 	}
 	mut q, mut r, mut s := if true {

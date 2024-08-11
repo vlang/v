@@ -139,10 +139,10 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 		position := line.index('@include ') or { 0 }
 		return &IncludeError{
 			calling_file: calling_file
-			line_nr: tline_number // line_number
-			position: position + '@include '.len
-			col: position + '@include '.len
-			message: 'path for @include must be quoted with \' or "'
+			line_nr:      tline_number // line_number
+			position:     position + '@include '.len
+			col:          position + '@include '.len
+			message:      'path for @include must be quoted with \' or "'
 		}
 	}
 	mut file_ext := os.file_ext(file_name)
@@ -171,9 +171,9 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 		if dc.dependencies[callee].contains(file_path) {
 			return &IncludeError{
 				calling_file: calling_file
-				line_nr: tline_number
-				position: line.index('@include ') or { 0 }
-				message: 'A recursive call is being made on template ${file_name}'
+				line_nr:      tline_number
+				position:     line.index('@include ') or { 0 }
+				message:      'A recursive call is being made on template ${file_name}'
 			}
 		}
 	}
@@ -185,9 +185,9 @@ fn (mut p Parser) process_includes(calling_file string, line_number int, line st
 			position := line.index('@include ') or { 0 } + '@include '.len
 			return &IncludeError{
 				calling_file: calling_file
-				line_nr: tline_number // line_number
-				position: position
-				message: 'Reading file `${file_name}` from path: ${file_path} failed'
+				line_nr:      tline_number // line_number
+				position:     position
+				message:      'Reading file `${file_name}` from path: ${file_path} failed'
 			}
 		}
 	}
@@ -257,12 +257,12 @@ fn vweb_tmpl_${fn_name}() string {
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
 			p.error_with_error(errors.Error{
-				message: "Please use @include 'header' instead of @header (deprecated)"
+				message:   "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
-				pos: token.Pos{
-					len: '@header'.len
-					line_nr: tline_number
-					pos: start_of_line_pos + position
+				pos:       token.Pos{
+					len:       '@header'.len
+					line_nr:   tline_number
+					pos:       start_of_line_pos + position
 					last_line: lines.len
 				}
 				reporter: .parser
@@ -272,12 +272,12 @@ fn vweb_tmpl_${fn_name}() string {
 		if line.contains('@footer') {
 			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
-				message: "Please use @include 'footer' instead of @footer (deprecated)"
+				message:   "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
-				pos: token.Pos{
-					len: '@footer'.len
-					line_nr: tline_number
-					pos: start_of_line_pos + position
+				pos:       token.Pos{
+					len:       '@footer'.len
+					line_nr:   tline_number
+					pos:       start_of_line_pos + position
 					last_line: lines.len
 				}
 				reporter: .parser
@@ -289,13 +289,13 @@ fn vweb_tmpl_${fn_name}() string {
 			resolved := p.process_includes(template_file, tline_number, line, mut &dc) or {
 				if err is IncludeError {
 					p.error_with_error(errors.Error{
-						message: err.msg()
+						message:   err.msg()
 						file_path: err.calling_file()
-						pos: token.Pos{
-							len: '@include '.len
-							line_nr: err.line_nr()
-							pos: start_of_line_pos + err.pos()
-							col: err.col()
+						pos:       token.Pos{
+							len:       '@include '.len
+							line_nr:   err.line_nr()
+							pos:       start_of_line_pos + err.pos()
+							col:       err.col()
 							last_line: lines.len
 						}
 						reporter: .parser
@@ -303,12 +303,12 @@ fn vweb_tmpl_${fn_name}() string {
 					[]string{}
 				} else {
 					p.error_with_error(errors.Error{
-						message: 'An unknown error has occurred'
+						message:   'An unknown error has occurred'
 						file_path: template_file
-						pos: token.Pos{
-							len: '@include '.len
-							line_nr: tline_number
-							pos: start_of_line_pos
+						pos:       token.Pos{
+							len:       '@include '.len
+							line_nr:   tline_number
+							pos:       start_of_line_pos
 							last_line: lines.len
 						}
 						reporter: .parser

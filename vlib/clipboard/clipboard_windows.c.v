@@ -91,11 +91,11 @@ fn new_clipboard() &Clipboard {
 	}
 	class_name := 'clipboard'
 	wndclass := WndClassEx{
-		cb_size: sizeof(WndClassEx)
-		lpfn_wnd_proc: voidptr(&C.DefWindowProc)
+		cb_size:         sizeof(WndClassEx)
+		lpfn_wnd_proc:   voidptr(&C.DefWindowProc)
 		lpsz_class_name: class_name.to_wide()
-		lpsz_menu_name: unsafe { 0 }
-		h_icon_sm: unsafe { 0 }
+		lpsz_menu_name:  unsafe { 0 }
+		h_icon_sm:       unsafe { 0 }
 	}
 	if C.RegisterClassEx(voidptr(&wndclass)) == 0
 		&& C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {

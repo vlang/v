@@ -747,10 +747,10 @@ fn test_eq() {
 	assert [5, 6, 7] != [6, 7]
 	assert [`a`, `b`] == [`a`, `b`]
 	assert [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}] == [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}]
 	/*
@@ -1311,7 +1311,7 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1319,14 +1319,14 @@ fn test_struct_array_of_multi_type_in() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1340,7 +1340,7 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1348,14 +1348,14 @@ fn test_struct_array_of_multi_type_index() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1440,7 +1440,7 @@ struct Numbers {
 fn test_array_of_multi_filter() {
 	arr := [1, 2, 3, 4, 5]
 	nums := Numbers{
-		odds: arr.filter(it % 2 == 1)
+		odds:  arr.filter(it % 2 == 1)
 		evens: arr.filter(it % 2 == 0)
 	}
 	println(nums)
@@ -1451,7 +1451,7 @@ fn test_array_of_multi_filter() {
 fn test_array_of_multi_map() {
 	arr := [1, 3, 5]
 	nums := Numbers{
-		odds: arr.map(it + 2)
+		odds:  arr.map(it + 2)
 		evens: arr.map(it * 2)
 	}
 	println(nums)

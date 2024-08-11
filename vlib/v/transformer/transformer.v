@@ -23,7 +23,7 @@ fn (mut t Transformer) trace[T](fbase string, x &T) {
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref: pref_
+		pref:  pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
@@ -1131,12 +1131,12 @@ pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
 	}
 	expr_stmt := ast.ExprStmt{
 		expr: ast.CallExpr{
-			mod: node.mod
-			pos: node.pos
+			mod:      node.mod
+			pos:      node.pos
 			language: .v
-			scope: node.scope
-			name: 'v.trace_calls.on_call'
-			args: [
+			scope:    node.scope
+			name:     'v.trace_calls.on_call'
+			args:     [
 				ast.CallArg{
 					expr: ast.StringLiteral{
 						val: fname

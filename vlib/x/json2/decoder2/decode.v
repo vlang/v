@@ -416,8 +416,8 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 					decoder.fulfill_nodes(mut children)
 
 					nodes << Node{
-						key_pos: key_pos
-						key_len: key_len
+						key_pos:  key_pos
+						key_len:  key_len
 						children: children
 					}
 				} else {

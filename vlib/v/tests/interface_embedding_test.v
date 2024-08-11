@@ -41,8 +41,8 @@ fn (mut s Abc) walk(x int, y int) {
 
 fn test_walker_talker() {
 	mut wt := WalkerTalker(Abc{
-		x: 1
-		y: 1
+		x:       1
+		y:       1
 		phrases: ['hi']
 	})
 	wt.talk('my name is Wally')

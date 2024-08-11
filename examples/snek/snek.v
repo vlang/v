@@ -140,16 +140,16 @@ fn on_frame(mut app App) {
 	// draw score bar
 	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
 	app.gg.draw_text(150, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
-		color: gx.white
-		align: .center
+		color:          gx.white
+		align:          .center
 		vertical_align: .middle
-		size: 65
+		size:           65
 	})
 	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: ${app.best}', gx.TextCfg{
-		color: gx.white
-		align: .center
+		color:          gx.white
+		align:          .center
 		vertical_align: .middle
-		size: 65
+		size:           65
 	})
 
 	if progress == 1 {
@@ -200,15 +200,15 @@ fn main() {
 	}
 
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		frame_fn: on_frame
-		keydown_fn: on_keydown
-		user_data: &app
-		width: canvas_size
-		height: top_height + canvas_size
-		create_window: true
-		resizable: false
-		window_title: 'snek'
+		bg_color:          gx.white
+		frame_fn:          on_frame
+		keydown_fn:        on_keydown
+		user_data:         &app
+		width:             canvas_size
+		height:            top_height + canvas_size
+		create_window:     true
+		resizable:         false
+		window_title:      'snek'
 		font_bytes_normal: font_bytes
 	)
 

@@ -553,11 +553,11 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_type_sym.kind == .struct_
 					&& c.type_implements(val_type, map_val_type, val.pos()) {
 					node.vals[i] = ast.CastExpr{
-						expr: val
-						typname: c.table.get_type_name(map_val_type)
-						typ: map_val_type
+						expr:      val
+						typname:   c.table.get_type_name(map_val_type)
+						typ:       map_val_type
 						expr_type: val_type
-						pos: val.pos()
+						pos:       val.pos()
 					}
 					continue
 				} else {

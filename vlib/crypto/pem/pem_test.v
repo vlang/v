@@ -164,7 +164,7 @@ dXd/H5LMDWnonNvPCwQUHt==
 const expected_results_rfc1421 = [
 	Block{
 		block_type: 'PRIVACY-ENHANCED MESSAGE'
-		headers: {
+		headers:    {
 			'Proc-Type':              ['4,MIC-ONLY']
 			'Content-Domain':         ['RFC822']
 			'Originator-Certificate': [
@@ -195,7 +195,7 @@ const expected_results_rfc1421 = [
 	},
 	Block{
 		block_type: 'PRIVACY-ENHANCED MESSAGE'
-		headers: {
+		headers:    {
 			'Proc-Type':               [
 				'4,ENCRYPTED',
 			]
@@ -240,7 +240,7 @@ const expected_results_rfc1421 = [
 	},
 	Block{
 		block_type: 'PRIVACY-ENHANCED MESSAGE'
-		headers: {
+		headers:    {
 			'Proc-Type':               [
 				'4,ENCRYPTED',
 			]

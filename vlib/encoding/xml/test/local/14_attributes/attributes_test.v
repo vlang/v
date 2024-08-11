@@ -8,13 +8,13 @@ fn test_valid_parsing() {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'book'
+			name:       'book'
 			attributes: {
 				'category': 'web'
 			}
 			children: [
 				xml.XMLNode{
-					name: 'title'
+					name:       'title'
 					attributes: {
 						'lang':      'en'
 						'code:type': 'const char*'
@@ -22,18 +22,18 @@ fn test_valid_parsing() {
 					children: ['Learning XML']
 				},
 				xml.XMLNode{
-					name: 'author'
+					name:       'author'
 					attributes: {
 						'attr': ' surrounding spaces '
 					}
 					children: ['Erik T. Ray']
 				},
 				xml.XMLNode{
-					name: 'year'
+					name:     'year'
 					children: ['2003']
 				},
 				xml.XMLNode{
-					name: 'price'
+					name:     'price'
 					children: ['39.95']
 				},
 			]

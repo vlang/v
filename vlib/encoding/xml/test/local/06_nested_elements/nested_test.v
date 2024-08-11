@@ -6,16 +6,16 @@ fn test_valid_parsing() ! {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'level1'
+			name:     'level1'
 			children: [
 				xml.XMLNode{
-					name: 'level2'
+					name:     'level2'
 					children: [
 						xml.XMLNode{
-							name: 'level3'
+							name:     'level3'
 							children: [
 								xml.XMLNode{
-									name: 'level4'
+									name:     'level4'
 									children: [
 										'Deeply nested content.',
 									]
@@ -25,10 +25,10 @@ fn test_valid_parsing() ! {
 					]
 				},
 				xml.XMLNode{
-					name: 'level2'
+					name:     'level2'
 					children: [
 						xml.XMLNode{
-							name: 'level3'
+							name:     'level3'
 							children: [
 								'Less deeply nested content.',
 							]

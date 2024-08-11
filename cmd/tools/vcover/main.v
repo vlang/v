@@ -81,9 +81,9 @@ fn (mut ctx Context) process_target(tfile string) ! {
 	for {
 		row := reader.read() or { break }
 		mut cline := CounterLine{
-			meta: row[0]
+			meta:  row[0]
 			point: row[1].int()
-			hits: row[2].u64()
+			hits:  row[2].u64()
 		}
 		m := ctx.meta[cline.meta] or {
 			ctx.verbose('> skipping invalid meta: ${cline.meta} in file: ${cline.file}, csvfile: ${tfile}')

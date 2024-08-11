@@ -437,7 +437,7 @@ pub fn (f Any) prettify_json_str() string {
 		unsafe { buf.free() }
 	}
 	mut enc := Encoder{
-		newline: `\n`
+		newline:              `\n`
 		newline_spaces_count: 2
 	}
 	enc.encode_value(f, mut buf) or {}

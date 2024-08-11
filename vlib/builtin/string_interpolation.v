@@ -190,12 +190,12 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
-		pad_ch: pad_ch // padding char
-		len0: len0_set // default len for whole the number or string
-		len1: len1_set // number of decimal digits, if needed
-		positive: true // mandatory: the sign of the number passed
-		sign_flag: sign_set // flag for print sign as prefix in padding
-		align: .left // alignment of the string
+		pad_ch:       pad_ch // padding char
+		len0:         len0_set // default len for whole the number or string
+		len1:         len1_set // number of decimal digits, if needed
+		positive:     true // mandatory: the sign of the number passed
+		sign_flag:    sign_set // flag for print sign as prefix in padding
+		align:        .left // alignment of the string
 		rm_tail_zero: tail_zeros // false // remove the tail zeros from floats
 	}
 

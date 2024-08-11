@@ -182,12 +182,12 @@ fn test_main() {
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf.units_per_em))
 
 	mut bmp := ttf.BitMap{
-		tf: &tf
-		buf: unsafe { malloc(sz) }
+		tf:       &tf
+		buf:      unsafe { malloc(sz) }
 		buf_size: sz
-		scale: scale
-		width: w
-		height: h
+		scale:    scale
+		width:    w
+		height:   h
 	}
 
 	y_base := int((tf.y_max - tf.y_min) * bmp.scale)

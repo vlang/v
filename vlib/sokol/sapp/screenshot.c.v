@@ -17,9 +17,9 @@ pub fn screenshot_window() &Screenshot {
 	img_pixels := unsafe { &u8(malloc(img_size)) }
 	C.v_sapp_gl_read_rgba_pixels(0, 0, img_width, img_height, img_pixels)
 	return &Screenshot{
-		width: img_width
+		width:  img_width
 		height: img_height
-		size: img_size
+		size:   img_size
 		pixels: img_pixels
 	}
 }

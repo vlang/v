@@ -2,10 +2,10 @@ import x.json2 as json
 import time
 
 const fixed_time = time.new(
-	year: 2022
-	month: 3
-	day: 11
-	hour: 13
+	year:   2022
+	month:  3
+	day:    11
+	hour:   13
 	minute: 54
 	second: 25
 )

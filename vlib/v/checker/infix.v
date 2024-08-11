@@ -74,11 +74,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		if left_type in [ast.f32_type_idx, ast.f64_type_idx] && right_type == ast.float_literal_type {
 			defer {
 				node.right = ast.CastExpr{
-					expr: node.right
-					typ: left_type
-					typname: c.table.get_type_name(left_type)
+					expr:      node.right
+					typ:       left_type
+					typname:   c.table.get_type_name(left_type)
 					expr_type: right_type
-					pos: node.right.pos()
+					pos:       node.right.pos()
 				}
 			}
 		}
@@ -89,9 +89,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		if right_type in [ast.f32_type_idx, ast.f64_type_idx] && left_type == ast.float_literal_type {
 			defer {
 				node.left = ast.CastExpr{
-					expr: node.left
-					typ: right_type
-					typname: c.table.get_type_name(right_type)
+					expr:      node.left
+					typ:       right_type
+					typname:   c.table.get_type_name(right_type)
 					expr_type: left_type
 				}
 			}
@@ -663,20 +663,20 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			node = ast.InfixExpr{
 				left: ast.CastExpr{
-					expr: node.left
-					typ: modified_left_type
-					typname: c.table.type_str(modified_left_type)
+					expr:      node.left
+					typ:       modified_left_type
+					typname:   c.table.type_str(modified_left_type)
 					expr_type: left_type
-					pos: node.pos
+					pos:       node.pos
 				}
-				left_type: left_type
-				op: .right_shift
-				right: node.right
-				right_type: right_type
-				is_stmt: false
-				pos: node.pos
+				left_type:   left_type
+				op:          .right_shift
+				right:       node.right
+				right_type:  right_type
+				is_stmt:     false
+				pos:         node.pos
 				auto_locked: node.auto_locked
-				or_block: node.or_block
+				or_block:    node.or_block
 			}
 
 			node.promoted_type = c.check_shift(mut node, left_type, right_type)
@@ -939,8 +939,8 @@ fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, rig
 fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
 	if '${right}' == from_expr.str() {
 		right = ast.AsCast{
-			typ: to_type
-			expr: from_expr
+			typ:       to_type
+			expr:      from_expr
 			expr_type: from_type
 		}
 		return
@@ -951,8 +951,8 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 			if right.expr.str() == from_expr.str() {
 				right.expr = ast.ParExpr{
 					expr: ast.AsCast{
-						typ: to_type
-						expr: from_expr
+						typ:       to_type
+						expr:      from_expr
 						expr_type: from_type
 					}
 				}
@@ -976,8 +976,8 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 				&& c.table.sym(to_type).has_method_with_generic_parent(right.name) {
 				right.left = ast.ParExpr{
 					expr: ast.AsCast{
-						typ: to_type
-						expr: from_expr
+						typ:       to_type
+						expr:      from_expr
 						expr_type: from_type
 					}
 				}

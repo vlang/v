@@ -174,8 +174,8 @@ pub mut:
 
 fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler) thread {
 	mut w := &HandlerWorker{
-		id: wid
-		ch: ch
+		id:      wid
+		ch:      ch
 		handler: handler
 	}
 	return spawn w.process_requests()
@@ -234,7 +234,7 @@ fn (d DebugHandler) handle(req Request) Response {
 		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
 	}
 	mut r := Response{
-		body: req.data
+		body:   req.data
 		header: req.header
 	}
 	r.set_status(.ok)

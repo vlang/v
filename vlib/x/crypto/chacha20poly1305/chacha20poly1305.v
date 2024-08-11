@@ -81,7 +81,7 @@ pub fn new(key []u8, ncsize int) !&AEAD {
 		return error('chacha20poly1305: bad nonce size supplied, its should 12 or 24')
 	}
 	c := &Chacha20Poly1305{
-		key: key
+		key:    key
 		ncsize: ncsize
 	}
 	return c

@@ -4,14129 +4,14129 @@ module mime
 
 const db = {
 	'application/1d-interleaved-parityfec':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/3gpdash-qoe-report+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/3gpp-ims+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/3gpphal+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/3gpphalforms+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/a2l':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ace+cbor':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ace+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/activemessage':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/activity+json':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/aif+cbor':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/aif+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-cdni+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-cdnifilter+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-costmap+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-costmapfilter+json':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-directory+json':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-endpointcost+json':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-endpointcostparams+json':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-endpointprop+json':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-endpointpropparams+json':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-error+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-networkmap+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-networkmapfilter+json':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-propmap+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-propmapparams+json':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-updatestreamcontrol+json':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/alto-updatestreamparams+json':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/aml':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/andrew-inset':                                                             MimeType{
-		source: 'iana'
-		extensions: ['ez']
+		source:       'iana'
+		extensions:   ['ez']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/appinstaller':                                                             MimeType{
-		source: ''
-		extensions: ['appinstaller']
+		source:       ''
+		extensions:   ['appinstaller']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/applefile':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/applixware':                                                               MimeType{
-		source: 'apache'
-		extensions: ['aw']
+		source:       'apache'
+		extensions:   ['aw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/appx':                                                                     MimeType{
-		source: ''
-		extensions: ['appx']
+		source:       ''
+		extensions:   ['appx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/appxbundle':                                                               MimeType{
-		source: ''
-		extensions: ['appxbundle']
+		source:       ''
+		extensions:   ['appxbundle']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/at+jwt':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/atf':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/atfx':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/atom+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['atom']
+		source:       'iana'
+		extensions:   ['atom']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atomcat+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['atomcat']
+		source:       'iana'
+		extensions:   ['atomcat']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atomdeleted+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: ['atomdeleted']
+		source:       'iana'
+		extensions:   ['atomdeleted']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atomicmail':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/atomsvc+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['atomsvc']
+		source:       'iana'
+		extensions:   ['atomsvc']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atsc-dwd+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['dwd']
+		source:       'iana'
+		extensions:   ['dwd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atsc-dynamic-event-message':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/atsc-held+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['held']
+		source:       'iana'
+		extensions:   ['held']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atsc-rdt+json':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atsc-rsat+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['rsat']
+		source:       'iana'
+		extensions:   ['rsat']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/atxml':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/auth-policy+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/automationml-aml+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: ['aml']
+		source:       'iana'
+		extensions:   ['aml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/automationml-amlx+zip':                                                    MimeType{
-		source: 'iana'
-		extensions: ['amlx']
+		source:       'iana'
+		extensions:   ['amlx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/bacnet-xdd+zip':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/batch-smtp':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/bdoc':                                                                     MimeType{
-		source: ''
-		extensions: ['bdoc']
+		source:       ''
+		extensions:   ['bdoc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/beep+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/calendar+json':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/calendar+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['xcs']
+		source:       'iana'
+		extensions:   ['xcs']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/call-completion':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cals-1840':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/captive+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cbor':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cbor-seq':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cccex':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ccmp+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ccxml+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: ['ccxml']
+		source:       'iana'
+		extensions:   ['ccxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cda+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/cdfx+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['cdfx']
+		source:       'iana'
+		extensions:   ['cdfx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cdmi-capability':                                                          MimeType{
-		source: 'iana'
-		extensions: ['cdmia']
+		source:       'iana'
+		extensions:   ['cdmia']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cdmi-container':                                                           MimeType{
-		source: 'iana'
-		extensions: ['cdmic']
+		source:       'iana'
+		extensions:   ['cdmic']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cdmi-domain':                                                              MimeType{
-		source: 'iana'
-		extensions: ['cdmid']
+		source:       'iana'
+		extensions:   ['cdmid']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cdmi-object':                                                              MimeType{
-		source: 'iana'
-		extensions: ['cdmio']
+		source:       'iana'
+		extensions:   ['cdmio']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cdmi-queue':                                                               MimeType{
-		source: 'iana'
-		extensions: ['cdmiq']
+		source:       'iana'
+		extensions:   ['cdmiq']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cdni':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cea':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cea-2018+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cellml+xml':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cfw':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/city+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/clr':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/clue+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/clue_info+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cms':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cnrp+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/coap-group+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/coap-payload':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/commonground':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/concise-problem-details+cbor':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/conference-info+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cose':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cose-key':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cose-key-set':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cose-x509':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cpl+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['cpl']
+		source:       'iana'
+		extensions:   ['cpl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/csrattrs':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/csta+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cstadata+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/csvm+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cu-seeme':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['cu']
+		source:       'apache'
+		extensions:   ['cu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cwl':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['cwl']
+		source:       'iana'
+		extensions:   ['cwl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cwl+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/cwt':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/cybercash':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dart':                                                                     MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dash+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mpd']
+		source:       'iana'
+		extensions:   ['mpd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dash-patch+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: ['mpp']
+		source:       'iana'
+		extensions:   ['mpp']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dashdelta':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/davmount+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['davmount']
+		source:       'iana'
+		extensions:   ['davmount']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dca-rft':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dcd':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dec-dx':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dialog-info+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dicom':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dicom+json':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dicom+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dii':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dit':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dns':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dns+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dns-message':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/docbook+xml':                                                              MimeType{
-		source: 'apache'
-		extensions: ['dbk']
+		source:       'apache'
+		extensions:   ['dbk']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dots+cbor':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dskpp+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dssc+der':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['dssc']
+		source:       'iana'
+		extensions:   ['dssc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/dssc+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['xdssc']
+		source:       'iana'
+		extensions:   ['xdssc']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/dvcs':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ecmascript':                                                               MimeType{
-		source: 'apache'
-		extensions: ['ecma']
+		source:       'apache'
+		extensions:   ['ecma']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/edi-consent':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/edi-x12':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/edifact':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/efi':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/elm+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/elm+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.cap+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/emergencycalldata.comment+xml':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.control+xml':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.deviceinfo+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.ecall.msd':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.legacyesn+json':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.providerinfo+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.serviceinfo+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.subscriberinfo+xml':                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emergencycalldata.veds+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emma+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['emma']
+		source:       'iana'
+		extensions:   ['emma']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/emotionml+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['emotionml']
+		source:       'iana'
+		extensions:   ['emotionml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/encaprtp':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/epp+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/epub+zip':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['epub']
+		source:       'iana'
+		extensions:   ['epub']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/eshop':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/exi':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['exi']
+		source:       'iana'
+		extensions:   ['exi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/expect-ct-report+json':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/express':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['exp']
+		source:       'iana'
+		extensions:   ['exp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/fastinfoset':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/fastsoap':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/fdf':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['fdf']
+		source:       'iana'
+		extensions:   ['fdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/fdt+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['fdt']
+		source:       'iana'
+		extensions:   ['fdt']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/fhir+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/fhir+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/fido.trusted-apps+json':                                                   MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/fits':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/flexfec':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/font-sfnt':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/font-tdpfr':                                                               MimeType{
-		source: 'iana'
-		extensions: ['pfr']
+		source:       'iana'
+		extensions:   ['pfr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/font-woff':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/framework-attributes+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/geo+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['geojson']
+		source:       'iana'
+		extensions:   ['geojson']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/geo+json-seq':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/geopackage+sqlite3':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/geoxacml+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/gltf-buffer':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/gml+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['gml']
+		source:       'iana'
+		extensions:   ['gml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/gpx+xml':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['gpx']
+		source:       'apache'
+		extensions:   ['gpx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/gxf':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['gxf']
+		source:       'apache'
+		extensions:   ['gxf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/gzip':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['gz']
+		source:       'iana'
+		extensions:   ['gz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/h224':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/held+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/hjson':                                                                    MimeType{
-		source: ''
-		extensions: ['hjson']
+		source:       ''
+		extensions:   ['hjson']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/hl7v2+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/http':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/hyperstudio':                                                              MimeType{
-		source: 'iana'
-		extensions: ['stk']
+		source:       'iana'
+		extensions:   ['stk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ibe-key-request+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ibe-pkg-reply+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ibe-pp-data':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/iges':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/im-iscomposing+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/index':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/index.cmd':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/index.obj':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/index.response':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/index.vnd':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/inkml+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: ['ink', 'inkml']
+		source:       'iana'
+		extensions:   ['ink', 'inkml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/iotp':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ipfix':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['ipfix']
+		source:       'iana'
+		extensions:   ['ipfix']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ipp':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/isup':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/its+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['its']
+		source:       'iana'
+		extensions:   ['its']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/java-archive':                                                             MimeType{
-		source: 'apache'
-		extensions: ['jar', 'war', 'ear']
+		source:       'apache'
+		extensions:   ['jar', 'war', 'ear']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/java-serialized-object':                                                   MimeType{
-		source: 'apache'
-		extensions: ['ser']
+		source:       'apache'
+		extensions:   ['ser']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/java-vm':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['class']
+		source:       'apache'
+		extensions:   ['class']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/javascript':                                                               MimeType{
-		source: 'apache'
-		extensions: ['js']
+		source:       'apache'
+		extensions:   ['js']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/jf2feed+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/jose':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/jose+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/jrd+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/jscalendar+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/json':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['json', 'map']
+		source:       'iana'
+		extensions:   ['json', 'map']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/json-patch+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/json-seq':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/json5':                                                                    MimeType{
-		source: ''
-		extensions: ['json5']
+		source:       ''
+		extensions:   ['json5']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/jsonml+json':                                                              MimeType{
-		source: 'apache'
-		extensions: ['jsonml']
+		source:       'apache'
+		extensions:   ['jsonml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/jwk+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/jwk-set+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/jwt':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/kpml-request+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/kpml-response+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ld+json':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['jsonld']
+		source:       'iana'
+		extensions:   ['jsonld']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/lgr+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['lgr']
+		source:       'iana'
+		extensions:   ['lgr']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/link-format':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/linkset':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/linkset+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/load-control+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/logout+jwt':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/lost+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['lostxml']
+		source:       'iana'
+		extensions:   ['lostxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/lostsync+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/lpf+zip':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/lxf':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mac-binhex40':                                                             MimeType{
-		source: 'iana'
-		extensions: ['hqx']
+		source:       'iana'
+		extensions:   ['hqx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mac-compactpro':                                                           MimeType{
-		source: 'apache'
-		extensions: ['cpt']
+		source:       'apache'
+		extensions:   ['cpt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/macwriteii':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mads+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mads']
+		source:       'iana'
+		extensions:   ['mads']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/manifest+json':                                                            MimeType{
-		source: 'iana'
-		extensions: ['webmanifest']
+		source:       'iana'
+		extensions:   ['webmanifest']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/marc':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['mrc']
+		source:       'iana'
+		extensions:   ['mrc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/marcxml+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['mrcx']
+		source:       'iana'
+		extensions:   ['mrcx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mathematica':                                                              MimeType{
-		source: 'iana'
-		extensions: ['ma', 'nb', 'mb']
+		source:       'iana'
+		extensions:   ['ma', 'nb', 'mb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mathml+xml':                                                               MimeType{
-		source: 'iana'
-		extensions: ['mathml']
+		source:       'iana'
+		extensions:   ['mathml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mathml-content+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mathml-presentation+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-associated-procedure-description+xml':                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-deregister+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-envelope+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-msk+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-msk-response+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-protection-description+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-reception-report+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-register+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-register-response+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-schedule+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbms-user-service-description+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mbox':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['mbox']
+		source:       'iana'
+		extensions:   ['mbox']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/media-policy-dataset+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: ['mpf']
+		source:       'iana'
+		extensions:   ['mpf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/media_control+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mediaservercontrol+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: ['mscml']
+		source:       'iana'
+		extensions:   ['mscml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/merge-patch+json':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/metalink+xml':                                                             MimeType{
-		source: 'apache'
-		extensions: ['metalink']
+		source:       'apache'
+		extensions:   ['metalink']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/metalink4+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['meta4']
+		source:       'iana'
+		extensions:   ['meta4']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mets+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mets']
+		source:       'iana'
+		extensions:   ['mets']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mf4':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mikey':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mipc':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/missing-blocks+cbor-seq':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mmt-aei+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['maei']
+		source:       'iana'
+		extensions:   ['maei']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mmt-usd+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['musd']
+		source:       'iana'
+		extensions:   ['musd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mods+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mods']
+		source:       'iana'
+		extensions:   ['mods']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/moss-keys':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/moss-signature':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mosskey-data':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mosskey-request':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mp21':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['m21', 'mp21']
+		source:       'iana'
+		extensions:   ['m21', 'mp21']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mp4':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['mp4', 'mpg4', 'mp4s', 'm4p']
+		source:       'iana'
+		extensions:   ['mp4', 'mpg4', 'mp4s', 'm4p']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mpeg4-generic':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mpeg4-iod':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mpeg4-iod-xmt':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mrb-consumer+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/mrb-publish+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/msc-ivr+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/msc-mixer+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/msix':                                                                     MimeType{
-		source: ''
-		extensions: ['msix']
+		source:       ''
+		extensions:   ['msix']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/msixbundle':                                                               MimeType{
-		source: ''
-		extensions: ['msixbundle']
+		source:       ''
+		extensions:   ['msixbundle']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/msword':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['doc', 'dot']
+		source:       'iana'
+		extensions:   ['doc', 'dot']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mud+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/multipart-core':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/mxf':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['mxf']
+		source:       'iana'
+		extensions:   ['mxf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/n-quads':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['nq']
+		source:       'iana'
+		extensions:   ['nq']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/n-triples':                                                                MimeType{
-		source: 'iana'
-		extensions: ['nt']
+		source:       'iana'
+		extensions:   ['nt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/nasdata':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/news-checkgroups':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'US-ASCII'
+		charset:      'US-ASCII'
 	}
 	'application/news-groupinfo':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'US-ASCII'
+		charset:      'US-ASCII'
 	}
 	'application/news-transmission':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/nlsml+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/node':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['cjs']
+		source:       'iana'
+		extensions:   ['cjs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/nss':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/oauth-authz-req+jwt':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/oblivious-dns-message':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ocsp-request':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ocsp-response':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/octet-stream':                                                             MimeType{
-		source: 'iana'
+		source:     'iana'
 		extensions: ['bin', 'dms', 'lrf', 'mar', 'so', 'dist', 'distz', 'pkg', 'bpk', 'dump', 'elc',
 			'deploy', 'exe', 'dll', 'deb', 'dmg', 'iso', 'img', 'msi', 'msp', 'msm', 'buffer']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/oda':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['oda']
+		source:       'iana'
+		extensions:   ['oda']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/odm+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/odx':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/oebps-package+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: ['opf']
+		source:       'iana'
+		extensions:   ['opf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ogg':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['ogx']
+		source:       'iana'
+		extensions:   ['ogx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/omdoc+xml':                                                                MimeType{
-		source: 'apache'
-		extensions: ['omdoc']
+		source:       'apache'
+		extensions:   ['omdoc']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/onenote':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['onetoc', 'onetoc2', 'onetmp', 'onepkg']
+		source:       'apache'
+		extensions:   ['onetoc', 'onetoc2', 'onetmp', 'onepkg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/opc-nodeset+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/oscore':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/oxps':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['oxps']
+		source:       'iana'
+		extensions:   ['oxps']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/p21':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/p21+zip':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/p2p-overlay+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: ['relo']
+		source:       'iana'
+		extensions:   ['relo']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/parityfec':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/passport':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/patch-ops-error+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: ['xer']
+		source:       'iana'
+		extensions:   ['xer']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/pdf':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['pdf']
+		source:       'iana'
+		extensions:   ['pdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pdx':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pem-certificate-chain':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pgp-encrypted':                                                            MimeType{
-		source: 'iana'
-		extensions: ['pgp']
+		source:       'iana'
+		extensions:   ['pgp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pgp-keys':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['asc']
+		source:       'iana'
+		extensions:   ['asc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pgp-signature':                                                            MimeType{
-		source: 'iana'
-		extensions: ['sig', 'asc']
+		source:       'iana'
+		extensions:   ['sig', 'asc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pics-rules':                                                               MimeType{
-		source: 'apache'
-		extensions: ['prf']
+		source:       'apache'
+		extensions:   ['prf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pidf+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/pidf-diff+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/pkcs10':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['p10']
+		source:       'iana'
+		extensions:   ['p10']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkcs12':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkcs7-mime':                                                               MimeType{
-		source: 'iana'
-		extensions: ['p7m', 'p7c']
+		source:       'iana'
+		extensions:   ['p7m', 'p7c']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkcs7-signature':                                                          MimeType{
-		source: 'iana'
-		extensions: ['p7s']
+		source:       'iana'
+		extensions:   ['p7s']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkcs8':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['p8']
+		source:       'iana'
+		extensions:   ['p8']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkcs8-encrypted':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkix-attr-cert':                                                           MimeType{
-		source: 'iana'
-		extensions: ['ac']
+		source:       'iana'
+		extensions:   ['ac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkix-cert':                                                                MimeType{
-		source: 'iana'
-		extensions: ['cer']
+		source:       'iana'
+		extensions:   ['cer']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkix-crl':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['crl']
+		source:       'iana'
+		extensions:   ['crl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkix-pkipath':                                                             MimeType{
-		source: 'iana'
-		extensions: ['pkipath']
+		source:       'iana'
+		extensions:   ['pkipath']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pkixcmp':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['pki']
+		source:       'iana'
+		extensions:   ['pki']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/pls+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['pls']
+		source:       'iana'
+		extensions:   ['pls']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/poc-settings+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/postscript':                                                               MimeType{
-		source: 'iana'
-		extensions: ['ai', 'eps', 'ps']
+		source:       'iana'
+		extensions:   ['ai', 'eps', 'ps']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ppsp-tracker+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/problem+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/problem+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/provenance+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: ['provx']
+		source:       'iana'
+		extensions:   ['provx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.alvestrand.titrax-sheet':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.cww':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['cww']
+		source:       'iana'
+		extensions:   ['cww']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.cyn':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: '7-BIT'
+		charset:      '7-BIT'
 	}
 	'application/prs.hpub+zip':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.nprend':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.plucker':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.rdf-xml-crypt':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/prs.xsf+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['xsf']
+		source:       'iana'
+		extensions:   ['xsf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/pskc+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['pskcxml']
+		source:       'iana'
+		extensions:   ['pskcxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/pvd+json':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/qsig':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/raml+yaml':                                                                MimeType{
-		source: ''
-		extensions: ['raml']
+		source:       ''
+		extensions:   ['raml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/raptorfec':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rdap+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rdf+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['rdf', 'owl']
+		source:       'iana'
+		extensions:   ['rdf', 'owl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/reginfo+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['rif']
+		source:       'iana'
+		extensions:   ['rif']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/relax-ng-compact-syntax':                                                  MimeType{
-		source: 'iana'
-		extensions: ['rnc']
+		source:       'iana'
+		extensions:   ['rnc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/remote-printing':                                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/reputon+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/resource-lists+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: ['rl']
+		source:       'iana'
+		extensions:   ['rl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/resource-lists-diff+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: ['rld']
+		source:       'iana'
+		extensions:   ['rld']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rfc+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/riscos':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rlmi+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rls-services+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: ['rs']
+		source:       'iana'
+		extensions:   ['rs']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/route-apd+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['rapd']
+		source:       'iana'
+		extensions:   ['rapd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/route-s-tsid+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: ['sls']
+		source:       'iana'
+		extensions:   ['sls']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/route-usd+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['rusd']
+		source:       'iana'
+		extensions:   ['rusd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rpki-checklist':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rpki-ghostbusters':                                                        MimeType{
-		source: 'iana'
-		extensions: ['gbr']
+		source:       'iana'
+		extensions:   ['gbr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rpki-manifest':                                                            MimeType{
-		source: 'iana'
-		extensions: ['mft']
+		source:       'iana'
+		extensions:   ['mft']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rpki-publication':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rpki-roa':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['roa']
+		source:       'iana'
+		extensions:   ['roa']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rpki-updown':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rsd+xml':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['rsd']
+		source:       'apache'
+		extensions:   ['rsd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rss+xml':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['rss']
+		source:       'apache'
+		extensions:   ['rss']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rtf':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['rtf']
+		source:       'iana'
+		extensions:   ['rtf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/rtploopback':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/rtx':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/samlassertion+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/samlmetadata+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sarif+json':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sarif-external-properties+json':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sbe':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sbml+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['sbml']
+		source:       'iana'
+		extensions:   ['sbml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/scaip+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/scim+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/scvp-cv-request':                                                          MimeType{
-		source: 'iana'
-		extensions: ['scq']
+		source:       'iana'
+		extensions:   ['scq']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/scvp-cv-response':                                                         MimeType{
-		source: 'iana'
-		extensions: ['scs']
+		source:       'iana'
+		extensions:   ['scs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/scvp-vp-request':                                                          MimeType{
-		source: 'iana'
-		extensions: ['spq']
+		source:       'iana'
+		extensions:   ['spq']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/scvp-vp-response':                                                         MimeType{
-		source: 'iana'
-		extensions: ['spp']
+		source:       'iana'
+		extensions:   ['spp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sdp':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['sdp']
+		source:       'iana'
+		extensions:   ['sdp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/secevent+jwt':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/senml+cbor':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/senml+json':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/senml+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: ['senmlx']
+		source:       'iana'
+		extensions:   ['senmlx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/senml-etch+cbor':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/senml-etch+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/senml-exi':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sensml+cbor':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sensml+json':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sensml+xml':                                                               MimeType{
-		source: 'iana'
-		extensions: ['sensmlx']
+		source:       'iana'
+		extensions:   ['sensmlx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sensml-exi':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sep+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sep-exi':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/session-info':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/set-payment':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/set-payment-initiation':                                                   MimeType{
-		source: 'iana'
-		extensions: ['setpay']
+		source:       'iana'
+		extensions:   ['setpay']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/set-registration':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/set-registration-initiation':                                              MimeType{
-		source: 'iana'
-		extensions: ['setreg']
+		source:       'iana'
+		extensions:   ['setreg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sgml':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sgml-open-catalog':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/shf+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['shf']
+		source:       'iana'
+		extensions:   ['shf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sieve':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['siv', 'sieve']
+		source:       'iana'
+		extensions:   ['siv', 'sieve']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/simple-filter+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/simple-message-summary':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/simplesymbolcontainer':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sipc':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/slate':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/smil':                                                                     MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/smil+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['smi', 'smil']
+		source:       'iana'
+		extensions:   ['smi', 'smil']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/smpte336m':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/soap+fastinfoset':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/soap+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sparql-query':                                                             MimeType{
-		source: 'iana'
-		extensions: ['rq']
+		source:       'iana'
+		extensions:   ['rq']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/sparql-results+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: ['srx']
+		source:       'iana'
+		extensions:   ['srx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/spdx+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/spirits-event+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sql':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['sql']
+		source:       'iana'
+		extensions:   ['sql']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/srgs':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['gram']
+		source:       'iana'
+		extensions:   ['gram']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/srgs+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['grxml']
+		source:       'iana'
+		extensions:   ['grxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/sru+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['sru']
+		source:       'iana'
+		extensions:   ['sru']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ssdl+xml':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['ssdl']
+		source:       'apache'
+		extensions:   ['ssdl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/ssml+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['ssml']
+		source:       'iana'
+		extensions:   ['ssml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/stix+json':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/swid+cbor':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/swid+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['swidtag']
+		source:       'iana'
+		extensions:   ['swidtag']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-apex-update':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-apex-update-confirm':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-community-update':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-community-update-confirm':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-error':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-sequence-adjust':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-sequence-adjust-confirm':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-status-query':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-status-response':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-update':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tamp-update-confirm':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tar':                                                                      MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/taxii+json':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/td+json':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/tei+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['tei', 'teicorpus']
+		source:       'iana'
+		extensions:   ['tei', 'teicorpus']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/tetra_isi':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/thraud+xml':                                                               MimeType{
-		source: 'iana'
-		extensions: ['tfi']
+		source:       'iana'
+		extensions:   ['tfi']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/timestamp-query':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/timestamp-reply':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/timestamped-data':                                                         MimeType{
-		source: 'iana'
-		extensions: ['tsd']
+		source:       'iana'
+		extensions:   ['tsd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tlsrpt+gzip':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tlsrpt+json':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/tm+json':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/tnauthlist':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/token-introspection+jwt':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/toml':                                                                     MimeType{
-		source: ''
-		extensions: ['toml']
+		source:       ''
+		extensions:   ['toml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/trickle-ice-sdpfrag':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/trig':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['trig']
+		source:       'iana'
+		extensions:   ['trig']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ttml+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['ttml']
+		source:       'iana'
+		extensions:   ['ttml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/tve-trigger':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tzif':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/tzif-leap':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ubjson':                                                                   MimeType{
-		source: ''
-		extensions: ['ubj']
+		source:       ''
+		extensions:   ['ubj']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/ulpfec':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/urc-grpsheet+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/urc-ressheet+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: ['rsheet']
+		source:       'iana'
+		extensions:   ['rsheet']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/urc-targetdesc+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: ['td']
+		source:       'iana'
+		extensions:   ['td']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/urc-uisocketdesc+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vcard+json':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vcard+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vemmi':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vividence.scriptfile':                                                     MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.1000minds.decision-model+xml':                                         MimeType{
-		source: 'iana'
-		extensions: ['1km']
+		source:       'iana'
+		extensions:   ['1km']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp-prose+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp-prose-pc3a+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp-prose-pc3ach+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp-prose-pc3ch+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp-prose-pc8+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp-v2x-local-service-information':                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.5gnas':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.access-transfer-events+xml':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.bsf+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.gmop+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.gtpc':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.interworking-data':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.lpp':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mc-signalling-ear':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-affiliation-command+xml':                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-info+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-msgstore-ctrl-request+xml':                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-payload':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-regroup+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-service-config+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-signalling':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-ue-config+xml':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcdata-user-profile+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-affiliation-command+xml':                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-floor-request+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-info+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-location-info+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-mbms-usage-info+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-service-config+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-signed+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-ue-config+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-ue-init-config+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcptt-user-profile+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-affiliation-command+xml':                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-info+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-location-info+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-mbms-usage-info+xml':                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-service-config+xml':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-transmission-request+xml':                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-ue-config+xml':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mcvideo-user-profile+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.mid-call+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.ngap':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.pfcp':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.pic-bw-large':                                                    MimeType{
-		source: 'iana'
-		extensions: ['plb']
+		source:       'iana'
+		extensions:   ['plb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.pic-bw-small':                                                    MimeType{
-		source: 'iana'
-		extensions: ['psb']
+		source:       'iana'
+		extensions:   ['psb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.pic-bw-var':                                                      MimeType{
-		source: 'iana'
-		extensions: ['pvb']
+		source:       'iana'
+		extensions:   ['pvb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.s1ap':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.seal-info+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.seal-location-info+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.sms':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.sms+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.srvcc-ext+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.srvcc-info+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.state-and-event-info+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.ussd+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp.vae-info+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp2.bcmcsinfo+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp2.sms':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3gpp2.tcap':                                                           MimeType{
-		source: 'iana'
-		extensions: ['tcap']
+		source:       'iana'
+		extensions:   ['tcap']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3lightssoftware.imagescal':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.3m.post-it-notes':                                                     MimeType{
-		source: 'iana'
-		extensions: ['pwn']
+		source:       'iana'
+		extensions:   ['pwn']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.accpac.simply.aso':                                                    MimeType{
-		source: 'iana'
-		extensions: ['aso']
+		source:       'iana'
+		extensions:   ['aso']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.accpac.simply.imp':                                                    MimeType{
-		source: 'iana'
-		extensions: ['imp']
+		source:       'iana'
+		extensions:   ['imp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.acucobol':                                                             MimeType{
-		source: 'iana'
-		extensions: ['acu']
+		source:       'iana'
+		extensions:   ['acu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.acucorp':                                                              MimeType{
-		source: 'iana'
-		extensions: ['atc', 'acutc']
+		source:       'iana'
+		extensions:   ['atc', 'acutc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.air-application-installer-package+zip':                          MimeType{
-		source: 'apache'
-		extensions: ['air']
+		source:       'apache'
+		extensions:   ['air']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.flash.movie':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.formscentral.fcdt':                                              MimeType{
-		source: 'iana'
-		extensions: ['fcdt']
+		source:       'iana'
+		extensions:   ['fcdt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.fxp':                                                            MimeType{
-		source: 'iana'
-		extensions: ['fxp', 'fxpl']
+		source:       'iana'
+		extensions:   ['fxp', 'fxpl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.partial-upload':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.xdp+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: ['xdp']
+		source:       'iana'
+		extensions:   ['xdp']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.adobe.xfdf':                                                           MimeType{
-		source: 'apache'
-		extensions: ['xfdf']
+		source:       'apache'
+		extensions:   ['xfdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.aether.imp':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.afplinedata':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.afplinedata-pagedef':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.cmoca-cmresource':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.foca-charset':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.foca-codedfont':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.foca-codepage':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca-cmtable':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca-formdef':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca-mediummap':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca-objectcontainer':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca-overlay':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.afpc.modca-pagesegment':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.age':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['age']
+		source:       'iana'
+		extensions:   ['age']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ah-barcode':                                                           MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ahead.space':                                                          MimeType{
-		source: 'iana'
-		extensions: ['ahead']
+		source:       'iana'
+		extensions:   ['ahead']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.airzip.filesecure.azf':                                                MimeType{
-		source: 'iana'
-		extensions: ['azf']
+		source:       'iana'
+		extensions:   ['azf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.airzip.filesecure.azs':                                                MimeType{
-		source: 'iana'
-		extensions: ['azs']
+		source:       'iana'
+		extensions:   ['azs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.amadeus+json':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.amazon.ebook':                                                         MimeType{
-		source: 'apache'
-		extensions: ['azw']
+		source:       'apache'
+		extensions:   ['azw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.amazon.mobi8-ebook':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.americandynamics.acc':                                                 MimeType{
-		source: 'iana'
-		extensions: ['acc']
+		source:       'iana'
+		extensions:   ['acc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.amiga.ami':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ami']
+		source:       'iana'
+		extensions:   ['ami']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.amundsen.maze+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.android.ota':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.android.package-archive':                                              MimeType{
-		source: 'apache'
-		extensions: ['apk']
+		source:       'apache'
+		extensions:   ['apk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.anki':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.anser-web-certificate-issue-initiation':                               MimeType{
-		source: 'iana'
-		extensions: ['cii']
+		source:       'iana'
+		extensions:   ['cii']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.anser-web-funds-transfer-initiation':                                  MimeType{
-		source: 'apache'
-		extensions: ['fti']
+		source:       'apache'
+		extensions:   ['fti']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.antix.game-component':                                                 MimeType{
-		source: 'iana'
-		extensions: ['atx']
+		source:       'iana'
+		extensions:   ['atx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apache.arrow.file':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apache.arrow.stream':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apache.thrift.binary':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apache.thrift.compact':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apache.thrift.json':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apexlang':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.api+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.aplextor.warrp+json':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apothekende.reservation+json':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apple.installer+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: ['mpkg']
+		source:       'iana'
+		extensions:   ['mpkg']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apple.keynote':                                                        MimeType{
-		source: 'iana'
-		extensions: ['key']
+		source:       'iana'
+		extensions:   ['key']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apple.mpegurl':                                                        MimeType{
-		source: 'iana'
-		extensions: ['m3u8']
+		source:       'iana'
+		extensions:   ['m3u8']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apple.numbers':                                                        MimeType{
-		source: 'iana'
-		extensions: ['numbers']
+		source:       'iana'
+		extensions:   ['numbers']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apple.pages':                                                          MimeType{
-		source: 'iana'
-		extensions: ['pages']
+		source:       'iana'
+		extensions:   ['pages']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.apple.pkpass':                                                         MimeType{
-		source: ''
-		extensions: ['pkpass']
+		source:       ''
+		extensions:   ['pkpass']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.arastra.swi':                                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.aristanetworks.swi':                                                   MimeType{
-		source: 'iana'
-		extensions: ['swi']
+		source:       'iana'
+		extensions:   ['swi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.artisan+json':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.artsquare':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.astraea-software.iota':                                                MimeType{
-		source: 'iana'
-		extensions: ['iota']
+		source:       'iana'
+		extensions:   ['iota']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.audiograph':                                                           MimeType{
-		source: 'iana'
-		extensions: ['aep']
+		source:       'iana'
+		extensions:   ['aep']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.autopackage':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.avalon+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.avistar+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.balsamiq.bmml+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: ['bmml']
+		source:       'iana'
+		extensions:   ['bmml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.balsamiq.bmpr':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.banana-accounting':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bbf.usp.error':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bbf.usp.msg':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bbf.usp.msg+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bekitzur-stech+json':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.belightsoft.lhzd+zip':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.belightsoft.lhzl+zip':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bint.med-content':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.biopax.rdf+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.blink-idb-value-wrapper':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.blueice.multipass':                                                    MimeType{
-		source: 'iana'
-		extensions: ['mpm']
+		source:       'iana'
+		extensions:   ['mpm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bluetooth.ep.oob':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bluetooth.le.oob':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bmi':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['bmi']
+		source:       'iana'
+		extensions:   ['bmi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bpf':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.bpf3':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.businessobjects':                                                      MimeType{
-		source: 'iana'
-		extensions: ['rep']
+		source:       'iana'
+		extensions:   ['rep']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.byu.uapi+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cab-jscript':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.canon-cpdl':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.canon-lips':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.capasystems-pg+json':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cendio.thinlinc.clientconf':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.century-systems.tcp_stream':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.chemdraw+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: ['cdxml']
+		source:       'iana'
+		extensions:   ['cdxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.chess-pgn':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.chipnuts.karaoke-mmd':                                                 MimeType{
-		source: 'iana'
-		extensions: ['mmd']
+		source:       'iana'
+		extensions:   ['mmd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ciedi':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cinderella':                                                           MimeType{
-		source: 'iana'
-		extensions: ['cdy']
+		source:       'iana'
+		extensions:   ['cdy']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cirpack.isdn-ext':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.citationstyles.style+xml':                                             MimeType{
-		source: 'iana'
-		extensions: ['csl']
+		source:       'iana'
+		extensions:   ['csl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.claymore':                                                             MimeType{
-		source: 'iana'
-		extensions: ['cla']
+		source:       'iana'
+		extensions:   ['cla']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cloanto.rp9':                                                          MimeType{
-		source: 'iana'
-		extensions: ['rp9']
+		source:       'iana'
+		extensions:   ['rp9']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.clonk.c4group':                                                        MimeType{
-		source: 'iana'
-		extensions: ['c4g', 'c4d', 'c4f', 'c4p', 'c4u']
+		source:       'iana'
+		extensions:   ['c4g', 'c4d', 'c4f', 'c4p', 'c4u']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cluetrust.cartomobile-config':                                         MimeType{
-		source: 'iana'
-		extensions: ['c11amc']
+		source:       'iana'
+		extensions:   ['c11amc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cluetrust.cartomobile-config-pkg':                                     MimeType{
-		source: 'iana'
-		extensions: ['c11amz']
+		source:       'iana'
+		extensions:   ['c11amz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cncf.helm.chart.content.v1.tar+gzip':                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cncf.helm.chart.provenance.v1.prov':                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.coffeescript':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collabio.xodocuments.document':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collabio.xodocuments.document-template':                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collabio.xodocuments.presentation':                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collabio.xodocuments.presentation-template':                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collabio.xodocuments.spreadsheet':                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collabio.xodocuments.spreadsheet-template':                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collection+json':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collection.doc+json':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.collection.next+json':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.comicbook+zip':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.comicbook-rar':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.commerce-battelle':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.commonspace':                                                          MimeType{
-		source: 'iana'
-		extensions: ['csp']
+		source:       'iana'
+		extensions:   ['csp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.contact.cmsg':                                                         MimeType{
-		source: 'iana'
-		extensions: ['cdbcmsg']
+		source:       'iana'
+		extensions:   ['cdbcmsg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.coreos.ignition+json':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cosmocaller':                                                          MimeType{
-		source: 'iana'
-		extensions: ['cmc']
+		source:       'iana'
+		extensions:   ['cmc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.crick.clicker':                                                        MimeType{
-		source: 'iana'
-		extensions: ['clkx']
+		source:       'iana'
+		extensions:   ['clkx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.crick.clicker.keyboard':                                               MimeType{
-		source: 'iana'
-		extensions: ['clkk']
+		source:       'iana'
+		extensions:   ['clkk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.crick.clicker.palette':                                                MimeType{
-		source: 'iana'
-		extensions: ['clkp']
+		source:       'iana'
+		extensions:   ['clkp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.crick.clicker.template':                                               MimeType{
-		source: 'iana'
-		extensions: ['clkt']
+		source:       'iana'
+		extensions:   ['clkt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.crick.clicker.wordbank':                                               MimeType{
-		source: 'iana'
-		extensions: ['clkw']
+		source:       'iana'
+		extensions:   ['clkw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.criticaltools.wbs+xml':                                                MimeType{
-		source: 'iana'
-		extensions: ['wbs']
+		source:       'iana'
+		extensions:   ['wbs']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cryptii.pipe+json':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.crypto-shade-file':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cryptomator.encrypted':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cryptomator.vault':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ctc-posml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['pml']
+		source:       'iana'
+		extensions:   ['pml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ctct.ws+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cups-pdf':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cups-postscript':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cups-ppd':                                                             MimeType{
-		source: 'iana'
-		extensions: ['ppd']
+		source:       'iana'
+		extensions:   ['ppd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cups-raster':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cups-raw':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.curl':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.curl.car':                                                             MimeType{
-		source: 'apache'
-		extensions: ['car']
+		source:       'apache'
+		extensions:   ['car']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.curl.pcurl':                                                           MimeType{
-		source: 'apache'
-		extensions: ['pcurl']
+		source:       'apache'
+		extensions:   ['pcurl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cyan.dean.root+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cybank':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cyclonedx+json':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.cyclonedx+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.d2l.coursepackage1p0+zip':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.d3m-dataset':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.d3m-problem':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dart':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['dart']
+		source:       'iana'
+		extensions:   ['dart']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.data-vision.rdz':                                                      MimeType{
-		source: 'iana'
-		extensions: ['rdz']
+		source:       'iana'
+		extensions:   ['rdz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.datalog':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.datapackage+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dataresource+json':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dbf':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['dbf']
+		source:       'iana'
+		extensions:   ['dbf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.debian.binary-package':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dece.data':                                                            MimeType{
-		source: 'iana'
-		extensions: ['uvf', 'uvvf', 'uvd', 'uvvd']
+		source:       'iana'
+		extensions:   ['uvf', 'uvvf', 'uvd', 'uvvd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dece.ttml+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: ['uvt', 'uvvt']
+		source:       'iana'
+		extensions:   ['uvt', 'uvvt']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dece.unspecified':                                                     MimeType{
-		source: 'iana'
-		extensions: ['uvx', 'uvvx']
+		source:       'iana'
+		extensions:   ['uvx', 'uvvx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dece.zip':                                                             MimeType{
-		source: 'iana'
-		extensions: ['uvz', 'uvvz']
+		source:       'iana'
+		extensions:   ['uvz', 'uvvz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.denovo.fcselayout-link':                                               MimeType{
-		source: 'iana'
-		extensions: ['fe_launch']
+		source:       'iana'
+		extensions:   ['fe_launch']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.desmume.movie':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dir-bi.plate-dl-nosuffix':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dm.delegation+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dna':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['dna']
+		source:       'iana'
+		extensions:   ['dna']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.document+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dolby.mlp':                                                            MimeType{
-		source: 'apache'
-		extensions: ['mlp']
+		source:       'apache'
+		extensions:   ['mlp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dolby.mobile.1':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dolby.mobile.2':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.doremir.scorecloud-binary-document':                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dpgraph':                                                              MimeType{
-		source: 'iana'
-		extensions: ['dpg']
+		source:       'iana'
+		extensions:   ['dpg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dreamfactory':                                                         MimeType{
-		source: 'iana'
-		extensions: ['dfac']
+		source:       'iana'
+		extensions:   ['dfac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.drive+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ds-keypoint':                                                          MimeType{
-		source: 'apache'
-		extensions: ['kpxx']
+		source:       'apache'
+		extensions:   ['kpxx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dtg.local':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dtg.local.flash':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dtg.local.html':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.ait':                                                              MimeType{
-		source: 'iana'
-		extensions: ['ait']
+		source:       'iana'
+		extensions:   ['ait']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.dvbisl+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.dvbj':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.esgcontainer':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.ipdcdftnotifaccess':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.ipdcesgaccess':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.ipdcesgaccess2':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.ipdcesgpdd':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.ipdcroaming':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.iptv.alfec-base':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.iptv.alfec-enhancement':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-aggregate-root+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-container+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-generic+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-ia-msglist+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-ia-registration-request+xml':                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-ia-registration-response+xml':                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.notif-init+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.pfr':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dvb.service':                                                          MimeType{
-		source: 'iana'
-		extensions: ['svc']
+		source:       'iana'
+		extensions:   ['svc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dxr':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dynageo':                                                              MimeType{
-		source: 'iana'
-		extensions: ['geo']
+		source:       'iana'
+		extensions:   ['geo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.dzr':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.easykaraoke.cdgdownload':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecdis-update':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecip.rlp':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.eclipse.ditto+json':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecowin.chart':                                                         MimeType{
-		source: 'iana'
-		extensions: ['mag']
+		source:       'iana'
+		extensions:   ['mag']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecowin.filerequest':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecowin.fileupdate':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecowin.series':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecowin.seriesrequest':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ecowin.seriesupdate':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.efi.img':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.efi.iso':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.eln+zip':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.emclient.accessrequest+xml':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.enliven':                                                              MimeType{
-		source: 'iana'
-		extensions: ['nml']
+		source:       'iana'
+		extensions:   ['nml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.enphase.envoy':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.eprints.data+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.epson.esf':                                                            MimeType{
-		source: 'iana'
-		extensions: ['esf']
+		source:       'iana'
+		extensions:   ['esf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.epson.msf':                                                            MimeType{
-		source: 'iana'
-		extensions: ['msf']
+		source:       'iana'
+		extensions:   ['msf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.epson.quickanime':                                                     MimeType{
-		source: 'iana'
-		extensions: ['qam']
+		source:       'iana'
+		extensions:   ['qam']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.epson.salt':                                                           MimeType{
-		source: 'iana'
-		extensions: ['slt']
+		source:       'iana'
+		extensions:   ['slt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.epson.ssf':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ssf']
+		source:       'iana'
+		extensions:   ['ssf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ericsson.quickcall':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.espass-espass+zip':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.eszigno3+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: ['es3', 'et3']
+		source:       'iana'
+		extensions:   ['es3', 'et3']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.aoc+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.asic-e+zip':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.asic-s+zip':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.cug+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvcommand+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvdiscovery+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvprofile+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvsad-bc+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvsad-cod+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvsad-npvr+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvservice+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvsync+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.iptvueprofile+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.mcid+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.mheg5':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.overload-control-policy-dataset+xml':                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.pstn+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.sci+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.simservs+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.timestamp-token':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.tsl+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.etsi.tsl.der':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.eu.kasparian.car+json':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.eudora.data':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.evolv.ecig.profile':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.evolv.ecig.settings':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.evolv.ecig.theme':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.exstream-empower+zip':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.exstream-package':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ezpix-album':                                                          MimeType{
-		source: 'iana'
-		extensions: ['ez2']
+		source:       'iana'
+		extensions:   ['ez2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ezpix-package':                                                        MimeType{
-		source: 'iana'
-		extensions: ['ez3']
+		source:       'iana'
+		extensions:   ['ez3']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.f-secure.mobile':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.familysearch.gedcom+zip':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fastcopy-disk-image':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fdf':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['fdf']
+		source:       'apache'
+		extensions:   ['fdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fdsn.mseed':                                                           MimeType{
-		source: 'iana'
-		extensions: ['mseed']
+		source:       'iana'
+		extensions:   ['mseed']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fdsn.seed':                                                            MimeType{
-		source: 'iana'
-		extensions: ['seed', 'dataless']
+		source:       'iana'
+		extensions:   ['seed', 'dataless']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ffsns':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ficlab.flb+zip':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.filmit.zfc':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fints':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.firemonkeys.cloudcell':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.flographit':                                                           MimeType{
-		source: 'iana'
-		extensions: ['gph']
+		source:       'iana'
+		extensions:   ['gph']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fluxtime.clip':                                                        MimeType{
-		source: 'iana'
-		extensions: ['ftc']
+		source:       'iana'
+		extensions:   ['ftc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.font-fontforge-sfd':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.framemaker':                                                           MimeType{
-		source: 'iana'
-		extensions: ['fm', 'frame', 'maker', 'book']
+		source:       'iana'
+		extensions:   ['fm', 'frame', 'maker', 'book']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.frogans.fnc':                                                          MimeType{
-		source: 'apache'
-		extensions: ['fnc']
+		source:       'apache'
+		extensions:   ['fnc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.frogans.ltf':                                                          MimeType{
-		source: 'apache'
-		extensions: ['ltf']
+		source:       'apache'
+		extensions:   ['ltf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fsc.weblaunch':                                                        MimeType{
-		source: 'iana'
-		extensions: ['fsc']
+		source:       'iana'
+		extensions:   ['fsc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujifilm.fb.docuworks':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujifilm.fb.docuworks.binder':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujifilm.fb.docuworks.container':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujifilm.fb.jfi+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujitsu.oasys':                                                        MimeType{
-		source: 'iana'
-		extensions: ['oas']
+		source:       'iana'
+		extensions:   ['oas']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujitsu.oasys2':                                                       MimeType{
-		source: 'iana'
-		extensions: ['oa2']
+		source:       'iana'
+		extensions:   ['oa2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujitsu.oasys3':                                                       MimeType{
-		source: 'iana'
-		extensions: ['oa3']
+		source:       'iana'
+		extensions:   ['oa3']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujitsu.oasysgp':                                                      MimeType{
-		source: 'iana'
-		extensions: ['fg5']
+		source:       'iana'
+		extensions:   ['fg5']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujitsu.oasysprs':                                                     MimeType{
-		source: 'iana'
-		extensions: ['bh2']
+		source:       'iana'
+		extensions:   ['bh2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.art-ex':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.art4':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.ddd':                                                        MimeType{
-		source: 'iana'
-		extensions: ['ddd']
+		source:       'iana'
+		extensions:   ['ddd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.docuworks':                                                  MimeType{
-		source: 'iana'
-		extensions: ['xdw']
+		source:       'iana'
+		extensions:   ['xdw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.docuworks.binder':                                           MimeType{
-		source: 'iana'
-		extensions: ['xbd']
+		source:       'iana'
+		extensions:   ['xbd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.docuworks.container':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fujixerox.hbpl':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fut-misnet':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.futoin+cbor':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.futoin+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.fuzzysheet':                                                           MimeType{
-		source: 'iana'
-		extensions: ['fzs']
+		source:       'iana'
+		extensions:   ['fzs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.genomatix.tuxedo':                                                     MimeType{
-		source: 'iana'
-		extensions: ['txd']
+		source:       'iana'
+		extensions:   ['txd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.genozip':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentics.grd+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.catmetadata+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.ebuild':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.eclass':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.gpkg':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.manifest':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.pkgmetadata+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gentoo.xpak':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geo+json':                                                             MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geocube+xml':                                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geogebra.file':                                                        MimeType{
-		source: 'iana'
-		extensions: ['ggb']
+		source:       'iana'
+		extensions:   ['ggb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geogebra.slides':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geogebra.tool':                                                        MimeType{
-		source: 'iana'
-		extensions: ['ggt']
+		source:       'iana'
+		extensions:   ['ggt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geometry-explorer':                                                    MimeType{
-		source: 'iana'
-		extensions: ['gex', 'gre']
+		source:       'iana'
+		extensions:   ['gex', 'gre']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geonext':                                                              MimeType{
-		source: 'iana'
-		extensions: ['gxt']
+		source:       'iana'
+		extensions:   ['gxt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geoplan':                                                              MimeType{
-		source: 'iana'
-		extensions: ['g2w']
+		source:       'iana'
+		extensions:   ['g2w']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.geospace':                                                             MimeType{
-		source: 'iana'
-		extensions: ['g3w']
+		source:       'iana'
+		extensions:   ['g3w']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gerber':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.globalplatform.card-content-mgt':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.globalplatform.card-content-mgt-response':                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gmx':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['gmx']
+		source:       'iana'
+		extensions:   ['gmx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gnu.taler.exchange+json':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gnu.taler.merchant+json':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.google-apps.document':                                                 MimeType{
-		source: ''
-		extensions: ['gdoc']
+		source:       ''
+		extensions:   ['gdoc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.google-apps.presentation':                                             MimeType{
-		source: ''
-		extensions: ['gslides']
+		source:       ''
+		extensions:   ['gslides']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.google-apps.spreadsheet':                                              MimeType{
-		source: ''
-		extensions: ['gsheet']
+		source:       ''
+		extensions:   ['gsheet']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.google-earth.kml+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: ['kml']
+		source:       'iana'
+		extensions:   ['kml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.google-earth.kmz':                                                     MimeType{
-		source: 'iana'
-		extensions: ['kmz']
+		source:       'iana'
+		extensions:   ['kmz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gov.sk.e-form+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gov.sk.e-form+zip':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gov.sk.xmldatacontainer+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gpxsee.map+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.grafeq':                                                               MimeType{
-		source: 'iana'
-		extensions: ['gqf', 'gqs']
+		source:       'iana'
+		extensions:   ['gqf', 'gqs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.gridmp':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-account':                                                       MimeType{
-		source: 'iana'
-		extensions: ['gac']
+		source:       'iana'
+		extensions:   ['gac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-help':                                                          MimeType{
-		source: 'iana'
-		extensions: ['ghf']
+		source:       'iana'
+		extensions:   ['ghf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-identity-message':                                              MimeType{
-		source: 'iana'
-		extensions: ['gim']
+		source:       'iana'
+		extensions:   ['gim']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-injector':                                                      MimeType{
-		source: 'iana'
-		extensions: ['grv']
+		source:       'iana'
+		extensions:   ['grv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-tool-message':                                                  MimeType{
-		source: 'iana'
-		extensions: ['gtm']
+		source:       'iana'
+		extensions:   ['gtm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-tool-template':                                                 MimeType{
-		source: 'iana'
-		extensions: ['tpl']
+		source:       'iana'
+		extensions:   ['tpl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.groove-vcard':                                                         MimeType{
-		source: 'iana'
-		extensions: ['vcg']
+		source:       'iana'
+		extensions:   ['vcg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hal+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hal+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['hal']
+		source:       'iana'
+		extensions:   ['hal']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.handheld-entertainment+xml':                                           MimeType{
-		source: 'iana'
-		extensions: ['zmm']
+		source:       'iana'
+		extensions:   ['zmm']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hbci':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['hbci']
+		source:       'iana'
+		extensions:   ['hbci']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hc+json':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hcl-bireports':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hdt':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.heroku+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hhe.lesson-player':                                                    MimeType{
-		source: 'iana'
-		extensions: ['les']
+		source:       'iana'
+		extensions:   ['les']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hp-hpgl':                                                              MimeType{
-		source: 'iana'
-		extensions: ['hpgl']
+		source:       'iana'
+		extensions:   ['hpgl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hp-hpid':                                                              MimeType{
-		source: 'iana'
-		extensions: ['hpid']
+		source:       'iana'
+		extensions:   ['hpid']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hp-hps':                                                               MimeType{
-		source: 'iana'
-		extensions: ['hps']
+		source:       'iana'
+		extensions:   ['hps']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hp-jlyt':                                                              MimeType{
-		source: 'iana'
-		extensions: ['jlt']
+		source:       'iana'
+		extensions:   ['jlt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hp-pcl':                                                               MimeType{
-		source: 'iana'
-		extensions: ['pcl']
+		source:       'iana'
+		extensions:   ['pcl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hp-pclxl':                                                             MimeType{
-		source: 'iana'
-		extensions: ['pclxl']
+		source:       'iana'
+		extensions:   ['pclxl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hsl':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.httphone':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hydrostatix.sof-data':                                                 MimeType{
-		source: 'iana'
-		extensions: ['sfd-hdstx']
+		source:       'iana'
+		extensions:   ['sfd-hdstx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hyper+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hyper-item+json':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hyperdrive+json':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.hzn-3d-crossword':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ibm.afplinedata':                                                      MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ibm.electronic-media':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ibm.minipay':                                                          MimeType{
-		source: 'iana'
-		extensions: ['mpy']
+		source:       'iana'
+		extensions:   ['mpy']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ibm.modcap':                                                           MimeType{
-		source: 'apache'
-		extensions: ['afp', 'listafp', 'list3820']
+		source:       'apache'
+		extensions:   ['afp', 'listafp', 'list3820']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ibm.rights-management':                                                MimeType{
-		source: 'iana'
-		extensions: ['irm']
+		source:       'iana'
+		extensions:   ['irm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ibm.secure-container':                                                 MimeType{
-		source: 'iana'
-		extensions: ['sc']
+		source:       'iana'
+		extensions:   ['sc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iccprofile':                                                           MimeType{
-		source: 'iana'
-		extensions: ['icc', 'icm']
+		source:       'iana'
+		extensions:   ['icc', 'icm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ieee.1905':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.igloader':                                                             MimeType{
-		source: 'iana'
-		extensions: ['igl']
+		source:       'iana'
+		extensions:   ['igl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.imagemeter.folder+zip':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.imagemeter.image+zip':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.immervision-ivp':                                                      MimeType{
-		source: 'iana'
-		extensions: ['ivp']
+		source:       'iana'
+		extensions:   ['ivp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.immervision-ivu':                                                      MimeType{
-		source: 'iana'
-		extensions: ['ivu']
+		source:       'iana'
+		extensions:   ['ivu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.imsccv1p1':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.imsccv1p2':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.imsccv1p3':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.lis.v2.result+json':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.lti.v2.toolconsumerprofile+json':                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.lti.v2.toolproxy+json':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.lti.v2.toolproxy.id+json':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.lti.v2.toolsettings+json':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ims.lti.v2.toolsettings.simple+json':                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.informedcontrol.rms+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.informix-visionary':                                                   MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.infotech.project':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.infotech.project+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.innopath.wamp.notification':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.insors.igm':                                                           MimeType{
-		source: 'iana'
-		extensions: ['igm']
+		source:       'iana'
+		extensions:   ['igm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.intercon.formnet':                                                     MimeType{
-		source: 'iana'
-		extensions: ['xpw', 'xpx']
+		source:       'iana'
+		extensions:   ['xpw', 'xpx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.intergeo':                                                             MimeType{
-		source: 'iana'
-		extensions: ['i2g']
+		source:       'iana'
+		extensions:   ['i2g']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.intertrust.digibox':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.intertrust.nncp':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.intu.qbo':                                                             MimeType{
-		source: 'iana'
-		extensions: ['qbo']
+		source:       'iana'
+		extensions:   ['qbo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.intu.qfx':                                                             MimeType{
-		source: 'iana'
-		extensions: ['qfx']
+		source:       'iana'
+		extensions:   ['qfx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ipld.car':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ipld.dag-cbor':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ipld.dag-json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ipld.raw':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.catalogitem+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.conceptitem+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.knowledgeitem+xml':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.newsitem+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.newsmessage+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.packageitem+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iptc.g2.planningitem+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ipunplugged.rcprofile':                                                MimeType{
-		source: 'iana'
-		extensions: ['rcprofile']
+		source:       'iana'
+		extensions:   ['rcprofile']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.irepository.package+xml':                                              MimeType{
-		source: 'iana'
-		extensions: ['irp']
+		source:       'iana'
+		extensions:   ['irp']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.is-xpr':                                                               MimeType{
-		source: 'iana'
-		extensions: ['xpr']
+		source:       'iana'
+		extensions:   ['xpr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.isac.fcs':                                                             MimeType{
-		source: 'iana'
-		extensions: ['fcs']
+		source:       'iana'
+		extensions:   ['fcs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.iso11783-10+zip':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.jam':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['jam']
+		source:       'iana'
+		extensions:   ['jam']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-directory-service':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-jpnstore-wakeup':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-payment-wakeup':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-registration':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-registration-wakeup':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-setstore-wakeup':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-verification':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.japannet-verification-wakeup':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.jcp.javame.midlet-rms':                                                MimeType{
-		source: 'iana'
-		extensions: ['rms']
+		source:       'iana'
+		extensions:   ['rms']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.jisp':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['jisp']
+		source:       'iana'
+		extensions:   ['jisp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.joost.joda-archive':                                                   MimeType{
-		source: 'iana'
-		extensions: ['joda']
+		source:       'iana'
+		extensions:   ['joda']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.jsk.isdn-ngn':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kahootz':                                                              MimeType{
-		source: 'iana'
-		extensions: ['ktz', 'ktr']
+		source:       'iana'
+		extensions:   ['ktz', 'ktr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.karbon':                                                           MimeType{
-		source: 'iana'
-		extensions: ['karbon']
+		source:       'iana'
+		extensions:   ['karbon']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kchart':                                                           MimeType{
-		source: 'iana'
-		extensions: ['chrt']
+		source:       'iana'
+		extensions:   ['chrt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kformula':                                                         MimeType{
-		source: 'iana'
-		extensions: ['kfo']
+		source:       'iana'
+		extensions:   ['kfo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kivio':                                                            MimeType{
-		source: 'iana'
-		extensions: ['flw']
+		source:       'iana'
+		extensions:   ['flw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kontour':                                                          MimeType{
-		source: 'iana'
-		extensions: ['kon']
+		source:       'iana'
+		extensions:   ['kon']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kpresenter':                                                       MimeType{
-		source: 'iana'
-		extensions: ['kpr', 'kpt']
+		source:       'iana'
+		extensions:   ['kpr', 'kpt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kspread':                                                          MimeType{
-		source: 'iana'
-		extensions: ['ksp']
+		source:       'iana'
+		extensions:   ['ksp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kde.kword':                                                            MimeType{
-		source: 'iana'
-		extensions: ['kwd', 'kwt']
+		source:       'iana'
+		extensions:   ['kwd', 'kwt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kenameaapp':                                                           MimeType{
-		source: 'iana'
-		extensions: ['htke']
+		source:       'iana'
+		extensions:   ['htke']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kidspiration':                                                         MimeType{
-		source: 'iana'
-		extensions: ['kia']
+		source:       'iana'
+		extensions:   ['kia']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kinar':                                                                MimeType{
-		source: 'iana'
-		extensions: ['kne', 'knp']
+		source:       'iana'
+		extensions:   ['kne', 'knp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.koan':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['skp', 'skd', 'skt', 'skm']
+		source:       'iana'
+		extensions:   ['skp', 'skd', 'skt', 'skm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.kodak-descriptor':                                                     MimeType{
-		source: 'iana'
-		extensions: ['sse']
+		source:       'iana'
+		extensions:   ['sse']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.las':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.las.las+json':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.las.las+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: ['lasxml']
+		source:       'iana'
+		extensions:   ['lasxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.laszip':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.leap+json':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.liberty-request+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.llamagraphics.life-balance.desktop':                                   MimeType{
-		source: 'iana'
-		extensions: ['lbd']
+		source:       'iana'
+		extensions:   ['lbd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.llamagraphics.life-balance.exchange+xml':                              MimeType{
-		source: 'iana'
-		extensions: ['lbe']
+		source:       'iana'
+		extensions:   ['lbe']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.logipipe.circuit+zip':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.loom':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-1-2-3':                                                          MimeType{
-		source: 'iana'
-		extensions: ['123']
+		source:       'iana'
+		extensions:   ['123']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-approach':                                                       MimeType{
-		source: 'iana'
-		extensions: ['apr']
+		source:       'iana'
+		extensions:   ['apr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-freelance':                                                      MimeType{
-		source: 'iana'
-		extensions: ['pre']
+		source:       'iana'
+		extensions:   ['pre']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-notes':                                                          MimeType{
-		source: 'iana'
-		extensions: ['nsf']
+		source:       'iana'
+		extensions:   ['nsf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-organizer':                                                      MimeType{
-		source: 'iana'
-		extensions: ['org']
+		source:       'iana'
+		extensions:   ['org']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-screencam':                                                      MimeType{
-		source: 'iana'
-		extensions: ['scm']
+		source:       'iana'
+		extensions:   ['scm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.lotus-wordpro':                                                        MimeType{
-		source: 'iana'
-		extensions: ['lwp']
+		source:       'iana'
+		extensions:   ['lwp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.macports.portpkg':                                                     MimeType{
-		source: 'iana'
-		extensions: ['portpkg']
+		source:       'iana'
+		extensions:   ['portpkg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mapbox-vector-tile':                                                   MimeType{
-		source: 'iana'
-		extensions: ['mvt']
+		source:       'iana'
+		extensions:   ['mvt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.marlin.drm.actiontoken+xml':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.marlin.drm.conftoken+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.marlin.drm.license+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.marlin.drm.mdcf':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mason+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.maxar.archive.3tz+zip':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.maxmind.maxmind-db':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mcd':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['mcd']
+		source:       'iana'
+		extensions:   ['mcd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.medcalcdata':                                                          MimeType{
-		source: 'iana'
-		extensions: ['mc1']
+		source:       'iana'
+		extensions:   ['mc1']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mediastation.cdkey':                                                   MimeType{
-		source: 'iana'
-		extensions: ['cdkey']
+		source:       'iana'
+		extensions:   ['cdkey']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.medicalholodeck.recordxr':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.meridian-slingshot':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mfer':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mwf']
+		source:       'iana'
+		extensions:   ['mwf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mfmp':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mfm']
+		source:       'iana'
+		extensions:   ['mfm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.micro+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.micrografx.flo':                                                       MimeType{
-		source: 'iana'
-		extensions: ['flo']
+		source:       'iana'
+		extensions:   ['flo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.micrografx.igx':                                                       MimeType{
-		source: 'iana'
-		extensions: ['igx']
+		source:       'iana'
+		extensions:   ['igx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.microsoft.portable-executable':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.microsoft.windows.thumbnail-cache':                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.miele+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mif':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['mif']
+		source:       'iana'
+		extensions:   ['mif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.minisoft-hp3000-save':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mitsubishi.misty-guard.trustweb':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.daf':                                                           MimeType{
-		source: 'iana'
-		extensions: ['daf']
+		source:       'iana'
+		extensions:   ['daf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.dis':                                                           MimeType{
-		source: 'iana'
-		extensions: ['dis']
+		source:       'iana'
+		extensions:   ['dis']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.mbk':                                                           MimeType{
-		source: 'iana'
-		extensions: ['mbk']
+		source:       'iana'
+		extensions:   ['mbk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.mqy':                                                           MimeType{
-		source: 'iana'
-		extensions: ['mqy']
+		source:       'iana'
+		extensions:   ['mqy']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.msl':                                                           MimeType{
-		source: 'iana'
-		extensions: ['msl']
+		source:       'iana'
+		extensions:   ['msl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.plc':                                                           MimeType{
-		source: 'iana'
-		extensions: ['plc']
+		source:       'iana'
+		extensions:   ['plc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mobius.txf':                                                           MimeType{
-		source: 'iana'
-		extensions: ['txf']
+		source:       'iana'
+		extensions:   ['txf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mophun.application':                                                   MimeType{
-		source: 'iana'
-		extensions: ['mpn']
+		source:       'iana'
+		extensions:   ['mpn']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mophun.certificate':                                                   MimeType{
-		source: 'iana'
-		extensions: ['mpc']
+		source:       'iana'
+		extensions:   ['mpc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite.adsi':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite.fis':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite.gotap':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite.kmr':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite.ttc':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.flexsuite.wem':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.motorola.iprm':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mozilla.xul+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: ['xul']
+		source:       'iana'
+		extensions:   ['xul']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-3mfdocument':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-artgalry':                                                          MimeType{
-		source: 'iana'
-		extensions: ['cil']
+		source:       'iana'
+		extensions:   ['cil']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-asf':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-cab-compressed':                                                    MimeType{
-		source: 'iana'
-		extensions: ['cab']
+		source:       'iana'
+		extensions:   ['cab']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-color.iccprofile':                                                  MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-excel':                                                             MimeType{
-		source: 'iana'
-		extensions: ['xls', 'xlm', 'xla', 'xlc', 'xlt', 'xlw']
+		source:       'iana'
+		extensions:   ['xls', 'xlm', 'xla', 'xlc', 'xlt', 'xlw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-excel.addin.macroenabled.12':                                       MimeType{
-		source: 'iana'
-		extensions: ['xlam']
+		source:       'iana'
+		extensions:   ['xlam']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-excel.sheet.binary.macroenabled.12':                                MimeType{
-		source: 'iana'
-		extensions: ['xlsb']
+		source:       'iana'
+		extensions:   ['xlsb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-excel.sheet.macroenabled.12':                                       MimeType{
-		source: 'iana'
-		extensions: ['xlsm']
+		source:       'iana'
+		extensions:   ['xlsm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-excel.template.macroenabled.12':                                    MimeType{
-		source: 'iana'
-		extensions: ['xltm']
+		source:       'iana'
+		extensions:   ['xltm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-fontobject':                                                        MimeType{
-		source: 'iana'
-		extensions: ['eot']
+		source:       'iana'
+		extensions:   ['eot']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-htmlhelp':                                                          MimeType{
-		source: 'iana'
-		extensions: ['chm']
+		source:       'iana'
+		extensions:   ['chm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-ims':                                                               MimeType{
-		source: 'iana'
-		extensions: ['ims']
+		source:       'iana'
+		extensions:   ['ims']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-lrm':                                                               MimeType{
-		source: 'iana'
-		extensions: ['lrm']
+		source:       'iana'
+		extensions:   ['lrm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-office.activex+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-officetheme':                                                       MimeType{
-		source: 'iana'
-		extensions: ['thmx']
+		source:       'iana'
+		extensions:   ['thmx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-opentype':                                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-outlook':                                                           MimeType{
-		source: ''
-		extensions: ['msg']
+		source:       ''
+		extensions:   ['msg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-package.obfuscated-opentype':                                       MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-pki.seccat':                                                        MimeType{
-		source: 'apache'
-		extensions: ['cat']
+		source:       'apache'
+		extensions:   ['cat']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-pki.stl':                                                           MimeType{
-		source: 'apache'
-		extensions: ['stl']
+		source:       'apache'
+		extensions:   ['stl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-playready.initiator+xml':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-powerpoint':                                                        MimeType{
-		source: 'iana'
-		extensions: ['ppt', 'pps', 'pot']
+		source:       'iana'
+		extensions:   ['ppt', 'pps', 'pot']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-powerpoint.addin.macroenabled.12':                                  MimeType{
-		source: 'iana'
-		extensions: ['ppam']
+		source:       'iana'
+		extensions:   ['ppam']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-powerpoint.presentation.macroenabled.12':                           MimeType{
-		source: 'iana'
-		extensions: ['pptm']
+		source:       'iana'
+		extensions:   ['pptm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-powerpoint.slide.macroenabled.12':                                  MimeType{
-		source: 'iana'
-		extensions: ['sldm']
+		source:       'iana'
+		extensions:   ['sldm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-powerpoint.slideshow.macroenabled.12':                              MimeType{
-		source: 'iana'
-		extensions: ['ppsm']
+		source:       'iana'
+		extensions:   ['ppsm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-powerpoint.template.macroenabled.12':                               MimeType{
-		source: 'iana'
-		extensions: ['potm']
+		source:       'iana'
+		extensions:   ['potm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-printdevicecapabilities+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-printing.printticket+xml':                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-printschematicket+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-project':                                                           MimeType{
-		source: 'iana'
-		extensions: ['mpp', 'mpt']
+		source:       'iana'
+		extensions:   ['mpp', 'mpt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-tnef':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-windows.devicepairing':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-windows.nwprinting.oob':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-windows.printerpairing':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-windows.wsd.oob':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-wmdrm.lic-chlg-req':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-wmdrm.lic-resp':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-wmdrm.meter-chlg-req':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-wmdrm.meter-resp':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-word.document.macroenabled.12':                                     MimeType{
-		source: 'iana'
-		extensions: ['docm']
+		source:       'iana'
+		extensions:   ['docm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-word.template.macroenabled.12':                                     MimeType{
-		source: 'iana'
-		extensions: ['dotm']
+		source:       'iana'
+		extensions:   ['dotm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-works':                                                             MimeType{
-		source: 'iana'
-		extensions: ['wps', 'wks', 'wcm', 'wdb']
+		source:       'iana'
+		extensions:   ['wps', 'wks', 'wcm', 'wdb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-wpl':                                                               MimeType{
-		source: 'iana'
-		extensions: ['wpl']
+		source:       'iana'
+		extensions:   ['wpl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ms-xpsdocument':                                                       MimeType{
-		source: 'iana'
-		extensions: ['xps']
+		source:       'iana'
+		extensions:   ['xps']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.msa-disk-image':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mseq':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mseq']
+		source:       'iana'
+		extensions:   ['mseq']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.msign':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.multiad.creator':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.multiad.creator.cif':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.music-niff':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.musician':                                                             MimeType{
-		source: 'iana'
-		extensions: ['mus']
+		source:       'iana'
+		extensions:   ['mus']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.muvee.style':                                                          MimeType{
-		source: 'iana'
-		extensions: ['msty']
+		source:       'iana'
+		extensions:   ['msty']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.mynfc':                                                                MimeType{
-		source: 'iana'
-		extensions: ['taglet']
+		source:       'iana'
+		extensions:   ['taglet']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nacamar.ybrid+json':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ncd.control':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ncd.reference':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nearst.inv+json':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nebumind.line':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nervana':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.netfpx':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.neurolanguage.nlu':                                                    MimeType{
-		source: 'iana'
-		extensions: ['nlu']
+		source:       'iana'
+		extensions:   ['nlu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nimn':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nintendo.nitro.rom':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nintendo.snes.rom':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nitf':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['ntf', 'nitf']
+		source:       'iana'
+		extensions:   ['ntf', 'nitf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.noblenet-directory':                                                   MimeType{
-		source: 'iana'
-		extensions: ['nnd']
+		source:       'iana'
+		extensions:   ['nnd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.noblenet-sealer':                                                      MimeType{
-		source: 'iana'
-		extensions: ['nns']
+		source:       'iana'
+		extensions:   ['nns']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.noblenet-web':                                                         MimeType{
-		source: 'iana'
-		extensions: ['nnw']
+		source:       'iana'
+		extensions:   ['nnw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.catalogs':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.conml+wbxml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.conml+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.iptv.config+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.isds-radio-presets':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.landmark+wbxml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.landmark+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.landmarkcollection+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.n-gage.ac+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: ['ac']
+		source:       'iana'
+		extensions:   ['ac']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.n-gage.data':                                                    MimeType{
-		source: 'iana'
-		extensions: ['ngdat']
+		source:       'iana'
+		extensions:   ['ngdat']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.n-gage.symbian.install':                                         MimeType{
-		source: 'apache'
-		extensions: ['n-gage']
+		source:       'apache'
+		extensions:   ['n-gage']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.ncd':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.pcd+wbxml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.pcd+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.radio-preset':                                                   MimeType{
-		source: 'iana'
-		extensions: ['rpst']
+		source:       'iana'
+		extensions:   ['rpst']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.nokia.radio-presets':                                                  MimeType{
-		source: 'iana'
-		extensions: ['rpss']
+		source:       'iana'
+		extensions:   ['rpss']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.novadigm.edm':                                                         MimeType{
-		source: 'iana'
-		extensions: ['edm']
+		source:       'iana'
+		extensions:   ['edm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.novadigm.edx':                                                         MimeType{
-		source: 'iana'
-		extensions: ['edx']
+		source:       'iana'
+		extensions:   ['edx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.novadigm.ext':                                                         MimeType{
-		source: 'iana'
-		extensions: ['ext']
+		source:       'iana'
+		extensions:   ['ext']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ntt-local.content-share':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ntt-local.file-transfer':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ntt-local.ogw_remote-access':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ntt-local.sip-ta_remote':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ntt-local.sip-ta_tcp_stream':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.base':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.chart':                                             MimeType{
-		source: 'iana'
-		extensions: ['odc']
+		source:       'iana'
+		extensions:   ['odc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.chart-template':                                    MimeType{
-		source: 'iana'
-		extensions: ['otc']
+		source:       'iana'
+		extensions:   ['otc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.database':                                          MimeType{
-		source: 'apache'
-		extensions: ['odb']
+		source:       'apache'
+		extensions:   ['odb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.formula':                                           MimeType{
-		source: 'iana'
-		extensions: ['odf']
+		source:       'iana'
+		extensions:   ['odf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.formula-template':                                  MimeType{
-		source: 'iana'
-		extensions: ['odft']
+		source:       'iana'
+		extensions:   ['odft']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.graphics':                                          MimeType{
-		source: 'iana'
-		extensions: ['odg']
+		source:       'iana'
+		extensions:   ['odg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.graphics-template':                                 MimeType{
-		source: 'iana'
-		extensions: ['otg']
+		source:       'iana'
+		extensions:   ['otg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.image':                                             MimeType{
-		source: 'iana'
-		extensions: ['odi']
+		source:       'iana'
+		extensions:   ['odi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.image-template':                                    MimeType{
-		source: 'iana'
-		extensions: ['oti']
+		source:       'iana'
+		extensions:   ['oti']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.presentation':                                      MimeType{
-		source: 'iana'
-		extensions: ['odp']
+		source:       'iana'
+		extensions:   ['odp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.presentation-template':                             MimeType{
-		source: 'iana'
-		extensions: ['otp']
+		source:       'iana'
+		extensions:   ['otp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.spreadsheet':                                       MimeType{
-		source: 'iana'
-		extensions: ['ods']
+		source:       'iana'
+		extensions:   ['ods']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.spreadsheet-template':                              MimeType{
-		source: 'iana'
-		extensions: ['ots']
+		source:       'iana'
+		extensions:   ['ots']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.text':                                              MimeType{
-		source: 'iana'
-		extensions: ['odt']
+		source:       'iana'
+		extensions:   ['odt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.text-master':                                       MimeType{
-		source: 'iana'
-		extensions: ['odm']
+		source:       'iana'
+		extensions:   ['odm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.text-template':                                     MimeType{
-		source: 'iana'
-		extensions: ['ott']
+		source:       'iana'
+		extensions:   ['ott']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oasis.opendocument.text-web':                                          MimeType{
-		source: 'iana'
-		extensions: ['oth']
+		source:       'iana'
+		extensions:   ['oth']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.obn':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ocf+cbor':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oci.image.manifest.v1+json':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oftn.l10n+json':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.contentaccessdownload+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.contentaccessstreaming+xml':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.cspg-hexbinary':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.dae.svg+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.dae.xhtml+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.mippvcontrolmessage+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.pae.gem':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.spdiscovery+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.spdlist+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.ueprofile+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oipf.userprofile+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.olpc-sugar':                                                           MimeType{
-		source: 'iana'
-		extensions: ['xo']
+		source:       'iana'
+		extensions:   ['xo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma-scws-config':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma-scws-http-request':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma-scws-http-response':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.associated-procedure-parameter+xml':                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.drm-trigger+xml':                                            MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.imd+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.ltkm':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.notification+xml':                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.provisioningtrigger':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.sgboot':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.sgdd+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.sgdu':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.simple-symbol-container':                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.smartcard-trigger+xml':                                      MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.sprov+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.bcast.stkm':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.cab-address-book+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.cab-feature-handler+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.cab-pcc+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.cab-subs-invite+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.cab-user-prefs+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.dcd':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.dcdc':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.dd2+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: ['dd2']
+		source:       'iana'
+		extensions:   ['dd2']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.drm.risd+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.group-usage-list+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.lwm2m+cbor':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.lwm2m+json':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.lwm2m+tlv':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.pal+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.poc.detailed-progress-report+xml':                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.poc.final-report+xml':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.poc.groups+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.poc.invocation-descriptor+xml':                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.poc.optimized-progress-report+xml':                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.push':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.scidm.messages+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oma.xcap-directory+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.omads-email+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.omads-file+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.omads-folder+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.omaloc-supl-init':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onepager':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onepagertamp':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onepagertamx':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onepagertat':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onepagertatp':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onepagertatx':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.onvif.metadata':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openblox.game+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: ['obgx']
+		source:       'iana'
+		extensions:   ['obgx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openblox.game-binary':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openeye.oeb':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openofficeorg.extension':                                              MimeType{
-		source: 'apache'
-		extensions: ['oxt']
+		source:       'apache'
+		extensions:   ['oxt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openstreetmap.data+xml':                                               MimeType{
-		source: 'iana'
-		extensions: ['osm']
+		source:       'iana'
+		extensions:   ['osm']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.opentimestamps.ots':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.custom-properties+xml':                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.customxmlproperties+xml':                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawing+xml':                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawingml.chart+xml':                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml':              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawingml.diagramcolors+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawingml.diagramdata+xml':              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawingml.diagramlayout+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.drawingml.diagramstyle+xml':             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.extended-properties+xml':                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.commentauthors+xml':      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.comments+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.handoutmaster+xml':       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.notesmaster+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.notesslide+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.presentation':            MimeType{
-		source: 'iana'
-		extensions: ['pptx']
+		source:       'iana'
+		extensions:   ['pptx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml':   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.presprops+xml':           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slide':                   MimeType{
-		source: 'iana'
-		extensions: ['sldx']
+		source:       'iana'
+		extensions:   ['sldx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slide+xml':               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slidelayout+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slidemaster+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slideshow':               MimeType{
-		source: 'iana'
-		extensions: ['ppsx']
+		source:       'iana'
+		extensions:   ['ppsx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml':      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.slideupdateinfo+xml':     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.tablestyles+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.tags+xml':                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.template':                MimeType{
-		source: 'iana'
-		extensions: ['potx']
+		source:       'iana'
+		extensions:   ['potx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.template.main+xml':       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.presentationml.viewprops+xml':           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.calcchain+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.chartsheet+xml':           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml':             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.dialogsheet+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.externallink+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.pivotcachedefinition+xml': MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.pivotcacherecords+xml':    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.pivottable+xml':           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.querytable+xml':           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.revisionheaders+xml':      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.revisionlog+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedstrings+xml':        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':                    MimeType{
-		source: 'iana'
-		extensions: ['xlsx']
+		source:       'iana'
+		extensions:   ['xlsx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml':           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheetmetadata+xml':        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml':               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml':                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.tablesinglecells+xml':     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.template':                 MimeType{
-		source: 'iana'
-		extensions: ['xltx']
+		source:       'iana'
+		extensions:   ['xltx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml':        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.usernames+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.volatiledependencies+xml': MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.theme+xml':                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.themeoverride+xml':                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.vmldrawing':                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.document':              MimeType{
-		source: 'iana'
-		extensions: ['docx']
+		source:       'iana'
+		extensions:   ['docx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml': MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml':     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.fonttable+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml':         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml':          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.template':              MimeType{
-		source: 'iana'
-		extensions: ['dotx']
+		source:       'iana'
+		extensions:   ['dotx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml':     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-officedocument.wordprocessingml.websettings+xml':       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-package.core-properties+xml':                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml':            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.openxmlformats-package.relationships+xml':                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oracle.resource+json':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.orange.indata':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.osa.netdeploy':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.osgeo.mapguide.package':                                               MimeType{
-		source: 'iana'
-		extensions: ['mgp']
+		source:       'iana'
+		extensions:   ['mgp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.osgi.bundle':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.osgi.dp':                                                              MimeType{
-		source: 'iana'
-		extensions: ['dp']
+		source:       'iana'
+		extensions:   ['dp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.osgi.subsystem':                                                       MimeType{
-		source: 'iana'
-		extensions: ['esa']
+		source:       'iana'
+		extensions:   ['esa']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.otps.ct-kip+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.oxli.countgraph':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pagerduty+json':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.palm':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['pdb', 'pqa', 'oprc']
+		source:       'iana'
+		extensions:   ['pdb', 'pqa', 'oprc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.panoply':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.paos.xml':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.patentdive':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.patientecommsdoc':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pawaafile':                                                            MimeType{
-		source: 'iana'
-		extensions: ['paw']
+		source:       'iana'
+		extensions:   ['paw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pcos':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pg.format':                                                            MimeType{
-		source: 'iana'
-		extensions: ['str']
+		source:       'iana'
+		extensions:   ['str']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pg.osasli':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ei6']
+		source:       'iana'
+		extensions:   ['ei6']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.piaccess.application-licence':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.picsel':                                                               MimeType{
-		source: 'iana'
-		extensions: ['efif']
+		source:       'iana'
+		extensions:   ['efif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pmi.widget':                                                           MimeType{
-		source: 'iana'
-		extensions: ['wg']
+		source:       'iana'
+		extensions:   ['wg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.poc.group-advertisement+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pocketlearn':                                                          MimeType{
-		source: 'iana'
-		extensions: ['plf']
+		source:       'iana'
+		extensions:   ['plf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.powerbuilder6':                                                        MimeType{
-		source: 'iana'
-		extensions: ['pbd']
+		source:       'iana'
+		extensions:   ['pbd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.powerbuilder6-s':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.powerbuilder7':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.powerbuilder7-s':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.powerbuilder75':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.powerbuilder75-s':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.preminet':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.previewsystems.box':                                                   MimeType{
-		source: 'iana'
-		extensions: ['box']
+		source:       'iana'
+		extensions:   ['box']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.proteus.magazine':                                                     MimeType{
-		source: 'iana'
-		extensions: ['mgz']
+		source:       'iana'
+		extensions:   ['mgz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.psfs':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.publishare-delta-tree':                                                MimeType{
-		source: 'iana'
-		extensions: ['qps']
+		source:       'iana'
+		extensions:   ['qps']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pvi.ptid1':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ptid']
+		source:       'iana'
+		extensions:   ['ptid']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pwg-multiplexed':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.pwg-xhtml-print+xml':                                                  MimeType{
-		source: 'iana'
-		extensions: ['xhtm']
+		source:       'iana'
+		extensions:   ['xhtm']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.qualcomm.brew-app-res':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.quarantainenet':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.quark.quarkxpress':                                                    MimeType{
-		source: 'iana'
-		extensions: ['qxd', 'qxt', 'qwd', 'qwt', 'qxl', 'qxb']
+		source:       'iana'
+		extensions:   ['qxd', 'qxt', 'qwd', 'qwt', 'qxl', 'qxb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.quobject-quoxdocument':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.moml+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-audit+xml':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-audit-conf+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-audit-conn+xml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-audit-dialog+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-audit-stream+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-conf+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog+xml':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog-base+xml':                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog-fax-detect+xml':                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog-fax-sendrecv+xml':                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog-group+xml':                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog-speech+xml':                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.radisys.msml-dialog-transform+xml':                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rainstor.data':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rapid':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rar':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['rar']
+		source:       'iana'
+		extensions:   ['rar']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.realvnc.bed':                                                          MimeType{
-		source: 'iana'
-		extensions: ['bed']
+		source:       'iana'
+		extensions:   ['bed']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.recordare.musicxml':                                                   MimeType{
-		source: 'iana'
-		extensions: ['mxl']
+		source:       'iana'
+		extensions:   ['mxl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.recordare.musicxml+xml':                                               MimeType{
-		source: 'iana'
-		extensions: ['musicxml']
+		source:       'iana'
+		extensions:   ['musicxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.renlearn.rlprint':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.resilient.logic':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.restful+json':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rig.cryptonote':                                                       MimeType{
-		source: 'iana'
-		extensions: ['cryptonote']
+		source:       'iana'
+		extensions:   ['cryptonote']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rim.cod':                                                              MimeType{
-		source: 'apache'
-		extensions: ['cod']
+		source:       'apache'
+		extensions:   ['cod']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rn-realmedia':                                                         MimeType{
-		source: 'apache'
-		extensions: ['rm']
+		source:       'apache'
+		extensions:   ['rm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rn-realmedia-vbr':                                                     MimeType{
-		source: 'apache'
-		extensions: ['rmvb']
+		source:       'apache'
+		extensions:   ['rmvb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.route66.link66+xml':                                                   MimeType{
-		source: 'iana'
-		extensions: ['link66']
+		source:       'iana'
+		extensions:   ['link66']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.rs-274x':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ruckus.download':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.s3sms':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sailingtracker.track':                                                 MimeType{
-		source: 'iana'
-		extensions: ['st']
+		source:       'iana'
+		extensions:   ['st']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sar':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sbm.cid':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sbm.mid2':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.scribus':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.3df':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.csf':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.doc':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.eml':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.mht':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.net':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.ppt':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.tiff':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealed.xls':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealedmedia.softseal.html':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sealedmedia.softseal.pdf':                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.seemail':                                                              MimeType{
-		source: 'iana'
-		extensions: ['see']
+		source:       'iana'
+		extensions:   ['see']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.seis+json':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sema':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['sema']
+		source:       'iana'
+		extensions:   ['sema']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.semd':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['semd']
+		source:       'iana'
+		extensions:   ['semd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.semf':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['semf']
+		source:       'iana'
+		extensions:   ['semf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shade-save-file':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shana.informed.formdata':                                              MimeType{
-		source: 'iana'
-		extensions: ['ifm']
+		source:       'iana'
+		extensions:   ['ifm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shana.informed.formtemplate':                                          MimeType{
-		source: 'iana'
-		extensions: ['itp']
+		source:       'iana'
+		extensions:   ['itp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shana.informed.interchange':                                           MimeType{
-		source: 'iana'
-		extensions: ['iif']
+		source:       'iana'
+		extensions:   ['iif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shana.informed.package':                                               MimeType{
-		source: 'iana'
-		extensions: ['ipk']
+		source:       'iana'
+		extensions:   ['ipk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shootproof+json':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shopkick+json':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shp':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.shx':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sigrok.session':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.simtech-mindmapper':                                                   MimeType{
-		source: 'iana'
-		extensions: ['twd', 'twds']
+		source:       'iana'
+		extensions:   ['twd', 'twds']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.siren+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.smaf':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['mmf']
+		source:       'iana'
+		extensions:   ['mmf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.smart.notebook':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.smart.teacher':                                                        MimeType{
-		source: 'iana'
-		extensions: ['teacher']
+		source:       'iana'
+		extensions:   ['teacher']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.smintio.portals.archive':                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.snesdev-page-table':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.software602.filler.form+xml':                                          MimeType{
-		source: 'iana'
-		extensions: ['fo']
+		source:       'iana'
+		extensions:   ['fo']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.software602.filler.form-xml-zip':                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.solent.sdkm+xml':                                                      MimeType{
-		source: 'iana'
-		extensions: ['sdkm', 'sdkd']
+		source:       'iana'
+		extensions:   ['sdkm', 'sdkd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.spotfire.dxp':                                                         MimeType{
-		source: 'iana'
-		extensions: ['dxp']
+		source:       'iana'
+		extensions:   ['dxp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.spotfire.sfs':                                                         MimeType{
-		source: 'iana'
-		extensions: ['sfs']
+		source:       'iana'
+		extensions:   ['sfs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sqlite3':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sss-cod':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sss-dtf':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sss-ntf':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stardivision.calc':                                                    MimeType{
-		source: 'apache'
-		extensions: ['sdc']
+		source:       'apache'
+		extensions:   ['sdc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stardivision.draw':                                                    MimeType{
-		source: 'apache'
-		extensions: ['sda']
+		source:       'apache'
+		extensions:   ['sda']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stardivision.impress':                                                 MimeType{
-		source: 'apache'
-		extensions: ['sdd']
+		source:       'apache'
+		extensions:   ['sdd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stardivision.math':                                                    MimeType{
-		source: 'apache'
-		extensions: ['smf']
+		source:       'apache'
+		extensions:   ['smf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stardivision.writer':                                                  MimeType{
-		source: 'apache'
-		extensions: ['sdw', 'vor']
+		source:       'apache'
+		extensions:   ['sdw', 'vor']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stardivision.writer-global':                                           MimeType{
-		source: 'apache'
-		extensions: ['sgl']
+		source:       'apache'
+		extensions:   ['sgl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stepmania.package':                                                    MimeType{
-		source: 'iana'
-		extensions: ['smzip']
+		source:       'iana'
+		extensions:   ['smzip']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.stepmania.stepchart':                                                  MimeType{
-		source: 'iana'
-		extensions: ['sm']
+		source:       'iana'
+		extensions:   ['sm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.street-stream':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.wadl+xml':                                                         MimeType{
-		source: 'iana'
-		extensions: ['wadl']
+		source:       'iana'
+		extensions:   ['wadl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.calc':                                                         MimeType{
-		source: 'apache'
-		extensions: ['sxc']
+		source:       'apache'
+		extensions:   ['sxc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.calc.template':                                                MimeType{
-		source: 'apache'
-		extensions: ['stc']
+		source:       'apache'
+		extensions:   ['stc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.draw':                                                         MimeType{
-		source: 'apache'
-		extensions: ['sxd']
+		source:       'apache'
+		extensions:   ['sxd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.draw.template':                                                MimeType{
-		source: 'apache'
-		extensions: ['std']
+		source:       'apache'
+		extensions:   ['std']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.impress':                                                      MimeType{
-		source: 'apache'
-		extensions: ['sxi']
+		source:       'apache'
+		extensions:   ['sxi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.impress.template':                                             MimeType{
-		source: 'apache'
-		extensions: ['sti']
+		source:       'apache'
+		extensions:   ['sti']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.math':                                                         MimeType{
-		source: 'apache'
-		extensions: ['sxm']
+		source:       'apache'
+		extensions:   ['sxm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.writer':                                                       MimeType{
-		source: 'apache'
-		extensions: ['sxw']
+		source:       'apache'
+		extensions:   ['sxw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.writer.global':                                                MimeType{
-		source: 'apache'
-		extensions: ['sxg']
+		source:       'apache'
+		extensions:   ['sxg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sun.xml.writer.template':                                              MimeType{
-		source: 'apache'
-		extensions: ['stw']
+		source:       'apache'
+		extensions:   ['stw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sus-calendar':                                                         MimeType{
-		source: 'iana'
-		extensions: ['sus', 'susp']
+		source:       'iana'
+		extensions:   ['sus', 'susp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.svd':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['svd']
+		source:       'iana'
+		extensions:   ['svd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.swiftview-ics':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sybyl.mol2':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.sycle+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.syft+json':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.symbian.install':                                                      MimeType{
-		source: 'apache'
-		extensions: ['sis', 'sisx']
+		source:       'apache'
+		extensions:   ['sis', 'sisx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.syncml+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: ['xsm']
+		source:       'iana'
+		extensions:   ['xsm']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.syncml.dm+wbxml':                                                      MimeType{
-		source: 'iana'
-		extensions: ['bdm']
+		source:       'iana'
+		extensions:   ['bdm']
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.syncml.dm+xml':                                                        MimeType{
-		source: 'iana'
-		extensions: ['xdm']
+		source:       'iana'
+		extensions:   ['xdm']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.syncml.dm.notification':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.syncml.dmddf+wbxml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.syncml.dmddf+xml':                                                     MimeType{
-		source: 'iana'
-		extensions: ['ddf']
+		source:       'iana'
+		extensions:   ['ddf']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.syncml.dmtnds+wbxml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.syncml.dmtnds+xml':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.syncml.ds.notification':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tableschema+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tao.intent-module-archive':                                            MimeType{
-		source: 'iana'
-		extensions: ['tao']
+		source:       'iana'
+		extensions:   ['tao']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tcpdump.pcap':                                                         MimeType{
-		source: 'iana'
-		extensions: ['pcap', 'cap', 'dmp']
+		source:       'iana'
+		extensions:   ['pcap', 'cap', 'dmp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.think-cell.ppttc+json':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tmd.mediaflex.api+xml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tml':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tmobile-livetv':                                                       MimeType{
-		source: 'iana'
-		extensions: ['tmo']
+		source:       'iana'
+		extensions:   ['tmo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.tri.onesource':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.trid.tpt':                                                             MimeType{
-		source: 'iana'
-		extensions: ['tpt']
+		source:       'iana'
+		extensions:   ['tpt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.triscape.mxs':                                                         MimeType{
-		source: 'iana'
-		extensions: ['mxs']
+		source:       'iana'
+		extensions:   ['mxs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.trueapp':                                                              MimeType{
-		source: 'iana'
-		extensions: ['tra']
+		source:       'iana'
+		extensions:   ['tra']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.truedoc':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ubisoft.webplayer':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ufdl':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['ufd', 'ufdl']
+		source:       'iana'
+		extensions:   ['ufd', 'ufdl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uiq.theme':                                                            MimeType{
-		source: 'iana'
-		extensions: ['utz']
+		source:       'iana'
+		extensions:   ['utz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.umajin':                                                               MimeType{
-		source: 'iana'
-		extensions: ['umj']
+		source:       'iana'
+		extensions:   ['umj']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.unity':                                                                MimeType{
-		source: 'iana'
-		extensions: ['unityweb']
+		source:       'iana'
+		extensions:   ['unityweb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uoml+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['uoml', 'uo']
+		source:       'iana'
+		extensions:   ['uoml', 'uo']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.alert':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.alert-wbxml':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.bearer-choice':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.bearer-choice-wbxml':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.cacheop':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.cacheop-wbxml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.channel':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.channel-wbxml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.list':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.list-wbxml':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.listcmd':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.listcmd-wbxml':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uplanet.signal':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.uri-map':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.valve.source.material':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vcx':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['vcx']
+		source:       'iana'
+		extensions:   ['vcx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vd-study':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vectorworks':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vel+json':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.verimatrix.vcas':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.veritone.aion+json':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.veryant.thin':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.ves.encrypted':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vidsoft.vidconference':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.visio':                                                                MimeType{
-		source: 'iana'
-		extensions: ['vsd', 'vst', 'vss', 'vsw']
+		source:       'iana'
+		extensions:   ['vsd', 'vst', 'vss', 'vsw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.visionary':                                                            MimeType{
-		source: 'iana'
-		extensions: ['vis']
+		source:       'iana'
+		extensions:   ['vis']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vividence.scriptfile':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.vsf':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['vsf']
+		source:       'iana'
+		extensions:   ['vsf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wap.sic':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wap.slc':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wap.wbxml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['wbxml']
+		source:       'iana'
+		extensions:   ['wbxml']
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'application/vnd.wap.wmlc':                                                             MimeType{
-		source: 'iana'
-		extensions: ['wmlc']
+		source:       'iana'
+		extensions:   ['wmlc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wap.wmlscriptc':                                                       MimeType{
-		source: 'iana'
-		extensions: ['wmlsc']
+		source:       'iana'
+		extensions:   ['wmlsc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wasmflow.wafl':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.webturbo':                                                             MimeType{
-		source: 'iana'
-		extensions: ['wtb']
+		source:       'iana'
+		extensions:   ['wtb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wfa.dpp':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wfa.p2p':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wfa.wsc':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.windows.devicepairing':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wmc':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wmf.bootstrap':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wolfram.mathematica':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wolfram.mathematica.package':                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wolfram.player':                                                       MimeType{
-		source: 'iana'
-		extensions: ['nbp']
+		source:       'iana'
+		extensions:   ['nbp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wordlift':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wordperfect':                                                          MimeType{
-		source: 'iana'
-		extensions: ['wpd']
+		source:       'iana'
+		extensions:   ['wpd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wqd':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['wqd']
+		source:       'iana'
+		extensions:   ['wqd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wrq-hp3000-labelled':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wt.stf':                                                               MimeType{
-		source: 'iana'
-		extensions: ['stf']
+		source:       'iana'
+		extensions:   ['stf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wv.csp+wbxml':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wv.csp+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.wv.ssp+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xacml+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xara':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['xar']
+		source:       'iana'
+		extensions:   ['xar']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xfdl':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['xfdl']
+		source:       'iana'
+		extensions:   ['xfdl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xfdl.webform':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xmi+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xmpie.cpkg':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xmpie.dpkg':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xmpie.plan':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xmpie.ppkg':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.xmpie.xlim':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.hv-dic':                                                        MimeType{
-		source: 'iana'
-		extensions: ['hvd']
+		source:       'iana'
+		extensions:   ['hvd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.hv-script':                                                     MimeType{
-		source: 'iana'
-		extensions: ['hvs']
+		source:       'iana'
+		extensions:   ['hvs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.hv-voice':                                                      MimeType{
-		source: 'iana'
-		extensions: ['hvp']
+		source:       'iana'
+		extensions:   ['hvp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.openscoreformat':                                               MimeType{
-		source: 'iana'
-		extensions: ['osf']
+		source:       'iana'
+		extensions:   ['osf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.openscoreformat.osfpvg+xml':                                    MimeType{
-		source: 'iana'
-		extensions: ['osfpvg']
+		source:       'iana'
+		extensions:   ['osfpvg']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.remote-setup':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.smaf-audio':                                                    MimeType{
-		source: 'iana'
-		extensions: ['saf']
+		source:       'iana'
+		extensions:   ['saf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.smaf-phrase':                                                   MimeType{
-		source: 'iana'
-		extensions: ['spf']
+		source:       'iana'
+		extensions:   ['spf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.through-ngn':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yamaha.tunnel-udpencap':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yaoweme':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.yellowriver-custom-menu':                                              MimeType{
-		source: 'iana'
-		extensions: ['cmp']
+		source:       'iana'
+		extensions:   ['cmp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.zul':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['zir', 'zirz']
+		source:       'iana'
+		extensions:   ['zir', 'zirz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/vnd.zzazz.deck+xml':                                                       MimeType{
-		source: 'iana'
-		extensions: ['zaz']
+		source:       'iana'
+		extensions:   ['zaz']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/voicexml+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['vxml']
+		source:       'iana'
+		extensions:   ['vxml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/voucher-cms+json':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/vq-rtcpxr':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/wasm':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['wasm']
+		source:       'iana'
+		extensions:   ['wasm']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/watcherinfo+xml':                                                          MimeType{
-		source: 'iana'
-		extensions: ['wif']
+		source:       'iana'
+		extensions:   ['wif']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/webpush-options+json':                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/whoispp-query':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/whoispp-response':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/widget':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['wgt']
+		source:       'iana'
+		extensions:   ['wgt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/winhlp':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['hlp']
+		source:       'apache'
+		extensions:   ['hlp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/wita':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/wordperfect5.1':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/wsdl+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['wsdl']
+		source:       'iana'
+		extensions:   ['wsdl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/wspolicy+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['wspolicy']
+		source:       'iana'
+		extensions:   ['wspolicy']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-7z-compressed':                                                          MimeType{
-		source: 'apache'
-		extensions: ['7z']
+		source:       'apache'
+		extensions:   ['7z']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-abiword':                                                                MimeType{
-		source: 'apache'
-		extensions: ['abw']
+		source:       'apache'
+		extensions:   ['abw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ace-compressed':                                                         MimeType{
-		source: 'apache'
-		extensions: ['ace']
+		source:       'apache'
+		extensions:   ['ace']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-amf':                                                                    MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-apple-diskimage':                                                        MimeType{
-		source: 'apache'
-		extensions: ['dmg']
+		source:       'apache'
+		extensions:   ['dmg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-arj':                                                                    MimeType{
-		source: ''
-		extensions: ['arj']
+		source:       ''
+		extensions:   ['arj']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-authorware-bin':                                                         MimeType{
-		source: 'apache'
-		extensions: ['aab', 'x32', 'u32', 'vox']
+		source:       'apache'
+		extensions:   ['aab', 'x32', 'u32', 'vox']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-authorware-map':                                                         MimeType{
-		source: 'apache'
-		extensions: ['aam']
+		source:       'apache'
+		extensions:   ['aam']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-authorware-seg':                                                         MimeType{
-		source: 'apache'
-		extensions: ['aas']
+		source:       'apache'
+		extensions:   ['aas']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-bcpio':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['bcpio']
+		source:       'apache'
+		extensions:   ['bcpio']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-bdoc':                                                                   MimeType{
-		source: ''
-		extensions: ['bdoc']
+		source:       ''
+		extensions:   ['bdoc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-bittorrent':                                                             MimeType{
-		source: 'apache'
-		extensions: ['torrent']
+		source:       'apache'
+		extensions:   ['torrent']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-blorb':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['blb', 'blorb']
+		source:       'apache'
+		extensions:   ['blb', 'blorb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-bzip':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['bz']
+		source:       'apache'
+		extensions:   ['bz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-bzip2':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['bz2', 'boz']
+		source:       'apache'
+		extensions:   ['bz2', 'boz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-cbr':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['cbr', 'cba', 'cbt', 'cbz', 'cb7']
+		source:       'apache'
+		extensions:   ['cbr', 'cba', 'cbt', 'cbz', 'cb7']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-cdlink':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['vcd']
+		source:       'apache'
+		extensions:   ['vcd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-cfs-compressed':                                                         MimeType{
-		source: 'apache'
-		extensions: ['cfs']
+		source:       'apache'
+		extensions:   ['cfs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-chat':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['chat']
+		source:       'apache'
+		extensions:   ['chat']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-chess-pgn':                                                              MimeType{
-		source: 'apache'
-		extensions: ['pgn']
+		source:       'apache'
+		extensions:   ['pgn']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-chrome-extension':                                                       MimeType{
-		source: ''
-		extensions: ['crx']
+		source:       ''
+		extensions:   ['crx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-cocoa':                                                                  MimeType{
-		source: 'nginx'
-		extensions: ['cco']
+		source:       'nginx'
+		extensions:   ['cco']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-compress':                                                               MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-conference':                                                             MimeType{
-		source: 'apache'
-		extensions: ['nsc']
+		source:       'apache'
+		extensions:   ['nsc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-cpio':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['cpio']
+		source:       'apache'
+		extensions:   ['cpio']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-csh':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['csh']
+		source:       'apache'
+		extensions:   ['csh']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-deb':                                                                    MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-debian-package':                                                         MimeType{
-		source: 'apache'
-		extensions: ['deb', 'udeb']
+		source:       'apache'
+		extensions:   ['deb', 'udeb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-dgc-compressed':                                                         MimeType{
-		source: 'apache'
-		extensions: ['dgc']
+		source:       'apache'
+		extensions:   ['dgc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-director':                                                               MimeType{
-		source: 'apache'
-		extensions: ['dir', 'dcr', 'dxr', 'cst', 'cct', 'cxt', 'w3d', 'fgd', 'swa']
+		source:       'apache'
+		extensions:   ['dir', 'dcr', 'dxr', 'cst', 'cct', 'cxt', 'w3d', 'fgd', 'swa']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-doom':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['wad']
+		source:       'apache'
+		extensions:   ['wad']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-dtbncx+xml':                                                             MimeType{
-		source: 'apache'
-		extensions: ['ncx']
+		source:       'apache'
+		extensions:   ['ncx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-dtbook+xml':                                                             MimeType{
-		source: 'apache'
-		extensions: ['dtb']
+		source:       'apache'
+		extensions:   ['dtb']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-dtbresource+xml':                                                        MimeType{
-		source: 'apache'
-		extensions: ['res']
+		source:       'apache'
+		extensions:   ['res']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-dvi':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['dvi']
+		source:       'apache'
+		extensions:   ['dvi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-envoy':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['evy']
+		source:       'apache'
+		extensions:   ['evy']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-eva':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['eva']
+		source:       'apache'
+		extensions:   ['eva']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-bdf':                                                               MimeType{
-		source: 'apache'
-		extensions: ['bdf']
+		source:       'apache'
+		extensions:   ['bdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-dos':                                                               MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-framemaker':                                                        MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-ghostscript':                                                       MimeType{
-		source: 'apache'
-		extensions: ['gsf']
+		source:       'apache'
+		extensions:   ['gsf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-libgrx':                                                            MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-linux-psf':                                                         MimeType{
-		source: 'apache'
-		extensions: ['psf']
+		source:       'apache'
+		extensions:   ['psf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-pcf':                                                               MimeType{
-		source: 'apache'
-		extensions: ['pcf']
+		source:       'apache'
+		extensions:   ['pcf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-snf':                                                               MimeType{
-		source: 'apache'
-		extensions: ['snf']
+		source:       'apache'
+		extensions:   ['snf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-speedo':                                                            MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-sunos-news':                                                        MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-type1':                                                             MimeType{
-		source: 'apache'
-		extensions: ['pfa', 'pfb', 'pfm', 'afm']
+		source:       'apache'
+		extensions:   ['pfa', 'pfb', 'pfm', 'afm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-font-vfont':                                                             MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-freearc':                                                                MimeType{
-		source: 'apache'
-		extensions: ['arc']
+		source:       'apache'
+		extensions:   ['arc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-futuresplash':                                                           MimeType{
-		source: 'apache'
-		extensions: ['spl']
+		source:       'apache'
+		extensions:   ['spl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-gca-compressed':                                                         MimeType{
-		source: 'apache'
-		extensions: ['gca']
+		source:       'apache'
+		extensions:   ['gca']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-glulx':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['ulx']
+		source:       'apache'
+		extensions:   ['ulx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-gnumeric':                                                               MimeType{
-		source: 'apache'
-		extensions: ['gnumeric']
+		source:       'apache'
+		extensions:   ['gnumeric']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-gramps-xml':                                                             MimeType{
-		source: 'apache'
-		extensions: ['gramps']
+		source:       'apache'
+		extensions:   ['gramps']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-gtar':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['gtar']
+		source:       'apache'
+		extensions:   ['gtar']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-gzip':                                                                   MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-hdf':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['hdf']
+		source:       'apache'
+		extensions:   ['hdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-httpd-php':                                                              MimeType{
-		source: ''
-		extensions: ['php']
+		source:       ''
+		extensions:   ['php']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-install-instructions':                                                   MimeType{
-		source: 'apache'
-		extensions: ['install']
+		source:       'apache'
+		extensions:   ['install']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-iso9660-image':                                                          MimeType{
-		source: 'apache'
-		extensions: ['iso']
+		source:       'apache'
+		extensions:   ['iso']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-iwork-keynote-sffkey':                                                   MimeType{
-		source: ''
-		extensions: ['key']
+		source:       ''
+		extensions:   ['key']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-iwork-numbers-sffnumbers':                                               MimeType{
-		source: ''
-		extensions: ['numbers']
+		source:       ''
+		extensions:   ['numbers']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-iwork-pages-sffpages':                                                   MimeType{
-		source: ''
-		extensions: ['pages']
+		source:       ''
+		extensions:   ['pages']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-java-archive-diff':                                                      MimeType{
-		source: 'nginx'
-		extensions: ['jardiff']
+		source:       'nginx'
+		extensions:   ['jardiff']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-java-jnlp-file':                                                         MimeType{
-		source: 'apache'
-		extensions: ['jnlp']
+		source:       'apache'
+		extensions:   ['jnlp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-javascript':                                                             MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-keepass2':                                                               MimeType{
-		source: ''
-		extensions: ['kdbx']
+		source:       ''
+		extensions:   ['kdbx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-latex':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['latex']
+		source:       'apache'
+		extensions:   ['latex']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-lua-bytecode':                                                           MimeType{
-		source: ''
-		extensions: ['luac']
+		source:       ''
+		extensions:   ['luac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-lzh-compressed':                                                         MimeType{
-		source: 'apache'
-		extensions: ['lzh', 'lha']
+		source:       'apache'
+		extensions:   ['lzh', 'lha']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-makeself':                                                               MimeType{
-		source: 'nginx'
-		extensions: ['run']
+		source:       'nginx'
+		extensions:   ['run']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-mie':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['mie']
+		source:       'apache'
+		extensions:   ['mie']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-mobipocket-ebook':                                                       MimeType{
-		source: 'apache'
-		extensions: ['prc', 'mobi']
+		source:       'apache'
+		extensions:   ['prc', 'mobi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-mpegurl':                                                                MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ms-application':                                                         MimeType{
-		source: 'apache'
-		extensions: ['application']
+		source:       'apache'
+		extensions:   ['application']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ms-shortcut':                                                            MimeType{
-		source: 'apache'
-		extensions: ['lnk']
+		source:       'apache'
+		extensions:   ['lnk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ms-wmd':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['wmd']
+		source:       'apache'
+		extensions:   ['wmd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ms-wmz':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['wmz']
+		source:       'apache'
+		extensions:   ['wmz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ms-xbap':                                                                MimeType{
-		source: 'apache'
-		extensions: ['xbap']
+		source:       'apache'
+		extensions:   ['xbap']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msaccess':                                                               MimeType{
-		source: 'apache'
-		extensions: ['mdb']
+		source:       'apache'
+		extensions:   ['mdb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msbinder':                                                               MimeType{
-		source: 'apache'
-		extensions: ['obd']
+		source:       'apache'
+		extensions:   ['obd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-mscardfile':                                                             MimeType{
-		source: 'apache'
-		extensions: ['crd']
+		source:       'apache'
+		extensions:   ['crd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msclip':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['clp']
+		source:       'apache'
+		extensions:   ['clp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msdos-program':                                                          MimeType{
-		source: ''
-		extensions: ['exe']
+		source:       ''
+		extensions:   ['exe']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msdownload':                                                             MimeType{
-		source: 'apache'
-		extensions: ['exe', 'dll', 'com', 'bat', 'msi']
+		source:       'apache'
+		extensions:   ['exe', 'dll', 'com', 'bat', 'msi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msmediaview':                                                            MimeType{
-		source: 'apache'
-		extensions: ['mvb', 'm13', 'm14']
+		source:       'apache'
+		extensions:   ['mvb', 'm13', 'm14']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msmetafile':                                                             MimeType{
-		source: 'apache'
-		extensions: ['wmf', 'wmz', 'emf', 'emz']
+		source:       'apache'
+		extensions:   ['wmf', 'wmz', 'emf', 'emz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msmoney':                                                                MimeType{
-		source: 'apache'
-		extensions: ['mny']
+		source:       'apache'
+		extensions:   ['mny']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-mspublisher':                                                            MimeType{
-		source: 'apache'
-		extensions: ['pub']
+		source:       'apache'
+		extensions:   ['pub']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msschedule':                                                             MimeType{
-		source: 'apache'
-		extensions: ['scd']
+		source:       'apache'
+		extensions:   ['scd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-msterminal':                                                             MimeType{
-		source: 'apache'
-		extensions: ['trm']
+		source:       'apache'
+		extensions:   ['trm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-mswrite':                                                                MimeType{
-		source: 'apache'
-		extensions: ['wri']
+		source:       'apache'
+		extensions:   ['wri']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-netcdf':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['nc', 'cdf']
+		source:       'apache'
+		extensions:   ['nc', 'cdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ns-proxy-autoconfig':                                                    MimeType{
-		source: ''
-		extensions: ['pac']
+		source:       ''
+		extensions:   ['pac']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-nzb':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['nzb']
+		source:       'apache'
+		extensions:   ['nzb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-perl':                                                                   MimeType{
-		source: 'nginx'
-		extensions: ['pl', 'pm']
+		source:       'nginx'
+		extensions:   ['pl', 'pm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-pilot':                                                                  MimeType{
-		source: 'nginx'
-		extensions: ['prc', 'pdb']
+		source:       'nginx'
+		extensions:   ['prc', 'pdb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-pkcs12':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['p12', 'pfx']
+		source:       'apache'
+		extensions:   ['p12', 'pfx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-pkcs7-certificates':                                                     MimeType{
-		source: 'apache'
-		extensions: ['p7b', 'spc']
+		source:       'apache'
+		extensions:   ['p7b', 'spc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-pkcs7-certreqresp':                                                      MimeType{
-		source: 'apache'
-		extensions: ['p7r']
+		source:       'apache'
+		extensions:   ['p7r']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-pki-message':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-rar-compressed':                                                         MimeType{
-		source: 'apache'
-		extensions: ['rar']
+		source:       'apache'
+		extensions:   ['rar']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-redhat-package-manager':                                                 MimeType{
-		source: 'nginx'
-		extensions: ['rpm']
+		source:       'nginx'
+		extensions:   ['rpm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-research-info-systems':                                                  MimeType{
-		source: 'apache'
-		extensions: ['ris']
+		source:       'apache'
+		extensions:   ['ris']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-sea':                                                                    MimeType{
-		source: 'nginx'
-		extensions: ['sea']
+		source:       'nginx'
+		extensions:   ['sea']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-sh':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['sh']
+		source:       'apache'
+		extensions:   ['sh']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-shar':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['shar']
+		source:       'apache'
+		extensions:   ['shar']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-shockwave-flash':                                                        MimeType{
-		source: 'apache'
-		extensions: ['swf']
+		source:       'apache'
+		extensions:   ['swf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-silverlight-app':                                                        MimeType{
-		source: 'apache'
-		extensions: ['xap']
+		source:       'apache'
+		extensions:   ['xap']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-sql':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['sql']
+		source:       'apache'
+		extensions:   ['sql']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-stuffit':                                                                MimeType{
-		source: 'apache'
-		extensions: ['sit']
+		source:       'apache'
+		extensions:   ['sit']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-stuffitx':                                                               MimeType{
-		source: 'apache'
-		extensions: ['sitx']
+		source:       'apache'
+		extensions:   ['sitx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-subrip':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['srt']
+		source:       'apache'
+		extensions:   ['srt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-sv4cpio':                                                                MimeType{
-		source: 'apache'
-		extensions: ['sv4cpio']
+		source:       'apache'
+		extensions:   ['sv4cpio']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-sv4crc':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['sv4crc']
+		source:       'apache'
+		extensions:   ['sv4crc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-t3vm-image':                                                             MimeType{
-		source: 'apache'
-		extensions: ['t3']
+		source:       'apache'
+		extensions:   ['t3']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-tads':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['gam']
+		source:       'apache'
+		extensions:   ['gam']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-tar':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['tar']
+		source:       'apache'
+		extensions:   ['tar']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-tcl':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['tcl', 'tk']
+		source:       'apache'
+		extensions:   ['tcl', 'tk']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-tex':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['tex']
+		source:       'apache'
+		extensions:   ['tex']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-tex-tfm':                                                                MimeType{
-		source: 'apache'
-		extensions: ['tfm']
+		source:       'apache'
+		extensions:   ['tfm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-texinfo':                                                                MimeType{
-		source: 'apache'
-		extensions: ['texinfo', 'texi']
+		source:       'apache'
+		extensions:   ['texinfo', 'texi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-tgif':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['obj']
+		source:       'apache'
+		extensions:   ['obj']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-ustar':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['ustar']
+		source:       'apache'
+		extensions:   ['ustar']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-hdd':                                                         MimeType{
-		source: ''
-		extensions: ['hdd']
+		source:       ''
+		extensions:   ['hdd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-ova':                                                         MimeType{
-		source: ''
-		extensions: ['ova']
+		source:       ''
+		extensions:   ['ova']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-ovf':                                                         MimeType{
-		source: ''
-		extensions: ['ovf']
+		source:       ''
+		extensions:   ['ovf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-vbox':                                                        MimeType{
-		source: ''
-		extensions: ['vbox']
+		source:       ''
+		extensions:   ['vbox']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-vbox-extpack':                                                MimeType{
-		source: ''
-		extensions: ['vbox-extpack']
+		source:       ''
+		extensions:   ['vbox-extpack']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-vdi':                                                         MimeType{
-		source: ''
-		extensions: ['vdi']
+		source:       ''
+		extensions:   ['vdi']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-vhd':                                                         MimeType{
-		source: ''
-		extensions: ['vhd']
+		source:       ''
+		extensions:   ['vhd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-virtualbox-vmdk':                                                        MimeType{
-		source: ''
-		extensions: ['vmdk']
+		source:       ''
+		extensions:   ['vmdk']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-wais-source':                                                            MimeType{
-		source: 'apache'
-		extensions: ['src']
+		source:       'apache'
+		extensions:   ['src']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-web-app-manifest+json':                                                  MimeType{
-		source: ''
-		extensions: ['webapp']
+		source:       ''
+		extensions:   ['webapp']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-www-form-urlencoded':                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-x509-ca-cert':                                                           MimeType{
-		source: 'iana'
-		extensions: ['der', 'crt', 'pem']
+		source:       'iana'
+		extensions:   ['der', 'crt', 'pem']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-x509-ca-ra-cert':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-x509-next-ca-cert':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-xfig':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['fig']
+		source:       'apache'
+		extensions:   ['fig']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-xliff+xml':                                                              MimeType{
-		source: 'apache'
-		extensions: ['xlf']
+		source:       'apache'
+		extensions:   ['xlf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/x-xpinstall':                                                              MimeType{
-		source: 'apache'
-		extensions: ['xpi']
+		source:       'apache'
+		extensions:   ['xpi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-xz':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['xz']
+		source:       'apache'
+		extensions:   ['xz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x-zmachine':                                                               MimeType{
-		source: 'apache'
-		extensions: ['z1', 'z2', 'z3', 'z4', 'z5', 'z6', 'z7', 'z8']
+		source:       'apache'
+		extensions:   ['z1', 'z2', 'z3', 'z4', 'z5', 'z6', 'z7', 'z8']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/x400-bp':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/xacml+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xaml+xml':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['xaml']
+		source:       'apache'
+		extensions:   ['xaml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcap-att+xml':                                                             MimeType{
-		source: 'iana'
-		extensions: ['xav']
+		source:       'iana'
+		extensions:   ['xav']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcap-caps+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['xca']
+		source:       'iana'
+		extensions:   ['xca']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcap-diff+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: ['xdf']
+		source:       'iana'
+		extensions:   ['xdf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcap-el+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['xel']
+		source:       'iana'
+		extensions:   ['xel']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcap-error+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcap-ns+xml':                                                              MimeType{
-		source: 'iana'
-		extensions: ['xns']
+		source:       'iana'
+		extensions:   ['xns']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcon-conference-info+xml':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xcon-conference-info-diff+xml':                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xenc+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['xenc']
+		source:       'iana'
+		extensions:   ['xenc']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xfdf':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['xfdf']
+		source:       'iana'
+		extensions:   ['xfdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/xhtml+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: ['xhtml', 'xht']
+		source:       'iana'
+		extensions:   ['xhtml', 'xht']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xhtml-voice+xml':                                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xliff+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: ['xlf']
+		source:       'iana'
+		extensions:   ['xlf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xml':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['xml', 'xsl', 'xsd', 'rng']
+		source:       'iana'
+		extensions:   ['xml', 'xsl', 'xsd', 'rng']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xml-dtd':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['dtd']
+		source:       'iana'
+		extensions:   ['dtd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xml-external-parsed-entity':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/xml-patch+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xmpp+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xop+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['xop']
+		source:       'iana'
+		extensions:   ['xop']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xproc+xml':                                                                MimeType{
-		source: 'apache'
-		extensions: ['xpl']
+		source:       'apache'
+		extensions:   ['xpl']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xslt+xml':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['xsl', 'xslt']
+		source:       'iana'
+		extensions:   ['xsl', 'xslt']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xspf+xml':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['xspf']
+		source:       'apache'
+		extensions:   ['xspf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/xv+xml':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['mxml', 'xhvml', 'xvml', 'xvm']
+		source:       'iana'
+		extensions:   ['mxml', 'xhvml', 'xvml', 'xvm']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/yang':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['yang']
+		source:       'iana'
+		extensions:   ['yang']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/yang-data+cbor':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/yang-data+json':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/yang-data+xml':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/yang-patch+json':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/yang-patch+xml':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/yin+xml':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['yin']
+		source:       'iana'
+		extensions:   ['yin']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'application/zip':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['zip']
+		source:       'iana'
+		extensions:   ['zip']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/zlib':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'application/zstd':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/1d-interleaved-parityfec':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/32kadpcm':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/3gpp':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['3gpp']
+		source:       'iana'
+		extensions:   ['3gpp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/3gpp2':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/aac':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['adts', 'aac']
+		source:       'iana'
+		extensions:   ['adts', 'aac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/ac3':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/adpcm':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['adp']
+		source:       'apache'
+		extensions:   ['adp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/amr':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['amr']
+		source:       'iana'
+		extensions:   ['amr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/amr-wb':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/amr-wb+':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/aptx':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/asc':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/atrac-advanced-lossless':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/atrac-x':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/atrac3':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/basic':                                                                          MimeType{
-		source: 'iana'
-		extensions: ['au', 'snd']
+		source:       'iana'
+		extensions:   ['au', 'snd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/bv16':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/bv32':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/clearmode':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/cn':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dat12':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dls':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dsr-es201108':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dsr-es202050':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dsr-es202211':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dsr-es202212':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dv':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/dvi4':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/eac3':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/encaprtp':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrc':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrc-qcp':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrc0':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrc1':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcb':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcb0':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcb1':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcnw':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcnw0':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcnw1':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcwb':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcwb0':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evrcwb1':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/evs':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/flexfec':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/fwdred':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g711-0':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g719':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g722':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g7221':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g723':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g726-16':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g726-24':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g726-32':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g726-40':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g728':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g729':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g7291':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g729d':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/g729e':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/gsm':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/gsm-efr':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/gsm-hr-08':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/ilbc':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/ip-mr_v2.5':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/isac':                                                                           MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/l16':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/l20':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/l24':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/l8':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/lpc':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/melp':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/melp1200':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/melp2400':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/melp600':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mhas':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/midi':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['mid', 'midi', 'kar', 'rmi']
+		source:       'apache'
+		extensions:   ['mid', 'midi', 'kar', 'rmi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mobile-xmf':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['mxmf']
+		source:       'iana'
+		extensions:   ['mxmf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mp3':                                                                            MimeType{
-		source: ''
-		extensions: ['mp3']
+		source:       ''
+		extensions:   ['mp3']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mp4':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['m4a', 'mp4a']
+		source:       'iana'
+		extensions:   ['m4a', 'mp4a']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mp4a-latm':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mpa':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mpa-robust':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mpeg':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['mpga', 'mp2', 'mp2a', 'mp3', 'm2a', 'm3a']
+		source:       'iana'
+		extensions:   ['mpga', 'mp2', 'mp2a', 'mp3', 'm2a', 'm3a']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/mpeg4-generic':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/musepack':                                                                       MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/ogg':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['oga', 'ogg', 'spx', 'opus']
+		source:       'iana'
+		extensions:   ['oga', 'ogg', 'spx', 'opus']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/opus':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/parityfec':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/pcma':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/pcma-wb':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/pcmu':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/pcmu-wb':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/prs.sid':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/qcelp':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/raptorfec':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/red':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/rtp-enc-aescm128':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/rtp-midi':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/rtploopback':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/rtx':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/s3m':                                                                            MimeType{
-		source: 'apache'
-		extensions: ['s3m']
+		source:       'apache'
+		extensions:   ['s3m']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/scip':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/silk':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['sil']
+		source:       'apache'
+		extensions:   ['sil']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/smv':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/smv-qcp':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/smv0':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/sofa':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/sp-midi':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/speex':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/t140c':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/t38':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/telephone-event':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/tetra_acelp':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/tetra_acelp_bb':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/tone':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/tsvcis':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/uemclip':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/ulpfec':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/usac':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vdvi':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vmr-wb':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.3gpp.iufp':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.4sb':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.audiokoz':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.celp':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.cisco.nse':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.cmles.radio-events':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.cns.anp1':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.cns.inf1':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dece.audio':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['uva', 'uvva']
+		source:       'iana'
+		extensions:   ['uva', 'uvva']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.digital-winds':                                                              MimeType{
-		source: 'iana'
-		extensions: ['eol']
+		source:       'iana'
+		extensions:   ['eol']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dlna.adts':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.heaac.1':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.heaac.2':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.mlp':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.mps':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.pl2':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.pl2x':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.pl2z':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dolby.pulse.1':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dra':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['dra']
+		source:       'iana'
+		extensions:   ['dra']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dts':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['dts']
+		source:       'iana'
+		extensions:   ['dts']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dts.hd':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['dtshd']
+		source:       'iana'
+		extensions:   ['dtshd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dts.uhd':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.dvb.file':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.everad.plj':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.hns.audio':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.lucent.voice':                                                               MimeType{
-		source: 'iana'
-		extensions: ['lvp']
+		source:       'iana'
+		extensions:   ['lvp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.ms-playready.media.pya':                                                     MimeType{
-		source: 'iana'
-		extensions: ['pya']
+		source:       'iana'
+		extensions:   ['pya']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.nokia.mobile-xmf':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.nortel.vbk':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.nuera.ecelp4800':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ecelp4800']
+		source:       'iana'
+		extensions:   ['ecelp4800']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.nuera.ecelp7470':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ecelp7470']
+		source:       'iana'
+		extensions:   ['ecelp7470']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.nuera.ecelp9600':                                                            MimeType{
-		source: 'iana'
-		extensions: ['ecelp9600']
+		source:       'iana'
+		extensions:   ['ecelp9600']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.octel.sbc':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.presonus.multitrack':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.qcelp':                                                                      MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.rhetorex.32kadpcm':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.rip':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['rip']
+		source:       'iana'
+		extensions:   ['rip']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.rn-realaudio':                                                               MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.sealedmedia.softseal.mpeg':                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.vmx.cvsd':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vnd.wave':                                                                       MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vorbis':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/vorbis-config':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/wav':                                                                            MimeType{
-		source: ''
-		extensions: ['wav']
+		source:       ''
+		extensions:   ['wav']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/wave':                                                                           MimeType{
-		source: ''
-		extensions: ['wav']
+		source:       ''
+		extensions:   ['wav']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/webm':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['weba']
+		source:       'apache'
+		extensions:   ['weba']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-aac':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['aac']
+		source:       'apache'
+		extensions:   ['aac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-aiff':                                                                         MimeType{
-		source: 'apache'
-		extensions: ['aif', 'aiff', 'aifc']
+		source:       'apache'
+		extensions:   ['aif', 'aiff', 'aifc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-caf':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['caf']
+		source:       'apache'
+		extensions:   ['caf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-flac':                                                                         MimeType{
-		source: 'apache'
-		extensions: ['flac']
+		source:       'apache'
+		extensions:   ['flac']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-m4a':                                                                          MimeType{
-		source: 'nginx'
-		extensions: ['m4a']
+		source:       'nginx'
+		extensions:   ['m4a']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-matroska':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['mka']
+		source:       'apache'
+		extensions:   ['mka']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-mpegurl':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['m3u']
+		source:       'apache'
+		extensions:   ['m3u']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-ms-wax':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['wax']
+		source:       'apache'
+		extensions:   ['wax']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-ms-wma':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['wma']
+		source:       'apache'
+		extensions:   ['wma']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-pn-realaudio':                                                                 MimeType{
-		source: 'apache'
-		extensions: ['ram', 'ra']
+		source:       'apache'
+		extensions:   ['ram', 'ra']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-pn-realaudio-plugin':                                                          MimeType{
-		source: 'apache'
-		extensions: ['rmp']
+		source:       'apache'
+		extensions:   ['rmp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-realaudio':                                                                    MimeType{
-		source: 'nginx'
-		extensions: ['ra']
+		source:       'nginx'
+		extensions:   ['ra']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-tta':                                                                          MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/x-wav':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['wav']
+		source:       'apache'
+		extensions:   ['wav']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'audio/xm':                                                                             MimeType{
-		source: 'apache'
-		extensions: ['xm']
+		source:       'apache'
+		extensions:   ['xm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-cdx':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['cdx']
+		source:       'apache'
+		extensions:   ['cdx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-cif':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['cif']
+		source:       'apache'
+		extensions:   ['cif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-cmdf':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['cmdf']
+		source:       'apache'
+		extensions:   ['cmdf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-cml':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['cml']
+		source:       'apache'
+		extensions:   ['cml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-csml':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['csml']
+		source:       'apache'
+		extensions:   ['csml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-pdb':                                                                       MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'chemical/x-xyz':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['xyz']
+		source:       'apache'
+		extensions:   ['xyz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'font/collection':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['ttc']
+		source:       'iana'
+		extensions:   ['ttc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'font/otf':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['otf']
+		source:       'iana'
+		extensions:   ['otf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'font/sfnt':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'font/ttf':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['ttf']
+		source:       'iana'
+		extensions:   ['ttf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'font/woff':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['woff']
+		source:       'iana'
+		extensions:   ['woff']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'font/woff2':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['woff2']
+		source:       'iana'
+		extensions:   ['woff2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/aces':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['exr']
+		source:       'iana'
+		extensions:   ['exr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/apng':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['apng']
+		source:       'iana'
+		extensions:   ['apng']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/avci':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['avci']
+		source:       'iana'
+		extensions:   ['avci']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/avcs':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['avcs']
+		source:       'iana'
+		extensions:   ['avcs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/avif':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['avif']
+		source:       'iana'
+		extensions:   ['avif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/bmp':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['bmp', 'dib']
+		source:       'iana'
+		extensions:   ['bmp', 'dib']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/cgm':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['cgm']
+		source:       'iana'
+		extensions:   ['cgm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/dicom-rle':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['drle']
+		source:       'iana'
+		extensions:   ['drle']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/dpx':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['dpx']
+		source:       'iana'
+		extensions:   ['dpx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/emf':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['emf']
+		source:       'iana'
+		extensions:   ['emf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/fits':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['fits']
+		source:       'iana'
+		extensions:   ['fits']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/g3fax':                                                                          MimeType{
-		source: 'iana'
-		extensions: ['g3']
+		source:       'iana'
+		extensions:   ['g3']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/gif':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['gif']
+		source:       'iana'
+		extensions:   ['gif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/heic':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['heic']
+		source:       'iana'
+		extensions:   ['heic']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/heic-sequence':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['heics']
+		source:       'iana'
+		extensions:   ['heics']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/heif':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['heif']
+		source:       'iana'
+		extensions:   ['heif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/heif-sequence':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['heifs']
+		source:       'iana'
+		extensions:   ['heifs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/hej2k':                                                                          MimeType{
-		source: 'iana'
-		extensions: ['hej2']
+		source:       'iana'
+		extensions:   ['hej2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/hsj2':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['hsj2']
+		source:       'iana'
+		extensions:   ['hsj2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/ief':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['ief']
+		source:       'iana'
+		extensions:   ['ief']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jls':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jls']
+		source:       'iana'
+		extensions:   ['jls']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jp2':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jp2', 'jpg2']
+		source:       'iana'
+		extensions:   ['jp2', 'jpg2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jpeg':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jpeg', 'jpg', 'jpe']
+		source:       'iana'
+		extensions:   ['jpeg', 'jpg', 'jpe']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jph':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jph']
+		source:       'iana'
+		extensions:   ['jph']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jphc':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jhc']
+		source:       'iana'
+		extensions:   ['jhc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jpm':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jpm', 'jpgm']
+		source:       'iana'
+		extensions:   ['jpm', 'jpgm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jpx':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jpx', 'jpf']
+		source:       'iana'
+		extensions:   ['jpx', 'jpf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxr':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jxr']
+		source:       'iana'
+		extensions:   ['jxr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxra':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jxra']
+		source:       'iana'
+		extensions:   ['jxra']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxrs':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jxrs']
+		source:       'iana'
+		extensions:   ['jxrs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxs':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['jxs']
+		source:       'iana'
+		extensions:   ['jxs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxsc':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jxsc']
+		source:       'iana'
+		extensions:   ['jxsc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxsi':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jxsi']
+		source:       'iana'
+		extensions:   ['jxsi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/jxss':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jxss']
+		source:       'iana'
+		extensions:   ['jxss']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/ktx':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['ktx']
+		source:       'iana'
+		extensions:   ['ktx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/ktx2':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['ktx2']
+		source:       'iana'
+		extensions:   ['ktx2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/naplps':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/pjpeg':                                                                          MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/png':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['png']
+		source:       'iana'
+		extensions:   ['png']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/prs.btif':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['btif', 'btf']
+		source:       'iana'
+		extensions:   ['btif', 'btf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/prs.pti':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['pti']
+		source:       'iana'
+		extensions:   ['pti']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/pwg-raster':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/sgi':                                                                            MimeType{
-		source: 'apache'
-		extensions: ['sgi']
+		source:       'apache'
+		extensions:   ['sgi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/svg+xml':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['svg', 'svgz']
+		source:       'iana'
+		extensions:   ['svg', 'svgz']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/t38':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['t38']
+		source:       'iana'
+		extensions:   ['t38']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/tiff':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['tif', 'tiff']
+		source:       'iana'
+		extensions:   ['tif', 'tiff']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/tiff-fx':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['tfx']
+		source:       'iana'
+		extensions:   ['tfx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.adobe.photoshop':                                                            MimeType{
-		source: 'iana'
-		extensions: ['psd']
+		source:       'iana'
+		extensions:   ['psd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.airzip.accelerator.azv':                                                     MimeType{
-		source: 'iana'
-		extensions: ['azv']
+		source:       'iana'
+		extensions:   ['azv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.cns.inf2':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.dece.graphic':                                                               MimeType{
-		source: 'iana'
-		extensions: ['uvi', 'uvvi', 'uvg', 'uvvg']
+		source:       'iana'
+		extensions:   ['uvi', 'uvvi', 'uvg', 'uvvg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.djvu':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['djvu', 'djv']
+		source:       'iana'
+		extensions:   ['djvu', 'djv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.dvb.subtitle':                                                               MimeType{
-		source: 'iana'
-		extensions: ['sub']
+		source:       'iana'
+		extensions:   ['sub']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.dwg':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['dwg']
+		source:       'iana'
+		extensions:   ['dwg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.dxf':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['dxf']
+		source:       'iana'
+		extensions:   ['dxf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.fastbidsheet':                                                               MimeType{
-		source: 'iana'
-		extensions: ['fbs']
+		source:       'iana'
+		extensions:   ['fbs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.fpx':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['fpx']
+		source:       'iana'
+		extensions:   ['fpx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.fst':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['fst']
+		source:       'iana'
+		extensions:   ['fst']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.fujixerox.edmics-mmr':                                                       MimeType{
-		source: 'iana'
-		extensions: ['mmr']
+		source:       'iana'
+		extensions:   ['mmr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.fujixerox.edmics-rlc':                                                       MimeType{
-		source: 'iana'
-		extensions: ['rlc']
+		source:       'iana'
+		extensions:   ['rlc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.globalgraphics.pgb':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.microsoft.icon':                                                             MimeType{
-		source: 'iana'
-		extensions: ['ico']
+		source:       'iana'
+		extensions:   ['ico']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.mix':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.mozilla.apng':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.ms-dds':                                                                     MimeType{
-		source: ''
-		extensions: ['dds']
+		source:       ''
+		extensions:   ['dds']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.ms-modi':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['mdi']
+		source:       'iana'
+		extensions:   ['mdi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.ms-photo':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['wdp']
+		source:       'apache'
+		extensions:   ['wdp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.net-fpx':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['npx']
+		source:       'iana'
+		extensions:   ['npx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.pco.b16':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['b16']
+		source:       'iana'
+		extensions:   ['b16']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.radiance':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.sealed.png':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.sealedmedia.softseal.gif':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.sealedmedia.softseal.jpg':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.svf':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.tencent.tap':                                                                MimeType{
-		source: 'iana'
-		extensions: ['tap']
+		source:       'iana'
+		extensions:   ['tap']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.valve.source.texture':                                                       MimeType{
-		source: 'iana'
-		extensions: ['vtf']
+		source:       'iana'
+		extensions:   ['vtf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.wap.wbmp':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['wbmp']
+		source:       'iana'
+		extensions:   ['wbmp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.xiff':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['xif']
+		source:       'iana'
+		extensions:   ['xif']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/vnd.zbrush.pcx':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['pcx']
+		source:       'iana'
+		extensions:   ['pcx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/webp':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['webp']
+		source:       'iana'
+		extensions:   ['webp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/wmf':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['wmf']
+		source:       'iana'
+		extensions:   ['wmf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-3ds':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['3ds']
+		source:       'apache'
+		extensions:   ['3ds']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-cmu-raster':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['ras']
+		source:       'apache'
+		extensions:   ['ras']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-cmx':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['cmx']
+		source:       'apache'
+		extensions:   ['cmx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-freehand':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['fh', 'fhc', 'fh4', 'fh5', 'fh7']
+		source:       'apache'
+		extensions:   ['fh', 'fhc', 'fh4', 'fh5', 'fh7']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-icon':                                                                         MimeType{
-		source: 'apache'
-		extensions: ['ico']
+		source:       'apache'
+		extensions:   ['ico']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/x-jng':                                                                          MimeType{
-		source: 'nginx'
-		extensions: ['jng']
+		source:       'nginx'
+		extensions:   ['jng']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-mrsid-image':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['sid']
+		source:       'apache'
+		extensions:   ['sid']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-ms-bmp':                                                                       MimeType{
-		source: 'nginx'
-		extensions: ['bmp']
+		source:       'nginx'
+		extensions:   ['bmp']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'image/x-pcx':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['pcx']
+		source:       'apache'
+		extensions:   ['pcx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-pict':                                                                         MimeType{
-		source: 'apache'
-		extensions: ['pic', 'pct']
+		source:       'apache'
+		extensions:   ['pic', 'pct']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-portable-anymap':                                                              MimeType{
-		source: 'apache'
-		extensions: ['pnm']
+		source:       'apache'
+		extensions:   ['pnm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-portable-bitmap':                                                              MimeType{
-		source: 'apache'
-		extensions: ['pbm']
+		source:       'apache'
+		extensions:   ['pbm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-portable-graymap':                                                             MimeType{
-		source: 'apache'
-		extensions: ['pgm']
+		source:       'apache'
+		extensions:   ['pgm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-portable-pixmap':                                                              MimeType{
-		source: 'apache'
-		extensions: ['ppm']
+		source:       'apache'
+		extensions:   ['ppm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-rgb':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['rgb']
+		source:       'apache'
+		extensions:   ['rgb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-tga':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['tga']
+		source:       'apache'
+		extensions:   ['tga']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-xbitmap':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['xbm']
+		source:       'apache'
+		extensions:   ['xbm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-xcf':                                                                          MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-xpixmap':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['xpm']
+		source:       'apache'
+		extensions:   ['xpm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'image/x-xwindowdump':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['xwd']
+		source:       'apache'
+		extensions:   ['xwd']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/bhttp':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/cpim':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/delivery-status':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/disposition-notification':                                                     MimeType{
-		source: 'iana'
-		extensions: ['disposition-notification']
+		source:       'iana'
+		extensions:   ['disposition-notification']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/external-body':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/feedback-report':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/global':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['u8msg']
+		source:       'iana'
+		extensions:   ['u8msg']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/global-delivery-status':                                                       MimeType{
-		source: 'iana'
-		extensions: ['u8dsn']
+		source:       'iana'
+		extensions:   ['u8dsn']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/global-disposition-notification':                                              MimeType{
-		source: 'iana'
-		extensions: ['u8mdn']
+		source:       'iana'
+		extensions:   ['u8mdn']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/global-headers':                                                               MimeType{
-		source: 'iana'
-		extensions: ['u8hdr']
+		source:       'iana'
+		extensions:   ['u8hdr']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/http':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/imdn+xml':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'message/news':                                                                         MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/partial':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/rfc822':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['eml', 'mime']
+		source:       'iana'
+		extensions:   ['eml', 'mime']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'message/s-http':                                                                       MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/sip':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/sipfrag':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/tracking-status':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/vnd.si.simp':                                                                  MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'message/vnd.wfa.wsc':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['wsc']
+		source:       'iana'
+		extensions:   ['wsc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/3mf':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['3mf']
+		source:       'iana'
+		extensions:   ['3mf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/e57':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/gltf+json':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['gltf']
+		source:       'iana'
+		extensions:   ['gltf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'model/gltf-binary':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['glb']
+		source:       'iana'
+		extensions:   ['glb']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'model/iges':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['igs', 'iges']
+		source:       'iana'
+		extensions:   ['igs', 'iges']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/jt':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['jt']
+		source:       'iana'
+		extensions:   ['jt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/mesh':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['msh', 'mesh', 'silo']
+		source:       'iana'
+		extensions:   ['msh', 'mesh', 'silo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/mtl':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['mtl']
+		source:       'iana'
+		extensions:   ['mtl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/obj':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['obj']
+		source:       'iana'
+		extensions:   ['obj']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/prc':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['prc']
+		source:       'iana'
+		extensions:   ['prc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/step':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/step+xml':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['stpx']
+		source:       'iana'
+		extensions:   ['stpx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'model/step+zip':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['stpz']
+		source:       'iana'
+		extensions:   ['stpz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/step-xml+zip':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['stpxz']
+		source:       'iana'
+		extensions:   ['stpxz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/stl':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['stl']
+		source:       'iana'
+		extensions:   ['stl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/u3d':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['u3d']
+		source:       'iana'
+		extensions:   ['u3d']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.cld':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['cld']
+		source:       'iana'
+		extensions:   ['cld']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.collada+xml':                                                                MimeType{
-		source: 'iana'
-		extensions: ['dae']
+		source:       'iana'
+		extensions:   ['dae']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.dwf':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['dwf']
+		source:       'iana'
+		extensions:   ['dwf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.flatland.3dml':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.gdl':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['gdl']
+		source:       'iana'
+		extensions:   ['gdl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.gs-gdl':                                                                     MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.gs.gdl':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.gtw':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['gtw']
+		source:       'iana'
+		extensions:   ['gtw']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.moml+xml':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.mts':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['mts']
+		source:       'iana'
+		extensions:   ['mts']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.opengex':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['ogex']
+		source:       'iana'
+		extensions:   ['ogex']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.parasolid.transmit.binary':                                                  MimeType{
-		source: 'iana'
-		extensions: ['x_b']
+		source:       'iana'
+		extensions:   ['x_b']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.parasolid.transmit.text':                                                    MimeType{
-		source: 'iana'
-		extensions: ['x_t']
+		source:       'iana'
+		extensions:   ['x_t']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.pytha.pyox':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['pyo', 'pyox']
+		source:       'iana'
+		extensions:   ['pyo', 'pyox']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.rosette.annotated-data-model':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.sap.vds':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['vds']
+		source:       'iana'
+		extensions:   ['vds']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.usda':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['usda']
+		source:       'iana'
+		extensions:   ['usda']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.usdz+zip':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['usdz']
+		source:       'iana'
+		extensions:   ['usdz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.valve.source.compiled-map':                                                  MimeType{
-		source: 'iana'
-		extensions: ['bsp']
+		source:       'iana'
+		extensions:   ['bsp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vnd.vtu':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['vtu']
+		source:       'iana'
+		extensions:   ['vtu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/vrml':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['wrl', 'vrml']
+		source:       'iana'
+		extensions:   ['wrl', 'vrml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/x3d+binary':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['x3db', 'x3dbz']
+		source:       'apache'
+		extensions:   ['x3db', 'x3dbz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/x3d+fastinfoset':                                                                MimeType{
-		source: 'iana'
-		extensions: ['x3db']
+		source:       'iana'
+		extensions:   ['x3db']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/x3d+vrml':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['x3dv', 'x3dvz']
+		source:       'apache'
+		extensions:   ['x3dv', 'x3dvz']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'model/x3d+xml':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['x3d', 'x3dz']
+		source:       'iana'
+		extensions:   ['x3d', 'x3dz']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'model/x3d-vrml':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['x3dv']
+		source:       'iana'
+		extensions:   ['x3dv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/alternative':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/appledouble':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/byteranges':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/digest':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/encrypted':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/form-data':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/header-set':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/mixed':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/multilingual':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/parallel':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/related':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/report':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/signed':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/vnd.bint.med-plus':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/voice-message':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'multipart/x-mixed-replace':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/1d-interleaved-parityfec':                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/cache-manifest':                                                                  MimeType{
-		source: 'iana'
-		extensions: ['appcache', 'manifest']
+		source:       'iana'
+		extensions:   ['appcache', 'manifest']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/calendar':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['ics', 'ifb']
+		source:       'iana'
+		extensions:   ['ics', 'ifb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/calender':                                                                        MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/cmd':                                                                             MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/coffeescript':                                                                    MimeType{
-		source: ''
-		extensions: ['coffee', 'litcoffee']
+		source:       ''
+		extensions:   ['coffee', 'litcoffee']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/cql':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/cql-expression':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/cql-identifier':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/css':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['css']
+		source:       'iana'
+		extensions:   ['css']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/csv':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['csv']
+		source:       'iana'
+		extensions:   ['csv']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/csv-schema':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/directory':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/dns':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/ecmascript':                                                                      MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/encaprtp':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/enriched':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/fhirpath':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/flexfec':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/fwdred':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/gff3':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/grammar-ref-list':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/hl7v2':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/html':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['html', 'htm', 'shtml']
+		source:       'iana'
+		extensions:   ['html', 'htm', 'shtml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/jade':                                                                            MimeType{
-		source: ''
-		extensions: ['jade']
+		source:       ''
+		extensions:   ['jade']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/javascript':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['js', 'mjs']
+		source:       'iana'
+		extensions:   ['js', 'mjs']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/jcr-cnd':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/jsx':                                                                             MimeType{
-		source: ''
-		extensions: ['jsx']
+		source:       ''
+		extensions:   ['jsx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/less':                                                                            MimeType{
-		source: ''
-		extensions: ['less']
+		source:       ''
+		extensions:   ['less']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/markdown':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['md', 'markdown']
+		source:       'iana'
+		extensions:   ['md', 'markdown']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/mathml':                                                                          MimeType{
-		source: 'nginx'
-		extensions: ['mml']
+		source:       'nginx'
+		extensions:   ['mml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/mdx':                                                                             MimeType{
-		source: ''
-		extensions: ['mdx']
+		source:       ''
+		extensions:   ['mdx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/mizar':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/n3':                                                                              MimeType{
-		source: 'iana'
-		extensions: ['n3']
+		source:       'iana'
+		extensions:   ['n3']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/parameters':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/parityfec':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/plain':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['txt', 'text', 'conf', 'def', 'list', 'log', 'in', 'ini']
+		source:       'iana'
+		extensions:   ['txt', 'text', 'conf', 'def', 'list', 'log', 'in', 'ini']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/provenance-notation':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/prs.fallenstein.rst':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/prs.lines.tag':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['dsc']
+		source:       'iana'
+		extensions:   ['dsc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/prs.prop.logic':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/raptorfec':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/red':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/rfc822-headers':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/richtext':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['rtx']
+		source:       'iana'
+		extensions:   ['rtx']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/rtf':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['rtf']
+		source:       'iana'
+		extensions:   ['rtf']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/rtp-enc-aescm128':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/rtploopback':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/rtx':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/sgml':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['sgml', 'sgm']
+		source:       'iana'
+		extensions:   ['sgml', 'sgm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/shaclc':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/shex':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['shex']
+		source:       'iana'
+		extensions:   ['shex']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/slim':                                                                            MimeType{
-		source: ''
-		extensions: ['slim', 'slm']
+		source:       ''
+		extensions:   ['slim', 'slm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/spdx':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['spdx']
+		source:       'iana'
+		extensions:   ['spdx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/strings':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/stylus':                                                                          MimeType{
-		source: ''
-		extensions: ['stylus', 'styl']
+		source:       ''
+		extensions:   ['stylus', 'styl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/t140':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/tab-separated-values':                                                            MimeType{
-		source: 'iana'
-		extensions: ['tsv']
+		source:       'iana'
+		extensions:   ['tsv']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/troff':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['t', 'tr', 'roff', 'man', 'me', 'ms']
+		source:       'iana'
+		extensions:   ['t', 'tr', 'roff', 'man', 'me', 'ms']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/turtle':                                                                          MimeType{
-		source: 'iana'
-		extensions: ['ttl']
+		source:       'iana'
+		extensions:   ['ttl']
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/ulpfec':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/uri-list':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['uri', 'uris', 'urls']
+		source:       'iana'
+		extensions:   ['uri', 'uris', 'urls']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/vcard':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['vcard']
+		source:       'iana'
+		extensions:   ['vcard']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.a':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.abc':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.ascii-art':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.curl':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['curl']
+		source:       'iana'
+		extensions:   ['curl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.curl.dcurl':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['dcurl']
+		source:       'apache'
+		extensions:   ['dcurl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.curl.mcurl':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['mcurl']
+		source:       'apache'
+		extensions:   ['mcurl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.curl.scurl':                                                                  MimeType{
-		source: 'apache'
-		extensions: ['scurl']
+		source:       'apache'
+		extensions:   ['scurl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.debian.copyright':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/vnd.dmclientscript':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.dvb.subtitle':                                                                MimeType{
-		source: 'iana'
-		extensions: ['sub']
+		source:       'iana'
+		extensions:   ['sub']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.esmertec.theme-descriptor':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/vnd.exchangeable':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.familysearch.gedcom':                                                         MimeType{
-		source: 'iana'
-		extensions: ['ged']
+		source:       'iana'
+		extensions:   ['ged']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.ficlab.flt':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.fly':                                                                         MimeType{
-		source: 'iana'
-		extensions: ['fly']
+		source:       'iana'
+		extensions:   ['fly']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.fmi.flexstor':                                                                MimeType{
-		source: 'iana'
-		extensions: ['flx']
+		source:       'iana'
+		extensions:   ['flx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.gml':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.graphviz':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['gv']
+		source:       'iana'
+		extensions:   ['gv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.hans':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.hgl':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.in3d.3dml':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['3dml']
+		source:       'iana'
+		extensions:   ['3dml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.in3d.spot':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['spot']
+		source:       'iana'
+		extensions:   ['spot']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.iptc.newsml':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.iptc.nitf':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.latex-z':                                                                     MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.motorola.reflex':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.ms-mediapackage':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.net2phone.commcenter.command':                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.radisys.msml-basic-layout':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.senx.warpscript':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.si.uricatalogue':                                                             MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.sosi':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.sun.j2me.app-descriptor':                                                     MimeType{
-		source: 'iana'
-		extensions: ['jad']
+		source:       'iana'
+		extensions:   ['jad']
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/vnd.trolltech.linguist':                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/vnd.wap.si':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.wap.sl':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.wap.wml':                                                                     MimeType{
-		source: 'iana'
-		extensions: ['wml']
+		source:       'iana'
+		extensions:   ['wml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vnd.wap.wmlscript':                                                               MimeType{
-		source: 'iana'
-		extensions: ['wmls']
+		source:       'iana'
+		extensions:   ['wmls']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/vtt':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['vtt']
+		source:       'iana'
+		extensions:   ['vtt']
 		compressible: true
-		charset: 'UTF-8'
+		charset:      'UTF-8'
 	}
 	'text/wgsl':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['wgsl']
+		source:       'iana'
+		extensions:   ['wgsl']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-asm':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['s', 'asm']
+		source:       'apache'
+		extensions:   ['s', 'asm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-c':                                                                             MimeType{
-		source: 'apache'
-		extensions: ['c', 'cc', 'cxx', 'cpp', 'h', 'hh', 'dic']
+		source:       'apache'
+		extensions:   ['c', 'cc', 'cxx', 'cpp', 'h', 'hh', 'dic']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-component':                                                                     MimeType{
-		source: 'nginx'
-		extensions: ['htc']
+		source:       'nginx'
+		extensions:   ['htc']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-fortran':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['f', 'for', 'f77', 'f90']
+		source:       'apache'
+		extensions:   ['f', 'for', 'f77', 'f90']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-gwt-rpc':                                                                       MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/x-handlebars-template':                                                           MimeType{
-		source: ''
-		extensions: ['hbs']
+		source:       ''
+		extensions:   ['hbs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-java-source':                                                                   MimeType{
-		source: 'apache'
-		extensions: ['java']
+		source:       'apache'
+		extensions:   ['java']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-jquery-tmpl':                                                                   MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/x-lua':                                                                           MimeType{
-		source: ''
-		extensions: ['lua']
+		source:       ''
+		extensions:   ['lua']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-markdown':                                                                      MimeType{
-		source: ''
-		extensions: ['mkd']
+		source:       ''
+		extensions:   ['mkd']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/x-nfo':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['nfo']
+		source:       'apache'
+		extensions:   ['nfo']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-opml':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['opml']
+		source:       'apache'
+		extensions:   ['opml']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-org':                                                                           MimeType{
-		source: ''
-		extensions: ['org']
+		source:       ''
+		extensions:   ['org']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/x-pascal':                                                                        MimeType{
-		source: 'apache'
-		extensions: ['p', 'pas']
+		source:       'apache'
+		extensions:   ['p', 'pas']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-processing':                                                                    MimeType{
-		source: ''
-		extensions: ['pde']
+		source:       ''
+		extensions:   ['pde']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/x-sass':                                                                          MimeType{
-		source: ''
-		extensions: ['sass']
+		source:       ''
+		extensions:   ['sass']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-scss':                                                                          MimeType{
-		source: ''
-		extensions: ['scss']
+		source:       ''
+		extensions:   ['scss']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-setext':                                                                        MimeType{
-		source: 'apache'
-		extensions: ['etx']
+		source:       'apache'
+		extensions:   ['etx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-sfv':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['sfv']
+		source:       'apache'
+		extensions:   ['sfv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-suse-ymp':                                                                      MimeType{
-		source: ''
-		extensions: ['ymp']
+		source:       ''
+		extensions:   ['ymp']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/x-uuencode':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['uu']
+		source:       'apache'
+		extensions:   ['uu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-vcalendar':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['vcs']
+		source:       'apache'
+		extensions:   ['vcs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/x-vcard':                                                                         MimeType{
-		source: 'apache'
-		extensions: ['vcf']
+		source:       'apache'
+		extensions:   ['vcf']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/xml':                                                                             MimeType{
-		source: 'iana'
-		extensions: ['xml']
+		source:       'iana'
+		extensions:   ['xml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'text/xml-external-parsed-entity':                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'text/yaml':                                                                            MimeType{
-		source: ''
-		extensions: ['yaml', 'yml']
+		source:       ''
+		extensions:   ['yaml', 'yml']
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'video/1d-interleaved-parityfec':                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/3gpp':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['3gp', '3gpp']
+		source:       'iana'
+		extensions:   ['3gp', '3gpp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/3gpp-tt':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/3gpp2':                                                                          MimeType{
-		source: 'iana'
-		extensions: ['3g2']
+		source:       'iana'
+		extensions:   ['3g2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/av1':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/bmpeg':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/bt656':                                                                          MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/celb':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/dv':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/encaprtp':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/ffv1':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/flexfec':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h261':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['h261']
+		source:       'iana'
+		extensions:   ['h261']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h263':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['h263']
+		source:       'iana'
+		extensions:   ['h263']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h263-1998':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h263-2000':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h264':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['h264']
+		source:       'iana'
+		extensions:   ['h264']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h264-rcdo':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h264-svc':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h265':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/h266':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/iso.segment':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['m4s']
+		source:       'iana'
+		extensions:   ['m4s']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/jpeg':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['jpgv']
+		source:       'iana'
+		extensions:   ['jpgv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/jpeg2000':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/jpm':                                                                            MimeType{
-		source: 'apache'
-		extensions: ['jpm', 'jpgm']
+		source:       'apache'
+		extensions:   ['jpm', 'jpgm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/jxsv':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mj2':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['mj2', 'mjp2']
+		source:       'iana'
+		extensions:   ['mj2', 'mjp2']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mp1s':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mp2p':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mp2t':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['ts']
+		source:       'iana'
+		extensions:   ['ts']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mp4':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['mp4', 'mp4v', 'mpg4']
+		source:       'iana'
+		extensions:   ['mp4', 'mp4v', 'mpg4']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mp4v-es':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mpeg':                                                                           MimeType{
-		source: 'iana'
-		extensions: ['mpeg', 'mpg', 'mpe', 'm1v', 'm2v']
+		source:       'iana'
+		extensions:   ['mpeg', 'mpg', 'mpe', 'm1v', 'm2v']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mpeg4-generic':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/mpv':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/nv':                                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/ogg':                                                                            MimeType{
-		source: 'iana'
-		extensions: ['ogv']
+		source:       'iana'
+		extensions:   ['ogv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/parityfec':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/pointer':                                                                        MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/quicktime':                                                                      MimeType{
-		source: 'iana'
-		extensions: ['qt', 'mov']
+		source:       'iana'
+		extensions:   ['qt', 'mov']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/raptorfec':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/raw':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/rtp-enc-aescm128':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/rtploopback':                                                                    MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/rtx':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/scip':                                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/smpte291':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/smpte292m':                                                                      MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/ulpfec':                                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vc1':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vc2':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.cctv':                                                                       MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dece.hd':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['uvh', 'uvvh']
+		source:       'iana'
+		extensions:   ['uvh', 'uvvh']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dece.mobile':                                                                MimeType{
-		source: 'iana'
-		extensions: ['uvm', 'uvvm']
+		source:       'iana'
+		extensions:   ['uvm', 'uvvm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dece.mp4':                                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dece.pd':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['uvp', 'uvvp']
+		source:       'iana'
+		extensions:   ['uvp', 'uvvp']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dece.sd':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['uvs', 'uvvs']
+		source:       'iana'
+		extensions:   ['uvs', 'uvvs']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dece.video':                                                                 MimeType{
-		source: 'iana'
-		extensions: ['uvv', 'uvvv']
+		source:       'iana'
+		extensions:   ['uvv', 'uvvv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.directv.mpeg':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.directv.mpeg-tts':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dlna.mpeg-tts':                                                              MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.dvb.file':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['dvb']
+		source:       'iana'
+		extensions:   ['dvb']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.fvt':                                                                        MimeType{
-		source: 'iana'
-		extensions: ['fvt']
+		source:       'iana'
+		extensions:   ['fvt']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.hns.video':                                                                  MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.iptvforum.1dparityfec-1010':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.iptvforum.1dparityfec-2005':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.iptvforum.2dparityfec-1010':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.iptvforum.2dparityfec-2005':                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.iptvforum.ttsavc':                                                           MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.iptvforum.ttsmpeg2':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.motorola.video':                                                             MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.motorola.videop':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.mpegurl':                                                                    MimeType{
-		source: 'iana'
-		extensions: ['mxu', 'm4u']
+		source:       'iana'
+		extensions:   ['mxu', 'm4u']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.ms-playready.media.pyv':                                                     MimeType{
-		source: 'iana'
-		extensions: ['pyv']
+		source:       'iana'
+		extensions:   ['pyv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.nokia.interleaved-multimedia':                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.nokia.mp4vr':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.nokia.videovoip':                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.objectvideo':                                                                MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.radgamettools.bink':                                                         MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.radgamettools.smacker':                                                      MimeType{
-		source: 'apache'
-		extensions: []
+		source:       'apache'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.sealed.mpeg1':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.sealed.mpeg4':                                                               MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.sealed.swf':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.sealedmedia.softseal.mov':                                                   MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.uvvu.mp4':                                                                   MimeType{
-		source: 'iana'
-		extensions: ['uvu', 'uvvu']
+		source:       'iana'
+		extensions:   ['uvu', 'uvvu']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.vivo':                                                                       MimeType{
-		source: 'iana'
-		extensions: ['viv']
+		source:       'iana'
+		extensions:   ['viv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vnd.youtube.yt':                                                                 MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vp8':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/vp9':                                                                            MimeType{
-		source: 'iana'
-		extensions: []
+		source:       'iana'
+		extensions:   []
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/webm':                                                                           MimeType{
-		source: 'apache'
-		extensions: ['webm']
+		source:       'apache'
+		extensions:   ['webm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-f4v':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['f4v']
+		source:       'apache'
+		extensions:   ['f4v']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-fli':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['fli']
+		source:       'apache'
+		extensions:   ['fli']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-flv':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['flv']
+		source:       'apache'
+		extensions:   ['flv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-m4v':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['m4v']
+		source:       'apache'
+		extensions:   ['m4v']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-matroska':                                                                     MimeType{
-		source: 'apache'
-		extensions: ['mkv', 'mk3d', 'mks']
+		source:       'apache'
+		extensions:   ['mkv', 'mk3d', 'mks']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-mng':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['mng']
+		source:       'apache'
+		extensions:   ['mng']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-ms-asf':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['asf', 'asx']
+		source:       'apache'
+		extensions:   ['asf', 'asx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-ms-vob':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['vob']
+		source:       'apache'
+		extensions:   ['vob']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-ms-wm':                                                                        MimeType{
-		source: 'apache'
-		extensions: ['wm']
+		source:       'apache'
+		extensions:   ['wm']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-ms-wmv':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['wmv']
+		source:       'apache'
+		extensions:   ['wmv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-ms-wmx':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['wmx']
+		source:       'apache'
+		extensions:   ['wmx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-ms-wvx':                                                                       MimeType{
-		source: 'apache'
-		extensions: ['wvx']
+		source:       'apache'
+		extensions:   ['wvx']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-msvideo':                                                                      MimeType{
-		source: 'apache'
-		extensions: ['avi']
+		source:       'apache'
+		extensions:   ['avi']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-sgi-movie':                                                                    MimeType{
-		source: 'apache'
-		extensions: ['movie']
+		source:       'apache'
+		extensions:   ['movie']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'video/x-smv':                                                                          MimeType{
-		source: 'apache'
-		extensions: ['smv']
+		source:       'apache'
+		extensions:   ['smv']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'x-conference/x-cooltalk':                                                              MimeType{
-		source: 'apache'
-		extensions: ['ice']
+		source:       'apache'
+		extensions:   ['ice']
 		compressible: false
-		charset: ''
+		charset:      ''
 	}
 	'x-shader/x-fragment':                                                                  MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 	'x-shader/x-vertex':                                                                    MimeType{
-		source: ''
-		extensions: []
+		source:       ''
+		extensions:   []
 		compressible: true
-		charset: ''
+		charset:      ''
 	}
 }
 

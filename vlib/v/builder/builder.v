@@ -77,12 +77,12 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		executable_name += '.exe'
 	}
 	return Builder{
-		pref: pref_
-		table: table
-		checker: checker.new_checker(table, pref_)
-		transformer: transformer.new_transformer_with_table(table, pref_)
-		compiled_dir: compiled_dir
-		cached_msvc: msvc
+		pref:              pref_
+		table:             table
+		checker:           checker.new_checker(table, pref_)
+		transformer:       transformer.new_transformer_with_table(table, pref_)
+		compiled_dir:      compiled_dir
+		cached_msvc:       msvc
 		executable_exists: os.is_file(executable_name)
 	}
 }
@@ -593,9 +593,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{},
 								false)
 							redefines << FunctionRedefinition{
-								fpath: file.path
-								fline: stmt.pos.line_nr
-								f: stmt
+								fpath:   file.path
+								fline:   stmt.pos.line_nr
+								f:       stmt
 								fheader: fheader
 							}
 							redefine_conflicts[fheader]++
@@ -609,9 +609,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				)
 				for redefine in redefines {
 					util.show_compiler_message('conflicting declaration:',
-						message: redefine.fheader
+						message:   redefine.fheader
 						file_path: redefine.fpath
-						pos: redefine.f.pos
+						pos:       redefine.f.pos
 					)
 				}
 				total_conflicts++
@@ -639,9 +639,9 @@ pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors
 
 	return errors.Error{
 		file_path: fpath
-		pos: pos
-		reporter: .builder
-		message: s
+		pos:       pos
+		reporter:  .builder
+		message:   s
 	}
 }
 

@@ -42,9 +42,9 @@ pub fn new_ctr(b Block, iv []u8) Ctr {
 		panic('cipher.new_cfb: IV length must be equal block size')
 	}
 	return Ctr{
-		b: b
-		out: []u8{len: b.block_size}
-		next: iv.clone()
+		b:        b
+		out:      []u8{len: b.block_size}
+		next:     iv.clone()
 		out_used: block_size
 	}
 }

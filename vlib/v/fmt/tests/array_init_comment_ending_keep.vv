@@ -6,9 +6,9 @@ const write_set_cookie_tests = [
 			'Set-Cookie': ['special-7=","']
 		}
 		cookies: [&http.Cookie{
-			name: 'special-7'
+			name:  'special-7'
 			value: ','
-			raw: 'special-8=","'
+			raw:   'special-8=","'
 		}]
 	},
 	// (bradfitz): users have reported seeing this in the

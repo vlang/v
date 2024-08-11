@@ -100,10 +100,10 @@ fn (mut g JsGen) write_tests_definitions() {
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
-		table: table
-		pref: pref_
-		empty_line: true
-		enable_doc: true
+		table:       table
+		pref:        pref_
+		empty_line:  true
+		enable_doc:  true
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
@@ -581,7 +581,7 @@ fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 		g.ns.sourcemap_helper << SourcemapHelper{
 			src_path: util.vlines_escape_path(g.file.path, g.pref.ccompiler)
 			src_line: u32(pos.line_nr + 1)
-			ns_pos: u32(g.out.len)
+			ns_pos:   u32(g.out.len)
 		}
 	}
 	if g.pref.is_vlines && g.is_vlines_enabled {
@@ -1108,10 +1108,10 @@ fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type
 
 fn (mut g JsGen) new_ctemp_var(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
 	return ast.CTempVar{
-		name: g.new_tmp_var()
-		typ: expr_type
+		name:   g.new_tmp_var()
+		typ:    expr_type
 		is_ptr: expr_type.is_ptr()
-		orig: expr
+		orig:   expr
 	}
 }
 

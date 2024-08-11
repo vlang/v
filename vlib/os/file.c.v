@@ -118,8 +118,8 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		}
 	}
 	return File{
-		cfile: cfile
-		fd: fd
+		cfile:     cfile
+		fd:        fd
 		is_opened: true
 	}
 }
@@ -143,8 +143,8 @@ pub fn open(path string) !File {
 	cfile := vfopen(path, 'rb')!
 	fd := fileno(cfile)
 	return File{
-		cfile: cfile
-		fd: fd
+		cfile:     cfile
+		fd:        fd
 		is_opened: true
 	}
 }
@@ -177,8 +177,8 @@ pub fn create(path string) !File {
 	cfile := vfopen(path, 'wb')!
 	fd := fileno(cfile)
 	return File{
-		cfile: cfile
-		fd: fd
+		cfile:     cfile
+		fd:        fd
 		is_opened: true
 	}
 }
@@ -186,8 +186,8 @@ pub fn create(path string) !File {
 // stdin - return an os.File for stdin
 pub fn stdin() File {
 	return File{
-		fd: 0
-		cfile: C.stdin
+		fd:        0
+		cfile:     C.stdin
 		is_opened: true
 	}
 }
@@ -195,8 +195,8 @@ pub fn stdin() File {
 // stdout - return an os.File for stdout
 pub fn stdout() File {
 	return File{
-		fd: 1
-		cfile: C.stdout
+		fd:        1
+		cfile:     C.stdout
 		is_opened: true
 	}
 }
@@ -204,8 +204,8 @@ pub fn stdout() File {
 // stderr - return an os.File for stderr
 pub fn stderr() File {
 	return File{
-		fd: 2
-		cfile: C.stderr
+		fd:        2
+		cfile:     C.stderr
 		is_opened: true
 	}
 }
@@ -246,7 +246,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 		if C.ferror(unsafe { &C.FILE(f.cfile) }) != 0 {
 			return NotExpected{
 				cause: 'unexpected error from fread'
-				code: -1
+				code:  -1
 			}
 		}
 	}

@@ -30,7 +30,7 @@ fn test_value() {
 
 fn test_value_2() {
 	test := Test{
-		optional_alias: 1
+		optional_alias:  1
 		optional_struct: Complex{
 			a: 1
 		}

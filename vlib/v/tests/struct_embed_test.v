@@ -205,7 +205,7 @@ fn (piece Piece) get_pos() Pos {
 
 fn test_match_aggregate_field() {
 	piece := Piece(King{
-		pos: Pos{1, 8}
+		pos:  Pos{1, 8}
 		team: .black
 	})
 	pos := piece.pos()
@@ -215,7 +215,7 @@ fn test_match_aggregate_field() {
 
 fn test_match_aggregate_method() {
 	piece := Piece(King{
-		pos: Pos{1, 8}
+		pos:  Pos{1, 8}
 		team: .black
 	})
 	pos := piece.get_pos()

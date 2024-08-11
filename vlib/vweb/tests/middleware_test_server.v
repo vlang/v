@@ -34,9 +34,9 @@ fn main() {
 	shared config := &Config{}
 
 	app := &App{
-		timeout: timeout
+		timeout:       timeout
 		global_config: config
-		middlewares: {
+		middlewares:   {
 			'/single':        [middleware1]
 			'/single_post':   [middleware1]
 			'/multiple':      [middleware1, middleware2]

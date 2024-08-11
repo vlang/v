@@ -80,7 +80,7 @@ fn (mut g Gen) gen_jsons() {
 					g.write('HEAP(${ptr_styp}, ')
 				}
 				g.expr(ast.Expr(ast.StructInit{
-					typ: utyp.set_nr_muls(0)
+					typ:     utyp.set_nr_muls(0)
 					typ_str: styp
 				}))
 				if utyp.is_ptr() {

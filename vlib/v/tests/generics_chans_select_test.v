@@ -102,13 +102,13 @@ pub fn (mut ec EventController[T]) wait(params EventWaitParams[T]) Awaitable[T] 
 	id := ec.generate_id()
 	ec.wait_fors[id] = EventWaiter[T]{
 		check: params.check
-		c: &mut c
+		c:     &mut c
 	}
 	return Awaitable[T]{
-		id: id
-		timeout: params.timeout
+		id:         id
+		timeout:    params.timeout
 		controller: unsafe { &mut ec }
-		c: c
+		c:          c
 	}
 }
 

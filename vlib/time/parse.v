@@ -17,7 +17,7 @@ pub fn (err TimeParseError) msg() string {
 
 fn error_invalid_time(code int, message string) IError {
 	return TimeParseError{
-		code: code
+		code:    code
 		message: message
 	}
 }

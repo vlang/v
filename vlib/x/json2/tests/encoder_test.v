@@ -118,7 +118,7 @@ fn test_encoder_prettify() {
 		}
 	}
 	enc := json.Encoder{
-		newline: `\n`
+		newline:              `\n`
 		newline_spaces_count: 2
 	}
 	mut sb := strings.new_builder(20)
@@ -181,9 +181,9 @@ fn test_encode_simple() {
 
 fn test_encode_value() {
 	json_enc := json.Encoder{
-		newline: `\n`
+		newline:              `\n`
 		newline_spaces_count: 2
-		escape_unicode: false
+		escape_unicode:       false
 	}
 
 	mut manifest := map[string]json.Any{}

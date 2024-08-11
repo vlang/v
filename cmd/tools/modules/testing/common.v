@@ -117,22 +117,22 @@ mut:
 
 fn (mut ts TestSession) append_message(kind MessageKind, msg string, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
-		file: mtc.file
+		file:    mtc.file
 		flow_id: mtc.flow_id
 		message: msg
-		kind: kind
-		when: time.now()
+		kind:    kind
+		when:    time.now()
 	}
 }
 
 fn (mut ts TestSession) append_message_with_duration(kind MessageKind, msg string, d time.Duration, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
-		file: mtc.file
+		file:    mtc.file
 		flow_id: mtc.flow_id
 		message: msg
-		kind: kind
-		when: time.now()
-		took: d
+		kind:    kind
+		when:    time.now()
+		took:    d
 	}
 }
 
@@ -310,16 +310,16 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
-		vexe: vexe
-		vroot: vroot
-		skip_files: skip_files
-		fail_fast: testing.fail_fast
-		show_stats: '-stats' in vargs.split(' ')
-		show_asserts: '-show-asserts' in vargs.split(' ')
-		vargs: vargs
-		vtmp_dir: new_vtmp_dir
-		hash: hash
-		silent_mode: _vargs.contains('-silent')
+		vexe:          vexe
+		vroot:         vroot
+		skip_files:    skip_files
+		fail_fast:     testing.fail_fast
+		show_stats:    '-stats' in vargs.split(' ')
+		show_asserts:  '-show-asserts' in vargs.split(' ')
+		vargs:         vargs
+		vtmp_dir:      new_vtmp_dir
+		hash:          hash
+		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
 	ts.handle_test_runner_option()
@@ -493,7 +493,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	file := os.real_path(relative_file)
 	mtc := MessageThreadContext{
-		file: file
+		file:    file
 		flow_id: thread_id.str()
 	}
 	normalised_relative_file := relative_file.replace('\\', '/')

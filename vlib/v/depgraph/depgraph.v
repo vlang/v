@@ -86,7 +86,7 @@ pub fn (o &OrderedDepMap) size() int {
 pub fn new_dep_graph() &DepGraph {
 	return &DepGraph{
 		acyclic: true
-		nodes: []DepGraphNode{cap: 1024}
+		nodes:   []DepGraphNode{cap: 1024}
 	}
 }
 
@@ -101,9 +101,9 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 
 pub fn (mut graph DepGraph) add_with_value(mod string, deps []string, value i64) {
 	new_node := DepGraphNode{
-		name: mod
+		name:  mod
 		value: value
-		deps: deps.clone()
+		deps:  deps.clone()
 	}
 	graph.nodes << new_node
 	graph.values[mod] = value

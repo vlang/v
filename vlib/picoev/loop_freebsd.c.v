@@ -160,7 +160,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 @[direct_array_access]
 fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 	ts := C.timespec{
-		tv_sec: max_wait_in_sec
+		tv_sec:  max_wait_in_sec
 		tv_nsec: 0
 	}
 

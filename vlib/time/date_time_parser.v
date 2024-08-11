@@ -10,7 +10,7 @@ mut:
 fn new_date_time_parser(datetime string, format string) DateTimeParser {
 	return DateTimeParser{
 		datetime: datetime
-		format: format
+		format:   format
 	}
 }
 
@@ -355,10 +355,10 @@ fn (mut p DateTimeParser) parse() !Time {
 	}
 
 	return new(
-		year: year_
-		month: month_
-		day: day_in_month
-		hour: hour_
+		year:   year_
+		month:  month_
+		day:    day_in_month
+		hour:   hour_
 		minute: minute_
 		second: second_
 	)

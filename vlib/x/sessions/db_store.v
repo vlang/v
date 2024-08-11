@@ -91,7 +91,7 @@ pub fn (mut store DBStore[T]) set(sid string, val T) ! {
 		record := DBStoreSessions{
 			session_id: sid
 			created_at: time.now()
-			data: json.encode(val)
+			data:       json.encode(val)
 		}
 
 		sql store.db {

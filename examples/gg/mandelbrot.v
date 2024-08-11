@@ -75,8 +75,8 @@ fn (mut state AppState) update() {
 		for start := 0; start < pheight; start += chunk_height {
 			chunk_channel <- MandelChunk{
 				cview: cview
-				ymin: start
-				ymax: start + chunk_height
+				ymin:  start
+				ymax:  start + chunk_height
 			}
 			nchunks++
 		}
@@ -225,17 +225,17 @@ fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
 fn main() {
 	mut state := &AppState{}
 	state.gg = gg.new_context(
-		width: 800
-		height: 600
+		width:         800
+		height:        600
 		create_window: true
-		window_title: 'The Mandelbrot Set'
-		init_fn: graphics_init
-		frame_fn: graphics_frame
-		click_fn: graphics_click
-		move_fn: graphics_move
-		keydown_fn: graphics_keydown
-		scroll_fn: graphics_scroll
-		user_data: state
+		window_title:  'The Mandelbrot Set'
+		init_fn:       graphics_init
+		frame_fn:      graphics_frame
+		click_fn:      graphics_click
+		move_fn:       graphics_move
+		keydown_fn:    graphics_keydown
+		scroll_fn:     graphics_scroll
+		user_data:     state
 	)
 	spawn state.update()
 	state.gg.run()

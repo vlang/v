@@ -21,15 +21,15 @@ type Master2 = Master | Sub3
 fn test_common_sumtype_field_access() {
 	mut out := []Master{}
 	out << Sub1{
-		val: 1
+		val:  1
 		name: 'one'
 	}
 	out << Sub2{
-		val: 2
+		val:  2
 		name: 'two'
 	}
 	out << Sub2{
-		val: 3
+		val:  3
 		name: 'three'
 	}
 	assert out[0].val == 1

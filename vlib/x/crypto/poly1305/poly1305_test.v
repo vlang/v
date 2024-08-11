@@ -704,27 +704,27 @@ const testdata = [
 	// deserialized from the state correctly.
 	// THis test disabled, because of its different internal state representation.
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '0000000000000007fffffffffffffffffffffffffffffff5' // 2(2¹³⁰ - 5) - 1
-		msg: ''
-		tag: 'f9ffffffffffffffffffffffffffffff'
+		msg:   ''
+		tag:   'f9ffffffffffffffffffffffffffffff'
 	},
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '000000000000000700000000000000000000000000000000' // 2¹³⁰
-		msg: ''
-		tag: '04000000000000000000000000000000'
+		msg:   ''
+		tag:   '04000000000000000000000000000000'
 	},
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '0000000000000007fffffffffffffffffffffffffffffff5' // 2(2¹³⁰ - 5) - 1
-		msg: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-		tag: '1b000e5e5dfe8f5c4da11dd17b7654e7'
+		msg:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		tag:   '1b000e5e5dfe8f5c4da11dd17b7654e7'
 	},
 	TestCase{
-		key: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		key:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 		state: '000000000000000700000000000000000000000000000001' // 2¹³⁰
-		msg: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-		tag: '380859a4a5860b0e0967edfd711d37de'
+		msg:   'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+		tag:   '380859a4a5860b0e0967edfd711d37de'
 	},
 ]

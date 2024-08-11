@@ -76,15 +76,15 @@ fn main() {
 
 	// setting values of app
 	app.gg = gg.new_context(
-		bg_color: gx.black // background color
-		width: window_width // window width
-		height: window_height // window height
+		bg_color:      gx.black // background color
+		width:         window_width // window width
+		height:        window_height // window height
 		create_window: true // this will create a different window
-		window_title: 'A* Path finding algorithm visusalizer' // title of the window
-		frame_fn: frame // this is frame function update the frame
-		event_fn: on_event // it calls on every event
-		init_fn: init_images // run at start of application
-		user_data: app // store user data
+		window_title:  'A* Path finding algorithm visusalizer' // title of the window
+		frame_fn:      frame // this is frame function update the frame
+		event_fn:      on_event // it calls on every event
+		init_fn:       init_images // run at start of application
+		user_data:     app // store user data
 	)
 	mut grid := initialise_grid() // initialize the grid variable and populate the matrix with each cell as empty
 	app.grid = grid // set grid to app attribute so you can access it by just passing app variable or with method of app
@@ -244,15 +244,15 @@ fn initialise_grid() [][]Cell {
 	for i := 0; i < nrows; i++ {
 		for j := 0; j < nrows; j++ {
 			grid[i][j] = &Cell{
-				row: i
-				col: j
+				row:   i
+				col:   j
 				width: gap
-				pos: &Point{
+				pos:   &Point{
 					x: j * gap
 					y: i * gap
 				}
 				color: gx.white
-				flag: 0
+				flag:  0
 			}
 		}
 	}
@@ -331,7 +331,7 @@ fn astar_path_finding(mut app App, mut grid [][]Cell, start Point, end Point) {
 	f_score[start.x][start.y] = g_score[start.x][start.y] + hf(start, end)
 	priority_queue.insert(&Node{
 		f_score: f_score[start.x][start.y]
-		cell: &Point{
+		cell:    &Point{
 			x: start.x
 			y: start.y
 		}
@@ -362,8 +362,8 @@ fn astar_path_finding(mut app App, mut grid [][]Cell, start Point, end Point) {
 				if !(neighbor.x == start.x && neighbor.y == start.y) {
 					priority_queue.insert(&Node{
 						f_score: g_score[neighbor.x][neighbor.y] + hf(neighbor, end)
-						cell: neighbor
-						count: curr_node.count + 1
+						cell:    neighbor
+						count:   curr_node.count + 1
 					})
 					came_from[neighbor.x][neighbor.y] = curr_pos
 					set_cell_type(mut grid, neighbor.x, neighbor.y, 'open')

@@ -1020,17 +1020,17 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 // push_new_comptime_info saves the current comptime information
 fn (mut c Checker) push_new_comptime_info() {
 	c.comptime_info_stack << comptime.ComptimeInfo{
-		resolver: c.comptime.resolver
-		table: c.comptime.table
-		type_map: c.comptime.type_map.clone()
-		inside_comptime_for: c.comptime.inside_comptime_for
-		comptime_for_variant_var: c.comptime.comptime_for_variant_var
-		comptime_for_field_var: c.comptime.comptime_for_field_var
-		comptime_for_field_type: c.comptime.comptime_for_field_type
-		comptime_for_field_value: c.comptime.comptime_for_field_value
-		comptime_for_enum_var: c.comptime.comptime_for_enum_var
-		comptime_for_method_var: c.comptime.comptime_for_method_var
-		comptime_for_method: c.comptime.comptime_for_method
+		resolver:                     c.comptime.resolver
+		table:                        c.comptime.table
+		type_map:                     c.comptime.type_map.clone()
+		inside_comptime_for:          c.comptime.inside_comptime_for
+		comptime_for_variant_var:     c.comptime.comptime_for_variant_var
+		comptime_for_field_var:       c.comptime.comptime_for_field_var
+		comptime_for_field_type:      c.comptime.comptime_for_field_type
+		comptime_for_field_value:     c.comptime.comptime_for_field_value
+		comptime_for_enum_var:        c.comptime.comptime_for_enum_var
+		comptime_for_method_var:      c.comptime.comptime_for_method_var
+		comptime_for_method:          c.comptime.comptime_for_method
 		comptime_for_method_ret_type: c.comptime.comptime_for_method_ret_type
 	}
 }

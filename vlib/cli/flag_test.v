@@ -113,8 +113,8 @@ fn test_if_float_flag_parses() {
 
 fn test_if_flag_parses_with_abbrev() {
 	mut flag := cli.Flag{
-		flag: .bool
-		name: 'flag'
+		flag:   .bool
+		name:   'flag'
 		abbrev: 'f'
 	}
 	mut value := false
@@ -124,8 +124,8 @@ fn test_if_flag_parses_with_abbrev() {
 
 	value = false
 	flag = cli.Flag{
-		flag: .bool
-		name: 'flag'
+		flag:   .bool
+		name:   'flag'
 		abbrev: 'f'
 	}
 	flag.parse(['-f'], true) or { panic(err) }
@@ -150,8 +150,8 @@ fn test_if_multiple_value_on_single_value() {
 
 fn test_default_value() {
 	mut flag := cli.Flag{
-		flag: .float
-		name: 'flag'
+		flag:          .float
+		name:          'flag'
 		default_value: ['1.234']
 	}
 
@@ -160,8 +160,8 @@ fn test_default_value() {
 	assert value == 3.14158
 
 	flag = cli.Flag{
-		flag: .float
-		name: 'flag'
+		flag:          .float
+		name:          'flag'
 		default_value: ['1.234']
 	}
 

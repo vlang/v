@@ -77,16 +77,16 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 	no_generic_sym := g.table.sym(no_generic)
 	if no_generic_sym.kind != .alias {
 		return Type{
-			typ: no_generic
-			sym: no_generic_sym
-			unaliased: no_generic
+			typ:           no_generic
+			sym:           no_generic_sym
+			unaliased:     no_generic
 			unaliased_sym: no_generic_sym
 		}
 	}
 	return Type{
-		typ: no_generic
-		sym: no_generic_sym
-		unaliased: no_generic_sym.parent_idx
+		typ:           no_generic
+		sym:           no_generic_sym
+		unaliased:     no_generic_sym.parent_idx
 		unaliased_sym: g.table.sym(no_generic_sym.parent_idx)
 	}
 }

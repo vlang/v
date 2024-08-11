@@ -13,7 +13,7 @@ pub mut:
 
 fn test_main() {
 	a := MyStruct{
-		id: 'some id'
+		id:     'some id'
 		result: SomeStruct{}
 	}
 	encoded_string := json.encode(a)

@@ -17,11 +17,11 @@ fn set_trace(n &Node) int {
 fn test_main() {
 	mut initial_node := &Node{
 		parent: none
-		id: 1
+		id:     1
 	}
 	mut child_node := &Node{
 		parent: initial_node
-		id: 2
+		id:     2
 	}
 	assert set_trace(child_node) == 2
 }

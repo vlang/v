@@ -104,7 +104,7 @@ pub fn (re RE) get_group_list() []Re_group {
 			if txt_st >= 0 && txt_en > txt_st {
 				tmp := Re_group{
 					start: re.groups[gi]
-					end: re.groups[gi + 1]
+					end:   re.groups[gi + 1]
 				}
 				// println(tmp)
 				res[gi >> 1] = tmp

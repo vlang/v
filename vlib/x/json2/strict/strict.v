@@ -49,7 +49,7 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 			}
 		}
 		return StructCheckResult{
-			duplicates: duplicates
+			duplicates:  duplicates
 			superfluous: superfluous
 		}
 	} $else {
@@ -125,9 +125,9 @@ pub fn get_keys_from_json(tokens []string) []KeyStruct {
 				if nested_map_count == 0 {
 					key_type := KeyType.map
 					key_structs << KeyStruct{
-						key: current_key
+						key:        current_key
 						value_type: key_type
-						token_pos: i - 1
+						token_pos:  i - 1
 					}
 				}
 				nested_map_count++
@@ -142,9 +142,9 @@ pub fn get_keys_from_json(tokens []string) []KeyStruct {
 			} else {
 				key_type := KeyType.literal
 				key_structs << KeyStruct{
-					key: current_key
+					key:        current_key
 					value_type: key_type
-					token_pos: i - 1
+					token_pos:  i - 1
 				}
 			}
 		}

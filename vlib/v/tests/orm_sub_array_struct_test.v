@@ -35,7 +35,7 @@ fn test_orm_array() {
 	}!
 
 	new_parent := Parent{
-		name: 'test'
+		name:     'test'
 		children: [
 			Child{
 				name: 'abc'
@@ -73,7 +73,7 @@ fn test_orm_array_different_pkey_type() {
 	}!
 
 	new_parent := ParentString{
-		name: 'test'
+		name:     'test'
 		children: [
 			ChildString{
 				name: 'abc'
@@ -116,7 +116,7 @@ fn test_orm_relationship() {
 	}
 
 	new_parent := Parent{
-		name: 'test'
+		name:     'test'
 		children: []
 	}
 	sql db {
@@ -183,7 +183,7 @@ fn test_orm_relationship_different_pkey_type() {
 	}
 
 	new_parent := ParentString{
-		name: 'test'
+		name:     'test'
 		children: []
 	}
 	sql db {

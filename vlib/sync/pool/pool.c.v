@@ -51,13 +51,13 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	mut pool := PoolProcessor{
-		items: []
-		results: []
-		shared_context: unsafe { nil }
+		items:           []
+		results:         []
+		shared_context:  unsafe { nil }
 		thread_contexts: []
-		njobs: context.maxjobs
-		ntask: 0
-		thread_cb: voidptr(context.callback)
+		njobs:           context.maxjobs
+		ntask:           0
+		thread_cb:       voidptr(context.callback)
 	}
 	pool.waitgroup.init()
 	return &pool

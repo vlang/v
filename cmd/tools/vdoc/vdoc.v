@@ -258,7 +258,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	cfg := vd.cfg
 	mut out := Output{
 		path: cfg.output_path
-		typ: cfg.output_type
+		typ:  cfg.output_type
 	}
 	if out.path == '' {
 		if cfg.output_type == .unset {
@@ -300,7 +300,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
 				head: doc.DocNode{
-					name: 'README'
+					name:     'README'
 					comments: [comment]
 				}
 				time_generated: time.now()

@@ -6,10 +6,10 @@ fn test_valid_parsing() ! {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'message'
+			name:     'message'
 			children: [
 				xml.XMLNode{
-					name: 'greeting'
+					name:     'greeting'
 					children: [
 						'Hello, World!',
 					]

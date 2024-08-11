@@ -37,8 +37,8 @@ fn test_server_close() {
 		log.warn('${@FN} finished')
 	}
 	mut server := &http.Server{
-		accept_timeout: atimeout
-		handler: MyHttpHandler{}
+		accept_timeout:       atimeout
+		handler:              MyHttpHandler{}
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
@@ -58,8 +58,8 @@ fn test_server_custom_listener() {
 	}
 	listener := net.listen_tcp(.ip6, ':8081')!
 	mut server := &http.Server{
-		accept_timeout: atimeout
-		listener: listener
+		accept_timeout:       atimeout
+		listener:             listener
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
@@ -84,7 +84,7 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	handler.counter++
 	// eprintln('$time.now() | counter: $handler.counter | $req.method $req.url\n$req.header\n$req.data - 200 OK\n')
 	mut r := http.Response{
-		body: req.data + ', ${req.url}'
+		body:   req.data + ', ${req.url}'
 		header: req.header
 	}
 	match req.url.all_before('?') {
@@ -120,8 +120,8 @@ fn test_server_custom_handler() {
 	mut handler := MyHttpHandler{}
 	mut server := &http.Server{
 		accept_timeout: atimeout
-		handler: handler
-		addr: ':18197'
+		handler:        handler
+		addr:           ':18197'
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
@@ -142,8 +142,8 @@ fn test_server_custom_handler() {
 	big_url := 'http://${server.addr}/redirect_to_big'
 	mut progress_calls := &ProgressCalls{}
 	z := http.fetch(
-		url: big_url
-		user_ptr: progress_calls
+		url:         big_url
+		user_ptr:    progress_calls
 		on_redirect: fn (req &http.Request, nredirects int, new_url string) ! {
 			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
 			eprintln('>>>>>>>> on_redirect, req.url: ${req.url} | new_url: ${new_url} | nredirects: ${nredirects}')
@@ -202,7 +202,7 @@ mut:
 fn (mut handler MyCountingHandler) handle(req http.Request) http.Response {
 	handler.counter++
 	mut r := http.Response{
-		body: req.data + ', ${req.url}, counter: ${handler.counter}'
+		body:   req.data + ', ${req.url}, counter: ${handler.counter}'
 		header: req.header
 	}
 	match req.url.all_before('?') {
@@ -224,10 +224,10 @@ fn test_my_counting_handler_on_random_port() {
 	}
 	mut server := &http.Server{
 		show_startup_message: false
-		addr: ''
-		accept_timeout: atimeout
-		handler: MyCountingHandler{}
-		on_running: fn (mut server http.Server) {
+		addr:                 ''
+		accept_timeout:       atimeout
+		handler:              MyCountingHandler{}
+		on_running:           fn (mut server http.Server) {
 			spawn fn (mut server http.Server) {
 				log.warn('server started')
 				url := 'http://${server.addr}/count'

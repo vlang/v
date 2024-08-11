@@ -65,8 +65,8 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 		}
 
 		mut conn := &TcpConn{
-			sock: s
-			read_timeout: net.tcp_default_read_timeout
+			sock:          s
+			read_timeout:  net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
 		}
 		// The blocking / non-blocking mode is determined before the connection is established.
@@ -113,8 +113,8 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		}
 
 		mut conn := &TcpConn{
-			sock: s
-			read_timeout: net.tcp_default_read_timeout
+			sock:          s
+			read_timeout:  net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
 		}
 		// The blocking / non-blocking mode is determined before the connection is established.
@@ -373,9 +373,9 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	mut res := C.listen(s.handle, options.backlog)
 	if res == 0 {
 		mut listener := &TcpListener{
-			sock: s
+			sock:            s
 			accept_deadline: no_deadline
-			accept_timeout: infinite_timeout
+			accept_timeout:  infinite_timeout
 		}
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
@@ -403,9 +403,9 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 			}
 		}
 		mut listener := &TcpListener{
-			sock: s
+			sock:            s
 			accept_deadline: no_deadline
-			accept_timeout: infinite_timeout
+			accept_timeout:  infinite_timeout
 		}
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
@@ -470,10 +470,10 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	}
 
 	return &TcpConn{
-		handle: new_handle
-		read_timeout: net.tcp_default_read_timeout
+		handle:        new_handle
+		read_timeout:  net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
-		is_blocking: l.is_blocking
+		is_blocking:   l.is_blocking
 	}
 }
 

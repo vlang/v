@@ -30,9 +30,9 @@ pub fn new_timers(params TimerParams) &Timers {
 		eprintln('>>>> new_timers, should_print: ${params.should_print} | label: ${params.label}')
 	}
 	return &Timers{
-		label: params.label
-		swatches: map[string]time.StopWatch{}
-		should_print: params.should_print
+		label:         params.label
+		swatches:      map[string]time.StopWatch{}
+		should_print:  params.should_print
 		already_shown: []string{cap: 100}
 	}
 }

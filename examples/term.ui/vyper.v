@@ -162,7 +162,7 @@ fn (mut s Snake) grow() {
 		}
 	}
 	s.body << BodyPart{
-		pos: pos
+		pos:    pos
 		facing: head.facing
 	}
 }
@@ -270,7 +270,7 @@ mut:
 fn (mut a App) new_game() {
 	mut snake := Snake{
 		body: []BodyPart{len: 1, init: BodyPart{}}
-		app: a
+		app:  a
 	}
 	snake.randomize()
 	mut rat := Rat{
@@ -465,12 +465,12 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.termui = termui.init(
-		user_data: app
-		event_fn: EventFn(event)
-		frame_fn: FrameFn(frame)
-		init_fn: InitFn(init)
+		user_data:   app
+		event_fn:    EventFn(event)
+		frame_fn:    FrameFn(frame)
+		init_fn:     InitFn(init)
 		hide_cursor: true
-		frame_rate: 10
+		frame_rate:  10
 	)
 	app.termui.run()!
 }
