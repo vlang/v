@@ -6,7 +6,6 @@ import net.mbedtls
 // Server Name Indication (SNI) is defined in RFC 6066.
 // See https://mbed-tls.readthedocs.io/en/latest/kb/how-to/use-sni/
 
-
 // Use the following commands, in separate shells, to test that it works,
 // after you start the server:
 //   curl -ik --resolve 1x.dk:8443:0.0.0.0        https://1x.dk:8443/abcd
