@@ -291,7 +291,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.expr(init_field.expr)
 				if init_field.comments.len > 0 {
 					f.write(strings.repeat(` `, comment_align.max_len(init_field.pos.line_nr) - init_field.expr.str().len))
-					f.comments(init_field.comments, same_line: true, has_nl: false, level: .indent)
+					f.write(' ')
+					f.comments(init_field.comments, has_nl: false, level: .indent)
 				}
 				if single_line_fields {
 					if i < node.init_fields.len - 1 {
