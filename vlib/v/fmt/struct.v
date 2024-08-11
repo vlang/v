@@ -276,7 +276,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.comments(node.update_expr_comments, same_line: true, has_nl: true, level: .keep)
 			}
 			mut value_align := new_field_align()
-			mut comment_align := new_field_align()
+			mut comment_align := new_field_align(use_threshold: true)
 			for init_field in node.init_fields {
 				value_align.add_info(init_field.name.len, init_field.pos.line_nr)
 				if init_field.comments.len > 0 {
