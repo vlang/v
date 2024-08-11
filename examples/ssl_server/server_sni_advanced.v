@@ -65,10 +65,10 @@ fn main() {
 
 	// Create the SSL configuration
 	mut config := mbedtls.SSLConnectConfig{
-		cert: cert
-		cert_key: key
+		cert:                   cert
+		cert_key:               key
 		in_memory_verification: true // !importent
-		get_certificate: cm.get_cert
+		get_certificate:        cm.get_cert
 	}
 
 	mut server := mbedtls.new_ssl_listener('0.0.0.0:8443', config) or {

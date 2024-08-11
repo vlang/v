@@ -37,10 +37,10 @@ fn get_cert(mut l mbedtls.SSLListener, host string) !&mbedtls.SSLCerts {
 
 fn main() {
 	mut server := mbedtls.new_ssl_listener('0.0.0.0:8443', mbedtls.SSLConnectConfig{
-		verify: os.resource_abs_path('cert/ca.crt')
-		cert: os.resource_abs_path('cert/server.crt')
-		cert_key: os.resource_abs_path('cert/server.key')
-		validate: false
+		verify:          os.resource_abs_path('cert/ca.crt')
+		cert:            os.resource_abs_path('cert/server.crt')
+		cert_key:        os.resource_abs_path('cert/server.key')
+		validate:        false
 		get_certificate: get_cert // set the SNI callback to enable this feature
 	})!
 	println('Listening on https://0.0.0.0:8443/ ...')
