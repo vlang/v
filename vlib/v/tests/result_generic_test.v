@@ -19,16 +19,6 @@ fn take_part(count u32) TParser[[]u8] {
 	}
 }
 
-fn map[O](p TParser[u8], f TF[O]) TParser[O] {
-	return fn [p, f] [O](i []u8) !ParserResult[O] {
-		r := p(i)!
-		return ParserResult{
-			i: r.i
-			o: f(r.o)
-		}
-	}
-}
-
 fn test_main() {
 	input := '10_ttt_uuuu_qqq_'.bytes()
 
