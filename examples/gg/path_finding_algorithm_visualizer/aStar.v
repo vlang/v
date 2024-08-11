@@ -76,15 +76,15 @@ fn main() {
 
 	// setting values of app
 	app.gg = gg.new_context(
-		bg_color:      gx.black // background color
-		width:         window_width // window width
-		height:        window_height // window height
-		create_window: true // this will create a different window
+		bg_color:      gx.black                                // background color
+		width:         window_width                            // window width
+		height:        window_height                           // window height
+		create_window: true                                    // this will create a different window
 		window_title:  'A* Path finding algorithm visusalizer' // title of the window
-		frame_fn:      frame // this is frame function update the frame
-		event_fn:      on_event // it calls on every event
-		init_fn:       init_images // run at start of application
-		user_data:     app // store user data
+		frame_fn:      frame                                   // this is frame function update the frame
+		event_fn:      on_event                                // it calls on every event
+		init_fn:       init_images                             // run at start of application
+		user_data:     app                                     // store user data
 	)
 	mut grid := initialise_grid() // initialize the grid variable and populate the matrix with each cell as empty
 	app.grid = grid // set grid to app attribute so you can access it by just passing app variable or with method of app
