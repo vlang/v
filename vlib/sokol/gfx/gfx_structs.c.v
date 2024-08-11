@@ -139,7 +139,7 @@ pub fn (mut b Bindings) set_frag_image(index int, img Image) {
 
 pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	C.sg_update_buffer(b.vertex_buffers[index], &range)
@@ -147,7 +147,7 @@ pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size in
 
 pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size int, element_count int) int {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.vertex_buffers[index], &range)
@@ -155,7 +155,7 @@ pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size in
 
 pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element_count int) {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	C.sg_update_buffer(b.index_buffer, &range)
@@ -163,7 +163,7 @@ pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element
 
 pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element_count int) int {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.index_buffer, &range)
@@ -532,7 +532,7 @@ pub type FrameStatsWGPU = C.sg_frame_stats_wgpu
 @[typedef]
 pub struct C.sg_frame_stats {
 	frame_index u32 // current frame counter, starts at 0
-	//
+
 	num_passes             u32
 	num_apply_viewport     u32
 	num_apply_scissor_rect u32
@@ -543,12 +543,12 @@ pub struct C.sg_frame_stats {
 	num_update_buffer      u32
 	num_append_buffer      u32
 	num_update_image       u32
-	//
+
 	size_apply_uniforms u32
 	size_update_buffer  u32
 	size_append_buffer  u32
 	size_update_image   u32
-	//
+
 	gl    FrameStatsGL
 	d3d11 FrameStatsD3D11
 	metal FrameStatsMetal

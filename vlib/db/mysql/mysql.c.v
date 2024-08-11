@@ -384,7 +384,7 @@ pub fn (db &DB) prepare(query string) !StmtHandle {
 
 	return StmtHandle{
 		stmt: stmt
-		db: DB{
+		db:   DB{
 			conn: db.conn
 		}
 	}
@@ -398,10 +398,10 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 	mut bind_params := []C.MYSQL_BIND{}
 	for param in params {
 		bind := C.MYSQL_BIND{
-			buffer_type: mysql_type_string
-			buffer: param.str
+			buffer_type:   mysql_type_string
+			buffer:        param.str
 			buffer_length: u32(param.len)
-			length: 0
+			length:        0
 		}
 		bind_params << bind
 	}
@@ -428,10 +428,10 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 	mut binds := []C.MYSQL_BIND{}
 	for i in 0 .. num_cols {
 		bind := C.MYSQL_BIND{
-			buffer_type: mysql_type_string
-			buffer: 0
+			buffer_type:   mysql_type_string
+			buffer:        0
 			buffer_length: 0
-			length: unsafe { &length[i] }
+			length:        unsafe { &length[i] }
 		}
 		binds << bind
 	}

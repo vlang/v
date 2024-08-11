@@ -71,14 +71,14 @@ fn new_channel_st(n u32, st u32) &Channel {
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(0) }
 	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
 	mut ch := Channel{
-		objsize: st
-		cap: n
-		write_free: n
-		read_avail: 0
-		ringbuf: rbuf
-		statusbuf: sbuf
+		objsize:          st
+		cap:              n
+		write_free:       n
+		read_avail:       0
+		ringbuf:          rbuf
+		statusbuf:        sbuf
 		write_subscriber: unsafe { nil }
-		read_subscriber: unsafe { nil }
+		read_subscriber:  unsafe { nil }
 	}
 	ch.writesem.init(wsem)
 	ch.readsem.init(rsem)
@@ -94,14 +94,14 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &u8(0) }
 		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
 		mut ch := Channel{
-			objsize: st
-			cap: n
-			write_free: n
-			read_avail: 0
-			ringbuf: rbuf
-			statusbuf: sbuf
+			objsize:          st
+			cap:              n
+			write_free:       n
+			read_avail:       0
+			ringbuf:          rbuf
+			statusbuf:        sbuf
 			write_subscriber: unsafe { nil }
-			read_subscriber: unsafe { nil }
+			read_subscriber:  unsafe { nil }
 		}
 		ch.writesem.init(wsem)
 		ch.readsem.init(rsem)

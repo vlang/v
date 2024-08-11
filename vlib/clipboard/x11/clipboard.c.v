@@ -186,14 +186,14 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 		println('ERROR: No X Server running. Clipboard cannot be used.')
 		return &Clipboard{
 			display: unsafe { nil }
-			mutex: sync.new_mutex()
+			mutex:   sync.new_mutex()
 		}
 	}
 
 	mut cb := &Clipboard{
 		display: display
-		window: create_xwindow(display)
-		mutex: sync.new_mutex()
+		window:  create_xwindow(display)
+		mutex:   sync.new_mutex()
 	}
 	cb.intern_atoms()
 	cb.selection = cb.get_atom(selection)
@@ -327,13 +327,13 @@ fn (mut cb Clipboard) start_listener() {
 					xsre = unsafe { &event.xselectionrequest }
 
 					mut xse := C.XSelectionEvent{
-						@type: C.SelectionNotify // 31
-						display: xsre.display
+						@type:     C.SelectionNotify // 31
+						display:   xsre.display
 						requestor: xsre.requestor
 						selection: xsre.selection
-						time: xsre.time
-						target: xsre.target
-						property: xsre.property
+						time:      xsre.time
+						target:    xsre.target
+						property:  xsre.property
 					}
 					if !cb.transmit_selection(&xse) {
 						xse.property = Atom(0)

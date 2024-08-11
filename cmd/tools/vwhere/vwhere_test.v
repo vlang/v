@@ -184,3 +184,24 @@ fn test_find_pub_const_with_mod() {
 		},
 	]
 }
+
+fn test_find_in_dir_recursive() {
+	args := ['const', 'common', '-dir', test_dir]
+	mut fdr := Finder{}
+	fdr.configure_from_arguments(args)
+	fdr.search_for_matches()
+	dump(fdr.matches)
+
+	assert fdr.matches == [
+		Match{
+			path: os.join_path_single(test_dir, 'file_common.v')
+			line: 3
+			text: "const common = 'abcdef'"
+		},
+		Match{
+			path: os.join_path_single(test_dir, 'nested_mod/nested_file.v')
+			line: 6
+			text: 'pub const common = 42'
+		},
+	]
+}

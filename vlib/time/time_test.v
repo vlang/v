@@ -2,25 +2,25 @@ import time
 import math
 
 const local_time_to_test = time.new(
-	year: 1980
-	month: 7
-	day: 11
-	hour: 21
-	minute: 23
-	second: 42
+	year:       1980
+	month:      7
+	day:        11
+	hour:       21
+	minute:     23
+	second:     42
 	nanosecond: 123456789
-	is_local: true
+	is_local:   true
 )
 
 const utc_time_to_test = time.new(
-	year: 1980
-	month: 7
-	day: 11
-	hour: 21
-	minute: 23
-	second: 42
+	year:       1980
+	month:      7
+	day:        11
+	hour:       21
+	minute:     23
+	second:     42
 	nanosecond: 123456789
-	is_local: false
+	is_local:   false
 )
 
 fn test_is_leap_year() {
@@ -162,10 +162,10 @@ fn test_smonth() {
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
-			year: 1980
-			month: month_num
-			day: 1
-			hour: 0
+			year:   1980
+			month:  month_num
+			day:    1
+			hour:   0
 			minute: 0
 			second: 0
 		}
@@ -178,10 +178,10 @@ fn test_day_of_week() {
 		day_of_week := i + 1
 		// 2 Dec 2019 is Monday
 		t := time.Time{
-			year: 2019
-			month: 12
-			day: 2 + i
-			hour: 0
+			year:   2019
+			month:  12
+			day:    2 + i
+			hour:   0
 			minute: 0
 			second: 0
 		}
@@ -213,10 +213,10 @@ fn test_weekday_str() {
 	for i, name in day_names {
 		// 2 Dec 2019 is Monday
 		t := time.Time{
-			year: 2019
-			month: 12
-			day: 2 + i
-			hour: 0
+			year:   2019
+			month:  12
+			day:    2 + i
+			hour:   0
 			minute: 0
 			second: 0
 		}
@@ -237,14 +237,14 @@ fn test_add() {
 	assert t2.nanosecond == t1.nanosecond + d_nanoseconds
 	assert t2.unix() == t1.unix() + d_seconds
 	assert t2.is_local == t1.is_local
-	//
+
 	t3 := local_time_to_test.add(-duration)
 	// dump(t3.debug())
 	assert t3.second == t1.second - d_seconds
 	assert t3.nanosecond == t1.nanosecond - d_nanoseconds
 	assert t3.unix() == t1.unix() - d_seconds
 	assert t3.is_local == t1.is_local
-	//
+
 	t4 := local_time_to_test.as_local()
 	// dump(t4.debug())
 	t5 := t4.add(duration)
@@ -252,9 +252,9 @@ fn test_add() {
 	assert t5.is_local == t4.is_local
 
 	t := time.Time{
-		year: 2024
+		year:  2024
 		month: 4
-		day: 3
+		day:   3
 	}
 	t_5am := t.add(time.hour * 5)
 	assert t_5am.hour == 5
@@ -319,14 +319,14 @@ fn test_unix_time() {
 	eprintln(' ut1: ${ut1}')
 	eprintln(' ut2: ${ut2}')
 	assert ut2 - ut1 < 2
-	//
+
 	utm1 := t1.unix_milli()
 	utm2 := t2.unix_milli()
 	eprintln('utm1: ${utm1}')
 	eprintln('utm2: ${utm2}')
 	assert (utm1 - ut1 * 1000) < 1000
 	assert (utm2 - ut2 * 1000) < 1000
-	//
+
 	assert utm2 - utm1 > 2
 	assert utm2 - utm1 < 999
 }
@@ -334,7 +334,7 @@ fn test_unix_time() {
 fn test_offset() {
 	u := time.utc()
 	n := time.now()
-	//
+
 	mut diff_seconds := 0
 	if u.day != n.day {
 		if u.day > n.day {
@@ -395,4 +395,44 @@ fn test_parse_three_letters_month() {
 	tm_s := tm.custom_format(format)
 	tm_tm := time.parse_format(tm_s, format)!
 	assert tm_tm.month == tm.month
+}
+
+fn test_parse_ordinal_weekday_d() {
+	format := 'd MMM DD HH:mm:ss YYYY'
+	dt := '0 Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == '4 Jan 01 00:00:00 1970'
+}
+
+fn test_parse_ordinal_weekday_c() {
+	format := 'c MMM DD HH:mm:ss YYYY'
+	dt := '7 Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == '4 Jan 01 00:00:00 1970'
+}
+
+fn test_parse_two_letters_weekday() {
+	format := 'dd MMM DD HH:mm:ss YYYY'
+	dt := 'Su Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == 'Th Jan 01 00:00:00 1970'
+}
+
+fn test_parse_three_letters_weekday() {
+	format := 'ddd MMM DD HH:mm:ss YYYY'
+	dt := 'Sun Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == 'Thu Jan 01 00:00:00 1970'
+}
+
+fn test_parse_weekday() {
+	format := 'dddd MMM DD HH:mm:ss YYYY'
+	dt := 'Sunday Jan 01 00:00:00 1970'
+	tm := time.parse_format(dt, format)!
+	tm_s := tm.custom_format(format)
+	assert tm_s == 'Thursday Jan 01 00:00:00 1970'
 }

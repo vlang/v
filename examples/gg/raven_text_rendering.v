@@ -67,14 +67,14 @@ fn main() {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Raven text'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		font_path: font_path // window_user_ptr: ctx
+		window_title:  'Raven text'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      frame
+		font_path:     font_path // window_user_ptr: ctx
 		// native_rendering: true
 	)
 	app.gg.run()

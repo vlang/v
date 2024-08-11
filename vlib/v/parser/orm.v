@@ -111,25 +111,25 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.inside_match = tmp_inside_match
 
 	return ast.SqlExpr{
-		is_count: is_count
-		is_insert: is_insert
-		typ: typ.set_flag(.result)
-		or_expr: or_expr
-		db_expr: db_expr
-		where_expr: where_expr
-		has_where: has_where
-		has_limit: has_limit
-		limit_expr: limit_expr
-		has_offset: has_offset
-		offset_expr: offset_expr
-		has_order: has_order
-		order_expr: order_expr
-		has_desc: has_desc
-		is_array: if is_count { false } else { true }
+		is_count:     is_count
+		is_insert:    is_insert
+		typ:          typ.set_flag(.result)
+		or_expr:      or_expr
+		db_expr:      db_expr
+		where_expr:   where_expr
+		has_where:    has_where
+		has_limit:    has_limit
+		limit_expr:   limit_expr
+		has_offset:   has_offset
+		offset_expr:  offset_expr
+		has_order:    has_order
+		order_expr:   order_expr
+		has_desc:     has_desc
+		is_array:     if is_count { false } else { true }
 		is_generated: false
 		inserted_var: inserted_var
-		pos: pos.extend(p.prev_tok.pos())
-		table_expr: ast.TypeNode{
+		pos:          pos.extend(p.prev_tok.pos())
+		table_expr:   ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
@@ -171,9 +171,9 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
-		pos: pos.extend(p.prev_tok.pos())
+		pos:     pos.extend(p.prev_tok.pos())
 		db_expr: db_expr
-		lines: lines
+		lines:   lines
 		or_expr: or_expr
 	}
 }
@@ -193,8 +193,8 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 
 	return ast.OrExpr{
 		stmts: stmts
-		kind: kind
-		pos: pos
+		kind:  kind
+		pos:   pos
 	}
 }
 
@@ -216,13 +216,13 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
 		return ast.SqlStmtLine{
-			kind: kind
-			pos: pos.extend(p.prev_tok.pos())
+			kind:       kind
+			pos:        pos.extend(p.prev_tok.pos())
 			table_expr: ast.TypeNode{
 				typ: typ
 				pos: typ_pos
 			}
-			scope: p.scope
+			scope:        p.scope
 			is_generated: false
 		}
 	} else if n == 'drop' {
@@ -235,14 +235,14 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
 		return ast.SqlStmtLine{
-			kind: kind
-			pos: pos.extend(p.prev_tok.pos())
+			kind:       kind
+			pos:        pos.extend(p.prev_tok.pos())
 			table_expr: ast.TypeNode{
 				typ: typ
 				pos: typ_pos
 			}
 			is_generated: false
-			scope: p.scope
+			scope:        p.scope
 		}
 	}
 	mut inserted_var := ''
@@ -318,14 +318,14 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			typ: table_type
 			pos: table_pos
 		}
-		object_var: inserted_var
-		pos: pos
+		object_var:      inserted_var
+		pos:             pos
 		updated_columns: updated_columns
-		update_exprs: update_exprs
-		kind: kind
-		where_expr: where_expr
-		is_generated: false
-		scope: p.scope
+		update_exprs:    update_exprs
+		kind:            kind
+		where_expr:      where_expr
+		is_generated:    false
+		scope:           p.scope
 	}
 }
 

@@ -47,19 +47,19 @@ mut:
 fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width: w
+		width:  w
 		height: h
 	}
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 	sg_img := gfx.make_image(&img_desc)
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
 	}
 	sg_smp := gfx.make_sampler(&smp_desc)
 	return sg_img, sg_smp
@@ -326,13 +326,13 @@ fn (mut app App) on_event(ev &gg.Event, x voidptr) {
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		width: 800
-		height: 800
+		width:        800
+		height:       800
 		window_title: '3D Dual shader Cube - click and rotate with the mouse'
-		user_data: app
-		frame_fn: app.frame
-		init_fn: app.on_init
-		event_fn: app.on_event
+		user_data:    app
+		frame_fn:     app.frame
+		init_fn:      app.on_init
+		event_fn:     app.on_event
 	)
 	app.gg.run()
 }

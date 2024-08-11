@@ -35,22 +35,22 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 	return {
 		VCS.git: VCSInfo{
-			dir: '.git'
+			dir:  '.git'
 			args: struct {
-				install: git_install_cmd
-				version: '--single-branch -b'
-				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
-				path: '-C'
+				install:  git_install_cmd
+				version:  '--single-branch -b'
+				update:   'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
+				path:     '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 			}
 		}
 		VCS.hg:  VCSInfo{
-			dir: '.hg'
+			dir:  '.hg'
 			args: struct {
-				install: 'clone'
-				version: '--rev'
-				update: 'pull --update'
-				path: '-R'
+				install:  'clone'
+				version:  '--rev'
+				update:   'pull --update'
+				path:     '-R'
 				outdated: ['incoming']
 			}
 		}

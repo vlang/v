@@ -110,7 +110,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			// TODO: actually read the v.mod file and parse its contents to see
 			// if its source folder is different
 			res := ModFileAndFolder{
-				vmod_file: os.join_path(cfolder, 'v.mod')
+				vmod_file:   os.join_path(cfolder, 'v.mod')
 				vmod_folder: cfolder
 			}
 			return folders_so_far, res
@@ -124,7 +124,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 	}
 	mcache.mark_folders_as_vmod_free(folders_so_far)
 	return [mfolder], ModFileAndFolder{
-		vmod_file: ''
+		vmod_file:   ''
 		vmod_folder: mfolder
 	}
 }

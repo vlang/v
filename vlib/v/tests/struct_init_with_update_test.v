@@ -9,10 +9,10 @@ struct Author {
 fn cool_author() Author {
 	return Author{
 		username: 'Terisback'
-		name: 'Bob'
-		pass: '123456'
-		height: 175
-		age: 18
+		name:     'Bob'
+		pass:     '123456'
+		height:   175
+		age:      18
 	}
 }
 

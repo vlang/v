@@ -187,7 +187,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			label := g.labels.new_label()
 			cjmp_addr := g.condition(expr, false)
 			g.labels.patches << LabelPatch{
-				id: label
+				id:  label
 				pos: cjmp_addr
 			}
 			g.println('; jump to label ${label}')
@@ -195,7 +195,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if has_endif {
 				jump_addr := g.code_gen.jmp(0)
 				g.labels.patches << LabelPatch{
-					id: endif_label
+					id:  endif_label
 					pos: jump_addr
 				}
 				g.println('; jump to label ${int(endif_label)}')

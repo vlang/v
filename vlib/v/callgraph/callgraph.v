@@ -9,9 +9,9 @@ import v.dotgraph
 // that function make transitively
 pub fn show(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File) {
 	mut mapper := &Mapper{
-		pref: pref_
+		pref:  pref_
 		table: table
-		dg: dotgraph.new('CallGraph', 'CallGraph for ${pref_.path}', 'green')
+		dg:    dotgraph.new('CallGraph', 'CallGraph for ${pref_.path}', 'green')
 	}
 	// Node14 [shape="box",label="PrivateBase",URL="$classPrivateBase.html"];
 	// Node15 -> Node9 [dir=back,color="midnightblue",fontsize=10,style="solid"];
@@ -101,7 +101,7 @@ fn (mut m Mapper) visit(node &ast.Node) ! {
 					m.dot_caller_name = m.dot_fn_name(node.name, node.receiver.typ, node.is_method)
 					if m.is_caller_used {
 						m.dg.new_node(m.caller_name,
-							node_name: m.dot_caller_name
+							node_name:        m.dot_caller_name
 							should_highlight: m.caller_name == 'main.main'
 						)
 					}

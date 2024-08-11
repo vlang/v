@@ -9,16 +9,16 @@ struct Context {
 mut:
 	ok_client_dials   int
 	fail_client_dials int
-	//
+
 	ok_client_close   int
 	fail_client_close int
-	////
+
 	ok_server_accepts   int
 	fail_server_accepts int
-	//
+
 	ok_server_close   int
 	fail_server_close int
-	//
+
 	received []int
 }
 

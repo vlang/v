@@ -315,21 +315,21 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	} else if left.unaliased.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 		&& right.unaliased.is_signed() {
 		g.gen_safe_integer_infix_expr(
-			op: node.op
+			op:            node.op
 			unsigned_type: left.unaliased
 			unsigned_expr: node.left
-			signed_type: right.unaliased
-			signed_expr: node.right
+			signed_type:   right.unaliased
+			signed_expr:   node.right
 		)
 	} else if right.unaliased.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 		&& left.unaliased.is_signed() {
 		g.gen_safe_integer_infix_expr(
-			op: node.op
-			reverse: true
+			op:            node.op
+			reverse:       true
 			unsigned_type: right.unaliased
 			unsigned_expr: node.right
-			signed_type: left.unaliased
-			signed_expr: node.left
+			signed_type:   left.unaliased
+			signed_expr:   node.left
 		)
 	} else {
 		g.gen_plain_infix_expr(node)
@@ -428,21 +428,21 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 	} else if left.unaliased.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 		&& right.unaliased.is_signed() {
 		g.gen_safe_integer_infix_expr(
-			op: node.op
+			op:            node.op
 			unsigned_type: left.unaliased
 			unsigned_expr: node.left
-			signed_type: right.unaliased
-			signed_expr: node.right
+			signed_type:   right.unaliased
+			signed_expr:   node.right
 		)
 	} else if right.unaliased.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 		&& left.unaliased.is_signed() {
 		g.gen_safe_integer_infix_expr(
-			op: node.op
-			reverse: true
+			op:            node.op
+			reverse:       true
 			unsigned_type: right.unaliased
 			unsigned_expr: node.right
-			signed_type: left.unaliased
-			signed_expr: node.left
+			signed_type:   left.unaliased
+			signed_expr:   node.left
 		)
 	} else {
 		g.gen_plain_infix_expr(node)
@@ -473,10 +473,10 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 					mut infix_exprs := []ast.InfixExpr{}
 					for i in 0 .. node.right.exprs.len {
 						infix_exprs << ast.InfixExpr{
-							op: .key_is
-							left: node.left
-							left_type: node.left_type
-							right: node.right.exprs[i]
+							op:         .key_is
+							left:       node.left
+							left_type:  node.left_type
+							right:      node.right.exprs[i]
 							right_type: node.right.expr_types[i]
 						}
 					}
@@ -497,9 +497,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
 					if node.left_type in elem_sym.sumtype_info().variants {
 						new_node_left := ast.CastExpr{
-							arg: ast.empty_expr
-							typ: elem_type
-							expr: node.left
+							arg:       ast.empty_expr
+							typ:       elem_type
+							expr:      node.left
 							expr_type: node.left_type
 						}
 						g.infix_expr_in_optimization(new_node_left, node.right)
@@ -517,9 +517,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if ast.mktyp(node.left_type) in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.empty_expr
-						typ: elem_type
-						expr: node.left
+						arg:       ast.empty_expr
+						typ:       elem_type
+						expr:      node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
 					g.write('(')
@@ -529,9 +529,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				}
 			} else if elem_type_.sym.kind == .interface_ {
 				new_node_left := ast.CastExpr{
-					arg: ast.empty_expr
-					typ: elem_type
-					expr: node.left
+					arg:       ast.empty_expr
+					typ:       elem_type
+					expr:      node.left
 					expr_type: ast.mktyp(node.left_type)
 				}
 				g.write('(')
@@ -572,10 +572,10 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 					mut infix_exprs := []ast.InfixExpr{}
 					for i in 0 .. node.right.exprs.len {
 						infix_exprs << ast.InfixExpr{
-							op: .key_is
-							left: node.left
-							left_type: node.left_type
-							right: node.right.exprs[i]
+							op:         .key_is
+							left:       node.left
+							left_type:  node.left_type
+							right:      node.right.exprs[i]
 							right_type: node.right.expr_types[i]
 						}
 					}
@@ -602,9 +602,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if ast.mktyp(node.left_type) in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.empty_expr
-						typ: elem_type
-						expr: node.left
+						arg:       ast.empty_expr
+						typ:       elem_type
+						expr:      node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
 					g.write('(')

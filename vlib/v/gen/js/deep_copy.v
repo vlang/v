@@ -31,7 +31,7 @@ fn (mut g JsGen) get_copy_fn(typ ast.Type) string {
 		}
 	}
 	g.copy_types << StrType{
-		typ: unwrapped
+		typ:  unwrapped
 		styp: styp
 	}
 	return copy_fn_name

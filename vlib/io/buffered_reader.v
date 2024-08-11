@@ -37,7 +37,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	// create
 	r := &BufferedReader{
 		reader: o.reader
-		buf: []u8{len: o.cap, cap: o.cap}
+		buf:    []u8{len: o.cap, cap: o.cap}
 		offset: 0
 		mfails: o.retries
 	}
@@ -60,7 +60,7 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	if read == 0 {
 		return NotExpected{
 			cause: 'invalid copy of buffer'
-			code: -1
+			code:  -1
 		}
 	}
 	r.offset += read

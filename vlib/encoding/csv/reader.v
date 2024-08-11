@@ -61,9 +61,9 @@ pub:
 // optionally, a custom delimiter.
 pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		data: data
+		data:      data
 		delimiter: config.delimiter
-		comment: config.comment
+		comment:   config.comment
 	}
 }
 

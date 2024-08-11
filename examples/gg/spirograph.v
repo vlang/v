@@ -19,11 +19,11 @@ mut k := 497
 mut scale := 200
 gg.start(
 	window_title: 'Spirograph'
-	bg_color: background
-	width: 900
-	height: 950
+	bg_color:     background
+	width:        900
+	height:       950
 	sample_count: 2
-	frame_fn: fn [mut k, mut scale] (mut ctx gg.Context) {
+	frame_fn:     fn [mut k, mut scale] (mut ctx gg.Context) {
 		wsize := gg.window_size()
 		ctx.begin()
 		ctx.draw_rect_filled(0, 0, wsize.width, wsize.height, gg.Color{10, 1, 30, 60})

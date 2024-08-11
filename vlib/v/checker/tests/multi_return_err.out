@@ -1,0 +1,34 @@
+vlib/v/checker/tests/multi_return_err.vv:14:10: error: cannot use `f64` as `int` in argument 2 to `my_func` from (int, f64)
+   12 | 
+   13 | fn main() {
+   14 |     my_func(my_func2())
+      |             ~~~~~~~~~~
+   15 |     my_func3(my_func2(), 'foo')
+   16 |     my_func4('foo', my_func2())
+vlib/v/checker/tests/multi_return_err.vv:15:2: error: expected 3 arguments, but got 2
+   13 | fn main() {
+   14 |     my_func(my_func2())
+   15 |     my_func3(my_func2(), 'foo')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   16 |     my_func4('foo', my_func2())
+   17 |     my_func(my_func5())
+vlib/v/checker/tests/multi_return_err.vv:16:2: error: expected 3 arguments, but got 2
+   14 |     my_func(my_func2())
+   15 |     my_func3(my_func2(), 'foo')
+   16 |     my_func4('foo', my_func2())
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |     my_func(my_func5())
+   18 |     my_func(my_func6())
+vlib/v/checker/tests/multi_return_err.vv:17:2: error: expected 2 arguments, but got 1
+   15 |     my_func3(my_func2(), 'foo')
+   16 |     my_func4('foo', my_func2())
+   17 |     my_func(my_func5())
+      |     ~~~~~~~~~~~~~~~~~~~
+   18 |     my_func(my_func6())
+   19 | }
+vlib/v/checker/tests/multi_return_err.vv:18:10: error: expected 2 arguments, but got 3 from multi-return (int, int, int)
+   16 |     my_func4('foo', my_func2())
+   17 |     my_func(my_func5())
+   18 |     my_func(my_func6())
+      |             ~~~~~~~~~~
+   19 | }

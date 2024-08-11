@@ -85,7 +85,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		}
 		all_v_files << os.join_path(dir, file)
 	}
-	//
+
 	mut defaults := []string{}
 	mut fnames_no_postfixes := map[string][]string{}
 	for file in all_v_files {
@@ -183,18 +183,18 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {
 		return false
 	}
-	//
+
 	if prefs.os != .linux && (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) {
 		return false
 	}
-	//
+
 	if prefs.os != .macos && (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) {
 		return false
 	}
 	if prefs.os != .macos && (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) {
 		return false
 	}
-	//
+
 	if prefs.os != .ios && (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) {
 		return false
 	}

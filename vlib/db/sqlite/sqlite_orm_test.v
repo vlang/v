@@ -33,47 +33,47 @@ fn test_sqlite_orm() {
 	}
 	db.create('Test', [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:  'id'
+			typ:   typeof[int]().idx
 			attrs: [
 				VAttribute{
 					name: 'primary'
 				},
 				VAttribute{
-					name: 'sql'
+					name:    'sql'
 					has_arg: true
-					kind: .plain
-					arg: 'serial'
+					kind:    .plain
+					arg:     'serial'
 				},
 			]
 		},
 		orm.TableField{
-			name: 'name'
-			typ: typeof[string]().idx
+			name:  'name'
+			typ:   typeof[string]().idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: typeof[i64]().idx
+			typ:  typeof[i64]().idx
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
+		data:   [orm.string_to_primitive('Louis'), orm.i64_to_primitive(100)]
 	}) or { panic(err) }
 
 	res := db.@select(orm.SelectConfig{
-		table: 'Test'
+		table:     'Test'
 		has_where: true
-		fields: ['id', 'name', 'age']
-		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		fields:    ['id', 'name', 'age']
+		types:     [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), i64(100)]
-		types: [typeof[string]().idx, typeof[i64]().idx]
+		data:   [orm.Primitive('Louis'), i64(100)]
+		types:  [typeof[string]().idx, typeof[i64]().idx]
 		is_and: [true, true]
-		kinds: [.eq, .eq]
+		kinds:  [.eq, .eq]
 	}) or { panic(err) }
 
 	id := res[0][0]
@@ -177,7 +177,7 @@ fn test_get_affected_rows_count() {
 	);')!
 
 	fst := EntityToTest{
-		id: 1
+		id:   1
 		smth: '1'
 	}
 
@@ -188,7 +188,7 @@ fn test_get_affected_rows_count() {
 	assert db.get_affected_rows_count() == 1
 
 	snd := EntityToTest{
-		id: 1
+		id:   1
 		smth: '2'
 	}
 

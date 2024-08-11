@@ -11,7 +11,7 @@ struct Bar {
 
 fn test_order() {
 	f := Foo{
-		age: 4
+		age:  4
 		name: 'f'
 	}
 	b := Bar{

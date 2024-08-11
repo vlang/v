@@ -28,7 +28,7 @@ fn test_sizeof_in_assert() {
 	// dump(res)
 	assert res.output.contains('sizeof_used_in_assert_test.v:11: fn test_assert_offsetof')
 	assert res.output.contains('assert __offsetof(main.Abc, y) == 1')
-	//
+
 	assert res.output.contains('sizeof_used_in_assert_test.v:15: fn test_assert_sizeof')
 	assert res.output.contains('assert sizeof(main.Abc) == sizeof(main.Xyz)')
 }

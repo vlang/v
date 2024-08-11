@@ -562,13 +562,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
 						c.note('an implicit clone of the slice was done here', right.pos())
 						right = ast.CallExpr{
-							name: 'clone'
-							left: right
-							left_type: left_type
-							is_method: true
+							name:          'clone'
+							left:          right
+							left_type:     left_type
+							is_method:     true
 							receiver_type: left_type
-							return_type: left_type
-							scope: c.fn_scope
+							return_type:   left_type
+							scope:         c.fn_scope
 						}
 						right_type = c.expr(mut right)
 						node.right[i] = right
@@ -731,30 +731,30 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 
 				node = ast.AssignStmt{
-					op: .assign
-					pos: node.pos
+					op:           .assign
+					pos:          node.pos
 					end_comments: node.end_comments
-					left: node.left
-					right: [
+					left:         node.left
+					right:        [
 						ast.Expr(ast.InfixExpr{
 							left: ast.CastExpr{
-								expr: node.left[0]
-								typ: modified_left_type
-								typname: c.table.type_str(modified_left_type)
+								expr:      node.left[0]
+								typ:       modified_left_type
+								typname:   c.table.type_str(modified_left_type)
 								expr_type: left_type
-								pos: node.pos
+								pos:       node.pos
 							}
-							op: .right_shift
-							right: node.right[0]
-							left_type: modified_left_type
+							op:         .right_shift
+							right:      node.right[0]
+							left_type:  modified_left_type
 							right_type: right_type
-							pos: node.pos
+							pos:        node.pos
 						}),
 					]
-					left_types: node.left_types
-					right_types: node.right_types
-					is_static: node.is_static
-					is_simple: node.is_simple
+					left_types:    node.left_types
+					right_types:   node.right_types
+					is_static:     node.is_static
+					is_simple:     node.is_simple
 					has_cross_var: node.has_cross_var
 				}
 			}

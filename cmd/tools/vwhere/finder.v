@@ -15,7 +15,7 @@ mut:
 	modul    string
 	receiver string
 	dirs     []string
-	matches  []Match
+	matches  []Match // all the results are collected here
 }
 
 fn (mut fdr Finder) configure_from_arguments(args []string) {
@@ -74,7 +74,6 @@ fn (mut fdr Finder) search_for_matches() {
 		paths_to_search << if fdr.modul == 'main' { current_dir } else { resolve_module(fdr.modul) or {
 				panic(err)} }
 	} else if fdr.dirs.len != 0 && fdr.modul == '' {
-		recursive = false
 		paths_to_search << fdr.dirs.map(resolve_module(it) or { panic(err) })
 	} else {
 		recursive = false

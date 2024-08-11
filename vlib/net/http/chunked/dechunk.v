@@ -58,7 +58,7 @@ fn (mut s ChunkScanner) read_chunk(chunksize u32) !string {
 pub fn decode(text string) !string {
 	mut sb := strings.new_builder(100)
 	mut cscanner := ChunkScanner{
-		pos: 0
+		pos:  0
 		text: text
 	}
 	for {

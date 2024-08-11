@@ -119,9 +119,9 @@ pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
 	}
 
 	return Encoding{
-		alphabet: alphabet
+		alphabet:     alphabet
 		padding_char: padding_char
-		decode_map: decode_map
+		decode_map:   decode_map
 	}
 }
 

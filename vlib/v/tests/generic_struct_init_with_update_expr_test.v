@@ -24,7 +24,7 @@ pub fn (t Transform[T]) default() Transform[T] {
 fn test_generic_struct_init_with_update_expr() {
 	a := Transform[f64]{
 		before: [0.0, 0.0]
-		after: [320.0, 240.0]
+		after:  [320.0, 240.0]
 	}
 
 	b := a.clone()

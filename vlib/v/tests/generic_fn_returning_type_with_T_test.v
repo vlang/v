@@ -18,7 +18,7 @@ fn test_generic_function_returning_type_starting_with_t() {
 	println(ft)
 	assert typeof(ft).name == 'Tensor'
 	assert '${ft}' == 'Tensor{\n    x: 123\n}'
-	//
+
 	it := new_tensor[int](x: 456)
 	println(it)
 	assert typeof(it).name == 'Tensor'

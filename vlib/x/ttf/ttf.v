@@ -380,8 +380,8 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		flag := tf.get_u8()
 		flags << flag
 		in_glyph.points << Point{
-			x: 0
-			y: 0
+			x:        0
+			y:        0
 			on_curve: (flag & ttf.tfk_on_curve) > 0
 		}
 		if (flag & ttf.tfk_repeat) > 0 {
@@ -391,8 +391,8 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 			for repeat_count > 0 {
 				flags << flag
 				in_glyph.points << Point{
-					x: 0
-					y: 0
+					x:        0
+					y:        0
 					on_curve: (flag & ttf.tfk_on_curve) > 0
 				}
 				repeat_count--
@@ -521,8 +521,8 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 				x = component.matrix[0] * x + component.matrix[1] * y + component.matrix[4]
 				y = component.matrix[2] * x + component.matrix[3] * y + component.matrix[5]
 				in_glyph.points << Point{
-					x: int(x)
-					y: int(y)
+					x:        int(x)
+					y:        int(y)
 					on_curve: p.on_curve
 				}
 			}
@@ -681,8 +681,8 @@ fn (mut tf TTF_File) read_offset_tables() {
 		tag := tf.get_string(4)
 		tf.tables[tag] = Offset_Table{
 			checksum: tf.get_u32()
-			offset: tf.get_u32()
-			length: tf.get_u32()
+			offset:   tf.get_u32()
+			length:   tf.get_u32()
 		}
 		dprintln('Table: [${tag}]')
 		// dprintln("${tf.tables[tag]}")
@@ -1019,8 +1019,8 @@ fn (mut tf TTF_File) create_kern_table0(vertical bool, cross bool) Kern0Table {
 	dprintln('n_pairs: ${n_pairs} search_range: ${search_range} entry_selector: ${entry_selector} range_shift: ${range_shift}')
 
 	mut kt0 := Kern0Table{
-		swap: (vertical && !cross) || (!vertical && cross)
-		offset: offset
+		swap:    (vertical && !cross) || (!vertical && cross)
+		offset:  offset
 		n_pairs: n_pairs
 	}
 

@@ -333,6 +333,7 @@ pub:
 	comments         []Comment
 	i                int
 	has_default_expr bool
+	has_prev_newline bool
 	attrs            []Attr
 	is_pub           bool
 	default_val      string
@@ -503,7 +504,7 @@ pub enum StructInitKind {
 pub struct Import {
 pub:
 	source_name string // The original name in the source, `import abc.def` -> 'abc.def', *no matter* how the module is resolved
-	//
+
 	mod       string // the module name of the import
 	alias     string // the `x` in `import xxx as x`
 	pos       token.Pos
@@ -777,7 +778,8 @@ pub mut:
 	receiver_type          Type // User / T, if receiver is generic, then cgen requires receiver_type to be T
 	receiver_concrete_type Type // if receiver_type is T, then receiver_concrete_type is concrete type, otherwise it is the same as receiver_type
 	return_type            Type
-	return_type_generic    Type   // the original generic return type from fn def
+	return_type_generic    Type // the original generic return type from fn def
+	nr_ret_values          int = -1 // amount of return values
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
@@ -2121,10 +2123,10 @@ pub fn (expr Expr) pos() token.Pos {
 			left_pos := expr.left.pos()
 			right_pos := expr.right.pos()
 			token.Pos{
-				line_nr: expr.pos.line_nr
-				pos: left_pos.pos
-				len: right_pos.pos - left_pos.pos + right_pos.len
-				col: left_pos.col
+				line_nr:   expr.pos.line_nr
+				pos:       left_pos.pos
+				len:       right_pos.pos - left_pos.pos + right_pos.len
+				col:       left_pos.col
 				last_line: right_pos.last_line
 			}
 		}
@@ -2263,11 +2265,11 @@ pub fn (node Node) pos() token.Pos {
 				}
 				AsmRegister {
 					return token.Pos{
-						len: -1
-						line_nr: -1
-						pos: -1
+						len:       -1
+						line_nr:   -1
+						pos:       -1
 						last_line: -1
-						col: -1
+						col:       -1
 					}
 				}
 			}
@@ -2461,7 +2463,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 				for name in array {
 					res[name] = AsmRegister{
 						name: name
-						typ: t.bitsize_to_type(bit_size)
+						typ:  t.bitsize_to_type(bit_size)
 						size: bit_size
 					}
 				}
@@ -2475,7 +2477,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 						res[assembled_name] = AsmRegister{
 							name: assembled_name
-							typ: t.bitsize_to_type(bit_size)
+							typ:  t.bitsize_to_type(bit_size)
 							size: bit_size
 						}
 					}
@@ -2527,7 +2529,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	for name in without_numbers {
 		res[name] = AsmRegister{
 			name: name
-			typ: t.bitsize_to_type(bit_size)
+			typ:  t.bitsize_to_type(bit_size)
 			size: bit_size
 		}
 	}
@@ -2537,7 +2539,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 			assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
 			res[assembled_name] = AsmRegister{
 				name: assembled_name
-				typ: t.bitsize_to_type(bit_size)
+				typ:  t.bitsize_to_type(bit_size)
 				size: bit_size
 			}
 		}

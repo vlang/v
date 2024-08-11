@@ -198,7 +198,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			map_info := elem_sym.map_info()
 			for i in 0 .. info.size {
 				g.expr(ast.MapInit{
-					key_type: map_info.key_type
+					key_type:   map_info.key_type
 					value_type: map_info.value_type
 				})
 				if i != info.size - 1 {
@@ -211,8 +211,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			arr_info := elem_sym.array_fixed_info()
 			for i in 0 .. info.size {
 				g.expr(ast.ArrayInit{
-					exprs: [ast.IntegerLiteral{}]
-					typ: node.elem_type
+					exprs:     [ast.IntegerLiteral{}]
+					typ:       node.elem_type
 					elem_type: arr_info.elem_type
 				})
 				if i != info.size - 1 {
@@ -225,7 +225,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			chan_info := elem_sym.chan_info()
 			for i in 0 .. info.size {
 				g.expr(ast.ChanInit{
-					typ: node.elem_type
+					typ:       node.elem_type
 					elem_type: chan_info.elem_type
 				})
 				if i != info.size - 1 {

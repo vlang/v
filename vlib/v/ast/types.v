@@ -996,23 +996,23 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin') // 25
 	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin') // 26
 	t.register_sym(
-		kind: .float_literal
-		name: 'float literal'
+		kind:  .float_literal
+		name:  'float literal'
 		cname: 'float_literal'
-		mod: 'builtin'
+		mod:   'builtin'
 	) // 27
 	t.register_sym(
-		kind: .int_literal
-		name: 'int literal'
+		kind:  .int_literal
+		name:  'int literal'
 		cname: 'int_literal'
-		mod: 'builtin'
+		mod:   'builtin'
 	) // 28
 	t.register_sym(
-		kind: .thread
-		name: 'thread'
+		kind:  .thread
+		name:  'thread'
 		cname: '__v_thread'
-		mod: 'builtin'
-		info: Thread{
+		mod:   'builtin'
+		info:  Thread{
 			return_type: ast.void_type
 		}
 	) // 29

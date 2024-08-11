@@ -204,7 +204,7 @@ fn (mut pc PkgConfig) load_require(dep string) ! {
 	}
 	pc.loaded << dep
 	mut pcdep := PkgConfig{
-		paths: pc.paths
+		paths:  pc.paths
 		loaded: pc.loaded
 	}
 	depfile := pcdep.resolve(dep) or {

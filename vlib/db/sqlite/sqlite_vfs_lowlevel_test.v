@@ -10,7 +10,7 @@ fn test_vfs_register() {
 
 	vfs_name := 'sometest'
 	mut vfs_descr := &sqlite.Sqlite3_vfs{
-		zName: vfs_name.str
+		zName:    vfs_name.str
 		iVersion: 2
 	}
 
@@ -42,23 +42,23 @@ fn test_verify_vfs_is_actually_used() {
 		log: []string{cap: 100}
 	}
 	mut vfs_descr := &sqlite.Sqlite3_vfs{
-		iVersion: 2
-		szOsFile: int(sizeof(ExampleVfsOpenedFile))
-		mxPathname: max_file_name_len
-		zName: vfs_name.str
-		pAppData: vfs_state
-		xOpen: example_vfs_open
-		xDelete: example_vfs_delete
-		xAccess: example_vfs_access
-		xFullPathname: example_vfs_fullpathname
-		xDlOpen: wrapped.xDlOpen
-		xDlError: wrapped.xDlError
-		xDlSym: wrapped.xDlSym
-		xDlClose: wrapped.xDlClose
-		xRandomness: wrapped.xRandomness
-		xSleep: wrapped.xSleep
-		xCurrentTime: wrapped.xCurrentTime
-		xGetLastError: example_vfs_getlasterror
+		iVersion:          2
+		szOsFile:          int(sizeof(ExampleVfsOpenedFile))
+		mxPathname:        max_file_name_len
+		zName:             vfs_name.str
+		pAppData:          vfs_state
+		xOpen:             example_vfs_open
+		xDelete:           example_vfs_delete
+		xAccess:           example_vfs_access
+		xFullPathname:     example_vfs_fullpathname
+		xDlOpen:           wrapped.xDlOpen
+		xDlError:          wrapped.xDlError
+		xDlSym:            wrapped.xDlSym
+		xDlClose:          wrapped.xDlClose
+		xRandomness:       wrapped.xRandomness
+		xSleep:            wrapped.xSleep
+		xCurrentTime:      wrapped.xCurrentTime
+		xGetLastError:     example_vfs_getlasterror
 		xCurrentTimeInt64: wrapped.xCurrentTimeInt64
 	}
 
@@ -155,18 +155,18 @@ fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &cha
 	unsafe {
 		mut outp := to_vfsopenedfile(vfs_opened_file)
 		outp.base.pMethods = &sqlite.Sqlite3_io_methods{
-			iVersion: 1
-			xClose: example_vfsfile_close
-			xRead: example_vfsfile_read
-			xWrite: example_vfsfile_write
-			xTruncate: example_vfsfile_truncate
-			xSync: example_vfsfile_sync
-			xFileSize: example_vfsfile_size
-			xLock: example_vfsfile_lock
-			xUnlock: example_vfsfile_unlock
-			xCheckReservedLock: example_vfsfile_checkreservedlock
-			xFileControl: example_vfsfile_filecontrol
-			xSectorSize: example_vfsfile_sectorsize
+			iVersion:               1
+			xClose:                 example_vfsfile_close
+			xRead:                  example_vfsfile_read
+			xWrite:                 example_vfsfile_write
+			xTruncate:              example_vfsfile_truncate
+			xSync:                  example_vfsfile_sync
+			xFileSize:              example_vfsfile_size
+			xLock:                  example_vfsfile_lock
+			xUnlock:                example_vfsfile_unlock
+			xCheckReservedLock:     example_vfsfile_checkreservedlock
+			xFileControl:           example_vfsfile_filecontrol
+			xSectorSize:            example_vfsfile_sectorsize
 			xDeviceCharacteristics: example_vfsfile_devicecharacteristics
 		}
 

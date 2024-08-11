@@ -302,20 +302,20 @@ fn (c Checker) check_date_time(dt ast.DateTime) ! {
 		// Re-use date and time validation code for detailed testing of each part
 		c.check_date(ast.Date{
 			text: split[0]
-			pos: token.Pos{
-				len: split[0].len
+			pos:  token.Pos{
+				len:     split[0].len
 				line_nr: dt.pos.line_nr
-				pos: dt.pos.pos
-				col: dt.pos.col
+				pos:     dt.pos.pos
+				col:     dt.pos.col
 			}
 		})!
 		c.check_time(ast.Time{
 			text: split[1]
-			pos: token.Pos{
-				len: split[1].len
+			pos:  token.Pos{
+				len:     split[1].len
 				line_nr: dt.pos.line_nr
-				pos: dt.pos.pos + split[0].len
-				col: dt.pos.col + split[0].len
+				pos:     dt.pos.pos + split[0].len
+				col:     dt.pos.col + split[0].len
 			}
 		})!
 		// Use V's builtin functionality to validate the string

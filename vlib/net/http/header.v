@@ -736,7 +736,7 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 // join combines two Header structs into a new Header struct
 pub fn (h Header) join(other Header) Header {
 	mut combined := Header{
-		data: h.data // h.data.clone()
+		data:    h.data // h.data.clone()
 		cur_pos: h.cur_pos
 	}
 	for k in other.keys() {
@@ -793,16 +793,16 @@ fn is_valid(header string) ! {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
 			return HeaderKeyError{
-				code: 1
-				header: header
+				code:         1
+				header:       header
 				invalid_char: c
 			}
 		}
 	}
 	if header.len == 0 {
 		return HeaderKeyError{
-			code: 2
-			header: header
+			code:         2
+			header:       header
 			invalid_char: 0
 		}
 	}

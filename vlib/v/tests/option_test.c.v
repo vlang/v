@@ -173,7 +173,7 @@ fn test_reassignment() {
 	assert x2 == 100
 	x2++
 	assert x2 == 101
-	//
+
 	mut x3 := 0
 	x3 = foo_ok() or {
 		assert false
@@ -227,8 +227,8 @@ fn test_option_field() ? {
 
 	v = OptionFieldsStruct{
 		text: 'init'
-		n: 0
-		n1: none
+		n:    0
+		n1:   none
 	}
 	assert v.text? == 'init'
 	assert v.n? == 0
@@ -416,13 +416,13 @@ fn get_bar(should_return_value bool) ?&Bar {
 fn test_allow_returning_an_optional_pointer_to_a_struct() {
 	a := get_bar(true)?
 	assert a == unsafe { nil }
-	//
+
 	x := get_bar(false) or {
 		assert true
 		unsafe { nil }
 	}
 	assert x == unsafe { nil }
-	//
+
 	get_bar(false) or { unsafe { nil } }
 	assert true
 }

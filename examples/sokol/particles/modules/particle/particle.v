@@ -11,11 +11,11 @@ const default_v_color = Color{93, 136, 193, 255}
 // * Module public
 pub fn new(location vec.Vec2[f64]) &Particle {
 	p := &Particle{
-		location: location
-		velocity: vec.Vec2[f64]{0, 0}
-		acceleration: vec.Vec2[f64]{0, 0}
-		color: particle.default_v_color
-		life_time: particle.default_life_time
+		location:       location
+		velocity:       vec.Vec2[f64]{0, 0}
+		acceleration:   vec.Vec2[f64]{0, 0}
+		color:          particle.default_v_color
+		life_time:      particle.default_life_time
 		life_time_init: particle.default_life_time
 	}
 	return p

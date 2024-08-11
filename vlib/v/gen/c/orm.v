@@ -54,7 +54,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
 	hack_stmt_line := ast.SqlStmtLine{
 		object_var: node.inserted_var
-		fields: node.fields
+		fields:     node.fields
 		// sub_structs: node.sub_structs
 	}
 	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
@@ -1083,33 +1083,33 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					right_where_expr.name = tmp
 					where_expr.left = left_where_expr
 					where_expr.right = ast.SelectorExpr{
-						pos: right_where_expr.pos
+						pos:        right_where_expr.pos
 						field_name: primary_field.name
-						is_mut: false
-						expr: right_where_expr
-						expr_type: (right_where_expr.info as ast.IdentVar).typ
-						typ: (right_where_expr.info as ast.IdentVar).typ
-						scope: unsafe { nil }
+						is_mut:     false
+						expr:       right_where_expr
+						expr_type:  (right_where_expr.info as ast.IdentVar).typ
+						typ:        (right_where_expr.info as ast.IdentVar).typ
+						scope:      unsafe { nil }
 					}
 
 					mut sql_expr_select_array := ast.SqlExpr{
-						typ: field.typ.set_flag(.result)
-						is_count: sub.is_count
-						db_expr: sub.db_expr
-						has_where: sub.has_where
-						has_offset: sub.has_offset
-						offset_expr: sub.offset_expr
-						has_order: sub.has_order
-						order_expr: sub.order_expr
-						has_desc: sub.has_desc
-						is_array: true
+						typ:          field.typ.set_flag(.result)
+						is_count:     sub.is_count
+						db_expr:      sub.db_expr
+						has_where:    sub.has_where
+						has_offset:   sub.has_offset
+						offset_expr:  sub.offset_expr
+						has_order:    sub.has_order
+						order_expr:   sub.order_expr
+						has_desc:     sub.has_desc
+						is_array:     true
 						is_generated: true
-						pos: sub.pos
-						has_limit: sub.has_limit
-						limit_expr: sub.limit_expr
-						table_expr: sub.table_expr
-						fields: sub.fields
-						where_expr: where_expr
+						pos:          sub.pos
+						has_limit:    sub.has_limit
+						limit_expr:   sub.limit_expr
+						table_expr:   sub.table_expr
+						fields:       sub.fields
+						where_expr:   where_expr
 					}
 
 					sub_result_var := g.new_tmp_var()

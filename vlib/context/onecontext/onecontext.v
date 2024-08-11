@@ -24,10 +24,10 @@ pub fn merge(ctx context.Context, ctxs ...context.Context) (context.Context, con
 	mut background := context.background()
 	cancel_ctx, cancel := context.with_cancel(mut &background)
 	mut octx := &OneContext{
-		done: chan int{cap: 3}
-		ctx: ctx
-		ctxs: ctxs
-		cancel_fn: cancel
+		done:       chan int{cap: 3}
+		ctx:        ctx
+		ctxs:       ctxs
+		cancel_fn:  cancel
 		cancel_ctx: cancel_ctx
 	}
 	spawn octx.run()

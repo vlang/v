@@ -44,16 +44,16 @@ fn main() {
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
 	mut foptions := FormatOptions{
-		is_c: '-c' in args
-		is_l: '-l' in args
-		is_w: '-w' in args
-		is_diff: '-diff' in args
+		is_c:       '-c' in args
+		is_l:       '-l' in args
+		is_w:       '-w' in args
+		is_diff:    '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
-		is_worker: '-worker' in args
-		is_debug: '-debug' in args
+		is_worker:  '-worker' in args
+		is_debug:   '-debug' in args
 		is_noerror: '-noerror' in args
-		is_verify: '-verify' in args
-		is_backup: '-backup' in args
+		is_verify:  '-verify' in args
+		is_backup:  '-backup' in args
 		in_process: '-inprocess' in args
 	}
 	if term_colors {

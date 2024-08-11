@@ -28,10 +28,10 @@ fn test_alias_of_pointer_types() {
 	dump(sizeof(PPZZMyStructInt))
 	dump(sizeof(PPPZZInt))
 	dump(sizeof(PPPZZMyStructInt))
-	//
+
 	assert sizeof(ZZInt) == sizeof(int)
 	assert sizeof(ZZMyStructInt) == sizeof(int)
-	//
+
 	assert sizeof(PZZInt) == sizeof(voidptr)
 	assert sizeof(PZZMyStructInt) == sizeof(voidptr)
 	assert sizeof(PPZZInt) == sizeof(voidptr)

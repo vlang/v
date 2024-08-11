@@ -62,11 +62,11 @@ pub:
 
 pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
-		file: file
-		table: table
-		pref: pref_
-		is_debug: is_debug
-		out: strings.new_builder(1000)
+		file:        file
+		table:       table
+		pref:        pref_
+		is_debug:    is_debug
+		out:         strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
 	f.source_text = options.source_text
@@ -1039,9 +1039,9 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	f.writeln('enum ${name} {')
 	f.comments(node.comments, same_line: true, level: .indent)
 
-	mut value_aligns := []AlignInfo{}
-	mut attr_aligns := []AlignInfo{}
-	mut comment_aligns := []AlignInfo{}
+	mut value_aligns := FieldAlign{}
+	mut attr_aligns := FieldAlign{}
+	mut comment_aligns := FieldAlign{}
 	for field in node.fields {
 		if field.has_expr {
 			value_aligns.add_info(field.name.len, field.pos.line_nr)
@@ -1065,46 +1065,34 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		}
 	}
 
-	mut value_align_i := 0
-	mut attr_align_i := 0
-	mut comment_align_i := 0
 	for i, field in node.fields {
 		if i > 0 && field.has_prev_newline {
 			f.writeln('')
 		}
 		f.write('\t${field.name}')
 		if field.has_expr {
-			if value_aligns[value_align_i].line_nr < field.pos.line_nr {
-				value_align_i++
-			}
-			f.write(strings.repeat(` `, value_aligns[value_align_i].max_len - field.name.len))
+			f.write(strings.repeat(` `, value_aligns.max_len(field.pos.line_nr) - field.name.len))
 			f.write(' = ')
 			f.expr(field.expr)
 		}
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
-			if attr_aligns[attr_align_i].line_nr < field.pos.line_nr {
-				attr_align_i++
-			}
 			if field.has_expr {
-				f.write(strings.repeat(` `, attr_aligns[attr_align_i].max_len - field.expr.str().len - 2))
+				f.write(strings.repeat(` `, attr_aligns.max_len(field.pos.line_nr) - field.expr.str().len - 2))
 			} else {
-				f.write(strings.repeat(` `, attr_aligns[attr_align_i].max_len - field.name.len))
+				f.write(strings.repeat(` `, attr_aligns.max_len(field.pos.line_nr) - field.name.len))
 			}
 			f.write(' ')
 			f.single_line_attrs(field.attrs, same_line: true)
 		}
 		// f.comments(field.comments, same_line: true, has_nl: false, level: .indent)
 		if field.comments.len > 0 {
-			if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
-				comment_align_i++
-			}
 			if field.attrs.len > 0 {
-				f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - attrs_len))
+				f.write(strings.repeat(` `, comment_aligns.max_len(field.pos.line_nr) - attrs_len))
 			} else if field.has_expr {
-				f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - field.expr.str().len - 2))
+				f.write(strings.repeat(` `, comment_aligns.max_len(field.pos.line_nr) - field.expr.str().len - 2))
 			} else {
-				f.write(strings.repeat(` `, comment_aligns[comment_align_i].max_len - field.name.len))
+				f.write(strings.repeat(` `, comment_aligns.max_len(field.pos.line_nr) - field.name.len))
 			}
 			f.write(' ')
 			f.comments(field.comments, same_line: true, has_nl: false)
@@ -1408,23 +1396,19 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 	}
 
-	mut type_aligns := []AlignInfo{}
-	mut comment_aligns := []AlignInfo{}
-	mut default_expr_aligns := []AlignInfo{}
-	mut attr_aligns := []AlignInfo{}
+	mut type_aligns := FieldAlign{}
+	mut comment_aligns := FieldAlign{}
+	mut default_expr_aligns := FieldAlign{}
+	mut attr_aligns := FieldAlign{}
 	mut field_types := []string{cap: node.fields.len}
 
 	// Calculate the alignments first
 	f.calculate_alignment(node.fields, mut type_aligns, mut comment_aligns, mut default_expr_aligns, mut
 		attr_aligns, mut field_types)
 
-	mut type_align_i := 0
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
-		if type_aligns[type_align_i].line_nr < field.pos.line_nr {
-			type_align_i++
-		}
-		f.interface_field(field, type_aligns[type_align_i])
+		f.interface_field(field, type_aligns.max_len(field.pos.line_nr))
 	}
 	for method in immut_methods {
 		f.interface_method(method)
@@ -1432,10 +1416,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
 		for field in mut_fields {
-			if type_aligns[type_align_i].line_nr < field.pos.line_nr {
-				type_align_i++
-			}
-			f.interface_field(field, type_aligns[type_align_i])
+			f.interface_field(field, type_aligns.max_len(field.pos.line_nr))
 		}
 		for method in mut_methods {
 			f.interface_method(method)
@@ -1451,8 +1432,8 @@ enum AlignState {
 	has_everything
 }
 
-pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns []AlignInfo, mut comment_aligns []AlignInfo,
-	mut default_expr_aligns []AlignInfo, mut attr_aligns []AlignInfo, mut field_types []string) {
+pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns FieldAlign, mut comment_aligns FieldAlign,
+	mut default_expr_aligns FieldAlign, mut attr_aligns FieldAlign, mut field_types []string) {
 	// Calculate the alignments first
 	mut prev_state := AlignState.plain
 	for field in fields {
@@ -1510,7 +1491,7 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_aligns
 	}
 }
 
-pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
+pub fn (mut f Fmt) interface_field(field ast.StructField, max_len int) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
 	for cmt in field.comments {
@@ -1538,7 +1519,7 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo)
 		f.write('\t${field.name} ')
 	}
 	if !(sym.info is ast.Struct && sym.info.is_anon) {
-		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
+		f.write(strings.repeat(` `, max_len - field.name.len - comments_len))
 		f.write(ft)
 	}
 	if end_cmts.len > 0 {
@@ -2067,8 +2048,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
 					source_name: node.left.name
-					mod: node.left.name
-					alias: node.left.name
+					mod:         node.left.name
+					alias:       node.left.name
 				}
 				f.used_imports[node.left.name] = true
 			}
@@ -2487,7 +2468,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	if node.post_comments.len > 0 {
 		f.writeln('')
 		f.comments(node.post_comments,
-			has_nl: false
+			has_nl:    false
 			prev_line: node.branches.last().body_pos.last_line
 		)
 	}
@@ -2784,7 +2765,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		f.expr(node.update_expr)
 		f.comments(node.update_expr_comments,
 			prev_line: node.update_expr_pos.last_line
-			has_nl: false
+			has_nl:    false
 		)
 		f.writeln('')
 	}

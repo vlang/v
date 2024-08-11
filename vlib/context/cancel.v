@@ -47,11 +47,11 @@ pub fn with_cancel(mut parent Context) (Context, CancelFn) {
 // new_cancel_context returns an initialized CancelContext.
 fn new_cancel_context(parent Context) &CancelContext {
 	return &CancelContext{
-		id: rand.uuid_v4()
+		id:      rand.uuid_v4()
 		context: parent
-		mutex: sync.new_mutex()
-		done: chan int{cap: 2}
-		err: none
+		mutex:   sync.new_mutex()
+		done:    chan int{cap: 2}
+		err:     none
 	}
 }
 

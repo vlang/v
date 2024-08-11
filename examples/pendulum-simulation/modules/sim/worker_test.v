@@ -1,12 +1,12 @@
 module sim
 
 const worker_test_mock_params = SimParams{
-	rope_length: 0.25
-	bearing_mass: 0.03
-	magnet_spacing: 0.05
-	magnet_height: 0.03
+	rope_length:     0.25
+	bearing_mass:    0.03
+	magnet_spacing:  0.05
+	magnet_height:   0.03
 	magnet_strength: 10
-	gravity: 4.9
+	gravity:         4.9
 }
 const worker_test_mock_state = SimState{
 	position: vector(
@@ -28,9 +28,9 @@ const worker_test_mock_state = SimState{
 
 fn test_compute_result() {
 	request := SimRequest{
-		id: 0
+		id:     0
 		params: sim.worker_test_mock_params
-		state: sim.worker_test_mock_state
+		state:  sim.worker_test_mock_state
 	}
 	expected_state := SimState{
 		position: vector(
@@ -50,8 +50,8 @@ fn test_compute_result() {
 		)
 	}
 	expected := &SimResult{
-		state: expected_state
-		id: 0
+		state:            expected_state
+		id:               0
 		magnet1_distance: 0.07993696666249225
 		magnet2_distance: 0.07993696666249224
 		magnet3_distance: 0.03609361938278008

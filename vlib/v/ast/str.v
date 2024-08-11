@@ -294,15 +294,15 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 			continue
 		}
 		replacements << StringifyModReplacement{
-			mod: mod
-			alias: alias
+			mod:    mod
+			alias:  alias
 			weight: mod.count('.') * 100 + mod.len
 		}
 	}
 	if replacements.len == 0 {
 		return input
 	}
-	//
+
 	mut res := input
 	if replacements.len > 1 {
 		replacements.sort(a.weight > b.weight)
@@ -756,8 +756,7 @@ pub fn (node Stmt) str() string {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(field_to_string)
-			return 'const (${fields.join(' ')})'
+			return node.fields.map(field_to_string).join('')
 		}
 		DeferStmt {
 			mut res := ''
@@ -870,7 +869,7 @@ pub fn (node Stmt) str() string {
 
 fn field_to_string(f ConstField) string {
 	x := f.name.trim_string_left(f.mod + '.')
-	return '${x} = ${f.expr}'
+	return 'const ${x} = ${f.expr};'
 }
 
 pub fn (e ComptimeForKind) str() string {

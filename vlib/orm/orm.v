@@ -321,9 +321,9 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 
 	return str, QueryData{
 		fields: data_fields
-		data: data_data
-		types: data.types
-		kinds: data.kinds
+		data:   data_data
+		types:  data.types
+		kinds:  data.kinds
 		is_and: data.is_and
 	}
 }

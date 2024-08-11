@@ -53,7 +53,7 @@ fn frame(mut app App) {
 	}
 
 	help_text := flag.to_doc[DocTest](
-		version: '1.0'
+		version:     '1.0'
 		description: 'Hello! This should show an *animated* example application description.
 We are at frame ${app.frame}.
 Press ESCAPE or Ctrl+C to exit'
@@ -82,11 +82,11 @@ type FrameFn = fn (voidptr)
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data: app
-		event_fn: EventFn(event)
-		frame_fn: FrameFn(frame)
+		user_data:   app
+		event_fn:    EventFn(event)
+		frame_fn:    FrameFn(frame)
 		hide_cursor: true
-		frame_rate: 60
+		frame_rate:  60
 	)
 	app.tui.run()!
 }

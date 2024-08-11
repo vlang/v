@@ -44,7 +44,7 @@ fn main() {
 	}
 
 	sim.run(args.params,
-		grid: args.grid
+		grid:       args.grid
 		on_request: sim.SimRequestHandler(handle_request)
 	)
 }

@@ -20,7 +20,7 @@ fn test_struct_fn_field_can_be_used_directly() {
 	async_cb(buf[0..2], mut res)
 	data := Ep_arg{
 		sfd: 1234
-		cb: async_cb
+		cb:  async_cb
 	}
 	data.cb(buf[1..2], mut res)
 	res << 0x99

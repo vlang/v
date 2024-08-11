@@ -573,9 +573,9 @@ pub fn get_raw_stdin() []u8 {
 			}
 			return array{
 				element_size: 1
-				data: voidptr(buf)
-				len: offset
-				cap: offset
+				data:         voidptr(buf)
+				len:          offset
+				cap:          offset
 			}
 		}
 	} $else {
@@ -584,9 +584,9 @@ pub fn get_raw_stdin() []u8 {
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		return array{
 			element_size: 1
-			data: voidptr(buf)
-			len: if nr_chars < 0 { 0 } else { nr_chars }
-			cap: int(max)
+			data:         voidptr(buf)
+			len:          if nr_chars < 0 { 0 } else { nr_chars }
+			cap:          int(max)
 		}
 	}
 }
@@ -616,9 +616,9 @@ pub fn read_file_array[T](path string) []T {
 	return unsafe {
 		array{
 			element_size: tsize
-			data: buf
-			len: int(nread)
-			cap: int(len)
+			data:         buf
+			len:          int(nread)
+			cap:          int(len)
 		}
 	}
 }

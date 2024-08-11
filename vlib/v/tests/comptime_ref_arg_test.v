@@ -88,7 +88,7 @@ fn test_main() {
 				HarEntry{
 					response: HarResponse{
 						content: HarContent{
-							size: 48752
+							size:      48752
 							mime_type: 'text/html'
 						}
 					}

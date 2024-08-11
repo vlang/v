@@ -20,7 +20,7 @@ fn test_native() {
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot, 'vlib', 'v', 'gen', 'native', 'tests')
 	files := os.ls(dir) or { panic(err) }
-	//
+
 	wrkdir := os.join_path(os.vtmp_dir(), 'native_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {

@@ -19,7 +19,7 @@ fn test_record_measure() {
 	assert x > 50_000
 	// assert x < 200_000
 	flush_stdout()
-	//
+
 	println('step 2')
 	flush_stdout()
 	time.sleep(150 * time.millisecond)
@@ -27,7 +27,7 @@ fn test_record_measure() {
 	assert y > 100_000
 	// assert y < 200_000
 	flush_stdout()
-	//
+
 	res := b.all_recorded_measures()
 	println('All recorded measurements:')
 	println(res)

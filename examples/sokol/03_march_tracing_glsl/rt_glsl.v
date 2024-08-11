@@ -55,20 +55,20 @@ mut:
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width:       w
+		height:      h
 		num_mipmaps: 0
 		//		min_filter: .linear
 		//		mag_filter: .linear
 		// usage: .dynamic
 		//		wrap_u: .clamp_to_edge
 		//		wrap_v: .clamp_to_edge
-		label: &u8(0)
+		label:         &u8(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 
@@ -77,8 +77,8 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
 	}
 
 	sg_smp := gfx.make_sampler(&smp_desc)
@@ -94,7 +94,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 	gfx.update_image(sg_img, &tmp_sbc)
@@ -171,7 +171,7 @@ fn init_cube_glsl(mut app App) {
 
 	vert_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
 	vert_buffer_desc.data = gfx.Range{
-		ptr: vertices.data
+		ptr:  vertices.data
 		size: usize(vertices.len * int(sizeof(Vertex_t)))
 	}
 
@@ -197,7 +197,7 @@ fn init_cube_glsl(mut app App) {
 
 	index_buffer_desc.size = usize(indices.len * int(sizeof(u16)))
 	index_buffer_desc.data = gfx.Range{
-		ptr: indices.data
+		ptr:  indices.data
 		size: usize(indices.len * int(sizeof(u16)))
 	}
 
@@ -222,7 +222,7 @@ fn init_cube_glsl(mut app App) {
 
 	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: .less_equal
+		compare:       .less_equal
 	}
 	pipdesc.cull_mode = .back
 
@@ -284,7 +284,7 @@ fn draw_cube_glsl(app App) {
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := gfx.Range{
-		ptr: &tr_matrix
+		ptr:  &tr_matrix
 		size: usize(4 * 16)
 	}
 	gfx.apply_uniforms(.vs, C.SLOT_vs_params, &vs_uniforms_range)
@@ -302,7 +302,7 @@ fn draw_cube_glsl(app App) {
 		0, // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
 	fs_uniforms_range := gfx.Range{
-		ptr: unsafe { &tmp_fs_params }
+		ptr:  unsafe { &tmp_fs_params }
 		size: usize(sizeof(tmp_fs_params))
 	}
 	gfx.apply_uniforms(.fs, C.SLOT_fs_params, &fs_uniforms_range)
@@ -410,15 +410,15 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: '3D Ray Marching Cube'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: my_init
-		event_fn: my_event_manager
+		window_title:  '3D Ray Marching Cube'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      frame
+		init_fn:       my_init
+		event_fn:      my_event_manager
 	)
 	app.ticks = time.ticks()
 	app.gg.run()

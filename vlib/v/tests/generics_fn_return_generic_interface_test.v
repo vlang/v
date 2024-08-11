@@ -19,7 +19,7 @@ fn (mut i ArrayIter[T]) next[T]() ?T {
 
 fn iter[T](arr []T) Iter[T] {
 	return ArrayIter[T]{
-		data: arr
+		data:  arr
 		index: 0
 	}
 }

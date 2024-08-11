@@ -21,11 +21,11 @@ mut:
 	be_verbose         bool
 	filter             string
 	working_folder     string
-	//
+
 	targets            []string
 	meta               map[string]MetaData // aggregated meta data, read from all .json files
 	all_lines_per_file map[string][]int    // aggregated by load_meta
-	//
+
 	counters         map[string]u64         // incremented by process_target, based on each .csv file
 	lines_per_file   map[string]map[int]int // incremented by process_target, based on each .csv file
 	processed_points u64
@@ -81,9 +81,9 @@ fn (mut ctx Context) process_target(tfile string) ! {
 	for {
 		row := reader.read() or { break }
 		mut cline := CounterLine{
-			meta: row[0]
+			meta:  row[0]
 			point: row[1].int()
-			hits: row[2].u64()
+			hits:  row[2].u64()
 		}
 		m := ctx.meta[cline.meta] or {
 			ctx.verbose('> skipping invalid meta: ${cline.meta} in file: ${cline.file}, csvfile: ${tfile}')

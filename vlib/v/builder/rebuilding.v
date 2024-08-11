@@ -34,7 +34,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut new_hashes := map[string]string{}
 	mut old_hashes := map[string]string{}
 	mut sb_new_hashes := strings.new_builder(1024)
-	//
+
 	mut cm := vcache.new_cache_manager(all_files)
 	sold_hashes := cm.load('.hashes', 'all_files') or { ' ' }
 	// eprintln(sold_hashes)

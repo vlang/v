@@ -25,7 +25,7 @@ mut:
 	table     &ast.Table = unsafe { nil }
 	eval      eval.Eval
 	enum_vals map[string]Enum
-	//
+
 	mod                    wasm.Module
 	pool                   serialise.Pool
 	func                   wasm.Function
@@ -87,9 +87,9 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	} else {
 		g.warnings << errors.Warning{
 			file_path: g.file_path
-			pos: pos
-			reporter: .gen
-			message: s
+			pos:       pos
+			reporter:  .gen
+			message:   s
 		}
 	}
 }
@@ -224,8 +224,8 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paramdbg << g.dbg_type_name('__rval(${g.ret_rvars.len})', t)
 					paraml << wtyp
 					g.ret_rvars << Var{
-						typ: t
-						idx: g.ret_rvars.len
+						typ:        t
+						idx:        g.ret_rvars.len
 						is_address: true
 					}
 				} else {
@@ -245,7 +245,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paramdbg << g.dbg_type_name('__rval(0)', rt)
 					paraml << wtyp
 					g.ret_rvars << Var{
-						typ: rt
+						typ:        rt
 						is_address: true
 					}
 				} else {
@@ -266,9 +266,9 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		typ := g.get_wasm_type_int_literal(p.typ)
 		ntyp := unpack_literal_int(p.typ)
 		g.local_vars << Var{
-			name: p.name
-			typ: ntyp
-			idx: g.local_vars.len + g.ret_rvars.len
+			name:       p.name
+			typ:        ntyp
+			idx:        g.local_vars.len + g.ret_rvars.len
 			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
@@ -598,7 +598,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	if node.is_method {
 		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
 			ast.Expr(ast.PrefixExpr{
-				op: .amp
+				op:    .amp
 				right: node.left
 			})
 		} else {
@@ -626,12 +626,12 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 			}
 
 			expr = ast.CallExpr{
-				name: 'str'
-				left: expr
-				left_type: typ
+				name:          'str'
+				left:          expr
+				left_type:     typ
 				receiver_type: typ
-				return_type: ast.string_type
-				is_method: true
+				return_type:   ast.string_type
+				is_method:     true
 			}
 		}
 
@@ -976,8 +976,8 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				{
 					g.loop_breakpoint_stack << LoopBreakpoint{
 						c_continue: loop
-						c_break: block
-						name: node.label
+						c_break:    block
+						name:       node.label
 					}
 
 					if !node.is_inf {
@@ -1005,8 +1005,8 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				{
 					g.loop_breakpoint_stack << LoopBreakpoint{
 						c_continue: loop
-						c_break: block
-						name: node.label
+						c_break:    block
+						name:       node.label
 					}
 
 					if node.has_cond {
@@ -1287,11 +1287,11 @@ pub fn (mut g Gen) calculate_enum_fields() {
 pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref.Preferences) {
 	stack_top := w_pref.wasm_stack_top
 	mut g := &Gen{
-		table: table
-		pref: w_pref
-		files: files
-		eval: eval.new_eval(table, w_pref)
-		pool: serialise.new_pool(table, store_relocs: true, null_terminated: false)
+		table:     table
+		pref:      w_pref
+		files:     files
+		eval:      eval.new_eval(table, w_pref)
+		pool:      serialise.new_pool(table, store_relocs: true, null_terminated: false)
 		stack_top: stack_top
 		data_base: calc_align(stack_top + 1, 16)
 	}

@@ -13,7 +13,7 @@ pub mut:
 pub fn divide_truncated[T](numer T, denom T) DivResult[T] {
 	return DivResult[T]{
 		quot: numer / denom
-		rem: numer % denom
+		rem:  numer % denom
 	}
 }
 
@@ -33,7 +33,7 @@ pub fn divide_euclid[T](numer T, denom T) DivResult[T] {
 	}
 	return DivResult[T]{
 		quot: q
-		rem: r
+		rem:  r
 	}
 }
 
@@ -48,7 +48,7 @@ pub fn divide_floored[T](numer T, denom T) DivResult[T] {
 	}
 	return DivResult[T]{
 		quot: q
-		rem: r
+		rem:  r
 	}
 }
 

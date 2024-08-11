@@ -345,7 +345,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 	}
 
-	//
 	if is_live_wrap {
 		if is_livemain {
 			g.definitions.write_string('${type_name} (* ${impl_fn_name})(')
@@ -2263,8 +2262,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// prepend the receiver for now (TODO turn the receiver into a CallArg everywhere?)
 	mut args := [
 		ast.CallArg{
-			typ: node.receiver_type
-			expr: node.left
+			typ:             node.receiver_type
+			expr:            node.left
 			is_tmp_autofree: node.free_receiver
 		},
 	]
@@ -2298,10 +2297,10 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			s = '${t} = '
 		} else {
 			scope.register(ast.Var{
-				name: t
-				typ: ast.string_type
+				name:            t
+				typ:             ast.string_type
 				is_autofree_tmp: true
-				pos: node.pos
+				pos:             node.pos
 			})
 			s = 'string ${t} = '
 		}
@@ -2462,6 +2461,25 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			expected_types[i] = g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
 			if !exp_option {
 				expected_types[i] = expected_types[i].clear_flag(.option)
+			}
+		} else if arg.expr is ast.CallExpr {
+			if arg.expr.nr_ret_values > 1 {
+				line := g.go_before_last_stmt().trim_space()
+				g.empty_line = true
+				ret_type := arg.expr.return_type
+				tmp_var := g.new_tmp_var()
+				g.write('${g.typ(ret_type)} ${tmp_var} = ')
+				g.expr(arg.expr)
+				g.writeln(';')
+				g.write(line)
+				for n in 0 .. arg.expr.nr_ret_values {
+					if n != arg.expr.nr_ret_values - 1 || i != args.len - 1 {
+						g.write('${tmp_var}.arg${n}, ')
+					} else {
+						g.write('${tmp_var}.arg${n}')
+					}
+				}
+				continue
 			}
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree

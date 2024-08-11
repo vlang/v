@@ -27,9 +27,9 @@ pub fn parse_rfc3339(s string) !Time {
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
 		year, month, day := parse_iso8601_date(sn)!
 		t = new(Time{
-			year: year
+			year:  year
 			month: month
-			day: day
+			day:   day
 		})
 		return t
 	}
@@ -38,9 +38,9 @@ pub fn parse_rfc3339(s string) !Time {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])!
 		t = new(Time{
-			hour: hour_
-			minute: minute_
-			second: second_
+			hour:       hour_
+			minute:     minute_
+			second:     second_
 			nanosecond: nanosecond_
 		})
 		if is_local_time {
@@ -80,7 +80,7 @@ pub fn parse(s string) !Time {
 	hour_ := hms[0][1..]
 	minute_ := hms[1]
 	second_ := hms[2]
-	//
+
 	iyear := strconv.atoi(ymd[0]) or {
 		return error_invalid_time(0, 'invalid year format: ${ymd[0]}')
 	}
@@ -120,10 +120,10 @@ pub fn parse(s string) !Time {
 		return error_invalid_time(8, 'seconds must be between 0 and 60')
 	}
 	res := new(Time{
-		year: iyear
-		month: imonth
-		day: iday
-		hour: ihour
+		year:   iyear
+		month:  imonth
+		day:    iday
+		hour:   ihour
 		minute: iminute
 		second: isecond
 	})
@@ -139,6 +139,11 @@ pub fn parse(s string) !Time {
 // MMMM - name of month
 // D - day of the month, 1..31
 // DD - day of the month, 01..31
+// d - day of week, 0..6
+// c - day of week, 1..7
+// dd - day of week, Su..Sa
+// ddd - day of week, Sun..Sat
+// dddd - day of week, Sunday..Saturday
 // H - hour, 0..23
 // HH - hour, 00..23
 // h - hour, 0..23
@@ -177,12 +182,12 @@ pub fn parse_iso8601(s string) !Time {
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
 	}
 	mut t := new(
-		year: year
-		month: month
-		day: day
-		hour: hour_
-		minute: minute_
-		second: second_
+		year:       year
+		month:      month
+		day:        day
+		hour:       hour_
+		minute:     minute_
+		second:     second_
 		nanosecond: nanosecond_
 	)
 	if is_local_time {

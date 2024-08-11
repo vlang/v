@@ -8,7 +8,7 @@ pub const x = 10
 
 fn test_const() {
 	assert d == 11
-	//
+
 	assert b == 1
 	assert a == 1
 	assert ccc == a + b

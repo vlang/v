@@ -18,7 +18,7 @@ fn test_long_encoding() {
 		unsafe { free(ebuffer) }
 		unsafe { free(dbuffer) }
 	}
-	//
+
 	encoded_size := base64.encode_in_buffer(s_original, ebuffer)
 	mut encoded_in_buf := []u8{len: encoded_size}
 	unsafe { vmemcpy(encoded_in_buf.data, ebuffer, encoded_size) }

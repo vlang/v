@@ -467,12 +467,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, val_type)
 
 		g.for_in_stmt(ast.ForInStmt{
-			cond: node.cond
-			cond_type: for_type
-			kind: g.table.sym(for_type).kind
-			stmts: node.stmts
-			val_type: val_type
-			val_var: node.val_var
+			cond:       node.cond
+			cond_type:  for_type
+			kind:       g.table.sym(for_type).kind
+			stmts:      node.stmts
+			val_type:   val_type
+			val_var:    node.val_var
 			val_is_mut: node.val_is_mut
 			val_is_ref: node.val_is_ref
 		})

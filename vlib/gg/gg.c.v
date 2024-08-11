@@ -67,15 +67,15 @@ pub:
 	native_frame_fn   FNCb   = unsafe { nil }
 	cleanup_fn        FNCb   = unsafe { nil } // Called once, after Sokol determines that the application is finished/closed. Put your app specific cleanup/free actions here.
 	fail_fn           FNFail = unsafe { nil } // Called once per Sokol error/log message. TODO: currently it does nothing with latest Sokol, reimplement using Sokol's new sapp_logger APIs.
-	//
+
 	event_fn FNEvent  = unsafe { nil } // Called once per each user initiated event, received by Sokol/GG.
 	on_event FNEvent2 = unsafe { nil } // Called once per each user initiated event, received by Sokol/GG. Same as event_fn, just the parameter order is different. TODO: deprecate this, in favor of event_fn
 	quit_fn  FNEvent  = unsafe { nil } // Called when the user closes the app window.
-	//
+
 	keydown_fn FNKeyDown = unsafe { nil } // Called once per key press, no matter how long the key is held down. Note that here you can access the scan code/physical key, but not the logical character.
 	keyup_fn   FNKeyUp   = unsafe { nil } // Called once per key press, when the key is released.
 	char_fn    FNChar    = unsafe { nil } // Called once per character (after the key is pressed down, and then released). Note that you can access the character/utf8 rune here, not just the scan code.
-	//
+
 	move_fn    FNMove    = unsafe { nil } // Called while the mouse/touch point is moving.
 	click_fn   FNClick   = unsafe { nil } // Called once when the mouse/touch button is clicked.
 	unclick_fn FNUnClick = unsafe { nil } // Called once when the mouse/touch button is released.
@@ -103,7 +103,7 @@ pub:
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int = 1    // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	//
+
 	min_width  int // desired minimum width of the window
 	min_height int // desired minimum height of the window
 }
@@ -124,7 +124,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	alpha_pipdesc.label = c'alpha-pipeline'
 	alpha_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled:        true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
@@ -137,7 +137,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	add_pipdesc.label = c'additive-pipeline'
 	add_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled:        true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one
 		}
@@ -169,7 +169,7 @@ pub mut:
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing
-	//
+
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
 	mouse_pos_x   int
@@ -178,7 +178,7 @@ pub mut:
 	mouse_dy      int
 	scroll_x      int
 	scroll_y      int
-	//
+
 	key_modifiers     Modifier           // the current key modifiers
 	key_repeat        bool               // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
@@ -217,9 +217,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	} else if ctx.config.font_path != '' && exists {
 		// t := time.ticks()
 		ctx.ft = new_ft(
-			font_path: ctx.config.font_path
+			font_path:             ctx.config.font_path
 			custom_bold_font_path: ctx.config.custom_bold_font_path
-			scale: ctx.scale
+			scale:                 ctx.scale
 		) or { panic(err) }
 		// println('FT took ${time.ticks()-t} ms')
 		ctx.font_inited = true
@@ -227,10 +227,10 @@ fn gg_init_sokol_window(user_data voidptr) {
 		if ctx.config.font_bytes_normal.len > 0 {
 			ctx.ft = new_ft(
 				bytes_normal: ctx.config.font_bytes_normal
-				bytes_bold: ctx.config.font_bytes_bold
-				bytes_mono: ctx.config.font_bytes_mono
+				bytes_bold:   ctx.config.font_bytes_bold
+				bytes_mono:   ctx.config.font_bytes_mono
 				bytes_italic: ctx.config.font_bytes_italic
-				scale: sapp.dpi_scale()
+				scale:        sapp.dpi_scale()
 			) or { panic(err) }
 			ctx.font_inited = true
 		} else {
@@ -240,9 +240,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 			}
 
 			ctx.ft = new_ft(
-				font_path: sfont
+				font_path:             sfont
 				custom_bold_font_path: ctx.config.custom_bold_font_path
-				scale: sapp.dpi_scale()
+				scale:                 sapp.dpi_scale()
 			) or { panic(err) }
 			ctx.font_inited = true
 		}
@@ -265,8 +265,8 @@ fn gg_init_sokol_window(user_data voidptr) {
 				ctx.height = win_size.height
 				if ctx.config.resized_fn != unsafe { nil } {
 					e := Event{
-						typ: .resized
-						window_width: ctx.width
+						typ:           .resized
+						window_width:  ctx.width
 						window_height: ctx.height
 					}
 					ctx.config.resized_fn(&e, ctx.user_data)
@@ -463,34 +463,34 @@ pub fn start(cfg Config) {
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
 	mut ctx := &Context{
-		user_data: cfg.user_data
-		width: cfg.width
-		height: cfg.height
-		config: cfg
-		ft: unsafe { nil }
-		ui_mode: cfg.ui_mode
+		user_data:        cfg.user_data
+		width:            cfg.width
+		height:           cfg.height
+		config:           cfg
+		ft:               unsafe { nil }
+		ui_mode:          cfg.ui_mode
 		native_rendering: cfg.native_rendering
-		window: sapp.Desc{
-			init_userdata_cb: gg_init_sokol_window
+		window:           sapp.Desc{
+			init_userdata_cb:  gg_init_sokol_window
 			frame_userdata_cb: gg_frame_fn
 			event_userdata_cb: gg_event_fn
 			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb: gg_cleanup_fn
-			window_title: &char(cfg.window_title.str)
-			html5_canvas_name: &char(cfg.html5_canvas_name.str)
-			width: cfg.width
-			height: cfg.height
-			sample_count: cfg.sample_count
-			high_dpi: true
-			fullscreen: cfg.fullscreen
-			__v_native_render: cfg.native_rendering
-			min_width: cfg.min_width
-			min_height: cfg.min_height
+			window_title:        &char(cfg.window_title.str)
+			html5_canvas_name:   &char(cfg.html5_canvas_name.str)
+			width:               cfg.width
+			height:              cfg.height
+			sample_count:        cfg.sample_count
+			high_dpi:            true
+			fullscreen:          cfg.fullscreen
+			__v_native_render:   cfg.native_rendering
+			min_width:           cfg.min_width
+			min_height:          cfg.min_height
 			// drag&drop
-			enable_dragndrop: cfg.enable_dragndrop
-			max_dropped_files: cfg.max_dropped_files
+			enable_dragndrop:             cfg.enable_dragndrop
+			max_dropped_files:            cfg.max_dropped_files
 			max_dropped_file_path_length: cfg.max_dropped_file_path_length
-			swap_interval: cfg.swap_interval
+			swap_interval:                cfg.swap_interval
 		}
 	}
 	ctx.set_bg_color(cfg.bg_color)
@@ -634,9 +634,9 @@ pub mut:
 	height      int  // minimum height
 	show        bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
 	text_config gx.TextCfg = gx.TextCfg{
-		color: gx.yellow
-		size: 20
-		align: .center
+		color:          gx.yellow
+		size:           20
+		align:          .center
 		vertical_align: .middle
 	}
 	background_color gx.Color = gx.Color{
@@ -735,7 +735,7 @@ pub fn screen_size() Size {
 	}
 	$if windows {
 		return Size{
-			width: int(C.GetSystemMetrics(C.SM_CXSCREEN))
+			width:  int(C.GetSystemMetrics(C.SM_CXSCREEN))
 			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}

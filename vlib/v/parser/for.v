@@ -22,11 +22,11 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
 		for_stmt := ast.ForStmt{
-			stmts: stmts
-			pos: pos
+			stmts:    stmts
+			pos:      pos
 			comments: comments
-			is_inf: true
-			scope: p.scope
+			is_inf:   true
+			scope:    p.scope
 		}
 		p.close_scope()
 		return for_stmt
@@ -82,17 +82,17 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
 		for_c_stmt := ast.ForCStmt{
-			stmts: stmts
+			stmts:    stmts
 			has_init: has_init
 			has_cond: has_cond
-			has_inc: has_inc
+			has_inc:  has_inc
 			is_multi: is_multi
-			init: init
-			cond: cond
-			inc: inc
-			pos: pos
+			init:     init
+			cond:     cond
+			inc:      inc
+			pos:      pos
 			comments: comments
-			scope: p.scope
+			scope:    p.scope
 		}
 		p.close_scope()
 		return for_c_stmt
@@ -134,10 +134,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 					val_var_pos)
 			}
 			p.scope.register(ast.Var{
-				name: key_var_name
-				typ: ast.int_type
-				pos: key_var_pos
-				is_tmp: true
+				name:         key_var_name
+				typ:          ast.int_type
+				pos:          key_var_pos
+				is_tmp:       true
 				is_stack_obj: true
 			})
 		} else if p.scope.known_var(val_var_name) {
@@ -167,10 +167,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			p.next()
 			high_expr = p.expr(0)
 			p.scope.register(ast.Var{
-				name: val_var_name
-				typ: ast.int_type
-				pos: val_var_pos
-				is_tmp: true
+				name:         val_var_name
+				typ:          ast.int_type
+				pos:          val_var_pos
+				is_tmp:       true
 				is_stack_obj: true
 			})
 			if key_var_name != '' {
@@ -183,12 +183,12 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		} else {
 			// this type will be set in checker
 			p.scope.register(ast.Var{
-				name: val_var_name
-				pos: val_var_pos
-				is_mut: val_is_mut
+				name:          val_var_name
+				pos:           val_var_pos
+				is_mut:        val_is_mut
 				is_auto_deref: val_is_mut
-				is_tmp: true
-				is_stack_obj: true
+				is_tmp:        true
+				is_stack_obj:  true
 			})
 		}
 		comments << p.eat_comments()
@@ -197,17 +197,17 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		pos.update_last_line(p.prev_tok.line_nr)
 		// println('nr stmts=$stmts.len')
 		for_in_stmt := ast.ForInStmt{
-			stmts: stmts
-			cond: cond
-			key_var: key_var_name
-			val_var: val_var_name
-			high: high_expr
-			is_range: is_range
-			pos: pos
-			kv_pos: key_var_pos
-			comments: comments
+			stmts:      stmts
+			cond:       cond
+			key_var:    key_var_name
+			val_var:    val_var_name
+			high:       high_expr
+			is_range:   is_range
+			pos:        pos
+			kv_pos:     key_var_pos
+			comments:   comments
 			val_is_mut: val_is_mut
-			scope: p.scope
+			scope:      p.scope
 		}
 		p.close_scope()
 		return for_in_stmt
@@ -220,9 +220,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	stmts := p.parse_block_no_scope(false)
 	pos.update_last_line(p.prev_tok.line_nr)
 	for_stmt := ast.ForStmt{
-		cond: cond
+		cond:  cond
 		stmts: stmts
-		pos: pos
+		pos:   pos
 		scope: p.scope
 	}
 	p.close_scope()

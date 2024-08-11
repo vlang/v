@@ -130,7 +130,7 @@ mut:
 // create a new SSLListener binding to `saddr`
 pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr: saddr
+		saddr:  saddr
 		config: config
 	}
 	listener.init()!
@@ -629,7 +629,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		microseconds := (remaining_time % 1000) * 1000
 
 		tt := C.timeval{
-			tv_sec: u64(seconds)
+			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
 		timeval_timeout := if timeout < 0 {

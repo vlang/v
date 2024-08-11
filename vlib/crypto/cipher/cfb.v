@@ -53,11 +53,11 @@ fn new_cfb(b Block, iv []u8, decrypt bool) Cfb {
 		panic('cipher.new_cfb: IV length must be equal block size')
 	}
 	mut x := Cfb{
-		b: b
-		out: []u8{len: b.block_size}
-		next: []u8{len: b.block_size}
+		b:        b
+		out:      []u8{len: b.block_size}
+		next:     []u8{len: b.block_size}
 		out_used: block_size
-		decrypt: decrypt
+		decrypt:  decrypt
 	}
 	copy(mut x.next, iv)
 	return x

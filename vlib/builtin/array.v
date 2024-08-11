@@ -33,9 +33,9 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc(u64(cap_) * u64(elm_size))
-		len: mylen
-		cap: cap_
+		data:         vcalloc(u64(cap_) * u64(elm_size))
+		len:          mylen
+		cap:          cap_
 	}
 	return arr
 }
@@ -44,8 +44,8 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		len: mylen
-		cap: cap_
+		len:          mylen
+		cap:          cap_
 	}
 	// x := []EmptyStruct{cap:5} ; for clang/gcc with -gc none,
 	//    -> sizeof(EmptyStruct) == 0 -> elm_size == 0
@@ -82,8 +82,8 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		len: mylen
-		cap: cap_
+		len:          mylen
+		cap:          cap_
 	}
 	// x := []EmptyStruct{cap:5} ; for clang/gcc with -gc none,
 	//    -> sizeof(EmptyStruct) == 0 -> elm_size == 0
@@ -109,9 +109,9 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: unsafe { malloc(__at_least_one(u64(cap_) * u64(elm_size))) }
-		len: mylen
-		cap: cap_
+		data:         unsafe { malloc(__at_least_one(u64(cap_) * u64(elm_size))) }
+		len:          mylen
+		cap:          cap_
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -130,9 +130,9 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: unsafe { malloc(__at_least_one(u64(cap_) * u64(elm_size))) }
-		len: mylen
-		cap: cap_
+		data:         unsafe { malloc(__at_least_one(u64(cap_) * u64(elm_size))) }
+		len:          mylen
+		cap:          cap_
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -152,9 +152,9 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc(u64(cap_) * u64(elm_size))
-		len: len
-		cap: cap_
+		data:         vcalloc(u64(cap_) * u64(elm_size))
+		len:          len
+		cap:          cap_
 	}
 	// TODO: Write all memory functions (like memcpy) in V
 	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
@@ -165,9 +165,9 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidptr) array {
 	arr := array{
 		element_size: elm_size
-		data: c_array
-		len: len
-		cap: cap
+		data:         c_array
+		len:          len
+		cap:          cap
 	}
 	return arr
 }
@@ -234,9 +234,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 	}
 	arr := array{
 		element_size: a.element_size
-		data: vcalloc(size)
-		len: count * a.len
-		cap: count * a.len
+		data:         vcalloc(size)
+		len:          count * a.len
+		cap:          count * a.len
 	}
 	if a.len > 0 {
 		a_total_size := u64(a.len) * u64(a.element_size)
@@ -559,10 +559,10 @@ fn (a array) slice(start int, _end int) array {
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: data
-		offset: a.offset + int(offset) // TODO: offset should become 64bit
-		len: l
-		cap: l
+		data:         data
+		offset:       a.offset + int(offset) // TODO: offset should become 64bit
+		len:          l
+		cap:          l
 	}
 	return res
 }
@@ -598,10 +598,10 @@ fn (a array) slice_ni(_start int, _end int) array {
 	if start >= a.len || start > end {
 		res := array{
 			element_size: a.element_size
-			data: a.data
-			offset: 0
-			len: 0
-			cap: 0
+			data:         a.data
+			offset:       0
+			len:          0
+			cap:          0
 		}
 		return res
 	}
@@ -611,10 +611,10 @@ fn (a array) slice_ni(_start int, _end int) array {
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: data
-		offset: a.offset + int(offset) // TODO: offset should be 64bit
-		len: l
-		cap: l
+		data:         data
+		offset:       a.offset + int(offset) // TODO: offset should be 64bit
+		len:          l
+		cap:          l
 	}
 	return res
 }
@@ -638,9 +638,9 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc(u64(a.cap) * u64(a.element_size))
-		len: a.len
-		cap: a.cap
+		data:         vcalloc(u64(a.cap) * u64(a.element_size))
+		len:          a.len
+		cap:          a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
@@ -743,9 +743,9 @@ pub fn (a array) reverse() array {
 	}
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc(u64(a.cap) * u64(a.element_size))
-		len: a.len
-		cap: a.cap
+		data:         vcalloc(u64(a.cap) * u64(a.element_size))
+		len:          a.len
+		cap:          a.cap
 	}
 	for i in 0 .. a.len {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
@@ -1027,9 +1027,9 @@ pub fn (a array) pointers() []voidptr {
 pub fn (data voidptr) vbytes(len int) []u8 {
 	res := array{
 		element_size: 1
-		data: data
-		len: len
-		cap: len
+		data:         data
+		len:          len
+		cap:          len
 	}
 	return res
 }

@@ -32,9 +32,9 @@ struct Node[T] {
 
 fn new_node[T](factory TypeFactory[T], raw_node RawNode) ?Node[T] {
 	return Node[T]{
-		factory: factory
+		factory:   factory
 		type_name: factory.get_type(raw_node.type_name)
-		raw_node: raw_node
+		raw_node:  raw_node
 	}
 }
 

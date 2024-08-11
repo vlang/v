@@ -50,7 +50,7 @@ fn main() {
 	spawn app.gg.run()
 
 	sim.run(app.args.params,
-		grid: app.args.grid
+		grid:       app.args.grid
 		on_request: sim.SimRequestHandler(handle_request)
 	)
 }

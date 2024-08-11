@@ -35,7 +35,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	g.str_types << StrType{
-		typ: unwrapped
+		typ:  unwrapped
 		styp: styp
 	}
 	return str_fn_name

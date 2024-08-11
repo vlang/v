@@ -12,7 +12,7 @@ mut:
 // from 256i * basepoint. It is precomputed the first time it's used.
 fn basepoint_table() []AffineLookupTable {
 	mut bpt := &BasepointTablePrecomp{
-		table: []AffineLookupTable{len: 32}
+		table:    []AffineLookupTable{len: 32}
 		initonce: sync.new_once()
 	}
 

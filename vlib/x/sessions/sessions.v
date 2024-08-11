@@ -93,14 +93,14 @@ pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	ctx.CurrentSession.session_id = sid
 
 	ctx.set_cookie(http.Cookie{
-		value: signed
-		max_age: s.max_age
-		domain: s.cookie_options.domain
+		value:     signed
+		max_age:   s.max_age
+		domain:    s.cookie_options.domain
 		http_only: s.cookie_options.http_only
-		name: s.cookie_options.cookie_name
-		path: s.cookie_options.path
+		name:      s.cookie_options.cookie_name
+		path:      s.cookie_options.path
 		same_site: s.cookie_options.same_site
-		secure: s.cookie_options.secure
+		secure:    s.cookie_options.secure
 	})
 	// indicate that the response should not be cached: we don't want the session id cookie
 	// to be cached by the browser, or any other agent
@@ -136,8 +136,8 @@ pub fn (mut s Sessions[T]) destroy[X](mut ctx X) ! {
 pub fn (mut s Sessions[T]) logout[X](mut ctx X) ! {
 	s.destroy(mut ctx)!
 	ctx.set_cookie(http.Cookie{
-		name: s.cookie_options.cookie_name
-		value: ''
+		name:    s.cookie_options.cookie_name
+		value:   ''
 		expires: time.unix(0)
 	})
 }

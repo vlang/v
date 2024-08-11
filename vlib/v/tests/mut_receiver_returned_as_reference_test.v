@@ -27,7 +27,7 @@ fn test_mut_receiver() {
 	assert u64(p) == u64(f)
 	z := p.set_position(111, 222)
 	assert u64(p) == u64(z)
-	//
+
 	assert p.name == 'frodo'
 	assert p.x == 111
 	assert p.y == 222

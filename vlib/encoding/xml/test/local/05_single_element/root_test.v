@@ -6,7 +6,7 @@ fn test_valid_parsing() ! {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'sample'
+			name:     'sample'
 			children: [
 				'Single root element.',
 			]

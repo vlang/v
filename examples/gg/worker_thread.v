@@ -24,14 +24,14 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Counter'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: init
+		window_title:  'Counter'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      frame
+		init_fn:       init
 	)
 	app.gg.run()
 }

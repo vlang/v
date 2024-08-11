@@ -81,7 +81,7 @@ fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	}
 
 	mut dl_loader := &DynamicLibLoader{
-		key: conf.key
+		key:   conf.key
 		flags: conf.flags
 		paths: paths
 	}

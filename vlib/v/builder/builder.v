@@ -37,7 +37,6 @@ pub mut:
 	//}
 	table     &ast.Table = unsafe { nil }
 	ccoptions CcompilerOptions
-	//
 	// Note: changes in mod `builtin` force invalidation of every other .v file
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
@@ -78,12 +77,12 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		executable_name += '.exe'
 	}
 	return Builder{
-		pref: pref_
-		table: table
-		checker: checker.new_checker(table, pref_)
-		transformer: transformer.new_transformer_with_table(table, pref_)
-		compiled_dir: compiled_dir
-		cached_msvc: msvc
+		pref:              pref_
+		table:             table
+		checker:           checker.new_checker(table, pref_)
+		transformer:       transformer.new_transformer_with_table(table, pref_)
+		compiled_dir:      compiled_dir
+		cached_msvc:       msvc
 		executable_exists: os.is_file(executable_name)
 	}
 }
@@ -141,7 +140,7 @@ pub fn (mut b Builder) middle_stages() ! {
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)
 	util.timing_measure('TRANSFORM')
-	//
+
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
 		markused.mark_used(mut b.table, mut b.pref, b.parsed_files)
@@ -565,7 +564,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			util.show_compiler_message(kind, err.CompilerMessage)
 		}
 	}
-	//
+
 	if b.pref.is_verbose && b.checker.nr_errors > 1 {
 		println('${b.checker.nr_errors} errors')
 	}
@@ -594,9 +593,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{},
 								false)
 							redefines << FunctionRedefinition{
-								fpath: file.path
-								fline: stmt.pos.line_nr
-								f: stmt
+								fpath:   file.path
+								fline:   stmt.pos.line_nr
+								f:       stmt
 								fheader: fheader
 							}
 							redefine_conflicts[fheader]++
@@ -610,9 +609,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				)
 				for redefine in redefines {
 					util.show_compiler_message('conflicting declaration:',
-						message: redefine.fheader
+						message:   redefine.fheader
 						file_path: redefine.fpath
-						pos: redefine.f.pos
+						pos:       redefine.f.pos
 					)
 				}
 				total_conflicts++
@@ -640,9 +639,9 @@ pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors
 
 	return errors.Error{
 		file_path: fpath
-		pos: pos
-		reporter: .builder
-		message: s
+		pos:       pos
+		reporter:  .builder
+		message:   s
 	}
 }
 

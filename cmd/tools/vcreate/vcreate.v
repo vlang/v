@@ -34,35 +34,35 @@ enum Template {
 fn main() {
 	flags := [
 		Flag{
-			flag: .bool
-			name: 'bin'
+			flag:        .bool
+			name:        'bin'
 			description: 'Use the template for an executable application [default].'
 		},
 		Flag{
-			flag: .bool
-			name: 'lib'
+			flag:        .bool
+			name:        'lib'
 			description: 'Use the template for a library project.'
 		},
 		Flag{
-			flag: .bool
-			name: 'web'
+			flag:        .bool
+			name:        'web'
 			description: 'Use the template for a vweb project.'
 		},
 	]
 	mut cmd := Command{
 		flags: [
 			Flag{
-				flag: .bool
-				name: 'help'
+				flag:        .bool
+				name:        'help'
 				description: 'Print help information.'
-				global: true
+				global:      true
 			},
 		]
 		posix_mode: true
-		commands: [
+		commands:   [
 			Command{
-				name: 'new'
-				usage: '<project_name>'
+				name:        'new'
+				usage:       '<project_name>'
 				description: [
 					'Creates a new V project in a directory with the specified project name.',
 					'',
@@ -73,13 +73,13 @@ fn main() {
 				parent: &Command{
 					name: 'v'
 				}
-				posix_mode: true
-				flags: flags
+				posix_mode:  true
+				flags:       flags
 				pre_execute: validate
-				execute: new_project
+				execute:     new_project
 			},
 			Command{
-				name: 'init'
+				name:        'init'
 				description: [
 					'Sets up a V project within the current directory.',
 					'',
@@ -90,10 +90,10 @@ fn main() {
 				parent: &Command{
 					name: 'v'
 				}
-				posix_mode: true
-				flags: flags
+				posix_mode:  true
+				flags:       flags
 				pre_execute: validate
-				execute: init_project
+				execute:     init_project
 			},
 		]
 	}
@@ -115,7 +115,7 @@ fn validate(cmd Command) ! {
 fn new_project(cmd Command) ! {
 	mut c := Create{
 		template: get_template(cmd)
-		new_dir: true
+		new_dir:  true
 	}
 	c.prompt(cmd.args)
 	println('Initialising ...')

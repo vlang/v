@@ -11,24 +11,24 @@ fn test_valid_parsing() ! {
 			},
 		]
 		root: xml.XMLNode{
-			name: 'address'
+			name:     'address'
 			children: [
 				xml.XMLComment{
 					text: ' Full or first name '
 				},
 				xml.XMLNode{
-					name: 'name'
+					name:     'name'
 					children: ['Jones']
 				},
 				xml.XMLComment{
 					text: ' Registered name of the company -> '
 				},
 				xml.XMLNode{
-					name: 'company'
+					name:     'company'
 					children: ['ABSystems']
 				},
 				xml.XMLNode{
-					name: 'phone'
+					name:     'phone'
 					children: [xml.XMLComment{
 						text: ' Phone with country code -) '
 					}, '(046) 1233-44778']

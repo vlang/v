@@ -15,12 +15,12 @@ pub enum Backend {
 pub enum PixelFormat as u32 {
 	_default // value 0 reserved for default-init
 	@none
-	//
+
 	r8
 	r8sn
 	r8ui
 	r8si
-	//
+
 	r16
 	r16sn
 	r16ui
@@ -30,7 +30,7 @@ pub enum PixelFormat as u32 {
 	rg8sn
 	rg8ui
 	rg8si
-	//
+
 	r32ui
 	r32si
 	r32f
@@ -48,7 +48,7 @@ pub enum PixelFormat as u32 {
 	rgb10a2
 	rg11b10f
 	rgb9e5
-	//
+
 	rg32ui
 	rg32si
 	rg32f
@@ -57,16 +57,14 @@ pub enum PixelFormat as u32 {
 	rgba16ui
 	rgba16si
 	rgba16f
-	//
+
 	rgba32ui
 	rgba32si
 	rgba32f
-	//
-	//
-	//
+
 	depth
 	depth_stencil
-	//
+
 	bc1_rgba
 	bc2_rgba
 	bc3_rgba
@@ -94,7 +92,7 @@ pub enum PixelFormat as u32 {
 	eac_rg11sn
 	astc_4x4_rgba
 	astc_4x4_srgba
-	//
+
 	_num
 	_force_u32 = 0x7FFFFFFF
 }

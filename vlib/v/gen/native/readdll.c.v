@@ -25,7 +25,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 		full_path := os.join_path(path, dll)
 		if os.exists(full_path) {
 			return SystemDll{
-				name: dll
+				name:      dll
 				full_path: full_path
 			}
 		}
@@ -44,7 +44,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 			full_path := cstring_to_vstring(buffer)
 			free(buffer)
 			return SystemDll{
-				name: dll
+				name:      dll
 				full_path: full_path
 			}
 		}
@@ -64,7 +64,7 @@ mut:
 
 fn (di DllIndex) to_import() PeDllImport {
 	return PeDllImport{
-		name: di.dllname
+		name:      di.dllname
 		functions: maps.filter(di.exports, fn (_ string, val bool) bool {
 			return val
 		}).keys()
@@ -169,7 +169,7 @@ fn read_dos_header(mut file os.File) !DosHeaderRead {
 	}
 
 	return DosHeaderRead{
-		magic: binary.little_endian_u16(buf)
+		magic:  binary.little_endian_u16(buf)
 		lfanew: binary.little_endian_u32(buf[dos_header_lfanew_offset..])
 	}
 }
@@ -187,8 +187,8 @@ fn read_pe_header(mut file os.File, offset u64) !PeHeaderRead {
 	}
 
 	return PeHeaderRead{
-		magic: binary.little_endian_u16(buf)
-		machine: binary.little_endian_u16(buf[pe_header_machine_offset..])
+		magic:              binary.little_endian_u16(buf)
+		machine:            binary.little_endian_u16(buf[pe_header_machine_offset..])
 		number_of_sections: binary.little_endian_u16(buf[pe_number_of_sections_offset..])
 	}
 }
@@ -205,7 +205,7 @@ fn read_pe32plus_optional_header(mut file os.File, offset u64) !Pe32PlusOptional
 	}
 
 	return Pe32PlusOptionalHeaderRead{
-		magic: binary.little_endian_u16(buf)
+		magic:                   binary.little_endian_u16(buf)
 		number_of_rva_and_sizes: binary.little_endian_u32(buf[pe32_plus_optional_header_offsetof(.number_of_rva_and_sizes)..])
 	}
 }
@@ -229,8 +229,8 @@ fn read_pe_section_header(mut file os.File, offset u64) !PeSectionHeaderRead {
 	}
 
 	return PeSectionHeaderRead{
-		virtual_address: binary.little_endian_u32(buf[pe_section_header_offsetof(.virtual_address)..])
-		size_of_raw_data: binary.little_endian_u32(buf[pe_section_header_offsetof(.size_of_raw_data)..20])
+		virtual_address:     binary.little_endian_u32(buf[pe_section_header_offsetof(.virtual_address)..])
+		size_of_raw_data:    binary.little_endian_u32(buf[pe_section_header_offsetof(.size_of_raw_data)..20])
 		pointer_to_raw_data: binary.little_endian_u32(buf[pe_section_header_offsetof(.pointer_to_raw_data)..24])
 	}
 }
@@ -248,6 +248,6 @@ fn read_pe_export_directory(mut file os.File, offset u64) !PeExportDirectoryRead
 
 	return PeExportDirectoryRead{
 		number_of_name_ptrs: binary.little_endian_u32(buf[24..28])
-		name_ptr_rva: binary.little_endian_u32(buf[32..36])
+		name_ptr_rva:        binary.little_endian_u32(buf[32..36])
 	}
 }

@@ -32,7 +32,7 @@ struct Bar {
 fn new_user() User {
 	return User{
 		name: 'Serious Sam'
-		age: 19
+		age:  19
 	}
 }
 

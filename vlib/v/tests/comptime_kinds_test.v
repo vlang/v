@@ -165,7 +165,7 @@ fn test_kind_alias() {
 	assert_alias[AliasOfAbc]()
 	assert_alias[AliasOfint]()
 	assert_alias[AliasOfstring]()
-	//
+
 	assert_not_alias[int]()
 	assert_not_alias[f32]()
 	assert_not_alias[[]int]()

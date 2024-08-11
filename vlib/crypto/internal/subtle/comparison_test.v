@@ -25,7 +25,7 @@ fn test_constant_time_select() {
 	assert constant_time_select(1, 2, 0) == 2
 	assert constant_time_select(1, 2, 255) == 2
 	assert constant_time_select(1, 2, 255 * 255) == 2
-	//
+
 	assert constant_time_select(0, 1, 0) == 0
 	assert constant_time_select(0, 1, 255) == 255
 	assert constant_time_select(0, 1, 255 * 255) == 255 * 255

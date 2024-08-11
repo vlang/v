@@ -393,7 +393,7 @@ pub fn (t Time) custom_format(s string) string {
 					int(is_leap_year(t.year))))
 			}
 			'd' {
-				sb.write_string(t.day_of_week().str())
+				sb.write_string('${t.day_of_week() % 7}')
 			}
 			'dd' {
 				sb.write_string(long_days[t.day_of_week() - 1][0..2])
@@ -472,7 +472,7 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix((t.month % 4) + 1))
 			}
 			'c' {
-				sb.write_string('${t.day_of_week() + 1}')
+				sb.write_string('${t.day_of_week()}')
 			}
 			'N' {
 				// TODO: integrate BC

@@ -13,15 +13,15 @@ const bool_ = Primitive{
 }
 const i8_ = Primitive{
 	props: .integer
-	size: 8
+	size:  8
 }
 const i16_ = Primitive{
 	props: .integer
-	size: 16
+	size:  16
 }
 const i32_ = Primitive{
 	props: .integer
-	size: 32
+	size:  32
 }
 // TODO: represent platform specific size
 // will this be calculated at compile time?
@@ -31,36 +31,36 @@ const int_ = Primitive{
 }
 const i64_ = Primitive{
 	props: .integer
-	size: 64
+	size:  64
 }
 const u8_ = Primitive{
 	props: .integer | .unsigned
-	size: 8
+	size:  8
 }
 // byte_ = Primitive{props: .integer | .unsigned, size: 8}
 const byte_ = Alias{
-	name: 'byte'
+	name:      'byte'
 	base_type: u8_
 }
 const u16_ = Primitive{
 	props: .integer | .unsigned
-	size: 16
+	size:  16
 }
 const u32_ = Primitive{
 	props: .integer | .unsigned
-	size: 32
+	size:  32
 }
 const u64_ = Primitive{
 	props: .integer | .unsigned
-	size: 64
+	size:  64
 }
 const f32_ = Primitive{
 	props: .float
-	size: 32
+	size:  32
 }
 const f64_ = Primitive{
 	props: .float
-	size: 64
+	size:  64
 }
 // complex / non primitives
 const string_ = String(0)
@@ -73,19 +73,19 @@ const void_ = Void(0)
 const nil_ = Nil(0)
 const none_ = None(0)
 const byteptr_ = Alias{
-	name: 'byteptr'
+	name:      'byteptr'
 	base_type: Pointer{
 		base_type: byte_
 	}
 }
 const charptr_ = Alias{
-	name: 'charptr'
+	name:      'charptr'
 	base_type: Pointer{
 		base_type: char_
 	}
 }
 const voidptr_ = Alias{
-	name: 'voidptr'
+	name:      'voidptr'
 	base_type: Pointer{
 		base_type: void_
 	}

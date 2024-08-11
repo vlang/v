@@ -17,7 +17,7 @@ const addr_ip_any = [4]u8{init: u8(0)}
 pub fn new_ip6(port u16, addr [16]u8) Addr {
 	n_port := conv.hton16(port)
 	a := Addr{
-		f: u8(AddrFamily.ip6)
+		f:    u8(AddrFamily.ip6)
 		addr: AddrData{
 			Ip6: Ip6{
 				port: n_port
@@ -32,7 +32,7 @@ pub fn new_ip6(port u16, addr [16]u8) Addr {
 pub fn new_ip(port u16, addr [4]u8) Addr {
 	n_port := conv.hton16(port)
 	a := Addr{
-		f: u8(AddrFamily.ip)
+		f:    u8(AddrFamily.ip)
 		addr: AddrData{
 			Ip: Ip{
 				port: n_port
@@ -155,7 +155,7 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 
 			return [
 				Addr{
-					f: u8(AddrFamily.unix)
+					f:    u8(AddrFamily.unix)
 					addr: AddrData{
 						Unix: resolved
 					}

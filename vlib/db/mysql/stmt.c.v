@@ -77,7 +77,7 @@ pub fn (s &Stmt) str() string {
 // init_stmt creates a new statement, given the `query`.
 pub fn (db DB) init_stmt(query string) Stmt {
 	return Stmt{
-		stmt: C.mysql_stmt_init(db.conn)
+		stmt:  C.mysql_stmt_init(db.conn)
 		query: query
 		binds: []C.MYSQL_BIND{}
 	}
@@ -171,7 +171,7 @@ pub fn (stmt Stmt) error(code int) IError {
 	msg := stmt.get_error_msg()
 
 	return &SQLError{
-		msg: '${msg} (${code}) (${stmt.query})'
+		msg:  '${msg} (${code}) (${stmt.query})'
 		code: code
 	}
 }
@@ -249,7 +249,7 @@ pub fn (mut stmt Stmt) bind_text(b string) {
 pub fn (mut stmt Stmt) bind_null() {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type: mysql.mysql_type_null
-		length: 0
+		length:      0
 	}
 }
 
@@ -257,10 +257,10 @@ pub fn (mut stmt Stmt) bind_null() {
 // Note: it is more convenient to use one of the other bind_XYZ methods.
 pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	stmt.binds << C.MYSQL_BIND{
-		buffer_type: typ
-		buffer: buffer
+		buffer_type:   typ
+		buffer:        buffer
 		buffer_length: buf_len
-		length: 0
+		length:        0
 	}
 }
 
@@ -269,8 +269,8 @@ pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].@type }
-			buffer: dataptr[i]
-			length: &lengths[i]
+			buffer:      dataptr[i]
+			length:      &lengths[i]
 		}
 	}
 }

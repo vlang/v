@@ -115,16 +115,16 @@ mut:
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width:       w
+		height:      h
 		num_mipmaps: 0
 		// usage: .dynamic
-		label: &u8(0)
+		label:         &u8(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 
@@ -133,8 +133,8 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
 	}
 
 	sg_smp := gfx.make_sampler(&smp_desc)
@@ -150,7 +150,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr: buf
+		ptr:  buf
 		size: usize(sz)
 	}
 	gfx.update_image(sg_img, &tmp_sbc)
@@ -326,7 +326,7 @@ fn app_init(mut app App) {
 
 	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
-			enabled: true
+			enabled:        true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
@@ -335,7 +335,7 @@ fn app_init(mut app App) {
 
 	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: .less_equal
+		compare:       .less_equal
 	}
 	pipdesc.cull_mode = .back
 	app.pip_viewer = sgl.make_pipeline(&pipdesc)
@@ -572,12 +572,12 @@ fn draw_text(mut app App, in_txt string, in_x int, in_y int, fnt_sz f32) {
 	mut txt_conf_c0 := gx.TextCfg{
 		color: gx.white // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
-		size: font_size
+		size:  font_size
 	}
 	mut txt_conf_c1 := gx.TextCfg{
 		color: gx.black // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
-		size: font_size
+		size:  font_size
 	}
 
 	x := int(in_x * scale)
@@ -801,7 +801,7 @@ fn main() {
 	mut app := &App{
 		gg: unsafe { nil }
 		// zip fields
-		zip: unsafe { nil }
+		zip:       unsafe { nil }
 		item_list: unsafe { nil }
 	}
 
@@ -815,19 +815,19 @@ fn main() {
 	load_and_show(os.args[1..], mut app)
 
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
-		create_window: true
-		window_title: 'V Image viewer 0.8'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: frame
-		init_fn: app_init
-		cleanup_fn: cleanup
-		event_fn: my_event_manager
-		font_path: font_path
-		enable_dragndrop: true
-		max_dropped_files: 64
+		width:                        win_width
+		height:                       win_height
+		create_window:                true
+		window_title:                 'V Image viewer 0.8'
+		user_data:                    app
+		bg_color:                     bg_color
+		frame_fn:                     frame
+		init_fn:                      app_init
+		cleanup_fn:                   cleanup
+		event_fn:                     my_event_manager
+		font_path:                    font_path
+		enable_dragndrop:             true
+		max_dropped_files:            64
 		max_dropped_file_path_length: 2048
 		// ui_mode: true
 	)

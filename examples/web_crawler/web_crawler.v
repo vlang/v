@@ -4,7 +4,7 @@ import net.html
 fn main() {
 	site_url := 'https://news.ycombinator.com'
 	resp := http.fetch(
-		url: site_url
+		url:        site_url
 		user_agent: 'Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'
 	)!
 	mut doc := html.parse(resp.body)

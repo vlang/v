@@ -15,7 +15,7 @@ fn test_json_encode_with_ptr() {
 		name: 'foo'
 	}
 	data := MyStruct{
-		user: &user
+		user:  &user
 		users: {
 			'keyfoo': user
 		}

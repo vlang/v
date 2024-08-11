@@ -34,10 +34,10 @@ pub mut:
 
 fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 	return CheckResult{
-		files: v1.files + v2.files
+		files:    v1.files + v2.files
 		warnings: v1.warnings + v2.warnings
-		errors: v1.errors + v2.errors
-		oks: v1.oks + v2.oks
+		errors:   v1.errors + v2.errors
+		oks:      v1.oks + v2.oks
 	}
 }
 
@@ -77,8 +77,8 @@ fn main() {
 		}
 		mut mdfile := MDFile{
 			skip_line_length_check: skip_line_length_check
-			path: file_path
-			lines: lines
+			path:                   file_path
+			lines:                  lines
 		}
 		res += mdfile.check()
 	}
@@ -243,7 +243,7 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 				command += ' ${default_command}'
 			}
 			f.current = VCodeExample{
-				sline: lnumber
+				sline:   lnumber
 				command: command
 			}
 		}
@@ -305,7 +305,7 @@ fn (mut ad AnchorData) add_links(line_number int, line string) {
 		re.match_string(elem)
 		link := re.get_group_by_name(elem, 'link')
 		ad.links[link] << AnchorLink{
-			line: line_number
+			line:  line_number
 			label: re.get_group_by_name(elem, 'label')
 		}
 	}
@@ -317,7 +317,7 @@ fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 			headline := line.substr(headline_start_pos + 1, line.len)
 			link := create_ref_link(headline)
 			ad.anchors[link] << Headline{
-				line: line_number
+				line:  line_number
 				label: headline
 				level: headline_start_pos
 			}
@@ -634,7 +634,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 	}
 	return CheckResult{
 		errors: errors
-		oks: oks
+		oks:    oks
 	}
 }
 

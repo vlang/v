@@ -266,7 +266,7 @@ fn foo_mut_user(mut u User) {
 
 fn test_struct_literal_args() {
 	foo_config(20,
-		n: 10
+		n:   10
 		def: 20
 	)
 	foo_config(10)
@@ -298,9 +298,9 @@ struct Country {
 
 fn test_levels() {
 	_ := Country{
-		name: 'UK'
+		name:    'UK'
 		capital: City{
-			name: 'London'
+			name:       'London'
 			population: 10
 		}
 	}
@@ -434,7 +434,7 @@ fn test_anon() {
 	book2 := Book{
 		author: struct {
 			name: 'Samantha Black'
-			age: 24
+			age:  24
 		}
 	}
 	assert book2.author.name == 'Samantha Black'

@@ -92,7 +92,7 @@ fn test_socket_read_line() {
 	message := '${message1}\n${message2}\n'
 	socket.write_string(message) or { assert false }
 	assert true
-	//
+
 	line1 := reader.read_line() or {
 		// println(reader.buf)
 		assert false

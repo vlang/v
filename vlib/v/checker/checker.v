@@ -42,10 +42,10 @@ pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or 
 pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
-	//
+
 	table &ast.Table = unsafe { nil }
 	file  &ast.File  = unsafe { nil }
-	//
+
 	nr_errors     int
 	nr_warnings   int
 	nr_notices    int
@@ -57,7 +57,7 @@ pub mut:
 	notice_lines  map[string]bool // dedup notices
 	error_details []string
 	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
-	//
+
 	expected_type              ast.Type
 	expected_or_type           ast.Type // fn() or { 'this type' } eg. string. expected or block type
 	expected_expr_type         ast.Type // if/match is_expr: expected_type
@@ -135,7 +135,7 @@ mut:
 	variant_data_type ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
-	//
+
 	v_current_commit_hash string // same as old C.V_CURRENT_COMMIT_HASH
 	assign_stmt_attr      string // for `x := [1,2,3] @[freed]`
 }
@@ -146,16 +146,19 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		timers_should_print = true
 	}
 	mut checker := &Checker{
-		table: table
-		pref: pref_
-		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
+		table:  table
+		pref:   pref_
+		timers: util.new_timers(
+			should_print: timers_should_print
+			label:        'checker'
+		)
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
-		v_current_commit_hash: if pref_.building_v { version.githash(pref_.vroot) or {
+		v_current_commit_hash:         if pref_.building_v { version.githash(pref_.vroot) or {
 				@VCURRENTHASH} } else { @VCURRENTHASH }
 	}
 	checker.comptime = &comptime.ComptimeInfo{
 		resolver: checker
-		table: table
+		table:    table
 	}
 	return checker
 }
@@ -335,12 +338,12 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				// files_from_main_module contain preludes at the start
 				mut the_main_file := files_from_main_module.last()
 				the_main_file.stmts << ast.FnDecl{
-					name: 'main.main'
-					mod: 'main'
-					is_main: true
-					file: the_main_file.path
+					name:        'main.main'
+					mod:         'main'
+					is_main:     true
+					file:        the_main_file.path
 					return_type: ast.void_type
-					scope: &ast.Scope{
+					scope:       &ast.Scope{
 						parent: nil
 					}
 				}
@@ -1753,6 +1756,10 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	if node.fields.len == 0 {
 		c.warn('const block must have at least 1 declaration', node.pos)
 	}
+	if node.is_block {
+		c.warn('const () groups will be an error after 2025-01-01 (`v fmt -w source.v` will fix that for you)',
+			node.pos)
+	}
 	for mut field in node.fields {
 		if checker.reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
 			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
@@ -2129,7 +2136,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 						|| id.name in ast.valid_comptime_not_user_defined) {
 						node.defer_vars[i] = ast.Ident{
 							scope: unsafe { nil }
-							name: ''
+							name:  ''
 						}
 						continue
 					}
@@ -2424,12 +2431,12 @@ fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool
 			aliases << io.alias
 			if io.alias in scope.objects {
 				scope.objects[io.alias] = ast.Var{
-					name: io.alias
-					expr: io.expr
-					is_arg: true
-					typ: typ
+					name:      io.alias
+					expr:      io.expr
+					is_arg:    true
+					typ:       typ
 					orig_type: typ
-					pos: io.pos
+					pos:       io.pos
 				}
 			}
 		}
@@ -3836,7 +3843,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					is_option := typ.has_option_or_result() || node.or_expr.kind != .absent
 					node.kind = .variable
 					node.info = ast.IdentVar{
-						typ: typ
+						typ:       typ
 						is_option: is_option
 					}
 					if !is_sum_type_cast {
@@ -4075,11 +4082,11 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << to_type
 				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
 					struct_type: expr.expr_type
-					name: expr.field_name
-					typ: cur_type
-					smartcasts: smartcasts
-					pos: expr.pos
-					orig_type: orig_type
+					name:        expr.field_name
+					typ:         cur_type
+					smartcasts:  smartcasts
+					pos:         expr.pos
+					orig_type:   orig_type
 				})
 			} else {
 				c.smartcast_mut_pos = expr.pos
@@ -4114,15 +4121,15 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
 							if !var.is_unwrapped {
 								scope.register(ast.Var{
-									name: expr.name
-									typ: cur_type
-									pos: expr.pos
-									is_used: true
-									is_mut: expr.is_mut
+									name:         expr.name
+									typ:          cur_type
+									pos:          expr.pos
+									is_used:      true
+									is_mut:       expr.is_mut
 									is_inherited: is_inherited
-									smartcasts: [to_type]
-									orig_type: orig_type
-									ct_type_var: ct_type_var
+									smartcasts:   [to_type]
+									orig_type:    orig_type
+									ct_type_var:  ct_type_var
 									is_unwrapped: true
 								})
 							} else {
@@ -4135,15 +4142,15 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					}
 				}
 				scope.register(ast.Var{
-					name: expr.name
-					typ: cur_type
-					pos: expr.pos
-					is_used: true
-					is_mut: expr.is_mut
+					name:         expr.name
+					typ:          cur_type
+					pos:          expr.pos
+					is_used:      true
+					is_mut:       expr.is_mut
 					is_inherited: is_inherited
-					smartcasts: smartcasts
-					orig_type: orig_type
-					ct_type_var: ct_type_var
+					smartcasts:   smartcasts
+					orig_type:    orig_type
+					ct_type_var:  ct_type_var
 				})
 			} else if is_mut && !expr.is_mut {
 				c.smartcast_mut_pos = expr.pos

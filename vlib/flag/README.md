@@ -65,7 +65,7 @@ fn main() {
 		// Generate and layout (a configuable) documentation for the flags
 		documentation := flag.to_doc[Config](
 			version: '1.0' // NOTE: this overrides the `@[version: '1.2.3']` struct attribute
-			fields: {
+			fields:  {
 				'level':                                    'This is a doc string of the field `level` on struct `Config`'
 				'example':                                  'This is another doc string'
 				'multi':                                    'This flag can be repeated'

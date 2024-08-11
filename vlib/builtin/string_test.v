@@ -1506,12 +1506,11 @@ fn test_index_u8() {
 	assert 'abcabca'.index_u8(`a`) == 0
 	assert 'abcabca'.index_u8(`b`) == 1
 	assert 'abcabca'.index_u8(`c`) == 2
-	//
+
 	assert 'abc'.index_u8(`d`) == -1
 	assert 'abc'.index_u8(`A`) == -1
 	assert 'abc'.index_u8(`B`) == -1
 	assert 'abc'.index_u8(`C`) == -1
-	//
 }
 
 fn test_last_index() {

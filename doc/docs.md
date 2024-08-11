@@ -1600,9 +1600,9 @@ fn (mut t MyTime) century() int {
 
 fn main() {
 	mut my_time := MyTime{
-		year: 2020
+		year:  2020
 		month: 12
-		day: 25
+		day:   25
 	}
 	println(time.new(my_time).utc_string())
 	println('Century: ${my_time.century()}')
@@ -2436,7 +2436,7 @@ fn register(u User) User {
 
 mut user := User{
 	name: 'abc'
-	age: 23
+	age:  23
 }
 user = register(user)
 println(user)
@@ -2464,9 +2464,9 @@ struct Button {
 
 fn new_button(c ButtonConfig) &Button {
 	return &Button{
-		width: c.width
+		width:  c.width
 		height: c.height
-		text: c.text
+		text:   c.text
 	}
 }
 
@@ -2535,7 +2535,7 @@ struct Book {
 book := Book{
 	author: struct {
 		name: 'Samantha Black'
-		age: 24
+		age:  24
 	}
 }
 assert book.author.name == 'Samantha Black'
@@ -2666,7 +2666,7 @@ the struct `Size`, which allows you to do:
 
 ```v oksyntax
 mut button := Button{
-	title: 'Click me'
+	title:  'Click me'
 	height: 2
 }
 
@@ -2701,7 +2701,7 @@ You can also initialize an embedded struct:
 ```v oksyntax
 mut button := Button{
 	Size: Size{
-		width: 3
+		width:  3
 		height: 2
 	}
 }
@@ -2711,7 +2711,7 @@ or assign values:
 
 ```v oksyntax
 button.Size = Size{
-	width: 4
+	width:  4
 	height: 5
 }
 ```
@@ -4588,7 +4588,7 @@ struct User {
 
 mut data := map[string]int{}
 user := &User{
-	name: 'Pierre'
+	name:  'Pierre'
 	score: 1024
 }
 
@@ -5157,8 +5157,8 @@ sql db {
 
 // insert a new customer:
 new_customer := Customer{
-	name: 'Bob'
-	country: 'uk'
+	name:      'Bob'
+	country:   'uk'
 	nr_orders: 10
 }
 sql db {
@@ -5166,8 +5166,8 @@ sql db {
 }!
 
 us_customer := Customer{
-	name: 'Martin'
-	country: 'us'
+	name:      'Martin'
+	country:   'us'
 	nr_orders: 5
 }
 sql db {
@@ -5175,8 +5175,8 @@ sql db {
 }!
 
 none_country_customer := Customer{
-	name: 'Dennis'
-	country: none
+	name:      'Dennis'
+	country:   none
 	nr_orders: 2
 }
 sql db {
