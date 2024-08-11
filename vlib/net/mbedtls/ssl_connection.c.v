@@ -24,6 +24,7 @@ fn init() {
 	}
 }
 
+// SSLCerts represents a pair of CA and client certificates + key
 pub struct SSLCerts {
 pub mut:
 	cacert      C.mbedtls_x509_crt
@@ -31,6 +32,7 @@ pub mut:
 	client_key  C.mbedtls_pk_context
 }
 
+// new_sslcerts initializes and returns a pair of SSL certificates and key
 pub fn new_sslcerts() &SSLCerts {
 	mut certs := SSLCerts{}
 	C.mbedtls_x509_crt_init(&certs.cacert)
@@ -39,6 +41,7 @@ pub fn new_sslcerts() &SSLCerts {
 	return &certs
 }
 
+// new_sslcerts_in_memory creates a pair of SSL certificates, given their contents (not paths).
 pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSLCerts {
 	mut certs := new_sslcerts()
 	if verify != '' {
@@ -65,6 +68,7 @@ pub fn new_sslcerts_in_memory(verify string, cert string, cert_key string) !&SSL
 	return certs
 }
 
+// new_sslcerts_from_file creates a new pair of SSL certificates, given their paths on the filesystem.
 pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSLCerts {
 	mut certs := new_sslcerts()
 	if verify != '' {
@@ -91,6 +95,7 @@ pub fn new_sslcerts_from_file(verify string, cert string, cert_key string) !&SSL
 	return certs
 }
 
+// cleanup frees the SSL certificates
 pub fn (mut c SSLCerts) cleanup() {
 	C.mbedtls_x509_crt_free(&c.cacert)
 	C.mbedtls_x509_crt_free(&c.client_cert)
