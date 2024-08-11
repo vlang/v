@@ -97,7 +97,7 @@ fn (mut p Publisher[T]) clear_all() {
 // subscribe subscribe to an event `name`.
 pub fn (mut s Subscriber[T]) subscribe(name T, handler EventHandlerFn) {
 	s.registry.events << EventHandler[T]{
-		name: name
+		name:    name
 		handler: handler
 	}
 }
@@ -105,8 +105,8 @@ pub fn (mut s Subscriber[T]) subscribe(name T, handler EventHandlerFn) {
 // subscribe_method subscribe to an event `name` and also set the `receiver` as a parameter.
 pub fn (mut s Subscriber[T]) subscribe_method(name T, handler EventHandlerFn, receiver voidptr) {
 	s.registry.events << EventHandler[T]{
-		name: name
-		handler: handler
+		name:     name
+		handler:  handler
 		receiver: receiver
 	}
 }
@@ -124,9 +124,9 @@ pub fn (mut s Subscriber[T]) unsubscribe_receiver(receiver voidptr) {
 // subscribe_once subscribe only once to an event `name`.
 pub fn (mut s Subscriber[T]) subscribe_once(name T, handler EventHandlerFn) {
 	s.registry.events << EventHandler[T]{
-		name: name
+		name:    name
 		handler: handler
-		once: true
+		once:    true
 	}
 }
 

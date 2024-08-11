@@ -42,8 +42,8 @@ fn test_dump_c_struct() {
 
 	mut hostent := &C.zz_hostent{
 		h_addr_list: unsafe { nil }
-		h_aliases: unsafe { nil }
-		h_name: unsafe { nil }
+		h_aliases:   unsafe { nil }
+		h_name:      unsafe { nil }
 	}
 	dump(hostent)
 	assert true

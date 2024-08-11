@@ -16,14 +16,14 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		width: win_width
-		height: win_height
+		bg_color:      gx.white
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Rectangles'
-		frame_fn: frame
-		user_data: app
-		init_fn: init_images
+		window_title:  'Rectangles'
+		frame_fn:      frame
+		user_data:     app
+		init_fn:       init_images
 	)
 	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
 	app.image = app.gg.create_image(logo_path)!.id

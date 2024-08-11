@@ -69,19 +69,19 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
-		child_stdin: unsafe { nil }
-		child_stdout_read: unsafe { nil }
+		child_stdin:        unsafe { nil }
+		child_stdout_read:  unsafe { nil }
 		child_stdout_write: unsafe { nil }
-		child_stderr_read: unsafe { nil }
+		child_stderr_read:  unsafe { nil }
 		child_stderr_write: unsafe { nil }
 	}
 	p.wdata = voidptr(wdata)
 	mut start_info := StartupInfo{
 		lp_reserved2: unsafe { nil }
-		lp_reserved: unsafe { nil }
-		lp_desktop: unsafe { nil }
-		lp_title: unsafe { nil }
-		cb: sizeof(StartupInfo)
+		lp_reserved:  unsafe { nil }
+		lp_desktop:   unsafe { nil }
+		lp_title:     unsafe { nil }
+		cb:           sizeof(StartupInfo)
 	}
 	if p.use_stdio_ctl {
 		mut sa := SecurityAttributes{}

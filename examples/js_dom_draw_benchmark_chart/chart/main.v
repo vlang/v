@@ -162,9 +162,9 @@ fn v_sqlite_file() !FrameworkBenchmarkResponse {
 	// res := http.get(url) or { panic(err) }
 	// framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
 	framework_benchmark_response := FrameworkBenchmarkResponse{
-		insert: []
+		insert:  []
 		@select: []
-		update: []
+		update:  []
 	}
 	return framework_benchmark_response
 }

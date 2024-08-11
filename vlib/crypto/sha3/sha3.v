@@ -165,10 +165,10 @@ pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
 	}
 
 	d := Digest{
-		rate: absorption_rate
-		suffix: sha3.hash_pad
+		rate:       absorption_rate
+		suffix:     sha3.hash_pad
 		output_len: hash_size
-		s: State{}
+		s:          State{}
 	}
 
 	return &d
@@ -200,10 +200,10 @@ pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
 	}
 
 	d := Digest{
-		rate: absorption_rate
-		suffix: sha3.xof_pad
+		rate:       absorption_rate
+		suffix:     sha3.xof_pad
 		output_len: hash_size
-		s: State{}
+		s:          State{}
 	}
 
 	return &d

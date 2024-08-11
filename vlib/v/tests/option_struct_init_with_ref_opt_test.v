@@ -14,7 +14,7 @@ mut:
 pub fn (mut l LinkedList) push(value int) {
 	node := &Node{
 		value: value
-		prev: l.tail
+		prev:  l.tail
 	}
 	if l.head == none {
 		l.head = node

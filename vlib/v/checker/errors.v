@@ -94,11 +94,11 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	if kpos !in c.notice_lines {
 		c.notice_lines[kpos] = true
 		note := errors.Notice{
-			reporter: errors.Reporter.checker
-			pos: pos
+			reporter:  errors.Reporter.checker
+			pos:       pos
 			file_path: c.file.path
-			message: message
-			details: details
+			message:   message
+			details:   details
 		}
 		c.file.notices << note
 		c.notices << note
@@ -133,11 +133,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 		if kpos !in c.warning_lines {
 			c.warning_lines[kpos] = true
 			wrn := errors.Warning{
-				reporter: errors.Reporter.checker
-				pos: pos
+				reporter:  errors.Reporter.checker
+				pos:       pos
 				file_path: c.file.path
-				message: message
-				details: details
+				message:   message
+				details:   details
 			}
 			c.file.warnings << wrn
 			c.warnings << wrn
@@ -147,10 +147,10 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	if !warn {
 		if c.pref.fatal_errors {
 			util.show_compiler_message('error:', errors.CompilerMessage{
-				pos: pos
+				pos:       pos
 				file_path: c.file.path
-				message: message
-				details: details
+				message:   message
+				details:   details
 			})
 			exit(1)
 		}
@@ -164,11 +164,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 		if kpos !in c.error_lines {
 			c.error_lines[kpos] = true
 			err := errors.Error{
-				reporter: errors.Reporter.checker
-				pos: pos
+				reporter:  errors.Reporter.checker
+				pos:       pos
 				file_path: c.file.path
-				message: message
-				details: details
+				message:   message
+				details:   details
 			}
 			c.file.errors << err
 			c.errors << err

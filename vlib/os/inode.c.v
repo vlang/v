@@ -65,11 +65,11 @@ pub fn inode(path string) FileInfo {
 	attr := lstat(path) or { Stat{} }
 	fm := attr.get_mode()
 	return FileInfo{
-		typ: fm.typ
-		owner: fm.owner
-		group: fm.group
+		typ:    fm.typ
+		owner:  fm.owner
+		group:  fm.group
 		others: fm.others
-		size: attr.size
-		mtime: attr.mtime
+		size:   attr.size
+		mtime:  attr.mtime
 	}
 }

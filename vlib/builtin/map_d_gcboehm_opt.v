@@ -18,14 +18,14 @@ fn __malloc_at_least_one(how_many_bytes u64, noscan bool) &u8 {
 fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value_noscan bool) DenseArray {
 	cap := 8
 	return DenseArray{
-		key_bytes: key_bytes
+		key_bytes:   key_bytes
 		value_bytes: value_bytes
-		cap: cap
-		len: 0
-		deletes: 0
+		cap:         cap
+		len:         0
+		deletes:     0
 		all_deleted: unsafe { nil }
-		keys: __malloc_at_least_one(u64(cap) * u64(key_bytes), key_noscan)
-		values: __malloc_at_least_one(u64(cap) * u64(value_bytes), value_noscan)
+		keys:        __malloc_at_least_one(u64(cap) * u64(key_bytes), key_noscan)
+		values:      __malloc_at_least_one(u64(cap) * u64(value_bytes), value_noscan)
 	}
 }
 
@@ -35,20 +35,20 @@ fn new_map_noscan_key(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
 	return map{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: new_dense_array_noscan(key_bytes, true, value_bytes, false)
-		metas: unsafe { &u32(vcalloc_noscan(metasize)) }
-		extra_metas: extra_metas_inc
-		len: 0
+		shift:           init_log_capicity
+		key_values:      new_dense_array_noscan(key_bytes, true, value_bytes, false)
+		metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
+		extra_metas:     extra_metas_inc
+		len:             0
 		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
 	}
 }
 
@@ -58,20 +58,20 @@ fn new_map_noscan_value(key_bytes int, value_bytes int, hash_fn MapHashFn, key_e
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
 	return map{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: new_dense_array_noscan(key_bytes, false, value_bytes, true)
-		metas: unsafe { &u32(vcalloc_noscan(metasize)) }
-		extra_metas: extra_metas_inc
-		len: 0
+		shift:           init_log_capicity
+		key_values:      new_dense_array_noscan(key_bytes, false, value_bytes, true)
+		metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
+		extra_metas:     extra_metas_inc
+		len:             0
 		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
 	}
 }
 
@@ -81,20 +81,20 @@ fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
 	return map{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: new_dense_array_noscan(key_bytes, true, value_bytes, true)
-		metas: unsafe { &u32(vcalloc_noscan(metasize)) }
-		extra_metas: extra_metas_inc
-		len: 0
+		shift:           init_log_capicity
+		key_values:      new_dense_array_noscan(key_bytes, true, value_bytes, true)
+		metas:           unsafe { &u32(vcalloc_noscan(metasize)) }
+		extra_metas:     extra_metas_inc
+		len:             0
 		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
 	}
 }
 

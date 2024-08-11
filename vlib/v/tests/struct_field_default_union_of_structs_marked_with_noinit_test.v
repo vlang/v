@@ -37,7 +37,7 @@ fn draw(r Renderable) int {
 
 fn test_initialisation_of_a_struct_containing_embedded_union_field() {
 	r := Renderable{
-		kind: .circle
+		kind:   .circle
 		circle: structs_with_noinit.make_circle()
 	}
 	assert draw(r) == 999

@@ -200,8 +200,8 @@ pub fn (bp &u8) vstring() string {
 @[unsafe]
 pub fn (bp &u8) vstring_with_len(len int) string {
 	return string{
-		str: unsafe { bp }
-		len: len
+		str:    unsafe { bp }
+		len:    len
 		is_lit: 0
 	}
 }
@@ -216,8 +216,8 @@ pub fn (bp &u8) vstring_with_len(len int) string {
 @[unsafe]
 pub fn (cp &char) vstring() string {
 	return string{
-		str: &u8(cp)
-		len: unsafe { vstrlen_char(cp) }
+		str:    &u8(cp)
+		len:    unsafe { vstrlen_char(cp) }
 		is_lit: 0
 	}
 }
@@ -230,8 +230,8 @@ pub fn (cp &char) vstring() string {
 @[unsafe]
 pub fn (cp &char) vstring_with_len(len int) string {
 	return string{
-		str: &u8(cp)
-		len: len
+		str:    &u8(cp)
+		len:    len
 		is_lit: 0
 	}
 }
@@ -247,8 +247,8 @@ pub fn (cp &char) vstring_with_len(len int) string {
 @[unsafe]
 pub fn (bp &u8) vstring_literal() string {
 	return string{
-		str: unsafe { bp }
-		len: unsafe { vstrlen(bp) }
+		str:    unsafe { bp }
+		len:    unsafe { vstrlen(bp) }
 		is_lit: 1
 	}
 }
@@ -261,8 +261,8 @@ pub fn (bp &u8) vstring_literal() string {
 @[unsafe]
 pub fn (bp &u8) vstring_literal_with_len(len int) string {
 	return string{
-		str: unsafe { bp }
-		len: len
+		str:    unsafe { bp }
+		len:    len
 		is_lit: 1
 	}
 }
@@ -274,8 +274,8 @@ pub fn (bp &u8) vstring_literal_with_len(len int) string {
 @[unsafe]
 pub fn (cp &char) vstring_literal() string {
 	return string{
-		str: &u8(cp)
-		len: unsafe { vstrlen_char(cp) }
+		str:    &u8(cp)
+		len:    unsafe { vstrlen_char(cp) }
 		is_lit: 1
 	}
 }
@@ -289,8 +289,8 @@ pub fn (cp &char) vstring_literal() string {
 @[unsafe]
 pub fn (cp &char) vstring_literal_with_len(len int) string {
 	return string{
-		str: &u8(cp)
-		len: len
+		str:    &u8(cp)
+		len:    len
 		is_lit: 1
 	}
 }
@@ -460,7 +460,7 @@ pub fn (s string) replace_each(vals []string) string {
 			// and which rep/with pair it refers to.
 
 			idxs << RepIndex{
-				idx: idx
+				idx:     idx
 				val_idx: rep_i
 			}
 

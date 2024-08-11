@@ -13,7 +13,7 @@ fn literal(l string) ParseFunction[string] {
 
 		return ParseResult[string]{
 			result: l
-			rest: input.all_after_first(l)
+			rest:   input.all_after_first(l)
 		}
 	}
 }

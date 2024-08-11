@@ -240,22 +240,22 @@ mut:
 
 pub fn new(system_allocator Allocator) Dlmalloc {
 	return Dlmalloc{
-		smallmap: 0
-		treemap: 0
-		smallbins: unsafe { [(dlmalloc.n_small_bins + 1) * 2]&Chunk{} }
-		treebins: unsafe { [dlmalloc.n_tree_bins]&TreeChunk{} }
-		dvsize: 0
-		topsize: 0
-		dv: unsafe { nil }
-		top: unsafe { nil }
-		footprint: 0
-		max_footprint: 0
-		seg: Segment{unsafe { nil }, 0, unsafe { nil }, 0}
-		trim_check: 0
-		least_addr: unsafe { nil }
-		release_checks: 0
+		smallmap:         0
+		treemap:          0
+		smallbins:        unsafe { [(dlmalloc.n_small_bins + 1) * 2]&Chunk{} }
+		treebins:         unsafe { [dlmalloc.n_tree_bins]&TreeChunk{} }
+		dvsize:           0
+		topsize:          0
+		dv:               unsafe { nil }
+		top:              unsafe { nil }
+		footprint:        0
+		max_footprint:    0
+		seg:              Segment{unsafe { nil }, 0, unsafe { nil }, 0}
+		trim_check:       0
+		least_addr:       unsafe { nil }
+		release_checks:   0
 		system_allocator: system_allocator
-		max_request: 4294901657
+		max_request:      4294901657
 	}
 }
 

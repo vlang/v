@@ -140,7 +140,7 @@ struct User {
 fn test_http_client_json_post() {
 	ouser := User{
 		name: 'Bilbo'
-		age: 123
+		age:  123
 	}
 	json_for_ouser := json.encode(ouser)
 	mut x := http.post_json('http://${localserver}/json_echo', json_for_ouser) or { panic(err) }
@@ -178,9 +178,9 @@ fn test_http_client_multipart_form_data() {
 
 	mut files := []http.FileData{}
 	files << http.FileData{
-		filename: 'vweb'
+		filename:     'vweb'
 		content_type: 'text'
-		data: '"vweb test"'
+		data:         '"vweb test"'
 	}
 
 	mut form_config_files := http.PostMultipartFormConfig{
@@ -211,7 +211,7 @@ fn test_login_with_multipart_form_data_send_by_fetch() {
 
 fn test_host() {
 	mut req := http.Request{
-		url: 'http://${localserver}/with_host'
+		url:    'http://${localserver}/with_host'
 		method: .get
 	}
 
@@ -235,8 +235,8 @@ fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
 	x := http.fetch(
-		url: 'http://${localserver}/shutdown'
-		method: .get
+		url:     'http://${localserver}/shutdown'
+		method:  .get
 		cookies: {
 			'skey': 'superman'
 		}

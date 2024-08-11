@@ -68,11 +68,11 @@ fn time_with_unix(t Time) Time {
 		return t
 	}
 	tt := C.tm{
-		tm_sec: t.second
-		tm_min: t.minute
+		tm_sec:  t.second
+		tm_min:  t.minute
 		tm_hour: t.hour
 		tm_mday: t.day
-		tm_mon: t.month - 1
+		tm_mon:  t.month - 1
 		tm_year: t.year - 1900
 	}
 	utime := make_unix_time(tt)
@@ -107,14 +107,14 @@ pub fn (t Time) str() string {
 // convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, nanosecond int) Time {
 	return Time{
-		year: t.tm_year + 1900
-		month: t.tm_mon + 1
-		day: t.tm_mday
-		hour: t.tm_hour
-		minute: t.tm_min
-		second: t.tm_sec
+		year:       t.tm_year + 1900
+		month:      t.tm_mon + 1
+		day:        t.tm_mday
+		hour:       t.tm_hour
+		minute:     t.tm_min
+		second:     t.tm_sec
 		nanosecond: nanosecond
-		unix: make_unix_time(t)
+		unix:       make_unix_time(t)
 		// for the actual code base when we
 		// call convert_ctime, it is always
 		// when we manage the local time.

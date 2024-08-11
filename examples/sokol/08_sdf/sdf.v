@@ -28,7 +28,7 @@ fn init(mut state State) {
 	fsq_verts := [f32(-1.0), -3.0, 3.0, 1.0, -1.0, 1.0]!
 	state.bind.vertex_buffers[0] = gfx.make_buffer(gfx.BufferDesc{
 		label: c'fsq vertices'
-		data: unsafe { gfx.Range{&fsq_verts[0], sizeof(fsq_verts)} }
+		data:  unsafe { gfx.Range{&fsq_verts[0], sizeof(fsq_verts)} }
 	})
 
 	mut pipeline := gfx.PipelineDesc{}
@@ -55,13 +55,13 @@ fn frame(mut state State) {
 
 fn main() {
 	sapp.run(sapp.Desc{
-		window_title: c'SDF Rendering'
-		width: 512
-		height: 512
+		window_title:      c'SDF Rendering'
+		width:             512
+		height:            512
 		frame_userdata_cb: frame
-		init_userdata_cb: init
-		cleanup_cb: gfx.shutdown
-		icon: sapp.IconDesc{
+		init_userdata_cb:  init
+		cleanup_cb:        gfx.shutdown
+		icon:              sapp.IconDesc{
 			sokol_default: true
 		}
 		user_data: &State{}

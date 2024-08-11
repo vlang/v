@@ -290,7 +290,7 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 
 	return DocumentType{
 		name: name
-		dtd: DocumentTypeDefinition{
+		dtd:  DocumentTypeDefinition{
 			list: items
 		}
 	}
@@ -391,7 +391,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	mut comments := []XMLComment{}
 	mut doctype := DocumentType{
 		name: ''
-		dtd: ''
+		dtd:  ''
 	}
 	mut found_doctype := false
 	for {
@@ -445,9 +445,9 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	}
 
 	return Prolog{
-		version: version
+		version:  version
 		encoding: encoding
-		doctype: doctype
+		doctype:  doctype
 		comments: comments
 	}, ch
 }
@@ -509,9 +509,9 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 							children << collected_contents.replace('\r\n', '\n')
 						}
 						return XMLNode{
-							name: name
+							name:       name
 							attributes: attributes
-							children: children
+							children:   children
 						}
 					}
 					else {
@@ -566,7 +566,7 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	if tag_contents.ends_with('/') {
 		// We're not looking for children and inner text
 		return XMLNode{
-			name: name
+			name:       name
 			attributes: parse_attributes(tag_contents[name.len..tag_contents.len - 1].trim_space())!
 		}
 	}
@@ -608,10 +608,10 @@ pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 	root := parse_single_node(first_char, mut reader)!
 
 	return XMLDocument{
-		version: prolog.version
+		version:  prolog.version
 		encoding: prolog.encoding
 		comments: prolog.comments
-		doctype: prolog.doctype
-		root: root
+		doctype:  prolog.doctype
+		root:     root
 	}
 }

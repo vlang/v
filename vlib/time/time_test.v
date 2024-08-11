@@ -2,25 +2,25 @@ import time
 import math
 
 const local_time_to_test = time.new(
-	year: 1980
-	month: 7
-	day: 11
-	hour: 21
-	minute: 23
-	second: 42
+	year:       1980
+	month:      7
+	day:        11
+	hour:       21
+	minute:     23
+	second:     42
 	nanosecond: 123456789
-	is_local: true
+	is_local:   true
 )
 
 const utc_time_to_test = time.new(
-	year: 1980
-	month: 7
-	day: 11
-	hour: 21
-	minute: 23
-	second: 42
+	year:       1980
+	month:      7
+	day:        11
+	hour:       21
+	minute:     23
+	second:     42
 	nanosecond: 123456789
-	is_local: false
+	is_local:   false
 )
 
 fn test_is_leap_year() {
@@ -162,10 +162,10 @@ fn test_smonth() {
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
-			year: 1980
-			month: month_num
-			day: 1
-			hour: 0
+			year:   1980
+			month:  month_num
+			day:    1
+			hour:   0
 			minute: 0
 			second: 0
 		}
@@ -178,10 +178,10 @@ fn test_day_of_week() {
 		day_of_week := i + 1
 		// 2 Dec 2019 is Monday
 		t := time.Time{
-			year: 2019
-			month: 12
-			day: 2 + i
-			hour: 0
+			year:   2019
+			month:  12
+			day:    2 + i
+			hour:   0
 			minute: 0
 			second: 0
 		}
@@ -213,10 +213,10 @@ fn test_weekday_str() {
 	for i, name in day_names {
 		// 2 Dec 2019 is Monday
 		t := time.Time{
-			year: 2019
-			month: 12
-			day: 2 + i
-			hour: 0
+			year:   2019
+			month:  12
+			day:    2 + i
+			hour:   0
 			minute: 0
 			second: 0
 		}
@@ -252,9 +252,9 @@ fn test_add() {
 	assert t5.is_local == t4.is_local
 
 	t := time.Time{
-		year: 2024
+		year:  2024
 		month: 4
-		day: 3
+		day:   3
 	}
 	t_5am := t.add(time.hour * 5)
 	assert t_5am.hour == 5

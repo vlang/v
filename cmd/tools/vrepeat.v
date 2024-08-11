@@ -59,8 +59,8 @@ mut:
 fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 	mut res := Aints{
 		values: ovals // remember the original values
-		nmins: extreme_mins
-		nmaxs: extreme_maxs
+		nmins:  extreme_mins
+		nmaxs:  extreme_maxs
 	}
 	// discard the extremes, if needed:
 	mut vals := []i64{}

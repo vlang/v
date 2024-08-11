@@ -65,7 +65,7 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 
 	// select and handle sockets if any
 	tv := C.timeval{
-		tv_sec: u64(max_wait_in_sec)
+		tv_sec:  u64(max_wait_in_sec)
 		tv_usec: 0
 	}
 	r := C.@select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)

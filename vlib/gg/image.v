@@ -74,8 +74,8 @@ pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
 // draw_image_part(Rect{0, 0, 600, 600}, Rect{0, 0, 400, 400}, img)
 pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image) {
 	ctx.draw_image_with_config(
-		img: img_
-		img_rect: img_rect
+		img:       img_
+		img_rect:  img_rect
 		part_rect: part_rect
 	)
 }
@@ -83,8 +83,8 @@ pub fn (ctx &Context) draw_image_part(img_rect Rect, part_rect Rect, img_ &Image
 // draw_image_flipped draws the provided image flipped horizontally (use `draw_image_with_config` to flip vertically)
 pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, img_ &Image) {
 	ctx.draw_image_with_config(
-		flip_x: true
-		img: img_
+		flip_x:   true
+		img:      img_
 		img_rect: Rect{x, y, width, height}
 	)
 }
@@ -92,7 +92,7 @@ pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, im
 // draw_image_by_id draws an image by its id
 pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
 	ctx.draw_image_with_config(
-		img_id: id
+		img_id:   id
 		img_rect: Rect{x, y, width, height}
 	)
 }
@@ -100,8 +100,8 @@ pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id i
 // draw_image_3d draws an image with a z depth
 pub fn (ctx &Context) draw_image_3d(x f32, y f32, z f32, width f32, height f32, img_ &Image) {
 	ctx.draw_image_with_config(
-		img: img_
+		img:      img_
 		img_rect: Rect{x, y, width, height}
-		z: z
+		z:        z
 	)
 }

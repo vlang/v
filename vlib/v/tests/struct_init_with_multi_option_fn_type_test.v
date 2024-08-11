@@ -20,9 +20,9 @@ __global:
 @[inline]
 pub fn CycleMenuItem.new(label string, values []string, events CycleMenuItemEvents) CycleMenuItem {
 	return CycleMenuItem{
-		label: label
+		label:  label
 		values: values
-		on: events
+		on:     events
 	}
 }
 

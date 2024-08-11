@@ -9,7 +9,7 @@ mut:
 fn make_any[T](obj T) Any {
 	tsize := int(sizeof(T))
 	mut a := Any{
-		typ: T.typ
+		typ:  T.typ
 		data: unsafe { malloc(tsize) }
 	}
 	unsafe {

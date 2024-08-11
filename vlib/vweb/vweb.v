@@ -30,35 +30,35 @@ pub const headers_close = http.new_custom_header_from_map({
 
 pub const http_302 = http.new_response(
 	status: .found
-	body: '302 Found'
+	body:   '302 Found'
 	header: headers_close
 )
 pub const http_303 = http.new_response(
 	status: .see_other
-	body: '303 See Other'
+	body:   '303 See Other'
 	header: headers_close
 )
 pub const http_400 = http.new_response(
 	status: .bad_request
-	body: '400 Bad Request'
+	body:   '400 Bad Request'
 	header: http.new_header(
-		key: .content_type
+		key:   .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 pub const http_404 = http.new_response(
 	status: .not_found
-	body: '404 Not Found'
+	body:   '404 Not Found'
 	header: http.new_header(
-		key: .content_type
+		key:   .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 pub const http_500 = http.new_response(
 	status: .internal_server_error
-	body: '500 Internal Server Error'
+	body:   '500 Internal Server Error'
 	header: http.new_header(
-		key: .content_type
+		key:   .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
@@ -374,8 +374,8 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 // Sets a cookie with a `expire_date`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	cookie := http.Cookie{
-		name: key
-		value: val
+		name:    key
+		value:   val
 		expires: expire_date
 	}
 	ctx.set_cookie(cookie)
@@ -465,11 +465,11 @@ fn generate_routes[T](app &T) !map[string]Route {
 		}
 
 		routes[method.name] = Route{
-			methods: http_methods
-			path: route_path
+			methods:    http_methods
+			path:       route_path
 			path_words: route_path.split('/').filter(it != '')
 			middleware: middleware
-			host: host
+			host:       host
 		}
 	}
 	return routes
@@ -501,7 +501,7 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 	// generate struct with closure so the generic type is encapsulated in the closure
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
-		path: path
+		path:    path
 		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, host string, tid int) {
 			// request_app is freed in `handle_route`
 			mut request_app := new_request_app[T](global_app, ctx, tid)
@@ -594,10 +594,10 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			continue
 		}
 		ch <- &RequestParams{
-			connection: connection
-			global_app: unsafe { global_app }
+			connection:  connection
+			global_app:  unsafe { global_app }
 			controllers: controllers_sorted
-			routes: &routes
+			routes:      &routes
 		}
 	}
 }
@@ -728,13 +728,13 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 
 	// Create Context with request data
 	ctx := Context{
-		ctx: context.background()
-		req: req
+		ctx:            context.background()
+		req:            req
 		page_gen_start: page_gen_start
-		conn: conn
-		query: query
-		form: form
-		files: files
+		conn:           conn
+		query:          query
+		form:           form
+		files:          files
 	}
 
 	// match controller paths

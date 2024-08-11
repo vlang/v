@@ -127,14 +127,14 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 
 	mut last_chunk := false
 	mut input := &ZSTD_inBuffer{
-		src: buf_in.data
+		src:  buf_in.data
 		size: 0
-		pos: 0
+		pos:  0
 	}
 	mut output := &ZSTD_outBuffer{
-		dst: buf_out.data
+		dst:  buf_out.data
 		size: 0
-		pos: 0
+		pos:  0
 	}
 	for !last_chunk {
 		read_len := fin.read(mut buf_in)!
@@ -182,14 +182,14 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 	}
 
 	mut input := &ZSTD_inBuffer{
-		src: buf_in.data
+		src:  buf_in.data
 		size: 0
-		pos: 0
+		pos:  0
 	}
 	mut output := &ZSTD_outBuffer{
-		dst: buf_out.data
+		dst:  buf_out.data
 		size: 0
-		pos: 0
+		pos:  0
 	}
 
 	mut last_ret := usize(0)
@@ -225,8 +225,8 @@ fn test_zstd_stream() {
 	decompress_file(s('readme_level_19.zst'), s('tmp_file1'))!
 	compress_file(s('tmp_file1'), s('tmp_file.zstd'),
 		compression_level: 6
-		nb_threads: 1
-		checksum_flag: true
+		nb_threads:        1
+		checksum_flag:     true
 	)!
 	decompress_file(s('tmp_file.zstd'), s('tmp_file2'))!
 	file1 := os.read_file(s('tmp_file1'))!
@@ -268,8 +268,8 @@ fn store_array_test(fname string) ! {
 	for i in 0 .. 1000 {
 		store_memory_trace << MemoryTrace{
 			operation: u64(`L`)
-			address: u64(i)
-			size: u8(i % 8)
+			address:   u64(i)
+			size:      u8(i % 8)
 		}
 	}
 	store_array[MemoryTrace](fname, store_memory_trace, compression_level: 8)!

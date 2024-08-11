@@ -20,11 +20,11 @@ struct App {
 
 fn new_app() App {
 	return App{
-		is_verbose: '-v' in os.args
-		is_prod: '-prod' in os.args
-		vexe: vexe
-		vroot: vroot
-		skip_v_self: '-skip_v_self' in os.args
+		is_verbose:   '-v' in os.args
+		is_prod:      '-prod' in os.args
+		vexe:         vexe
+		vroot:        vroot
+		skip_v_self:  '-skip_v_self' in os.args
 		skip_current: '-skip_current' in os.args
 	}
 }

@@ -34,10 +34,10 @@ pub fn ApplicationCommandOption.parse(j json2.Any) !ApplicationCommandOption {
 	match j {
 		map[string]json2.Any {
 			return ApplicationCommandOption{
-				typ: unsafe { ApplicationCommandOptionType(j['type']!.int()) }
-				name: j['name']! as string
+				typ:         unsafe { ApplicationCommandOptionType(j['type']!.int()) }
+				name:        j['name']! as string
 				description: j['description']! as string
-				options: if a := j['options'] {
+				options:     if a := j['options'] {
 					maybe_map(a as []json2.Any, fn (k json2.Any) !ApplicationCommandOption {
 						return ApplicationCommandOption.parse(k)!
 					})!
@@ -61,8 +61,8 @@ fn test_main() {
 		assert false, 'Should not return error: ${err}'
 		return
 	} == ApplicationCommandOption{
-		typ: .string
-		name: 'foo'
+		typ:         .string
+		name:        'foo'
 		description: 'This is my first command.'
 	}
 }

@@ -34,8 +34,8 @@ fn build_tabs(tabs_len int) []string {
 pub fn new_gen(prefs &pref.Preferences) &Gen {
 	unsafe {
 		return &Gen{
-			pref: prefs
-			out: strings.new_builder(1000)
+			pref:   prefs
+			out:    strings.new_builder(1000)
 			indent: -1
 		}
 	}

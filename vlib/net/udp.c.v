@@ -34,8 +34,8 @@ pub fn dial_udp(raddr string) !&UdpConn {
 		// case because we only care about the remote)
 		if sock := new_udp_socket_for_remote(addr) {
 			return &UdpConn{
-				sock: sock
-				read_timeout: net.udp_default_read_timeout
+				sock:          sock
+				read_timeout:  net.udp_default_read_timeout
 				write_timeout: net.udp_default_write_timeout
 			}
 		}
@@ -185,8 +185,8 @@ pub fn listen_udp(laddr string) !&UdpConn {
 	// and that is probably not ideal
 	addr := addrs[0]
 	return &UdpConn{
-		sock: new_udp_socket(addr)!
-		read_timeout: net.udp_default_read_timeout
+		sock:          new_udp_socket(addr)!
+		read_timeout:  net.udp_default_read_timeout
 		write_timeout: net.udp_default_write_timeout
 	}
 }
@@ -197,8 +197,8 @@ fn new_udp_socket(local_addr Addr) !&UdpSocket {
 	sockfd := socket_error(C.socket(family, SocketType.udp, 0))!
 	mut s := &UdpSocket{
 		handle: sockfd
-		l: local_addr
-		r: Addr{
+		l:      local_addr
+		r:      Addr{
 			addr: AddrData{
 				Ip6: Ip6{}
 			}

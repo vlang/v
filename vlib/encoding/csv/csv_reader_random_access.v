@@ -460,9 +460,9 @@ pub fn (mut cr RandomAccessReader) build_header_dict(cfg GetHeaderConf) ! {
 			// fill the base struct
 			label := cr.get_cell(x: col, y: cfg.header_row)!
 			mut h := HeaderItem{
-				label: label
+				label:  label
 				column: col
-				htype: .string
+				htype:  .string
 			}
 
 			// try to infer the type if we haev at least one more row

@@ -12,10 +12,10 @@ fn test_generics_with_recursive_generics_struct() {
 	}
 
 	graph := &Node[string]{
-		value: 'Start'
+		value:     'Start'
 		points_to: [
 			&Node[string]{
-				value: 'TopLeft'
+				value:     'TopLeft'
 				points_to: [
 					finish,
 					mid,

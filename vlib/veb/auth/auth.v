@@ -40,7 +40,7 @@ pub fn (mut app Auth[T]) add_token(user_id int) !string {
 	mut uuid := rand.uuid_v4()
 	token := Token{
 		user_id: user_id
-		value: uuid
+		value:   uuid
 		// ip: ip
 	}
 	sql app.db {

@@ -255,13 +255,13 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 	}
 
 	mut dtmi := &DynamicTemplateManager{
-		template_cache_folder: dir_path
-		template_folder: dir_html_path
-		max_size_data_in_memory: max_size_memory
-		compress_html: dtm_init_params.compress_html
-		active_cache_server: active_cache_handler
-		c_time: get_current_unix_micro_timestamp()
-		dtm_init_is_ok: system_ready
+		template_cache_folder:             dir_path
+		template_folder:                   dir_html_path
+		max_size_data_in_memory:           max_size_memory
+		compress_html:                     dtm_init_params.compress_html
+		active_cache_server:               active_cache_handler
+		c_time:                            get_current_unix_micro_timestamp()
+		dtm_init_is_ok:                    system_ready
 		cache_folder_is_temporary_storage: cache_temporary_bool
 	}
 	if system_ready {
@@ -462,8 +462,8 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 			lock tm.html_file_info {
 				tm.html_file_info[f_path] = HtmlFileInfo{
 					file_full_path: html_file
-					file_name: file_name
-					file_type: define_file_type
+					file_name:      file_name
+					file_type:      define_file_type
 				}
 			}
 		} else {
@@ -539,12 +539,12 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRe
 		op_success, tmp_name := tm.create_temp_cache(html, file_path, unique_time)
 		if op_success {
 			tm.ch_cache_handler <- TemplateCache{
-				id: tm.id_counter
+				id:   tm.id_counter
 				name: tmpl_name
 				// 'path' field contains the full path, name and file extension of targeted HTML template.
-				path: file_path
+				path:             file_path
 				content_checksum: current_content_checksum
-				tmp_name_file: tmp_name
+				tmp_name_file:    tmp_name
 				// Last modified timestamp of HTML template
 				last_template_mod: last_template_mod
 				// Unix current local timestamp of cache generation request converted to UTC
@@ -710,7 +710,7 @@ fn (mut tm DynamicTemplateManager) remaining_template_request(b bool, v int) {
 					if r_request.nbr_of_remaining_request <= 0
 						&& r_request.need_to_send_delete_request {
 						tm.ch_cache_handler <- TemplateCache{
-							id: r_request.id
+							id:            r_request.id
 							cache_request: .delete
 						}
 					}

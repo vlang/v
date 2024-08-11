@@ -24,11 +24,11 @@ fn test_append_struct_to_interface_array() {
 
 	scene << Plane{
 		position: Vec{0, -10, 0}
-		normal: Vec{0, -1, 0}
+		normal:   Vec{0, -1, 0}
 	}
 	scene << Sphere{
 		position: Vec{0, 0, -20}
-		radius: 7
+		radius:   7
 	}
 
 	println(scene)

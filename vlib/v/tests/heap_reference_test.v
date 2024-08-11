@@ -27,10 +27,10 @@ pub fn (mut gitstructure GitStructure) repo_get(name string) !&GitRepo {
 
 fn test_opt_ref_return() {
 	mut gitstruct := GitStructure{
-		root: 'r'
+		root:  'r'
 		repos: [
 			&GitRepo{
-				id: 0
+				id:   0
 				path: 'testpath'
 				name: 'thename'
 			},
@@ -74,10 +74,10 @@ pub fn (mut gitstructure GitStructureNoRef) repo_get(name string) !&GitRepo {
 
 fn test_opt_return() {
 	mut gitstruct := &GitStructureNoRef{
-		root: 'r'
+		root:  'r'
 		repos: [
 			GitRepo{
-				id: 0
+				id:   0
 				path: 'testpath2'
 				name: 'thename2'
 			},

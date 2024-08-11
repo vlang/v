@@ -105,12 +105,12 @@ pub fn (mut g Gen) asm_global_get_or_set(node ast.AsmTemplate, vars AsmVars) {
 
 	target_var := if alias.name == '__vsp' {
 		Var{
-			g_idx: g.sp()
+			g_idx:     g.sp()
 			is_global: true
 		}
 	} else if alias.name == '__heap_base' {
 		Var{
-			g_idx: g.hp()
+			g_idx:     g.hp()
 			is_global: true
 		}
 	} else {

@@ -19,17 +19,17 @@ fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
-		width: 600
-		height: 400
+		bg_color:     gx.rgb(174, 198, 255)
+		width:        600
+		height:       400
 		window_title: 'Drag and drop'
-		frame_fn: frame
-		font_path: font_path
-		user_data: app
-		event_fn: my_event_manager
+		frame_fn:     frame
+		font_path:    font_path
+		user_data:    app
+		event_fn:     my_event_manager
 		// drag & drop
-		enable_dragndrop: true
-		max_dropped_files: max_files
+		enable_dragndrop:             true
+		max_dropped_files:            max_files
 		max_dropped_file_path_length: 2048
 	)
 	app.gg.run()
@@ -52,7 +52,7 @@ fn frame(mut app App) {
 	mut txt_conf := gx.TextCfg{
 		color: gx.black
 		align: .left
-		size: int(text_size * app.gg.scale + 0.5)
+		size:  int(text_size * app.gg.scale + 0.5)
 	}
 	app.gg.draw_text(12, 12, text, txt_conf)
 

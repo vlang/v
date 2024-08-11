@@ -114,7 +114,7 @@ pub fn error(message string) IError {
 pub fn error_with_code(message string, code int) IError {
 	trace_error('${message} | code: ${code}')
 	return &MessageError{
-		msg: message
+		msg:  message
 		code: code
 	}
 }

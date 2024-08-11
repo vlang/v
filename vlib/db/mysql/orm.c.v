@@ -133,9 +133,9 @@ pub fn (db DB) insert(table string, data orm.QueryData) ! {
 
 	converted_primitive_data := orm.QueryData{
 		fields: data.fields
-		data: converted_primitive_array
-		types: []
-		kinds: []
+		data:   converted_primitive_array
+		types:  []
+		kinds:  []
 		is_and: []
 	}
 

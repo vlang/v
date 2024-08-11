@@ -177,7 +177,7 @@ fn (b Buffer) view(from int, to int) View {
 	}
 	raw := lines.join('\n')
 	return View{
-		raw: raw.replace('\t', strings.repeat(` `, b.tab_width))
+		raw:    raw.replace('\t', strings.repeat(` `, b.tab_width))
 		cursor: Cursor{
 			pos_x: x
 			pos_y: b.cursor.pos_y
@@ -644,10 +644,10 @@ fn main() {
 		files: files
 	}
 	a.tui = tui.init(
-		user_data: a
-		init_fn: InitFn(init)
-		frame_fn: FrameFn(frame)
-		event_fn: EventFn(event)
+		user_data:      a
+		init_fn:        InitFn(init)
+		frame_fn:       FrameFn(frame)
+		event_fn:       EventFn(event)
 		capture_events: true
 	)
 	a.tui.run()!

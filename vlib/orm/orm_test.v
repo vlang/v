@@ -49,11 +49,11 @@ fn test_use_struct_field_as_limit() {
 	}
 
 	sam := User{
-		age: 29
-		name: 'Sam'
+		age:             29
+		name:            'Sam'
 		skipped_string2: 'this should be ignored'
-		skipped_array: ['ignored', 'array']
-		skipped_array2: ['another', 'ignored', 'array']
+		skipped_array:   ['ignored', 'array']
+		skipped_array2:  ['another', 'ignored', 'array']
 	}
 
 	sql db {
@@ -86,18 +86,18 @@ fn test_orm() {
 	name := 'Peter'
 
 	sam := User{
-		age: 29
+		age:  29
 		name: 'Sam'
 	}
 
 	peter := User{
-		age: 31
+		age:  31
 		name: 'Peter'
 	}
 
 	k := User{
-		age: 30
-		name: 'Kate'
+		age:         30
+		name:        'Kate'
 		is_customer: true
 	}
 
@@ -183,7 +183,7 @@ fn test_orm() {
 
 	new_user := User{
 		name: 'New user'
-		age: 30
+		age:  30
 	}
 	sql db {
 		insert new_user into User

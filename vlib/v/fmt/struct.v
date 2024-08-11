@@ -275,10 +275,24 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 				f.comments(node.update_expr_comments, same_line: true, has_nl: true, level: .keep)
 			}
+			mut value_aligns := FieldAlign{}
+			mut comment_aligns := FieldAlign{}
+			for init_field in node.init_fields {
+				value_aligns.add_info(init_field.name.len, init_field.pos.line_nr)
+				if init_field.comments.len > 0 {
+					comment_aligns.add_info(init_field.expr.str().len + 1, init_field.pos.line_nr)
+				}
+			}
 			for i, init_field in node.init_fields {
 				f.write('${init_field.name}: ')
+				if !single_line_fields {
+					f.write(strings.repeat(` `, value_aligns.max_len(init_field.pos.line_nr) - init_field.name.len))
+				}
 				f.expr(init_field.expr)
-				f.comments(init_field.comments, same_line: true, has_nl: false, level: .indent)
+				if init_field.comments.len > 0 {
+					f.write(strings.repeat(` `, comment_aligns.max_len(init_field.pos.line_nr) - init_field.expr.str().len))
+					f.comments(init_field.comments, same_line: true, has_nl: false, level: .indent)
+				}
 				if single_line_fields {
 					if i < node.init_fields.len - 1 {
 						f.write(', ')

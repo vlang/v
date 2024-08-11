@@ -14,12 +14,12 @@ fn frame(mut action gfx.PassAction) {
 fn main() {
 	action := gfx.create_clear_pass_action(1.0, 0, 0, 1.0)
 	sapp.run(
-		window_title: c'Clear (sokol app)'
-		width: 400
-		height: 300
-		init_cb: || gfx.setup(sapp.create_desc())
-		cleanup_cb: || gfx.shutdown()
+		window_title:      c'Clear (sokol app)'
+		width:             400
+		height:            300
+		init_cb:           || gfx.setup(sapp.create_desc())
+		cleanup_cb:        || gfx.shutdown()
 		frame_userdata_cb: frame
-		user_data: &action
+		user_data:         &action
 	)
 }

@@ -118,16 +118,16 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pre
 		}
 	}
 	mut s := &Scanner{
-		pref: pref_
-		text: raw_text
-		all_tokens: []token.Token{cap: raw_text.len / 3}
-		is_print_line_on_error: true
-		is_print_colored_error: true
+		pref:                        pref_
+		text:                        raw_text
+		all_tokens:                  []token.Token{cap: raw_text.len / 3}
+		is_print_line_on_error:      true
+		is_print_colored_error:      true
 		is_print_rel_paths_on_error: true
-		is_fmt: pref_.is_fmt
-		comments_mode: comments_mode
-		file_path: file_path
-		file_base: os.base(file_path)
+		is_fmt:                      pref_.is_fmt
+		comments_mode:               comments_mode
+		file_path:                   file_path
+		file_base:                   os.base(file_path)
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -138,16 +138,16 @@ const internally_generated_v_code = 'internally_generated_v_code'
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
 	mut s := &Scanner{
-		pref: pref_
-		text: text
-		all_tokens: []token.Token{cap: text.len / 3}
-		is_print_line_on_error: true
-		is_print_colored_error: true
+		pref:                        pref_
+		text:                        text
+		all_tokens:                  []token.Token{cap: text.len / 3}
+		is_print_line_on_error:      true
+		is_print_colored_error:      true
 		is_print_rel_paths_on_error: true
-		is_fmt: pref_.is_fmt
-		comments_mode: comments_mode
-		file_path: scanner.internally_generated_v_code
-		file_base: scanner.internally_generated_v_code
+		is_fmt:                      pref_.is_fmt
+		comments_mode:               comments_mode
+		file_path:                   scanner.internally_generated_v_code
+		file_base:                   scanner.internally_generated_v_code
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -191,26 +191,26 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		max_column = 1
 	}
 	return token.Token{
-		kind: tok_kind
-		lit: lit
+		kind:    tok_kind
+		lit:     lit
 		line_nr: s.line_nr + line_offset
-		col: max_column
-		pos: s.pos - len + 1
-		len: len
-		tidx: cidx
+		col:     max_column
+		pos:     s.pos - len + 1
+		len:     len
+		tidx:    cidx
 	}
 }
 
 @[inline]
 fn (s &Scanner) new_eof_token() token.Token {
 	return token.Token{
-		kind: .eof
-		lit: ''
+		kind:    .eof
+		lit:     ''
 		line_nr: s.line_nr + 1
-		col: s.current_column()
-		pos: s.pos
-		len: 1
-		tidx: s.tidx
+		col:     s.current_column()
+		pos:     s.pos
+		len:     1
+		tidx:    s.tidx
 	}
 }
 
@@ -223,13 +223,13 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		max_column = 1
 	}
 	return token.Token{
-		kind: tok_kind
-		lit: lit
+		kind:    tok_kind
+		lit:     lit
 		line_nr: start_line + 1
-		col: max_column
-		pos: s.pos - len + 1
-		len: len
-		tidx: cidx
+		col:     max_column
+		pos:     s.pos - len + 1
+		len:     len
+		tidx:    cidx
 	}
 }
 
@@ -962,9 +962,9 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					if s.line_nr != 1 {
 						comment_pos := token.Pos{
 							line_nr: s.line_nr - 1
-							len: comment.len
-							pos: start
-							col: s.current_column() - comment.len
+							len:     comment.len
+							pos:     start
+							col:     s.current_column() - comment.len
 						}
 						s.error_with_pos('a shebang is only valid at the top of the file',
 							comment_pos)
@@ -1139,9 +1139,9 @@ pub fn (mut s Scanner) text_scan() token.Token {
 						if !comment.contains('\n') {
 							comment_pos := token.Pos{
 								line_nr: start_line
-								len: comment.len + 4
-								pos: start
-								col: s.current_column() - comment.len - 4
+								len:     comment.len + 4
+								pos:     start
+								col:     s.current_column() - comment.len - 4
 							}
 							s.error_with_pos('inline comment is deprecated, please use line comment',
 								comment_pos)
@@ -1203,8 +1203,8 @@ pub fn (mut s Scanner) ident_string() string {
 	}
 	lspos := token.Pos{
 		line_nr: s.line_nr
-		pos: s.pos
-		col: s.pos - s.last_nl_pos - 1
+		pos:     s.pos
+		col:     s.pos - s.last_nl_pos - 1
 	}
 	q := s.text[s.pos]
 	is_quote := q in [scanner.single_quote, scanner.double_quote]
@@ -1540,8 +1540,8 @@ fn trim_slash_line_break(s string) string {
 pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
 		line_nr: s.line_nr
-		pos: s.pos
-		col: s.pos - s.last_nl_pos - 1
+		pos:     s.pos
+		col:     s.pos - s.last_nl_pos - 1
 	}
 
 	start := s.pos // the string position of the first backtick char
@@ -1701,8 +1701,8 @@ fn (mut s Scanner) inc_line_number() {
 pub fn (mut s Scanner) current_pos() token.Pos {
 	return token.Pos{
 		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
+		pos:     s.pos
+		col:     s.current_column() - 1
 	}
 }
 
@@ -1713,16 +1713,16 @@ pub fn (mut s Scanner) note(msg string) {
 	}
 	pos := token.Pos{
 		line_nr: s.line_nr
-		pos: s.pos
+		pos:     s.pos
 	}
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('notice:', pos: pos, file_path: s.file_path, message: msg)
 	} else {
 		s.notices << errors.Notice{
 			file_path: s.file_path
-			pos: pos
-			reporter: .scanner
-			message: msg
+			pos:       pos
+			reporter:  .scanner
+			message:   msg
 		}
 	}
 }
@@ -1757,10 +1757,10 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('warning:',
-			pos: pos
+			pos:       pos
 			file_path: s.file_path
-			message: msg
-			details: details
+			message:   msg
+			details:   details
 		)
 	} else {
 		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
@@ -1769,10 +1769,10 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 		}
 		s.warnings << errors.Warning{
 			file_path: s.file_path
-			pos: pos
-			reporter: .scanner
-			message: msg
-			details: details
+			pos:       pos
+			reporter:  .scanner
+			message:   msg
+			details:   details
 		}
 	}
 }
@@ -1785,19 +1785,19 @@ pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('error:',
-			pos: pos
+			pos:       pos
 			file_path: s.file_path
-			message: msg
-			details: details
+			message:   msg
+			details:   details
 		)
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
 			util.show_compiler_message('error:',
-				pos: pos
+				pos:       pos
 				file_path: s.file_path
-				message: msg
-				details: details
+				message:   msg
+				details:   details
 			)
 			exit(1)
 		}
@@ -1807,10 +1807,10 @@ pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 		}
 		s.errors << errors.Error{
 			file_path: s.file_path
-			pos: pos
-			reporter: .scanner
-			message: msg
-			details: details
+			pos:       pos
+			reporter:  .scanner
+			message:   msg
+			details:   details
 		}
 	}
 }

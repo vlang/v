@@ -12,10 +12,10 @@ fn test_stringified_usize_field_should_be_always_positive() {
 	a := StructWithUsizeField{
 		f_usize: usize(-1)
 		f_isize: isize(-1)
-		f_u64: u64(-1)
-		f_i64: i64(-1)
-		f_u32: u32(-1)
-		f_i32: i32(-1)
+		f_u64:   u64(-1)
+		f_i64:   i64(-1)
+		f_u32:   u32(-1)
+		f_i32:   i32(-1)
 	}
 	// dump(a)
 	sa := a.str()

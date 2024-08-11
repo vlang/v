@@ -114,13 +114,13 @@ fn (mut p Parser) parse_module(m string) {
 		mod_path := normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
 			manifest.name))
 		Module{
-			name: manifest.name
-			url: ident
-			version: version
+			name:         manifest.name
+			url:          ident
+			version:      version
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
-			is_external: true
-			tmp_path: tmp_path
-			manifest: manifest
+			is_external:  true
+			tmp_path:     tmp_path
+			manifest:     manifest
 		}
 	} else {
 		// VPM registered module.
@@ -170,13 +170,13 @@ fn (mut p Parser) parse_module(m string) {
 			vmod.Manifest{}
 		}
 		Module{
-			name: info.name
-			url: info.url
-			version: version
-			vcs: vcs
+			name:         info.name
+			url:          info.url
+			version:      version
+			vcs:          vcs
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
-			tmp_path: tmp_path
-			manifest: manifest
+			tmp_path:     tmp_path
+			manifest:     manifest
 		}
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)

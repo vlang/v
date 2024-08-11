@@ -103,8 +103,8 @@ fn test_one() {
 		e << parse_stmt(line, mut table, mut scope)
 	}
 	mut program := &ast.File{
-		stmts: e
-		scope: scope
+		stmts:        e
+		scope:        scope
 		global_scope: scope
 	}
 	mut checker_ := checker.new_checker(table, vpref)
@@ -147,8 +147,8 @@ fn test_parse_expr() {
 		e << parse_stmt(s, mut table, mut scope)
 	}
 	mut program := &ast.File{
-		stmts: e
-		scope: scope
+		stmts:        e
+		scope:        scope
 		global_scope: scope
 	}
 	chk.check(mut program)

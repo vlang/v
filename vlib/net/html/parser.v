@@ -86,7 +86,7 @@ fn (mut parser Parser) init() {
 	}
 	parser.dom = DocumentObjectModel{
 		debug_file: parser.debug_file
-		root: &Tag{}
+		root:       &Tag{}
 	}
 	parser.add_code_tag('')
 	parser.tags = []&Tag{}
@@ -232,7 +232,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 
 			if parser.lexical_attributes.text_after_tag == true {
 				parser.tags << &Tag{
-					name: 'text'
+					name:    'text'
 					content: temp_string
 				}
 				parser.lexical_attributes.text_after_tag = false
@@ -248,7 +248,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 
 		if parser.tags.len == 0 {
 			parser.tags << &Tag{
-				name: 'text'
+				name:    'text'
 				content: temp_string
 			}
 		} else if parser.tags.len == 1 {

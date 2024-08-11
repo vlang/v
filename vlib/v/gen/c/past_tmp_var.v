@@ -15,8 +15,8 @@ fn (mut g Gen) past_tmp_var_new() PastTmpVar {
 	s = s.trim_space()
 	g.empty_line = true
 	return PastTmpVar{
-		tmp_var: tmp_var
-		s: s
+		tmp_var:        tmp_var
+		s:              s
 		s_ends_with_ln: s_ends_with_ln
 	}
 }
@@ -33,9 +33,9 @@ fn (mut g Gen) past_tmp_var_from_var_name(var_name string) PastTmpVar {
 	s = s.trim_space()
 	g.empty_line = true
 	return PastTmpVar{
-		var_name: var_name
-		tmp_var: tmp_var
-		s: s
+		var_name:       var_name
+		tmp_var:        tmp_var
+		s:              s
 		s_ends_with_ln: s_ends_with_ln
 	}
 }

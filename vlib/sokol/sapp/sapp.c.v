@@ -9,7 +9,7 @@ __global g_desc C.sapp_desc
 
 pub fn create_desc() gfx.Desc {
 	return gfx.Desc{
-		environment: glue_environment()
+		environment:     glue_environment()
 		image_pool_size: 1000
 	}
 }
@@ -17,7 +17,7 @@ pub fn create_desc() gfx.Desc {
 // create_default_pass creates a default `gfx.Pass` compatible with `sapp` and `sokol.gfx.begin_pass/1`.
 pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
 	return gfx.Pass{
-		action: action
+		action:    action
 		swapchain: glue_swapchain()
 	}
 }

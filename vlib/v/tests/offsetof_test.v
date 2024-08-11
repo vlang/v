@@ -10,9 +10,9 @@ type Feline = Cat
 
 fn test_offsetof() {
 	cat := Cat{
-		name: 'Cthulhu'
+		name:  'Cthulhu'
 		breed: 'Great Old One'
-		age: 2147483647
+		age:   2147483647
 	}
 	unsafe {
 		assert *(&string(&u8(&cat) + __offsetof(Cat, name))) == 'Cthulhu'
@@ -31,9 +31,9 @@ fn test_offsetof_struct_from_another_module() {
 
 fn test_offsetof_alias() {
 	fel := Feline{
-		name: 'Cthulhu'
+		name:  'Cthulhu'
 		breed: 'Great Old One'
-		age: 2147483647
+		age:   2147483647
 	}
 	unsafe {
 		assert *(&string(&u8(&fel) + __offsetof(Feline, name))) == 'Cthulhu'

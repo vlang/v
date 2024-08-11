@@ -7,7 +7,7 @@ struct TestOptionalRawString {
 
 fn test_raw_opt() {
 	test := TestOptionalRawString{
-		id: 1
+		id:   1
 		data: 't
 e
 s
@@ -19,7 +19,7 @@ t'
 
 fn test_raw_none() {
 	test := TestOptionalRawString{
-		id: 1
+		id:   1
 		data: none
 	}
 	encoded := json.encode(test)
@@ -29,7 +29,7 @@ fn test_raw_none() {
 
 fn test_raw_empty_string() {
 	test := TestOptionalRawString{
-		id: 1
+		id:   1
 		data: ''
 	}
 	encoded := json.encode(test)

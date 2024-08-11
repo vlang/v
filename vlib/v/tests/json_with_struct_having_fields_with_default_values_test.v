@@ -8,7 +8,7 @@ pub mut:
 
 fn make_default_window_settings() Window {
 	return Window{
-		width: 1280
+		width:  1280
 		height: 720
 	}
 }

@@ -227,8 +227,8 @@ fn test_option_field() ? {
 
 	v = OptionFieldsStruct{
 		text: 'init'
-		n: 0
-		n1: none
+		n:    0
+		n1:   none
 	}
 	assert v.text? == 'init'
 	assert v.n? == 0

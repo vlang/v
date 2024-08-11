@@ -44,15 +44,15 @@ mut:
 
 fn (mut c Context) compile_oldv_if_needed() {
 	c.vgcontext = vgit.VGitContext{
-		workdir: c.vgo.workdir
-		v_repo_url: c.vgo.v_repo_url
-		vc_repo_url: c.vgo.vc_repo_url
-		cc: c.cc
-		commit_v: c.commit_v
-		path_v: c.path_v
-		path_vc: c.path_vc
+		workdir:        c.vgo.workdir
+		v_repo_url:     c.vgo.v_repo_url
+		vc_repo_url:    c.vgo.vc_repo_url
+		cc:             c.cc
+		commit_v:       c.commit_v
+		path_v:         c.path_v
+		path_vc:        c.path_vc
 		make_fresh_tcc: c.fresh_tcc
-		show_vccommit: c.show_vccommit
+		show_vccommit:  c.show_vccommit
 	}
 	c.vgcontext.compile_oldv_if_needed()
 	c.commit_v_hash = c.vgcontext.commit_v__hash

@@ -12,14 +12,14 @@ pub fn stat(path string) !Stat {
 			return error_posix()
 		}
 		return Stat{
-			dev: s.st_dev
+			dev:   s.st_dev
 			inode: s.st_ino
 			nlink: s.st_nlink
-			mode: s.st_mode
-			uid: s.st_uid
-			gid: s.st_gid
-			rdev: s.st_rdev
-			size: s.st_size
+			mode:  s.st_mode
+			uid:   s.st_uid
+			gid:   s.st_gid
+			rdev:  s.st_rdev
+			size:  s.st_size
 			atime: s.st_atime
 			mtime: s.st_mtime
 			ctime: s.st_ctime
@@ -39,14 +39,14 @@ pub fn lstat(path string) !Stat {
 			return error_posix()
 		}
 		return Stat{
-			dev: s.st_dev
+			dev:   s.st_dev
 			inode: s.st_ino
 			nlink: s.st_nlink
-			mode: s.st_mode
-			uid: s.st_uid
-			gid: s.st_gid
-			rdev: s.st_rdev
-			size: s.st_size
+			mode:  s.st_mode
+			uid:   s.st_uid
+			gid:   s.st_gid
+			rdev:  s.st_rdev
+			size:  s.st_size
 			atime: s.st_atime
 			mtime: s.st_mtime
 			ctime: s.st_ctime
@@ -88,20 +88,20 @@ pub fn (st Stat) get_filetype() FileType {
 // in owner/group/others format
 pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
-		typ: st.get_filetype()
+		typ:   st.get_filetype()
 		owner: FilePermission{
-			read: (st.mode & u32(C.S_IRUSR)) != 0
-			write: (st.mode & u32(C.S_IWUSR)) != 0
+			read:    (st.mode & u32(C.S_IRUSR)) != 0
+			write:   (st.mode & u32(C.S_IWUSR)) != 0
 			execute: (st.mode & u32(C.S_IXUSR)) != 0
 		}
 		group: FilePermission{
-			read: (st.mode & u32(C.S_IRGRP)) != 0
-			write: (st.mode & u32(C.S_IWGRP)) != 0
+			read:    (st.mode & u32(C.S_IRGRP)) != 0
+			write:   (st.mode & u32(C.S_IWGRP)) != 0
 			execute: (st.mode & u32(C.S_IXGRP)) != 0
 		}
 		others: FilePermission{
-			read: (st.mode & u32(C.S_IROTH)) != 0
-			write: (st.mode & u32(C.S_IWOTH)) != 0
+			read:    (st.mode & u32(C.S_IROTH)) != 0
+			write:   (st.mode & u32(C.S_IWOTH)) != 0
 			execute: (st.mode & u32(C.S_IXOTH)) != 0
 		}
 	}

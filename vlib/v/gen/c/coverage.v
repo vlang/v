@@ -26,9 +26,9 @@ fn (mut g Gen) write_coverage_point(pos token.Pos) {
 		build_options := g.pref.build_options.join(' ')
 		fhash := hash.sum64_string('${build_options}:${g.unique_file_path_hash}', 32).hex_full()
 		g.coverage_files[g.unique_file_path_hash] = &CoverageInfo{
-			points: []
-			file: g.file
-			fhash: fhash
+			points:        []
+			file:          g.file
+			fhash:         fhash
 			build_options: build_options
 		}
 	}

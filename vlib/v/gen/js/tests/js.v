@@ -122,7 +122,7 @@ fn (it Companies) method() int {
 	ss := Companies{
 		google: 2
 		amazon: true
-		yahoo: 'hello'
+		yahoo:  'hello'
 	}
 	a, b := hello(2, 'google', 'not google')
 	glue := if a > 2 {

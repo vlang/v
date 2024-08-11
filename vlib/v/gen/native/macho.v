@@ -384,40 +384,40 @@ pub fn (mut g Gen) generate_macho_footer() {
 
 fn (mut g Gen) sym_table_command() {
 	g.syms << Symbol{
-		str_entry: 0x19
+		str_entry:  0x19
 		symbol_typ: 0xe
-		section: 1
-		val: 0
-		name: '_start'
-		is_ext: true
+		section:    1
+		val:        0
+		name:       '_start'
+		is_ext:     true
 	}
 	g.syms << Symbol{
-		str_entry: 0x0e
+		str_entry:  0x0e
 		symbol_typ: 0xe
 		// symbol_typ: SYM_DEF
 		section: 1
-		val: 0x18
-		name: '_puts'
-		is_ext: false
+		val:     0x18
+		name:    '_puts'
+		is_ext:  false
 	}
 	g.syms << Symbol{
-		str_entry: 0x01
+		str_entry:  0x01
 		symbol_typ: 0xf
 		// symbol_typ: SYM_DEF
 		section: 1
 		// val: 0x27
-		val: 0
-		name: 'helloworld'
+		val:    0
+		name:   'helloworld'
 		is_ext: false
 	}
 	g.syms << Symbol{
-		str_entry: 0x08
+		str_entry:  0x08
 		symbol_typ: 0x1
 		// symbol_typ: SYM_DEF
 		section: 0
 		// val: 0x27
-		val: 0
-		name: 'ltmp1'
+		val:    0
+		name:   'ltmp1'
 		is_ext: false
 	}
 	g.macho_add_loadcommand(native.lc_symtab, native.macho_symcmd_size)

@@ -24,7 +24,7 @@ fn new_hstmt(hdbc C.SQLHDBC) !HStmt {
 	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_STMT)', C.SQLHANDLE(hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 
 	return HStmt{
-		hdbc: hdbc
+		hdbc:  hdbc
 		hstmt: hstmt
 	}
 }

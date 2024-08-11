@@ -50,11 +50,11 @@ fn do_rec(ch chan int, id int, mut ctx Context) {
 	for {
 		for ch.try_pop(mut tmp) == .success {
 			ctx.pops[base + i] = Event{
-				is_set: true
-				id: id
-				gtime: time.sys_mono_now()
-				i: i
-				kind: .pop
+				is_set:  true
+				id:      id
+				gtime:   time.sys_mono_now()
+				i:       i
+				kind:    .pop
 				elapsed: timer_sw_x.elapsed().nanoseconds()
 			}
 			timer_sw_x.restart()
@@ -75,11 +75,11 @@ fn do_send(ch chan int, id int, mut ctx Context) {
 	for i := 0; i < n_iters; i++ {
 		idx := base + i
 		ctx.pushes[idx] = Event{
-			is_set: true
-			id: id
-			gtime: time.sys_mono_now()
-			i: i
-			kind: .push
+			is_set:  true
+			id:      id
+			gtime:   time.sys_mono_now()
+			i:       i
+			kind:    .push
 			elapsed: timer_sw_x.elapsed().nanoseconds()
 		}
 		timer_sw_x.restart()
@@ -106,13 +106,13 @@ fn main() {
 	max_number_of_pops := max_number_of_pushes * n_readers
 	eprintln('> max_number_of_pushes, ${max_number_of_pushes}, max_number_of_pops (per receiver), ${max_number_of_pops}')
 	mut ctx := &Context{
-		n_iters: n_iters
+		n_iters:   n_iters
 		n_readers: n_readers
 		n_writers: n_writers
 		pushes_wg: sync.new_waitgroup()
-		pops_wg: sync.new_waitgroup()
-		pushes: []Event{len: max_number_of_pushes}
-		pops: []Event{len: max_number_of_pops}
+		pops_wg:   sync.new_waitgroup()
+		pushes:    []Event{len: max_number_of_pushes}
+		pops:      []Event{len: max_number_of_pops}
 	}
 	ctx.pops_wg.add(n_readers)
 	for i := 0; i < n_readers; i++ {

@@ -62,10 +62,10 @@ fn fixed_array_on_the_heap(len int, size int) []u8 {
 	return unsafe {
 		array{
 			element_size: 1
-			len: len
-			cap: size
-			data: data
-			flags: .noshrink | .nogrow | .nofree
+			len:          len
+			cap:          size
+			data:         data
+			flags:        .noshrink | .nogrow | .nofree
 		}
 	}
 }

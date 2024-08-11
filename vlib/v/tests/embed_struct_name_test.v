@@ -18,7 +18,7 @@ struct MyStructure {
 
 fn test_embed_name_with_enum() {
 	t := MyStructure{
-		a: 10
+		a:    10
 		data: .server
 	}
 	dump(t)

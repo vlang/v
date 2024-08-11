@@ -17,10 +17,10 @@ const sin_data = [
 	-1.1821555255364833468288e-19,
 ]
 const sin_cs = ChebSeries{
-	c: sin_data
+	c:     sin_data
 	order: 11
-	a: -1
-	b: 1
+	a:     -1
+	b:     1
 }
 const cos_data = [
 	0.165391825637921473505668118136,
@@ -36,10 +36,10 @@ const cos_data = [
 	-3.7363121133079412079201377318e-18,
 ]
 const cos_cs = ChebSeries{
-	c: cos_data
+	c:     cos_data
 	order: 10
-	a: -1
-	b: 1
+	a:     -1
+	b:     1
 }
 
 // sin calculates the sine of the angle in radians

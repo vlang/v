@@ -28,15 +28,15 @@ fn (mut il Item_list) scan_zip(path string, in_index int) ! {
 			if is_image(ext) == true {
 				il.n_item += 1
 				mut item := Item{
-					need_extract: true
-					path: path
-					name: name.clone()
-					container_index: in_index
+					need_extract:         true
+					path:                 path
+					name:                 name.clone()
+					container_index:      in_index
 					container_item_index: index
-					i_type: ext
-					n_item: il.n_item
-					drawable: true
-					size: size
+					i_type:               ext
+					n_item:               il.n_item
+					drawable:             true
+					size:                 size
 				}
 				il.lst << item
 			}

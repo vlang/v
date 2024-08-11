@@ -167,11 +167,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if got_type_sym.kind == .struct_
 				&& c.type_implements(got_type, ast.error_type, node.pos) {
 				node.exprs[0] = ast.CastExpr{
-					expr: node.exprs[0]
-					typname: 'IError'
-					typ: ast.error_type
+					expr:      node.exprs[0]
+					typname:   'IError'
+					typ:       ast.error_type
 					expr_type: got_type
-					pos: node.pos
+					pos:       node.pos
 				}
 				node.types[0] = ast.error_type
 				return
@@ -247,11 +247,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if got_type_sym.kind == .struct_
 					&& c.type_implements(got_type, ast.error_type, node.pos) {
 					node.exprs[expr_idxs[i]] = ast.CastExpr{
-						expr: node.exprs[expr_idxs[i]]
-						typname: 'IError'
-						typ: ast.error_type
+						expr:      node.exprs[expr_idxs[i]]
+						typname:   'IError'
+						typ:       ast.error_type
 						expr_type: got_type
-						pos: node.pos
+						pos:       node.pos
 					}
 					node.types[expr_idxs[i]] = ast.error_type
 					continue

@@ -108,9 +108,9 @@ fn (s Scanner) error(description string) Token {
 // tokenize returns a token based on the given lit and kind.
 fn (s Scanner) tokenize(lit []u8, kind TokenKind) Token {
 	return Token{
-		lit: lit
+		lit:  lit
 		kind: kind
-		col: s.col
+		col:  s.col
 		line: s.line
 	}
 }

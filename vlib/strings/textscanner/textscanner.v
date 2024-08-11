@@ -15,7 +15,7 @@ mut:
 pub fn new(input string) TextScanner {
 	return TextScanner{
 		input: input
-		ilen: input.len
+		ilen:  input.len
 	}
 }
 

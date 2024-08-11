@@ -144,10 +144,10 @@ Try ${tool_name} -h for more help...')
 
 	options := Options{
 		show_help: fp.bool('help', `h`, false, 'Show this help text.')
-		patch: fp.bool('patch', `p`, false, 'Bump the patch version.')
-		minor: fp.bool('minor', `n`, false, 'Bump the minor version.')
-		major: fp.bool('major', `m`, false, 'Bump the major version.')
-		skip: fp.string('skip', `s`, '', 'Skip lines matching this substring.').trim_space()
+		patch:     fp.bool('patch', `p`, false, 'Bump the patch version.')
+		minor:     fp.bool('minor', `n`, false, 'Bump the minor version.')
+		major:     fp.bool('major', `m`, false, 'Bump the major version.')
+		skip:      fp.string('skip', `s`, '', 'Skip lines matching this substring.').trim_space()
 	}
 
 	remaining := fp.finalize() or {
