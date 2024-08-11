@@ -400,19 +400,39 @@ pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage strin
 	return value
 }
 
+@[params]
+pub struct FlagConfig {
+pub:
+	val_desc string // descriptive string for an argument
+}
+
 // string_multi returns all string values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string_multi(name string, abbr u8, usage string) []string {
-	fs.add_flag(name, abbr, usage, '<multiple strings>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) string_multi(name string, abbr u8, usage string, c FlagConfig) []string {
+	val_desc := if c.val_desc == '' {
+		'<multiple strings>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	return fs.parse_value(name, abbr)
 }
 
 // string_opt returns an option with the string value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string) !string {
-	fs.add_flag(name, abbr, usage, '<string>')
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string, c FlagConfig) !string {
+	val_desc := if c.val_desc == '' {
+		'<string>'
+	} else {
+		c.val_desc
+	}
+
+	fs.add_flag(name, abbr, usage, val_desc)
 	parsed := fs.parse_value(name, abbr)
 	if parsed.len == 0 {
 		return error("parameter '${name}' not provided")
@@ -424,8 +444,9 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string) !strin
 // If that flag is given as an option, then its parsed value is returned as a string.
 // When it is not, it returns the default string value in `sdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string) string {
-	value := fs.string_opt(name, abbr, usage) or { return sdefault }
+// This version supports a custom value description.
+pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string, c FlagConfig) string {
+	value := fs.string_opt(name, abbr, usage, c) or { return sdefault }
 	return value
 }
 

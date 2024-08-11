@@ -194,6 +194,24 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
 	assert !fp.usage().contains('Options:')
 }
 
+fn test_default_val_descriptions_for_strings() {
+	mut fp := flag.new_flag_parser([])
+	fp.string_multi('a_string', `a`, '')
+	fp.string('a_string', `s`, '', '')
+
+	assert fp.usage().contains('<multiple strings>')
+	assert fp.usage().contains('<string>')
+}
+
+fn test_custom_val_descriptions_for_strings() {
+	mut fp := flag.new_flag_parser([])
+	fp.string_multi('a_string', `a`, '', val_desc: '<multi custom>')
+	fp.string('a_string', `s`, '', '', val_desc: '<custom>')
+
+	assert fp.usage().contains('<multi custom>')
+	assert fp.usage().contains('<custom>')
+}
+
 fn test_free_args_could_be_limited() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
 	fp1.limit_free_args(1, 4)!
