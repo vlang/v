@@ -17,6 +17,9 @@ import regex
 const app_name = 'amalgamate'
 const app_version = '0.0.1'
 
+// pre-compile the include statement regex
+const re = regex.regex_opt(r'^\s*#\s*include\s*"([^"]+)"')!
+
 struct Config {
 mut:
 	input_files []string
@@ -169,9 +172,6 @@ fn (c Context) find_file(file string) !string {
 fn (mut c Context) handle_includes(local_dir string, input_source string) !string {
 	source_lines := input_source.split_into_lines()
 	mut output_lines := []string{}
-
-	include := r'^\s*#\s*include\s*"([^"]+)"'
-	mut re := regex.regex_opt(include) or { panic(err) }
 
 	for line in source_lines {
 		start, _ := re.match_string(line)
