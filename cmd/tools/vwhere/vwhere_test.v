@@ -190,6 +190,9 @@ fn test_find_in_dir_recursive() {
 	mut fdr := Finder{}
 	fdr.configure_from_arguments(args)
 	fdr.search_for_matches()
+	// the order of matches is not guaranteed.
+	// sorting by line number makes the result more deterministic.
+	fdr.matches.sort(a.line < b.line)
 	dump(fdr.matches)
 
 	assert fdr.matches == [
