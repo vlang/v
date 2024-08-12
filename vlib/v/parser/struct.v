@@ -423,6 +423,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	mut update_expr_comments := []ast.Comment{}
 	mut has_update_expr := false
 	mut update_expr_pos := token.Pos{}
+	mut has_prev_newline := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
 		mut expr := ast.empty_expr
@@ -446,6 +447,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 			has_update_expr = true
 		} else {
 			first_field_pos = p.tok.pos()
+			has_prev_newline = p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
 			field_name = p.check_name()
 			p.check(.colon)
 			expr = p.expr(0)
@@ -471,13 +473,14 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		nline_comments << p.eat_comments()
 		if !is_update_expr {
 			init_fields << ast.StructInitField{
-				name:          field_name
-				expr:          expr
-				pos:           field_pos
-				name_pos:      first_field_pos
-				comments:      comments
-				next_comments: nline_comments
-				parent_type:   typ
+				name:             field_name
+				expr:             expr
+				pos:              field_pos
+				name_pos:         first_field_pos
+				comments:         comments
+				next_comments:    nline_comments
+				parent_type:      typ
+				has_prev_newline: has_prev_newline
 			}
 		}
 	}

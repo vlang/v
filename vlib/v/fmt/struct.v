@@ -284,6 +284,9 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 			}
 			for i, init_field in node.init_fields {
+				if i > 0 && init_field.has_prev_newline {
+					f.writeln('')
+				}
 				f.write('${init_field.name}: ')
 				if !single_line_fields {
 					f.write(strings.repeat(` `, value_align.max_len(init_field.pos.line_nr) - init_field.name.len))
