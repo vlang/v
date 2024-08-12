@@ -2,16 +2,18 @@ module decoder2
 
 import time
 
+// Node represents a node in a JSON decoder tree.
 struct Node {
-	key_pos  int
-	key_len  int
-	children ?[]Node
+	key_pos  int     // The position of the key in the JSON string.
+	key_len  int     // The length of the key in the JSON string.
+	children ?[]Node // The children nodes of the current node.
 }
 
+// Decoder represents a JSON decoder.
 struct Decoder {
-	json_data string
+	json string // json is the JSON data to be decoded.
 mut:
-	idx int
+	idx int // idx is the current index of the decoder.
 }
 
 pub enum ValueKind {
@@ -37,7 +39,7 @@ pub fn decode[T](val string) !T {
 	mut nodes := []Node{}
 
 	mut decoder := Decoder{
-		json_data: val
+		json: val
 	}
 
 	// TODO needs performance improvements
@@ -96,30 +98,30 @@ fn (mut decoder Decoder) decode_optional_value_in_actual_node[T](node Node, val 
 	start := (node.key_pos + node.key_len) + 3
 	mut end := start
 	for {
-		if decoder.json_data[end] == `,` || decoder.json_data[end] == `}` {
+		if decoder.json[end] == `,` || decoder.json[end] == `}` {
 			break
 		}
 
 		end++
 	}
-	mut value_kind := get_value_kind(decoder.json_data[start])
+	mut value_kind := get_value_kind(decoder.json[start])
 
 	$if T is string {
 		if value_kind == .string_ {
-			return decoder.json_data[start + 1..end - 1]
+			return decoder.json[start + 1..end - 1]
 		} else if value_kind == .object {
 		} else if value_kind == .array {
 		} else {
-			return decoder.json_data[start..end]
+			return decoder.json[start..end]
 		}
 		return ''
 	} $else $if T is $int {
 		if value_kind == .string_ {
-			return decoder.json_data[start + 1..end - 1].int()
+			return decoder.json[start + 1..end - 1].int()
 		} else if value_kind == .object {
 		} else if value_kind == .array {
 		} else {
-			return decoder.json_data[start..end].int()
+			return decoder.json[start..end].int()
 		}
 	}
 	return T{}
@@ -132,36 +134,37 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 			mut node := nodes[i]
 
 			if node.key_len == field.name.len {
+				// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
 				if unsafe {
-					vmemcmp(decoder.json_data.str + node.key_pos, field.name.str, field.name.len) == 0
+					vmemcmp(decoder.json.str + node.key_pos, field.name.str, field.name.len) == 0
 				} {
 					start := (node.key_pos + node.key_len) + 3
 					mut end := start
 					for {
-						if decoder.json_data[end] == `,` || decoder.json_data[end] == `}` {
+						if decoder.json[end] == `,` || decoder.json[end] == `}` {
 							break
 						}
 
 						end++
 					}
 
-					mut value_kind := get_value_kind(decoder.json_data[start])
+					mut value_kind := get_value_kind(decoder.json[start])
 					$if field.indirections != 0 {
 						// REVIEW Needs clone?
 						$if field.indirections == 1 {
 							// TODO
 							// unsafe {
-							// 	value.$(field.name) = &(decoder.json_data[start + 1..end - 1])
+							// 	value.$(field.name) = &(decoder.json[start + 1..end - 1])
 							// }
 						} $else $if field.indirections == 2 {
 							// TODO
 							// unsafe {
-							// 	value.$(field.name) = &&(decoder.json_data[start + 1..end - 1])
+							// 	value.$(field.name) = &&(decoder.json[start + 1..end - 1])
 							// }
 						} $else $if field.indirections == 3 {
 							// TODO
 							// unsafe {
-							// 	value.$(field.name) = &&&(decoder.json_data[start + 1..end - 1])
+							// 	value.$(field.name) = &&&(decoder.json[start + 1..end - 1])
 							// }
 						}
 					} $else $if field.typ is $option {
@@ -176,48 +179,48 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						$for v in workaround.variants {
 							$if v.typ is string {
 								if value_kind == .string_ {
-									// value.$(field.name) = decoder.json_data[start + 1..end - 1]
+									// value.$(field.name) = decoder.json[start + 1..end - 1]
 								} else {
-									// value.$(field.name) = decoder.json_data[start..end]
+									// value.$(field.name) = decoder.json[start..end]
 								}
 							} $else $if v.typ in [$int, $float] {
 								$if v.typ is u32 {
-									value.$(field.name) = decoder.json_data[start..end].u32()
+									value.$(field.name) = decoder.json[start..end].u32()
 								} $else $if v.typ is u32 {
 								}
 
 								$if v.typ is i8 {
-									value.$(field.name) = decoder.json_data[start..end].i8()
+									value.$(field.name) = decoder.json[start..end].i8()
 								} $else $if v.typ is i16 {
-									value.$(field.name) = decoder.json_data[start..end].i16()
+									value.$(field.name) = decoder.json[start..end].i16()
 								} $else $if v.typ is i32 {
-									value.$(field.name) = decoder.json_data[start..end].i32()
+									value.$(field.name) = decoder.json[start..end].i32()
 								} $else $if v.typ is int {
-									value.$(field.name) = decoder.json_data[start..end].int()
+									value.$(field.name) = decoder.json[start..end].int()
 								} $else $if v.typ is i64 {
-									value.$(field.name) = decoder.json_data[start..end].i64()
+									value.$(field.name) = decoder.json[start..end].i64()
 								} $else $if v.typ is u8 {
-									value.$(field.name) = decoder.json_data[start..end].u8()
+									value.$(field.name) = decoder.json[start..end].u8()
 								} $else $if v.typ is u16 {
-									value.$(field.name) = decoder.json_data[start..end].u16()
+									value.$(field.name) = decoder.json[start..end].u16()
 								} $else $if v.typ is u32 {
-									value.$(field.name) = decoder.json_data[start..end].u32()
+									value.$(field.name) = decoder.json[start..end].u32()
 								} $else $if v.typ is u64 {
-									value.$(field.name) = decoder.json_data[start..end].u64()
+									value.$(field.name) = decoder.json[start..end].u64()
 								} $else $if v.typ is f32 {
-									value.$(field.name) = decoder.json_data[start..end].f32()
+									value.$(field.name) = decoder.json[start..end].f32()
 								} $else $if v.typ is f64 {
-									value.$(field.name) = decoder.json_data[start..end].f64()
+									value.$(field.name) = decoder.json[start..end].f64()
 								}
 							} $else $if v.typ is bool {
-								if decoder.json_data[start] == `t` {
+								if decoder.json[start] == `t` {
 									value.$(field.name) = true
-								} else if decoder.json_data[start] == `f` {
+								} else if decoder.json[start] == `f` {
 									value.$(field.name) = false
 								}
 							} $else $if v.typ is time.Time {
 								if value_kind == .string_ {
-									value.$(field.name) = time.parse(decoder.json_data[start + 1..end - 1]) or {
+									value.$(field.name) = time.parse(decoder.json[start + 1..end - 1]) or {
 										time.Time{}
 									}
 								}
@@ -242,56 +245,56 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 							}
 						}
 						if value_kind == .string_ {
-							// value.$(field.name) = decoder.json_data[start + 1..end - 1]
-						} else if decoder.json_data[start] == `t` {
+							// value.$(field.name) = decoder.json[start + 1..end - 1]
+						} else if decoder.json[start] == `t` {
 							value.$(field.name) = true
-						} else if decoder.json_data[start] == `f` {
+						} else if decoder.json[start] == `f` {
 							value.$(field.name) = false
 						} else if value_kind == .object {
 						} else if value_kind == .array {
 						} else if value_kind == .number {
-							// value.$(field.name) = decoder.json_data[start..end].int()
+							// value.$(field.name) = decoder.json[start..end].int()
 						} else {
 						}
 					} $else $if field.typ is string {
 						if value_kind == .string_ {
-							value.$(field.name) = decoder.json_data[start + 1..end - 1]
+							value.$(field.name) = decoder.json[start + 1..end - 1]
 						} else {
-							value.$(field.name) = decoder.json_data[start..end]
+							value.$(field.name) = decoder.json[start..end]
 						}
 					} $else $if field.typ in [$int, $float] {
 						$if field.typ is i8 {
-							value.$(field.name) = decoder.json_data[start..end].i8()
+							value.$(field.name) = decoder.json[start..end].i8()
 						} $else $if field.typ is i16 {
-							value.$(field.name) = decoder.json_data[start..end].i16()
+							value.$(field.name) = decoder.json[start..end].i16()
 						} $else $if field.typ is i32 {
-							value.$(field.name) = decoder.json_data[start..end].i32()
+							value.$(field.name) = decoder.json[start..end].i32()
 						} $else $if field.typ is int {
-							value.$(field.name) = decoder.json_data[start..end].int()
+							value.$(field.name) = decoder.json[start..end].int()
 						} $else $if field.typ is i64 {
-							value.$(field.name) = decoder.json_data[start..end].i64()
+							value.$(field.name) = decoder.json[start..end].i64()
 						} $else $if field.typ is u8 {
-							value.$(field.name) = decoder.json_data[start..end].u8()
+							value.$(field.name) = decoder.json[start..end].u8()
 						} $else $if field.typ is u16 {
-							value.$(field.name) = decoder.json_data[start..end].u16()
+							value.$(field.name) = decoder.json[start..end].u16()
 						} $else $if field.typ is u32 {
-							value.$(field.name) = decoder.json_data[start..end].u32()
+							value.$(field.name) = decoder.json[start..end].u32()
 						} $else $if field.typ is u64 {
-							value.$(field.name) = decoder.json_data[start..end].u64()
+							value.$(field.name) = decoder.json[start..end].u64()
 						} $else $if field.typ is f32 {
-							value.$(field.name) = decoder.json_data[start..end].f32()
+							value.$(field.name) = decoder.json[start..end].f32()
 						} $else $if field.typ is f64 {
-							value.$(field.name) = decoder.json_data[start..end].f64()
+							value.$(field.name) = decoder.json[start..end].f64()
 						}
 					} $else $if field.typ is bool {
-						if decoder.json_data[start] == `t` {
+						if decoder.json[start] == `t` {
 							value.$(field.name) = true
-						} else if decoder.json_data[start] == `f` {
+						} else if decoder.json[start] == `f` {
 							value.$(field.name) = false
 						}
 					} $else $if field.typ is time.Time {
 						if value_kind == .string_ {
-							value.$(field.name) = time.parse_rfc3339(decoder.json_data[start + 1..end - 1]) or {
+							value.$(field.name) = time.parse_rfc3339(decoder.json[start + 1..end - 1]) or {
 								time.Time{}
 							}
 						}
@@ -313,37 +316,37 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 							}
 						}
 					} $else $if field.typ is $enum {
-						value.$(field.name) = decoder.json_data[start..end].int()
+						value.$(field.name) = decoder.json[start..end].int()
 					} $else $if field.typ is $alias {
 						$if field.unaliased_typ is string {
 							if value_kind == .string_ {
-								value.$(field.name) = decoder.json_data[start + 1..end - 1]
+								value.$(field.name) = decoder.json[start + 1..end - 1]
 							}
 						} $else $if field.unaliased_typ is time.Time {
 						} $else $if field.unaliased_typ is bool {
 						} $else $if field.unaliased_typ in [$float, $int] {
 							$if field.unaliased_typ is i8 {
-								value.$(field.name) = decoder.json_data[start..end].i8()
+								value.$(field.name) = decoder.json[start..end].i8()
 							} $else $if field.unaliased_typ is i16 {
-								value.$(field.name) = decoder.json_data[start..end].i16()
+								value.$(field.name) = decoder.json[start..end].i16()
 							} $else $if field.unaliased_typ is i32 {
-								value.$(field.name) = decoder.json_data[start..end].i32()
+								value.$(field.name) = decoder.json[start..end].i32()
 							} $else $if field.unaliased_typ is int {
-								value.$(field.name) = decoder.json_data[start..end].int()
+								value.$(field.name) = decoder.json[start..end].int()
 							} $else $if field.unaliased_typ is i64 {
-								value.$(field.name) = decoder.json_data[start..end].i64()
+								value.$(field.name) = decoder.json[start..end].i64()
 							} $else $if field.unaliased_typ is u8 {
-								value.$(field.name) = decoder.json_data[start..end].u8()
+								value.$(field.name) = decoder.json[start..end].u8()
 							} $else $if field.unaliased_typ is u16 {
-								value.$(field.name) = decoder.json_data[start..end].u16()
+								value.$(field.name) = decoder.json[start..end].u16()
 							} $else $if field.unaliased_typ is u32 {
-								value.$(field.name) = decoder.json_data[start..end].u32()
+								value.$(field.name) = decoder.json[start..end].u32()
 							} $else $if field.unaliased_typ is u64 {
-								value.$(field.name) = decoder.json_data[start..end].u64()
+								value.$(field.name) = decoder.json[start..end].u64()
 							} $else $if field.unaliased_typ is f32 {
-								value.$(field.name) = decoder.json_data[start..end].f32()
+								value.$(field.name) = decoder.json[start..end].f32()
 							} $else $if field.unaliased_typ is f64 {
-								value.$(field.name) = decoder.json_data[start..end].f64()
+								value.$(field.name) = decoder.json[start..end].f64()
 							}
 						} $else $if field.unaliased_typ is $array {
 							// TODO
@@ -375,20 +378,19 @@ fn (mut decoder Decoder) decode_map[T](nodes []Node, mut val T) {
 		mut end := start
 
 		for {
-			if decoder.json_data[end] == `,` || decoder.json_data[end] == `}` {
+			if decoder.json[end] == `,` || decoder.json[end] == `}` {
 				break
 			}
 
 			end++
 		}
 
-		mut value_kind := get_value_kind(decoder.json_data[start])
+		mut value_kind := get_value_kind(decoder.json[start])
 
 		if value_kind == .string_ {
-			val[decoder.json_data[node.key_pos..node.key_pos + node.key_len]] = decoder.json_data[
-				start + 1..end - 1]
+			val[decoder.json[node.key_pos..node.key_pos + node.key_len]] = decoder.json[start + 1..end - 1]
 		} else {
-			val[decoder.json_data[node.key_pos..node.key_pos + node.key_len]] = decoder.json_data[start..end]
+			val[decoder.json[node.key_pos..node.key_pos + node.key_len]] = decoder.json[start..end]
 		}
 	}
 }
@@ -399,15 +401,14 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 	mut inside_key := false
 
 	mut actual_key_len := 0
-	for decoder.idx < decoder.json_data.len {
-		letter := decoder.json_data[decoder.idx]
+	for decoder.idx < decoder.json.len {
+		letter := decoder.json[decoder.idx]
 		if letter == ` ` && !inside_string {
 		} else if letter == `\"` {
-			if decoder.json_data[decoder.idx - 1] == `{`
-				|| decoder.json_data[decoder.idx - 2] == `,` {
+			if decoder.json[decoder.idx - 1] == `{` || decoder.json[decoder.idx - 2] == `,` {
 				inside_key = true
-			} else if decoder.json_data[decoder.idx + 1] == `:` {
-				if decoder.json_data[decoder.idx + 3] == `{` {
+			} else if decoder.json[decoder.idx + 1] == `:` {
+				if decoder.json[decoder.idx + 3] == `{` {
 					mut children := []Node{}
 					key_pos := decoder.idx - actual_key_len
 					key_len := actual_key_len
