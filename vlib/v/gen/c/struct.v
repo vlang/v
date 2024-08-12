@@ -354,7 +354,18 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 
 	if !initialized {
-		if nr_fields > 0 {
+		if sym.kind == .sum_type {
+			first_typ := (sym.info as ast.SumType).variants[0]
+			first_sym := g.table.sym(first_typ)
+			first_styp := g.typ(first_typ)
+			default_str := if first_typ.has_flag(.option) {
+				'(${first_styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} }'
+			} else {
+				g.type_default(first_typ)
+			}
+			first_field := g.get_sumtype_variant_name(first_typ, first_sym)
+			g.write('._${first_field}=(${first_styp}*)memdup(ADDR(${first_styp}, (${default_str})), sizeof(${first_styp})), ._typ=${int(first_typ)}')
+		} else if nr_fields > 0 {
 			g.write('0')
 		} else {
 			g.write('EMPTY_STRUCT_INITIALIZATION')
