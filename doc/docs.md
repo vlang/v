@@ -6732,7 +6732,7 @@ sure that the access index will be valid.
 #### `@[packed]`
 
 The `@[packed]` attribute can be applied to a structure to create an unaligned memory layout,
-which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
+which decreases the overall memory footprint of the structure. Using the `@[packed]` attribute
 may negatively impact performance or even be prohibited on certain CPU architectures.
 
 **When to Use**
