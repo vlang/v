@@ -2,16 +2,18 @@ module decoder2
 
 import time
 
+// Node represents a node in a JSON decoder tree.
 struct Node {
-	key_pos  int
-	key_len  int
-	children ?[]Node
+	key_pos  int     // The position of the key in the JSON string.
+	key_len  int     // The length of the key in the JSON string.
+	children ?[]Node // The children nodes of the current node.
 }
 
+// Decoder represents a JSON decoder.
 struct Decoder {
-	json_data string
+	json_data string // json_data is the JSON data to be decoded.
 mut:
-	idx int
+	idx int // idx is the current index of the decoder.
 }
 
 pub enum ValueKind {
@@ -132,6 +134,7 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 			mut node := nodes[i]
 
 			if node.key_len == field.name.len {
+				// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
 				if unsafe {
 					vmemcmp(decoder.json_data.str + node.key_pos, field.name.str, field.name.len) == 0
 				} {
@@ -416,8 +419,8 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 					decoder.fulfill_nodes(mut children)
 
 					nodes << Node{
-						key_pos:  key_pos
-						key_len:  key_len
+						key_pos: key_pos
+						key_len: key_len
 						children: children
 					}
 				} else {
