@@ -11,7 +11,7 @@ pub struct ABC {
 fn test_main() {
 	abc := ABC{
 		test:  &Test{} // non option init
-		test2: Test{} // non option init
+		test2: Test{}  // non option init
 	}
 
 	if ttt := abc.test {

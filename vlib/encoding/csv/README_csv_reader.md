@@ -259,8 +259,8 @@ import encoding.csv
 fn main() {
 	file_path := 'big2.csv'
 	mut csvr := csv.csv_reader(
-		file_path:    file_path // path to the file CSV
-		mem_buf_size: 1024 * 1024 * 64 // we set 64MByte of buffer for this file
+		file_path:    file_path                     // path to the file CSV
+		mem_buf_size: 1024 * 1024 * 64              // we set 64MByte of buffer for this file
 		end_line_len: csv.endline_crlf_len // we are using a windows text file
 	)!
 	// The data will be saved in this array
@@ -330,9 +330,9 @@ fn main() {
 	mut csvr := csv.csv_reader(
 		scr_buf:      txt.str // string pointer
 		scr_buf_len:  txt.len // string length
-		comment:      `#` // line starting with # will be ignored
-		quote:        `'` // char used for quotes
-		quote_remove: true // remove quotes from the cells
+		comment:      `#`     // line starting with # will be ignored
+		quote:        `'`     // char used for quotes
+		quote_remove: true    // remove quotes from the cells
 	)!
 
 	// scan all rows, csvr.csv_map.len contain the valid

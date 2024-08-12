@@ -455,10 +455,11 @@ pub mut:
 // `field1: val1`
 pub struct StructInitField {
 pub:
-	pos           token.Pos
-	name_pos      token.Pos
-	comments      []Comment
-	next_comments []Comment
+	pos              token.Pos
+	name_pos         token.Pos
+	comments         []Comment
+	next_comments    []Comment
+	has_prev_newline bool
 pub mut:
 	expr          Expr   // `val1`
 	name          string // 'field1'
