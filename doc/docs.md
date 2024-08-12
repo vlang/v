@@ -6686,10 +6686,10 @@ performance, memory usage, or size.
 
 | Tuning Operation         | Benefits                        | Drawbacks                                         |
 |--------------------------|---------------------------------|---------------------------------------------------|
-| `[inline]`               | Performance                     | Increased executable size                         |
-| `[direct_array_access]`  | Performance                     | Safety risks                                      |
-| `[packed]`               | Memory usage                    | Potential performance loss                        |
-| `[minify]`               | Performance, Memory usage       | May break binary serialization/reflection         |
+| `@[inline]`               | Performance                     | Increased executable size                         |
+| `@[direct_array_access]`  | Performance                     | Safety risks                                      |
+| `@[packed]`               | Memory usage                    | Potential performance loss                        |
+| `@[minify]`               | Performance, Memory usage       | May break binary serialization/reflection         |
 | `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
 | `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
 | `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
@@ -6699,9 +6699,9 @@ performance, memory usage, or size.
 
 ### Tuning operations details
 
-#### `[inline]`
+#### `@[inline]`
 
-You can tag functions with `[inline]`, so the C compiler will try to inline them, which in some
+You can tag functions with `@[inline]`, so the C compiler will try to inline them, which in some
 cases, may be beneficial for performance, but may impact the size of your executable.
 
 **When to Use**
@@ -6713,9 +6713,9 @@ cases, may be beneficial for performance, but may impact the size of your execut
 - Large functions, as it might cause code bloat and actually decrease performance.
 - Large functions in `if` expressions - may have negative impact on instructions cache.
 
-#### `[direct_array_access]`
+#### `@[direct_array_access]`
 
-In functions tagged with `[direct_array_access]` the compiler will translate array operations
+In functions tagged with `@[direct_array_access]` the compiler will translate array operations
 directly into C array operations - omitting bounds checking. This may save a lot of time in a
 function that iterates over an array but at the cost of making the function unsafe - unless the
 boundaries will be checked by the user.
@@ -6729,10 +6729,10 @@ sure that the access index will be valid.
 
 - Everywhere else.
 
-#### `[packed]`
+#### `@[packed]`
 
 The `@[packed]` attribute can be applied to a structure to create an unaligned memory layout,
-which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
+which decreases the overall memory footprint of the structure. Using the `@[packed]` attribute
 may negatively impact performance or even be prohibited on certain CPU architectures.
 
 **When to Use**
@@ -6744,7 +6744,7 @@ may negatively impact performance or even be prohibited on certain CPU architect
 - On CPU architectures that do not support unaligned memory access or when high-speed memory access
 is needed.
 
-#### `[aligned]`
+#### `@[aligned]`
 
 The `@[aligned]` attribute can be applied to a structure or union to specify a minimum alignment
 (in bytes) for variables of that type. Using the `@[aligned]` attribute you can only *increase*
@@ -6783,10 +6783,10 @@ is CPU specific, and the compiler already usually will choose a good default for
 
 See also ["What Every Programmer Should Know About Memory", by Ulrich Drepper](https://people.freebsd.org/~lstewart/articles/cpumemory.pdf) .
 
-#### `[minify]`
+#### `@[minify]`
 
-The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
-a way that minimizes internal gaps while maintaining alignment. Using the `[minify]` attribute may
+The `@[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
+a way that minimizes internal gaps while maintaining alignment. Using the `@[minify]` attribute may
 cause issues with binary serialization or reflection. Be mindful of these potential side effects
 when using this attribute.
 
