@@ -524,8 +524,9 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			}
 		}
 
-		// Extract any tail according to config
+		// Extract any tail(s) according to config
 		if pos >= pos_last_flag + 1 {
+			trace_dbg_println('${@FN}: (tail) looking for tail match for position "${pos}"...')
 			pos_is_handled = pos in fm.handled_pos
 			if pos_is_handled {
 				trace_dbg_println('${@FN}: (tail) skipping position "${pos}". Already handled')
@@ -542,27 +543,27 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					continue
 				}
 				if field.hints.has(.has_tail) {
-					if last_handled_pos := fm.handled_pos[fm.handled_pos.len - 1] {
-						trace_println('${@FN}: (tail) flag `${arg}` last_handled_pos: ${last_handled_pos} pos: ${pos}')
-						if pos == last_handled_pos + 1 {
-							if field.hints.has(.is_array) {
-								fm.array_field_map_flag[field.name] << FlagData{
-									raw:        arg
-									field_name: field.name
-									arg:        ?string(arg) // .arg is used when assigning at comptime to []XYZ
-									pos:        pos
-								}
-							} else {
-								fm.field_map_flag[field.name] = FlagData{
-									raw:        arg
-									field_name: field.name
-									arg:        ?string(arg)
-									pos:        pos
-								}
+					trace_dbg_println('${@FN}: (tail) field "${field.name}" has a tail attribute. fm.handled_pos.len: ${fm.handled_pos.len}')
+					last_handled_pos := fm.handled_pos[fm.handled_pos.len - 1] or { 0 }
+					trace_println('${@FN}: (tail) flag `${arg}` last_handled_pos: ${last_handled_pos} pos: ${pos}')
+					if pos == last_handled_pos + 1 || pos == pos_last_flag + 1 {
+						if field.hints.has(.is_array) {
+							fm.array_field_map_flag[field.name] << FlagData{
+								raw:        arg
+								field_name: field.name
+								arg:        ?string(arg) // .arg is used when assigning at comptime to []XYZ
+								pos:        pos
 							}
-							fm.handled_pos << pos
-							continue
+						} else {
+							fm.field_map_flag[field.name] = FlagData{
+								raw:        arg
+								field_name: field.name
+								arg:        ?string(arg)
+								pos:        pos
+							}
 						}
+						fm.handled_pos << pos
+						continue
 					}
 				}
 			}
@@ -900,6 +901,10 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 					}
 					result.$(field.name) = true
 				} $else $if field.typ is string {
+					trace_dbg_println('${@FN}: assigning (string) ${struct_name}.${field.name} = ${f.arg or {
+						'ERROR'
+					}
+						.str()}')
 					result.$(field.name) = f.arg or {
 						return error('failed appending ${f.raw} to ${field.name}')
 					}
