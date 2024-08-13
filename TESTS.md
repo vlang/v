@@ -146,7 +146,7 @@ Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
 
 Note: if that command finds formatting errors, they can be fixed with:
-`VAUTOFIX=1 ./v check-md -hide-warnings file.md`
+`VAUTOFIX=1 ./v check-md file.md` or with `v check-md -fix file.md`.
 
 ## `v test-self`
 
