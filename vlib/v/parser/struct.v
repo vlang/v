@@ -654,6 +654,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut comments := p.eat_comments()
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.pos()
+			has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
 			line_nr := p.tok.line_nr
 			name := p.check_name()
 
@@ -676,16 +677,17 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			]
 			params << params_t
 			mut method := ast.FnDecl{
-				name:        name
-				short_name:  name
-				mod:         p.mod
-				params:      params
-				file:        p.file_path
-				return_type: ast.void_type
-				is_variadic: is_variadic
-				is_pub:      true
-				pos:         method_start_pos.extend(p.prev_tok.pos())
-				scope:       p.scope
+				name:             name
+				short_name:       name
+				mod:              p.mod
+				params:           params
+				file:             p.file_path
+				return_type:      ast.void_type
+				is_variadic:      is_variadic
+				is_pub:           true
+				pos:              method_start_pos.extend(p.prev_tok.pos())
+				scope:            p.scope
+				has_prev_newline: has_prev_newline
 			}
 			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 				method.return_type_pos = p.tok.pos()
@@ -713,24 +715,27 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		} else {
 			// interface fields
 			field_pos := p.tok.pos()
+			has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
 			field_name := p.check_name()
 			mut type_pos := p.tok.pos()
 			field_typ := p.parse_type()
 			type_pos = type_pos.extend(p.prev_tok.pos())
 			comments << p.eat_comments()
 			fields << ast.StructField{
-				name:     field_name
-				pos:      field_pos
-				type_pos: type_pos
-				typ:      field_typ
-				comments: comments
-				is_pub:   true
+				name:             field_name
+				pos:              field_pos
+				type_pos:         type_pos
+				typ:              field_typ
+				comments:         comments
+				is_pub:           true
+				has_prev_newline: has_prev_newline
 			}
 			info.fields << ast.StructField{
-				name:   field_name
-				typ:    field_typ
-				is_pub: true
-				is_mut: is_mut
+				name:             field_name
+				typ:              field_typ
+				is_pub:           true
+				is_mut:           is_mut
+				has_prev_newline: has_prev_newline
 			}
 		}
 	}

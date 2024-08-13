@@ -564,6 +564,7 @@ pub:
 	method_type_pos       token.Pos // `User` in ` fn (u User)` position
 	method_idx            int
 	rec_mut               bool // is receiver mutable
+	has_prev_newline      bool
 	rec_share             ShareType
 	language              Language // V, C, JS
 	file_mode             Language // whether *the file*, where a function was a '.c.v', '.js.v' etc.
