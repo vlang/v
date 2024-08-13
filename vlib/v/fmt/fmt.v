@@ -1408,17 +1408,29 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
+		if field.has_prev_newline {
+			f.writeln('')
+		}
 		f.interface_field(field, type_align.max_len(field.pos.line_nr))
 	}
 	for method in immut_methods {
+		if method.has_prev_newline {
+			f.writeln('')
+		}
 		f.interface_method(method)
 	}
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
 		for field in mut_fields {
+			if field.has_prev_newline {
+				f.writeln('')
+			}
 			f.interface_field(field, type_align.max_len(field.pos.line_nr))
 		}
 		for method in mut_methods {
+			if method.has_prev_newline {
+				f.writeln('')
+			}
 			f.interface_method(method)
 		}
 	}
