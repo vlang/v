@@ -38,6 +38,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		return
 	}
 	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
+	if sym.kind == .sum_type {
+		g.write(g.type_default_sumtype(g.unwrap_generic(node.typ), sym))
+		return
+	}
 	is_amp := g.is_amp
 	is_multiline := node.init_fields.len > 5
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
@@ -354,18 +358,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 
 	if !initialized {
-		if sym.kind == .sum_type {
-			first_typ := (sym.info as ast.SumType).variants[0]
-			first_sym := g.table.sym(first_typ)
-			first_styp := g.typ(first_typ)
-			default_str := if first_typ.has_flag(.option) {
-				'(${first_styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} }'
-			} else {
-				g.type_default(first_typ)
-			}
-			first_field := g.get_sumtype_variant_name(first_typ, first_sym)
-			g.write('._${first_field}=(${first_styp}*)memdup(ADDR(${first_styp}, (${default_str})), sizeof(${first_styp})), ._typ=${int(first_typ)}')
-		} else if nr_fields > 0 {
+		if nr_fields > 0 {
 			g.write('0')
 		} else {
 			g.write('EMPTY_STRUCT_INITIALIZATION')
@@ -454,6 +447,9 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	} else if field.typ.has_flag(.option) {
 		g.gen_option_error(field.typ, ast.None{})
 		return true
+		// } else if sym.info is ast.SumType {
+		// 	g.write(g.type_default_sumtype(field.typ, sym))
+		// 	return true
 	} else if sym.info is ast.ArrayFixed {
 		g.write('{')
 		for i in 0 .. sym.info.size {
