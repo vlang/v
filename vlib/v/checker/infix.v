@@ -199,14 +199,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 
 			if node.left.is_nil() && !right_type.is_any_kind_of_pointer()
-				&& right_sym.kind != .function && right_sym.language != .c {
+				&& right_sym.kind != .function
+				&& (right_sym.language != .c && right_sym.kind == .placeholder) {
 				rt := c.table.sym(right_type).name
 				c.error('cannot compare with `nil` because `${rt}` is not a pointer',
 					node.pos)
 			}
 
 			if node.right.is_nil() && !left_type.is_any_kind_of_pointer()
-				&& left_sym.kind != .function && left_sym.language != .c {
+				&& left_sym.kind != .function
+				&& (left_sym.language != .c && left_sym.kind == .placeholder) {
 				lt := c.table.sym(left_type).name
 				c.error('cannot compare with `nil` because `${lt}` is not a pointer',
 					node.pos)
