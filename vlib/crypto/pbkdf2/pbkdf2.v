@@ -6,7 +6,7 @@ import crypto.sha512
 import hash
 
 // key derives a key from the password, salt and iteration count
-// example pbkdf2.key('test'.bytes(), '123456'.bytes(), 1000, 64, sha512.new()
+// example pbkdf2.key('test'.bytes(), '123456'.bytes(), 1000, 64, sha512.new())
 pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]u8 {
 	mut fun := fn (b []u8) []u8 {
 		return []u8{}
