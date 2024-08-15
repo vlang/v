@@ -17,7 +17,10 @@ import v.token
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate
+pub struct UnknownTypeInfo {}
+
+pub type TypeInfo = UnknownTypeInfo
+	| Aggregate
 	| Alias
 	| Array
 	| ArrayFixed
