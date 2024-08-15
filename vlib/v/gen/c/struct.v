@@ -447,9 +447,9 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	} else if field.typ.has_flag(.option) {
 		g.gen_option_error(field.typ, ast.None{})
 		return true
-		// } else if sym.info is ast.SumType {
-		// 	g.write(g.type_default_sumtype(field.typ, sym))
-		// 	return true
+	} else if sym.info is ast.SumType {
+		g.write(g.type_default_sumtype(field.typ, sym))
+		return true
 	} else if sym.info is ast.ArrayFixed {
 		g.write('{')
 		for i in 0 .. sym.info.size {
@@ -467,21 +467,6 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		g.write(g.type_default(field.typ))
 	}
 	return true
-}
-
-fn (mut g Gen) is_empty_struct(t Type) bool {
-	sym := t.unaliased_sym
-	match sym.info {
-		ast.Struct {
-			if sym.info.fields.len > 0 || sym.info.embeds.len > 0 {
-				return false
-			}
-			return true
-		}
-		else {
-			return false
-		}
-	}
 }
 
 fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {

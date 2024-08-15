@@ -17,7 +17,10 @@ import v.token
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate
+pub struct UnknownTypeInfo {}
+
+pub type TypeInfo = UnknownTypeInfo
+	| Aggregate
 	| Alias
 	| Array
 	| ArrayFixed
@@ -929,10 +932,15 @@ pub fn (t &TypeSymbol) is_empty_struct_array() bool {
 	if t.info is ArrayFixed {
 		elem_sym := global_table.final_sym(t.info.elem_type)
 		if elem_sym.info is Struct {
-			return elem_sym.info.fields.len == 0
+			return elem_sym.info.is_empty_struct()
 		}
 	}
 	return false
+}
+
+@[inline]
+pub fn (t &Struct) is_empty_struct() bool {
+	return t.fields.len == 0 && t.embeds.len == 0
 }
 
 pub fn (t &TypeSymbol) is_array_fixed() bool {

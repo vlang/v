@@ -7214,8 +7214,8 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	} else {
 		g.type_default(first_typ)
 	}
-	if default_str == '{0}' {
-		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, ${default_str}),._typ=${int(first_typ)}}'
+	if default_str == '{EMPTY_STRUCT_INITIALIZATION}' {
+		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${int(first_typ)}}'
 	} else {
 		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${int(first_typ)}}'
 	}
@@ -7312,7 +7312,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan] {
+						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr {
 							continue
 						}
@@ -7330,8 +7330,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							mut zero_str := g.type_default(field.typ)
 							if zero_str == '{0}' {
 								if field_sym.info is ast.Struct && field_sym.language == .v {
-									if field_sym.info.fields.len == 0
-										&& field_sym.info.embeds.len == 0 {
+									if field_sym.info.is_empty_struct() {
 										zero_str = '{EMPTY_STRUCT_INITIALIZATION}'
 									}
 								}
@@ -7354,6 +7353,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 					}
 					init_str = type_name + init_str
 				}
+			} else if info.is_empty_struct() {
+				init_str += 'EMPTY_STRUCT_INITIALIZATION}'
 			} else {
 				init_str += '0}'
 			}
