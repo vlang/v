@@ -101,12 +101,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		mut i := 0
 		for p.tok.kind != .rcbr {
 			mut comments := []ast.Comment{}
-			for p.tok.kind == .comment {
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
 			if p.tok.kind == .rcbr {
 				end_comments = p.eat_comments(same_line: true)
 				break
@@ -168,12 +162,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_mut = false
 				is_field_global = false
 			}
-			for p.tok.kind == .comment {
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
+			pre_field_comments := p.eat_comments()
+			mut next_field_comments := []ast.Comment{}
 			field_start_pos := p.tok.pos()
 			mut is_field_volatile := false
 			mut is_field_deprecated := false
@@ -227,12 +217,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			} else {
 				// struct field
 				field_name = p.check_name()
-				for p.tok.kind == .comment {
-					comments << p.comment()
-					if p.tok.kind == .rcbr {
-						break
-					}
-				}
 				p.inside_struct_field_decl = true
 				if p.tok.kind == .key_struct {
 					// Anon structs
@@ -269,7 +253,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				p.inside_struct_attr_decl = false
 			}
-			comments << p.eat_comments()
+			comments << p.eat_comments(same_line: true)
 			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
 			if !is_embed {
@@ -283,7 +267,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
-					comments << p.eat_comments()
+					comments << p.eat_comments(same_line: true)
 				}
 				if p.tok.kind == .at {
 					p.inside_struct_attr_decl = true
@@ -295,15 +279,18 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						}
 					}
 					p.inside_struct_attr_decl = false
-					comments << p.eat_comments()
+					comments << p.eat_comments(same_line: true)
 				}
+				next_field_comments = p.eat_comments(follow_up: true)
 				ast_fields << ast.StructField{
 					name:             field_name
 					typ:              typ
 					pos:              field_pos
 					type_pos:         type_pos
 					option_pos:       option_pos
+					pre_comments:     pre_field_comments
 					comments:         comments
+					next_comments:    next_field_comments
 					i:                i
 					default_expr:     default_expr
 					has_default_expr: has_default_expr
@@ -324,7 +311,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				pos:              field_pos
 				type_pos:         type_pos
 				option_pos:       option_pos
+				pre_comments:     pre_field_comments
 				comments:         comments
+				next_comments:    next_field_comments
 				i:                i
 				default_expr:     default_expr
 				has_default_expr: has_default_expr
@@ -429,7 +418,8 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		mut expr := ast.empty_expr
 		mut field_pos := token.Pos{}
 		mut first_field_pos := token.Pos{}
-		mut comments := []ast.Comment{}
+		mut prev_comments := []ast.Comment{}
+		mut end_comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
 		is_update_expr := init_fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
@@ -437,7 +427,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 			expr = p.expr(0)
 			field_pos = expr.pos()
 			first_field_pos = field_pos
-			comments = p.eat_comments(same_line: true)
+			end_comments = p.eat_comments(same_line: true)
 		} else if is_update_expr {
 			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
 			update_expr_pos = p.tok.pos()
@@ -446,12 +436,13 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 			update_expr_comments << p.eat_comments(same_line: true)
 			has_update_expr = true
 		} else {
+			prev_comments = p.eat_comments()
 			first_field_pos = p.tok.pos()
 			has_prev_newline = p.has_prev_newline()
 			field_name = p.check_name()
 			p.check(.colon)
 			expr = p.expr(0)
-			comments = p.eat_comments(same_line: true)
+			end_comments = p.eat_comments(same_line: true)
 			last_field_pos := expr.pos()
 			field_len := if last_field_pos.len > 0 {
 				last_field_pos.pos - first_field_pos.pos + last_field_pos.len
@@ -469,15 +460,16 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		if p.tok.kind == .comma {
 			p.next()
 		}
-		comments << p.eat_comments(same_line: true)
-		nline_comments << p.eat_comments()
+		end_comments << p.eat_comments(same_line: true)
+		nline_comments << p.eat_comments(follow_up: true)
 		if !is_update_expr {
 			init_fields << ast.StructInitField{
 				name:             field_name
 				expr:             expr
 				pos:              field_pos
 				name_pos:         first_field_pos
-				comments:         comments
+				pre_comments:     prev_comments
+				end_comments:     end_comments
 				next_comments:    nline_comments
 				parent_type:      typ
 				has_prev_newline: has_prev_newline
