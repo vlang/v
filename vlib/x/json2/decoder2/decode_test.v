@@ -2,7 +2,6 @@ module decoder2
 
 fn test_nodes() {
 	mut nodes := []Node{}
-	empty_nodes_workaround := []Node{}
 
 	mut decoder := Decoder{
 		json: '{"val": "2"}'
