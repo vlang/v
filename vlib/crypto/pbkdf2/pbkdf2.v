@@ -5,9 +5,8 @@ import crypto.sha256
 import crypto.sha512
 import hash
 
-
 pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]u8 {
-	mut fun := fn(b []u8) []u8 {
+	mut fun := fn (b []u8) []u8 {
 		return []u8{}
 	}
 	mut block_size := 0
@@ -24,7 +23,7 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 			size = sha512.size
 		}
 		else {
-			panic("Unsupported hash")
+			panic('Unsupported hash')
 		}
 	}
 
@@ -42,10 +41,10 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 		buf[3] = u8(i)
 
 		last << buf
-		mut xorsum := hmac.new(  password, last,  fun, block_size)
+		mut xorsum := hmac.new(password, last, fun, block_size)
 		mut last_hash := xorsum.clone()
 		for j := 1; j < count; j++ {
-			last_hash = hmac.new( password,last_hash,  fun, block_size)
+			last_hash = hmac.new(password, last_hash, fun, block_size)
 			for k in 0 .. xorsum.len {
 				xorsum[k] ^= last_hash[k]
 			}
