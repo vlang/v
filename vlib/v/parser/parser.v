@@ -501,6 +501,26 @@ fn (p &Parser) is_fn_type_decl() bool {
 	return true
 }
 
+fn (p &Parser) has_prev_newline() bool {
+	mut tok := p.tok
+	mut prev_tok := p.prev_tok
+	mut idx := -1
+
+	for {
+		if tok.line_nr - prev_tok.line_nr - prev_tok.lit.count('\n') > 1 {
+			return true
+		}
+		if prev_tok.kind == .comment {
+			idx--
+			tok = prev_tok
+			prev_tok = p.peek_token(idx)
+			continue
+		}
+		break
+	}
+	return false
+}
+
 fn (p &Parser) is_array_type() bool {
 	mut i := 1
 	mut tok := p.tok
@@ -4103,7 +4123,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut enum_attrs := map[string][]ast.Attr{}
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
-		has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
+		has_prev_newline := p.has_prev_newline()
 		val := p.check_name()
 		vals << val
 		mut expr := ast.empty_expr

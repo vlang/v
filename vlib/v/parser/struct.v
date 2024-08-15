@@ -186,7 +186,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
-			has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
+			has_prev_newline := p.has_prev_newline()
 			mut field_name := ''
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
@@ -447,7 +447,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 			has_update_expr = true
 		} else {
 			first_field_pos = p.tok.pos()
-			has_prev_newline = p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
+			has_prev_newline = p.has_prev_newline()
 			field_name = p.check_name()
 			p.check(.colon)
 			expr = p.expr(0)
@@ -654,7 +654,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut comments := p.eat_comments()
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.pos()
-			has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
+			has_prev_newline := p.has_prev_newline()
 			line_nr := p.tok.line_nr
 			name := p.check_name()
 
@@ -696,7 +696,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
 			comments << p.eat_comments(same_line: true)
-			mnext_comments := p.eat_comments()
+			mnext_comments := p.eat_comments(follow_up: true)
 			method.comments = comments
 			method.next_comments = mnext_comments
 			methods << method
@@ -715,12 +715,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		} else {
 			// interface fields
 			field_pos := p.tok.pos()
-			has_prev_newline := p.tok.line_nr - p.prev_tok.line_nr - p.prev_tok.lit.count('\n') > 1
+			has_prev_newline := p.has_prev_newline()
 			field_name := p.check_name()
 			mut type_pos := p.tok.pos()
 			field_typ := p.parse_type()
 			type_pos = type_pos.extend(p.prev_tok.pos())
-			comments << p.eat_comments()
+			comments << p.eat_comments(follow_up: true)
 			fields << ast.StructField{
 				name:             field_name
 				pos:              field_pos
