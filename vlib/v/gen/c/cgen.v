@@ -7216,7 +7216,7 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	} else {
 		g.type_default(first_typ)
 	}
-	if default_str[0] != `(` {
+	if default_str[0] == `{` {
 		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${int(first_typ)}}'
 	} else {
 		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${int(first_typ)}}'
