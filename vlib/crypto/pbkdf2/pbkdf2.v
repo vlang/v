@@ -1,3 +1,4 @@
+//Based off: https://golang.org/x/crypto/pbkdf2
 module pbkdf2
 
 import crypto.hmac
