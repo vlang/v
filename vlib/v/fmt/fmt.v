@@ -1069,6 +1069,9 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		if i > 0 && field.has_prev_newline {
 			f.writeln('')
 		}
+		if field.pre_comments.len > 0 {
+			f.comments(field.pre_comments, has_nl: true, level: .indent)
+		}
 		f.write('\t${field.name}')
 		if field.has_expr {
 			f.write(strings.repeat(` `, value_align.max_len(field.pos.line_nr) - field.name.len))

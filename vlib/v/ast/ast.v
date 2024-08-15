@@ -330,7 +330,9 @@ pub:
 	pos              token.Pos
 	type_pos         token.Pos
 	option_pos       token.Pos
+	pre_comments     []Comment
 	comments         []Comment
+	next_comments    []Comment
 	i                int
 	has_default_expr bool
 	has_prev_newline bool
@@ -457,7 +459,8 @@ pub struct StructInitField {
 pub:
 	pos              token.Pos
 	name_pos         token.Pos
-	comments         []Comment
+	pre_comments     []Comment
+	end_comments     []Comment
 	next_comments    []Comment
 	has_prev_newline bool
 pub mut:
@@ -1366,6 +1369,7 @@ pub:
 	name             string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
 	source_name      string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos              token.Pos
+	pre_comments     []Comment // comment before Enumfield
 	comments         []Comment // comment after Enumfield in the same line
 	next_comments    []Comment // comments between current EnumField and next EnumField
 	has_expr         bool      // true, when .expr has a value
