@@ -198,6 +198,9 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 }
 
 pub fn (mut c Checker) check(mut ast_file ast.File) {
+	$if trace_checker ? {
+		eprintln('start checking file: ${ast_file.path}')
+	}
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {

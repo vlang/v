@@ -236,7 +236,7 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 
 pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) !Fn {
 	if sym.kind != .aggregate {
-		t.panic('Unexpected type symbol: ${sym.kind}')
+		t.panic('table.register_aggregate_method: sym.name: ${sym.name}, sym.kind: ${sym.kind} is not an aggregate, name: ${name}')
 	}
 	agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
@@ -462,7 +462,7 @@ pub fn (t &Table) get_embed_methods(sym &TypeSymbol) []Fn {
 
 fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) !StructField {
 	if sym.kind != .aggregate {
-		t.panic('Unexpected type symbol: ${sym.kind}')
+		t.panic('table.register_aggregate_field: sym.name: ${sym.name}, sym.kind: ${sym.kind} is not an aggregate, name: ${name}')
 	}
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
@@ -683,7 +683,7 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 		return t.type_symbols[idx]
 	}
 	// this should never happen
-	t.panic('sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
+	t.panic('table.sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
 ')
 	return ast.invalid_type_symbol
 }
@@ -700,7 +700,7 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 		return t.type_symbols[idx]
 	}
 	// this should never happen
-	t.panic('final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
+	t.panic('table.final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
 	return ast.invalid_type_symbol
 }
 
@@ -1465,7 +1465,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 		}
 		else {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
-				t.panic('compiler bug: bitsizes must be multiples of 8')
+				t.panic('table.bitsize_to_type: compiler bug: bitsizes must be multiples of 8, but passed bit_size is ${bit_size}')
 			}
 			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr,
 				false))
