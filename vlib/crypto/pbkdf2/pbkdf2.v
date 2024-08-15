@@ -31,7 +31,7 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 	block_count := (key_length + hash_length - 1) / hash_length
 	mut output := []u8{}
 	mut last := []u8{}
-	mut buf := []u8{len: 4, init: 0}
+	mut buf := []u8{len: 4}
 	for i := 1; i <= block_count; i++ {
 		last << salt
 
