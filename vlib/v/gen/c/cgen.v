@@ -5777,31 +5777,33 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.expr_with_opt(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			} else {
 				if fn_return_is_fixed_array && !node.types[0].has_option_or_result() {
-					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
+						g.writeln('{0};')
 						typ := if expr0.is_auto_deref_var() {
 							node.types[0].deref()
 						} else {
 							node.types[0]
 						}
-						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(typ)})) /*ret*/')
+						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(typ)}))')
 					} else if node.exprs[0] in [ast.ArrayInit, ast.StructInit] {
 						if node.exprs[0] is ast.ArrayInit && node.exprs[0].is_fixed
 							&& node.exprs[0].has_init {
-							g.write('memcpy(${tmpvar}.ret_arr, ')
+							g.write('{.ret_arr=')
 							g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-							g.write(', sizeof(${g.typ(node.types[0])})) /*ret*/')
+							g.writeln('};')
 						} else {
+							g.writeln('{0};')
 							tmpvar2 := g.new_tmp_var()
 							g.write('${g.typ(node.types[0])} ${tmpvar2} = ')
 							g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 							g.writeln(';')
-							g.write('memcpy(${tmpvar}.ret_arr, ${tmpvar2}, sizeof(${g.typ(node.types[0])})) /*ret*/')
+							g.write('memcpy(${tmpvar}.ret_arr, ${tmpvar2}, sizeof(${g.typ(node.types[0])}))')
 						}
 					} else {
+						g.writeln('{0};')
 						g.write('memcpy(${tmpvar}.ret_arr, ')
 						g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-						g.write(', sizeof(${g.typ(node.types[0])})) /*ret*/')
+						g.write(', sizeof(${g.typ(node.types[0])}))')
 					}
 				} else {
 					g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
