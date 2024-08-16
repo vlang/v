@@ -683,7 +683,9 @@ To use a format specifier, follow this pattern:
   > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
-  point, if the input variable is a float. Ignored if variable is an integer.
+  point without any insignificant trailing zeros. If displaying insignificant zero's is desired,
+  append a `f` specifier to the precision value (see examples below). Applies only to float 
+  variables and is ignored for integer variables.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
   the input is a float--the renderer will use floating point notation for small values and exponent
