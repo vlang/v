@@ -16,7 +16,7 @@ enum State {
 	simple // default - no special interpretation of tags, *at all*!
 	// That is suitable for the general case of text template interpolation,
 	// for example for interpolating arbitrary source code (even V source) templates.
-	//
+
 	html // default, only when the template extension is .html
 	css  // <style>
 	js   // <script>

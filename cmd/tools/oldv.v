@@ -104,12 +104,12 @@ fn sync_cache() {
 
 fn main() {
 	scripting.used_tools_must_exist(['git'])
-	//
+
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will
 	// affect the V's run from the tool itself.
 	os.setenv('VEXE', '', true)
-	//
+
 	mut context := Context{}
 	context.vgo.workdir = cache_oldv_folder
 	mut fp := flag.new_flag_parser(os.args)

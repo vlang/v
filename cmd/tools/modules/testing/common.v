@@ -427,7 +427,7 @@ pub fn (mut ts TestSession) test() {
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
-	//
+
 	ts.benchmark.stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()

@@ -169,7 +169,7 @@ mut:
 	examples []VCodeExample
 	current  VCodeExample
 	state    MDFileParserState = .markdown
-	//
+
 	oks      int
 	warnings int
 	errors   int // compilation errors + formatting errors

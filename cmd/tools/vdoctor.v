@@ -16,7 +16,7 @@ fn (mut a App) println(s string) {
 
 fn (mut a App) collect_info() {
 	a.line('V full version', version.full_v_version(true))
-	//
+
 	mut os_kind := os.user_os()
 	mut arch_details := []string{}
 	arch_details << '${runtime.nr_cpus()} cpus'
@@ -54,7 +54,7 @@ fn (mut a App) collect_info() {
 			line:    1
 		)
 	}
-	//
+
 	mut os_details := ''
 	wsl_check := a.cmd(command: 'cat /proc/sys/kernel/osrelease')
 	if os_kind == 'linux' {
@@ -122,7 +122,7 @@ fn (mut a App) collect_info() {
 	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.println('')
-	//
+
 	a.line('CC version', a.cmd(command: 'cc --version'))
 	a.report_tcc_version('thirdparty/tcc')
 }
