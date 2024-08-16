@@ -5788,9 +5788,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					} else if node.exprs[0] in [ast.ArrayInit, ast.StructInit] {
 						if node.exprs[0] is ast.ArrayInit && node.exprs[0].is_fixed
 							&& node.exprs[0].has_init {
-							g.write('{.ret_arr=')
-							g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-							g.writeln('};')
+							if (node.exprs[0] as ast.ArrayInit).init_expr.is_literal() {
+								g.write('{.ret_arr=')
+								g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+								g.writeln('};')
+							} else {
+								g.writeln('{0};')
+								g.write('memcpy(${tmpvar}.ret_arr, ')
+								g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+								g.write(', sizeof(${g.typ(node.types[0])}))')
+							}
 						} else {
 							g.writeln('{0};')
 							tmpvar2 := g.new_tmp_var()
