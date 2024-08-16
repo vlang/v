@@ -7213,6 +7213,25 @@ fn c_fn_name(name_ string) string {
 	return name
 }
 
+fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
+	first_typ := g.unwrap_generic((sym.info as ast.SumType).variants[0])
+	first_sym := g.table.sym(first_typ)
+	first_styp := g.typ(first_typ)
+	first_field := g.get_sumtype_variant_name(first_typ, first_sym)
+	default_str := if first_typ.has_flag(.option) {
+		'(${first_styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} }'
+	} else if first_sym.info is ast.Struct && first_sym.info.is_empty_struct() {
+		'{EMPTY_STRUCT_INITIALIZATION}'
+	} else {
+		g.type_default(first_typ)
+	}
+	if default_str[0] == `{` {
+		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, ((${first_styp})${default_str})),._typ=${int(first_typ)}}'
+	} else {
+		return '(${g.typ(typ_)}){._${first_field}=HEAP(${first_styp}, (${default_str})),._typ=${int(first_typ)}}'
+	}
+}
+
 fn (mut g Gen) type_default(typ_ ast.Type) string {
 	typ := g.unwrap_generic(typ_)
 	if typ.has_option_or_result() {
@@ -7237,7 +7256,10 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			}
 			return '{0}'
 		}
-		.interface_, .sum_type, .multi_return, .thread {
+		.sum_type {
+			return '{0}' // g.type_default_sumtype(typ, sym)
+		}
+		.interface_, .multi_return, .thread {
 			return '{0}'
 		}
 		.alias {
@@ -7301,7 +7323,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan] {
+						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr {
 							continue
 						}
@@ -7316,14 +7338,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							}
 							init_str += '.${field_name} = ${expr_str},'
 						} else {
-							mut zero_str := g.type_default(field.typ)
-							if zero_str == '{0}' {
-								if field_sym.info is ast.Struct && field_sym.language == .v {
-									if field_sym.info.fields.len == 0
-										&& field_sym.info.embeds.len == 0 {
-										zero_str = '{EMPTY_STRUCT_INITIALIZATION}'
-									}
-								}
+							zero_str := if field_sym.language == .v && field_sym.info is ast.Struct
+								&& field_sym.info.is_empty_struct() {
+								'{EMPTY_STRUCT_INITIALIZATION}'
+							} else {
+								g.type_default(field.typ)
 							}
 							init_str += '.${field_name} = ${zero_str},'
 						}

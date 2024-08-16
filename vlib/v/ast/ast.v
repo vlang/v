@@ -18,7 +18,8 @@ pub const int_type_name = $if new_int ? {
 	'int'
 }
 
-pub type Expr = AnonFn
+pub type Expr = NodeError
+	| AnonFn
 	| ArrayDecompose
 	| ArrayInit
 	| AsCast
@@ -53,7 +54,6 @@ pub type Expr = AnonFn
 	| MapInit
 	| MatchExpr
 	| Nil
-	| NodeError
 	| None
 	| OffsetOf
 	| OrExpr

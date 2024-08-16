@@ -252,7 +252,7 @@ fn test_pointer() {
 }
 
 fn test_sumtypes() {
-	assert json.encode(StructType[SumTypes]{}) == '{}' // is_none := val.$(field.name).str() == 'unknown sum type value'
+	assert json.encode(StructType[SumTypes]{}) == '{"val":{"val":""}}' // is_none := val.$(field.name).str() == 'unknown sum type value'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructType[SumTypes]{ val: 'a' }) == '{"val":"a"}'
 

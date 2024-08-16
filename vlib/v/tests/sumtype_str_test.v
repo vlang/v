@@ -42,8 +42,8 @@ fn test_in_struct() {
 
 fn test_unknown_value() {
 	c := Container{}
-	assert '${c}' == 'Container{\n    st: unknown sum type value\n}'
-	assert c.str() == 'Container{\n    st: unknown sum type value\n}'
+	assert '${c}' == "Container{\n    st: ST(Abc{\n        foo: 0\n        bar: false\n        str: ''\n    })\n}"
+	assert c.str() == "Container{\n    st: ST(Abc{\n        foo: 0\n        bar: false\n        str: ''\n    })\n}"
 }
 
 fn test_nested_in_struct() {

@@ -473,9 +473,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.ensure_type_exists(node.typ, node.pos)
 	}
 	type_sym := c.table.sym(node.typ)
-	if !c.inside_unsafe && type_sym.kind == .sum_type {
-		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
-	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v

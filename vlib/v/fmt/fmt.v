@@ -1775,7 +1775,9 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 		variants << Variant{f.table.type_to_str_using_aliases(variant.typ, f.mod2alias), i}
 		f.mark_types_import_as_used(variant.typ)
 	}
-	variants.sort(a.name < b.name)
+	// The first variant is now used as the default variant when doing `a:= Sumtype{}`, i.e. a change in semantics.
+	// Sorting is disabled, because it is no longer a cosmetic change - it can change the default variant.
+	// variants.sort(a.name < b.name)
 
 	mut separator := ' | '
 	mut is_multiline := false
