@@ -1400,27 +1400,36 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 
 	mut type_align := new_field_align()
-	mut comment_align := new_field_align()
-	mut default_expr_align := new_field_align()
-	mut attr_align := new_field_align()
+	mut comment_align := new_field_align(use_threshold: true)
+	mut default_expr_align := new_field_align(use_threshold: true)
+	mut attr_align := new_field_align(use_threshold: true)
 	mut field_types := []string{cap: node.fields.len}
 
 	// Calculate the alignments first
 	f.calculate_alignment(node.fields, mut type_align, mut comment_align, mut default_expr_align, mut
 		attr_align, mut field_types)
 
+	mut method_comment_align := new_field_align(use_threshold: true)
+	for method in node.methods {
+		end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
+		if end_comments.len > 0 {
+			method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
+			method_comment_align.add_info(method_str.len, method.pos.line_nr)
+		}
+	}
+
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
 		if field.has_prev_newline {
 			f.writeln('')
 		}
-		f.interface_field(field, type_align.max_len(field.pos.line_nr))
+		f.interface_field(field, mut type_align, mut comment_align)
 	}
 	for method in immut_methods {
 		if method.has_prev_newline {
 			f.writeln('')
 		}
-		f.interface_method(method)
+		f.interface_method(method, mut method_comment_align)
 	}
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
@@ -1428,13 +1437,13 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 			if field.has_prev_newline {
 				f.writeln('')
 			}
-			f.interface_field(field, type_align.max_len(field.pos.line_nr))
+			f.interface_field(field, mut type_align, mut comment_align)
 		}
 		for method in mut_methods {
 			if method.has_prev_newline {
 				f.writeln('')
 			}
-			f.interface_method(method)
+			f.interface_method(method, mut method_comment_align)
 		}
 	}
 	f.writeln('}\n')
@@ -1497,7 +1506,7 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align 
 	}
 }
 
-pub fn (mut f Fmt) interface_field(field ast.StructField, max_len int) {
+pub fn (mut f Fmt) interface_field(field ast.StructField, mut type_align FieldAlign, mut comment_align FieldAlign) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
 	for cmt in field.comments {
@@ -1507,11 +1516,9 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, max_len int) {
 			else { end_cmts << cmt }
 		}
 	}
-	before_len := f.line_len
 	if pre_cmts.len > 0 {
 		f.comments(pre_cmts, level: .indent)
 	}
-	comments_len := f.line_len - before_len
 
 	sym := f.table.sym(field.typ)
 	if sym.info is ast.Struct {
@@ -1525,10 +1532,12 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, max_len int) {
 		f.write('\t${field.name} ')
 	}
 	if !(sym.info is ast.Struct && sym.info.is_anon) {
-		f.write(strings.repeat(` `, max_len - field.name.len - comments_len))
+		f.write(strings.repeat(` `, type_align.max_len(field.pos.line_nr) - field.name.len))
 		f.write(ft)
 	}
 	if end_cmts.len > 0 {
+		f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - ft.len))
+		f.write(' ')
 		f.comments(end_cmts, level: .indent)
 	} else {
 		f.writeln('')
@@ -1539,16 +1548,22 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, max_len int) {
 	f.mark_types_import_as_used(field.typ)
 }
 
-pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
+pub fn (mut f Fmt) interface_method(method ast.FnDecl, mut comment_align FieldAlign) {
 	before_comments := method.comments.filter(it.pos.pos < method.pos.pos)
 	end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
 	if before_comments.len > 0 {
 		f.comments(before_comments, level: .indent)
 	}
 	f.write('\t')
-	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn '))
-	f.comments(end_comments, same_line: true, has_nl: false, level: .indent)
-	f.writeln('')
+	method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
+	f.write(method_str)
+	if end_comments.len > 0 {
+		f.write(strings.repeat(` `, comment_align.max_len(method.pos.line_nr) - method_str.len))
+		f.write(' ')
+		f.comments(end_comments, level: .indent)
+	} else {
+		f.writeln('')
+	}
 	f.comments(method.next_comments, level: .indent)
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)
