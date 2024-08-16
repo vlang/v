@@ -36,7 +36,8 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	}
 	g.generated_free_methods[deref_typ] = true
 
-	mut sym := g.table.sym(g.unwrap_generic(typ))
+	struct_typ := g.unwrap_generic(typ)
+	mut sym := g.table.sym(struct_typ)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
@@ -48,7 +49,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 
 	match mut sym.info {
 		ast.Struct {
-			g.gen_free_for_struct(sym.info, styp, fn_name)
+			g.gen_free_for_struct(struct_typ, sym.info, styp, fn_name)
 		}
 		ast.Array {
 			g.gen_free_for_array(sym.info, styp, fn_name)
@@ -66,7 +67,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	return fn_name
 }
 
-fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
@@ -82,6 +83,7 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 		}
 		mut field_styp := g.typ(field.typ).replace('*', '')
 		is_shared := field_styp.starts_with('__shared')
+		is_struct_option := typ.has_flag(.option)
 		if is_shared {
 			field_styp = field_styp.all_after('__shared__')
 		}
@@ -92,6 +94,10 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 		}
 		if is_shared {
 			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}->val));')
+		} else if is_struct_option {
+			opt_styp := g.base_type(typ)
+			prefix := if field.typ.is_ptr() { '' } else { '&' }
+			fn_builder.writeln('\t${field_styp_fn_name}(${prefix}((${opt_styp}*)&it->data)->${field_name});')
 		} else {
 			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
 		}

@@ -1591,6 +1591,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
+	mut is_free_method := false
 	if node.name == 'str' {
 		if g.gen_to_str_method_call(node) {
 			return
@@ -1601,6 +1602,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
 		}
 		g.get_free_method(rec_type)
+		is_free_method = true
 	}
 	mut cast_n := 0
 
@@ -1808,6 +1810,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write(')')
 			}
 		} else {
+			if is_free_method && !node.receiver_type.is_ptr() {
+				g.write('&')
+			}
 			g.expr(node.left)
 		}
 		if !is_interface || node.from_embed_types.len == 0 {
