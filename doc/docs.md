@@ -682,7 +682,7 @@ To use a format specifier, follow this pattern:
   > V does not currently support the use of `'` or `#` as format flags, and V supports but
   > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
-- precision: an integer value preceded by a . will guarantee that many digits after the decimal
+- precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
   point minus any insignificant trailing zeros. If displaying insignificant zero's is desired,
   append a `f` specifier to the precision value (see examples below). Applies only to float 
   variables and is ignored for integer variables.
