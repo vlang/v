@@ -1516,7 +1516,6 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, mut type_align FieldAl
 			else { end_cmts << cmt }
 		}
 	}
-	before_len := f.line_len
 	if pre_cmts.len > 0 {
 		f.comments(pre_cmts, level: .indent)
 	}
