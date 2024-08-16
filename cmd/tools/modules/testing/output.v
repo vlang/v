@@ -34,10 +34,10 @@ mut:
 	session_stop(message string, mut ts TestSession)         // called once per test session, in the main thread, after everything else, suitable for summaries, creating .xml reports, uploads etc.
 	worker_threads_start(files []string, mut ts TestSession) // called once per test session, in the main thread, right before all the worker threads start
 	worker_threads_finish(mut ts TestSession)                // called once per test session, in the main thread, right after all the worker threads finish
-	//
+
 	report(index int, log_msg LogMessage) // called once per each message, that will be shown (ok/fail/skip etc), only in the reporting thread.
 	report_stop()                         // called just once after all messages are processed, only in the reporting thread, but before stop_session.
-	//
+
 	// TODO: reconsider, whether the next methods, should be kept for all reporters, or just moved inside the normal reporter, to simplify the interface
 	progress(index int, message string)
 	update_last_line(index int, message string)

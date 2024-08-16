@@ -464,7 +464,7 @@ fn (mut cmd Command) run() {
 			return
 		}
 	}
-	//
+
 	mut is_failed := false
 	mut is_failed_expected := false
 	mut is_failed_starts_with := false
@@ -497,10 +497,10 @@ fn (mut cmd Command) run() {
 			is_failed_contains = true
 		}
 	}
-	//
+
 	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
 	println('> Running: "${cmd.line}" took: ${spent} ms ... ${run_label}')
-	//
+
 	if is_failed && is_failed_expected {
 		eprintln('> expected:\n${cmd.expect}')
 		eprintln('>   output:\n${cmd.output}')

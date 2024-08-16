@@ -30,7 +30,7 @@ fn main() {
 	tfolder := os.join_path(vroot, 'cmd', 'tools')
 	main_label := 'Building ${folder} ...'
 	finish_label := 'building ${folder}'
-	//
+
 	mut skips := []string{}
 	for stool in tools_in_subfolders {
 		skips << os.join_path(tfolder, stool).replace('\\', '/')
@@ -49,7 +49,7 @@ fn main() {
 	if session.failed_cmds.len > 0 {
 		exit(1)
 	}
-	//
+
 	mut executables := os.ls(session.vtmp_dir)!
 	executables.sort()
 	for texe in executables {

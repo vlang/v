@@ -51,7 +51,7 @@ fn test_aead_decrypt_vector_test_51() ! {
 	mut ciphertext_msg := []u8{}
 	ciphertext_msg << ciphertext
 	ciphertext_msg << expected_tag
-	//
+
 	ncsize := nonce.len
 	mut c := new(key, ncsize)!
 	mut cs := chacha20.new_cipher(key, nonce)!

@@ -3723,7 +3723,7 @@ struct Dog {}
 fn main() {
 	cat := Cat{}
 	assert dump(cat.speak()) == 'meow!'
-	//
+
 	a := Adoptable(cat)
 	assert dump(a.speak()) == 'adopt me!' // call Adoptable's `speak`
 	if a is Cat {
@@ -3732,7 +3732,7 @@ fn main() {
 		// Cat `speak`, NOT the Adoptable `speak`:
 		dump(a.speak()) // meow!
 	}
-	//
+
 	b := Adoptable(Dog{})
 	assert dump(b.speak()) == 'adopt me!' // call Adoptable's `speak`
 	// if b is Dog {
@@ -7328,7 +7328,7 @@ fn main() {
 	nr_users := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	println('There are ${nr_users} users in the database.')
-	//
+
 	error_msg := &char(0)
 	query_all_users := 'select * from users'
 	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)

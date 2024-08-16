@@ -195,9 +195,7 @@ fn (mut app App) process_line(text string) ! {
 		// Always skip docs
 		delete_processed_line_from_log(text)!
 		return
-	}
-	//
-	else {
+	} else {
 		return
 	}
 	println('process_line: cat=${category} "${text}"')
