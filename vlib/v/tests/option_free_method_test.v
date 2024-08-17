@@ -9,6 +9,7 @@ pub struct Test {
 	d ?&Test2
 }
 
+@[manualfree]
 fn test_main() {
 	t := Test{
 		b: 'b'
