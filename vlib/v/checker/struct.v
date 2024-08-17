@@ -772,11 +772,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						init_field.expr.pos.extend(init_field.expr.expr.pos()))
 				}
 			}
-			// Check uninitialized refs/sum types
-			// The variable `fields` contains two parts, the first part is the same as info.fields,
-			// and the second part is all fields embedded in the structure
-			// If the return value data composition form in `c.table.struct_fields()` is modified,
-			// need to modify here accordingly.
 			c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
 				inited_fields)
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
@@ -785,11 +780,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			first_typ := (type_sym.info as ast.SumType).variants[0]
 			first_sym := c.table.final_sym(first_typ)
 			if first_sym.kind == .struct_ {
-				// Check uninitialized refs/sum types
-				// The variable `fields` contains two parts, the first part is the same as info.fields,
-				// and the second part is all fields embedded in the structure
-				// If the return value data composition form in `c.table.struct_fields()` is modified,
-				// need to modify here accordingly.
 				mut info := first_sym.info as ast.Struct
 				c.check_uninitialized_struct_fields_and_embeds(node, first_sym, mut info, mut
 					inited_fields)
@@ -847,6 +837,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	return node.typ
 }
 
+// Check uninitialized refs/sum types
+// The variable `fields` contains two parts, the first part is the same as info.fields,
+// and the second part is all fields embedded in the structure
+// If the return value data composition form in `c.table.struct_fields()` is modified,
+// need to modify here accordingly.
 fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructInit, type_sym ast.TypeSymbol, mut info ast.Struct, mut inited_fields []string) {
 	mut fields := c.table.struct_fields(type_sym)
 	mut checked_types := []ast.Type{}
