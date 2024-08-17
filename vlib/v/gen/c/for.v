@@ -333,6 +333,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				} else {
 					g.write(' = ${addr}')
 					g.expr(node.cond)
+					if info.is_fn_ret {
+						g.write('.ret_arr')
+					}
 					g.writeln('[${idx}];')
 				}
 			}

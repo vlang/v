@@ -5784,7 +5784,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 						} else {
 							node.types[0]
 						}
-						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(typ)}))')
+						typ_sym := g.table.final_sym(typ)
+						if typ_sym.kind == .array_fixed
+							&& (typ_sym.info as ast.ArrayFixed).is_fn_ret {
+							g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}.ret_arr, sizeof(${g.typ(typ)}))')
+						} else {
+							g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(typ)}))')
+						}
 					} else if node.exprs[0] in [ast.ArrayInit, ast.StructInit] {
 						if node.exprs[0] is ast.ArrayInit && node.exprs[0].is_fixed
 							&& node.exprs[0].has_init {
