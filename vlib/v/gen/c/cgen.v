@@ -7873,15 +7873,6 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 			}
 
-			// >> Hack to allow old style custom error implementations
-			// TODO: remove once deprecation period for `IError` methods has ended
-			// fix MSVC not handling empty struct inits
-			if methods.len == 0 && isym.idx == ast.error_type_idx {
-				methods_struct.writeln('\t\t._method_msg = NULL,')
-				methods_struct.writeln('\t\t._method_code = NULL,')
-			}
-			// <<
-
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t},')
 			}
