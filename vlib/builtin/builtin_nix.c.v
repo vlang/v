@@ -4,7 +4,7 @@
 module builtin
 
 fn builtin_init() {
-	$if !gc_warn_on_stderr ? {
+	$if gcboehm ? && !gc_warn_on_stderr ? {
 		gc_set_warn_proc(internal_gc_warn_proc_none)
 	}
 }

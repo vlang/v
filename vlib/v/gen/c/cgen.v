@@ -6202,7 +6202,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			g.cleanup.writeln('\tstring_free(&${cname});')
 		} else if sym.kind == .map {
 			g.cleanup.writeln('\tmap_free(&${cname});')
-		} else if styp == 'IError' {
+		} else if styp == 'IError' && cname != '_const_none__' {
 			g.cleanup.writeln('\tIError_free(&${cname});')
 		}
 	}
@@ -6552,7 +6552,7 @@ fn (mut g Gen) write_init_function() {
 			g.writeln('\t// Cleanups for module ${mod_name} :')
 			g.writeln(g.cleanups[mod_name].str())
 		}
-		g.writeln('\tarray_free(&as_cast_type_indexes);')
+		// g.writeln('\tarray_free(&as_cast_type_indexes);')
 	}
 	for x in cleaning_up_array.reverse() {
 		g.writeln(x)
@@ -7581,11 +7581,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 fn (g Gen) as_cast_name_table() string {
 	if g.as_cast_type_names.len == 0 {
-		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));\n'
+		return 'new_array_from_c_array_no_alloc(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));\n'
 	}
 	mut name_ast := strings.new_builder(1024)
 	casts_len := g.as_cast_type_names.len + 1
-	name_ast.writeln('new_array_from_c_array(${casts_len}, ${casts_len}, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[${casts_len}]){')
+	name_ast.writeln('new_array_from_c_array_no_alloc(${casts_len}, ${casts_len}, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[${casts_len}]){')
 	name_ast.writeln('\t\t  (VCastTypeIndexName){.tindex = 0, .tname = _SLIT("unknown")}')
 	for key, value in g.as_cast_type_names {
 		name_ast.writeln('\t\t, (VCastTypeIndexName){.tindex = ${key}, .tname = _SLIT("${value}")}')

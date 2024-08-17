@@ -42,8 +42,8 @@ fn _option_ok(data voidptr, mut option _option, size int) {
 }
 
 //
-
-const none__ = IError(&None__{})
+const none__instance = None__{} // no allocation, it is a static global struct instance
+const none__ = IError(none__instance) // this should also cause no allocations, since none__instance is a constant
 
 struct None__ {
 	Error
