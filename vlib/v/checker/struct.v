@@ -777,15 +777,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			// and the second part is all fields embedded in the structure
 			// If the return value data composition form in `c.table.struct_fields()` is modified,
 			// need to modify here accordingly.
-			c.check_uninitialized_struct_fields(node, type_sym, mut inited_fields)
-
-			for embed in info.embeds {
-				mut zero_struct_init := ast.StructInit{
-					pos: node.pos
-					typ: embed
-				}
-				c.struct_init(mut zero_struct_init, true, mut inited_fields)
-			}
+			c.check_uninitialized_struct_fields_and_embeds(node, type_sym, mut info, mut
+				inited_fields)
 			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
 		}
 		.sum_type {
@@ -797,7 +790,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				// and the second part is all fields embedded in the structure
 				// If the return value data composition form in `c.table.struct_fields()` is modified,
 				// need to modify here accordingly.
-				c.check_uninitialized_struct_fields(node, first_sym, mut inited_fields)
+				mut info := first_sym.info as ast.Struct
+				c.check_uninitialized_struct_fields_and_embeds(node, first_sym, mut info, mut
+					inited_fields)
 			}
 		}
 		else {}
@@ -852,10 +847,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	return node.typ
 }
 
-fn (mut c Checker) check_uninitialized_struct_fields(node ast.StructInit, type_sym ast.TypeSymbol, mut inited_fields []string) {
+fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructInit, type_sym ast.TypeSymbol, mut info ast.Struct, mut inited_fields []string) {
 	mut fields := c.table.struct_fields(type_sym)
 	mut checked_types := []ast.Type{}
-	mut info := type_sym.info as ast.Struct
 
 	for i, mut field in fields {
 		if field.name in inited_fields {
@@ -972,6 +966,14 @@ fn (mut c Checker) check_uninitialized_struct_fields(node ast.StructInit, type_s
 				}
 			}
 		}
+	}
+
+	for embed in info.embeds {
+		mut zero_struct_init := ast.StructInit{
+			pos: node.pos
+			typ: embed
+		}
+		c.struct_init(mut zero_struct_init, true, mut inited_fields)
 	}
 }
 
