@@ -54,7 +54,7 @@ pub fn test_handles_incomplete_requests() {
 	assert req.prev_len == 0
 
 	remaining_parsed := req.parse_request(' HTTP/1.1\r\n\r\n') or {
-		assert err.msg == 'error parsing request: invalid character "13"'
+		assert err.msg() == 'error parsing request: invalid character "13"'
 		0
 	}
 	assert remaining_parsed == 0
