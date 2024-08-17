@@ -1098,16 +1098,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// Verify methods
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
-				// >> Hack to allow old style custom error implementations
-				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.idx == ast.error_type_idx
-					&& (imethod.name == 'msg' || imethod.name == 'code') {
-					c.note("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`. The usage of fields is being deprecated in favor of methods.",
-						pos)
-					return false
-				}
-				// <<
-
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
 					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
 						pos)
@@ -1150,16 +1140,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 			// voidptr is an escape hatch, it should be allowed to be passed
 			if utyp != ast.voidptr_type && utyp != ast.nil_type {
-				// >> Hack to allow old style custom error implementations
-				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.idx == ast.error_type_idx
-					&& (ifield.name == 'msg' || ifield.name == 'code') {
-					// do nothing, necessary warnings are already printed
-				} else {
-					// <<
-					c.error("`${styp}` doesn't implement field `${ifield.name}` of interface `${inter_sym.name}`",
-						pos)
-				}
+				c.error("`${styp}` doesn't implement field `${ifield.name}` of interface `${inter_sym.name}`",
+					pos)
 			}
 		}
 		if utyp != ast.voidptr_type && utyp != ast.nil_type && utyp != ast.none_type
@@ -1647,20 +1629,6 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 	}
-
-	// >> Hack to allow old style custom error implementations
-	// TODO: remove once deprecation period for `IError` methods has ended
-	if sym.idx == ast.error_type_idx && !c.is_just_builtin_mod
-		&& (field_name == 'msg' || field_name == 'code') {
-		method := c.table.find_method(sym, field_name) or {
-			c.error('invalid `IError` interface implementation: ${err}', node.pos)
-			return ast.void_type
-		}
-		c.note('the `.${field_name}` field on `IError` is deprecated, and will be removed after 2022-06-01, use `.${field_name}()` instead.',
-			node.pos)
-		return method.return_type
-	}
-	// <<<
 
 	if has_field {
 		is_used_outside := sym.mod != c.mod
