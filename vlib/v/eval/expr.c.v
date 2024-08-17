@@ -23,6 +23,9 @@ fn (o Object) as_i64() !i64 {
 pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 	// eprintln('>>>>>>> expr: ${typeof(expr)}')
 	match expr {
+		ast.NodeError {
+			// TODO: change this, when ast.Expr has a better default sumtype variant
+		}
 		ast.CallExpr {
 			// println(expr.is_method)
 			// is_method := expr.left.type_name() != 'unknown v.ast.Expr'
@@ -573,8 +576,8 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.SpawnExpr,
 		ast.IfGuardExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
-		ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
-		ast.SqlExpr, ast.TypeNode, ast.TypeOf, ast.LambdaExpr {
+		ast.Nil, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
+		ast.TypeNode, ast.TypeOf, ast.LambdaExpr {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
