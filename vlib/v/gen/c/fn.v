@@ -1343,11 +1343,21 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 								cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
 								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 									comptime_args[k] = cparam_type_sym.info.elem_type
-								} else if param_typ_sym.kind == .map
+								} else if param_typ_sym.info is ast.Map
 									&& cparam_type_sym.info is ast.Map {
-									comptime_args[k] = cparam_type_sym.info.key_type
-									comptime_args[k + 1] = cparam_type_sym.info.value_type
-									k++
+									key_is_generic := param_typ_sym.info.key_type.has_flag(.generic)
+									println(param_typ_sym)
+									println(cparam_type_sym)
+									if key_is_generic {
+										comptime_args[k] = cparam_type_sym.info.key_type
+									}
+									if param_typ_sym.info.value_type.has_flag(.generic) {
+										k2 := if key_is_generic { k + 1 } else { k }
+										comptime_args[k2] = cparam_type_sym.info.value_type
+										if key_is_generic {
+											k++
+										}
+									}
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
