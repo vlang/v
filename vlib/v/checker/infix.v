@@ -213,8 +213,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			if node.right.is_nil() {
 				mut final_type := left_type
-				if mut right_sym.info is ast.Alias {
-					final_type = right_sym.info.parent_type
+				if mut left_sym.info is ast.Alias {
+					final_type = left_sym.info.parent_type
 				}
 				if !final_type.is_any_kind_of_pointer() && (left_final_sym.kind != .function
 					|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder)) {
