@@ -75,27 +75,28 @@ language, very similar to the way it is right now.
 Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
-To get started, simply try to execute the following in your terminal/shell:
+Note: On Windows, run `make.bat` instead of `make` in CMD, or `./make.bat` in PowerShell.
+Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
+To get started, execute the following in your terminal/shell:
 ```bash
 git clone https://github.com/vlang/v
 cd v
 make
-# HINT: Using Windows? run make.bat in a cmd shell, or ./make.bat in PowerShell
 ```
 
-That should be it and you should find your V executable at `[path to V repo]/v`.
+That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-(As in the hint above, on Windows `make` means running `make.bat`.)
+(Like the note above says, on Windows, use `make.bat`, instead of `make`.)
 
-Now you can try `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
+Now try running `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
-- *Trouble? Please see the note above and link to
+- *Trouble? Please see the notes above, and link to
   [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
   for help.*
 
-V is constantly being updated. To update V, simply run:
+Note: V is being constantly updated. To update V to its latest version, simply run:
 
 ```bash
 v up

@@ -21,13 +21,14 @@ Anything you can do in other languages, you can do in V.
 
 The best way to get the latest and greatest V, is to install it from source.
 It is easy, and it takes only a few seconds:
-
 ```bash
 git clone https://github.com/vlang/v
 cd v
 make
-# HINT: Using Windows?: run make.bat in the cmd.exe shell
 ```
+
+Note: If you are on windows, outside of WSL, run `make.bat` instead of `make`, in a CMD shell.
+Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 For more details, see the
 [Installing V](https://github.com/vlang/v/blob/master/README.md#installing-v-from-source)
