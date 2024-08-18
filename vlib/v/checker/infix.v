@@ -198,20 +198,30 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
-			if node.left.is_nil() && !right_type.is_any_kind_of_pointer()
-				&& (right_final_sym.kind != .function
-				|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder)) {
-				rt := c.table.sym(right_type).name
-				c.error('cannot compare with `nil` because `${rt}` is not a pointer',
-					node.pos)
+			if node.left.is_nil() {
+				mut final_type := right_type
+				if mut right_sym.info is ast.Alias {
+					final_type = right_sym.info.parent_type
+				}
+				if !final_type.is_any_kind_of_pointer() && (right_final_sym.kind != .function
+					|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder)) {
+					rt := c.table.sym(right_type).name
+					c.error('cannot compare with `nil` because `${rt}` is not a pointer',
+						node.pos)
+				}
 			}
 
-			if node.right.is_nil() && !left_type.is_any_kind_of_pointer()
-				&& (left_final_sym.kind != .function
-				|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder)) {
-				lt := c.table.sym(left_type).name
-				c.error('cannot compare with `nil` because `${lt}` is not a pointer',
-					node.pos)
+			if node.right.is_nil() {
+				mut final_type := left_type
+				if mut right_sym.info is ast.Alias {
+					final_type = right_sym.info.parent_type
+				}
+				if !final_type.is_any_kind_of_pointer() && (left_final_sym.kind != .function
+					|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder)) {
+					lt := c.table.sym(left_type).name
+					c.error('cannot compare with `nil` because `${lt}` is not a pointer',
+						node.pos)
+				}
 			}
 		}
 		.key_in, .not_in {
