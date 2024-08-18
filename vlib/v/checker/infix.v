@@ -198,6 +198,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
+			// Do not allow comparing nil to non-pointers
 			if node.left.is_nil() {
 				mut final_type := right_type
 				if mut right_sym.info is ast.Alias
