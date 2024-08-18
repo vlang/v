@@ -837,11 +837,12 @@ pub fn (mut g Gen) init() {
 				g.cheaders.writeln('#include <inttypes.h>')
 				g.cheaders.writeln('#include <stddef.h>')
 			} else {
-				g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>. Please install build-essentials')) // int64_t etc
+				install_compiler_msg := ' Please install the package `build-essential`.'
+				g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>.${install_compiler_msg}')) // int64_t etc
 				if g.pref.os == .ios {
-					g.cheaders.writeln(get_guarded_include_text('<stdbool.h>', 'The C compiler can not find <stdbool.h>. Please install build-essentials')) // bool, true, false
+					g.cheaders.writeln(get_guarded_include_text('<stdbool.h>', 'The C compiler can not find <stdbool.h>.${install_compiler_msg}')) // bool, true, false
 				}
-				g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>. Please install build-essentials')) // size_t, ptrdiff_t
+				g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>.${install_compiler_msg}')) // size_t, ptrdiff_t
 			}
 		}
 		if g.pref.nofloat {
