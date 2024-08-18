@@ -704,6 +704,20 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		// in C, `()` is untyped, unlike `(void)`
 		g.write('void')
 	}
+	/// mut is_implicit_ctx := false
+	// Veb actions defined by user can have implicit context
+	/*
+	if g.cur_fn != unsafe { nil } && g.cur_fn.is_method && g.cur_mod.name != 'veb' {
+		typ_veb_result := g.table.find_type_idx('veb.Result')
+		// if params.len == 3 {
+		// println(g.cur_fn)
+		//}
+		if g.cur_fn.return_type == typ_veb_result {
+			// is_implicit_ctx = true
+			g.write('/*veb*/')
+		}
+	}
+	*/
 	for i, param in params {
 		mut caname := if param.name == '_' {
 			g.new_tmp_declaration_name()
@@ -756,6 +770,11 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.write(', ')
 			g.definitions.write_string(', ')
 		}
+
+		// if is_implicit_ctx && i == 0 && params[1].name != 'ctx' {
+		// g.writeln('veb__Context* ctx,')
+		// g.definitions.write_string('veb__Context* ctx,')
+		//}
 	}
 	if (g.pref.translated && is_variadic) || is_c_variadic {
 		g.write(', ... ')

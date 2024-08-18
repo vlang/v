@@ -799,9 +799,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		.and, .logical_or {
 			if !c.pref.translated && !c.file.is_translated {
+				// TODO Bring back once I split void into void and bad
+				// if left_final_sym.kind !in [.bool, .void] {
 				if left_final_sym.kind != .bool {
 					c.error('left operand for `${node.op}` is not a boolean', node.left.pos())
 				}
+				// if right_final_sym.kind !in [.bool, .void] {
 				if right_final_sym.kind != .bool {
 					c.error('right operand for `${node.op}` is not a boolean', node.right.pos())
 				}

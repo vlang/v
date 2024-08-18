@@ -1,10 +1,10 @@
-// Simple TODO app using x.vweb
+// Simple TODO app using veb
 // Run from this directory with `v run main.v`
-// You can also enable vwebs livereload feature with
-// `v watch -d vweb_livereload run main.v`
+// You can also enable vebs livereload feature with
+// `v watch -d veb_livereload run main.v`
 module main
 
-import x.vweb
+import veb
 import db.sqlite
 import os
 import time
@@ -21,14 +21,14 @@ pub mut:
 }
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 pub mut:
 	// we can use this field to check whether we just created a TODO in our html templates
 	created_todo bool
 }
 
 pub struct App {
-	vweb.StaticHandler
+	veb.StaticHandler
 pub:
 	// we can access the SQLITE database directly via `app.db`
 	db sqlite.DB
@@ -36,16 +36,16 @@ pub:
 
 // This method will only handle GET requests to the index page
 @[get]
-pub fn (app &App) index(mut ctx Context) vweb.Result {
+pub fn (app &App) index(mut ctx Context) veb.Result {
 	todos := sql app.db {
 		select from Todo
 	} or { return ctx.server_error('could not fetch todos from database!') }
-	return $vweb.html()
+	return $veb.html()
 }
 
 // This method will only handle POST requests to the index page
 @['/'; post]
-pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
+pub fn (app &App) create_todo(mut ctx Context, name string) veb.Result {
 	// We can receive form input fields as arguments in a route!
 	// we could also access the name field by doing `name := ctx.form['name']`
 
@@ -78,7 +78,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 }
 
 @['/todo/:id/complete'; post]
-pub fn (app &App) complete_todo(mut ctx Context, id int) vweb.Result {
+pub fn (app &App) complete_todo(mut ctx Context, id int) veb.Result {
 	// first check if there exist a TODO record with `id`
 	todos := sql app.db {
 		select from Todo where id == id
@@ -99,7 +99,7 @@ pub fn (app &App) complete_todo(mut ctx Context, id int) vweb.Result {
 }
 
 @['/todo/:id/delete'; post]
-pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
+pub fn (app &App) delete_todo(mut ctx Context, id int) veb.Result {
 	// first check if there exist a TODO record with `id`
 	todos := sql app.db {
 		select from Todo where id == id
@@ -141,5 +141,5 @@ fn main() {
 	}!
 
 	// start our app at port 8080
-	vweb.run[App, Context](mut app, 8080)
+	veb.run[App, Context](mut app, 8080)
 }

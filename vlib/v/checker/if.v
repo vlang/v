@@ -67,6 +67,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				cond_typ := c.table.unaliased_type(c.unwrap_generic(c.expr(mut branch.cond)))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.option)
 					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
+					//&& cond_typ.idx() != ast.void_type_idx { TODO bring back after the void split
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}

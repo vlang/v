@@ -433,6 +433,36 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_scope = node.scope
+	// Register implicit context var
+	typ_veb_result := c.table.find_type_idx('veb.Result')
+	if node.return_type == typ_veb_result {
+		typ_veb_context := c.table.find_type_idx('veb.Context')
+		// No `ctx` param? Add it
+		if !node.params.any(it.name == 'ctx') && node.params.len > 1 {
+			params := node.params.clone()
+			ctx_param := ast.Param{
+				name:   'ctx'
+				typ:    typ_veb_context
+				is_mut: true
+			}
+			node.params = [node.params[0], ctx_param]
+			node.params << params[1..]
+			println('new params ${node.name}')
+			// println(node.params)
+		}
+		// sym := c.table.sym(typ_veb_context)
+		// println('reging ${typ_veb_context} ${sym}')
+		// println(c.fn_scope)
+		// println(node.params)
+		c.fn_scope.register(ast.Var{
+			name:         'ctx'
+			typ:          typ_veb_context
+			pos:          node.pos
+			is_used:      true
+			is_mut:       true
+			is_stack_obj: false // true
+		})
+	}
 	c.stmts(mut node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
 	node.has_return = c.returns || node_has_top_return
@@ -1058,6 +1088,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 
+		// XTODO document
 		if typ != 0 {
 			generic_vts := c.table.final_sym(typ)
 			if generic_vts.info is ast.FnType {
@@ -1902,7 +1933,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
-		c.error('cannot call a method using an invalid expression', node.pos)
+		// c.error('cannot call a method using an invalid expression', node.pos)
 		return ast.void_type
 	}
 	c.expected_type = left_type
@@ -2726,7 +2757,8 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
-			if node.name in ['x.vweb.run', 'x.vweb.run_at', 'vweb.run', 'vweb.run_at'] {
+			if node.name in ['veb.run', 'veb.run_at', 'x.vweb.run', 'x.vweb.run_at', 'vweb.run',
+				'vweb.run_at'] {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {
 						c.vweb_gen_types << ct

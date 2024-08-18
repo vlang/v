@@ -533,12 +533,11 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 			}
 			SumType {
 				t.resolve_common_sumtype_fields(mut ts)
-				if field := ts.info.find_field(name) {
+				if field := ts.info.find_sum_type_field(name) {
 					return field
 				}
-				// mut info := ts.info as SumType
-				// TODO: a more detailed error so that it's easier to fix?
-				return error('field `${name}` does not exist or have the same type in all sumtype variants')
+				missing_variants := t.find_missing_variants(ts.info, name)
+				return error('field `${name}` does not exist or have the same type in these sumtype `${ts.name}` variants: ${missing_variants}')
 			}
 			else {}
 		}

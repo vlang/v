@@ -168,11 +168,11 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			} else {
 				if !has_decompose {
 					// do not generate anything if the argument lengths don't match
-					g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list */')
+					g.writeln('/* skipping ${sym.name}.${m.name} due to mismatched arguments list: node.args=${node.args.len} m.params=${m.params.len} */')
 					// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
 					// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
 					//'method.params: $m.params, args: $node.args\n\n')
-					// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+					// verror('expected ${m.params.len - 1} arguments to method ${node.sym.name}.${m.name}, but got ${node.args.len}')
 					return
 				}
 			}

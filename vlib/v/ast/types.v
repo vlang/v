@@ -1748,7 +1748,7 @@ pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 		Aggregate { return t.info.find_field(name) }
 		Struct { return t.info.find_field(name) }
 		Interface { return t.info.find_field(name) }
-		SumType { return t.info.find_field(name) }
+		SumType { return t.info.find_sum_type_field(name) }
 		else { return none }
 	}
 }
@@ -1811,13 +1811,41 @@ pub fn (s Struct) get_field(name string) StructField {
 	panic('unknown field `${name}`')
 }
 
-pub fn (s &SumType) find_field(name string) ?StructField {
+pub fn (s &SumType) find_sum_type_field(name string) ?StructField {
 	for mut field in unsafe { s.fields } {
 		if field.name == name {
 			return field
 		}
 	}
 	return none
+}
+
+// For the 'field does not exist or have the same type in all sumtype  variants' error.
+// To print all sumtype variants the developer has to fix.
+pub fn (t &Table) find_missing_variants(s &SumType, field_name string) string {
+	mut res := []string{cap: 5}
+	for variant in s.variants {
+		ts := t.sym(variant)
+		if ts.kind != .struct_ {
+			continue
+		}
+		mut found := false
+		struct_info := ts.info as Struct
+		for field in struct_info.fields {
+			if field.name == field_name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			res << ts.name
+		}
+	}
+	// println('!!!!! field_name=${field_name}')
+	// print_backtrace()
+	// println(res)
+	str := res.join(', ')
+	return str.replace("'", '`')
 }
 
 pub fn (i Interface) defines_method(name string) bool {

@@ -591,6 +591,16 @@ run them via `v file.v` instead',
 			language: language
 		})
 	}
+	/*
+	// Register implicit context var
+	p.scope.register(ast.Var{
+		name: 'ctx'
+		typ: ast.error_type
+		pos: p.tok.pos()
+		is_used: true
+		is_stack_obj: true
+	})
+	*/
 	// Body
 	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}

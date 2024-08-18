@@ -109,7 +109,7 @@ pub fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[strin
 		println('${s}')
 	}
 	if s.starts_with('x.vweb') {
-		s = s.replace_once('x.vweb', 'veb.')
+		s = s.replace_once('x.vweb.', 'veb.')
 	}
 	return s
 }

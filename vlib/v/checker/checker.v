@@ -953,7 +953,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				}
 				.sum_type {
 					sumtype_info := typ_sym.info as ast.SumType
-					mut field_info := sumtype_info.find_field(expr.field_name) or {
+					mut field_info := sumtype_info.find_sum_type_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.${expr.field_name}`', expr.pos)
 						return '', expr.pos
@@ -1596,6 +1596,12 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			node.from_embed_types = embed_types
 			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err.msg()
+				// TODO need a better way to check that we need to display sum type variants info
+				if unknown_field_msg.contains('does not exist or have the same type in all sumtype') {
+					info := sym.info as ast.SumType
+					missing_variants := c.table.find_missing_variants(info, field_name)
+					unknown_field_msg += missing_variants
+				}
 			}
 		}
 		if !c.inside_unsafe {
@@ -2598,6 +2604,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 }
 
 fn (mut c Checker) import_stmt(node ast.Import) {
+	if node.mod == 'x.vweb' {
+		println('`x.vweb` is now `veb`. The module is no longer experimental. Simply `import veb` instead of `import x.vweb`.')
+	}
 	c.check_valid_snake_case(node.alias, 'module alias', node.pos)
 	for sym in node.syms {
 		name := '${node.mod}.${sym.name}'

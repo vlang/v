@@ -1,5 +1,5 @@
-vlib/v/checker/tests/void_method_call.vv:5:17: error: cannot call a method using an invalid expression
-    3 |
+vlib/v/checker/tests/void_method_call.vv:5:17: cgen error: checker bug; CallExpr.left_type is 0 in method_call
+    3 | 
     4 | fn main() {
     5 |     simple_fn().method()
       |                 ~~~~~~~~

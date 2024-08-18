@@ -1,14 +1,14 @@
 module main
 
-import x.vweb
+import veb
 import os
 
 pub struct Context {
-	vweb.Context
+	veb.Context
 }
 
 pub struct App {
-	vweb.StaticHandler
+	veb.StaticHandler
 }
 
 fn main() {
@@ -17,5 +17,5 @@ fn main() {
 	os.chdir(os.dir(os.executable()))!
 	mut app := &App{}
 	app.handle_static('dist', true)!
-	vweb.run[App, Context](mut app, 8080)
+	veb.run[App, Context](mut app, 8080)
 }

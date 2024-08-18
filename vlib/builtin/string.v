@@ -940,6 +940,14 @@ pub fn (s string) rsplit_once(delim string) ?(string, string) {
 	return result[1], result[0]
 }
 
+// split_n splits the string based on the passed `delim` substring.
+// It returns the first Nth parts. When N=0, return all the splits.
+// The last returned element has the remainder of the string, even if
+// the remainder contains more `delim` substrings.
+pub fn (s string) split_n(delim string, n int) []string {
+	return s.split_nth(delim, n)
+}
+
 // split_nth splits the string based on the passed `delim` substring.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
