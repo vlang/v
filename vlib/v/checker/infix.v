@@ -200,7 +200,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			if node.left.is_nil() {
 				mut final_type := right_type
-				if mut right_sym.info is ast.Alias {
+				if mut right_sym.info is ast.Alias
+					&& right_sym.info.parent_type.is_any_kind_of_pointer() {
 					final_type = right_sym.info.parent_type
 				}
 				if !final_type.is_any_kind_of_pointer() && (right_final_sym.kind != .function
@@ -214,7 +215,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 
 			if node.right.is_nil() {
 				mut final_type := left_type
-				if mut left_sym.info is ast.Alias {
+				if mut left_sym.info is ast.Alias
+					&& left_sym.info.parent_type.is_any_kind_of_pointer() {
 					final_type = left_sym.info.parent_type
 				}
 				if !final_type.is_any_kind_of_pointer() && (left_final_sym.kind != .function
