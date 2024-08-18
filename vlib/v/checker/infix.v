@@ -204,7 +204,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					final_type = right_sym.info.parent_type
 				}
 				if !final_type.is_any_kind_of_pointer() && (right_final_sym.kind != .function
-					|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder)) {
+					|| (right_final_sym.language != .c && right_final_sym.kind == .placeholder))
+					&& !right_final_sym.is_heap() {
 					rt := c.table.sym(right_type).name
 					c.error('cannot compare with `nil` because `${rt}` is not a pointer',
 						node.pos)
@@ -217,7 +218,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					final_type = left_sym.info.parent_type
 				}
 				if !final_type.is_any_kind_of_pointer() && (left_final_sym.kind != .function
-					|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder)) {
+					|| (left_final_sym.language != .c && left_final_sym.kind == .placeholder))
+					&& !left_final_sym.is_heap() {
 					lt := c.table.sym(left_type).name
 					c.error('cannot compare with `nil` because `${lt}` is not a pointer',
 						node.pos)
