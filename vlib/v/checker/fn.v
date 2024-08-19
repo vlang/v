@@ -1709,7 +1709,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 									if param_sym.info.value_type.has_flag(.generic) {
 										comptime_args[k] = ctyp
 										k++
-										ctyp = c.unwrap_generic(arg_sym.info.value_type)
+										ctyp = c.unwrap_generic(arg_sym.info.key_type)
 									}
 								} else if param_sym.info.value_type.has_flag(.generic) {
 									ctyp = c.unwrap_generic(arg_sym.info.value_type)

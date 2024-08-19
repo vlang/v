@@ -1232,6 +1232,22 @@ fn (mut g Gen) resolve_fn_return_type(node ast.CallExpr) ast.Type {
 	return ast.void_type
 }
 
+fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.Type, final_left_sym ast.TypeSymbol,
+	left_sym ast.TypeSymbol, typ_sym ast.TypeSymbol) string {
+	mut receiver_type_name := util.no_dots(g.cc_type(unwrapped_rec_type, false))
+	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
+		receiver_type_name = 'map'
+	}
+	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
+			// `array_Xyz_clone` => `array_clone`
+			receiver_type_name = 'array'
+		}
+	}
+	return receiver_type_name
+}
+
 fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	mut cparam_elem_info := array as ast.Array
 	mut cparam_elem_sym := g.table.sym(cparam_elem_info.elem_type)
@@ -1431,22 +1447,6 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 		}
 	}
 	return comptime_args
-}
-
-fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.Type, final_left_sym ast.TypeSymbol,
-	left_sym ast.TypeSymbol, typ_sym ast.TypeSymbol) string {
-	mut receiver_type_name := util.no_dots(g.cc_type(unwrapped_rec_type, false))
-	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
-		receiver_type_name = 'map'
-	}
-	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
-		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
-			// `array_Xyz_clone` => `array_clone`
-			receiver_type_name = 'array'
-		}
-	}
-	return receiver_type_name
 }
 
 fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
