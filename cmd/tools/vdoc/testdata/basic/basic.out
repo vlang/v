@@ -1,7 +1,3 @@
-Warning: `markdown` exists, but is not updated.
-V will continue, since updates can fail due to temporary network problems,
-and the existing module `markdown` may still work.
---------------------------------------------------
 module basic
 
 const source_root = 'temp' // some const
