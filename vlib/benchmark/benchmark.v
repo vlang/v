@@ -2,6 +2,7 @@ module benchmark
 
 import time
 import term
+import arrays
 
 pub const b_ok = term.ok_message('OK  ')
 pub const b_fail = term.fail_message('FAIL')
@@ -24,6 +25,7 @@ pub mut:
 	bok             string
 	bfail           string
 	measured_steps  []string
+	step_data       map[string][]f64
 }
 
 // new_benchmark returns a `Benchmark` instance on the stack.
@@ -145,6 +147,7 @@ pub fn (mut b Benchmark) record_measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
 	b.measured_steps << b.step_message_with_label(benchmark.b_spent, 'in ${label}')
+	b.step_data[label] << res
 	b.step()
 	return res
 }
@@ -244,6 +247,12 @@ pub fn (b &Benchmark) total_message(msg string) string {
 		}
 	}
 	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Elapsed time:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.'
+	if msg in b.step_data && b.step_data[msg].len != 0 {
+		min := arrays.min(b.step_data[msg]) or { 0 } / 1000.0
+		max := arrays.max(b.step_data[msg]) or { 0 } / 1000.0
+		avg := (arrays.sum(b.step_data[msg]) or { 0 } / b.step_data[msg].len) / 1000.0
+		tmsg += ' Min: ${min:.3f} ms. Max: ${max:.3f} ms. Avg: ${avg:.3f} ms'
+	}
 	return tmsg
 }
 

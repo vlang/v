@@ -36,3 +36,19 @@ fn test_record_measure() {
 	assert res.contains('ms in sleeping 1')
 	assert res.contains('SPENT')
 }
+
+fn test_total_message() {
+	mut b := benchmark.start()
+	for _ in 0..100 {
+		time.sleep(time.millisecond)
+		x := b.record_measure('sleeping 1')
+		assert x > 1_000
+	}
+
+	res := b.total_message('sleeping 1')
+	println(res)
+
+	assert res.contains(' Min: ')
+	assert res.contains(' Max: ')
+	assert res.contains(' Avg: ')
+}
