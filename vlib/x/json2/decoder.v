@@ -165,6 +165,9 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 			mut json_name := field.name
 
 			for attr in field.attrs {
+				if attr.contains('skip') {
+					skip_field = true
+				}
 				if attr.contains('json: ') {
 					json_name = attr.replace('json: ', '')
 					if json_name == '-' {
