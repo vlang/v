@@ -55,7 +55,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	if p.tok.kind != .rpar {
 		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
 		if args.len < params.len && p.prev_tok.kind != .comma {
-			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`,`')
+			pos := if p.tok.kind == .eof { p.prev_tok.pos() } else { p.tok.pos() }
+			p.unexpected_with_pos(pos, expecting: '`,`')
 		} else if args.len > params.len {
 			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
 			pos := token.Pos{
@@ -64,7 +65,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 			}
 			p.unexpected_with_pos(pos.extend(p.tok.pos()), expecting: '`)`')
 		} else {
-			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`)`')
+			pos := if p.tok.kind == .eof { p.prev_tok.pos() } else { p.tok.pos() }
+			p.unexpected_with_pos(pos, expecting: '`)`')
 		}
 	}
 	last_pos := p.tok.pos()
@@ -119,7 +121,7 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		p.inside_call_args = prev_inside_call_args
 	}
 	mut args := []ast.CallArg{}
-	for p.tok.kind != .rpar && p.tok.kind != .comma {
+	for p.tok.kind != .rpar {
 		if p.tok.kind == .eof {
 			return args
 		}
@@ -162,9 +164,10 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			comments: comments
 			pos:      pos
 		}
-		if p.tok.kind == .comma {
-			p.next()
+		if p.tok.kind != .comma {
+			break
 		}
+		p.next()
 	}
 	return args
 }
