@@ -247,7 +247,7 @@ pub fn (b &Benchmark) total_message(msg string) string {
 		}
 	}
 	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Elapsed time:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.'
-	if msg in b.step_data && b.step_data[msg].len != 0 {
+	if msg in b.step_data && b.step_data[msg].len > 1 {
 		min := arrays.min(b.step_data[msg]) or { 0 } / 1000.0
 		max := arrays.max(b.step_data[msg]) or { 0 } / 1000.0
 		avg := (arrays.sum(b.step_data[msg]) or { 0 } / b.step_data[msg].len) / 1000.0
