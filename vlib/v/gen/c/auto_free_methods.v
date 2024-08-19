@@ -30,7 +30,7 @@ fn (mut g Gen) gen_free_methods() {
 fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
 	mut fn_name := styp_to_free_fn_name(styp)
-	deref_typ := typ.set_nr_muls(0)
+	deref_typ := if typ.has_flag(.option) { typ } else { typ.set_nr_muls(0) }
 	if deref_typ in g.generated_free_methods {
 		return fn_name
 	}
@@ -81,7 +81,8 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		if sym.kind !in [.string, .array, .map, .struct_] {
 			continue
 		}
-		mut field_styp := g.typ(field.typ).replace('*', '')
+		mut field_styp := g.typ(field.typ.set_nr_muls(0).clear_flag(.option)).replace('*',
+			'')
 		is_shared := field_styp.starts_with('__shared')
 		is_struct_option := typ.has_flag(.option)
 		if is_shared {
@@ -92,14 +93,34 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		} else {
 			g.gen_free_method(field.typ)
 		}
+		is_field_option := field.typ.has_flag(.option)
+		expects_opt := field_styp_fn_name.starts_with('_option_')
 		if is_shared {
 			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}->val));')
 		} else if is_struct_option {
 			opt_styp := g.base_type(typ)
 			prefix := if field.typ.is_ptr() { '' } else { '&' }
-			fn_builder.writeln('\t${field_styp_fn_name}(${prefix}((${opt_styp}*)&it->data)->${field_name});')
+			if is_field_option {
+				opt_field_styp := if expects_opt { g.typ(field.typ) } else { g.base_type(field.typ) }
+				suffix := if expects_opt { '' } else { '.data' }
+
+				fn_builder.writeln('\tif (((${opt_styp}*)&it->data)->${field_name}.state != 2) {')
+				fn_builder.writeln('\t\t${field_styp_fn_name}((${opt_field_styp}*)${prefix}((${opt_styp}*)&it->data)->${field_name}${suffix});')
+				fn_builder.writeln('\t}')
+			} else {
+				fn_builder.writeln('\t${field_styp_fn_name}(${prefix}((${opt_styp}*)&it->data)->${field_name});')
+			}
 		} else {
-			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
+			if is_field_option {
+				opt_field_styp := if expects_opt { g.typ(field.typ) } else { g.base_type(field.typ) }
+				suffix := if expects_opt { '' } else { '.data' }
+
+				fn_builder.writeln('\tif (it->${field_name}.state != 2) {')
+				fn_builder.writeln('\t\t${field_styp_fn_name}((${opt_field_styp}*)&(it->${field_name}${suffix}));')
+				fn_builder.writeln('\t}')
+			} else {
+				fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
+			}
 		}
 	}
 	fn_builder.writeln('}')
