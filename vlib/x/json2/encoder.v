@@ -200,6 +200,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	$for field in U.fields {
 		mut @continue := false
 		for attr in field.attrs {
+			if attr.contains('skip') {
+				@continue = true
+			}
 			if attr.contains('json: ') {
 				if attr.replace('json: ', '') == '-' {
 					@continue = true
@@ -227,6 +230,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		mut json_name := ''
 
 		for attr in field.attrs {
+			if attr.contains('skip') {
+				ignore_field = true
+			}
 			if attr.contains('json: ') {
 				json_name = attr.replace('json: ', '')
 				if json_name == '-' {
