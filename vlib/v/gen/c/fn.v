@@ -1346,8 +1346,8 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 								} else if param_typ_sym.info is ast.Map
 									&& cparam_type_sym.info is ast.Map {
 									key_is_generic := param_typ_sym.info.key_type.has_flag(.generic)
-									println(param_typ_sym)
-									println(cparam_type_sym)
+
+
 									if key_is_generic {
 										comptime_args[k] = cparam_type_sym.info.key_type
 									}
