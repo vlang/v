@@ -279,6 +279,210 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 	}
 }
 
+fn (mut ct ComptimeInfo) get_generic_array_element_type(array ast.Array) ast.Type {
+	mut cparam_elem_info := array as ast.Array
+	mut cparam_elem_sym := ct.table.sym(cparam_elem_info.elem_type)
+	mut typ := ast.void_type
+	for {
+		if cparam_elem_sym.kind == .array {
+			cparam_elem_info = cparam_elem_sym.info as ast.Array
+			cparam_elem_sym = ct.table.sym(cparam_elem_info.elem_type)
+		} else {
+			typ = cparam_elem_info.elem_type
+			if cparam_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+				typ = typ.set_nr_muls(0)
+			}
+			break
+		}
+	}
+	return typ
+}
+
+// resolve_comptime_args resolves expr type whichs has different values according with comptime features
+pub fn (mut ct ComptimeInfo) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+	mut comptime_args := map[int]ast.Type{}
+	has_dynamic_vars :=
+		(ct.table.cur_fn != unsafe { nil } && ct.table.cur_fn.generic_names.len > 0)
+		|| ct.comptime_for_field_var != ''
+	if has_dynamic_vars {
+		offset := if func.is_method { 1 } else { 0 }
+		mut k := -1
+		for i, mut call_arg in node_.args {
+			param := if func.is_variadic && i >= func.params.len - (offset + 1) {
+				func.params.last()
+			} else {
+				func.params[offset + i]
+			}
+			if !param.typ.has_flag(.generic) {
+				continue
+			}
+			k++
+			param_typ := param.typ
+			if mut call_arg.expr is ast.Ident {
+				if mut call_arg.expr.obj is ast.Var {
+					node_.args[i].typ = call_arg.expr.obj.typ
+					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
+						mut ctyp := ct.get_comptime_var_type(call_arg.expr)
+						if ctyp != ast.void_type {
+							arg_sym := ct.table.sym(ctyp)
+							param_sym := ct.table.final_sym(param_typ)
+							if arg_sym.info is ast.Array && param_sym.kind == .array {
+								ctyp = arg_sym.info.elem_type
+							} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
+								if call_arg.expr.obj.ct_type_var == .value_var {
+									ctyp = arg_sym.info.value_type
+									if param_sym.info.value_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+								} else if call_arg.expr.obj.ct_type_var == .key_var {
+									ctyp = arg_sym.info.key_type
+									if param_sym.info.key_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+								} else {
+									key_is_generic := param_sym.info.key_type.has_flag(.generic)
+									if key_is_generic {
+										ctyp = ct.resolver.unwrap_generic(arg_sym.info.key_type)
+									}
+									if param_sym.info.value_type.has_flag(.generic) {
+										if key_is_generic {
+											comptime_args[k] = ctyp
+											k++
+										}
+										ctyp = ct.resolver.unwrap_generic(arg_sym.info.value_type)
+									}
+								}
+							}
+							comptime_args[k] = ctyp
+						}
+					} else if call_arg.expr.obj.ct_type_var == .generic_param {
+						mut ctyp := ct.get_comptime_var_type(call_arg.expr)
+						if ctyp != ast.void_type {
+							arg_sym := ct.table.final_sym(call_arg.typ)
+							param_typ_sym := ct.table.sym(param_typ)
+							if param_typ.has_flag(.variadic) {
+								ctyp = ast.mktyp(ctyp)
+								comptime_args[k] = ctyp
+							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
+								&& param_typ_sym.kind == .array {
+								ctyp = ct.get_generic_array_element_type(arg_sym.info as ast.Array)
+								comptime_args[k] = ctyp
+							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+								mut generic_types := []ast.Type{}
+								match arg_sym.info {
+									ast.Struct, ast.Interface, ast.SumType {
+										if param_typ_sym.generic_types.len > 0 {
+											generic_types = param_typ_sym.generic_types.clone()
+										} else {
+											generic_types = arg_sym.info.generic_types.clone()
+										}
+									}
+									else {}
+								}
+								generic_names := generic_types.map(ct.table.sym(it).name)
+								for _, gt_name in ct.table.cur_fn.generic_names {
+									if gt_name in generic_names
+										&& generic_types.len == concrete_types.len {
+										idx := generic_names.index(gt_name)
+										comptime_args[k] = concrete_types[idx]
+										break
+									}
+								}
+							} else if arg_sym.kind == .any {
+								cparam_type_sym := ct.table.sym(ct.resolver.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+									comptime_args[k] = cparam_type_sym.info.elem_type
+								} else if param_typ_sym.info is ast.Map
+									&& cparam_type_sym.info is ast.Map {
+									if param_typ_sym.info.key_type.has_flag(.generic) {
+										comptime_args[k] = cparam_type_sym.info.key_type
+										if param_typ_sym.info.value_type.has_flag(.generic) {
+											comptime_args[k + 1] = cparam_type_sym.info.value_type
+											k++
+										}
+									} else if param_typ_sym.info.value_type.has_flag(.generic) {
+										comptime_args[k] = cparam_type_sym.info.value_type
+									}
+								} else {
+									if node_.args[i].expr.is_auto_deref_var() {
+										ctyp = ctyp.deref()
+									}
+									if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+									comptime_args[k] = ctyp
+								}
+							} else {
+								comptime_args[k] = ctyp
+							}
+						}
+					}
+				}
+			} else if mut call_arg.expr is ast.PrefixExpr {
+				if call_arg.expr.right is ast.ComptimeSelector {
+					comptime_args[k] = ct.comptime_for_field_type
+					comptime_args[k] = comptime_args[k].deref()
+					if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+						comptime_args[k] = comptime_args[k].set_nr_muls(0)
+					}
+				} else if mut call_arg.expr.right is ast.Ident {
+					if ct.get_ct_type_var(call_arg.expr.right) != .generic_var {
+						mut ctyp := ct.get_comptime_var_type(call_arg.expr.right)
+						if ctyp != ast.void_type {
+							comptime_args[k] = ctyp
+							if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+								comptime_args[k] = comptime_args[k].set_nr_muls(0)
+							}
+						}
+					}
+				}
+			} else if mut call_arg.expr is ast.ComptimeSelector {
+				comptime_args[k] = ct.comptime_for_field_type
+				arg_sym := ct.table.final_sym(call_arg.typ)
+				param_sym := ct.table.sym(param_typ)
+				if arg_sym.kind == .array && param_typ.has_flag(.generic)
+					&& param_sym.kind == .array {
+					comptime_args[k] = ct.get_generic_array_element_type(arg_sym.info as ast.Array)
+				} else if arg_sym.info is ast.Map && param_sym.info is ast.Map
+					&& param_typ.has_flag(.generic) {
+					comptime_sym := ct.table.sym(comptime_args[k])
+					if comptime_sym.info is ast.Map {
+						key_is_generic := param_sym.info.key_type.has_flag(.generic)
+						if key_is_generic {
+							comptime_args[k] = comptime_sym.info.key_type
+						}
+						if param_sym.info.value_type.has_flag(.generic) {
+							if key_is_generic {
+								k++
+							}
+							comptime_args[k] = comptime_sym.info.value_type
+						}
+					}
+				}
+				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+					comptime_args[k] = comptime_args[k].set_nr_muls(0)
+				}
+			} else if mut call_arg.expr is ast.ComptimeCall {
+				if call_arg.expr.method_name == 'method' {
+					sym := ct.table.sym(ct.resolver.unwrap_generic(call_arg.expr.left_type))
+					// `app.$method()`
+					if m := sym.find_method(ct.comptime_for_method) {
+						comptime_args[k] = m.return_type
+					}
+				}
+			} else if mut call_arg.expr is ast.CastExpr {
+				cparam_type_sym := ct.table.sym(ct.resolver.unwrap_generic(call_arg.expr.typ))
+				param_typ_sym := ct.table.sym(param_typ)
+				if param_typ_sym.kind == .map && cparam_type_sym.info is ast.Map {
+					comptime_args[k] = cparam_type_sym.info.key_type
+					comptime_args[k + 1] = cparam_type_sym.info.value_type
+				}
+			}
+		}
+	}
+	return comptime_args
+}
+
 pub struct DummyResolver {
 mut:
 	file &ast.File = unsafe { nil }
