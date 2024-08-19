@@ -340,15 +340,14 @@ pub fn (mut ct ComptimeInfo) resolve_comptime_args(func ast.Fn, mut node_ ast.Ca
 										ctyp = ctyp.set_nr_muls(0)
 									}
 								} else {
-									key_is_generic := param_sym.info.key_type.has_flag(.generic)
-									if key_is_generic {
+									if param_sym.info.key_type.has_flag(.generic) {
 										ctyp = ct.resolver.unwrap_generic(arg_sym.info.key_type)
-									}
-									if param_sym.info.value_type.has_flag(.generic) {
-										if key_is_generic {
+										if param_sym.info.value_type.has_flag(.generic) {
 											comptime_args[k] = ctyp
 											k++
+											ctyp = ct.resolver.unwrap_generic(arg_sym.info.value_type)
 										}
+									} else if param_sym.info.value_type.has_flag(.generic) {
 										ctyp = ct.resolver.unwrap_generic(arg_sym.info.value_type)
 									}
 								}
