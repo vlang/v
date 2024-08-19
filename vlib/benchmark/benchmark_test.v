@@ -39,7 +39,7 @@ fn test_record_measure() {
 
 fn test_total_message() {
 	mut b := benchmark.start()
-	for _ in 0..100 {
+	for _ in 0 .. 100 {
 		time.sleep(time.millisecond)
 		x := b.record_measure('sleeping 1')
 		assert x > 1_000
