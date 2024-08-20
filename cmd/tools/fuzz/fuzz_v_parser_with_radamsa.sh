@@ -13,7 +13,6 @@ if [ ! -f $PARSER_EXECUTABLE ]; then
 fi	
 
 while true; do
-	radamsa --meta autofuzz.log examples/hello_world.v > "${OUTPUT_FILE}";
-	echo -ne "OFILE: ${OUTPUT_FILE}";
-	./"${PARSER_EXECUTABLE}" ${OUTPUT_FILE} || break;
+	radamsa --meta "${OUTPUT_FILE}.autofuzz.log" examples/hello_world.v > "${OUTPUT_FILE}";
+	echo -ne "OFILE: ${OUTPUT_FILE}"; ./"${PARSER_EXECUTABLE}" ${OUTPUT_FILE} || break;
 done
