@@ -1362,11 +1362,17 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 								cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
 								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 									comptime_args[k] = cparam_type_sym.info.elem_type
-								} else if param_typ_sym.kind == .map
+								} else if param_typ_sym.info is ast.Map
 									&& cparam_type_sym.info is ast.Map {
-									comptime_args[k] = cparam_type_sym.info.key_type
-									comptime_args[k + 1] = cparam_type_sym.info.value_type
-									k++
+									if param_typ_sym.info.key_type.has_flag(.generic) {
+										comptime_args[k] = cparam_type_sym.info.key_type
+										if param_typ_sym.info.value_type.has_flag(.generic) {
+											k++
+											comptime_args[k] = cparam_type_sym.info.value_type
+										}
+									} else if param_typ_sym.info.value_type.has_flag(.generic) {
+										comptime_args[k] = cparam_type_sym.info.value_type
+									}
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
@@ -1411,14 +1417,13 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 					&& param_typ.has_flag(.generic) {
 					comptime_sym := g.table.sym(comptime_args[k])
 					if comptime_sym.info is ast.Map {
-						key_is_generic := param_sym.info.key_type.has_flag(.generic)
-						if key_is_generic {
+						if param_sym.info.key_type.has_flag(.generic) {
 							comptime_args[k] = comptime_sym.info.key_type
-						}
-						if param_sym.info.value_type.has_flag(.generic) {
-							if key_is_generic {
+							if param_sym.info.value_type.has_flag(.generic) {
 								k++
+								comptime_args[k] = comptime_sym.info.value_type
 							}
+						} else if param_sym.info.value_type.has_flag(.generic) {
 							comptime_args[k] = comptime_sym.info.value_type
 						}
 					}

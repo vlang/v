@@ -1729,22 +1729,21 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
+							param_sym := c.table.final_sym(param_typ)
 							if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
-								&& c.table.final_sym(param_typ).kind == .array {
+								&& param_sym.kind == .array {
 								ctyp = arg_sym.info.elem_type
 							} else if arg_sym.info is ast.Map && param_typ.has_flag(.generic)
-								&& c.table.final_sym(param_typ).kind == .map {
-								map_info := c.table.final_sym(param_typ).info as ast.Map
-								key_is_generic := map_info.key_type.has_flag(.generic)
-								if key_is_generic {
+								&& param_sym.info is ast.Map {
+								if param_sym.info.key_type.has_flag(.generic) {
 									ctyp = c.unwrap_generic(arg_sym.info.key_type)
-								}
-								if map_info.value_type.has_flag(.generic) {
-									if key_is_generic {
+									if param_sym.info.value_type.has_flag(.generic) {
 										comptime_args[k] = ctyp
 										k++
+										ctyp = c.unwrap_generic(arg_sym.info.key_type)
 									}
-									ctyp = c.unwrap_generic(arg_sym.info.key_type)
+								} else if param_sym.info.value_type.has_flag(.generic) {
+									ctyp = c.unwrap_generic(arg_sym.info.value_type)
 								}
 							}
 							comptime_args[k] = ctyp
@@ -1754,7 +1753,6 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 						if ctyp != ast.void_type {
 							arg_sym := c.table.final_sym(call_arg.typ)
 							param_typ_sym := c.table.sym(param_typ)
-
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
 								comptime_args[k] = ctyp
@@ -1787,11 +1785,19 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 								cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
 								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 									comptime_args[k] = cparam_type_sym.info.elem_type
-								} else if param_typ_sym.kind == .map
+								} else if param_typ_sym.info is ast.Map
 									&& cparam_type_sym.info is ast.Map {
-									comptime_args[k] = cparam_type_sym.info.key_type
-									comptime_args[k + 1] = cparam_type_sym.info.value_type
-									k++
+									key_is_generic := param_typ_sym.info.key_type.has_flag(.generic)
+									if key_is_generic {
+										comptime_args[k] = cparam_type_sym.info.key_type
+									}
+									if param_typ_sym.info.value_type.has_flag(.generic) {
+										k2 := if key_is_generic { k + 1 } else { k }
+										comptime_args[k2] = cparam_type_sym.info.value_type
+										if key_is_generic {
+											k++
+										}
+									}
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
