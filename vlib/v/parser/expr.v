@@ -825,7 +825,11 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 
 fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Pos) {
 	cast_expr.typ = cast_expr.typ.ref()
-	cast_expr.typname = p.table.sym(cast_expr.typ).name
+	cast_expr.typname = if cast_expr.typ == 0 {
+		p.table.sym(cast_expr.typ).name
+	} else {
+		'unknown type name'
+	}
 	cast_expr.pos = pos.extend(cast_expr.pos)
 }
 
