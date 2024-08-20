@@ -189,14 +189,20 @@ fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences,
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
+	file_name := os.file_name(file)
+	ulid := rand.ulid()
+	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_${file_name}')
+	if file.contains('_vfmt_off') {
+		os.cp(file, vfmt_output_path) or { panic(err) }
+		foptions.vlog('format_file copied the file ${file} as it was, 1:1, since its name contains `_vfmt_off`.')
+		eprintln('${formatted_file_token}${vfmt_output_path}')
+		return
+	}
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
 	prefs, mut table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
-	file_name := os.file_name(file)
-	ulid := rand.ulid()
-	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_${file_name}')
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	eprintln('${formatted_file_token}${vfmt_output_path}')

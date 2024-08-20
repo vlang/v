@@ -2536,8 +2536,14 @@ fn (mut p Parser) is_generic_cast() bool {
 fn (mut p Parser) alias_array_type() ast.Type {
 	full_name := p.prepend_mod(p.tok.lit)
 	if idx := p.table.type_idxs[full_name] {
+		if idx == 0 {
+			return ast.void_type
+		}
 		sym := p.table.sym(idx)
 		if sym.info is ast.Alias {
+			if sym.info.parent_type == 0 {
+				return ast.void_type
+			}
 			if p.table.sym(sym.info.parent_type).kind == .array {
 				return idx
 			}
@@ -2791,7 +2797,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			}
 			node = ast.CastExpr{
 				typ:     to_typ
-				typname: p.table.sym(to_typ).name
+				typname: if to_typ != 0 { p.table.sym(to_typ).name } else { 'unknown typename' }
 				expr:    expr
 				arg:     arg
 				has_arg: has_arg
@@ -2949,7 +2955,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ:     to_typ
-				typname: p.table.sym(to_typ).name
+				typname: if to_typ != 0 { p.table.sym(to_typ).name } else { 'unknown type name' }
 				expr:    expr
 				arg:     ast.empty_expr
 				has_arg: false
