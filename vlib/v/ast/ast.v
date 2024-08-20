@@ -2464,6 +2464,9 @@ pub fn (mut lx IndexExpr) recursive_arraymap_set_is_setter() {
 pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	match arch {
+		._auto {
+			return all_registers(mut t, .amd64)
+		}
 		.amd64, .i386 {
 			for bit_size, array in ast.x86_no_number_register_list {
 				for name in array {
@@ -2522,7 +2525,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			// no registers
 		}
 		else { // TODO
-			panic('all_registers: unhandled arch')
+			panic('all_registers: unhandled arch: ${arch}')
 		}
 	}
 

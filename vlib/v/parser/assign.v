@@ -18,16 +18,12 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(exprs)
 }
 
-const max_expr_level = 100
-
 fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 	p.expr_level++
 	defer {
 		p.expr_level--
 	}
-	if p.expr_level > parser.max_expr_level {
-		return error('expr level > ${parser.max_expr_level}')
-	}
+	p.check_expr_level()!
 	match val {
 		ast.Ident {
 			for name in names {

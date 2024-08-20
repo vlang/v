@@ -6,6 +6,15 @@ module parser
 import v.ast
 import v.token
 
+const max_expr_level = 100
+
+@[inline]
+fn (mut p Parser) check_expr_level() ! {
+	if p.expr_level > parser.max_expr_level {
+		return error('expr level > ${parser.max_expr_level}')
+	}
+}
+
 fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
@@ -17,6 +26,11 @@ fn (mut p Parser) expr(precedence int) ast.Expr {
 
 fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr(${precedence})')
+	p.expr_level++
+	defer {
+		p.expr_level--
+	}
+	p.check_expr_level()!
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false

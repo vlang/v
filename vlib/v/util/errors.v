@@ -156,7 +156,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
-		sline := source_lines[iline]
+		sline := source_lines[iline] or { '' }
 		start_column := mu.max(0, mu.min(pos.col, sline.len))
 		end_column := mu.max(0, mu.min(pos.col + mu.max(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr {
@@ -179,7 +179,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 					i++
 				} else {
 					char_len := utf8_char_len(sline[i])
-					spaces := ' '.repeat(utf8_str_visible_length(sline[i..i + char_len]))
+					spaces := ' '.repeat(utf8_str_visible_length(sline#[i..i + char_len]))
 					pointerline_builder.write_string(spaces)
 					i += char_len
 				}

@@ -163,6 +163,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		body_pos := p.tok.pos()
 		p.inside_if = false
 		p.inside_comptime_if = false
+		if p.opened_scopes > p.max_opened_scopes {
+			p.error('too many nested conditionals, scopes: ${p.opened_scopes}')
+			return ast.IfExpr{}
+		}
 		p.open_scope()
 		stmts := p.parse_block_no_scope(false)
 		branches << ast.IfBranch{

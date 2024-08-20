@@ -53,6 +53,7 @@ pub mut:
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
+	max_eofs                    int = 50
 	inter_cbr_count             int
 	pref                        &pref.Preferences
 	error_details               []string
@@ -557,7 +558,7 @@ fn (mut s Scanner) skip_whitespace() {
 
 fn (mut s Scanner) end_of_file() token.Token {
 	s.eofs++
-	if s.eofs > 50 {
+	if s.eofs > s.max_eofs {
 		s.line_nr--
 		if s.file_path == scanner.internally_generated_v_code {
 			// show a bit more context for that case, since the source may not be easily visible by just inspecting a source file on the filesystem
@@ -566,7 +567,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 			dump(s.text.len)
 		}
 		panic(
-			'the end of file `${s.file_path}` has been reached 50 times already, the v parser is probably stuck.\n' +
+			'the end of file `${s.file_path}` has been reached ${s.max_eofs} times already, the v parser is probably stuck.\n' +
 			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
 			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}

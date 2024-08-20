@@ -106,9 +106,13 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner        &scanner.Scanner = unsafe { nil }
-	table          &ast.Table       = unsafe { nil }
-	scope          &ast.Scope       = unsafe { nil }
+	scanner &scanner.Scanner = unsafe { nil }
+	table   &ast.Table       = unsafe { nil }
+	scope   &ast.Scope       = unsafe { nil }
+
+	opened_scopes     int
+	max_opened_scopes int = 100 // values above 300 risk stack overflow
+
 	errors         []errors.Error
 	warnings       []errors.Warning
 	notices        []errors.Notice
@@ -451,10 +455,7 @@ fn (p &Parser) peek_token(n int) token.Token {
 fn (p &Parser) peek_token_after_var_list() token.Token {
 	mut n := 0
 	mut tok := p.tok
-	for {
-		if tok.kind == .eof {
-			break
-		}
+	for tok.kind != .eof {
 		if tok.kind == .key_mut {
 			n += 2
 		} else {
@@ -546,10 +547,14 @@ fn (p &Parser) is_array_type() bool {
 }
 
 fn (mut p Parser) open_scope() {
+	if p.opened_scopes > p.max_opened_scopes {
+		p.error('nested opened scopes limit reached: ${p.max_opened_scopes}')
+	}
 	p.scope = &ast.Scope{
 		parent:    p.scope
 		start_pos: p.tok.pos
 	}
+	p.opened_scopes++
 }
 
 fn (mut p Parser) close_scope() {
@@ -561,6 +566,7 @@ fn (mut p Parser) close_scope() {
 	p.scope.end_pos = p.prev_tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
+	p.opened_scopes--
 }
 
 fn (mut p Parser) parse_block() []ast.Stmt {
@@ -1202,7 +1208,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
 	mut templates := []ast.AsmTemplate{}
-	for p.tok.kind !in [.semicolon, .rcbr] {
+	for p.tok.kind !in [.semicolon, .rcbr, .eof] {
 		template_pos := p.tok.pos()
 		mut name := ''
 		if p.tok.kind == .name && arch == .amd64 && p.tok.lit in ['rex', 'vex', 'xop'] {
@@ -1299,7 +1305,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 								}
 							}
 							else {
-								verror('p.parse_number_literal() invalid output: `${number_lit}`')
+								p.error('p.parse_number_literal() invalid output: `${number_lit}`')
 							}
 						}
 					}
@@ -1441,7 +1447,7 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 		if x is ast.AsmRegister {
 			return ast.AsmArg(x as ast.AsmRegister)
 		} else {
-			verror('non-register ast.ScopeObject found in scope')
+			p.error('non-register ast.ScopeObject found in scope')
 			return ast.AsmDisp{} // should not be reached
 		}
 	} else if p.prev_tok.len >= 2 && p.prev_tok.lit[0] in [`b`, `f`]
@@ -1713,6 +1719,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		return []
 	}
 	for {
+		if p.tok.kind == .eof {
+			p.error('reached eof in asm_ios')
+			return []
+		}
 		pos := p.tok.pos()
 
 		mut constraint := ''
@@ -1747,6 +1757,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 					// Numbered constraints - https://gcc.gnu.org/onlinedocs/gcc/Simple-Constraints.html
 					if p.tok.lit.int() >= 10 {
 						p.error_with_pos('The digit must be between 0 and 9 only', pos)
+						return []
 					}
 					p.check(.number)
 				} else {
@@ -1759,6 +1770,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			expr = expr.expr
 		} else {
 			p.error('asm in/output must be enclosed in brackets')
+			return []
 		}
 		mut alias := ''
 		if p.tok.kind == .key_as {
@@ -4348,6 +4360,10 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	// type SumType = Aaa | Bbb | Ccc
 	if sum_variants.len > 1 {
 		for variant in sum_variants {
+			if variant.typ == 0 {
+				// the type symbol is probably coming from another .v file
+				continue
+			}
 			variant_sym := p.table.sym(variant.typ)
 			// TODO: implement this check for error too
 			if variant_sym.kind == .none_ {
@@ -4394,9 +4410,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	// sum_variants will have only one element
 	parent_type := sum_variants[0].typ
-	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
-	p.check_for_impure_v(parent_sym.language, decl_pos)
+	mut parent_language := ast.Language.v
+	if parent_type != 0 {
+		parent_sym := p.table.sym(parent_type)
+		parent_language = parent_sym.language
+		p.check_for_impure_v(parent_sym.language, decl_pos)
+	}
 	prepend_mod_name := if language == .v { p.prepend_mod(name) } else { name } // `C.time_t`, not `time.C.time_t`
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind:       .alias
@@ -4406,7 +4426,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		parent_idx: pidx
 		info:       ast.Alias{
 			parent_type: parent_type
-			language:    parent_sym.language
+			language:    parent_language
 		}
 		is_pub: is_pub
 	})
@@ -4472,11 +4492,6 @@ fn (p &Parser) new_true_expr() ast.Expr {
 		val: true
 		pos: p.tok.pos()
 	}
-}
-
-@[noreturn]
-fn verror(s string) {
-	util.verror('parser error', s)
 }
 
 fn (mut p Parser) top_level_statement_start() {
