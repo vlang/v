@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module ast
 
 import v.token
@@ -2094,10 +2095,25 @@ pub fn (expr Expr) is_blank_ident() bool {
 	return false
 }
 
+__global nested_expr_pos_calls = 0
+// values above 14000 risk stack overflow by default on macos in Expr.pos() calls
+const max_nested_expr_pos_calls = 5000
+
 pub fn (expr Expr) pos() token.Pos {
 	// all uncommented have to be implemented
 	// Note: please do not print here. the language server will hang
 	// as it uses STDIO primarily to communicate ~Ned
+	nested_expr_pos_calls++
+	if nested_expr_pos_calls > ast.max_nested_expr_pos_calls {
+		$if panic_on_deeply_nested_expr_pos_calls ? {
+			eprintln('${@LOCATION}: too many nested Expr.pos() calls: ${nested_expr_pos_calls}, expr type: ${expr.type_name()}')
+			exit(1)
+		}
+		return token.Pos{}
+	}
+	defer {
+		nested_expr_pos_calls--
+	}
 	return match expr {
 		AnonFn {
 			expr.decl.pos
