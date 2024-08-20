@@ -577,9 +577,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	mut fn_name := node.decl.name
 
 	if node.decl.generic_names.len > 0 {
-		if g.cur_concrete_types.len > 0 {
-			fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
-		}
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
 
 	if !node.decl.scope.has_inherited_vars() {
