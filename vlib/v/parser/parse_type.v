@@ -882,6 +882,9 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if gt.has_flag(.generic) {
 			is_instance = false
 		}
+		if gt == 0 {
+			return ast.void_type
+		}
 		gts := p.table.sym(gt)
 		if gts.kind == .multi_return {
 			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
