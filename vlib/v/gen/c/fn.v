@@ -575,8 +575,11 @@ fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.gen_anon_fn_decl(mut node)
 	mut fn_name := node.decl.name
+
 	if node.decl.generic_names.len > 0 {
-		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+		if g.cur_concrete_types.len > 0 {
+			fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+		}
 	}
 
 	if !node.decl.scope.has_inherited_vars() {

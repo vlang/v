@@ -1872,6 +1872,7 @@ pub mut:
 	func       &AnonFn = unsafe { nil }
 	is_checked bool
 	typ        Type
+	call_ctx   &CallExpr = unsafe { nil }
 }
 
 pub struct Likely {
