@@ -6,7 +6,7 @@ import time
 fn test_run_parallel() {
 	count := []int{len: 10, init: index}
 	mut res := []string{len: 10}
-	run_parallel[int](count, 2, fn [mut res] (i int)! {
+	run_parallel[int](count, 2, fn [mut res] (i int) ! {
 		delay := rand.intn(1000) or { 1000 }
 		time.sleep(delay * time.millisecond)
 		res << 'task ${i}, delay=${delay}ms'
