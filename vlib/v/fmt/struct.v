@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import strings
 import v.ast
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
@@ -84,7 +83,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		}
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 		f.write('\t${volatile_prefix}${field.name} ')
-		f.write(strings.repeat(` `, type_align.max_len(field.pos.line_nr) - field.name.len))
+		f.write(' '.repeat(type_align.max_len(field.pos.line_nr) - field.name.len))
 		// Handle anon structs recursively
 		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
 			f.write(field_types[i])
@@ -92,7 +91,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.has_default_expr {
-			f.write(strings.repeat(` `, default_expr_align.max_len(field.pos.line_nr) - field_types[i].len))
+			f.write(' '.repeat(default_expr_align.max_len(field.pos.line_nr) - field_types[i].len))
 			f.write(' = ')
 			if !expr_is_single_line(field.default_expr) {
 				f.indent++
@@ -105,17 +104,17 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			}
 		}
 		if field.attrs.len > 0 {
-			f.write(strings.repeat(` `, attr_align.max_len(field.pos.line_nr) - field_types[i].len))
+			f.write(' '.repeat(attr_align.max_len(field.pos.line_nr) - field_types[i].len))
 			f.single_line_attrs(field.attrs, same_line: true)
 		}
 		// Handle comments at the end of the line
 		if field.comments.len > 0 {
 			if field.has_default_expr {
-				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - field.default_expr.str().len - 2))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.default_expr.str().len - 2))
 			} else if field.attrs.len > 0 {
-				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - attrs_len))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - attrs_len))
 			} else {
-				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - field_types[i].len))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field_types[i].len))
 			}
 			f.write(' ')
 			f.comments(field.comments, level: .indent)
@@ -286,12 +285,13 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 				f.write('${init_field.name}: ')
 				if !single_line_fields {
-					f.write(strings.repeat(` `, value_align.max_len(init_field.pos.line_nr) - init_field.name.len))
+					f.write(' '.repeat(value_align.max_len(init_field.pos.line_nr) - init_field.name.len))
 				}
 				f.expr(init_field.expr)
 				if init_field.end_comments.len > 0 {
-					f.write(strings.repeat(` `, comment_align.max_len(init_field.pos.line_nr) - init_field.expr.str().len))
-					f.write(' ')
+					f.write(' '.repeat(
+						comment_align.max_len(init_field.pos.line_nr) - init_field.expr.str().len +
+						1))
 					f.comments(init_field.end_comments, has_nl: false, level: .indent)
 				}
 				if single_line_fields {

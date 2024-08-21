@@ -2326,9 +2326,7 @@ pub fn (s string) bytes() []u8 {
 // repeat returns a new string with `count` number of copies of the string it was called on.
 @[direct_array_access]
 pub fn (s string) repeat(count int) string {
-	if count < 0 {
-		panic('string.repeat: count is negative: ${count}')
-	} else if count == 0 {
+	if count <= 0 {
 		return ''
 	} else if count == 1 {
 		return s.clone()
