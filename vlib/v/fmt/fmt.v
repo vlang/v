@@ -1074,30 +1074,28 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		}
 		f.write('\t${field.name}')
 		if field.has_expr {
-			f.write(strings.repeat(` `, value_align.max_len(field.pos.line_nr) - field.name.len))
+			f.write(' '.repeat(value_align.max_len(field.pos.line_nr) - field.name.len))
 			f.write(' = ')
 			f.expr(field.expr)
 		}
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
 			if field.has_expr {
-				f.write(strings.repeat(` `, attr_align.max_len(field.pos.line_nr) - field.expr.str().len - 2))
+				f.write(' '.repeat(attr_align.max_len(field.pos.line_nr) - field.expr.str().len - 1))
 			} else {
-				f.write(strings.repeat(` `, attr_align.max_len(field.pos.line_nr) - field.name.len))
+				f.write(' '.repeat(attr_align.max_len(field.pos.line_nr) - field.name.len + 1))
 			}
-			f.write(' ')
 			f.single_line_attrs(field.attrs, same_line: true)
 		}
 		// f.comments(field.comments, same_line: true, has_nl: false, level: .indent)
 		if field.comments.len > 0 {
 			if field.attrs.len > 0 {
-				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - attrs_len))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - attrs_len + 1))
 			} else if field.has_expr {
-				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - field.expr.str().len - 2))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.expr.str().len - 1))
 			} else {
-				f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - field.name.len))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.name.len + 1))
 			}
-			f.write(' ')
 			f.comments(field.comments, same_line: true, has_nl: false)
 		}
 		f.writeln('')
@@ -1323,7 +1321,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			f.write('volatile ')
 		}
 		f.write('${field.name} ')
-		f.write(strings.repeat(` `, max - field.name.len))
+		f.write(' '.repeat(max - field.name.len))
 		if field.has_expr {
 			f.write('= ')
 			f.expr(field.expr)
@@ -1532,12 +1530,11 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, mut type_align FieldAl
 		f.write('\t${field.name} ')
 	}
 	if !(sym.info is ast.Struct && sym.info.is_anon) {
-		f.write(strings.repeat(` `, type_align.max_len(field.pos.line_nr) - field.name.len))
+		f.write(' '.repeat(type_align.max_len(field.pos.line_nr) - field.name.len))
 		f.write(ft)
 	}
 	if end_cmts.len > 0 {
-		f.write(strings.repeat(` `, comment_align.max_len(field.pos.line_nr) - ft.len))
-		f.write(' ')
+		f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - ft.len + 1))
 		f.comments(end_cmts, level: .indent)
 	} else {
 		f.writeln('')
@@ -1558,8 +1555,7 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl, mut comment_align FieldAl
 	method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
 	f.write(method_str)
 	if end_comments.len > 0 {
-		f.write(strings.repeat(` `, comment_align.max_len(method.pos.line_nr) - method_str.len))
-		f.write(' ')
+		f.write(' '.repeat(comment_align.max_len(method.pos.line_nr) - method_str.len + 1))
 		f.comments(end_comments, level: .indent)
 	} else {
 		f.writeln('')
@@ -2807,7 +2803,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		f.write(skey)
 		f.write(': ')
 		skey_len := utf8_str_visible_length(skey)
-		f.write(strings.repeat(` `, max_field_len - skey_len))
+		f.write(' '.repeat(max_field_len - skey_len))
 		f.expr(node.vals[i])
 		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
