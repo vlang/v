@@ -285,7 +285,7 @@ fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_nam
 		panic('Failed to create temporary file ${tmp_v_file_path}')
 	}
 	run_options := cmdline.options_before(args, [option_name]).join(' ')
-	command_options := cmdline.options_after(args, [option_name])[1..].join(' ')
+	command_options := cmdline.options_after(args, [option_name])#[1..].join(' ')
 	vexe := vexe_path()
 	tmp_cmd := '${os.quoted_path(vexe)} ${output_option} ${run_options} run ${os.quoted_path(tmp_v_file_path)} ${command_options}'
 

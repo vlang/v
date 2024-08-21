@@ -2111,8 +2111,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			has_method = true
 			mut embed_types := []ast.Type{}
 			method, embed_types = c.table.find_method_from_embeds(final_left_sym, method_name) or {
-				if err.msg() != '' {
-					c.error(err.msg(), node.pos)
+				emsg := err.str()
+				if emsg != '' {
+					c.error(emsg, node.pos)
 				}
 				has_method = false
 				ast.Fn{}, []ast.Type{}

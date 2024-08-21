@@ -244,15 +244,7 @@ jobs:
       - name: Valgrind
         run: valgrind --error-exitcode=1 v -o v.c cmd/v
       - name: Run sanitizers
-        run: |
-          v -o v2 cmd/v -cflags -fsanitize=memory
-          v -o v3 cmd/v -cflags -fsanitize=thread
-          v -o v4 cmd/v -cflags -fsanitize=undefined
-          v -o v5 cmd/v -cflags -fsanitize=address,pointer-compare,pointer-subtract
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
-          ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
+        run: .github/workflows/run_sanitizers.sh
       - name: v self compilation
         run: v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self compilation with -usecache
