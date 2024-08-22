@@ -96,6 +96,8 @@ jobs:
         run: v -cflags /WX self
       - name: All code is formatted
         run: v test-cleancode
+      - name: Test -cc msvc -gc boehm works
+        run: v -no-retry-compilation -gc boehm run examples/hello_world.v
       - name: Install dependencies
         run: |
           v setup-freetype
