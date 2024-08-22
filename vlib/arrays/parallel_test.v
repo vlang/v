@@ -18,7 +18,7 @@ fn test_run_parallel() {
 fn test_map_parallel() {
 	input := [1, 2, 3, 4, 5, 6, 7, 8, 9]
 	output := map_parallel[int, int](input, 4, fn (i int) int {
-		delay := rand.intn(1000) or { 1000 }
+		delay := rand.intn(250) or { 250 }
 		time.sleep(delay * time.millisecond)
 		return i * i
 	})
