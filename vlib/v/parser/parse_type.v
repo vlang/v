@@ -9,6 +9,7 @@ import v.util
 import v.token
 
 const maximum_inline_sum_type_variants = 3
+const generic_type_level_cutoff_limit = 10 // it is very rarely deeper than 4
 
 fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Type {
 	p.check(expecting)
@@ -866,6 +867,14 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 }
 
 fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
+	p.generic_type_level++
+	defer {
+		p.generic_type_level--
+	}
+	if p.generic_type_level > parser.generic_type_level_cutoff_limit {
+		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
+		return ast.void_type
+	}
 	mut bs_name := name
 	mut bs_cname := name
 	start_pos := p.tok.pos()

@@ -105,6 +105,7 @@ mut:
 	left_comments             []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
+	generic_type_level        int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
