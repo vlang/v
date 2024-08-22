@@ -1107,6 +1107,9 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ ${cmd}\n') or {
 		panic(err)
 	}
+	if v.pref.show_cc {
+		println('>> OBJECT FILE compilation cmd: ${cmd}')
+	}
 	$if trace_thirdparty_obj_files ? {
 		if res.output != '' {
 			println(res.output)
