@@ -6,11 +6,10 @@ import runtime
 
 // run lets the user run an array of input with a
 // user provided function in parallel. It limits the number of
-// worker threads. The function makes use of channels to achieve it.
-// The worker function is supposed to not return any error or a return value.
+// worker threads to min(num_workers, num_cpu)
 // The function aborts if an error is encountered.
 // Example: parallel.run([1, 2, 3, 4, 5], 2, fn (i) { println(i) })
-pub fn run[T](input []T, max_workers int, worker fn (T) !) {
+pub fn run[T](input []T, max_workers int, worker fn (T)) {
 	mut wg := sync.new_waitgroup()
 	wg.add(input.len)
 	ch := chan T{}
@@ -22,10 +21,7 @@ pub fn run[T](input []T, max_workers int, worker fn (T) !) {
 		spawn fn [ch, worker, mut wg] [T]() {
 			for {
 				task := <-ch or { break }
-				worker(task) or {
-					eprintln('error executing parallel task, aborting')
-					return
-				}
+				worker(task)
 				wg.done()
 			}
 		}()
@@ -48,7 +44,7 @@ struct Task[T, R] {
 
 // amap lets the user run an array of input with a
 // user provided function in parallel. It limits the number of
-// worker threads to max number of cpus. The function makes use of channels to achieve it.
+// worker threads to max number of cpus.
 // The worker function can return a value. The returning array maintains the input order.
 // Any error handling should have happened within the worker function.
 // Example: squares := parallel.amap([1, 2, 3, 4, 5], 2, fn (i) { return i * i })
