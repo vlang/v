@@ -39,7 +39,7 @@ fn my_init(mut app App_data) {
 	for i in 0 .. 2 {
 		mut txt := unsafe { &app.ttf_render[i] }
 		txt.destroy_texture()
-		txt.create_text_block(texts[i], 600, 600, 24)
+		txt.create_text_block(texts[i], 1024, 1024, 24)
 		txt.create_texture()
 	}
 }
