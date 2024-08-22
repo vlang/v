@@ -34,11 +34,12 @@ pub mut:
 
 fn my_init(mut app App_data) {
 	app.init_flag = true
-	texts := ['Hello', block_txt]!
+	texts := ['Hello, font: ${os.file_name(custom_font_path)}', block_txt]!
+	dump(texts[0])
 	for i in 0 .. 2 {
 		mut txt := unsafe { &app.ttf_render[i] }
 		txt.destroy_texture()
-		txt.create_text_block(texts[i], 600, 600, 24 + (1 - i) * 24)
+		txt.create_text_block(texts[i], 600, 600, 24)
 		txt.create_texture()
 	}
 }
