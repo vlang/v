@@ -399,7 +399,7 @@ pub fn (x Expr) str() string {
 	str_calls := stdatomic.add_i64(&nested_expr_str_calls, 1)
 	if str_calls > ast.max_nested_expr_str_calls {
 		$if panic_on_deeply_nested_expr_str_calls ? {
-			eprintln('${@LOCATION}: too many nested Expr.str() calls: ${str_calls}, expr type: ${expr.type_name()}')
+			eprintln('${@LOCATION}: too many nested Expr.str() calls: ${str_calls}, expr type: ${x.type_name()}')
 			exit(1)
 		}
 		return '{expression too deep}'
