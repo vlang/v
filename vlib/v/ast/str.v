@@ -1,10 +1,12 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module ast
 
 import v.util
 import strings
+import sync.stdatomic
 
 // get_name returns the real name for the function declaration
 pub fn (f &FnDecl) get_name() string {
@@ -388,8 +390,23 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	return res.join(''), needs_braces
 }
 
+__global nested_expr_str_calls = i64(0)
+// too big values, risk stack overflow in `${expr}` (which uses `expr.str()`) calls
+const max_nested_expr_str_calls = 300
+
 // string representation of expr
 pub fn (x Expr) str() string {
+	str_calls := stdatomic.add_i64(&nested_expr_str_calls, 1)
+	if str_calls > ast.max_nested_expr_str_calls {
+		$if panic_on_deeply_nested_expr_str_calls ? {
+			eprintln('${@LOCATION}: too many nested Expr.str() calls: ${str_calls}, expr type: ${expr.type_name()}')
+			exit(1)
+		}
+		return '{expression too deep}'
+	}
+	defer {
+		stdatomic.sub_i64(&nested_expr_str_calls, 1)
+	}
 	match x {
 		AnonFn {
 			return 'anon_fn'

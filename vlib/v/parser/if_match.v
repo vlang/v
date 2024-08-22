@@ -164,6 +164,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_if = false
 		p.inside_comptime_if = false
 		if p.opened_scopes > p.max_opened_scopes {
+			p.should_abort = true
 			p.error('too many nested conditionals, scopes: ${p.opened_scopes}')
 			return ast.IfExpr{}
 		}
