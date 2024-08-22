@@ -114,7 +114,12 @@ $if gcboehm_leak ? {
 	#flag -DGC_DEBUG=1
 }
 
+$if windows && msvc {
+	#flag ucrtd.lib
+}
+
 #include <gc.h>
+
 // #include <gc/gc_mark.h>
 
 // replacements for `malloc()/calloc()`, `realloc()` and `free()`
