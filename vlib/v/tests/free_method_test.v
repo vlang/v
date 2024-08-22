@@ -7,6 +7,8 @@ pub struct Opt {
 pub struct Test {
 	a string
 	b string @[skip]
+	c ?map[string]f64
+	d ?[]string
 }
 
 fn test_main() {
