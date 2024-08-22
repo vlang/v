@@ -550,6 +550,7 @@ fn (p &Parser) is_array_type() bool {
 fn (mut p Parser) open_scope() {
 	if p.opened_scopes > p.max_opened_scopes {
 		p.error('nested opened scopes limit reached: ${p.max_opened_scopes}')
+		exit(1)
 	}
 	p.scope = &ast.Scope{
 		parent:    p.scope
