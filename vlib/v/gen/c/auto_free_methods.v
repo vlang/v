@@ -36,8 +36,8 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	}
 	g.generated_free_methods[deref_typ] = true
 
-	struct_typ := g.unwrap_generic(typ)
-	mut sym := g.table.sym(struct_typ)
+	objtyp := g.unwrap_generic(typ)
+	mut sym := g.table.sym(objtyp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
@@ -49,13 +49,13 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 
 	match mut sym.info {
 		ast.Struct {
-			g.gen_free_for_struct(struct_typ, sym.info, styp, fn_name)
+			g.gen_free_for_struct(objtyp, sym.info, styp, fn_name)
 		}
 		ast.Array {
 			g.gen_free_for_array(sym.info, styp, fn_name)
 		}
 		ast.Map {
-			g.gen_free_for_map(sym.info, styp, fn_name)
+			g.gen_free_for_map(objtyp, sym.info, styp, fn_name)
 		}
 		else {
 			println(g.table.type_str(typ))
@@ -151,7 +151,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 	fn_builder.writeln('}')
 }
 
-fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_map(typ ast.Type, info ast.Map, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
@@ -159,7 +159,13 @@ fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
 	}
 	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 
-	fn_builder.writeln('\tmap_free(it);')
+	if typ.has_flag(.option) {
+		fn_builder.writeln('\tif (it->state != 2) {')
+		fn_builder.writeln('\t\tmap_free((map*)&it->data);')
+		fn_builder.writeln('\t}')
+	} else {
+		fn_builder.writeln('\tmap_free(it);')
+	}
 	fn_builder.writeln('}')
 }
 
