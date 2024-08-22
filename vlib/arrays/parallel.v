@@ -9,6 +9,7 @@ import runtime
 // worker threads. The function makes use of channels to achieve it
 // The worker function is supposed to not return any error or a return value
 // Any error handling should have happened within the worker function
+// Example: arrays.run_parallel([1, 2, 3, 4, 5], 2, fn (i) { println(i) })
 pub fn run_parallel[T](input []T, max_workers int, worker fn (T) !) {
 	mut wg := sync.new_waitgroup()
 	wg.add(input.len)
@@ -49,13 +50,13 @@ struct Task[T] {
 // worker threads to max number of cpus. The function makes use of channels to achieve it
 // The worker function can return a value. The returning array maintains the input order
 // Any error handling should have happened within the worker function
+// Example: squares := arrays.map_parallel([1, 2, 3, 4, 5], 2, fn (i) { return i * i })
 pub fn map_parallel[T, R](input []T, max_workers int, worker fn (T) R) []R {
 	mut wg := sync.new_waitgroup()
 	mut output := []R{cap: input.len}
 	mut output_ref := &output
 	wg.add(input.len)
 
-	// https://github.com/vlang/v/issues/19609
 	ch := chan Task[T]{}
 
 	// create workers to handle the load
