@@ -599,6 +599,7 @@ pub fn (typ Type) is_bool() bool {
 	return typ.idx() == ast.bool_type_idx
 }
 
+pub const invalid_type_idx = -1
 pub const no_type_idx = 0
 pub const void_type_idx = 1
 pub const voidptr_type_idx = 2
@@ -657,7 +658,8 @@ pub const number_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i32_type_
 	rune_type_idx]
 pub const pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 
-pub const no_type = idx_to_type(no_type_idx) // 0 is an invalid type, but it is useful for initialising default ast.Type values
+pub const invalid_type = idx_to_type(invalid_type_idx) // -1 is a purposefully invalid type, not by default, but to signify checker errors
+pub const no_type = idx_to_type(no_type_idx) // 0 is an invalid type, but it is useful for initialising default ast.Type values, in fields or before loops
 pub const void_type = new_type(void_type_idx)
 pub const ovoid_type = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
 pub const rvoid_type = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`

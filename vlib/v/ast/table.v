@@ -76,7 +76,6 @@ pub fn (mut t Table) free() {
 	}
 }
 
-pub const invalid_type_idx = -1
 pub const fn_type_escape_seq = [' ', '', '(', '_', ')', '']
 pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
 
@@ -768,7 +767,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		}
 		return existing_idx
 	}
-	return ast.invalid_type_idx
+	return invalid_type_idx
 }
 
 @[inline]
