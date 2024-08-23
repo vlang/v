@@ -4023,10 +4023,10 @@ possible to return multiple values and still signal an error.
 
 ```v
 fn multireturn(v int) !(int, int) {
-	if v<0 {
+	if v < 0 {
 		return error('must be positive')
 	}
-	return v,v*v
+	return v, v * v
 }
 ```
 
