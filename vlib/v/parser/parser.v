@@ -2240,7 +2240,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 }
 
 fn (mut p Parser) is_following_concrete_types() bool {
-	if !(p.tok.kind == .lsbr && p.tok.is_next_to(p.prev_tok)) {
+	if !(p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok)) {
 		return false
 	}
 	mut i := 1
