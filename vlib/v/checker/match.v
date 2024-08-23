@@ -460,7 +460,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		// when match is type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
 			if cond_type_sym.kind in [.sum_type, .interface_] {
-				mut expr_type := ast.Type(0)
+				mut expr_type := ast.no_type
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
 					mut agg_cname := strings.new_builder(20)

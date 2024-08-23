@@ -90,7 +90,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 				.key_is, .not_is {
 					left := cond.left
 					mut name := ''
-					mut exp_type := ast.Type(0)
+					mut exp_type := ast.no_type
 					got_type := (cond.right as ast.TypeNode).typ
 					// Handle `$if x is Interface {`
 					// mut matches_interface := 'false'

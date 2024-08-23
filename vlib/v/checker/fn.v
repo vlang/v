@@ -323,7 +323,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	if node.return_type != ast.Type(0) {
+	if node.return_type != ast.no_type {
 		if !c.ensure_type_exists(node.return_type, node.return_type_pos) {
 			return
 		}
@@ -886,7 +886,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		node.name = ''
 		c.expr(mut node.left)
 		left := node.left as ast.AnonFn
-		if left.typ != ast.Type(0) {
+		if left.typ != ast.no_type {
 			anon_fn_sym := c.table.sym(left.typ)
 			func = (anon_fn_sym.info as ast.FnType).func
 			found = true
@@ -1011,7 +1011,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			return ast.void_type
 		}
 
-		ret_typ := ast.Type(idx).set_flag(.option)
+		ret_typ := ast.idx_to_type(idx).set_flag(.option)
 		if node.args.len != 1 {
 			c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 		} else {
@@ -2090,7 +2090,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 				ast.Array {
 					typ := c.table.unaliased_type(final_left_sym.info.elem_type)
-					parent_type = ast.Type(c.table.find_or_register_array(typ))
+					parent_type = ast.idx_to_type(c.table.find_or_register_array(typ))
 				}
 				else {}
 			}
@@ -2344,7 +2344,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 	}
 	c.check_expected_arg_count(mut node, method) or { return method.return_type }
-	mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
+	mut exp_arg_typ := ast.no_type // type of 1st arg for special builtin methods
 	mut param_is_mut := false
 	mut no_type_promotion := false
 	if left_sym.info is ast.Chan {
@@ -2358,7 +2358,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 
 	for i, mut arg in node.args {
-		if i > 0 || exp_arg_typ == ast.Type(0) {
+		if i > 0 || exp_arg_typ == ast.no_type {
 			exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
 				method.params.last().typ
 			} else {
@@ -3008,7 +3008,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 			} else {
 				c.table.find_or_register_array(info.value_type)
 			}
-			ret_type = ast.Type(typ)
+			ret_type = ast.idx_to_type(typ)
 			if info.key_type.has_flag(.generic) && method_name == 'keys' {
 				ret_type = ret_type.set_flag(.generic)
 			}

@@ -720,7 +720,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 				g.table.type_idxs['None__']
 			}
 			else {
-				ast.Type(0)
+				ast.no_type
 			}
 		}
 		sub_sym := g.table.sym(sub_type)

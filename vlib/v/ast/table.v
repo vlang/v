@@ -1559,7 +1559,7 @@ pub fn (mut t Table) resolve_generic_static_type_name(fn_name string, generic_na
 			valid_generic := util.is_generic_type_name(generic_name)
 				&& generic_name in generic_names
 			if valid_generic {
-				name_type := Type(t.find_type_idx(generic_name)).set_flag(.generic)
+				name_type := idx_to_type(t.find_type_idx(generic_name)).set_flag(.generic)
 				if typ := t.resolve_generic_to_concrete(name_type, generic_names, concrete_types) {
 					return '${t.type_to_str(typ)}${fn_name[index..]}'
 				}

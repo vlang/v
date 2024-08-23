@@ -731,15 +731,15 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
-						ast.Type(0)
+						ast.no_type
 					}
 				}
 				else {
 					c.error('invalid type `${right_expr}`', right_expr.pos())
-					ast.Type(0)
+					ast.no_type
 				}
 			}
-			if typ != ast.Type(0) {
+			if typ != ast.no_type {
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
 				if typ_sym.kind == .placeholder {

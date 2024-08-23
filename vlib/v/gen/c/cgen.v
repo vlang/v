@@ -325,9 +325,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			label:        'global_cgen'
 		)
 		inner_loop:           unsafe { &ast.empty_stmt }
-		field_data_type:      ast.Type(table.find_type_idx('FieldData'))
-		enum_data_type:       ast.Type(table.find_type_idx('EnumData'))
-		variant_data_type:    ast.Type(table.find_type_idx('VariantData'))
+		field_data_type:      ast.idx_to_type(table.find_type_idx('FieldData'))
+		enum_data_type:       ast.idx_to_type(table.find_type_idx('EnumData'))
+		variant_data_type:    ast.idx_to_type(table.find_type_idx('VariantData'))
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -715,8 +715,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
 		inner_loop:           &ast.empty_stmt
-		field_data_type:      ast.Type(global_g.table.find_type_idx('FieldData'))
-		enum_data_type:       ast.Type(global_g.table.find_type_idx('EnumData'))
+		field_data_type:      ast.idx_to_type(global_g.table.find_type_idx('FieldData'))
+		enum_data_type:       ast.idx_to_type(global_g.table.find_type_idx('EnumData'))
 		array_sort_fn:        global_g.array_sort_fn
 		waiter_fns:           global_g.waiter_fns
 		threaded_fns:         global_g.threaded_fns
@@ -1175,7 +1175,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${c.option_name}_${base}'
 	}
-	if t.is_ptr() || t.has_flag(.generic) {
+	if t.has_flag(.generic) || t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -1197,7 +1197,7 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${c.result_name}_${base}'
 	}
-	if t.is_ptr() || t.has_flag(.generic) {
+	if t.has_flag(.generic) || t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -2426,13 +2426,13 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
 		got:     if got_.has_flag(.option) {
-			new_got := ast.Type(got_sym.idx).set_flag(.option)
+			new_got := ast.idx_to_type(got_sym.idx).set_flag(.option)
 			new_got
 		} else {
 			got_sym.idx
 		}
 		exp: if exp_.has_flag(.option) {
-			new_exp := ast.Type(exp).set_flag(.option)
+			new_exp := ast.idx_to_type(exp).set_flag(.option)
 			new_exp
 		} else {
 			exp

@@ -633,8 +633,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						continue
 					}
 				}
-				mut got_type := ast.Type(0)
-				mut exp_type := ast.Type(0)
+				mut got_type := ast.no_type
+				mut exp_type := ast.no_type
 				inited_fields << field_name
 				exp_type = field_info.typ
 				exp_type_sym := c.table.sym(exp_type)

@@ -15,7 +15,12 @@ import strings
 import v.pref
 import v.token
 
-pub type Type = int
+pub type Type = u32
+
+@[inline]
+pub fn idx_to_type(idx int) Type {
+	return Type(u32(idx))
+}
 
 pub struct UnknownTypeInfo {}
 
@@ -110,7 +115,7 @@ pub mut:
 }
 
 // max of 8
-pub enum TypeFlag {
+pub enum TypeFlag as u32 {
 	option
 	result
 	variadic
@@ -307,7 +312,7 @@ pub fn (t Type) is_full() bool {
 // return nr_muls for `t`
 @[inline]
 pub fn (t Type) nr_muls() int {
-	return (int(t) >> 16) & 0xff
+	return (t >> 16) & 0xff
 }
 
 // return true if `t` is a pointer (nr_muls>0)
@@ -315,7 +320,7 @@ pub fn (t Type) nr_muls() int {
 pub fn (t Type) is_ptr() bool {
 	// any normal pointer, i.e. &Type, &&Type etc;
 	// Note: voidptr, charptr and byteptr are NOT included!
-	return (int(t) >> 16) & 0xff != 0
+	return (t >> 16) & 0xff != 0
 }
 
 // is_pointer returns true if `typ` is any of the builtin pointer types (voidptr, byteptr, charptr)
@@ -334,7 +339,7 @@ pub fn (typ Type) is_voidptr() bool {
 // is_any_kind_of_pointer returns true if t is any type of pointer
 @[inline]
 pub fn (t Type) is_any_kind_of_pointer() bool {
-	return (int(t) >> 16) & 0xff != 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
+	return (t >> 16) & 0xff != 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
 }
 
 // set nr_muls on `t` and return it
@@ -343,50 +348,50 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return int(t) & 0xff00ffff | int(u32(nr_muls) << 16)
+	return t & 0xff00ffff | u32(nr_muls) << 16
 }
 
 // increments nr_muls on `t` and return it
 @[inline]
 pub fn (t Type) ref() Type {
-	nr_muls := (int(t) >> 16) & 0xff
+	nr_muls := (t >> 16) & 0xff
 	if nr_muls == 255 {
 		panic('ref: nr_muls is already at max of 255')
 	}
-	return int(t) & 0xff00ffff | int(u32(nr_muls + 1) << 16)
+	return t & 0xff00ffff | (nr_muls + 1) << 16
 }
 
 // decrement nr_muls on `t` and return it
 @[inline]
 pub fn (t Type) deref() Type {
-	nr_muls := (int(t) >> 16) & 0xff
+	nr_muls := (t >> 16) & 0xff
 	if nr_muls == 0 {
 		panic('deref: type `${t}` is not a pointer')
 	}
-	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
+	return t & 0xff00ffff | (nr_muls - 1) << 16
 }
 
 // set `flag` on `t` and return `t`
 @[inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
-	return int(t) | (1 << (int(flag) + 24))
+	return t | (1 << (u32(flag) + 24))
 }
 
 // clear `flag` on `t` and return `t`
 @[inline]
 pub fn (t Type) clear_flag(flag TypeFlag) Type {
-	return int(t) & ~(1 << (int(flag) + 24))
+	return t & ~(1 << (u32(flag) + 24))
 }
 
 // clear all flags or multi flags
 @[inline]
 pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	if flags.len == 0 {
-		return int(t) & 0xffffff
+		return t & 0xffffff
 	} else {
 		mut typ := int(t)
 		for flag in flags {
-			typ = typ & ~(1 << (int(flag) + 24))
+			typ = typ & ~(1 << (u32(flag) + 24))
 		}
 		return typ
 	}
@@ -395,18 +400,18 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 // clear option and result flags
 @[inline]
 pub fn (t Type) clear_option_and_result() Type {
-	return u32(t) & ~0x0300_0000
+	return t & ~0x0300_0000
 }
 
 // return true if `flag` is set on `t`
 @[inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
-	return int(t) & (1 << (int(flag) + 24)) != 0
+	return t & (1 << (u32(flag) + 24)) != 0
 }
 
 @[inline]
 pub fn (t Type) has_option_or_result() bool {
-	return u32(t) & 0x0300_0000 != 0
+	return t & 0x0300_0000 != 0
 }
 
 // debug returns a verbose representation of the information in ts, useful for tracing/debugging
@@ -594,6 +599,7 @@ pub fn (typ Type) is_bool() bool {
 	return typ.idx() == ast.bool_type_idx
 }
 
+pub const no_type_idx = 0
 pub const void_type_idx = 1
 pub const voidptr_type_idx = 2
 pub const byteptr_type_idx = 3
@@ -651,6 +657,7 @@ pub const number_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i32_type_
 	rune_type_idx]
 pub const pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 
+pub const no_type = idx_to_type(no_type_idx) // 0 is an invalid type, but it is useful for initialising default ast.Type values
 pub const void_type = new_type(void_type_idx)
 pub const ovoid_type = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
 pub const rvoid_type = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`

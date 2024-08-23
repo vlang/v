@@ -335,7 +335,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	}
 
 	generic_names := p.types_to_names(generic_types, fn_type_pos, 'generic_types') or {
-		return ast.Type(0)
+		return ast.no_type
 	}
 
 	func := ast.Fn{
@@ -425,7 +425,7 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 		for variant in variants {
 			if variant.typ == 0 {
 				p.error_with_pos('unknown type for variant: ${variant}', variant.pos)
-				return ast.Type(0)
+				return ast.no_type
 			}
 			variant_names << p.table.sym(variant.typ).name
 		}
@@ -452,7 +452,7 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	} else if variants.len == 1 {
 		return variants[0].typ
 	}
-	return ast.Type(0)
+	return ast.no_type
 }
 
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
@@ -714,7 +714,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 			if name == 'thread' {
 				return p.parse_thread_type()
 			}
-			mut ret := ast.Type(0)
+			mut ret := ast.no_type
 			if name == '' {
 				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
 				p.error('expecting type declaration')
@@ -807,7 +807,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 				if p.struct_init_generic_types.len > 0 && sym.info.generic_types.len > 0
 					&& p.struct_init_generic_types != sym.info.generic_types {
 					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
-						'struct_init_generic_types') or { return ast.Type(0) }
+						'struct_init_generic_types') or { return ast.no_type }
 					// NOTE:
 					// Used here for the wraparound `< >` characters, is not a reserved character in generic syntax,
 					// is used as the `generic names` part of the qualified type name,

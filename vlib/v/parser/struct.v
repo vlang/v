@@ -178,7 +178,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
 			has_prev_newline := p.has_prev_newline()
 			mut field_name := ''
-			mut typ := ast.Type(0)
+			mut typ := ast.no_type
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
 			mut option_pos := token.Pos{}
