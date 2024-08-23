@@ -3,8 +3,21 @@ module main
 import os
 import flag
 import time
-import term
 import math
+import term
+
+const tred = term.red
+const tbold = term.bold
+const tgray = term.gray
+const tcyan = term.cyan
+const tgreen = term.green
+const tbcyan = term.bright_cyan
+const tbblue = term.bright_blue
+const tdivider = term.h_divider
+
+fn c(cfn fn (string) string, s string) string {
+	return term.colorize(cfn, s)
+}
 
 const max_fail_percent = 100 * 1000
 const max_time = 60 * 1000 // ms
@@ -104,15 +117,15 @@ fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
 }
 
 fn bold(s string) string {
-	return term.colorize(term.green, term.colorize(term.bold, s))
+	return c(tgreen, c(tbold, s))
 }
 
 fn (a Aints) str() string {
 	avg := bold('${a.average / 1000:5.1f}ms')
-	tdev := term.colorize(term.red, '${a.stddev / 1000:5.1f}ms')
+	tdev := c(tred, '${a.stddev / 1000:5.1f}ms')
 	baseline := '${avg} ± σ: ${tdev},'
-	tmin := term.colorize(term.bright_cyan, '${f64(a.imin) / 1000:5.1f}ms')
-	tmax := term.colorize(term.bright_blue, '${f64(a.imax) / 1000:5.1f}ms')
+	tmin := c(tbcyan, '${f64(a.imin) / 1000:5.1f}ms')
+	tmax := c(tbblue, '${f64(a.imax) / 1000:5.1f}ms')
 	return '${baseline:-46s} ${tmin}…${tmax}'
 }
 
@@ -166,7 +179,7 @@ fn (mut context Context) run() {
 			mut duration := i64(0)
 			mut oldres := ''
 			series_label := '${icmd + 1}/${context.commands.len}, ${si + 1}/${context.series}'
-			line_prefix := '${context.cgoback}Command: ${term.colorize(term.gray, cmd)}, ${series_label:9}'
+			line_prefix := '${context.cgoback}Command: ${c(tgray, cmd)}, ${series_label:9}'
 			if context.series != 1 || context.commands.len != 1 {
 				flushed_print(line_prefix)
 			}
@@ -198,7 +211,8 @@ fn (mut context Context) run() {
 				sum += duration
 				runs++
 				avg = (f64(sum) / f64(i + 1))
-				flushed_print('${line_prefix}, current average: ${avg / 1000:9.3f}ms, run ${i + 1:4}/${context.run_count:-4} took ${f64(duration) / 1000:6} ms')
+				cavg := '${avg / 1000:9.3f}ms'
+				flushed_print('${line_prefix}, current average: ${c(tgreen, cavg)}, run ${i + 1:4}/${context.run_count:-4} took ${f64(duration) / 1000:6} ms')
 				if context.show_output {
 					flushed_print(' | result: ${oldres:s}')
 				}
@@ -288,8 +302,8 @@ fn (mut context Context) show_diff_summary() {
 	mut first_cmd_percentage := f64(100.0)
 	mut first_marker := ''
 	if context.results.len == 1 {
-		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${term.colorize(term.green,
-			context.results[0].cmd):-57s}')
+		gcmd := c(tgreen, context.results[0].cmd)
+		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${gcmd:-57s}')
 	} else {
 		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`).')
 		for i, r in context.results {
@@ -306,13 +320,13 @@ fn (mut context Context) show_diff_summary() {
 			mut tcomparison := 'base        '
 			if r.atiming.average != base {
 				if r.atiming.average < base {
-					tcomparison = '${base / r.atiming.average:4.2f}x faster'
+					tcomparison = '${base / r.atiming.average:4.2f}x ${c(tgreen, 'faster')}'
 				} else {
-					tcomparison = '${r.atiming.average / base:4.2f}x slower'
+					tcomparison = '${r.atiming.average / base:4.2f}x ${c(tcyan, 'slower')}'
 				}
 			}
-			println(' ${first_marker}${(i + 1):3} ${comparison:7} ${tcomparison:5} ${r.atiming} `${term.colorize(term.green,
-				r.cmd)}`')
+			gcmd := c(tgreen, r.cmd)
+			println(' ${first_marker}${(i + 1):3} ${comparison:7} ${tcomparison:5} ${r.atiming} `${gcmd}`')
 		}
 	}
 	$if debugcontext ? {
@@ -390,7 +404,7 @@ fn (mut context Context) parse_options() ! {
 		context.cline = '\n'
 		context.cgoback = '\n'
 	} else {
-		context.cline = '\r' + term.h_divider('') + '\r'
+		context.cline = '\r' + tdivider('') + '\r'
 		context.cgoback = '\r'
 	}
 }
