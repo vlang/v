@@ -1471,16 +1471,16 @@ fn (mut g Gen) resolve_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Typ
 		}
 		ast.InfixExpr {
 			if g.comptime.is_comptime_var(expr.left) {
-				return g.comptime.get_comptime_var_type(expr.left)
+				return g.unwrap_generic(g.comptime.get_comptime_var_type(expr.left))
 			}
 			if g.comptime.is_comptime_var(expr.right) {
-				return g.comptime.get_comptime_var_type(expr.right)
+				return g.unwrap_generic(g.comptime.get_comptime_var_type(expr.right))
 			}
 			return default_typ
 		}
 		ast.Ident {
 			return if g.comptime.is_comptime_var(expr) {
-				g.comptime.get_comptime_var_type(expr)
+				g.unwrap_generic(g.comptime.get_comptime_var_type(expr))
 			} else {
 				default_typ
 			}
