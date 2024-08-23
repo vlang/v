@@ -232,7 +232,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if should_compile {
 		emodules := util.external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
@@ -484,7 +484,7 @@ fn non_empty(arg []string) []string {
 	return arg.filter(it != '')
 }
 
-pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
+pub fn check_module_is_installed(modulename string, is_verbose bool, need_update bool) !bool {
 	mpath := os.join_path_single(os.vmodules_dir(), modulename)
 	mod_v_file := os.join_path_single(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/${modulename}'
@@ -494,24 +494,26 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
 		eprintln('check_module_is_installed: murl: ${murl}')
 	}
 	if os.exists(mod_v_file) {
-		vexe := pref.vexe_path()
-		update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
-		if is_verbose {
-			eprintln('check_module_is_installed: updating with ${update_cmd} ...')
-		}
-		update_res := os.execute(update_cmd)
-		if update_res.exit_code < 0 {
-			return error('can not start ${update_cmd}, error: ${update_res.output}')
-		}
-		if update_res.exit_code != 0 {
-			eprintln('Warning: `${modulename}` exists, but is not updated.
+		if need_update {
+			vexe := pref.vexe_path()
+			update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
+			if is_verbose {
+				eprintln('check_module_is_installed: updating with ${update_cmd} ...')
+			}
+			update_res := os.execute(update_cmd)
+			if update_res.exit_code < 0 {
+				return error('can not start ${update_cmd}, error: ${update_res.output}')
+			}
+			if update_res.exit_code != 0 {
+				eprintln('Warning: `${modulename}` exists, but is not updated.
 V will continue, since updates can fail due to temporary network problems,
 and the existing module `${modulename}` may still work.')
-			if is_verbose {
-				eprintln('Details:')
-				eprintln(update_res.output)
+				if is_verbose {
+					eprintln('Details:')
+					eprintln(update_res.output)
+				}
+				eprintln('-'.repeat(50))
 			}
-			eprintln('-'.repeat(50))
 		}
 		return true
 	}
@@ -540,7 +542,7 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
 		for emodule in tool_modules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 	}
 }
