@@ -575,6 +575,7 @@ fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.gen_anon_fn_decl(mut node)
 	mut fn_name := node.decl.name
+
 	if node.decl.generic_names.len > 0 {
 		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
@@ -1468,11 +1469,39 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 	return receiver_type_name
 }
 
+fn (mut g Gen) resolve_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Type {
+	match expr {
+		ast.ParExpr {
+			return g.resolve_generic_expr(expr.expr, default_typ)
+		}
+		ast.InfixExpr {
+			if g.comptime.is_comptime_var(expr.left) {
+				return g.unwrap_generic(g.comptime.get_comptime_var_type(expr.left))
+			}
+			if g.comptime.is_comptime_var(expr.right) {
+				return g.unwrap_generic(g.comptime.get_comptime_var_type(expr.right))
+			}
+			return default_typ
+		}
+		ast.Ident {
+			return if g.comptime.is_comptime_var(expr) {
+				g.unwrap_generic(g.comptime.get_comptime_var_type(expr))
+			} else {
+				default_typ
+			}
+		}
+		else {
+			return default_typ
+		}
+	}
+}
+
 fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
+		unwrapped_rec_type = g.resolve_generic_expr(node.left, unwrapped_rec_type)
 	} else { // in non-generic fn
 		sym := g.table.sym(node.receiver_type)
 		match sym.info {

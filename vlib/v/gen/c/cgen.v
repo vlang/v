@@ -3565,8 +3565,14 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.write('/*IsRefType*/ ${is_ref_type}')
 		}
 		ast.LambdaExpr {
-			g.gen_anon_fn(mut node.func)
-			// g.write('/* lambda expr: ${node_.str()} */')
+			if node.call_ctx != unsafe { nil } {
+				save_cur_concrete_types := g.cur_concrete_types
+				g.cur_concrete_types = node.call_ctx.concrete_types
+				g.gen_anon_fn(mut node.func)
+				g.cur_concrete_types = save_cur_concrete_types
+			} else {
+				g.gen_anon_fn(mut node.func)
+			}
 		}
 		ast.Likely {
 			if node.is_likely {

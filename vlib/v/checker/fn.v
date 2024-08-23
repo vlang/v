@@ -1585,6 +1585,19 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						if c.comptime.type_map.len > 0 {
 							continue
 						}
+						if mut call_arg.expr is ast.LambdaExpr {
+							// Calling fn is generic and lambda arg also is generic
+							if node.concrete_types.len > 0
+								&& call_arg.expr.func.decl.generic_names.len > 0 {
+								call_arg.expr.call_ctx = unsafe { node }
+								if c.table.register_fn_concrete_types(call_arg.expr.func.decl.fkey(),
+									node.concrete_types)
+								{
+									call_arg.expr.func.decl.ninstances++
+								}
+							}
+							continue
+						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 					}
 				}

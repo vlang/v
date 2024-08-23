@@ -127,6 +127,9 @@ pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mu
 			v.typ = ptype
 			v.is_auto_deref = ptype.is_ptr()
 			v.expr = ast.empty_expr
+			if ptype.has_flag(.generic) {
+				v.ct_type_var = .generic_param
+			}
 		}
 	}
 	if pident.kind != .blank_ident {
