@@ -116,12 +116,12 @@ pub mut:
 
 // max of 8
 pub enum TypeFlag as u32 {
-	option
-	result
-	variadic
-	generic
-	shared_f
-	atomic_f
+	option   = 1 << 24
+	result   = 1 << 25
+	variadic = 1 << 26
+	generic  = 1 << 27
+	shared_f = 1 << 28
+	atomic_f = 1 << 29
 }
 
 /*
@@ -371,19 +371,25 @@ pub fn (t Type) deref() Type {
 	return t & 0xff00ffff | (nr_muls - 1) << 16
 }
 
-// set `flag` on `t` and return `t`
+// has_flag returns whether the given named `flag` is set
+@[inline]
+pub fn (t Type) has_flag(flag TypeFlag) bool {
+	return (t & u32(flag)) != 0
+}
+
+// set_flag returns a new type, that is like the input `t`, but with the named `flag` set
 @[inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
-	return t | (1 << (u32(flag) + 24))
+	return t | u32(flag)
 }
 
-// clear `flag` on `t` and return `t`
+// clear_flag returns a new type, that is like `t`, but with the named `flag` cleared
 @[inline]
 pub fn (t Type) clear_flag(flag TypeFlag) Type {
-	return t & ~(1 << (u32(flag) + 24))
+	return t & ~(u32(flag))
 }
 
-// clear all flags or multi flags
+// clear_flags returns a new type, based on `t`, but with cleared named `flags`
 @[inline]
 pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	if flags.len == 0 {
@@ -391,7 +397,7 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	} else {
 		mut typ := int(t)
 		for flag in flags {
-			typ = typ & ~(1 << (u32(flag) + 24))
+			typ = typ & ~(u32(flag))
 		}
 		return typ
 	}
@@ -401,12 +407,6 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 @[inline]
 pub fn (t Type) clear_option_and_result() Type {
 	return t & ~0x0300_0000
-}
-
-// return true if `flag` is set on `t`
-@[inline]
-pub fn (t Type) has_flag(flag TypeFlag) bool {
-	return t & (1 << (u32(flag) + 24)) != 0
 }
 
 @[inline]
