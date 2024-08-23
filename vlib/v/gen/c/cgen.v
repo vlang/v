@@ -269,7 +269,6 @@ struct GlobalConstDef {
 }
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
-	defer { ast.dump_counters() }
 	mut module_built := ''
 	if pref_.build_mode == .build_module {
 		for file in files {
