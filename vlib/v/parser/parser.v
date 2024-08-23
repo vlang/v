@@ -549,7 +549,9 @@ fn (p &Parser) is_array_type() bool {
 
 fn (mut p Parser) open_scope() {
 	if p.opened_scopes > p.max_opened_scopes {
+		p.should_abort = true
 		p.error('nested opened scopes limit reached: ${p.max_opened_scopes}')
+		return
 	}
 	p.scope = &ast.Scope{
 		parent:    p.scope
@@ -926,7 +928,23 @@ fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 	return comments
 }
 
+fn (mut p Parser) goto_eof() {
+	for p.tok.kind != .eof {
+		p.next()
+	}
+}
+
 fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
+	// ensure that possible parser aborts, are handled as early as possible (on the *next* processed statement):
+	if p.should_abort {
+		abort_pos := p.tok.pos()
+		p.goto_eof()
+		return ast.NodeError{
+			idx: 0
+			pos: abort_pos
+		}
+	}
+
 	p.trace_parser('stmt(${is_top_level})')
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
