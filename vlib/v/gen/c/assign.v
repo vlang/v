@@ -485,8 +485,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
-			mut op_expected_left := ast.Type(0)
-			mut op_expected_right := ast.Type(0)
+			mut op_expected_left := ast.no_type
+			mut op_expected_right := ast.no_type
 			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
 				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct_]
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {

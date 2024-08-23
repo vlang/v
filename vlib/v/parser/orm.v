@@ -246,7 +246,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		}
 	}
 	mut inserted_var := ''
-	mut table_type := ast.Type(0)
+	mut table_type := ast.no_type
 	if kind != .delete {
 		if kind == .update {
 			table_type = p.parse_type()

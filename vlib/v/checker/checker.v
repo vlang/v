@@ -507,7 +507,7 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 }
 
 fn (mut c Checker) type_decl(node ast.TypeDecl) {
-	if node.typ == ast.invalid_type_idx && (node is ast.AliasTypeDecl || node is ast.SumTypeDecl) {
+	if node.typ == ast.invalid_type && (node is ast.AliasTypeDecl || node is ast.SumTypeDecl) {
 		typ_desc := if node is ast.AliasTypeDecl { 'alias' } else { 'sum type' }
 		c.error('cannot register ${typ_desc} `${node.name}`, another type with this name exists',
 			node.pos)
@@ -852,7 +852,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				return to_lock, pos
 			}
 			left_sym := c.table.sym(expr.left_type)
-			mut elem_type := ast.Type(0)
+			mut elem_type := ast.no_type
 			mut kind := ''
 			match left_sym.info {
 				ast.Array {
@@ -1469,7 +1469,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			valid_generic := util.is_generic_type_name(name) && c.table.cur_fn != unsafe { nil }
 				&& name in c.table.cur_fn.generic_names
 			if valid_generic {
-				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
+				name_type = ast.idx_to_type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
 		}
 		ast.TypeOf {
@@ -1813,7 +1813,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 
 fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	c.check_valid_pascal_case(node.name, 'enum name', node.pos)
-	if node.typ == ast.invalid_type_idx {
+	if node.typ == ast.invalid_type {
 		c.error('cannot register enum `${node.name}`, another type with this name exists',
 			node.pos)
 		return

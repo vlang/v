@@ -636,7 +636,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 // check_db_expr checks the `db_expr` implements `orm.Connection` and has no `option` flag.
 fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 	connection_type_index := c.table.find_type_idx('orm.Connection')
-	connection_typ := ast.Type(connection_type_index)
+	connection_typ := ast.idx_to_type(connection_type_index)
 	db_expr_type := c.expr(mut db_expr)
 
 	// If we didn't find `orm.Connection`, we don't have any imported modules
@@ -678,7 +678,7 @@ fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.T
 	} else if c.table.sym(table_field.typ).kind == .array {
 		return c.table.sym(table_field.typ).array_info().elem_type
 	} else {
-		return ast.Type(0)
+		return ast.no_type
 	}
 }
 

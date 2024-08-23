@@ -1255,9 +1255,9 @@ fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
 }
 
 fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string, idx int) {
-	enum_typ := ast.Type(idx)
+	enum_typ := ast.idx_to_type(idx)
 	enum_styp := g.typ(enum_typ)
-	option_enum_typ := ast.Type(idx).set_flag(.option)
+	option_enum_typ := enum_typ.set_flag(.option)
 	option_enum_styp := g.typ(option_enum_typ)
 	enum_field_names := g.table.get_enum_field_names(mod_enum_name)
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)

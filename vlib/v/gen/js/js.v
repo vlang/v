@@ -3189,7 +3189,7 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 		}
 		return ast.Type(ast.int_literal_type_idx)
 	}
-	return ast.Type(l)
+	return ast.idx_to_type(l)
 }
 
 fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {

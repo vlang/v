@@ -717,10 +717,10 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 				g.unwrap_generic(node.right.typ)
 			}
 			ast.None {
-				g.table.type_idxs['None__']
+				ast.idx_to_type(g.table.type_idxs['None__'])
 			}
 			else {
-				ast.Type(0)
+				ast.no_type
 			}
 		}
 		sub_sym := g.table.sym(sub_type)

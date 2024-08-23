@@ -447,7 +447,7 @@ fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name 
 	result_type_idx := table.find_type_idx(result_name)
 	if result_type_idx != 0 {
 		all_fn_root_names << filter_name
-		typ_vweb_context := ast.Type(table.find_type_idx(context_name)).set_nr_muls(1)
+		typ_vweb_context := ast.idx_to_type(table.find_type_idx(context_name)).set_nr_muls(1)
 		all_fn_root_names << '${int(typ_vweb_context)}.html'
 		for vgt in table.used_vweb_types {
 			sym_app := table.sym(vgt)

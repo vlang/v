@@ -1543,7 +1543,7 @@ fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymb
 		typ := g.table.unaliased_type(typ_sym.info.elem_type)
 		typ_idx := g.table.find_type_idx(g.table.array_name(typ))
 		if typ_idx > 0 {
-			unwrapped_rec_type = ast.Type(typ_idx)
+			unwrapped_rec_type = ast.idx_to_type(typ_idx)
 			typ_sym = g.table.sym(unwrapped_rec_type)
 		}
 	}
@@ -1927,7 +1927,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut is_interface_call := false
 	mut is_selector_call := false
 	if node.left_type != 0 {
-		mut fn_typ := ast.Type(0)
+		mut fn_typ := ast.no_type
 		left_sym := g.table.sym(node.left_type)
 		if node.is_field {
 			if field := g.table.find_field_with_embeds(left_sym, node.name) {
