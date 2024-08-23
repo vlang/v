@@ -4016,6 +4016,20 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
+#### Options/results when returning multiple values
+
+Only one `Option` or `Result` is allowed to be returned from a function. It is 
+possible to return multiple values and still signal an error.
+
+```v
+fn multireturn(v int) !(int, int) {
+	if v < 0 {
+		return error('must be positive')
+	}
+	return v, v * v
+}
+```
+
 #### Handling options/results
 
 There are four ways of handling an option/result. The first method is to
