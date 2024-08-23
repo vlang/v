@@ -3069,11 +3069,17 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 }
 
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
+	if !g.is_autofree {
+		return
+	}
 	// g.writeln('// afsv pos=${pos} line_nr=${line_nr} freeparent_scopes=${free_parent_scopes}')
 	g.autofree_scope_vars_stop(pos, line_nr, free_parent_scopes, -1)
 }
 
 fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
+	if !g.is_autofree {
+		return
+	}
 	if g.is_builtin_mod {
 		// In `builtin` everything is freed manually.
 		return
