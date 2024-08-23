@@ -782,8 +782,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 						if name.len == 1 && name[0].is_capital() {
 							return p.parse_generic_type(name)
 						}
-						if p.tok.kind in [.lt, .lsbr]
-							&& p.tok.pos - p.prev_tok.pos == p.prev_tok.len {
+						if p.tok.kind in [.lt, .lsbr] && p.tok.is_next_to(p.prev_tok) {
 							return p.parse_generic_inst_type(name)
 						}
 						return p.find_type_or_add_placeholder(name, language)
