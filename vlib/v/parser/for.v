@@ -205,6 +205,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			is_range:   is_range
 			pos:        pos
 			kv_pos:     key_var_pos
+			vv_pos:     val_var_pos
 			comments:   comments
 			val_is_mut: val_is_mut
 			scope:      p.scope

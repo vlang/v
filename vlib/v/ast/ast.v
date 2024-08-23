@@ -1277,6 +1277,7 @@ pub:
 	is_range   bool
 	pos        token.Pos
 	kv_pos     token.Pos
+	vv_pos     token.Pos
 	comments   []Comment
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop

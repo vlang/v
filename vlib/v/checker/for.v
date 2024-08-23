@@ -44,6 +44,14 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('invalid use of reserved type `${node.val_var}` as value name', node.pos)
 		}
 	}
+	if _ := c.file.global_scope.find_const('${c.mod}.${node.key_var}') {
+		c.error('duplicate of a const name `${c.mod}.${node.key_var}`', node.kv_pos)
+	}
+
+	if _ := c.file.global_scope.find_const('${c.mod}.${node.val_var}') {
+		c.error('duplicate of a const name `${c.mod}.${node.val_var}`', node.vv_pos)
+	}
+
 	if node.is_range {
 		typ_idx := typ.idx()
 		high_type := c.expr(mut node.high)
