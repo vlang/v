@@ -1,29 +1,49 @@
 import arrays.parallel
 import rand
 import time
-import runtime
+
+fn test_parallel_run_with_empty_arrays() {
+	parallel.run([]int{}, fn (x int) {})
+	parallel.run([]u8{}, fn (x u8) {})
+	parallel.run([]u32{}, fn (x u32) {}, workers: 1000)
+	assert true
+}
+
+fn test_parallel_amap_with_empty_arrays() {
+	assert parallel.amap([]int{}, fn (x int) u8 {
+		return 0
+	}) == []
+	assert parallel.amap([]u8{}, fn (x u8) int {
+		return 0
+	}) == []
+	assert parallel.amap([]u8{}, fn (x u8) int {
+		return 0
+	}, workers: 1000) == []
+	assert true
+}
 
 fn test_parallel_run() {
-	count := []int{len: 10, init: index}
+	counters := []int{len: 10, init: index}
+	dump(counters)
 	mut res := []string{len: 10}
 	mut pres := &res
-	parallel.run[int](count, runtime.nr_jobs(), fn [mut pres] (i int) {
+	parallel.run(counters, fn [mut pres] (i int) {
 		delay := rand.intn(250) or { 250 }
 		time.sleep(delay * time.millisecond)
 		unsafe {
 			pres[i] = 'task ${i}, delay=${delay}ms'
 		}
+		assert true
 	})
 	dump(res)
-	assert res.len == count.len
+	assert res.len == counters.len
 }
 
-// todo: rename the function once the implementation is complete
 fn test_parallel_amap() {
 	input := [1, 2, 3, 4, 5, 6, 7, 8, 9]
 	dump(input)
 	dump(input.len)
-	output := parallel.amap[int, int](input, runtime.nr_jobs(), fn (i int) int {
+	output := parallel.amap(input, fn (i int) int {
 		delay := rand.intn(250) or { 250 }
 		time.sleep(delay * time.millisecond)
 		return i * i
