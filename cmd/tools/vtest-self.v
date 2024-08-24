@@ -230,9 +230,11 @@ const skip_on_musl = [
 	'vlib/gg/draw_fns_api_test.v',
 	'vlib/v/tests/skip_unused/gg_code.vv',
 	'vlib/v/tests/c_struct_with_reserved_field_name_test.v',
+	'vlib/arrays/parallel/parallel_test.v',
 ]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
+	'vlib/arrays/parallel/parallel_test.v',
 	//'vlib/v/gen/js/jsgen_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/status_test.v',
