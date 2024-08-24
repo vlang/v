@@ -444,10 +444,8 @@ fn main() {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
-	$if windows {
-		if cfg.github_job == 'tcc' {
-			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
-		}
+	$if windows && tinyc {
+		tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 	}
 	if !cfg.run_slow_sanitize
 		&& ((cfg.sanitize_undefined || cfg.sanitize_memory || cfg.sanitize_address)
