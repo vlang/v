@@ -17,6 +17,7 @@ fn test_parallel_run() {
 // todo: rename the function once the implementation is complete
 fn test_parallel_amap() {
 	input := [1, 2, 3, 4, 5, 6, 7, 8, 9]
+	dump(input)
 	output := parallel.amap[int, int](input, 4, fn (i int) int {
 		delay := rand.intn(250) or { 250 }
 		time.sleep(delay * time.millisecond)
