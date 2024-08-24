@@ -10,6 +10,7 @@ fn test_parallel_run() {
 		time.sleep(delay * time.millisecond)
 		res << 'task ${i}, delay=${delay}ms'
 	})
+	dump(res)
 	assert res.len == count.len
 }
 
@@ -21,6 +22,7 @@ fn test_parallel_amap() {
 		time.sleep(delay * time.millisecond)
 		return i * i
 	})
+	dump(output)
 
 	for i, _ in output {
 		assert output[i] == input[i] * input[i]
@@ -29,6 +31,7 @@ fn test_parallel_amap() {
 	// unordered output validation
 	assert output.len == input.len
 	op_sorted := output.sorted()
+	dump(op_sorted)
 	for i, op in op_sorted {
 		assert op == input[i] * input[i]
 	}
