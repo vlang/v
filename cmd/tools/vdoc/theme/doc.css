@@ -670,19 +670,19 @@ pre {
 }
 
 table {
-	border:1px solid var(--table-background-color); 
+	border: 1px solid var(--table-background-color);
 	border-collapse: collapse;
 }
-table tr td, table tr th { 
-	padding:4px 8px;
+table tr td,
+table tr th {
+	padding: 4px 8px;
 }
-table tr th { 
+table tr th {
 	background-color: var(--table-background-color);
 }
 tr:nth-child(even) {
 	background-color: var(--table-background-color);
 }
-
 
 /* Medium screen and up */
 @media (min-width: 768px) {
