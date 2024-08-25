@@ -623,6 +623,7 @@ code {
 pre {
 	overflow: auto;
 	margin: 0;
+	position: relative;
 }
 .namespace {
 	opacity: 0.7;
@@ -682,6 +683,16 @@ table tr th {
 }
 tr:nth-child(even) {
 	background-color: var(--table-background-color);
+}
+
+button.copy {
+	border: none;
+	background-color: transparent;
+	position: absolute;
+	font-size: 12px;
+	top: 5px;
+	right: 5px;
+	color: var(--ref-symbol-hover-color);
 }
 
 /* Medium screen and up */
