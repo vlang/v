@@ -447,7 +447,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 			node.params = [node.params[0], ctx_param]
 			node.params << params[1..]
-			println('new params ${node.name}')
+			// println('new params ${node.name}')
 			// println(node.params)
 		}
 		// sym := c.table.sym(typ_veb_context)
