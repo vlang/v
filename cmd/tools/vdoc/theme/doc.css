@@ -685,7 +685,6 @@ tr:nth-child(even) {
 	background-color: var(--table-background-color);
 }
 
-
 button.copy {
 	border: none;
 	background-color: transparent;
@@ -695,7 +694,6 @@ button.copy {
 	right: 5px;
 	color: var(--ref-symbol-hover-color);
 }
-
 
 /* Medium screen and up */
 @media (min-width: 768px) {
@@ -810,4 +808,3 @@ button.copy {
 	transform: translateY(0%);
 	z-index: 1000;
 }
-
