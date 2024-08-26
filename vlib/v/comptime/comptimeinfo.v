@@ -279,6 +279,36 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 	}
 }
 
+pub fn (mut ct ComptimeInfo) resolve_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Type {
+	match expr {
+		ast.ParExpr {
+			return ct.resolve_generic_expr(expr.expr, default_typ)
+		}
+		ast.CastExpr {
+			return expr.typ
+		}
+		ast.InfixExpr {
+			if ct.is_comptime_var(expr.left) {
+				return ct.resolver.unwrap_generic(ct.get_comptime_var_type(expr.left))
+			}
+			if ct.is_comptime_var(expr.right) {
+				return ct.resolver.unwrap_generic(ct.get_comptime_var_type(expr.right))
+			}
+			return default_typ
+		}
+		ast.Ident {
+			return if ct.is_comptime_var(expr) {
+				ct.resolver.unwrap_generic(ct.get_comptime_var_type(expr))
+			} else {
+				default_typ
+			}
+		}
+		else {
+			return default_typ
+		}
+	}
+}
+
 pub struct DummyResolver {
 mut:
 	file &ast.File = unsafe { nil }
