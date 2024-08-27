@@ -30,7 +30,7 @@ jobs:
   build-doom:
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-12]
+        os: [ubuntu-20.04]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
