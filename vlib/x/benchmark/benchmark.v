@@ -9,18 +9,18 @@ const default_duration = time.second
 // Benchmark represent all significant data for benchmarking. Provide clear way for getting result in convinient way by exported methods
 @[noinit]
 pub struct Benchmark {
-	pub mut:
-	n 								i64 						// Number of iterations. Set explicitly or computed from expected time of benchmarking
-	bench_func 				fn()! @[required] // function for benchmarking
-	bench_time 				time.Duration 	// benchmark duration
-	is_parallel 			bool 						// if true every bench_func run in separate coroutine
-	benchmark_result 	BenchmarkResult // accumulator of benchmark metrics
-	timer_on          bool						// inner flag of time recording
-	start_time    		time.Time				// start timestamp of timer
-	duration      		time.Duration		// expected time of benchmark process
-	failed 						bool						// flag of bench_func failure. true if one of bench_func run failed
-	start_memory 			usize						// memory status on start benchmark
-	start_allocs 			usize						// size of object allocated on heap
+pub mut:
+	n                i64 // Number of iterations. Set explicitly or computed from expected time of benchmarking
+	bench_func       fn () ! @[required] // function for benchmarking
+	bench_time       time.Duration   // benchmark duration
+	is_parallel      bool            // if true every bench_func run in separate coroutine
+	benchmark_result BenchmarkResult // accumulator of benchmark metrics
+	timer_on         bool            // inner flag of time recording
+	start_time       time.Time       // start timestamp of timer
+	duration         time.Duration   // expected time of benchmark process
+	failed           bool            // flag of bench_func failure. true if one of bench_func run failed
+	start_memory     usize           // memory status on start benchmark
+	start_allocs     usize           // size of object allocated on heap
 }
 
 // Benchmark.new - constructor of benchmark
@@ -29,8 +29,8 @@ pub struct Benchmark {
 // - n - number of iterations. set if you know how many runs of function you need. if qou don't know how many you need - set 0
 // - duration - by default 1s. expecting duration of all benchmark runs. doesn't work if is_parallel == true
 // - is_parallel - if true, every bench_func run in separate coroutine
-pub fn Benchmark.new(bench_func fn()!, n i64, duration time.Duration, is_parallel bool) !Benchmark{
-	if bench_func == voidptr(0) {
+pub fn Benchmark.new(bench_func fn () !, n i64, duration time.Duration, is_parallel bool) !Benchmark {
+	if bench_func == unsafe { nil } {
 		return error('Benchmark function cannot be empty')
 	}
 
@@ -39,16 +39,16 @@ pub fn Benchmark.new(bench_func fn()!, n i64, duration time.Duration, is_paralle
 	}
 
 	return Benchmark{
-		n:n
-		bench_func: bench_func
-		bench_time: if duration > 0 {duration} else {default_duration}
+		n:           n
+		bench_func:  bench_func
+		bench_time:  if duration > 0 { duration } else { benchmark.default_duration }
 		is_parallel: is_parallel
 	}
 }
 
 // run_benchmark - function for start benchmarking
 // run benchmark n times, or duration time
-pub fn (mut b Benchmark) run_benchmark(){
+pub fn (mut b Benchmark) run_benchmark() {
 	// run bench_func one time for heat up processor cache and get elapsed time for n prediction
 	b.run_n(1)
 
@@ -107,8 +107,8 @@ fn (mut b Benchmark) run_n(n i64) {
 				// if one execution failed print err, set failed flag and stop execution
 				b.failed = true
 				// workaround for consider unsuccesful runs
-				b.n -= n-i
-				eprintln('Error: $err')
+				b.n -= n - i
+				eprintln('Error: ${err}')
 				return
 			}
 		}
@@ -128,21 +128,18 @@ fn (mut b Benchmark) run_n(n i64) {
 			spawnwg.done()
 		}
 		workwg.wait()
-
 	}
 
 	// stop timer and collect data
 	b.stop_timer()
 }
 
-fn run_in_one_time(mut workwg &sync.WaitGroup, mut spawnwg &sync.WaitGroup, f fn()!){
+fn run_in_one_time(mut workwg sync.WaitGroup, mut spawnwg sync.WaitGroup, f fn () !) {
 	defer {
 		workwg.done()
 	}
 	spawnwg.wait()
-	f() or {
-		return
-		}// TODO: add error handling
+	f() or { return } // TODO: add error handling
 }
 
 // predict_n - predict number of executions to estimate duration
@@ -189,7 +186,7 @@ fn (mut b Benchmark) reset_timer() {
 // starttimer - register start measures of memory
 fn (mut b Benchmark) start_timer() {
 	// you do not need to start timer that already started
-	if !b.timer_on{
+	if !b.timer_on {
 		b.start_time = time.now()
 		b.start_memory = gc_memory_use()
 		b.start_allocs = gc_heap_usage().bytes_since_gc
@@ -199,7 +196,7 @@ fn (mut b Benchmark) start_timer() {
 
 // stop_timer - accumulate menchmark data
 fn (mut b Benchmark) stop_timer() {
-	if b.timer_on{
+	if b.timer_on {
 		// accumulate delta time of execution
 		b.duration += time.since(b.start_time)
 		// accumulate memory growth
@@ -213,10 +210,10 @@ fn (mut b Benchmark) stop_timer() {
 // BenchmarkResult - struct for represent result of benchmark
 struct BenchmarkResult {
 pub mut:
-	n 			i64           // iterations count
-	t   		time.Duration // elapsed time
-	mem 		usize 				// all allocated memory
-	allocs 	usize 				// heap allocated memory
+	n      i64           // iterations count
+	t      time.Duration // elapsed time
+	mem    usize         // all allocated memory
+	allocs usize         // heap allocated memory
 }
 
 // ns_per_op - elapsed time in nanoseconds per iteration
