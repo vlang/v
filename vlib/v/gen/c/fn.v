@@ -1755,7 +1755,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write('ADDR(${rec_cc_type}, ')
 				cast_n++
 			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
-				&& left_type == node.receiver_type) {
+				&& g.typ(left_type) == g.typ(node.receiver_type)) {
 				g.write('&')
 			}
 		}
@@ -1867,8 +1867,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write(embed_name)
 			}
 		}
-		if left_type.has_flag(.shared_f)
-			&& (left_type != node.receiver_type || is_array_method_first_last_repeat) {
+		if left_type.has_flag(.shared_f) && (g.typ(left_type) != g.typ(node.receiver_type)
+			|| is_array_method_first_last_repeat) {
 			g.write('->val')
 		}
 	}
