@@ -6,7 +6,7 @@ import sync
 
 const default_duration = time.second
 
-// Represent all significant data for benchmarking. Provide clear way for getting result in convinient way by exported methods
+// Benchmark represent all significant data for benchmarking. Provide clear way for getting result in convinient way by exported methods
 @[noinit]
 pub struct Benchmark {
 	pub mut:
@@ -23,7 +23,7 @@ pub struct Benchmark {
 	start_allocs 			usize						// size of object allocated on heap
 }
 
-// constructor of benchmark
+// Benchmark.new - constructor of benchmark
 // arguments:
 // - bench_func - function to benchmark. required, if you have no function - you don't need benchmark
 // - n - number of iterations. set if you know how many runs of function you need. if qou don't know how many you need - set 0
@@ -46,7 +46,7 @@ pub fn Benchmark.new(bench_func fn()!, n i64, duration time.Duration, is_paralle
 	}
 }
 
-// function for start benchmarking
+// run_benchmark - function for start benchmarking
 // run benchmark n times, or duration time
 pub fn (mut b Benchmark) run_benchmark(){
 	// run bench_func one time for heat up processor cache and get elapsed time for n prediction
@@ -88,7 +88,7 @@ pub fn (mut b Benchmark) run_benchmark(){
 	b.benchmark_result.print()
 }
 
-// run bench_func n times
+// run_n - run bench_func n times
 fn (mut b Benchmark) run_n(n i64) {
 	// clear memory for avoid GC influence
 	gc_collect()
@@ -145,7 +145,7 @@ fn run_in_one_time(mut workwg &sync.WaitGroup, mut spawnwg &sync.WaitGroup, f fn
 		}// TODO: add error handling
 }
 
-// predict number of executions to estimate duration
+// predict_n - predict number of executions to estimate duration
 // based on previous values
 fn (mut b Benchmark) predict_n() i64 {
 	// goal duration in nanoseconds
@@ -176,7 +176,7 @@ fn (mut b Benchmark) predict_n() i64 {
 	return n
 }
 
-// clear timer and reset memory start data
+// reset_timer - clear timer and reset memory start data
 fn (mut b Benchmark) reset_timer() {
 	// if timer_on we should restart it
 	if b.timer_on {
@@ -186,7 +186,7 @@ fn (mut b Benchmark) reset_timer() {
 	}
 }
 
-// start timer and register start measures of memory
+// starttimer - register start measures of memory
 fn (mut b Benchmark) start_timer() {
 	// you do not need to start timer that already started
 	if !b.timer_on{
@@ -197,7 +197,7 @@ fn (mut b Benchmark) start_timer() {
 	}
 }
 
-// stop timer and accumulate menchmark data
+// stop_timer - accumulate menchmark data
 fn (mut b Benchmark) stop_timer() {
 	if b.timer_on{
 		// accumulate delta time of execution
@@ -210,7 +210,7 @@ fn (mut b Benchmark) stop_timer() {
 	}
 }
 
-// struct for represent result of benchmark
+// BenchmarkResult - struct for represent result of benchmark
 struct BenchmarkResult {
 pub mut:
 	n 			i64           // iterations count
@@ -219,7 +219,7 @@ pub mut:
 	allocs 	usize 				// heap allocated memory
 }
 
-// elapsed time in nanoseconds per iteration
+// ns_per_op - elapsed time in nanoseconds per iteration
 fn (r BenchmarkResult) ns_per_op() i64 {
 	if r.n <= 0 {
 		return 0
@@ -227,7 +227,7 @@ fn (r BenchmarkResult) ns_per_op() i64 {
 	return r.t.nanoseconds() / i64(r.n)
 }
 
-// heap usage per iteration
+// allocs_per_op - heap usage per iteration
 fn (r BenchmarkResult) allocs_per_op() i64 {
 	if r.n <= 0 {
 		return 0
@@ -235,7 +235,7 @@ fn (r BenchmarkResult) allocs_per_op() i64 {
 	return i64(r.allocs) / i64(r.n)
 }
 
-// memory usage per iteration
+// alloced_bytes_per_op - memory usage per iteration
 fn (r BenchmarkResult) alloced_bytes_per_op() i64 {
 	if r.n <= 0 {
 		return 0
@@ -243,7 +243,7 @@ fn (r BenchmarkResult) alloced_bytes_per_op() i64 {
 	return i64(r.mem) / i64(r.n)
 }
 
-// print all measurements
+// print - all measurements
 fn (r BenchmarkResult) print() {
 	println('Iterations: ${r.n}\t\tTotal Duration: ${r.t}\tns/op: ${r.ns_per_op()}\tB/op: ${r.alloced_bytes_per_op()}\tallocs/op: ${r.allocs_per_op()}')
 }
