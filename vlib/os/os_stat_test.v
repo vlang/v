@@ -55,10 +55,10 @@ fn test_stat() {
 	dstat := os.stat(temp_dir)!
 	assert dstat.get_filetype() == .directory
 	assert fstat.dev == dstat.dev, 'File and directory should be created on same device'
-	$if !freebsd {
+	$if !freebsd && !openbsd {
 		assert fstat.rdev == dstat.rdev, 'File and directory should have same device ID'
 	} $else {
-		// On FreeBSD, the rdev values are not necessarily the same for non-devices
+		// On FreeBSD and OpenBSD, the rdev values are not necessarily the same for non-devices
 		// such as regular files and directories.
 		//    assert fstat.rdev != dstat.rdev, 'File and directory should not have same device ID'
 		// However, see also https://discord.com/channels/592103645835821068/592114487759470596/1222322061217632347 :
