@@ -1,3 +1,5 @@
+# DEPRECATED see instead [veb](https://github.com/vlang/v/tree/master/vlib/veb)
+
 # vweb - the V Web Server
 
 A simple yet powerful web server with built-in routing, parameter handling, templating, and other
