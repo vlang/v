@@ -264,6 +264,12 @@ pub fn (mut ctx Context) text(s string) Result {
 	return Result{}
 }
 
+// Response with content as payload and content-type `application/json`
+pub fn (mut ctx Context) json_raw(content string) Result {
+	ctx.send_response_to_client('application/json', content)
+	return Result{}
+}
+
 // Response with json_s as payload and content-type `application/json`
 pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)

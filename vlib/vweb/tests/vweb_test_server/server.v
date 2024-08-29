@@ -129,6 +129,12 @@ pub fn (mut app App) json() vweb.Result {
 	return app.ok(app.req.data)
 }
 
+// Make sure [get] works without the path, and works with json_raw
+@['json_raw'; get]
+pub fn (mut app App) raw_json() vweb.Result {
+	return app.json_raw('{"foo": "bar"}')
+}
+
 // Custom 404 page
 pub fn (mut app App) not_found() vweb.Result {
 	linfo('>>>>> ${@LOCATION}')

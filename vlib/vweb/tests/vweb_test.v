@@ -162,6 +162,12 @@ fn test_http_client_json_post() {
 	assert '${ouser}' == '${nuser2}'
 }
 
+fn test_http_client_json_raw_get() {
+	mut res := http.get('http://${localserver}/json_raw') or { panic(err) }
+	assert res.header.get(.content_type)! == 'application/json'
+	assert res.body == '{"foo": "bar"}'
+}
+
 fn test_http_client_multipart_form_data() {
 	mut form_config := http.PostMultipartFormConfig{
 		form: {
