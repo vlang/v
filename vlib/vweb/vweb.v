@@ -520,6 +520,7 @@ pub fn controller_host[T](host string, path string, global_app &T) &ControllerPa
 }
 
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
+@[deprecated; 'migrate to veb instead']
 pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
 }
@@ -538,7 +539,7 @@ pub:
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
-@[manualfree]
+@[manualfree; deprecated; 'migrate to veb instead']
 pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
