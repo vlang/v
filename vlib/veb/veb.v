@@ -168,7 +168,6 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	defer {
 		unsafe {
 			free(pico_context.buf)
-			free(pico_context.idx)
 		}
 	}
 	pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
