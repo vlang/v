@@ -254,7 +254,7 @@ pub fn (mut sr StringResponse) done() {
 	sr.open = false
 	sr.pos = 0
 	sr.should_close_conn = false
-	unsafe { sr.str.free() }
+	unsafe { sr.free() }
 }
 
 // EV context
@@ -314,7 +314,10 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	// reserve space for read and write buffers
 	pico_context.buf = unsafe { malloc_noscan(picoev.max_fds * veb.max_read + 1) }
 	defer {
-		unsafe { free(pico_context.buf) }
+		unsafe {
+			free(pico_context.idx)
+			free(pico_context.buf)
+		}
 	}
 	pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
 	pico_context.file_responses = []FileResponse{len: picoev.max_fds}
