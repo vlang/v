@@ -48,8 +48,10 @@ const enable_wrap_at_eol_output = 2
 const evable_virtual_terminal_processing = 4
 
 fn builtin_init() {
-	$if !gc_warn_on_stderr ? {
-		gc_set_warn_proc(internal_gc_warn_proc_none)
+	$if gcboehm ? {
+		$if !gc_warn_on_stderr ? {
+			gc_set_warn_proc(internal_gc_warn_proc_none)
+		}
 	}
 	g_original_codepage = C.GetConsoleOutputCP()
 	C.SetConsoleOutputCP(cp_utf8)

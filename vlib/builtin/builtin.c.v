@@ -181,6 +181,10 @@ pub fn eprintln(s string) {
 		eprintln('eprintln(NIL)')
 		return
 	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+		return
+	}
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		bare_eprint(s.str, u64(s.len))
@@ -203,6 +207,10 @@ pub fn eprintln(s string) {
 pub fn eprint(s string) {
 	if s.str == 0 {
 		eprint('eprint(NIL)')
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		return
 	}
 	$if freestanding {
@@ -267,6 +275,10 @@ pub fn unbuffer_stdout() {
 // print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 @[manualfree]
 pub fn print(s string) {
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+		return
+	}
 	$if android && !termux {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 	} $else $if ios {
@@ -287,6 +299,10 @@ pub fn println(s string) {
 		return
 	}
 	$if noprintln ? {
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	}
 	$if android && !termux {
