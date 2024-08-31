@@ -318,9 +318,13 @@ pub fn (mut m map) clear() {
 	m.even_index = 0
 	m.key_values.len = 0
 	m.key_values.deletes = 0
-	unsafe { free(m.key_values.all_deleted) }
-	unsafe { vmemset(m.key_values.keys, 0, m.key_values.key_bytes * m.key_values.cap) }
-	unsafe { vmemset(m.metas, 0, sizeof(u32) * (m.even_index + 2 + m.extra_metas)) }
+	unsafe {
+		if m.key_values.all_deleted != 0 {
+			free(m.key_values.all_deleted)
+		}
+		vmemset(m.key_values.keys, 0, m.key_values.key_bytes * m.key_values.cap)
+		vmemset(m.metas, 0, sizeof(u32) * (m.even_index + 2 + m.extra_metas))
+	}
 }
 
 @[inline]
