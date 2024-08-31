@@ -130,6 +130,9 @@ pub fn (mut b Builder) middle_stages() ! {
 
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
+	if b.pref.dump_defines != '' {
+		b.dump_defines()
+	}
 	b.print_warnings_and_errors()
 	if b.checker.should_abort {
 		return error('too many errors/warnings/notices')
@@ -147,9 +150,6 @@ pub fn (mut b Builder) middle_stages() ! {
 	}
 	if b.pref.show_callgraph {
 		callgraph.show(mut b.table, b.pref, b.parsed_files)
-	}
-	if b.pref.dump_defines != '' {
-		b.dump_defines()
 	}
 }
 
