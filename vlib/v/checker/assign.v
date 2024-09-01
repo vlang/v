@@ -491,7 +491,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			else {
 				if mut left is ast.IndexExpr {
 					// eprintln('>>> left.is_setter: ${left.is_setter:10} | left.is_map: ${left.is_map:10} | left.is_array: ${left.is_array:10}')
-					if left.is_map && left.is_setter {
+					if (left.is_map || left.is_farray) && left.is_setter {
 						left.recursive_mapset_is_setter(true)
 					}
 				}

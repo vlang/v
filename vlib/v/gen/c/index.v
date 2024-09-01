@@ -342,6 +342,16 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.expr(node.left)
 		g.writeln(';')
 		g.past_tmp_var_done(past)
+	} else if node.left is ast.IndexExpr && node.left.is_setter {
+		past := g.past_tmp_var_new()
+		styp := g.typ(node.left_type)
+		println(node.left)
+		g.write('${styp}* ${past.tmp_var} = &')
+		g.expr(node.left)
+		g.writeln(';')
+		g.write('(*')
+		g.past_tmp_var_done(past)
+		g.write(')')
 	} else {
 		if is_fn_index_call {
 			g.write('(*')
@@ -385,7 +395,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.typ(val_type.clear_flag(.result))
 		}
 	}
-	get_and_set_types := val_sym.kind in [.struct_, .map, .array]
+	get_and_set_types := val_sym.kind in [.struct_, .map, .array, .array_fixed]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
 			g.is_arraymap_set = true
