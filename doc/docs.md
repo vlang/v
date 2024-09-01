@@ -88,6 +88,8 @@ by using any of the following commands in a terminal:
     * [Module import aliasing](#module-import-aliasing)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
+        * [`If` expressions](#if-expressions)
+        * [`If` unwrapping](#if-unwrapping)
     * [Match](#match)
     * [In operator](#in-operator)
     * [For loop](#for-loop)
@@ -1632,8 +1634,13 @@ if a < b {
 Unlike other C-like languages,
 there are no parentheses surrounding the condition and the braces are always required.
 
-`if` can be used as an expression:
+#### `If` expressions
+Unlike C, V does not have a ternary operator, that would allow you to do: `x = c ? 1 : 2` .
+Instead, it has a bit more verbose, but also clearer to read, ability to use `if` as an
+expression. The direct translation in V of the ternary construct above, assuming `c` is a
+boolean condition, would be: `x = if c { 1 } else { 2 }`.
 
+Here is another example:
 ```v
 num := 777
 s := if num % 2 == 0 { 'even' } else { 'odd' }
@@ -1641,6 +1648,21 @@ println(s)
 // "odd"
 ```
 
+You can use multiple statements in each of the branches of an `if` expression, followed by a final
+value, that will become the value of the entire `if` expression, when it takes that branch:
+```v
+n := arguments().len
+x := if n > 2 {
+	dump(arguments())
+	42
+} else {
+	println('something else')
+	100
+}
+dump(x)
+```
+
+#### `If` unwrapping
 Anywhere you can use `or {}`, you can also use "if unwrapping". This binds the unwrapped value
 of an expression to a variable when that expression is not none nor an error.
 
