@@ -1820,31 +1820,33 @@ pub fn (mut g Gen) write_multi_return_types() {
 	g.type_definitions.writeln('// END_multi_return_structs\n')
 }
 
+@[inline]
+fn prefix_with_counter(prefix string, counter int) string {
+	mut sb := strings.new_builder(prefix.len + 5)
+	sb.write_string(prefix)
+	sb.write_decimal(counter)
+	return sb.str()
+}
+
 pub fn (mut g Gen) new_tmp_var() string {
 	g.tmp_count++
-	return '_t${g.tmp_count}'
+	return prefix_with_counter('_t', g.tmp_count)
 }
 
 pub fn (mut g Gen) new_global_tmp_var() string {
 	g.global_tmp_count++
-	return '_t${g.global_tmp_count}'
+	return prefix_with_counter('_t', g.global_tmp_count)
 }
 
 pub fn (mut g Gen) new_tmp_declaration_name() string {
 	g.tmp_count_declarations++
-	return '_d${g.tmp_count_declarations}'
+	return prefix_with_counter('_d', g.tmp_count_declarations)
 }
 
 pub fn (mut g Gen) current_tmp_var() string {
-	return '_t${g.tmp_count}'
+	return prefix_with_counter('_t', g.tmp_count)
 }
 
-/*
-pub fn (mut g Gen) new_tmp_var2() string {
-	g.tmp_count_af++
-	return '_tt$g.tmp_count_af'
-}
-*/
 pub fn (mut g Gen) reset_tmp_count() {
 	g.tmp_count = 0
 }

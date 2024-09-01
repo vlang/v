@@ -61,6 +61,13 @@ pub mut:
 	warnings                    []errors.Warning
 	notices                     []errors.Notice
 	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
+
+	// the following are used only inside ident_string, but are here to avoid allocating new arrays for the most common case of strings without escapes
+	all_pos         []int
+	u16_escapes_pos []int // pos list of \uXXXX
+	u32_escapes_pos []int // pos list of \UXXXXXXXX
+	h_escapes_pos   []int // pos list of \xXX
+	str_segments    []string
 }
 
 /*
@@ -1231,9 +1238,9 @@ pub fn (mut s Scanner) ident_string() string {
 		s.inc_line_number()
 	}
 	s.is_inside_string = false
-	mut u16_escapes_pos := []int{} // pos list of \uXXXX
-	mut u32_escapes_pos := []int{} // pos list of \UXXXXXXXX
-	mut h_escapes_pos := []int{} // pos list of \xXX
+	s.u16_escapes_pos.clear()
+	s.u32_escapes_pos.clear()
+	s.h_escapes_pos.clear()
 	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
 	for {
 		s.pos++
@@ -1271,7 +1278,7 @@ pub fn (mut s Scanner) ident_string() string {
 					&& s.text[s.pos + 2].is_hex_digit()) {
 					s.error(r'`\x` used without two following hex digits')
 				}
-				h_escapes_pos << s.pos - 1
+				s.h_escapes_pos << s.pos - 1
 			}
 			// Escape `\u`
 			if c == `u` {
@@ -1281,7 +1288,7 @@ pub fn (mut s Scanner) ident_string() string {
 					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
 					s.error(r'`\u` incomplete 16 bit unicode character value')
 				}
-				u16_escapes_pos << s.pos - 1
+				s.u16_escapes_pos << s.pos - 1
 			}
 			// Escape `\U`
 			if c == `U` {
@@ -1295,7 +1302,7 @@ pub fn (mut s Scanner) ident_string() string {
 					|| !s.text[s.pos + 7].is_hex_digit() || !s.text[s.pos + 8].is_hex_digit() {
 					s.error(r'`\U` incomplete 32 bit unicode character value')
 				}
-				u32_escapes_pos << s.pos - 1
+				s.u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
 			if !util.is_escape_sequence(c) && !c.is_digit() && c != `\n` {
@@ -1336,41 +1343,41 @@ pub fn (mut s Scanner) ident_string() string {
 		mut string_so_far := s.text[start..end]
 		if !s.is_fmt {
 			mut segment_idx := 0
-			mut str_segments := []string{}
-			if u16_escapes_pos.len + h_escapes_pos.len + u32_escapes_pos.len > 0 {
-				mut all_pos := []int{}
-				all_pos << u16_escapes_pos
-				all_pos << u32_escapes_pos
-				all_pos << h_escapes_pos
-				all_pos.sort()
+			s.str_segments.clear()
+			if s.u16_escapes_pos.len + s.h_escapes_pos.len + s.u32_escapes_pos.len > 0 {
+				s.all_pos.clear()
+				s.all_pos << s.u16_escapes_pos
+				s.all_pos << s.u32_escapes_pos
+				s.all_pos << s.h_escapes_pos
+				s.all_pos.sort()
 
-				for pos in all_pos {
-					str_segments << string_so_far[segment_idx..(pos - start)]
+				for pos in s.all_pos {
+					s.str_segments << string_so_far[segment_idx..(pos - start)]
 					segment_idx = pos - start
 
-					if pos in u16_escapes_pos {
+					if pos in s.u16_escapes_pos {
 						end_idx, segment := s.decode_u16_escape_single(string_so_far,
 							segment_idx)
-						str_segments << segment
+						s.str_segments << segment
 						segment_idx = end_idx
 					}
-					if pos in u32_escapes_pos {
+					if pos in s.u32_escapes_pos {
 						end_idx, segment := s.decode_u32_escape_single(string_so_far,
 							segment_idx)
-						str_segments << segment
+						s.str_segments << segment
 						segment_idx = end_idx
 					}
-					if pos in h_escapes_pos {
+					if pos in s.h_escapes_pos {
 						end_idx, segment := s.decode_h_escape_single(string_so_far, segment_idx)
-						str_segments << segment
+						s.str_segments << segment
 						segment_idx = end_idx
 					}
 				}
 			}
 			if segment_idx < string_so_far.len {
-				str_segments << string_so_far[segment_idx..]
+				s.str_segments << string_so_far[segment_idx..]
 			}
-			string_so_far = str_segments.join('')
+			string_so_far = s.str_segments.join('')
 		}
 
 		if n_cr_chars > 0 {
