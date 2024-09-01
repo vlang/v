@@ -314,18 +314,20 @@ pub fn (mut m map) move() map {
 // It does it by setting the map length to `0`
 // Example: a.clear() // `a.len` and `a.key_values.len` is now 0
 pub fn (mut m map) clear() {
-	m.len = 0
-	m.even_index = init_even_index
-	m.key_values.len = 0
-	m.key_values.deletes = 0
 	unsafe {
 		if m.key_values.all_deleted != 0 {
 			free(m.key_values.all_deleted)
 			m.key_values.all_deleted = nil
 		}
 		vmemset(m.key_values.keys, 0, m.key_values.key_bytes * m.key_values.cap)
-		vmemset(m.metas, 0, sizeof(u32) * (m.even_index + 2 + m.extra_metas))
+		vmemset(m.metas, 0, 2 * (m.even_index + 2 + m.extra_metas))
 	}
+	m.key_values.len = 0
+	m.key_values.deletes = 0
+	m.even_index = init_even_index
+	m.cached_hashbits = max_cached_hashbits
+	m.shift = init_log_capicity
+	m.len = 0
 }
 
 @[inline]
