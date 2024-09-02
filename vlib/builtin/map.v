@@ -320,7 +320,7 @@ pub fn (mut m map) clear() {
 			m.key_values.all_deleted = nil
 		}
 		vmemset(m.key_values.keys, 0, m.key_values.key_bytes * m.key_values.cap)
-		vmemset(m.metas, 0, 2 * (m.even_index + 2 + m.extra_metas))
+		vmemset(m.metas, 0, sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	}
 	m.key_values.len = 0
 	m.key_values.deletes = 0
