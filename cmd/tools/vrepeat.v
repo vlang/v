@@ -50,6 +50,8 @@ mut:
 struct Context {
 mut:
 	run_count               int
+	repeats_count           int
+	current_run             int
 	series                  int
 	warmup                  int
 	show_help               bool
@@ -309,7 +311,7 @@ fn (mut context Context) show_diff_summary() {
 		gcmd := c(tgreen, context.results[0].cmd)
 		context.show_summary_title('${context.results[0].atiming}, ${context.series} series, ${context.run_count} runs for ${gcmd:-57s}')
 	} else {
-		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`).')
+		context.show_summary_title('Summary after ${context.series} series x ${context.run_count} runs (%s are relative to first command, or `base`)')
 		for i, r in context.results {
 			first_marker = ' '
 			cpercent := (r.atiming.average / base) * 100 - 100
@@ -360,6 +362,9 @@ fn (mut context Context) show_summary_title(line string) {
 	if context.nmaxs > 0 {
 		msg << 'discard maxs: ${context.nmaxs:2}'
 	}
+	if context.current_run > 0 {
+		msg << 'repeat: ${context.current_run:2}'
+	}
 	println(msg.join(', '))
 }
 
@@ -373,6 +378,7 @@ fn (mut context Context) parse_options() ! {
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.run_count = fp.int('runs', `r`, 10, 'Run count. Default: 10')
+	context.repeats_count = fp.int('repeats', `R`, 1, 'Repeats count (it repeats everything, including reporting). Default: 1')
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup run count. These are done *at the start* of each series, and the timings are ignored. Default: 2')
 	context.series = fp.int('series', `s`, 1, 'Series count. `-s 2 -r 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -r 2 a b` => aabbaabbaabb. Default: 1')
 	context.ignore_failed = fp.bool('ignore', `e`, false, 'Ignore failed commands (returning a non 0 exit code).')
@@ -400,10 +406,7 @@ fn (mut context Context) parse_options() ! {
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)
-	context.results = []CmdResult{len: context.commands.len, cap: 20, init: CmdResult{
-		outputs: []string{cap: 500}
-		timings: []i64{cap: 500}
-	}}
+	context.reset_results()
 	if context.use_newline {
 		context.cline = '\n'
 		context.cgoback = '\n'
@@ -413,12 +416,23 @@ fn (mut context Context) parse_options() ! {
 	}
 }
 
+fn (mut context Context) reset_results() {
+	context.results = []CmdResult{len: context.commands.len, cap: 20, init: CmdResult{
+		outputs: []string{cap: 500}
+		timings: []i64{cap: 500}
+	}}
+}
+
 fn main() {
 	// Make sure that we can measure various V executables
 	// without influencing them, by presetting VEXE
 	os.setenv('VEXE', '', true)
 	mut context := Context{}
 	context.parse_options()!
-	context.run()
-	context.show_diff_summary()
+	for i := 1; i <= context.repeats_count; i++ {
+		context.current_run = i
+		context.reset_results()
+		context.run()
+		context.show_diff_summary()
+	}
 }
