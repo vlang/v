@@ -294,10 +294,10 @@ const skip_on_non_linux = [
 ]
 const skip_on_windows_msvc = [
 	'do_not_remove',
-	'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-	'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
+	'vlib/v/tests/consts/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/consts/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/sumtypes/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
+	'vlib/v/tests/sumtypes/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
 ]
 const skip_on_windows = [
@@ -337,7 +337,7 @@ const skip_on_arm64 = [
 const skip_on_non_amd64_or_arm64 = [
 	'do_not_remove',
 	// closures aren't implemented yet:
-	'vlib/v/tests/closure_test.v',
+	'vlib/v/tests/fns/closure_test.v',
 	// native aren't implemented:
 	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/context/cancel_test.v',

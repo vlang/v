@@ -176,7 +176,7 @@ jobs:
       - name: Build blog tutorial with -autofree
         run: v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build option_test.c.v with -autofree
-        run: v -autofree vlib/v/tests/option_test.c.v
+        run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: V self compilation with -parallel-cc
         run: |
           v -o v2 -parallel-cc cmd/v
