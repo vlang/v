@@ -13,11 +13,12 @@ The module supports several flag "styles" like:
 * GNU long style (`--long` / `--long=value`
 * Go `flag` module style (`-flag`, `-flag-name` and GNU long)
 * V style (`-v`,`-version`)
+* V long style (`--v`,`--version`) as supported by `flag.FlagParser`
 
 Its main features are:
 
 - simplicity of usage.
-- parses flags like `-f` or '--flag' or '--stuff=things' or '--things stuff'.
+- parses flags like `-f` or `--flag` or `--stuff=things` or `--things stuff`.
 - handles bool, int, float and string args.
 - can flexibly generate usage information, listing all the declared flags.
 
