@@ -1,4 +1,4 @@
-import v.tests.generics_from_modules.newmodule as nm
+import v.tests.generics.generics_from_modules.newmodule as nm
 
 fn test_infer_generic_struct() {
 	a_in := [int(1), 2, 4]
