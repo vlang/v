@@ -333,6 +333,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 
+	// Fix 'braces around scalar initializer' errors
+	// on OpenBSD with clang for cstrict mode
+	if v.pref.os == .openbsd && ccoptions.cc == .clang {
+		ccoptions.wargs << '-Wno-braced-scalar-init'
+	}
+
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
