@@ -4851,7 +4851,7 @@ Just as the compiler frees C data types with C's `free()`, it will statically in
 Autofree can be enabled with an `-autofree` flag.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
+`-manualfree`, or by adding a `[manualfree]` on each function that wants to manage its
 memory manually. (See [attributes](#attributes)).
 
 > [!NOTE]
@@ -4963,7 +4963,7 @@ Here `a` is stored on the stack since its address never leaves the function `f()
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
-Things become less obvious when a reference to an object is passed as function argument:
+Things become less obvious when a reference to an object is passed as a function argument:
 
 ```v
 struct MyStruct {
