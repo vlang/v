@@ -1,10 +1,10 @@
 // Test .v (V) parse style
 import flag
 
-const exe_and_v_long_args = ['/path/to/exe', '--version', '--d', 'ident=val', '--o', '/path/to',
-	'--test', 'abc', '--done', '--define', 'two', '--live']
-const exe_and_v_long_args_with_tail = ['/path/to/exe', '--version', '--d', 'ident=val', '--test',
-	'abc', '--done', '--d', 'two', '--live', 'run', '/path/to']
+const exe_and_v_long_args = ['/path/to/exe', '--version', '--p', 'ident=val', '--o', '/path/to',
+	'--test', 'abc', '--done', '--pop', 'two', '--live']
+const exe_and_v_long_args_with_tail = ['/path/to/exe', '--version', '--p', 'ident=val', '--test',
+	'abc', '--done', '--p', 'two', '--live', 'run', '/path/to']
 const error_wrong_assignment_flags = ['--o=error']
 
 struct Prefs {
@@ -12,7 +12,7 @@ struct Prefs {
 	is_live    bool @[long: live]
 	is_done    bool @[long: done]
 	test       string
-	defines    []string @[long: define; short: d]
+	pop_flags  []string @[long: pop; short: p]
 	tail       []string @[tail]
 	out        string   @[only: o]
 	not_mapped string = 'not changed'
@@ -24,9 +24,9 @@ fn test_long_v_style() {
 	assert prefs.is_live
 	assert prefs.is_done
 	assert prefs.test == 'abc'
-	assert prefs.defines.len == 2
-	assert prefs.defines[0] == 'ident=val'
-	assert prefs.defines[1] == 'two'
+	assert prefs.pop_flags.len == 2
+	assert prefs.pop_flags[0] == 'ident=val'
+	assert prefs.pop_flags[1] == 'two'
 	assert prefs.tail.len == 0
 	assert prefs.out == '/path/to'
 	assert prefs.not_mapped == 'not changed'
@@ -38,9 +38,9 @@ fn test_long_v_style_no_exe() {
 	assert prefs.is_live
 	assert prefs.is_done
 	assert prefs.test == 'abc'
-	assert prefs.defines.len == 2
-	assert prefs.defines[0] == 'ident=val'
-	assert prefs.defines[1] == 'two'
+	assert prefs.pop_flags.len == 2
+	assert prefs.pop_flags[0] == 'ident=val'
+	assert prefs.pop_flags[1] == 'two'
 	assert prefs.tail.len == 0
 	assert prefs.out == '/path/to'
 	assert prefs.not_mapped == 'not changed'
@@ -53,9 +53,9 @@ fn test_long_v_style_with_tail() {
 	assert prefs.is_done
 	assert prefs.test == 'abc'
 	assert prefs.not_mapped == 'not changed'
-	assert prefs.defines.len == 2
-	assert prefs.defines[0] == 'ident=val'
-	assert prefs.defines[1] == 'two'
+	assert prefs.pop_flags.len == 2
+	assert prefs.pop_flags[0] == 'ident=val'
+	assert prefs.pop_flags[1] == 'two'
 	assert prefs.out == ''
 	assert prefs.not_mapped == 'not changed'
 	assert prefs.tail.len == 2
@@ -70,9 +70,9 @@ fn test_long_v_style_with_tail_no_exe() {
 	assert prefs.is_done
 	assert prefs.test == 'abc'
 	assert prefs.not_mapped == 'not changed'
-	assert prefs.defines.len == 2
-	assert prefs.defines[0] == 'ident=val'
-	assert prefs.defines[1] == 'two'
+	assert prefs.pop_flags.len == 2
+	assert prefs.pop_flags[0] == 'ident=val'
+	assert prefs.pop_flags[1] == 'two'
 	assert prefs.out == ''
 	assert prefs.not_mapped == 'not changed'
 	assert prefs.tail.len == 2
