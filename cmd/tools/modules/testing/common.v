@@ -225,7 +225,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/simple_coroutines.v'
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
-			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
+			skip_files << 'vlib/v/tests/consts/const_comptime_eval_before_vinit_test.v' // _constructor used
 			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
