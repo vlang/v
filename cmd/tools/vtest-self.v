@@ -186,7 +186,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
@@ -280,7 +280,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/builtin/js/array_test.js.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 	'vlib/x/vweb/tests/vweb_test.v',
 	'vlib/x/vweb/tests/vweb_app_test.v',
@@ -317,7 +317,7 @@ const skip_on_windows = [
 	'vlib/sync/many_times_test.v',
 	'vlib/sync/once_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
-	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/v/tests/fns/fn_literal_type_test.v',
 ]
 const skip_on_non_windows = [
 	'do_not_remove',
