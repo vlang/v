@@ -31,6 +31,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	mut attr_align := new_field_align(use_threshold: true)
 	mut comment_align := new_field_align(use_threshold: true)
 	mut field_types := []string{cap: node.fields.len}
+	if node.is_implements {
+		f.write(' implements ')
+		f.write(f.table.type_to_str_using_aliases(node.implements_type, f.mod2alias))
+	}
 	// Calculate the alignments first
 	f.calculate_alignment(node.fields, mut type_align, mut comment_align, mut default_expr_align, mut
 		attr_align, mut field_types)

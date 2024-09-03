@@ -463,3 +463,23 @@ fn print_displayable(ds ...Displayable) {
 fn test_variadic_interface() {
 	print_displayable(Text('test'), Text('hehe'))
 }
+
+interface MyError {
+	print_error()
+}
+
+struct CustomError implements MyError {
+}
+
+fn (e CustomError) print_error() {
+}
+
+fn handle_implements(e MyError) {
+	// e.print_error()
+}
+
+fn test_implements() {
+	// e := CustomError{}
+	// handle_implements(e)
+	println('implements ok')
+}

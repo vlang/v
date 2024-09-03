@@ -328,6 +328,13 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				node.pos)
 		}
 	}
+	// Handle `implements` if it's present
+	if node.is_implements {
+		// XTODO2
+		// cgen error if I use `println(sym)` without handling the option with `or{}`
+		struct_type := c.table.find_type_idx(node.name) // or { panic(err) }
+		c.type_implements(struct_type, node.implements_type, node.pos)
+	}
 }
 
 fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/implements_keyword.vv:5:1: error: `CustomError` doesn't implement method `print_error` of interface `MyError`
+    3 | }
+    4 |
+    5 | struct CustomError implements MyError {
+      | ~~~~~~~~~~~~~~~~~~
+    6 | }
+    7 |

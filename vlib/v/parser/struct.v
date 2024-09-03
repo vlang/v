@@ -53,7 +53,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	generic_types, _ := p.parse_generic_types()
 	mut pre_comments := p.eat_comments()
-	no_body := p.tok.kind != .lcbr
+	no_body := p.tok.kind != .lcbr && p.tok.kind != .key_implements
 	if language == .v && no_body {
 		p.error('`${p.tok.lit}` lacks body')
 		return ast.StructDecl{}
@@ -93,9 +93,16 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
+	mut is_implements := false
+	mut implements_type := ast.void_type
 	mut last_line := p.prev_tok.pos().line_nr + 1
 	mut end_comments := []ast.Comment{}
 	if !no_body {
+		if p.tok.kind == .key_implements {
+			p.next()
+			implements_type = p.parse_type()
+			is_implements = true
+		}
 		p.check(.lcbr)
 		pre_comments << p.eat_comments()
 		mut i := 0
@@ -371,22 +378,24 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	p.expr_mod = ''
 	return ast.StructDecl{
-		name:          name
-		is_pub:        is_pub
-		fields:        ast_fields
-		pos:           start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos:       mut_pos
-		pub_pos:       pub_pos
-		pub_mut_pos:   pub_mut_pos
-		global_pos:    global_pos
-		module_pos:    module_pos
-		language:      language
-		is_union:      is_union
-		attrs:         if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
-		pre_comments:  pre_comments
-		end_comments:  end_comments
-		generic_types: generic_types
-		embeds:        embeds
+		name:            name
+		is_pub:          is_pub
+		fields:          ast_fields
+		pos:             start_pos.extend_with_last_line(name_pos, last_line)
+		mut_pos:         mut_pos
+		pub_pos:         pub_pos
+		pub_mut_pos:     pub_mut_pos
+		global_pos:      global_pos
+		module_pos:      module_pos
+		language:        language
+		is_union:        is_union
+		attrs:           if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
+		pre_comments:    pre_comments
+		end_comments:    end_comments
+		generic_types:   generic_types
+		embeds:          embeds
+		is_implements:   is_implements
+		implements_type: implements_type
 	}
 }
 
