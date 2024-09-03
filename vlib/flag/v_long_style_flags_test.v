@@ -5,6 +5,7 @@ const exe_and_v_long_args = ['/path/to/exe', '--version', '--d', 'ident=val', '-
 	'--test', 'abc', '--done', '--define', 'two', '--live']
 const exe_and_v_long_args_with_tail = ['/path/to/exe', '--version', '--d', 'ident=val', '--test',
 	'abc', '--done', '--d', 'two', '--live', 'run', '/path/to']
+const error_wrong_assignment_flags = ['--o=error']
 
 struct Prefs {
 	version    bool @[short: v]
@@ -84,5 +85,10 @@ fn test_long_v_style_error_message() {
 		assert false, 'flags should not have reached this assert'
 	} else {
 		assert err.msg() == 'long delimiter `--` encountered in flag `--version` in v (V) style parsing mode. Maybe you meant `.v_long`?'
+	}
+	if _, _ := flag.to_struct[Prefs](error_wrong_assignment_flags, style: .v_long) {
+		assert false, 'flags should not have reached this assert'
+	} else {
+		assert err.msg() == '`=` in flag `--o=error` is not supported in V long style parsing mode. Use `--flag value` instead'
 	}
 }

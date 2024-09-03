@@ -1066,7 +1066,7 @@ fn (mut fm FlagMapper) map_v_long(flag_ctx FlagContext, field StructField) !bool
 	next := flag_ctx.next
 
 	if flag_raw.contains('=') {
-		return error('flag `${flag_raw}` does not use `=` for assignment in V long style parsing mode')
+		return error('`=` in flag `${flag_raw}` is not supported in V long style parsing mode. Use `--flag value` instead')
 	}
 
 	if field.hints.has(.is_bool) {
