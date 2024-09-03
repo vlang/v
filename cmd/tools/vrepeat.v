@@ -362,7 +362,7 @@ fn (mut context Context) show_summary_title(line string) {
 	if context.nmaxs > 0 {
 		msg << 'discard maxs: ${context.nmaxs:2}'
 	}
-	if context.current_run > 0 {
+	if context.repeats_count > 1 {
 		msg << 'repeat: ${context.current_run:2}'
 	}
 	println(msg.join(', '))
@@ -407,6 +407,13 @@ fn (mut context Context) parse_options() ! {
 	}
 	context.commands = context.expand_all_commands(commands)
 	context.reset_results()
+	if context.nmins >= context.run_count {
+		context.error_no_run_counts_to_report('${context.run_count - 1} bottom results with `-i ${context.nmins}`')
+	} else if context.nmaxs >= context.run_count {
+		context.error_no_run_counts_to_report('${context.run_count - 1} top results with `-a ${context.nmaxs}`')
+	} else if context.nmaxs + context.nmins >= context.run_count {
+		context.error_no_run_counts_to_report('${context.nmaxs + context.nmins - 1} results with `-i ${context.nmins}` and `-a ${context.nmaxs}`')
+	}
 	if context.use_newline {
 		context.cline = '\n'
 		context.cgoback = '\n'
@@ -414,6 +421,10 @@ fn (mut context Context) parse_options() ! {
 		context.cline = '\r' + tdivider('') + '\r'
 		context.cgoback = '\r'
 	}
+}
+
+fn (mut context Context) error_no_run_counts_to_report(detail string) {
+	eprintln('${bold('Warning:')} discarding more than ${detail}, with only `-r ${context.run_count}` runs, will leave you with no results to report at all.')
 }
 
 fn (mut context Context) reset_results() {
