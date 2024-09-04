@@ -907,7 +907,7 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 					if arg := f.arg {
 						return error('can not assign `${arg}` to bool field `${field.name}`')
 					}
-					result.$(field.name) = true
+					result.$(field.name) = !result.$(field.name)
 				} $else $if field.typ is string {
 					trace_dbg_println('${@FN}: assigning (string) ${struct_name}.${field.name} = ${f.arg or {
 						'ERROR'
