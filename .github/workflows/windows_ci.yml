@@ -62,7 +62,7 @@ jobs:
       # - name: Test
       #   run: v test-all
       - name: Build option_test.c.v with -autofree
-        run: v -autofree vlib/v/tests/option_test.c.v
+        run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
         run: v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
