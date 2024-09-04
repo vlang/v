@@ -302,10 +302,20 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 			fs.args.delete(i)
 			return val
 		}
-		if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_u8(shorthand) != -1 {
-			// -abc is equivalent to -a -b -c
-			fs.args[i] = arg.replace(shorthand.ascii_str(), '') // -abc -> -bc
-			return 'true'
+		if arg.len > 1 && arg[0] == `-` && arg[1] != `-` {
+			mut found := false
+			for j in 1 .. arg.len - 1 {
+				if arg[j].is_space() {
+					break
+				} else if arg[j] == shorthand {
+					found = true
+				}
+			}
+			if found {
+				// -abc is equivalent to -a -b -c
+				fs.args[i] = arg.replace(shorthand.ascii_str(), '') // -abc -> -bc
+				return 'true'
+			}
 		}
 	}
 	return error("parameter '${longhand}' not found")
