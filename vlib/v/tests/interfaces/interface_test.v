@@ -475,11 +475,11 @@ fn (e CustomError) print_error() {
 }
 
 fn handle_implements(e MyError) {
-	// e.print_error()
+	e.print_error()
 }
 
 fn test_implements() {
-	// e := CustomError{}
-	// handle_implements(e)
+	e := CustomError{}
+	handle_implements(e)
 	println('implements ok')
 }
