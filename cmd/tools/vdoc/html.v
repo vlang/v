@@ -516,7 +516,8 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 			table: tb
 		}
 	}
-	md_content := markdown.render(dn.merge_comments_without_examples(), mut renderer) or { '' }
+	only_comments_text := dn.merge_comments_without_examples()
+	md_content := markdown.render(only_comments_text, mut renderer) or { '' }
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
@@ -615,7 +616,16 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		return html_highlight(text, f.table)
+		if f.language == '' {
+			return text
+		}
+		output := html_highlight(text, f.table)
+		// Reset the language, so that it will not persist between blocks,
+		// and will not be accidentally re-used for the next block, that may be lacking ```language :
+		unsafe {
+			f.language = ''
+		}
+		return output
 	}
 	return text
 }

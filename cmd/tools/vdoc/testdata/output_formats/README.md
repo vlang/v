@@ -138,3 +138,16 @@ const html = '<!DOCTYPE html>
 1. Numbered markdown list point 1
 2. List point 2
 3. List point 3
+
+A code block without a specific language should be rendered verbatim:
+```
+.
+├── static/
+│   ├── css/
+│   │   └── main.css
+│   └── js/
+│       └── main.js
+└── main.v
+```
+
+The End.

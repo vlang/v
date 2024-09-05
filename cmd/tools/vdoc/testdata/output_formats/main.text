@@ -139,6 +139,18 @@ module main
     2. List point 2
     3. List point 3
     
+    A code block without a specific language should be rendered verbatim:
+    ```
+    .
+    ├── static/
+    │   ├── css/
+    │   │   └── main.css
+    │   └── js/
+    │       └── main.js
+    └── main.v
+    ```
+    
+    The End.
 
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle
