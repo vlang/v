@@ -2087,7 +2087,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				}
 			}
 			mut info := ts.info
-			info.is_generic = false
+			info.is_generic = final_concrete_types.any(it.has_flag(.generic))
 			info.concrete_types = final_concrete_types
 			info.parent_type = typ.set_flag(.generic)
 			info.fields = fields
