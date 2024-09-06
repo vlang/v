@@ -6934,7 +6934,8 @@ so it will take a bit more time to start.
 
 **When to Avoid**
 
-- When you need to debug the application.
+- When you need to debug the application, or when your app's startup time
+is extremely important (where 1-2ms can be meaningful for you).
 
 #### PGO (Profile-Guided Optimization)
 
