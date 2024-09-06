@@ -415,6 +415,14 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 					g.struct_init(default_init)
 				}
 				return true
+			} else if sym.language == .v && !field.typ.is_ptr() && sym.mod != 'builtin'
+				&& !sym.info.is_empty_struct() {
+				default_init := ast.StructInit{
+					typ: field.typ
+				}
+				g.write('.${field_name} = ')
+				g.struct_init(default_init)
+				return true
 			}
 		}
 	}
