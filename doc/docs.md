@@ -6928,8 +6928,9 @@ reducing its size by around 50%-70%.
 
 **When to Use**
 
-- For really tiny envs that the size it's a first, but at runtime everything will run as
-if it had no compression.
+- For really tiny environments, where the size of the executable on the file system,
+or when deploying is important. The executable will be uncompressed at runtime,
+so it will take a bit more time to start.
 
 **When to Avoid**
 
