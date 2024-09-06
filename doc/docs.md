@@ -6928,7 +6928,8 @@ reducing its size by around 50%-70%.
 
 **When to Use**
 
-- For really tiny envs that the size it's a first, but at runtime everything will run as if it had no compression.
+- For really tiny envs that the size it's a first, but at runtime everything will run as
+if it had no compression.
 
 **When to Avoid**
 
