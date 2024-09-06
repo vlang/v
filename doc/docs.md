@@ -6054,7 +6054,7 @@ Full list of builtin options:
 | `solaris`, `termux`            |                  |                               | `js_node`, `js_browser`, `js_freestanding`    |
 | `serenity`, `vinix`, `plan9`   |                  |                               | `interpreter`, `es5`, `profile`, `wasm32`     |
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
-|                                |                  |                               | `native`, `autofree`                          |
+|                                |                  |                               | `native`, `autofree`, `compress`              |
 
 #### `$embed_file`
 
@@ -6725,15 +6725,16 @@ performance, memory usage, or size.
 
 | Tuning Operation         | Benefits                        | Drawbacks                                         |
 |--------------------------|---------------------------------|---------------------------------------------------|
-| `@[inline]`               | Performance                     | Increased executable size                         |
-| `@[direct_array_access]`  | Performance                     | Safety risks                                      |
-| `@[packed]`               | Memory usage                    | Potential performance loss                        |
-| `@[minify]`               | Performance, Memory usage       | May break binary serialization/reflection         |
+| `@[inline]`              | Performance                     | Increased executable size                         |
+| `@[direct_array_access]` | Performance                     | Safety risks                                      |
+| `@[packed]`              | Memory usage                    | Potential performance loss                        |
+| `@[minify]`              | Performance, Memory usage       | May break binary serialization/reflection         |
 | `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
 | `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
 | `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
 | `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                            |
 | `-cflags -march=native`  | Performance                     | Risk of reduced CPU compatibility                 |
+| `-compress`              | Size                            | Harder to debug, extra dependency `upx`           |
 | `PGO`                    | Performance, Size               | Usage complexity                                  |
 
 ### Tuning operations details
@@ -6919,6 +6920,18 @@ with identical hardware.
 **When to Avoid**
 
 - When distributing the software to users with potentially older CPUs.
+
+#### `-compress`
+
+This flag executes `upx` to compress the resultant executable.
+
+**When to Use**
+
+- For really tiny envs that the size it's a first, but in execution time all it's goint to run as without compression
+
+**When to Avoid**
+
+- When you need to debug the application
 
 #### PGO (Profile-Guided Optimization)
 
