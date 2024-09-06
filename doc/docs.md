@@ -6923,15 +6923,15 @@ with identical hardware.
 
 #### `-compress`
 
-This flag executes `upx` to compress the resultant executable.
+This flag executes `upx` to compress the resultant executable, reducing its size by around 50%-70%.
 
 **When to Use**
 
-- For really tiny envs that the size it's a first, but in execution time all it's goint to run as without compression
+- For really tiny envs that the size it's a first, but at runtime everything will run as if it had no compression.
 
 **When to Avoid**
 
-- When you need to debug the application
+- When you need to debug the application.
 
 #### PGO (Profile-Guided Optimization)
 
