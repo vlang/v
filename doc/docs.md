@@ -6923,7 +6923,8 @@ with identical hardware.
 
 #### `-compress`
 
-This flag executes `upx` to compress the resultant executable, reducing its size by around 50%-70%.
+This flag executes `upx` to compress the resultant executable,
+reducing its size by around 50%-70%.
 
 **When to Use**
 
