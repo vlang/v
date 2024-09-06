@@ -6054,7 +6054,7 @@ Full list of builtin options:
 | `solaris`, `termux`            |                  |                               | `js_node`, `js_browser`, `js_freestanding`    |
 | `serenity`, `vinix`, `plan9`   |                  |                               | `interpreter`, `es5`, `profile`, `wasm32`     |
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
-|                                |                  |                               | `native`, `autofree`, `compress`              |
+|                                |                  |                               | `native`, `autofree`                          |
 
 #### `$embed_file`
 
