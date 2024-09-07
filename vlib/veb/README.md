@@ -14,7 +14,7 @@ features.
 
 ## Quick Start
 
-Run your veb app with a live reload via `v -d vweb_livereload watch run .`
+Run your veb app with a live reload via `v -d veb_livereload watch run .`
 
 Now modifying any file in your web app (whether it's a .v file with the backend logic
 or a compiled .html template file) will result in an instant refresh of your app
