@@ -19,13 +19,13 @@ struct FlagContext {
 }
 
 pub enum Style {
-	short      // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
-	long       // GNU style long option *only*. E.g.: `--name` or `--name=value`
-	short_long // extends `posix` style shorts with GNU style long options: `--flag` or `--name=value`
-	v          // V style flags as found in flags for the `v` compiler. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v`, `-n value` or `-d ident=value`
-	v_long     // V long style flags as found in `flag.FlagParser`. Long flag denote `--` followed by string identifier e.g.: `--verbose`, `--name value`, `--v` or `--n value`.
-	go_flag    // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
-	cmd_exe    // `cmd.exe` style flags. Single flag denote `/` followed by lower- or upper-case character
+	short         // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
+	long          // GNU style long option *only*. E.g.: `--name` or `--name=value`
+	short_long    // extends `posix` style shorts with GNU style long options: `--flag` or `--name=value`
+	v             // V style flags as found in flags for the `v` compiler. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v`, `-n value` or `-d ident=value`
+	v_flag_parser // V `flag.FlagParser` style flags as supported by `flag.FlagParser`. Long flag denote `--` followed by string identifier e.g.: `--verbose`, `--name value`, `-v` or `-n value`.
+	go_flag       // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
+	cmd_exe       // `cmd.exe` style flags. Single flag denote `/` followed by lower- or upper-case character
 }
 
 struct StructInfo {
@@ -426,7 +426,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			}
 			if is_long_delimiter {
 				if style == .v {
-					return error('long delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (V) style parsing mode. Maybe you meant `.v_long`?')
+					return error('long delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (V) style parsing mode. Maybe you meant `.v_flag_parser`?')
 				}
 				if style == .short {
 					return error('long delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (POSIX) style parsing mode')
@@ -436,9 +436,6 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			if is_short_delimiter {
 				if style == .long {
 					return error('short delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (GNU) style parsing mode')
-				}
-				if style == .v_long {
-					return error('short delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (V long) style parsing mode. Maybe you meant `.v`?')
 				}
 				if style == .short_long && flag_name.len > 1 && flag_name.contains('-') {
 					return error('long name `${flag_name}` used with short delimiter `${used_delimiter}` in flag `${arg}` in ${style} (POSIX/GNU) style parsing mode')
@@ -502,6 +499,10 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 						if fm.map_v(flag_ctx, field)! {
 							continue
 						}
+					} else if style == .v_flag_parser {
+						if fm.map_v_flag_parser_short(flag_ctx, field)! {
+							continue
+						}
 					} else if style == .cmd_exe {
 						if fm.map_cmd_exe(flag_ctx, field)! {
 							continue
@@ -519,8 +520,8 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 						if fm.map_gnu_long(flag_ctx, field)! {
 							continue
 						}
-					} else if style == .v_long {
-						if fm.map_v_long(flag_ctx, field)! {
+					} else if style == .v_flag_parser {
+						if fm.map_v_flag_parser_long(flag_ctx, field)! {
 							continue
 						}
 					} else if style == .go_flag {
@@ -693,12 +694,12 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 // fields_docs returns every line of the combined field documentation.
 pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 	short_delimiter := match dc.style {
-		.short, .short_long, .v, .go_flag, .cmd_exe { dc.delimiter }
-		.long, .v_long { dc.delimiter.repeat(2) }
+		.short, .short_long, .v, .v_flag_parser, .go_flag, .cmd_exe { dc.delimiter }
+		.long { dc.delimiter.repeat(2) }
 	}
 	long_delimiter := match dc.style {
 		.short, .v, .go_flag, .cmd_exe { dc.delimiter }
-		.long, .v_long, .short_long { dc.delimiter.repeat(2) }
+		.long, .v_flag_parser, .short_long { dc.delimiter.repeat(2) }
 	}
 
 	pad_desc := if dc.layout.description_padding < 0 { 0 } else { dc.layout.description_padding }
@@ -1057,9 +1058,73 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 	return false
 }
 
-// map_v_long returns `true` if the V long style flag in `flag_ctx` can be mapped to `field`.
-// map_v_long adds data of the match in the internal structures for further processing if applicable
-fn (mut fm FlagMapper) map_v_long(flag_ctx FlagContext, field StructField) !bool {
+// map_v_flag_parser_short returns `true` if the V `flag.FlagParser` short (-) flag in `flag_ctx` can be mapped to `field`.
+// map_v_flag_parser_short adds data of the match in the internal structures for further processing if applicable
+fn (mut fm FlagMapper) map_v_flag_parser_short(flag_ctx FlagContext, field StructField) !bool {
+	flag_raw := flag_ctx.raw
+	flag_name := flag_ctx.name
+	pos := flag_ctx.pos
+	used_delimiter := flag_ctx.delimiter
+	next := flag_ctx.next
+
+	if flag_name.len != 1 {
+		return error('`${flag_raw}` is not supported in V `flag.FlagParser` (short) style parsing mode. Only single character flag names are supported. Use `-f value` instead')
+	}
+
+	if flag_raw.contains('=') {
+		return error('`=` in flag `${flag_raw}` is not supported in V `flag.FlagParser` (short) style parsing mode. Use `-f value` instead')
+	}
+
+	if field.hints.has(.is_bool) {
+		if flag_name == field.match_name || flag_name == field.short {
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
+				'true', '')}')
+			fm.field_map_flag[field.name] = FlagData{
+				raw:        flag_raw
+				field_name: field.name
+				delimiter:  used_delimiter
+				name:       flag_name
+				pos:        pos
+			}
+			fm.handled_pos << pos
+			return true
+		}
+	}
+
+	if flag_name == field.match_name || flag_name == field.short {
+		if field.hints.has(.is_array) {
+			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style multiple occurences) ${fm.dbg_match(flag_ctx,
+				field, next, '')}')
+			fm.array_field_map_flag[field.name] << FlagData{
+				raw:        flag_raw
+				field_name: field.name
+				delimiter:  used_delimiter
+				name:       flag_name
+				arg:        ?string(next)
+				pos:        pos
+			}
+		} else {
+			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style) ${fm.dbg_match(flag_ctx,
+				field, next, '')}')
+			fm.field_map_flag[field.name] = FlagData{
+				raw:        flag_raw
+				field_name: field.name
+				delimiter:  used_delimiter
+				name:       flag_name
+				arg:        ?string(next)
+				pos:        pos
+			}
+		}
+		fm.handled_pos << pos
+		fm.handled_pos << pos + 1 // arg
+		return true
+	}
+	return false
+}
+
+// map_v_flag_parser_long returns `true` if the V `flag.FlagParser` long (--) style flag in `flag_ctx` can be mapped to `field`.
+// map_v_flag_parser_long adds data of the match in the internal structures for further processing if applicable
+fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field StructField) !bool {
 	flag_raw := flag_ctx.raw
 	flag_name := flag_ctx.name
 	pos := flag_ctx.pos
@@ -1067,7 +1132,7 @@ fn (mut fm FlagMapper) map_v_long(flag_ctx FlagContext, field StructField) !bool
 	next := flag_ctx.next
 
 	if flag_raw.contains('=') {
-		return error('`=` in flag `${flag_raw}` is not supported in V long style parsing mode. Use `--flag value` instead')
+		return error('`=` in flag `${flag_raw}` is not supported in V `flag.FlagParser` (long) style parsing mode. Use `--flag value` instead')
 	}
 
 	if field.hints.has(.is_bool) {
@@ -1088,7 +1153,7 @@ fn (mut fm FlagMapper) map_v_long(flag_ctx FlagContext, field StructField) !bool
 
 	if flag_name == field.match_name || flag_name == field.short {
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (V long style multiple occurences) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for (V `flag.FlagParser` (long) style multiple occurences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.array_field_map_flag[field.name] << FlagData{
 				raw:        flag_raw
@@ -1099,7 +1164,7 @@ fn (mut fm FlagMapper) map_v_long(flag_ctx FlagContext, field StructField) !bool
 				pos:        pos
 			}
 		} else {
-			trace_println('${@FN}: found match for (V long style) ${fm.dbg_match(flag_ctx,
+			trace_println('${@FN}: found match for V (`flag.FlagParser` (long) style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
