@@ -766,9 +766,12 @@ pub fn (a &array) free() {
 		return
 	}
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
-	unsafe { free(mblock_ptr) }
+	if mblock_ptr != unsafe { nil } {
+		unsafe { free(mblock_ptr) }
+	}
 	unsafe {
 		a.data = nil
+		a.offset = 0
 	}
 }
 
