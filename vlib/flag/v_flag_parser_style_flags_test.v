@@ -7,8 +7,6 @@ const exe_and_v_flag_parser_args_with_tail = ['/path/to/exe', '--version', '-p',
 	'--test', 'abc', '--done', '-p', 'two', '--live', 'run', '/path/to', 'platforms;android-21']
 const error_wrong_assignment_flags = ['--o=error']
 
-const exe_and_v_flag_parser_help_short_arg = ['/path/to/exe', '-h']
-
 struct Prefs {
 	version    bool @[short: v]
 	is_live    bool @[long: live]
@@ -95,7 +93,7 @@ fn test_long_v_style_with_tail_no_exe() {
 }
 
 fn test_long_v_style_with_exe_and_short_alias() {
-	prefs, _ := flag.to_struct[Prefs](exe_and_v_flag_parser_help_short_arg,
+	prefs, _ := flag.to_struct[Prefs](['/path/to/exe', '-h'],
 		skip:  1
 		style: .v_flag_parser
 	)!
