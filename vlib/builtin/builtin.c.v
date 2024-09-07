@@ -499,7 +499,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
-// previously allocated with `malloc`, `v_calloc` or `vcalloc`.
+// previously allocated with `malloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 @[unsafe]
 pub fn v_realloc(b &u8, n isize) &u8 {
@@ -526,7 +526,7 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 
 // realloc_data resizes the memory block pointed by `old_data` to `new_size`
 // bytes. `old_data` must be a pointer to an existing memory block, previously
-// allocated with `malloc`, `v_calloc` or `vcalloc`, of size `old_data`.
+// allocated with `malloc` or `vcalloc`, of size `old_data`.
 // realloc_data returns a pointer to the new location of the block.
 // Note: if you know the old data size, it is preferable to call `realloc_data`,
 // instead of `v_realloc`, at least during development, because `realloc_data`
@@ -572,7 +572,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
-// Unlike `v_calloc` vcalloc checks for negative values given in `n`.
+// vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
