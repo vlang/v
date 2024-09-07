@@ -6923,19 +6923,25 @@ with identical hardware.
 
 #### `-compress`
 
-This flag executes `upx` to compress the resultant executable,
-reducing its size by around 50%-70%.
+This flag executes `upx` to compress the resultant executable, reducing its size by around 50%-70%.
+The executable will be uncompressed at runtime, so it will take a bit more time to start.
+It will also take extra RAM initially, as the compressed version of the app will be loaded into
+memory, and then expanded to another chunk of memory.
+Debugging such an application can be a bit harder, if you do not account for it.
+Some antivirus programs also use heuristics, that trigger more often for compressed applications.
 
 **When to Use**
 
 - For really tiny environments, where the size of the executable on the file system,
-or when deploying is important. The executable will be uncompressed at runtime,
-so it will take a bit more time to start.
+or when deploying is important (docker containers, rescue disks etc).
 
 **When to Avoid**
 
-- When you need to debug the application, or when your app's startup time
-is extremely important (where 1-2ms can be meaningful for you).
+- When you need to debug the application
+- When the app's startup time is extremely important (where 1-2ms can be meaningful for you)
+- When you can not afford to allocate more memory during application startup
+- When you are deploying an app to users with antivirus software that could misidentify your
+app as malicious, just because it decompresses its code at runtime.
 
 #### PGO (Profile-Guided Optimization)
 
