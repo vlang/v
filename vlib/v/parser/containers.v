@@ -21,7 +21,8 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	mut has_init := false
 	mut has_index := false
 	mut init_expr := ast.empty_expr
-	if alias_array_type == ast.void_type {
+	mut alias_type := alias_array_type
+	if alias_type == ast.void_type {
 		p.check(.lsbr)
 		if p.tok.kind == .rsbr {
 			last_pos = p.tok.pos()
@@ -33,6 +34,15 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				&& p.tok.line_nr == line_nr {
 				elem_type_pos = p.tok.pos()
 				elem_type = p.parse_type()
+				sym := p.table.sym(elem_type)
+				if sym.info is ast.Alias {
+					parent_sym := p.table.sym(sym.info.parent_type)
+					if parent_sym.info is ast.Array {
+						elem_type = p.table.find_or_register_array_with_dims(parent_sym.info.elem_type,
+							parent_sym.info.nr_dims)
+						// alias_type = elem_type
+					}
+				}
 				// this is set here because it's a known type, others could be the
 				// result of expr so we do those in checker
 				if elem_type != 0 {
@@ -124,7 +134,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			}
 		}
 	} else {
-		array_type = (p.table.sym(alias_array_type).info as ast.Alias).parent_type
+		array_type = (p.table.sym(alias_type).info as ast.Alias).parent_type
 		elem_type = p.table.sym(array_type).array_info().elem_type
 		p.next()
 	}
@@ -179,7 +189,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		mod:           p.mod
 		elem_type:     elem_type
 		typ:           array_type
-		alias_type:    alias_array_type
+		alias_type:    alias_type
 		exprs:         exprs
 		ecmnts:        ecmnts
 		pre_cmnts:     pre_cmnts
