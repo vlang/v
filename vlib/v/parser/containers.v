@@ -38,9 +38,9 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				if sym.info is ast.Alias {
 					parent_sym := p.table.sym(sym.info.parent_type)
 					if parent_sym.info is ast.Array {
+						alias_type = p.table.find_or_register_array(elem_type)
 						elem_type = p.table.find_or_register_array_with_dims(parent_sym.info.elem_type,
 							parent_sym.info.nr_dims)
-						// alias_type = elem_type
 					}
 				}
 				// this is set here because it's a known type, others could be the

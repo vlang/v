@@ -26,7 +26,7 @@ fn good() [][]Thing {
 
 fn bad() []OneD {
 	println('start bad()')
-	mut two_d := []Thing{}
+	mut two_d := []OneD{}
 	mut one_d := OneD{}
 	one_d << Thing{1}
 	one_d << Thing{2}
