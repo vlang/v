@@ -116,12 +116,14 @@ pub fn panic_result_not_set(s string) {
 // It also shows a backtrace on most platforms.
 @[noreturn]
 pub fn panic(s string) {
+	// Note: be careful to not use string interpolation here:
 	$if freestanding {
 		bare_panic(s)
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: ${@VCURRENTHASH}')
+		eprint('v hash: ')
+		eprintln(@VCURRENTHASH)
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -155,7 +157,7 @@ pub fn panic(s string) {
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {
-		err_msg = 'error ${errnum}'
+		err_msg = 'error ' + errnum.str()
 	} $else {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
