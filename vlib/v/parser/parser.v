@@ -950,11 +950,20 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	match p.tok.kind {
 		.lcbr {
 			mut pos := p.tok.pos()
-			stmts := p.parse_block()
-			pos.last_line = p.prev_tok.line_nr
-			return ast.Block{
-				stmts: stmts
-				pos:   pos
+			if p.peek_token(2).kind == .colon {
+				expr := p.expr(0)
+				// `{ 'abc' : 22 }`
+				return ast.ExprStmt{
+					expr: expr
+					pos:  pos
+				}
+			} else {
+				stmts := p.parse_block()
+				pos.last_line = p.prev_tok.line_nr
+				return ast.Block{
+					stmts: stmts
+					pos:   pos
+				}
 			}
 		}
 		.key_assert {
