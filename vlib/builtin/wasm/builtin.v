@@ -39,7 +39,7 @@ pub fn vwasm_memory_grow(size int) int {
 
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
-// Unlike `v_calloc` vcalloc checks for negative values given in `n`.
+// vcalloc checks for negative values given in `n`.
 @[unsafe]
 pub fn vcalloc(n isize) &u8 {
 	if n <= 0 {
