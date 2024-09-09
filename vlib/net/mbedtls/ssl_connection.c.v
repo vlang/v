@@ -114,6 +114,7 @@ pub mut:
 	handle    int
 	duration  time.Duration
 	opened    bool
+	ip        string
 
 	owns_socket bool
 }
@@ -256,14 +257,18 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 		opened: true
 	}
 
-	// TODO: save the client's IP address somewhere (maybe add a field to SSLConn ?)
-	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, unsafe { nil }, 0,
-		unsafe { nil })
+	ip := [16]u8{}
+	iplen := usize(0)
+
+	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
 		return error_with_code("can't accept connection", ret)
 	}
 	conn.handle = conn.server_fd.fd
 	conn.owns_socket = true
+	if iplen == 4 {
+		conn.ip = '${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]}'
+	}
 
 	C.mbedtls_ssl_init(&conn.ssl)
 	C.mbedtls_ssl_config_init(&conn.conf)
@@ -279,6 +284,11 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	ret = C.mbedtls_ssl_handshake(&conn.ssl)
 	for ret != 0 {
 		if ret != C.MBEDTLS_ERR_SSL_WANT_READ && ret != C.MBEDTLS_ERR_SSL_WANT_WRITE {
+			conn.shutdown() or {
+				$if trace_ssl ? {
+					eprintln('${@METHOD} shutdown ---> res: ${err}')
+				}
+			}
 			return error_with_code('SSL handshake failed', ret)
 		}
 		ret = C.mbedtls_ssl_handshake(&conn.ssl)
