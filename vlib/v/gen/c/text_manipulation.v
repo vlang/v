@@ -5,6 +5,7 @@ module c
 
 import v.util
 
+@[expand_simple_interpolation]
 fn (mut g Gen) write(s string) {
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
@@ -15,10 +16,23 @@ fn (mut g Gen) write(s string) {
 	}
 	if g.indent > 0 && g.empty_line {
 		g.out.write_string(util.tabs(g.indent))
-		// g.out_parallel[g.out_idx].write_string(util.tabs(g.indent))
 	}
 	g.out.write_string(s)
-	////g.out_parallel[g.out_idx].write_string(s)
+	g.empty_line = false
+}
+
+fn (mut g Gen) write_decimal(x i64) {
+	$if trace_gen ? {
+		if g.file == unsafe { nil } {
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | write_decimal: ${x}')
+		} else {
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write_decimal: ${x}')
+		}
+	}
+	if g.indent > 0 && g.empty_line {
+		g.out.write_string(util.tabs(g.indent))
+	}
+	g.out.write_decimal(x)
 	g.empty_line = false
 }
 

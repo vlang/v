@@ -131,7 +131,7 @@ pub fn (b &Builder) byte_at(n int) u8 {
 }
 
 // write appends the string `s` to the buffer
-@[inline]
+@[expand_simple_interpolation; inline]
 pub fn (mut b Builder) write_string(s string) {
 	if s.len == 0 {
 		return
