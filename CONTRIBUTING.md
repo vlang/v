@@ -285,6 +285,7 @@ a copy of the compiler rather than replacing it with `v self`.
 | `trace_scanner`                   | Prints details about the recognized tokens. *Very* verbose. Use `./vnew -no-builtin -check-syntax file.v` later.    |
 | `trace_parser`                    | Prints details about parsed statements and expressions. Very verbose. Use it for panics in the parser.              |
 | `trace_checker`                   | Prints details about the statements being checked. Very verbose. Use it for panics in the checker.                  |
+| `trace_transformer`               | Prints details about the statements being transformed. Very verbose. Use it for panics in the transformer stage.    |
 |                                   |                                                                                                                     |
 | `trace_gen`                       | Prints all the strings written to the generated C file. Very verbose.                                               |
 | `trace_cgen_stmt`                 | Prints details about the statements that are being processed by cgen.                                               |

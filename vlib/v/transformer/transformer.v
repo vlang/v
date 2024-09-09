@@ -174,6 +174,10 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 }
 
 pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
+	$if trace_transformer ? {
+		ntype := typeof(*node).replace('v.ast.', '')
+		eprintln('transformer: ${t.file.path:-50} | pos: ${node.pos.line_str():-39} | node: ${ntype:12} | ${node}')
+	}
 	match mut node {
 		ast.EmptyStmt {}
 		ast.NodeError {}
