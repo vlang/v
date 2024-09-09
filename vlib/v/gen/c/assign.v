@@ -88,7 +88,7 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			g.expr_with_cast(expr, expr_typ, ret_typ)
 			g.inside_opt_or_res = old_inside_opt_or_res
 		}
-		g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
+		g.writeln(' }, (${c.option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
 
 		return past.tmp_var
 	}
@@ -875,7 +875,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				g.expr(lx)
 				g.write(' = ${tmp_var};')
 			} else {
-				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${option_name}*)(&')
+				g.write('_option_ok(&(${base_typ}[]) { ${tmp_var} }, (${c.option_name}*)(&')
 				tmp_left_is_opt := g.left_is_opt
 				g.left_is_opt = true
 				g.expr(lx)
@@ -967,7 +967,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				if g.anon_fn {
 					obj := left.scope.find(left.name)
 					if obj is ast.Var && obj.is_inherited {
-						anon_ctx = '${closure_ctx}->'
+						anon_ctx = '${c.closure_ctx}->'
 					}
 				}
 				if left_sym.kind == .function {

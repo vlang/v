@@ -169,7 +169,7 @@ pub fn expm1(x f64) f64 {
 		return f64(-1)
 	}
 	// FIXME: this should be improved
-	if abs(x) < ln2 { // Compute the taylor series S = x + (1/2!) x^2 + (1/3!) x^3 + ...
+	if abs(x) < math.ln2 { // Compute the taylor series S = x + (1/2!) x^2 + (1/3!) x^3 + ...
 		mut i := 1.0
 		mut sum := x
 		mut term := x / 1.0

@@ -119,7 +119,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 			sig += '_'
 		}
 	}
-	if f.return_type != 0 && f.return_type != void_type {
+	if f.return_type != 0 && f.return_type != ast.void_type {
 		sym := t.sym(f.return_type)
 		opt := if f.return_type.has_flag(.option) { 'option_' } else { '' }
 		res := if f.return_type.has_flag(.result) { 'result_' } else { '' }
@@ -147,11 +147,11 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		}
 	}
 	sig += ')'
-	if f.return_type == ovoid_type {
+	if f.return_type == ast.ovoid_type {
 		sig += ' ?'
-	} else if f.return_type == rvoid_type {
+	} else if f.return_type == ast.rvoid_type {
 		sig += ' !'
-	} else if f.return_type != void_type && f.return_type != 0 {
+	} else if f.return_type != ast.void_type && f.return_type != 0 {
 		return_type_sym := t.sym(f.return_type)
 		if f.return_type.has_flag(.option) {
 			sig += ' ?${return_type_sym.name}'
@@ -716,7 +716,7 @@ pub fn (t &Table) get_final_type_name(typ Type) string {
 pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.sym(typ)
 	if sym.info is Alias {
-		if sym.info.parent_type <= char_type && sym.info.parent_type >= void_type {
+		if sym.info.parent_type <= ast.char_type && sym.info.parent_type >= ast.void_type {
 			return sym.info.parent_type
 		}
 	}
@@ -748,9 +748,9 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 	}
 	// Override the already registered builtin types with the actual
 	// v struct declarations in the vlib/builtin module sources:
-	if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
-		|| existing_idx == error_type_idx {
-		if existing_idx == string_type_idx {
+	if (existing_idx >= ast.string_type_idx && existing_idx <= ast.map_type_idx)
+		|| existing_idx == ast.error_type_idx {
+		if existing_idx == ast.string_type_idx {
 			// existing_type := t.type_symbols[existing_idx]
 			unsafe {
 				*existing_symbol = &TypeSymbol{
@@ -767,7 +767,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		}
 		return existing_idx
 	}
-	return invalid_type_idx
+	return ast.invalid_type_idx
 }
 
 @[inline]
@@ -937,7 +937,7 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 
 @[inline]
 pub fn (t &Table) promise_name(return_type Type) string {
-	if return_type.idx() == void_type_idx {
+	if return_type.idx() == ast.void_type_idx {
 		return 'Promise[JS.Any, JS.Any]'
 	}
 
@@ -947,7 +947,7 @@ pub fn (t &Table) promise_name(return_type Type) string {
 
 @[inline]
 pub fn (t &Table) promise_cname(return_type Type) string {
-	if return_type == void_type {
+	if return_type == ast.void_type {
 		return 'Promise_Any_Any'
 	}
 
@@ -957,7 +957,7 @@ pub fn (t &Table) promise_cname(return_type Type) string {
 
 @[inline]
 pub fn (t &Table) thread_name(return_type Type) string {
-	if return_type.idx() == void_type_idx {
+	if return_type.idx() == ast.void_type_idx {
 		if return_type.has_flag(.option) {
 			return 'thread ?'
 		} else if return_type.has_flag(.result) {
@@ -975,7 +975,7 @@ pub fn (t &Table) thread_name(return_type Type) string {
 
 @[inline]
 pub fn (t &Table) thread_cname(return_type Type) string {
-	if return_type == void_type {
+	if return_type == ast.void_type {
 		if return_type.has_flag(.option) {
 			return '__v_thread_Option_void'
 		} else if return_type.has_flag(.result) {
@@ -1028,7 +1028,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 	}
 	// register
 	chan_typ := TypeSymbol{
-		parent_idx: chan_type_idx
+		parent_idx: ast.chan_type_idx
 		kind:       .chan
 		name:       name
 		cname:      cname
@@ -1050,7 +1050,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	}
 	// register
 	map_typ := TypeSymbol{
-		parent_idx: map_type_idx
+		parent_idx: ast.map_type_idx
 		kind:       .map
 		name:       name
 		cname:      cname
@@ -1072,7 +1072,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 	}
 	// register
 	thread_typ := TypeSymbol{
-		parent_idx: thread_type_idx
+		parent_idx: ast.thread_type_idx
 		kind:       .thread
 		name:       name
 		cname:      cname
@@ -1117,7 +1117,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 	cname := t.array_cname(elem_type)
 	// register
 	array_type_ := TypeSymbol{
-		parent_idx: array_type_idx
+		parent_idx: ast.array_type_idx
 		kind:       .array
 		name:       name
 		cname:      cname
@@ -1258,17 +1258,17 @@ pub fn (t &Table) value_type(typ Type) Type {
 	}
 	if sym.kind == .string && typ.is_ptr() {
 		// (&string)[i] => string
-		return string_type
+		return ast.string_type
 	}
 	if sym.kind in [.byteptr, .string] {
-		return u8_type
+		return ast.u8_type
 	}
 	if typ.is_ptr() {
 		// byte* => byte
 		// bytes[0] is a byte, not byte*
 		return typ.deref()
 	}
-	return void_type
+	return ast.void_type
 }
 
 pub fn (mut t Table) register_fn_generic_types(fn_name string) {
@@ -1382,8 +1382,8 @@ pub fn (t &Table) known_type_names() []string {
 	mut res := []string{cap: t.type_idxs.len}
 	for _, idx in t.type_idxs {
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
-		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(idx)
-			&& t.sym(idx).kind != .function {
+		if idx !in [0, ast.int_literal_type_idx, ast.float_literal_type_idx]
+			&& t.known_type_idx(idx) && t.sym(idx).kind != .function {
 			res << t.type_to_str(idx)
 		}
 	}
@@ -1450,23 +1450,23 @@ pub fn (mut t Table) complete_interface_check() {
 pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	match bit_size {
 		8 {
-			return i8_type
+			return ast.i8_type
 		}
 		16 {
-			return i16_type
+			return ast.i16_type
 		}
 		32 {
-			return int_type
+			return ast.int_type
 		}
 		64 {
-			return i64_type
+			return ast.i64_type
 		}
 		else {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('table.bitsize_to_type: compiler bug: bitsizes must be multiples of 8, but passed bit_size is ${bit_size}')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr,
-				false))
+			return new_type(t.find_or_register_array_fixed(ast.u8_type, bit_size / 8,
+				ast.empty_expr, false))
 		}
 	}
 }
@@ -1476,7 +1476,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		// same type -> already casted to the interface
 		return true
 	}
-	if inter_typ.idx() == error_type_idx && typ.idx() == none_type_idx {
+	if inter_typ.idx() == ast.error_type_idx && typ.idx() == ast.none_type_idx {
 		// `none` "implements" the Error interface
 		return true
 	}
@@ -1520,7 +1520,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 		// verify fields
 		for ifield in inter_sym.info.fields {
-			if ifield.typ == voidptr_type || ifield.typ == nil_type {
+			if ifield.typ == ast.voidptr_type || ifield.typ == ast.nil_type {
 				// Allow `voidptr` fields in interfaces for now. (for example
 				// to enable .db check in vweb)
 				if t.struct_has_field(sym, ifield.name) {
@@ -1539,12 +1539,12 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		if typ != voidptr_type && typ != nil_type && typ != none_type
+		if typ != ast.voidptr_type && typ != ast.nil_type && typ != ast.none_type
 			&& !inter_sym.info.types.contains(typ) {
 			inter_sym.info.types << typ
 		}
-		if !inter_sym.info.types.contains(voidptr_type) {
-			inter_sym.info.types << voidptr_type
+		if !inter_sym.info.types.contains(ast.voidptr_type) {
+			inter_sym.info.types << ast.voidptr_type
 		}
 		return true
 	}

@@ -1,7 +1,7 @@
 module time
 
 fn assert_greater_time(ms int, t1 Time) {
-	sleep(ms * millisecond)
+	sleep(ms * time.millisecond)
 	t2 := now()
 	assert t2 > t1
 }
@@ -371,7 +371,7 @@ fn test_time2_copied_from_time1_should_be_equal() {
 fn test_subtract() {
 	d_seconds := 3
 	d_nanoseconds := 13
-	duration := d_seconds * second + d_nanoseconds * nanosecond
+	duration := d_seconds * time.second + d_nanoseconds * time.nanosecond
 	t1 := new(Time{
 		year:       2000
 		month:      5

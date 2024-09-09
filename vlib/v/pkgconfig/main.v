@@ -45,7 +45,7 @@ fn desc(mod string) !string {
 pub fn main(args []string) !&Main {
 	mut fp := flag.new_flag_parser(args)
 	fp.application('pkgconfig')
-	fp.version(version)
+	fp.version(pkgconfig.version)
 	mut m := &Main{
 		opt: parse_options(mut fp)
 	}
@@ -53,7 +53,7 @@ pub fn main(args []string) !&Main {
 	if opt.help {
 		m.res = fp.usage()
 	} else if opt.version {
-		m.res = version
+		m.res = pkgconfig.version
 	} else if opt.listall {
 		mut modules := list()
 		modules.sort()

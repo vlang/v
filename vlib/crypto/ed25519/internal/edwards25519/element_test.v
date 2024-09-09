@@ -407,11 +407,11 @@ fn test_decimal_constants() {
 	mut el := Element{}
 	mut exp := el.from_decimal_string(sqrtm1string)!
 
-	assert sqrt_m1.equal(exp) == 1
+	assert edwards25519.sqrt_m1.equal(exp) == 1
 
 	dstring := '37095705934669439343138083508754565189542113879843219016388785533085940283555'
 	exp = el.from_decimal_string(dstring)!
-	mut d := d_const
+	mut d := edwards25519.d_const
 
 	assert d.equal(exp) == 1
 }

@@ -77,7 +77,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	if gen_or {
 		elem_styp := g.typ(elem_type)
 		g.register_chan_push_option_fn(elem_styp, styp)
-		g.write('${option_name}_void ${tmp_opt} = __Option_${styp}_pushval(')
+		g.write('${c.option_name}_void ${tmp_opt} = __Option_${styp}_pushval(')
 	} else {
 		g.write('__${styp}_pushval(')
 	}
@@ -1096,7 +1096,7 @@ fn (mut g Gen) gen_safe_integer_infix_expr(cfg GenSafeIntegerCfg) {
 		64
 	}
 	op_idx := int(cfg.op) - int(token.Kind.eq)
-	op_str := if cfg.reverse { cmp_rev[op_idx] } else { cmp_str[op_idx] }
+	op_str := if cfg.reverse { c.cmp_rev[op_idx] } else { c.cmp_str[op_idx] }
 	g.write('_us${bitsize}_${op_str}(')
 	g.expr(cfg.unsigned_expr)
 	g.write(',')

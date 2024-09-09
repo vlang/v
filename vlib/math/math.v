@@ -33,21 +33,21 @@ pub fn aprox_cos(a f64) f64 {
 // copysign returns a value with the magnitude of x and the sign of y
 @[inline]
 pub fn copysign(x f64, y f64) f64 {
-	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
+	return f64_from_bits((f64_bits(x) & ~math.sign_mask) | (f64_bits(y) & math.sign_mask))
 }
 
 // degrees converts an angle in radians to a corresponding angle in degrees.
 @[inline]
 pub fn degrees(radians f64) f64 {
-	return radians * (180.0 / pi)
+	return radians * (180.0 / math.pi)
 }
 
 // angle_diff calculates the difference between angles in radians
 @[inline]
 pub fn angle_diff(radian_a f64, radian_b f64) f64 {
-	mut delta := fmod(radian_b - radian_a, tau)
-	delta = fmod(delta + 1.5 * tau, tau)
-	delta -= .5 * tau
+	mut delta := fmod(radian_b - radian_a, math.tau)
+	delta = fmod(delta + 1.5 * math.tau, math.tau)
+	delta -= .5 * math.tau
 	return delta
 }
 
@@ -157,13 +157,13 @@ pub fn signi(n f64) int {
 // radians converts an angle in degrees to a corresponding angle in radians.
 @[inline]
 pub fn radians(degrees f64) f64 {
-	return degrees * (pi / 180.0)
+	return degrees * (math.pi / 180.0)
 }
 
 // signbit returns a value with the boolean representation of the sign for x
 @[inline]
 pub fn signbit(x f64) bool {
-	return f64_bits(x) & sign_mask != 0
+	return f64_bits(x) & math.sign_mask != 0
 }
 
 // tolerance checks if a and b difference are less than or equal to the tolerance value

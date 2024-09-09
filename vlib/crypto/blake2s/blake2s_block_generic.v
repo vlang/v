@@ -14,13 +14,13 @@ import math.bits
 @[inline]
 fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 	v[a] = v[a] + v[b] + x
-	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr1)
+	v[d] = bits.rotate_left_32((v[d] ^ v[a]), blake2s.nr1)
 	v[c] = v[c] + v[d]
-	v[b] = bits.rotate_left_32((v[b] ^ v[c]), nr2)
+	v[b] = bits.rotate_left_32((v[b] ^ v[c]), blake2s.nr2)
 	v[a] = v[a] + v[b] + y
-	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr3)
+	v[d] = bits.rotate_left_32((v[d] ^ v[a]), blake2s.nr3)
 	v[c] = v[c] + v[d]
-	v[b] = bits.rotate_left_32((v[b] ^ v[c]), nr4)
+	v[b] = bits.rotate_left_32((v[b] ^ v[c]), blake2s.nr4)
 }
 
 // one complete mixing round with the function g
@@ -42,7 +42,7 @@ fn (mut d Digest) f(f bool) {
 	// initialize the working vector
 	mut v := []u32{len: 0, cap: 16}
 	v << d.h[..8]
-	v << iv[..8]
+	v << blake2s.iv[..8]
 
 	v[12] ^= u32(d.t & 0x00000000ffffffff)
 	v[13] ^= u32(d.t >> 32)
@@ -52,16 +52,16 @@ fn (mut d Digest) f(f bool) {
 	}
 
 	// go 10 rounds of cryptographic mixing
-	d.mixing_round(mut v, sigma[0])
-	d.mixing_round(mut v, sigma[1])
-	d.mixing_round(mut v, sigma[2])
-	d.mixing_round(mut v, sigma[3])
-	d.mixing_round(mut v, sigma[4])
-	d.mixing_round(mut v, sigma[5])
-	d.mixing_round(mut v, sigma[6])
-	d.mixing_round(mut v, sigma[7])
-	d.mixing_round(mut v, sigma[8])
-	d.mixing_round(mut v, sigma[9])
+	d.mixing_round(mut v, blake2s.sigma[0])
+	d.mixing_round(mut v, blake2s.sigma[1])
+	d.mixing_round(mut v, blake2s.sigma[2])
+	d.mixing_round(mut v, blake2s.sigma[3])
+	d.mixing_round(mut v, blake2s.sigma[4])
+	d.mixing_round(mut v, blake2s.sigma[5])
+	d.mixing_round(mut v, blake2s.sigma[6])
+	d.mixing_round(mut v, blake2s.sigma[7])
+	d.mixing_round(mut v, blake2s.sigma[8])
+	d.mixing_round(mut v, blake2s.sigma[9])
 
 	// combine internal hash state with both halves of the working vector
 

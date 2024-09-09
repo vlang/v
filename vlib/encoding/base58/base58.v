@@ -6,7 +6,7 @@ import math
 
 // encode_int encodes any integer type to base58 string with Bitcoin alphabet
 pub fn encode_int(input int) !string {
-	return encode_int_walpha(input, btc_alphabet)
+	return encode_int_walpha(input, base58.btc_alphabet)
 }
 
 // encode_int_walpha any integer type to base58 string with custom alphabet
@@ -32,12 +32,12 @@ pub fn encode_int_walpha(input int, alphabet Alphabet) !string {
 
 // encode encodes the input string to base58 with the Bitcoin alphabet
 pub fn encode(input string) string {
-	return encode_walpha(input, btc_alphabet)
+	return encode_walpha(input, base58.btc_alphabet)
 }
 
 // encode_bytes encodes the input array to base58, with the Bitcoin alphabet
 pub fn encode_bytes(input []u8) []u8 {
-	return encode_walpha_bytes(input, btc_alphabet)
+	return encode_walpha_bytes(input, base58.btc_alphabet)
 }
 
 // encode_walpha encodes the input string to base58 with a custom aplhabet
@@ -98,7 +98,7 @@ pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
 
 // decode_int decodes base58 string to an integer with Bitcoin alphabet
 pub fn decode_int(input string) !int {
-	return decode_int_walpha(input, btc_alphabet)
+	return decode_int_walpha(input, base58.btc_alphabet)
 }
 
 // decode_int_walpha decodes base58 string to an integer with custom alphabet
@@ -122,12 +122,12 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) !int {
 
 // decode decodes the base58 input string, using the Bitcoin alphabet
 pub fn decode(str string) !string {
-	return decode_walpha(str, btc_alphabet)
+	return decode_walpha(str, base58.btc_alphabet)
 }
 
 // decode_bytes decodes the base58 encoded input array, using the Bitcoin alphabet
 pub fn decode_bytes(input []u8) ![]u8 {
-	return decode_walpha_bytes(input, btc_alphabet)
+	return decode_walpha_bytes(input, base58.btc_alphabet)
 }
 
 // decode_walpha decodes the base58 encoded input string, using custom alphabet

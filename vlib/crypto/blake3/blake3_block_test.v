@@ -45,7 +45,7 @@ fn test_mixing_round_function() {
 		0x0e20a47d, 0xa00daed9, 0x9cb88560, 0xc4ae5e00, 0x44e3674e, 0xb8ef13fb, 0xecac5dd5,
 		0xce1d693f, 0xb764dd49, 0xdff51e68]
 
-	mixing_round(mut v, m, sigma[2])
+	mixing_round(mut v, m, blake3.sigma[2])
 
 	for i, value in v {
 		assert value == v_result[i], 'i: ${i}, left: ${value:08x} right: ${v_result[i]:08x}'

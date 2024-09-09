@@ -24,7 +24,7 @@ fn test_proj_lookup_table() {
 	acc_p1.add(acc_p3, tmp3)
 	acc_p3.from_p1(acc_p1)
 
-	assert acc_p3.equal(id_point) == 1
+	assert acc_p3.equal(edwards25519.id_point) == 1
 }
 
 fn test_affine_lookup_table() {
@@ -51,7 +51,7 @@ fn test_affine_lookup_table() {
 	acc_p1.add_affine(acc_p3, tmp3)
 	acc_p3.from_p1(acc_p1)
 
-	assert acc_p3.equal(id_point) == 1
+	assert acc_p3.equal(edwards25519.id_point) == 1
 }
 
 fn test_naf_lookup_table5() {

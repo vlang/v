@@ -84,7 +84,7 @@ fn unescape_all(input string) string {
 			} else {
 				// Named entity (e.g., &lt;)
 				entity := runes[i + 1..j].string()
-				if v := named_references[entity] {
+				if v := html.named_references[entity] {
 					result << v
 				} else {
 					// Leave unknown entities unchanged

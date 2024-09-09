@@ -47,7 +47,7 @@ fn test_check_and_clear_cache_files() {
 }
 
 fn test_create_template_cache_and_display() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)
+	mut dtmi := init_dtm(true, dtm.max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
 	}
@@ -56,7 +56,7 @@ fn test_create_template_cache_and_display() {
 }
 
 fn test_get_cache() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)
+	mut dtmi := init_dtm(true, dtm.max_size_data_in_memory)
 	dtmi.create_cache()
 	defer {
 		dtmi.stop_cache_handler()
@@ -88,7 +88,7 @@ fn test_chandler_clear_specific_cache() {
 }
 
 fn test_handle_dtm_clock() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)
+	mut dtmi := init_dtm(true, dtm.max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
 	}
@@ -97,7 +97,7 @@ fn test_handle_dtm_clock() {
 }
 
 fn test_cache_handler() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)
+	mut dtmi := init_dtm(true, dtm.max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
 	}

@@ -20,7 +20,7 @@ pub fn sqrt(a f64) f64 {
 	// relative error of approximation = 7.47e-3
 	x = 4.173075996388649989089e-1 + 5.9016206709064458299663e-1 * z // adjust for odd powers of 2
 	if (ex & 1) != 0 {
-		x *= sqrt2
+		x *= math.sqrt2
 	}
 	x = ldexp(x, ex >> 1)
 	// newton iterations

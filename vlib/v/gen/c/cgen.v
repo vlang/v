@@ -618,7 +618,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if g.shared_functions.len > 0 {
 		b.writeln('\n// V shared type functions:')
 		b.write_string(g.shared_functions.str())
-		b.write_string(c_concurrency_helpers)
+		b.write_string(c.c_concurrency_helpers)
 	}
 	if g.channel_definitions.len > 0 {
 		b.writeln('\n// V channel code:')
@@ -800,7 +800,7 @@ pub fn (mut g Gen) gen_file() {
 }
 
 pub fn (g &Gen) hashes() string {
-	return c_commit_hash_default.replace('@@@', version.vhash())
+	return c.c_commit_hash_default.replace('@@@', version.vhash())
 }
 
 pub fn (mut g Gen) init() {
@@ -848,14 +848,14 @@ pub fn (mut g Gen) init() {
 		if g.pref.nofloat {
 			g.cheaders.writeln('#define VNOFLOAT 1')
 		}
-		g.cheaders.writeln(c_builtin_types)
+		g.cheaders.writeln(c.c_builtin_types)
 		if g.pref.is_bare {
-			g.cheaders.writeln(c_bare_headers)
+			g.cheaders.writeln(c.c_bare_headers)
 		} else {
-			g.cheaders.writeln(c_headers)
+			g.cheaders.writeln(c.c_headers)
 		}
 		if !g.pref.skip_unused || g.table.used_maps > 0 {
-			g.cheaders.writeln(c_wyhash_headers)
+			g.cheaders.writeln(c.c_wyhash_headers)
 		}
 	}
 	if g.pref.os == .ios {
@@ -4881,7 +4881,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write('(*${name})')
 				} else {
 					if node.obj is ast.Var && node.obj.is_inherited {
-						g.write(closure_ctx + '->')
+						g.write(c.closure_ctx + '->')
 					}
 					g.write(name)
 				}
@@ -4991,7 +4991,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 							mut is_ptr := false
 							if i == 0 {
 								if node.obj.is_inherited {
-									g.write(closure_ctx + '->')
+									g.write(c.closure_ctx + '->')
 								}
 								if node.obj.typ.nr_muls() > 1 {
 									g.write('(')
@@ -5043,7 +5043,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 			}
 			if node.obj.is_inherited {
-				g.write(closure_ctx + '->')
+				g.write(c.closure_ctx + '->')
 			}
 		}
 	} else if node.info is ast.IdentFn {

@@ -132,14 +132,14 @@ pub fn (re &RE) match_string(in_txt string) (int, int) {
 		}
 
 		if start >= 0 && end > start {
-			if (re.flag & f_ms) != 0 && start > 0 {
-				return no_match_found, 0
+			if (re.flag & regex.f_ms) != 0 && start > 0 {
+				return regex.no_match_found, 0
 			}
-			if (re.flag & f_me) != 0 && end < in_txt.len {
-				if in_txt[end] in new_line_list {
+			if (re.flag & regex.f_me) != 0 && end < in_txt.len {
+				if in_txt[end] in regex.new_line_list {
 					return start, end
 				}
-				return no_match_found, 0
+				return regex.no_match_found, 0
 			}
 			return start, end
 		}
@@ -150,7 +150,7 @@ pub fn (re &RE) match_string(in_txt string) (int, int) {
 // matches_string Checks if the pattern matches the in_txt string
 pub fn (re &RE) matches_string(in_txt string) bool {
 	start, _ := re.match_string(in_txt)
-	return start != no_match_found
+	return start != regex.no_match_found
 }
 
 /******************************************************************************
@@ -203,11 +203,11 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 					gi++
 				}
 				// when ^ (f_ms) is used, it must match on beginning of string
-				if (re.flag & f_ms) != 0 && s > 0 {
+				if (re.flag & regex.f_ms) != 0 && s > 0 {
 					break
 				}
 				// when $ (f_me) is used, it must match on ending of string
-				if (re.flag & f_me) != 0 && i + e < in_txt.len {
+				if (re.flag & regex.f_me) != 0 && i + e < in_txt.len {
 					break
 				}
 				return i + s, i + e

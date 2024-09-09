@@ -6,7 +6,7 @@ import strings
 pub fn (mut re RE) compile_opt(pattern string) ! {
 	re_err, err_pos := re.impl_compile(pattern)
 
-	if re_err != compile_ok {
+	if re_err != regex.compile_ok {
 		mut err_msg := strings.new_builder(300)
 		err_msg.write_string('\nquery: ${pattern}\n')
 		line := '-'.repeat(err_pos)
@@ -21,11 +21,11 @@ pub fn (mut re RE) compile_opt(pattern string) ! {
 pub fn new() RE {
 	// init regex
 	mut re := RE{}
-	re.prog = []Token{len: max_code_len + 1} // max program length, can not be longer then the pattern
-	re.cc = []CharClass{len: max_code_len} // can not be more char class the length of the pattern
+	re.prog = []Token{len: regex.max_code_len + 1} // max program length, can not be longer then the pattern
+	re.cc = []CharClass{len: regex.max_code_len} // can not be more char class the length of the pattern
 	re.group_csave_flag = false // enable continuos group saving
 	re.group_max_nested = 128 // set max 128 group nested
-	re.group_max = max_code_len >> 1 // we can't have more groups than the half of the pattern legth
+	re.group_max = regex.max_code_len >> 1 // we can't have more groups than the half of the pattern legth
 
 	re.group_stack = []int{len: re.group_max, init: -1}
 	re.group_data = []int{len: re.group_max, init: -1}

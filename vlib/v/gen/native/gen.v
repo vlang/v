@@ -1185,7 +1185,7 @@ fn (mut g Gen) sym_string_table() i32 {
 					// that should be .rel32, not windows-specific
 					g.write32_at(i64(s.pos), pos - s.pos - 4)
 				} else {
-					g.write64_at(i64(s.pos), i64(pos) + base_addr)
+					g.write64_at(i64(s.pos), i64(pos) + native.base_addr)
 				}
 			}
 		}

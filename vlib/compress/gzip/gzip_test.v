@@ -35,7 +35,7 @@ fn test_gzip_invalid_compression() {
 fn test_gzip_with_ftext() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= ftext
+	compressed[3] |= gzip.ftext
 	decompressed := decompress(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
@@ -43,7 +43,7 @@ fn test_gzip_with_ftext() {
 fn test_gzip_with_fname() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fname
+	compressed[3] |= gzip.fname
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -54,7 +54,7 @@ fn test_gzip_with_fname() {
 fn test_gzip_with_fcomment() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fcomment
+	compressed[3] |= gzip.fcomment
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -65,7 +65,7 @@ fn test_gzip_with_fcomment() {
 fn test_gzip_with_fname_fcomment() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= (fname | fcomment)
+	compressed[3] |= (gzip.fname | gzip.fcomment)
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -79,7 +79,7 @@ fn test_gzip_with_fname_fcomment() {
 fn test_gzip_with_fextra() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fextra
+	compressed[3] |= gzip.fextra
 	compressed.insert(10, 2)
 	compressed.insert(11, `h`)
 	compressed.insert(12, `i`)
@@ -90,7 +90,7 @@ fn test_gzip_with_fextra() {
 fn test_gzip_with_hcrc() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fhcrc
+	compressed[3] |= gzip.fhcrc
 	checksum := crc32.sum(compressed[..10])
 	compressed.insert(10, u8(checksum >> 24))
 	compressed.insert(11, u8(checksum >> 16))
@@ -103,7 +103,7 @@ fn test_gzip_with_hcrc() {
 fn test_gzip_with_invalid_hcrc() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fhcrc
+	compressed[3] |= gzip.fhcrc
 	checksum := crc32.sum(compressed[..10])
 	compressed.insert(10, u8(checksum >> 24))
 	compressed.insert(11, u8(checksum >> 16))

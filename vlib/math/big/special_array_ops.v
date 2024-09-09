@@ -32,7 +32,7 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	// https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division
 	// use 48/17 - 32/17.D (divisor)
 	initial_guess := (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).right_shift(64)).neg() // / 17 == 0x11
-	if initial_guess > zero_int {
+	if initial_guess > big.zero_int {
 		x = initial_guess
 	}
 	mut lastx := integer_from_int(0)
@@ -182,9 +182,9 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 	}
 
 	// Zero arrays by default
-	mut b0 := zero_int.clone()
-	mut b1 := zero_int.clone()
-	mut b2 := zero_int.clone()
+	mut b0 := big.zero_int.clone()
+	mut b1 := big.zero_int.clone()
+	mut b2 := big.zero_int.clone()
 
 	if operand_b.len < k {
 		b0 = Integer{
@@ -228,7 +228,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 	p2 := ((ptemp + a2).left_shift(1) - a0) * ((qtemp + b2).left_shift(1) - b0)
 	pinf := a2 * b2
 
-	mut t2, _ := (p2 - vm1).div_mod_internal(three_int)
+	mut t2, _ := (p2 - vm1).div_mod_internal(big.three_int)
 	mut tm1 := (p1 - vm1).right_shift(1)
 	mut t1 := p1 - p0
 	t2 = (t2 - t1).right_shift(1)

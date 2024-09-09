@@ -1981,7 +1981,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('${result_name}_${typ} ${tmp2} = ${fn_name}(${json_obj});')
+			g.writeln('${c.result_name}_${typ} ${tmp2} = ${fn_name}(${json_obj});')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete(${json_obj}); // del')

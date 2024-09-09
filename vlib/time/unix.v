@@ -6,13 +6,13 @@ module time
 // unix returns a Time struct calculated from a Unix timestamp (number of seconds since 1970-01-01)
 pub fn unix(epoch i64) Time {
 	// Split into day and time
-	mut day_offset := epoch / seconds_per_day
-	if epoch % seconds_per_day < 0 {
+	mut day_offset := epoch / time.seconds_per_day
+	if epoch % time.seconds_per_day < 0 {
 		// Compensate for round towards zero on integers as we want floored instead
 		day_offset--
 	}
 	year, month, day := calculate_date_from_day_offset(day_offset)
-	hr, min, sec := calculate_time_from_second_offset(epoch % seconds_per_day)
+	hr, min, sec := calculate_time_from_second_offset(epoch % time.seconds_per_day)
 	return Time{
 		year:   year
 		month:  month
@@ -39,13 +39,13 @@ pub fn unix_microsecond(epoch i64, microsecond int) Time {
 // unix_nanosecond returns a Time struct given a Unix timestamp in seconds and a nanosecond value
 pub fn unix_nanosecond(abs_unix_timestamp i64, nanosecond int) Time {
 	// Split into day and time
-	mut day_offset := abs_unix_timestamp / seconds_per_day
-	if abs_unix_timestamp % seconds_per_day < 0 {
+	mut day_offset := abs_unix_timestamp / time.seconds_per_day
+	if abs_unix_timestamp % time.seconds_per_day < 0 {
 		// Compensate for rounding towards zero on integers as we want floored instead
 		day_offset--
 	}
 	year, month, day := calculate_date_from_day_offset(day_offset)
-	hour_, minute_, second_ := calculate_time_from_second_offset(abs_unix_timestamp % seconds_per_day)
+	hour_, minute_, second_ := calculate_time_from_second_offset(abs_unix_timestamp % time.seconds_per_day)
 	return Time{
 		year:       year
 		month:      month
@@ -69,22 +69,22 @@ fn calculate_date_from_day_offset(day_offset_ i64) (int, int, int) {
 
 	mut era := 0
 	if day_offset >= 0 {
-		era = int(day_offset / days_per_400_years)
+		era = int(day_offset / time.days_per_400_years)
 	} else {
-		era = int((day_offset - days_per_400_years - 1) / days_per_400_years)
+		era = int((day_offset - time.days_per_400_years - 1) / time.days_per_400_years)
 	}
 
 	// day_of_era => [0..146096]
-	day_of_era := day_offset - era * days_per_400_years
+	day_of_era := day_offset - era * time.days_per_400_years
 
 	// year_of_era => [0..399]
-	year_of_era := (day_of_era - day_of_era / (days_per_4_years - 1) +
-		day_of_era / days_per_100_years - day_of_era / (days_per_400_years - 1)) / days_in_year
+	year_of_era := (day_of_era - day_of_era / (time.days_per_4_years - 1) +
+		day_of_era / time.days_per_100_years - day_of_era / (time.days_per_400_years - 1)) / time.days_in_year
 
 	mut year := int(year_of_era + era * 400)
 
 	// day_of_year => with year beginning Mar 1 [0..365]
-	day_of_year := day_of_era - (days_in_year * year_of_era + year_of_era / 4 - year_of_era / 100)
+	day_of_year := day_of_era - (time.days_in_year * year_of_era + year_of_era / 4 - year_of_era / 100)
 
 	month_position := (5 * day_of_year + 2) / 153
 	day := int(day_of_year - (153 * month_position + 2) / 5 + 1)
@@ -108,11 +108,11 @@ fn calculate_date_from_day_offset(day_offset_ i64) (int, int, int) {
 fn calculate_time_from_second_offset(second_offset_ i64) (int, int, int) {
 	mut second_offset := second_offset_
 	if second_offset < 0 {
-		second_offset += seconds_per_day
+		second_offset += time.seconds_per_day
 	}
-	hour_ := second_offset / seconds_per_hour
-	second_offset %= seconds_per_hour
-	minute_ := second_offset / seconds_per_minute
-	second_offset %= seconds_per_minute
+	hour_ := second_offset / time.seconds_per_hour
+	second_offset %= time.seconds_per_hour
+	minute_ := second_offset / time.seconds_per_minute
+	second_offset %= time.seconds_per_minute
 	return int(hour_), int(minute_), int(second_offset)
 }

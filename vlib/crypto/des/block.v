@@ -9,16 +9,16 @@ fn feistel(ll u32, rr u32, k0 u64, k1 u64) (u32, u32) {
 	mut r := rr
 	mut t := r ^ u32(k0 >> 32)
 
-	l ^= feistel_box[7][t & 0x3f] ^ feistel_box[5][(t >> 8) & 0x3f] ^ feistel_box[3][(t >> 16) & 0x3f] ^ feistel_box[1][(t >> 24) & 0x3f]
+	l ^= des.feistel_box[7][t & 0x3f] ^ des.feistel_box[5][(t >> 8) & 0x3f] ^ des.feistel_box[3][(t >> 16) & 0x3f] ^ des.feistel_box[1][(t >> 24) & 0x3f]
 
 	t = ((r << 28) | (r >> 4)) ^ u32(k0)
-	l ^= feistel_box[6][t & 0x3f] ^ feistel_box[4][(t >> 8) & 0x3f] ^ feistel_box[2][(t >> 16) & 0x3f] ^ feistel_box[0][(t >> 24) & 0x3f]
+	l ^= des.feistel_box[6][t & 0x3f] ^ des.feistel_box[4][(t >> 8) & 0x3f] ^ des.feistel_box[2][(t >> 16) & 0x3f] ^ des.feistel_box[0][(t >> 24) & 0x3f]
 
 	t = l ^ u32(k1 >> 32)
-	r ^= feistel_box[7][t & 0x3f] ^ feistel_box[5][(t >> 8) & 0x3f] ^ feistel_box[3][(t >> 16) & 0x3f] ^ feistel_box[1][(t >> 24) & 0x3f]
+	r ^= des.feistel_box[7][t & 0x3f] ^ des.feistel_box[5][(t >> 8) & 0x3f] ^ des.feistel_box[3][(t >> 16) & 0x3f] ^ des.feistel_box[1][(t >> 24) & 0x3f]
 
 	t = ((l << 28) | (l >> 4)) ^ u32(k1)
-	r ^= feistel_box[6][t & 0x3f] ^ feistel_box[4][(t >> 8) & 0x3f] ^ feistel_box[2][(t >> 16) & 0x3f] ^ feistel_box[0][(t >> 24) & 0x3f]
+	r ^= des.feistel_box[6][t & 0x3f] ^ des.feistel_box[4][(t >> 8) & 0x3f] ^ des.feistel_box[2][(t >> 16) & 0x3f] ^ des.feistel_box[0][(t >> 24) & 0x3f]
 
 	return l, r
 }
@@ -173,8 +173,8 @@ fn ks_rotate(ain u32) []u32 {
 	mut last := ain
 	for i := 0; i < 16; i++ {
 		// 28-bit circular left shift
-		left := (last << (4 + ks_rotations[i])) >> 4
-		right := (last << 4) >> (32 - ks_rotations[i])
+		left := (last << (4 + des.ks_rotations[i])) >> 4
+		right := (last << 4) >> (32 - des.ks_rotations[i])
 		out[i] = left | right
 		last = out[i]
 	}

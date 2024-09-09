@@ -70,7 +70,7 @@ fn test_mixing_function_g() {
 	// initialize the working vector from the digest and IV values
 	mut v := []u32{len: 0, cap: 16}
 	v << d.h[..8]
-	v << iv[..8]
+	v << blake2s.iv[..8]
 
 	// fold in the 64-bit message length
 	v[12] ^= u32(d.t & 0x00000000ffffffff)
@@ -91,7 +91,7 @@ fn test_mixing_function_g() {
 	}
 
 	for r in 0 .. blake2s.expected_v_results.len {
-		d.mixing_round(mut v, sigma[r])
+		d.mixing_round(mut v, blake2s.sigma[r])
 
 		for i in 0 .. 16 {
 			assert v[i] == blake2s.expected_v_results[r][i], 'expeccted expected_v_results[${r}][${i}] ${blake2s.expected_v_results[r][i]:08x} actual v[${i}] ${v[i]:08x}'

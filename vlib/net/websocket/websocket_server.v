@@ -17,7 +17,7 @@ pub mut:
 // Server represents a websocket server connection
 pub struct Server {
 mut:
-	logger                  &log.Logger      = default_logger
+	logger                  &log.Logger      = websocket.default_logger
 	ls                      &net.TcpListener = unsafe { nil } // listener used to get incoming connection to socket
 	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
@@ -43,7 +43,7 @@ pub mut:
 @[params]
 pub struct ServerOpt {
 pub:
-	logger &log.Logger = default_logger
+	logger &log.Logger = websocket.default_logger
 }
 
 // new_server instance a new websocket server on provided port and route

@@ -26,7 +26,7 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 	}
 	mut fos := ''
 	mut allowed_os_overrides := []string{}
-	allowed_os_overrides << valid_comptime_not_user_defined
+	allowed_os_overrides << ast.valid_comptime_not_user_defined
 	allowed_os_overrides << ctimedefines
 	for os_override in allowed_os_overrides {
 		if !flag.starts_with(os_override) {

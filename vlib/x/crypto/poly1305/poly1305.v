@@ -216,7 +216,7 @@ fn poly1305_update_block(mut po Poly1305, msg []u8) {
 fn (mut po Poly1305) reset() {
 	po.r = unsigned.uint128_zero
 	po.s = unsigned.uint128_zero
-	po.h = uint192_zero
+	po.h = poly1305.uint192_zero
 	po.leftover = 0
 	unsafe {
 		po.buffer.reset()

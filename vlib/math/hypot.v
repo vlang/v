@@ -15,7 +15,7 @@ pub fn hypot(x f64, y f64) f64 {
 		cmin, cmax := minmax(abs_x, abs_y)
 		rat := cmin / cmax
 		root_term := sqrt(1.0 + rat * rat)
-		if cmax < max_f64 / root_term {
+		if cmax < math.max_f64 / root_term {
 			result = cmax * root_term
 		} else {
 			panic('overflow in hypot_e function')

@@ -54,7 +54,7 @@ pub fn sin(x f64) f64 {
 		return x * (1.0 - x2 / 6.0)
 	} else {
 		mut sgn_result := sgn_x
-		mut y := floor(abs_x / (0.25 * pi))
+		mut y := floor(abs_x / (0.25 * math.pi))
 		mut octant := int(y - ldexp(floor(ldexp(y, -3)), 3))
 		if (octant & 1) == 1 {
 			octant++
@@ -68,11 +68,11 @@ pub fn sin(x f64) f64 {
 		z := ((abs_x - y * p1) - y * p2) - y * p3
 		mut result := 0.0
 		if octant == 0 {
-			t := 8.0 * abs(z) / pi - 1.0
+			t := 8.0 * abs(z) / math.pi - 1.0
 			sin_cs_val, _ := math.sin_cs.eval_e(t)
 			result = z * (1.0 + z * z * sin_cs_val)
 		} else {
-			t := 8.0 * abs(z) / pi - 1.0
+			t := 8.0 * abs(z) / math.pi - 1.0
 			cos_cs_val, _ := math.cos_cs.eval_e(t)
 			result = 1.0 - 0.5 * z * z * (1.0 - z * z * cos_cs_val)
 		}
@@ -92,7 +92,7 @@ pub fn cos(x f64) f64 {
 		return 1.0 - 0.5 * x2
 	} else {
 		mut sgn_result := 1
-		mut y := floor(abs_x / (0.25 * pi))
+		mut y := floor(abs_x / (0.25 * math.pi))
 		mut octant := int(y - ldexp(floor(ldexp(y, -3)), 3))
 		if (octant & 1) == 1 {
 			octant++
@@ -109,11 +109,11 @@ pub fn cos(x f64) f64 {
 		z := ((abs_x - y * p1) - y * p2) - y * p3
 		mut result := 0.0
 		if octant == 0 {
-			t := 8.0 * abs(z) / pi - 1.0
+			t := 8.0 * abs(z) / math.pi - 1.0
 			cos_cs_val, _ := math.cos_cs.eval_e(t)
 			result = 1.0 - 0.5 * z * z * (1.0 - z * z * cos_cs_val)
 		} else {
-			t := 8.0 * abs(z) / pi - 1.0
+			t := 8.0 * abs(z) / math.pi - 1.0
 			sin_cs_val, _ := math.sin_cs.eval_e(t)
 			result = z * (1.0 + z * z * sin_cs_val)
 		}
@@ -153,7 +153,7 @@ pub fn sincos(x f64) (f64, f64) {
 	} else {
 		mut sgn_result_sin := sgn_x
 		mut sgn_result_cos := 1
-		mut y := floor(abs_x / (0.25 * pi))
+		mut y := floor(abs_x / (0.25 * math.pi))
 		mut octant := int(y - ldexp(floor(ldexp(y, -3)), 3))
 		if (octant & 1) == 1 {
 			octant++
@@ -167,7 +167,7 @@ pub fn sincos(x f64) (f64, f64) {
 		}
 		sgn_result_cos = if octant > 1 { -sgn_result_cos } else { sgn_result_cos }
 		z := ((abs_x - y * p1) - y * p2) - y * p3
-		t := 8.0 * abs(z) / pi - 1.0
+		t := 8.0 * abs(z) / math.pi - 1.0
 		sin_cs_val, _ := math.sin_cs.eval_e(t)
 		cos_cs_val, _ := math.cos_cs.eval_e(t)
 		mut result_sin := 0.0

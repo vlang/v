@@ -43,9 +43,9 @@ pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 	propagate_cancel(mut parent, mut ctx)
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
-		ctx.cancel(true, deadline_exceeded) // deadline has already passed
+		ctx.cancel(true, context.deadline_exceeded) // deadline has already passed
 		cancel_fn := fn [mut ctx] () {
-			ctx.cancel(true, canceled)
+			ctx.cancel(true, context.canceled)
 		}
 		return Context(ctx), CancelFn(cancel_fn)
 	}
@@ -53,12 +53,12 @@ pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 	if ctx.err() is none {
 		spawn fn (mut ctx TimerContext, dur time.Duration) {
 			time.sleep(dur)
-			ctx.cancel(true, deadline_exceeded)
+			ctx.cancel(true, context.deadline_exceeded)
 		}(mut ctx, dur)
 	}
 
 	cancel_fn := fn [mut ctx] () {
-		ctx.cancel(true, canceled)
+		ctx.cancel(true, context.canceled)
 	}
 	return Context(ctx), CancelFn(cancel_fn)
 }

@@ -332,7 +332,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 // generate builtin type definitions, used for casting and methods.
 fn (mut g JsGen) gen_builtin_type_defs() {
 	g.inc_indent()
-	for typ_name in v_types {
+	for typ_name in js.v_types {
 		// TODO: JsDoc
 		match typ_name {
 			'i8', 'i16', 'int', 'int_literal' {

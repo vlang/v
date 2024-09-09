@@ -65,7 +65,7 @@ fn is_on_curve(x Element, y Element, z Element, t Element) bool {
 	// -(X/Z)² + (Y/Z)² = 1 + d(T/Z)²
 	// -X² + Y² = Z² + dT²
 	lhs.subtract(yy, xx)
-	mut d := d_const
+	mut d := edwards25519.d_const
 	rhs.multiply(d, tt)
 	rhs.add(rhs, zz)
 	if lhs.equal(rhs) != 1 {
@@ -108,8 +108,8 @@ fn (mut v Point) bytes_montgomery_generic(mut buf [32]u8) []u8 {
 	mut u := Element{}
 
 	y.multiply(v.y, y.invert(v.z)) // y = Y / Z
-	recip.invert(recip.subtract(fe_one, &y)) // r = 1/(1 - y)
-	u.multiply(u.add(fe_one, y), recip) // u = (1 + y)*r
+	recip.invert(recip.subtract(edwards25519.fe_one, &y)) // r = 1/(1 - y)
+	u.multiply(u.add(edwards25519.fe_one, y), recip) // u = (1 + y)*r
 
 	return copy_field_element(mut buf, mut u)
 }

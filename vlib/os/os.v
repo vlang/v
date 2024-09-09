@@ -44,20 +44,20 @@ pub fn (mut result Result) free() {
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if args.len == 0 {
+	if os.args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := args[0]
+	mut exepath := os.args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
 		}
 	}
 	if !is_abs_path(exepath) {
-		other_separator := if path_separator == '/' { '\\' } else { '/' }
-		rexepath := exepath.replace(other_separator, path_separator)
-		if rexepath.contains(path_separator) {
+		other_separator := if os.path_separator == '/' { '\\' } else { '/' }
+		rexepath := exepath.replace(other_separator, os.path_separator)
+		if rexepath.contains(os.path_separator) {
 			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
@@ -285,10 +285,10 @@ pub fn dir(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	pos := path.last_index(path_separator) or { return '.' }
-	if pos == 0 && path_separator == '/' {
+	other_separator := if os.path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, os.path_separator)
+	pos := path.last_index(os.path_separator) or { return '.' }
+	if pos == 0 && os.path_separator == '/' {
 		return '/'
 	}
 	return path[..pos]
@@ -302,26 +302,26 @@ pub fn base(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	if path == path_separator {
-		return path_separator
+	other_separator := if os.path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, os.path_separator)
+	if path == os.path_separator {
+		return os.path_separator
 	}
-	if path.ends_with(path_separator) {
+	if path.ends_with(os.path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.last_index(path_separator) or { return path2.clone() }
+		pos := path2.last_index(os.path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.last_index(path_separator) or { return path.clone() }
+	pos := path.last_index(os.path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 
 // file_name will return all characters found after the last occurrence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	return path.all_after_last(path_separator)
+	other_separator := if os.path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, os.path_separator)
+	return path.all_after_last(os.path_separator)
 }
 
 // input_opt returns a one-line string from stdin, after printing a prompt.
@@ -494,11 +494,11 @@ pub fn home_dir() string {
 // See also `home_dir()`.
 pub fn expand_tilde_to_home(path string) string {
 	if path == '~' {
-		return home_dir().trim_right(path_separator)
+		return home_dir().trim_right(os.path_separator)
 	}
-	if path.starts_with('~' + path_separator) {
-		return path.replace_once('~' + path_separator, home_dir().trim_right(path_separator) +
-			path_separator)
+	if path.starts_with('~' + os.path_separator) {
+		return path.replace_once('~' + os.path_separator,
+			home_dir().trim_right(os.path_separator) + os.path_separator)
 	}
 	return path
 }
@@ -530,14 +530,14 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 		return error('expected non empty `exe_name`')
 	}
 
-	for suffix in executable_suffixes {
+	for suffix in os.executable_suffixes {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return real_path(fexepath)
 		}
 		mut res := ''
 		path := getenv('PATH')
-		paths := path.split(path_delimiter)
+		paths := path.split(os.path_delimiter)
 		for p in paths {
 			found_abs_path := join_path_single(p, fexepath)
 			$if trace_find_abs_path_of_executable ? {
@@ -585,14 +585,14 @@ pub fn join_path(base string, dirs ...string) string {
 	sb.write_string(sbase)
 	for d in dirs {
 		if d != '' {
-			sb.write_string(path_separator)
+			sb.write_string(os.path_separator)
 			sb.write_string(d)
 		}
 	}
 	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
 	if base == '' {
-		res = res.trim_left(path_separator)
+		res = res.trim_left(os.path_separator)
 	}
 	return res
 }
@@ -613,13 +613,13 @@ pub fn join_path_single(base string, elem string) string {
 	}
 	sb.write_string(sbase)
 	if elem != '' {
-		sb.write_string(path_separator)
+		sb.write_string(os.path_separator)
 		sb.write_string(elem)
 	}
 	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
 	if base == '' {
-		res = res.trim_left(path_separator)
+		res = res.trim_left(os.path_separator)
 	}
 	return res
 }
@@ -674,7 +674,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 		return
 	}
 	mut files := ls(path) or { return }
-	separator := if path.ends_with(path_separator) { '' } else { path_separator }
+	separator := if path.ends_with(os.path_separator) { '' } else { os.path_separator }
 	for file in files {
 		if file.starts_with('.') {
 			continue
@@ -701,7 +701,7 @@ pub fn walk(path string, f fn (string)) {
 		return
 	}
 	mut remaining := []string{cap: 1000}
-	clean_path := path.trim_right(path_separator)
+	clean_path := path.trim_right(os.path_separator)
 	$if windows {
 		remaining << clean_path.replace('/', '\\')
 	} $else {
@@ -716,7 +716,7 @@ pub fn walk(path string, f fn (string)) {
 		}
 		mut files := ls(cpath) or { continue }
 		for idx := files.len - 1; idx >= 0; idx-- {
-			remaining << cpath + path_separator + files[idx]
+			remaining << cpath + os.path_separator + files[idx]
 		}
 	}
 }
@@ -739,7 +739,7 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 		return
 	}
 	mut remaining := []string{cap: 1000}
-	clean_path := path.trim_right(path_separator)
+	clean_path := path.trim_right(os.path_separator)
 	$if windows {
 		remaining << clean_path.replace('/', '\\')
 	} $else {
@@ -759,7 +759,7 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 		}
 		mut files := ls(cpath) or { continue }
 		for idx := files.len - 1; idx >= 0; idx-- {
-			remaining << cpath + path_separator + files[idx]
+			remaining << cpath + os.path_separator + files[idx]
 		}
 	}
 }
@@ -783,12 +783,12 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		}
 		return error('path `${opath}` already exists, and is not a folder')
 	}
-	other_separator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_separator, path_separator)
-	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
-	path_parts := path.trim_left(path_separator).split(path_separator)
+	other_separator := if os.path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, os.path_separator)
+	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
+	path_parts := path.trim_left(os.path_separator).split(os.path_separator)
 	for subdir in path_parts {
-		p += subdir + path_separator
+		p += subdir + os.path_separator
 		if exists(p) && is_dir(p) {
 			continue
 		}
@@ -909,14 +909,14 @@ pub fn vmodules_paths() []string {
 	defer {
 		// unsafe { path.free() }
 	}
-	splitted := path.split(path_delimiter)
+	splitted := path.split(os.path_delimiter)
 	defer {
 		// unsafe { splitted.free() }
 	}
 	mut list := []string{cap: splitted.len}
 	for i in 0 .. splitted.len {
 		si := splitted[i]
-		trimmed := si.trim_right(path_separator)
+		trimmed := si.trim_right(os.path_separator)
 		list << trimmed
 		// unsafe { trimmed.free() }
 		// unsafe { si.free() }
@@ -993,8 +993,8 @@ pub fn execute_opt(cmd string) !Result {
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {
-		return if path.ends_with(path_separator) {
-			'"${path + path_separator}"'
+		return if path.ends_with(os.path_separator) {
+			'"${path + os.path_separator}"'
 		} else {
 			'"${path}"'
 		}

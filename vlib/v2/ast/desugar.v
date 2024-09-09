@@ -11,7 +11,7 @@ import v2.token
 pub fn (match_expr &MatchExpr) desugar() Expr {
 	mut if_expr := IfExpr{}
 	for i, branch in match_expr.branches {
-		mut branch_cond := empty_expr
+		mut branch_cond := ast.empty_expr
 		for cond in branch.cond {
 			op := if cond in [Ident, SelectorExpr] { token.Token.key_is } else { token.Token.eq }
 			c := InfixExpr{

@@ -22,7 +22,7 @@ fn test_encrypt_example_test() ! {
 	mut cs := chacha20.new_cipher(key, nonce)!
 
 	// and then performing Chacha20 block function
-	mut polykey := []u8{len: key_size}
+	mut polykey := []u8{len: chacha20poly1305.key_size}
 	cs.xor_key_stream(mut polykey, polykey)
 
 	assert polykey == exp_onetime_key
@@ -32,8 +32,8 @@ fn test_encrypt_example_test() ! {
 
 	cipherout := c.encrypt(plaintext, nonce, aad)!
 	// cipherout is concatenation of ciphertext and overhead (tag) bytes
-	ciphertext := cipherout[0..cipherout.len - tag_size]
-	mac := cipherout[cipherout.len - tag_size..]
+	ciphertext := cipherout[0..cipherout.len - chacha20poly1305.tag_size]
+	mac := cipherout[cipherout.len - chacha20poly1305.tag_size..]
 
 	assert ciphertext == exp_ciphertext
 	assert mac == expected_tag
@@ -57,7 +57,7 @@ fn test_aead_decrypt_vector_test_51() ! {
 	mut cs := chacha20.new_cipher(key, nonce)!
 
 	// and then performing Chacha20 block function
-	mut polykey := []u8{len: key_size}
+	mut polykey := []u8{len: chacha20poly1305.key_size}
 	cs.xor_key_stream(mut polykey, polykey)
 
 	expected_otk := hex.decode('bdf04aa95ce4de8995b14bb6a18fecaf26478f50c054f563dbc0a21e261572aa')!
@@ -65,7 +65,7 @@ fn test_aead_decrypt_vector_test_51() ! {
 
 	constructed_msg := hex.decode('f33388860000000000004e910000000064a0861575861af460f062c79be643bd5e805cfd345cf389f108670ac76c8cb24c6cfc18755d43eea09ee94e382d26b0bdb7b73c321b0100d4f03b7f355894cf332f830e710b97ce98c8a84abd0b948114ad176e008d33bd60f982b1ff37c8559797a06ef4f0ef61c186324e2b3506383606907b6a7c02b0f9f6157b53c867e4b9166c767b804d46a59b5216cde7a4e99040c5a40433225ee282a1b0a06c523eaf4534d7f83fa1155b0047718cbc546a0d072b04b3564eea1b422273f548271a0bb2316053fa76991955ebd63159434ecebb4e466dae5a1073a6727627097a1049e617d91d361094fa68f0ff77987130305beaba2eda04df997b714d6c6f2c29a6ad5cb4022b02709b000000000000000c000000000000000901000000000000')!
 
-	mut mac := []u8{len: tag_size}
+	mut mac := []u8{len: chacha20poly1305.tag_size}
 	poly1305.create_tag(mut mac, constructed_msg, polykey)!
 	assert mac == expected_tag
 

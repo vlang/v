@@ -181,9 +181,25 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
+fn parse_others_in_same_module(mod_name string, file string, mut table ast.Table, prefs &pref.Preferences) {
+	if mod_name != 'main' && prefs.should_compile_c(file) && !file.ends_with('.c.v')
+		&& !file.starts_with('.#') && !file.contains('_d_') && !file.contains('_notd_') {
+		// other files in the same module also need to be parsed
+		cur_file_dir := os.dir(file)
+		mut files := os.ls(cur_file_dir) or { panic(err) }
+		should_compile_files := prefs.should_compile_filtered_files(cur_file_dir, files)
+		for compile_file in should_compile_files {
+			if compile_file != file {
+				parser.parse_file(compile_file, mut table, .skip_comments, prefs)
+			}
+		}
+	}
+}
+
 fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) string {
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	parse_others_in_same_module(file_ast.mod.name, file, mut table, prefs)
 	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	return formated_content
 }
@@ -201,7 +217,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
 	prefs, mut table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
-	// checker.new_checker(table, prefs).check(file_ast)
+	parse_others_in_same_module(file_ast.mod.name, file, mut table, prefs)
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
@@ -213,7 +229,6 @@ fn (foptions &FormatOptions) format_pipe() {
 	prefs, mut table := setup_preferences_and_table()
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
-	// checker.new_checker(table, prefs).check(file_ast)
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
 		source_text: input_text
 	)

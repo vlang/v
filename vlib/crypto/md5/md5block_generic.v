@@ -24,7 +24,7 @@ fn block_generic(mut dig Digest, p []u8) {
 	mut c := dig.s[2]
 	mut d := dig.s[3]
 
-	for i := 0; i <= p.len - block_size; i += block_size {
+	for i := 0; i <= p.len - md5.block_size; i += md5.block_size {
 		// save current state
 		aa := a
 		bb := b

@@ -1,0 +1,13 @@
+module test
+
+const full_name = 'Robert the Tomato'
+
+fn print_full_name() {
+	println(test.full_name)
+	println(test.full_name)
+}
+
+fn print_name() {
+	println(test.name)
+	println(test.name)
+}

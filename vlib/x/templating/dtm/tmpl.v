@@ -84,8 +84,8 @@ fn replace_placeholders_with_data(line string, data &map[string]DtmMultiTypeMap,
 	for key, value in data {
 		mut placeholder := '$${key}'
 
-		if placeholder.ends_with(include_html_key_tag) {
-			placeholder = placeholder.all_before_last(include_html_key_tag)
+		if placeholder.ends_with(dtm.include_html_key_tag) {
+			placeholder = placeholder.all_before_last(dtm.include_html_key_tag)
 			need_include_html = true
 		}
 		if !rline.contains(placeholder) {
@@ -105,7 +105,7 @@ fn replace_placeholders_with_data(line string, data &map[string]DtmMultiTypeMap,
 				if need_include_html {
 					if state == State.html {
 						// Iterates over allowed HTML tags for inclusion
-						for tag in allowed_tags {
+						for tag in dtm.allowed_tags {
 							// Escapes the HTML tag
 							escaped_tag := filter(tag)
 							// Replaces the escaped tags with actual HTML tags in the value
@@ -154,8 +154,8 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string, data
 // compile_file compiles the content of a file by the given path as a template
 fn compile_template_file(template_file string, fn_name string, data &map[string]DtmMultiTypeMap) string {
 	mut lines := os.read_lines(template_file) or {
-		eprintln('${message_signature_error} Template generator can not reading from ${template_file} file')
-		return internat_server_error
+		eprintln('${dtm.message_signature_error} Template generator can not reading from ${template_file} file')
+		return dtm.internat_server_error
 	}
 
 	basepath := os.dir(template_file)
@@ -186,12 +186,12 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 		}
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
-			eprintln("${message_signature_warn} Please use @include 'header' instead of @header (deprecated), position : ${position}")
+			eprintln("${dtm.message_signature_warn} Please use @include 'header' instead of @header (deprecated), position : ${position}")
 			continue
 		}
 		if line.contains('@footer') {
 			position := line.index('@footer') or { 0 }
-			eprintln("${message_signature_warn} Please use @include 'footer' instead of @footer (deprecated), position : ${position}")
+			eprintln("${dtm.message_signature_warn} Please use @include 'footer' instead of @footer (deprecated), position : ${position}")
 			continue
 		}
 		if line.contains('@include ') {
@@ -204,8 +204,8 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			} else {
 				s := '@include '
 				position := line.index(s) or { 0 }
-				eprintln("${message_signature_error} path for @include must be quoted with ' or \" without line breaks or extraneous characters between @include and the quotes, position : ${position}")
-				return internat_server_error
+				eprintln("${dtm.message_signature_error} path for @include must be quoted with ' or \" without line breaks or extraneous characters between @include and the quotes, position : ${position}")
+				return dtm.internat_server_error
 			}
 			mut file_ext := os.file_ext(file_name)
 			if file_ext == '' {
@@ -224,8 +224,8 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			}
 			file_content := os.read_file(file_path) or {
 				position := line.index('@include ') or { 0 } + '@include '.len
-				eprintln('${message_signature_error} Reading @include file "${file_name}" from path: ${file_path} failed, position : ${position}')
-				return internat_server_error
+				eprintln('${dtm.message_signature_error} Reading @include file "${file_name}" from path: ${file_path} failed, position : ${position}')
+				return dtm.internat_server_error
 			}
 
 			file_splitted := file_content.split_into_lines().reverse()

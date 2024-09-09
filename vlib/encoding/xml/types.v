@@ -63,7 +63,7 @@ pub:
 type DTDInfo = DocumentTypeDefinition | string
 
 struct Prolog {
-	parsed_reverse_entities map[string]string = default_entities_reverse.clone()
+	parsed_reverse_entities map[string]string = xml.default_entities_reverse.clone()
 pub:
 	version  string       = '1.0'
 	encoding string       = 'UTF-8'

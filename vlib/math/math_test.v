@@ -203,9 +203,9 @@ fn test_nan() {
 
 fn test_angle_diff() {
 	for pair in [
-		[pi, pi_2, -pi_2],
-		[pi_2 * 3.0, pi_2, -pi],
-		[pi / 6.0, two_thirds * pi, pi_2],
+		[math.pi, math.pi_2, -math.pi_2],
+		[math.pi_2 * 3.0, math.pi_2, -math.pi],
+		[math.pi / 6.0, math.two_thirds * math.pi, math.pi_2],
 	] {
 		assert angle_diff(pair[0], pair[1]) == pair[2]
 	}
@@ -217,7 +217,7 @@ fn test_acos() {
 		f := acos(a)
 		assert soclose(math.acos_[i], f, 1e-7)
 	}
-	vfacos_sc_ := [-pi, 1, pi, nan()]
+	vfacos_sc_ := [-math.pi, 1, math.pi, nan()]
 	acos_sc_ := [nan(), 0, nan(), nan()]
 	for i := 0; i < vfacos_sc_.len; i++ {
 		f := acos(vfacos_sc_[i])
@@ -245,7 +245,7 @@ fn test_asin() {
 		f := asin(a)
 		assert veryclose(math.asin_[i], f)
 	}
-	vfasin_sc_ := [-pi, copysign(0, -1), 0, pi, nan()]
+	vfasin_sc_ := [-math.pi, copysign(0, -1), 0, math.pi, nan()]
 	asin_sc_ := [nan(), copysign(0, -1), 0, nan(), nan()]
 	for i := 0; i < vfasin_sc_.len; i++ {
 		f := asin(vfasin_sc_[i])
@@ -272,7 +272,7 @@ fn test_atan() {
 		assert veryclose(math.atan_[i], f)
 	}
 	vfatan_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
-	atan_sc_ := [f64(-pi / 2), copysign(0, -1), 0, pi / 2, nan()]
+	atan_sc_ := [f64(-math.pi / 2), copysign(0, -1), 0, math.pi / 2, nan()]
 	for i := 0; i < vfatan_sc_.len; i++ {
 		f := atan(vfatan_sc_[i])
 		assert alike(atan_sc_[i], f)
@@ -285,7 +285,7 @@ fn test_atanh() {
 		f := atanh(a)
 		assert veryclose(math.atanh_[i], f)
 	}
-	vfatanh_sc_ := [inf(-1), -pi, -1, copysign(0, -1), 0, 1, pi, inf(1),
+	vfatanh_sc_ := [inf(-1), -math.pi, -1, copysign(0, -1), 0, 1, math.pi, inf(1),
 		nan()]
 	atanh_sc_ := [nan(), nan(), inf(-1), copysign(0, -1), 0, inf(1),
 		nan(), nan(), nan()]
@@ -300,49 +300,53 @@ fn test_atan2() {
 		f := atan2(10, math.vf_[i])
 		assert veryclose(math.atan2_[i], f)
 	}
-	vfatan2_sc_ := [[inf(-1), inf(-1)], [inf(-1), -pi], [inf(-1), 0],
-		[inf(-1), pi], [inf(-1), inf(1)], [inf(-1), nan()], [-pi, inf(-1)],
-		[-pi, 0], [-pi, inf(1)], [-pi, nan()], [f64(-0.0), inf(-1)],
-		[f64(-0.0), -pi], [f64(-0.0), -0.0], [f64(-0.0), 0], [f64(-0.0), pi],
+	vfatan2_sc_ := [[inf(-1), inf(-1)], [inf(-1), -math.pi], [
+		inf(-1), 0],
+		[inf(-1), math.pi], [inf(-1), inf(1)], [inf(-1), nan()],
+		[-math.pi, inf(-1)], [-math.pi, 0], [-math.pi, inf(1)],
+		[-math.pi, nan()], [f64(-0.0), inf(-1)], [f64(-0.0), -math.pi],
+		[f64(-0.0), -0.0], [f64(-0.0), 0], [f64(-0.0), math.pi],
 		[f64(-0.0), inf(1)], [f64(-0.0), nan()], [f64(0), inf(-1)],
-		[f64(0), -pi], [f64(0), -0.0], [f64(0), 0], [f64(0), pi],
-		[f64(0), inf(1)], [f64(0), nan()], [pi, inf(-1)], [pi, 0],
-		[pi, inf(1)], [pi, nan()], [inf(1), inf(-1)], [inf(1), -pi],
-		[inf(1), 0], [inf(1), pi], [inf(1), inf(1)], [inf(1), nan()],
-		[nan(), nan()]]
-	atan2_sc_ := [f64(-3.0) * pi / 4.0, // atan2(-inf, -inf)
-	 	-pi / 2, // atan2(-inf, -pi)
-	 	-pi / 2, // atan2(-inf, +0)
-	 	-pi / 2, // atan2(-inf, pi)
-	 	-pi / 4, // atan2(-inf, +inf)
+		[f64(0), -math.pi], [f64(0), -0.0], [f64(0), 0], [f64(0), math.pi],
+		[f64(0), inf(1)], [f64(0), nan()], [math.pi, inf(-1)],
+		[math.pi, 0], [math.pi, inf(1)], [math.pi, nan()], [inf(1),
+			inf(-1)],
+		[inf(1), -math.pi], [inf(1), 0], [inf(1), math.pi], [inf(1),
+			inf(1)],
+		[inf(1), nan()], [nan(), nan()]]
+	atan2_sc_ := [f64(-3.0) * math.pi / 4.0, // atan2(-inf, -inf)
+	 	-math.pi / 2, // atan2(-inf, -pi)
+	 	-math.pi / 2, // atan2(-inf, +0)
+	 	-math.pi / 2, // atan2(-inf, pi)
+	 	-math.pi / 4, // atan2(-inf, +inf)
 	 	nan(), // atan2(-inf, nan)
-	 	-pi, // atan2(-pi, -inf)
-	 	-pi / 2, // atan2(-pi, +0)
+	 	-math.pi, // atan2(-pi, -inf)
+	 	-math.pi / 2, // atan2(-pi, +0)
 	 	-0.0, // atan2(-pi, inf)
 	 	nan(), // atan2(-pi, nan)
-	 	-pi, // atan2(-0, -inf)
-	 	-pi, // atan2(-0, -pi)
-	 	-pi, // atan2(-0, -0)
+	 	-math.pi, // atan2(-0, -inf)
+	 	-math.pi, // atan2(-0, -pi)
+	 	-math.pi, // atan2(-0, -0)
 	 	-0.0, // atan2(-0, +0)
 	 	-0.0, // atan2(-0, pi)
 	 	-0.0, // atan2(-0, +inf)
 	 	nan(), // atan2(-0, nan)
-	 	pi, // atan2(+0, -inf)
-	 	pi, // atan2(+0, -pi)
-	 	pi, // atan2(+0, -0)
+	 	math.pi, // atan2(+0, -inf)
+	 	math.pi, // atan2(+0, -pi)
+	 	math.pi, // atan2(+0, -0)
 	 	0, // atan2(+0, +0)
 	 	0, // atan2(+0, pi)
 	 	0, // atan2(+0, +inf)
 	 	nan(), // atan2(+0, nan)
-	 	pi, // atan2(pi, -inf)
-	 	pi / 2, // atan2(pi, +0)
+	 	math.pi, // atan2(pi, -inf)
+	 	math.pi / 2, // atan2(pi, +0)
 	 	0, // atan2(pi, +inf)
 	 	nan(), // atan2(pi, nan)
-	 	3.0 * pi / 4, // atan2(+inf, -inf)
-	 	pi / 2, // atan2(+inf, -pi)
-	 	pi / 2, // atan2(+inf, +0)
-	 	pi / 2, // atan2(+inf, pi)
-	 	pi / 4, // atan2(+inf, +inf)
+	 	3.0 * math.pi / 4, // atan2(+inf, -inf)
+	 	math.pi / 2, // atan2(+inf, -pi)
+	 	math.pi / 2, // atan2(+inf, +0)
+	 	math.pi / 2, // atan2(+inf, pi)
+	 	math.pi / 4, // atan2(+inf, +inf)
 	 	nan(), // atan2(+inf, nan)
 	 	nan(), // atan2(nan, nan)
 	]
@@ -469,7 +473,7 @@ fn test_signi() {
 	assert signi(inf(-1)) == -1
 	assert signi(-72234878292.4586129) == -1
 	assert signi(-10) == -1
-	assert signi(-pi) == -1
+	assert signi(-math.pi) == -1
 	assert signi(-1) == -1
 	assert signi(-0.000000000001) == -1
 	assert signi(-0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001) == -1
@@ -478,7 +482,7 @@ fn test_signi() {
 	assert signi(inf(1)) == 1
 	assert signi(72234878292.4586129) == 1
 	assert signi(10) == 1
-	assert signi(pi) == 1
+	assert signi(math.pi) == 1
 	assert signi(1) == 1
 	assert signi(0.000000000001) == 1
 	assert signi(0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001) == 1
@@ -490,7 +494,7 @@ fn test_sign() {
 	assert sign(inf(-1)) == -1.0
 	assert sign(-72234878292.4586129) == -1.0
 	assert sign(-10) == -1.0
-	assert sign(-pi) == -1.0
+	assert sign(-math.pi) == -1.0
 	assert sign(-1) == -1.0
 	assert sign(-0.000000000001) == -1.0
 	assert sign(-0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001) == -1.0
@@ -499,7 +503,7 @@ fn test_sign() {
 	assert sign(inf(1)) == 1.0
 	assert sign(72234878292.4586129) == 1
 	assert sign(10) == 1.0
-	assert sign(pi) == 1.0
+	assert sign(math.pi) == 1.0
 	assert sign(1) == 1.0
 	assert sign(0.000000000001) == 1.0
 	assert sign(0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001) == 1.0
@@ -714,11 +718,11 @@ fn test_log() {
 		f := log(a)
 		assert math.log_[i] == f
 	}
-	vflog_sc_ := [inf(-1), -pi, copysign(0, -1), 0, 1, inf(1),
+	vflog_sc_ := [inf(-1), -math.pi, copysign(0, -1), 0, 1, inf(1),
 		nan()]
 	log_sc_ := [nan(), nan(), inf(-1), inf(-1), 0, inf(1), nan()]
 	f := log(10)
-	assert f == ln10
+	assert f == math.ln10
 	for i := 0; i < vflog_sc_.len; i++ {
 		g := log(vflog_sc_[i])
 		assert alike(log_sc_[i], g)
@@ -731,7 +735,7 @@ fn test_log10() {
 		f := log10(a)
 		assert veryclose(math.log10_[i], f)
 	}
-	vflog_sc_ := [inf(-1), -pi, copysign(0, -1), 0, 1, inf(1),
+	vflog_sc_ := [inf(-1), -math.pi, copysign(0, -1), 0, 1, inf(1),
 		nan()]
 	log_sc_ := [nan(), nan(), inf(-1), inf(-1), 0, inf(1), nan()]
 	for i := 0; i < vflog_sc_.len; i++ {
@@ -745,25 +749,27 @@ fn test_pow() {
 		f := pow(10, math.vf_[i])
 		assert close(math.pow_[i], f)
 	}
-	vfpow_sc_ := [[inf(-1), -pi], [inf(-1), -3], [inf(-1), -0.0],
-		[inf(-1), 0], [inf(-1), 1], [inf(-1), 3], [inf(-1), pi],
-		[inf(-1), 0.5], [inf(-1), nan()], [-pi, inf(-1)], [-pi, -pi],
-		[-pi, -0.0], [-pi, 0], [-pi, 1], [-pi, pi], [-pi, inf(1)],
-		[-pi, nan()], [f64(-1), inf(-1)], [f64(-1), inf(1)], [f64(-1), nan()],
-		[f64(-1 / 2), inf(-1)], [f64(-1 / 2), inf(1)], [f64(-0.0), inf(-1)],
-		[f64(-0.0), -pi], [f64(-0.0), -0.5], [f64(-0.0), -3],
-		[f64(-0.0), 3], [f64(-0.0), pi], [f64(-0.0), 0.5], [f64(-0.0), inf(1)],
-		[f64(0), inf(-1)], [f64(0), -pi], [f64(0), -3], [f64(0), -0.0],
-		[f64(0), 0], [f64(0), 3], [f64(0), pi], [f64(0), inf(1)],
-		[f64(0), nan()], [f64(1 / 2), inf(-1)], [f64(1 / 2), inf(1)],
-		[f64(1), inf(-1)], [f64(1), inf(1)], [f64(1), nan()],
-		[pi, inf(-1)], [pi, -0.0], [pi, 0], [pi, 1], [pi, inf(1)],
-		[pi, nan()], [inf(1), -pi], [inf(1), -0.0], [inf(1), 0],
-		[inf(1), 1], [inf(1), pi], [inf(1), nan()], [nan(), -pi],
-		[nan(), -0.0], [nan(), 0], [nan(), 1], [nan(), pi], [nan(),
-			nan()],
-		[5.0, 2.0], [5.0, 3.0], [5.0, 10.0], [5.0, -2.0], [-5.0, -1.0],
-		[-5.0, -2.0], [-5.0, -3.0]]
+	vfpow_sc_ := [[inf(-1), -math.pi], [inf(-1), -3], [inf(-1), -0.0],
+		[inf(-1), 0], [inf(-1), 1], [inf(-1), 3], [inf(-1), math.pi],
+		[inf(-1), 0.5], [inf(-1), nan()], [-math.pi, inf(-1)],
+		[-math.pi, -math.pi], [-math.pi, -0.0], [-math.pi, 0],
+		[-math.pi, 1], [-math.pi, math.pi], [-math.pi, inf(1)],
+		[-math.pi, nan()], [f64(-1), inf(-1)], [f64(-1), inf(1)],
+		[f64(-1), nan()], [f64(-1 / 2), inf(-1)], [f64(-1 / 2), inf(1)],
+		[f64(-0.0), inf(-1)], [f64(-0.0), -math.pi], [f64(-0.0), -0.5],
+		[f64(-0.0), -3], [f64(-0.0), 3], [f64(-0.0), math.pi],
+		[f64(-0.0), 0.5], [f64(-0.0), inf(1)], [f64(0), inf(-1)],
+		[f64(0), -math.pi], [f64(0), -3], [f64(0), -0.0], [f64(0), 0],
+		[f64(0), 3], [f64(0), math.pi], [f64(0), inf(1)], [f64(0), nan()],
+		[f64(1 / 2), inf(-1)], [f64(1 / 2), inf(1)], [f64(1), inf(-1)],
+		[f64(1), inf(1)], [f64(1), nan()], [math.pi, inf(-1)],
+		[math.pi, -0.0], [math.pi, 0], [math.pi, 1], [math.pi, inf(1)],
+		[math.pi, nan()], [inf(1), -math.pi], [inf(1), -0.0],
+		[inf(1), 0], [inf(1), 1], [inf(1), math.pi], [inf(1), nan()],
+		[nan(), -math.pi], [nan(), -0.0], [nan(), 0], [nan(), 1],
+		[nan(), math.pi], [nan(), nan()], [5.0, 2.0], [5.0, 3.0],
+		[5.0, 10.0], [5.0, -2.0], [-5.0, -1.0], [-5.0, -2.0],
+		[-5.0, -3.0]]
 	pow_sc_ := [f64(0), // pow(-inf, -pi)
 	 	-0.0, // pow(-inf, -3)
 	 	1, // pow(-inf, -0)
@@ -777,7 +783,7 @@ fn test_pow() {
 	 	nan(), // pow(-pi, -pi)
 	 	1, // pow(-pi, -0)
 	 	1, // pow(-pi, +0)
-	 	-pi, // pow(-pi, 1)
+	 	-math.pi, // pow(-pi, 1)
 	 	nan(), // pow(-pi, pi)
 	 	inf(1), // pow(-pi, +inf)
 	 	nan(), // pow(-pi, nan)
@@ -811,7 +817,7 @@ fn test_pow() {
 	 	0, // pow(pi, -inf)
 	 	1, // pow(pi, -0)
 	 	1, // pow(pi, +0)
-	 	pi, // pow(pi, 1)
+	 	math.pi, // pow(pi, 1)
 	 	inf(1), // pow(pi, +inf)
 	 	nan(), // pow(pi, nan)
 	 	0, // pow(+inf, -pi)
@@ -929,7 +935,8 @@ fn test_sqrt() {
 		f = sqrt(a)
 		assert veryclose(math.sqrt_[i], f)
 	}
-	vfsqrt_sc_ := [inf(-1), -pi, copysign(0, -1), 0, inf(1), nan()]
+	vfsqrt_sc_ := [inf(-1), -math.pi, copysign(0, -1), 0, inf(1),
+		nan()]
 	sqrt_sc_ := [nan(), nan(), copysign(0, -1), 0, inf(1), nan()]
 	for i := 0; i < vfsqrt_sc_.len; i++ {
 		mut f := sqrt(vfsqrt_sc_[i])
@@ -1048,7 +1055,7 @@ fn test_digits() {
 // testing for Trig(vf_[i] + large) == Trig(vf_[i]), where large is
 // a multiple of 2 * pi, is misleading.]
 fn test_large_cos() {
-	large := 100000.0 * pi
+	large := 100000.0 * math.pi
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.cos_large_[i]
 		f2 := cos(math.vf_[i] + large)
@@ -1057,7 +1064,7 @@ fn test_large_cos() {
 }
 
 fn test_large_sin() {
-	large := 100000.0 * pi
+	large := 100000.0 * math.pi
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.sin_large_[i]
 		f2 := sin(math.vf_[i] + large)
@@ -1066,7 +1073,7 @@ fn test_large_sin() {
 }
 
 fn test_large_tan() {
-	large := 100000.0 * pi
+	large := 100000.0 * math.pi
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.tan_large_[i]
 		f2 := tan(math.vf_[i] + large)
@@ -1105,14 +1112,14 @@ fn test_count_digits() {
 }
 
 fn test_min_max_int_str() {
-	assert min_i64.str() == '-9223372036854775808'
-	assert max_i64.str() == '9223372036854775807'
-	assert min_i32.str() == '-2147483648'
-	assert max_i32.str() == '2147483647'
-	assert min_i16.str() == '-32768'
-	assert max_i16.str() == '32767'
-	assert min_i8.str() == '-128'
-	assert max_i8.str() == '127'
+	assert math.min_i64.str() == '-9223372036854775808'
+	assert math.max_i64.str() == '9223372036854775807'
+	assert math.min_i32.str() == '-2147483648'
+	assert math.max_i32.str() == '2147483647'
+	assert math.min_i16.str() == '-32768'
+	assert math.max_i16.str() == '32767'
+	assert math.min_i8.str() == '-128'
+	assert math.max_i8.str() == '127'
 }
 
 fn test_maxof_minof() {

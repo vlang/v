@@ -15,9 +15,9 @@ fn testsuite_begin() {
 }
 
 fn test_scalar_equal() {
-	assert sc_one.equal(sc_minus_one) != 1
+	assert edwards25519.sc_one.equal(edwards25519.sc_minus_one) != 1
 
-	assert sc_minus_one.equal(sc_minus_one) != 0
+	assert edwards25519.sc_minus_one.equal(edwards25519.sc_minus_one) != 0
 }
 
 fn test_scalar_non_adjacent_form() {
@@ -104,13 +104,13 @@ const sc_error = Scalar{
 }
 
 fn test_scalar_set_canonical_bytes_on_noncanonical_value() {
-	mut b := sc_minus_one.s
+	mut b := edwards25519.sc_minus_one.s
 	b[31] += 1
 
-	mut s := sc_one
+	mut s := edwards25519.sc_one
 	out := s.set_canonical_bytes(b[..]) or { edwards25519.sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
 	assert out == edwards25519.sc_error
-	assert s == sc_one
+	assert s == edwards25519.sc_one
 }
 
 fn test_scalar_set_uniform_bytes() {

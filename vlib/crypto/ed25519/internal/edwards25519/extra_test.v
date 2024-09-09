@@ -122,7 +122,7 @@ fn invert_works(mut xinv Scalar, x NotZeroScalar) bool {
 	xinv.invert(x)
 	mut check := Scalar{}
 	check.multiply(x, xinv)
-	return check == sc_one && is_reduced(xinv)
+	return check == edwards25519.sc_one && is_reduced(xinv)
 }
 
 fn test_scalar_invert() {

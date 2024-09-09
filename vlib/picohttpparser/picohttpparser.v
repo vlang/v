@@ -182,7 +182,7 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 
 
 	mut i := 0
 
-	for i = r.num_headers; i < max_headers; i++ {
+	for i = r.num_headers; i < picohttpparser.max_headers; i++ {
 		// CHECK_EOF
 		if buf == buf_end {
 			pret.ret = -2
@@ -277,7 +277,7 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 
 		}
 	}
 
-	if i == max_headers {
+	if i == picohttpparser.max_headers {
 		// too many headers
 		eprintln('Too many headers!')
 		pret.ret = -1

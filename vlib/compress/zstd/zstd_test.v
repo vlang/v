@@ -117,8 +117,8 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 		fout.close()
 	}
 
-	mut buf_in := []u8{len: buf_in_size}
-	mut buf_out := []u8{len: buf_out_size}
+	mut buf_in := []u8{len: zstd.buf_in_size}
+	mut buf_out := []u8{len: zstd.buf_out_size}
 
 	mut cctx := new_cctx(params)!
 	defer {
@@ -138,7 +138,7 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 	}
 	for !last_chunk {
 		read_len := fin.read(mut buf_in)!
-		last_chunk = read_len < buf_in_size
+		last_chunk = read_len < zstd.buf_in_size
 		mode := if last_chunk {
 			ZSTD_EndDirective.zstd_e_end
 		} else {
@@ -151,7 +151,7 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 		input.pos = 0
 		for !finished {
 			output.dst = buf_out.data
-			output.size = buf_out_size
+			output.size = zstd.buf_out_size
 			output.pos = 0
 			remaining := cctx.compress_stream2(output, input, mode)
 			check_zstd(remaining)!
@@ -173,8 +173,8 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 		fout.close()
 	}
 
-	mut buf_in := []u8{len: buf_in_size}
-	mut buf_out := []u8{len: buf_out_size}
+	mut buf_in := []u8{len: zstd.buf_in_size}
+	mut buf_out := []u8{len: zstd.buf_out_size}
 
 	mut dctx := new_dctx(params)!
 	defer {
@@ -200,7 +200,7 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 		input.pos = 0
 		for input.pos < input.size {
 			output.dst = buf_out.data
-			output.size = buf_out_size
+			output.size = zstd.buf_out_size
 			output.pos = 0
 			ret := dctx.decompress_stream(output, input)
 			check_zstd(ret)!

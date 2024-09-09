@@ -43,7 +43,7 @@ pub mut:
 	panic_on_callback bool               // set to true of callbacks can panic
 	client_state      shared ClientState // current state of connection
 	// logger used to log messages
-	logger        &log.Logger = default_logger
+	logger        &log.Logger = websocket.default_logger
 	resource_name string // name of current resource
 	last_pong_ut  i64    // last time in unix time we got a pong message
 }
@@ -85,7 +85,7 @@ pub struct ClientOpt {
 pub:
 	read_timeout  i64         = 30 * time.second
 	write_timeout i64         = 30 * time.second
-	logger        &log.Logger = default_logger
+	logger        &log.Logger = websocket.default_logger
 }
 
 // new_client instance a new websocket client
@@ -188,7 +188,7 @@ pub fn (mut ws Client) listen() ! {
 						return error('close payload cannot be 1 byte')
 					}
 					code := u16(msg.payload[0]) << 8 | u16(msg.payload[1])
-					if code in invalid_close_codes {
+					if code in websocket.invalid_close_codes {
 						ws.close(1002, 'invalid close code: ${code}')!
 						return error('invalid close code: ${code}')
 					}

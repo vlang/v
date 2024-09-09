@@ -39,7 +39,7 @@ pub fn with_cancel(mut parent Context) (Context, CancelFn) {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(mut parent, mut c)
 	cancel_fn := fn [mut c] () {
-		c.cancel(true, canceled)
+		c.cancel(true, context.canceled)
 	}
 	return Context(c), CancelFn(cancel_fn)
 }
@@ -74,7 +74,7 @@ pub fn (mut ctx CancelContext) err() IError {
 }
 
 pub fn (ctx &CancelContext) value(key Key) ?Any {
-	if key == cancel_context_key {
+	if key == context.cancel_context_key {
 		return ctx
 	}
 	return ctx.context.value(key)
@@ -158,7 +158,7 @@ fn parent_cancel_context(mut parent Context) ?&CancelContext {
 	if done.closed {
 		return none
 	}
-	mut p := parent.value(cancel_context_key)?
+	mut p := parent.value(context.cancel_context_key)?
 	match mut p {
 		CancelContext {
 			pdone := p.done()

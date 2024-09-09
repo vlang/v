@@ -152,7 +152,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				if !c.ensure_type_exists(param.typ, param.pos) {
 					continue
 				}
-				if reserved_type_names_chk.matches(param.name) {
+				if checker.reserved_type_names_chk.matches(param.name) {
 					c.error('invalid use of reserved type `${param.name}` as a parameter name',
 						param.pos)
 				}

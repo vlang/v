@@ -237,7 +237,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if !c.ensure_type_exists(param.typ, param.type_pos) {
 				return
 			}
-			if reserved_type_names_chk.matches(param.name) {
+			if checker.reserved_type_names_chk.matches(param.name) {
 				c.error('invalid use of reserved type `${param.name}` as a parameter name',
 					param.pos)
 			}
@@ -311,7 +311,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 			if !c.is_builtin_mod && node.mod == 'main'
-				&& node.name.after_char(`.`) in reserved_type_names {
+				&& node.name.after_char(`.`) in checker.reserved_type_names {
 				c.error('top level declaration cannot shadow builtin type', node.pos)
 			}
 			if _ := node.name.index('__static__') {
@@ -1999,7 +1999,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		return ast.void_type
 	}
 	if final_left_sym.kind == .array {
-		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
+		if checker.array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
 			|| (left_sym.kind == .alias && !left_sym.has_method(method_name))) {
 			return c.array_builtin_method_call(mut node, left_type)
 		} else if method_name in ['insert', 'prepend'] {
@@ -2765,8 +2765,8 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		c.mod = node.mod
 		fkey := node.fkey()
 		all_generic_fns[fkey]++
-		if all_generic_fns[fkey] > generic_fn_cutoff_limit_per_fn {
-			c.error('generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
+		if all_generic_fns[fkey] > checker.generic_fn_cutoff_limit_per_fn {
+			c.error('generic function visited more than ${checker.generic_fn_cutoff_limit_per_fn} times',
 				node.pos)
 			return error('fkey: ${fkey}')
 		}

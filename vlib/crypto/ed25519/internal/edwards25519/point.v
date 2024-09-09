@@ -80,7 +80,7 @@ mut:
 
 fn check_initialized(points ...Point) {
 	for _, p in points {
-		if p.x == fe_zero && p.y == fe_zero {
+		if p.x == edwards25519.fe_zero && p.y == edwards25519.fe_zero {
 			panic('edwards25519: use of uninitialized Point')
 		}
 	}
@@ -135,12 +135,12 @@ pub fn (mut v Point) set_bytes(x []u8) !Point {
 	mut el1 := Element{}
 	y2 := el1.square(y)
 	mut el2 := Element{}
-	u := el2.subtract(y2, fe_one)
+	u := el2.subtract(y2, edwards25519.fe_one)
 
 	// v = dy² + 1
 	mut el3 := Element{}
 	mut vv := el3.multiply(y2, edwards25519.d_const)
-	vv = vv.add(vv, fe_one)
+	vv = vv.add(vv, edwards25519.fe_one)
 
 	// x = +√(u/v)
 	mut el4 := Element{}

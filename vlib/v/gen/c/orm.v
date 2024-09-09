@@ -145,7 +145,7 @@ fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &as
 fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, connection_var_name string,
 	result_var_name string) {
 	g.writeln('// sql { create table `${table_name}` }')
-	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_create(')
+	g.writeln('${c.result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_create(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('_SLIT("${table_name}"),')
@@ -213,7 +213,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 // write_orm_drop_table writes C code that calls ORM functions for dropping tables.
 fn (mut g Gen) write_orm_drop_table(table_name string, connection_var_name string, result_var_name string) {
 	g.writeln('// sql { drop table `${table_name}` }')
-	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_drop(')
+	g.writeln('${c.result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_drop(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('_SLIT("${table_name}")')
@@ -234,7 +234,7 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 // write_orm_update writes C code that calls ORM functions for updating rows.
 fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string) {
 	g.writeln('// sql { update `${table_name}` }')
-	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
+	g.writeln('${c.result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('_SLIT("${table_name}"),')
@@ -286,7 +286,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 // write_orm_delete writes C code that calls ORM functions for deleting rows.
 fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string) {
 	g.writeln('// sql { delete from `${table_name}` }')
-	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method__v_delete(')
+	g.writeln('${c.result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method__v_delete(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('_SLIT("${table_name}"),')
@@ -367,7 +367,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 
 	g.writeln('// sql { insert into `${table_name}` }')
-	g.writeln('${result_name}_void ${res} = orm__Connection_name_table[${connection_var_name}._typ]._method_insert(')
+	g.writeln('${c.result_name}_void ${res} = orm__Connection_name_table[${connection_var_name}._typ]._method_insert(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('_SLIT("${table_name}"),')
@@ -854,7 +854,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
 	g.writeln('// sql { select from `${table_name}` }')
-	g.writeln('${result_name}_Array_Array_orm__Primitive ${select_result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_select(')
+	g.writeln('${c.result_name}_Array_Array_orm__Primitive ${select_result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_select(')
 	g.indent++
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('(orm__SelectConfig){')

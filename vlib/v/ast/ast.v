@@ -1084,7 +1084,7 @@ pub mut:
 	right         Expr
 	left_type     Type
 	right_type    Type
-	promoted_type Type = void_type
+	promoted_type Type = ast.void_type
 	auto_locked   string
 	or_block      OrExpr
 
@@ -2186,12 +2186,12 @@ pub fn (expr Expr) is_expr() bool {
 
 pub fn (expr Expr) get_pure_type() Type {
 	return match expr {
-		BoolLiteral { bool_type }
-		CharLiteral { char_type }
-		FloatLiteral { f64_type }
-		StringLiteral { string_type }
-		IntegerLiteral { i64_type }
-		else { void_type }
+		BoolLiteral { ast.bool_type }
+		CharLiteral { ast.char_type }
+		FloatLiteral { ast.f64_type }
+		StringLiteral { ast.string_type }
+		IntegerLiteral { ast.i64_type }
+		else { ast.void_type }
 	}
 }
 
@@ -2596,7 +2596,7 @@ pub fn (expr Expr) is_literal() bool {
 		}
 		CastExpr {
 			!expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
-				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+				|| expr.typ in [ast.i8_type, ast.i16_type, ast.int_type, ast.i64_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.rune_type])
 		}
 		SizeOf, IsRefType {
 			expr.is_type || expr.expr.is_literal()
@@ -2615,7 +2615,7 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 	return match tok.kind {
 		.name {
 			(tok.lit.len > 0 && tok.lit[0].is_capital())
-				|| builtin_type_names_matcher.matches(tok.lit)
+				|| ast.builtin_type_names_matcher.matches(tok.lit)
 		}
 		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question {
@@ -2630,11 +2630,11 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 // validate_type_string_is_pure_literal returns `Error` if `str` can not be converted
 // to pure literal `typ` (`i64`, `f64`, `bool`, `char` or `string`).
 pub fn validate_type_string_is_pure_literal(typ Type, str string) ! {
-	if typ == bool_type {
+	if typ == ast.bool_type {
 		if !(str == 'true' || str == 'false') {
 			return error('bool literal `true` or `false` expected, found "${str}"')
 		}
-	} else if typ == char_type {
+	} else if typ == ast.char_type {
 		if str.starts_with('\\') {
 			if str.len <= 1 {
 				return error('empty escape sequence found')
@@ -2645,12 +2645,12 @@ pub fn validate_type_string_is_pure_literal(typ Type, str string) ! {
 		} else if str.len != 1 {
 			return error('char literal expected, found "${str}"')
 		}
-	} else if typ == f64_type {
+	} else if typ == ast.f64_type {
 		if str.count('.') != 1 {
 			return error('f64 literal expected, found "${str}"')
 		}
-	} else if typ == string_type {
-	} else if typ == i64_type {
+	} else if typ == ast.string_type {
+	} else if typ == ast.i64_type {
 		if !str.is_int() {
 			return error('i64 literal expected, found "${str}"')
 		}

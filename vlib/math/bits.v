@@ -49,7 +49,7 @@ pub fn is_inf(f f64, sign int) bool {
 	// To avoid the floating-point hardware, could use:
 	// x := f64_bits(f);
 	// return sign >= 0 && x == uvinf || sign <= 0 && x == uvneginf;
-	return (sign >= 0 && f > max_f64) || (sign <= 0 && f < -max_f64)
+	return (sign >= 0 && f > math.max_f64) || (sign <= 0 && f < -math.max_f64)
 }
 
 // is_finite returns true if f is finite

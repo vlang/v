@@ -24,8 +24,8 @@ pub:
 	comment      u8     = `#` // every line that start with the comment char is ignored
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
-	end_line_len int = endline_cr_len // size of the endline rune
-	quote        u8  = `"`            // double quote is the standard quote char
+	end_line_len int = csv.endline_cr_len // size of the endline rune
+	quote        u8  = `"`                // double quote is the standard quote char
 }
 
 pub struct SequentialReader {
@@ -40,10 +40,10 @@ pub mut:
 	end_index   i64 = -1
 
 	end_line      u8  = `\n`
-	end_line_len  int = endline_cr_len // size of the endline rune \n = 1, \r\n = 2
-	separator     u8  = `,`            // comma is the default separator
-	separator_len int = 1              // size of the separator rune
-	quote         u8  = `"`            // double quote is the standard quote char
+	end_line_len  int = csv.endline_cr_len // size of the endline rune \n = 1, \r\n = 2
+	separator     u8  = `,`                // comma is the default separator
+	separator_len int = 1                  // size of the separator rune
+	quote         u8  = `"`                // double quote is the standard quote char
 
 	comment u8 = `#` // every line that start with the quote char is ignored
 
@@ -71,7 +71,7 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 
 	// reading from a RAM buffer
 	if cfg.scr_buf != 0 && cfg.scr_buf_len > 0 {
-		cr.mem_buf_type = ram_csv // RAM buffer
+		cr.mem_buf_type = csv.ram_csv // RAM buffer
 		cr.mem_buf = cfg.scr_buf
 		cr.mem_buf_size = cfg.scr_buf_len
 		if cfg.end_index == -1 {
@@ -95,7 +95,7 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 		if !os.exists(cfg.file_path) {
 			return error('ERROR: file ${cfg.file_path} not found!')
 		}
-		cr.mem_buf_type = file_csv // File buffer
+		cr.mem_buf_type = csv.file_csv // File buffer
 		// allocate the memory
 		unsafe {
 			cr.mem_buf = malloc(cfg.mem_buf_size)
@@ -141,9 +141,9 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 
 // dispose_csv_reader release the resources used by the csv_reader
 pub fn (mut cr SequentialReader) dispose_csv_reader() {
-	if cr.mem_buf_type == ram_csv {
+	if cr.mem_buf_type == csv.ram_csv {
 		// do nothing, ram buffer is static
-	} else if cr.mem_buf_type == file_csv {
+	} else if cr.mem_buf_type == csv.file_csv {
 		// file close
 		if cr.f.is_opened {
 			cr.f.close()
@@ -166,7 +166,7 @@ pub fn (mut cr SequentialReader) has_data() i64 {
 }
 
 fn (mut cr SequentialReader) fill_buffer(index i64) ! {
-	if cr.mem_buf_type == ram_csv {
+	if cr.mem_buf_type == csv.ram_csv {
 		// for now do nothing if ram buffer
 	} else {
 		cr.f.seek(index, .start)!

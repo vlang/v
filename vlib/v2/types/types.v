@@ -259,7 +259,7 @@ fn (t Type) key_type() Type {
 		// Array, ArrayFixed, String, Struct { return int_ }
 		// else { panic('TODO: should never be called on ${t.type_name()}') }
 		// TODO: see checker ForStmt -> ForInStmt when value is pointer
-		else { return int_ }
+		else { return types.int_ }
 	}
 }
 
@@ -270,7 +270,7 @@ fn (t Type) value_type() Type {
 		Channel { return t.elem_type or { t } } // TODO: ?
 		Map { return t.value_type }
 		Pointer { return t.base_type.value_type() }
-		String { return u8_ }
+		String { return types.u8_ }
 		Thread { return t.elem_type or { t } } // TODO: ?
 		OptionType, ResultType { return t.base_type.value_type() }
 		else { return t.base_type() }

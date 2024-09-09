@@ -164,7 +164,7 @@ pub fn (mut c Checker) check_file(file ast.File) {
 }
 
 fn (mut c Checker) preregister_scopes(file ast.File) {
-	builtin_scope := c.get_module_scope('builtin', universe)
+	builtin_scope := c.get_module_scope('builtin', types.universe)
 
 	mod_scope := c.get_module_scope(file.mod, builtin_scope)
 	c.scope = mod_scope
@@ -522,19 +522,19 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			// c.log('ast.BasicLiteral: $expr.kind.str(): $expr.value')
 			match expr.kind {
 				.char {
-					return char_
+					return types.char_
 				}
 				.key_false, .key_true {
-					return bool_
+					return types.bool_
 				}
 				// TODO:
 				.number {
 					// TODO: had to be a better way to do this
 					// should this be handled earlier? scanner?
 					if expr.value.contains('.') {
-						return float_literal_
+						return types.float_literal_
 					}
-					return int_literal_
+					return types.int_literal_
 				}
 				else {
 					panic('invalid ast.BasicLiteral kind: ${expr.kind}')
@@ -560,7 +560,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			// multiple items with same name inside scope lookup.
 			if expr.lhs is ast.SelectorExpr {
 				if expr.lhs.rhs.name == 'stat' {
-					return int_
+					return types.int_
 				}
 			}
 			return c.call_expr(expr)
@@ -579,14 +579,14 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			// TODO: $if dynamic_bohem ...
 			if cexpr is ast.IfExpr {
 				c.log('TODO: comptime IfExpr')
-				return void_
+				return types.void_
 			}
 			c.log('ComptimeExpr: ' + cexpr.type_name())
 			// return c.expr(cexpr)
 		}
 		ast.EmptyExpr {
 			// TODO:
-			return void_
+			return types.void_
 		}
 		ast.FnLiteral {
 			return c.fn_type(expr.typ, FnTypeAttribute.empty)
@@ -630,7 +630,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			// TODO:
 			if expr.name == 'string' {
 				if typ is Struct {
-					return string_
+					return types.string_
 				}
 			}
 			return typ
@@ -649,7 +649,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					c.close_scope()
 				}
 				// TODO: never used, add a special type?
-				return void_
+				return types.void_
 			}
 
 			// normal if
@@ -658,7 +658,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		ast.IfGuardExpr {
 			c.assign_stmt(expr.stmt, true)
 			// TODO:
-			return bool_
+			return types.bool_
 		}
 		ast.IndexExpr {
 			lhs_type := c.expr(expr.lhs)
@@ -682,7 +682,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			c.expr(expr.rhs)
 			// c.expected_type = expected_type
 			if expr.op.is_comparison() {
-				return bool_
+				return types.bool_
 			}
 			return lhs_type
 		}
@@ -820,7 +820,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			c.expr(expr.start)
 			c.expr(expr.end)
 			return Type(Array{
-				elem_type: int_
+				elem_type: types.int_
 			})
 		}
 		ast.SelectExpr {
@@ -843,10 +843,10 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		}
 		ast.StringInterLiteral {
 			// TODO:
-			return string_
+			return types.string_
 		}
 		ast.StringLiteral {
-			return string_
+			return types.string_
 		}
 		ast.Tuple {
 			mut types := []Type{}
@@ -895,10 +895,10 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					}
 				}
 				ast.NilType {
-					return nil_
+					return types.nil_
 				}
 				ast.NoneType {
-					return none_
+					return types.none_
 				}
 				ast.OptionType {
 					return OptionType{
@@ -942,13 +942,13 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 			// TODO: impl: avoid returning types everywhere / using void
 			// perhaps use a struct and set the type and other info in it when needed
-			return void_
+			return types.void_
 		}
 		else {}
 	}
 	// TODO: remove (add all variants)
 	c.log('expr: unhandled ${expr.type_name()}')
-	return int_
+	return types.int_
 }
 
 fn (mut c Checker) stmt(stmt ast.Stmt) {
@@ -1073,7 +1073,7 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		if lx is ast.Ident {
 			is_blank_ident = lx.name == '_'
 		}
-		mut lhs_type := Type(void_)
+		mut lhs_type := Type(types.void_)
 		if stmt.op != .decl_assign && !is_blank_ident {
 			lhs_type = c.expr(lx)
 		}
@@ -1348,11 +1348,11 @@ fn (mut c Checker) if_expr(expr ast.IfExpr) Type {
 	// NOTE: in the current compiler there are smartcasts and then there
 	// are explicit auto casts. I have inplemeted this just using smartcasts
 	// for now, however I will come back to this, and work out what is most appropriate
-	mut cond_type := Type(void_)
+	mut cond_type := Type(types.void_)
 	mut is_inline_smartcast := false
 	cond := c.unwrap_expr(expr.cond)
 	if cond is ast.InfixExpr {
-		cond_type = Type(bool_)
+		cond_type = Type(types.bool_)
 		mut left_node := c.unwrap_expr(cond.lhs)
 		for mut left_node is ast.InfixExpr {
 			left_node_rhs := c.unwrap_expr(left_node.rhs)
@@ -1395,7 +1395,7 @@ fn (mut c Checker) if_expr(expr ast.IfExpr) Type {
 	}
 	_ = cond_type
 	c.stmt_list(expr.stmts)
-	mut typ := Type(void_)
+	mut typ := Type(types.void_)
 	if expr.stmts.len > 0 {
 		last_stmt := expr.stmts.last()
 		if last_stmt is ast.ExprStmt {
@@ -1415,7 +1415,7 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 	if expr_type is Enum {
 		c.expected_type = expr_type
 	}
-	mut last_stmt_type := Type(void_)
+	mut last_stmt_type := Type(types.void_)
 	for i, branch in expr.branches {
 		c.open_scope()
 		for cond in branch.cond {
@@ -1694,7 +1694,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			fn_ = FnType{
 				return_type: Type(Alias{
 					name:      'Duration'
-					base_type: i64_
+					base_type: types.i64_
 				})
 			}
 		}
@@ -1806,7 +1806,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			c.log('returning: ${return_type.name()}')
 			return return_type
 		}
-		return void_
+		return types.void_
 	}
 
 	for arg in expr.args {
@@ -1907,7 +1907,7 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 		if ident.name == '_' {
 			c.error_with_pos('cannot use _ as value or type', ident.pos)
 			// TODO: compiler error
-			return Type(void_)
+			return Type(types.void_)
 		} else {
 			// TODO/FIXME: generic param - hack
 			// if ident.name.len == 1 && ident.name[0].is_capital() {
@@ -1944,13 +1944,13 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			'@VMOD_FILE',
 			'@FILE_LINE',
 		] {
-			return Type(string_)
+			return Type(types.string_)
 		}
 
 		// TODO: proper
 		if ident.name in ['compile_error', 'compile_warn'] {
 			return Type(FnType{
-				return_type: void_
+				return_type: types.void_
 			})
 		}
 
@@ -2005,7 +2005,7 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 					// TODO: proper
 					if expr.lhs.name == 'C' {
 						// c.log('assuming C constant: $expr.lhs.name . $expr.rhs.name')
-						return int_
+						return types.int_
 					}
 					mod_scope.print(true)
 					c.error_with_pos('missing ${expr.lhs.name}.${expr.rhs.name}', expr.pos)
@@ -2066,7 +2066,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		Array {
 			// TODO: has to be a better way
 			// there is probably no reason to look these up, and just do what we do above
-			mut builtin_scope := c.get_module_scope('builtin', universe)
+			mut builtin_scope := c.get_module_scope('builtin', types.universe)
 			at := builtin_scope.lookup_parent('array', 0) or { panic('missing builtin array type') }
 			at_type := at.typ()
 			// c.log('ARRAY: looking for field or method $name on $t.name()')
@@ -2103,13 +2103,13 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 					return_type: t.elem_type
 				}
 			} else if name == 'len' {
-				return int_
+				return types.int_
 			}
 		}
 		Channel {
 			println('channel . ${name}')
 			// TODO: sync must be imported when channels are used
-			mut sync_scope := c.get_module_scope('sync', universe)
+			mut sync_scope := c.get_module_scope('sync', types.universe)
 			at := sync_scope.lookup_parent('Channel', 0) or { panic('missing builtin chan type') }
 			at_type := at.typ()
 			if field_or_method_type := c.find_field_or_method(at_type, name) {
@@ -2125,11 +2125,11 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			}
 			// flags - compiler magic (currently)
 			if name == 'has' {
-				return bool_
+				return types.bool_
 			} else if name == 'all' {
-				return int_
+				return types.int_
 			} else if name in ['clear', 'set'] {
-				return void_
+				return types.void_
 			}
 		}
 		Interface {
@@ -2145,7 +2145,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 			}
 		}
 		Map {
-			mut builtin_scope := c.get_module_scope('builtin', universe)
+			mut builtin_scope := c.get_module_scope('builtin', types.universe)
 			at := builtin_scope.lookup_parent('map', 0) or { panic('missing builtin map type') }
 			at_type := at.typ()
 			// c.log('MAP: looking for field or method $name on $t.name()')
@@ -2177,7 +2177,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		// }
 		String {
 			if name == 'len' {
-				return int_
+				return types.int_
 			}
 			if o := c.scope.lookup_parent('string', 0) {
 				// c.log(o)
@@ -2202,7 +2202,7 @@ fn (mut c Checker) find_field_or_method(t Type, name string) !Type {
 		}
 		SumType {
 			// if !c.expecting_method {
-			mut prev_type := Type(nil_)
+			mut prev_type := Type(types.nil_)
 			for i, variant in t.variants {
 				if variant is Struct {
 					mut has_field := false

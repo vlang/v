@@ -235,7 +235,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	$if vweb_livereload ? {
 		if mimetype == 'text/html' {
-			resp.body = res.replace('</html>', '<script src="/vweb_livereload/${vweb_livereload_server_start}/script.js"></script>\n</html>')
+			resp.body = res.replace('</html>', '<script src="/vweb_livereload/${vweb.vweb_livereload_server_start}/script.js"></script>\n</html>')
 		}
 	}
 	// build the header after the potential modification of resp.body from above

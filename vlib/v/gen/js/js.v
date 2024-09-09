@@ -272,7 +272,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 	//	mut eq_fn := $embed_file('fast_deep_equal.js')
 	//	out += eq_fn.data().vstring()
 	//}
-	out += fast_deep_eq_fn
+	out += js.fast_deep_eq_fn
 	/*
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed

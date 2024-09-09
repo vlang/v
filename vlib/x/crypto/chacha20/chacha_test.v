@@ -86,7 +86,7 @@ fn test_chacha20_simple_block_function() ! {
 	nonce := '000000090000004a00000000'
 	nonce_bytes := hex.decode(nonce)!
 
-	mut block := []u8{len: block_size}
+	mut block := []u8{len: chacha20.block_size}
 	mut cs := new_cipher(key_bytes, nonce_bytes)!
 	cs.set_counter(u32(1))
 	cs.chacha20_block()
@@ -113,7 +113,7 @@ fn test_chacha20_onetime_poly1305_key_generation() ! {
 
 		otk := hex.decode(v.otk)!
 		mut c := new_cipher(key, nonce)!
-		mut out := []u8{len: key_size}
+		mut out := []u8{len: chacha20.key_size}
 		c.xor_key_stream(mut out, out)
 
 		assert out == otk

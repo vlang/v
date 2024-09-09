@@ -41,7 +41,7 @@ fn (mut c DesCipher) generate_subkeys(key_bytes []u8) {
 
 	// apply PC1 permutation to key
 	key := binary.big_endian_u64(key_bytes)
-	permuted_key := permute_block(key, permuted_choice1[..])
+	permuted_key := permute_block(key, des.permuted_choice1[..])
 
 	// rotate halves of permuted key according to the rotation schedule
 	left_rotations := ks_rotate(u32(permuted_key >> 28))
@@ -52,7 +52,7 @@ fn (mut c DesCipher) generate_subkeys(key_bytes []u8) {
 		// combine halves to form 56-bit input to PC2
 		pc2_input := u64(left_rotations[i]) << 28 | u64(right_rotations[i])
 		// apply PC2 permutation to 7 byte input
-		c.subkeys[i] = unpack(permute_block(pc2_input, permuted_choice2[..]))
+		c.subkeys[i] = unpack(permute_block(pc2_input, des.permuted_choice2[..]))
 	}
 }
 

@@ -132,20 +132,20 @@ pub fn is_punct(s string, index int) bool {
 // is_control return true if the rune is control code
 pub fn is_control(r rune) bool {
 	// control codes are all below 0xff
-	if r > max_latin_1 {
+	if r > utf8.max_latin_1 {
 		return false
 	}
-	return props[u8(r)] == 1
+	return utf8.props[u8(r)] == 1
 }
 
 // is_letter returns true if the rune is unicode letter or in unicode category L
 pub fn is_letter(r rune) bool {
 	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
 		return true
-	} else if r <= max_latin_1 {
-		return props[u8(r)] & p_l_mask != 0
+	} else if r <= utf8.max_latin_1 {
+		return utf8.props[u8(r)] & utf8.p_l_mask != 0
 	}
-	return is_excluding_latin(letter_table, r)
+	return is_excluding_latin(utf8.letter_table, r)
 }
 
 // is_space returns true if the rune is character in unicode category Z with property white space or the following character set:
@@ -153,7 +153,7 @@ pub fn is_letter(r rune) bool {
 // `\t`, `\n`, `\v`, `\f`, `\r`, ` `, 0x85 (NEL), 0xA0 (NBSP)
 // ```
 pub fn is_space(r rune) bool {
-	if r <= max_latin_1 {
+	if r <= utf8.max_latin_1 {
 		match r {
 			`\t`, `\n`, `\v`, `\f`, `\r`, ` `, 0x85, 0xA0 {
 				return true
@@ -163,15 +163,15 @@ pub fn is_space(r rune) bool {
 			}
 		}
 	}
-	return is_excluding_latin(white_space_table, r)
+	return is_excluding_latin(utf8.white_space_table, r)
 }
 
 // is_number returns true if the rune is unicode number or in unicode category N
 pub fn is_number(r rune) bool {
-	if r <= max_latin_1 {
-		return props[u8(r)] & p_n != 0
+	if r <= utf8.max_latin_1 {
+		return utf8.props[u8(r)] & utf8.p_n != 0
 	}
-	return is_excluding_latin(number_table, r)
+	return is_excluding_latin(utf8.number_table, r)
 }
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation

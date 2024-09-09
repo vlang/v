@@ -55,7 +55,7 @@ fn (mut g JsGen) js_mname(name_ string) string {
 	mut parts := name.split('.')
 	if !is_js {
 		for i, p in parts {
-			if p in js_reserved {
+			if p in js.js_reserved {
 				parts[i] = 'v_${p}'
 			}
 		}
@@ -311,7 +311,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		}
 
 		if final_left_sym.kind == .array {
-			if it.name in special_array_methods {
+			if it.name in js.special_array_methods {
 				g.gen_array_method_call(it)
 				return
 			}
@@ -412,7 +412,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	print_method := name
 	ret_sym := g.table.sym(it.return_type)
-	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
 		g.write('new ')
 		g.write(ret_sym.name)
 		g.write('(')
@@ -485,7 +485,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.dec_indent()
 		g.write('})()')
 	}
-	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
+	if it.language == .js && ret_sym.name in js.v_types && ret_sym.name != 'void' {
 		g.write(')')
 	}
 	g.call_stack.delete_last()

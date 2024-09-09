@@ -109,7 +109,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	}
 
 	mut temp_map := map[string]int{}
-	mut temp_int := null_element
+	mut temp_int := html.null_element
 	mut temp_string := ''
 	mut stack := Stack{}
 	dom.btree = BTree{}

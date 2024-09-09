@@ -49,7 +49,7 @@ fn int_signum(value int) int {
 // integer_from_int creates a new `big.Integer` from the given int value.
 pub fn integer_from_int(value int) Integer {
 	if value == 0 {
-		return zero_int
+		return big.zero_int
 	}
 	return Integer{
 		digits: [u32(iabs(value))]
@@ -60,7 +60,7 @@ pub fn integer_from_int(value int) Integer {
 // integer_from_u32 creates a new `big.Integer` from the given u32 value.
 pub fn integer_from_u32(value u32) Integer {
 	if value == 0 {
-		return zero_int
+		return big.zero_int
 	}
 	return Integer{
 		digits: [value]
@@ -71,7 +71,7 @@ pub fn integer_from_u32(value u32) Integer {
 // integer_from_i64 creates a new `big.Integer` from the given i64 value.
 pub fn integer_from_i64(value i64) Integer {
 	if value == 0 {
-		return zero_int
+		return big.zero_int
 	}
 
 	signum_value := if value < 0 { -1 } else { 1 }
@@ -96,7 +96,7 @@ pub fn integer_from_i64(value i64) Integer {
 // integer_from_u64 creates a new `big.Integer` from the given u64 value.
 pub fn integer_from_u64(value u64) Integer {
 	if value == 0 {
-		return zero_int
+		return big.zero_int
 	}
 
 	lower := u32(value & 0x00000000ffffffff)
@@ -249,7 +249,7 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 
 	start_index := if sign_present { 1 } else { 0 }
 
-	mut result := zero_int
+	mut result := big.zero_int
 	radix_int := integer_from_u32(radix)
 
 	for index := start_index; index < characters.len; index++ {
@@ -269,7 +269,7 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 // abs returns the absolute value of the integer `a`.
 pub fn (a Integer) abs() Integer {
 	return if a.signum == 0 {
-		zero_int
+		big.zero_int
 	} else {
 		Integer{
 			digits: a.digits.clone()
@@ -281,7 +281,7 @@ pub fn (a Integer) abs() Integer {
 // neg returns the result of negation of the integer `a`.
 pub fn (a Integer) neg() Integer {
 	return if a.signum == 0 {
-		zero_int
+		big.zero_int
 	} else {
 		Integer{
 			digits: a.digits.clone()
@@ -338,7 +338,7 @@ fn (integer Integer) add(addend Integer) Integer {
 fn (integer Integer) subtract(subtrahend Integer) Integer {
 	cmp := integer.abs_cmp(subtrahend)
 	if cmp == 0 {
-		return zero_int
+		return big.zero_int
 	}
 	a, b := if cmp > 0 { integer, subtrahend } else { subtrahend, integer }
 	mut storage := []u32{len: a.digits.len}
@@ -353,12 +353,12 @@ fn (integer Integer) subtract(subtrahend Integer) Integer {
 pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 	// Quick exits
 	if multiplicand.signum == 0 || multiplier.signum == 0 {
-		return zero_int
+		return big.zero_int
 	}
-	if multiplicand == one_int {
+	if multiplicand == big.one_int {
 		return multiplier.clone()
 	}
-	if multiplier == one_int {
+	if multiplier == big.one_int {
 		return multiplicand.clone()
 	}
 	// The final sign is the product of the signs
@@ -381,10 +381,10 @@ fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
 	}
 
 	if dividend.signum == 0 {
-		return zero_int, zero_int
+		return big.zero_int, big.zero_int
 	}
-	if divisor == one_int {
-		return dividend.clone(), zero_int
+	if divisor == big.one_int {
+		return dividend.clone(), big.zero_int
 	}
 	if divisor.signum == -1 {
 		q, r := dividend.div_mod_internal(divisor.neg())
@@ -393,9 +393,9 @@ fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
 	if dividend.signum == -1 {
 		q, r := dividend.neg().div_mod_internal(divisor)
 		if r.signum == 0 {
-			return q.neg(), zero_int
+			return q.neg(), big.zero_int
 		} else {
-			return q.neg() - one_int, divisor - r
+			return q.neg() - big.one_int, divisor - r
 		}
 	}
 	// Division for positive integers
@@ -485,7 +485,7 @@ fn (a Integer) mask_bits(n u32) Integer {
 	}
 
 	if a.digits.len == 0 || n == 0 {
-		return zero_int
+		return big.zero_int
 	}
 
 	w := n / 32
@@ -517,14 +517,14 @@ fn (a Integer) mask_bits(n u32) Integer {
 // pow returns the integer `base` raised to the power of the u32 `exponent`.
 pub fn (base Integer) pow(exponent u32) Integer {
 	if exponent == 0 {
-		return one_int
+		return big.one_int
 	}
 	if exponent == 1 {
 		return base.clone()
 	}
 	mut n := exponent
 	mut x := base
-	mut y := one_int
+	mut y := big.one_int
 	for n > 1 {
 		if n & 1 == 1 {
 			y *= x
@@ -538,14 +538,14 @@ pub fn (base Integer) pow(exponent u32) Integer {
 // mod_pow returns the integer `base` raised to the power of the u32 `exponent` modulo the integer `modulus`.
 pub fn (base Integer) mod_pow(exponent u32, modulus Integer) Integer {
 	if exponent == 0 {
-		return one_int
+		return big.one_int
 	}
 	if exponent == 1 {
 		return base % modulus
 	}
 	mut n := exponent
 	mut x := base % modulus
-	mut y := one_int
+	mut y := big.one_int
 	for n > 1 {
 		if n & 1 == 1 {
 			y *= x % modulus
@@ -565,17 +565,17 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 
 	// this goes first as otherwise 1 could be returned incorrectly if base == 1
 	if modulus.bit_len() <= 1 {
-		return zero_int
+		return big.zero_int
 	}
 
 	// x^0 == 1 || 1^x == 1
 	if exponent.signum == 0 || base.bit_len() == 1 {
-		return one_int
+		return big.one_int
 	}
 
 	// 0^x == 0 (x != 0 due to previous clause)
 	if base.signum == 0 {
-		return one_int
+		return big.one_int
 	}
 
 	if exponent.bit_len() == 1 {
@@ -607,12 +607,12 @@ pub fn (base Integer) big_mod_pow(exponent Integer, modulus Integer) !Integer {
 
 // inc increments `a` by 1 in place.
 pub fn (mut a Integer) inc() {
-	a = a + one_int
+	a = a + big.one_int
 }
 
 // dec decrements `a` by 1 in place.
 pub fn (mut a Integer) dec() {
-	a = a - one_int
+	a = a - big.one_int
 }
 
 // == returns `true` if the integers `a` and `b` are equal in value and sign.
@@ -665,7 +665,7 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 
 	if target_index >= a.digits.len {
 		if value {
-			a = one_int.left_shift(i).bitwise_or(a)
+			a = big.one_int.left_shift(i).bitwise_or(a)
 		}
 		return
 	}
@@ -780,7 +780,7 @@ pub fn (a Integer) right_shift(amount u32) Integer {
 	normalised_amount := amount & 31
 	digit_offset := int(amount >> 5)
 	if digit_offset >= a.digits.len {
-		return zero_int
+		return big.zero_int
 	}
 	mut new_array := []u32{len: a.digits.len - digit_offset}
 	for index in 0 .. new_array.len {
@@ -871,8 +871,8 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	divisor := integer_from_u32(radix)
 
 	mut current := integer.abs()
-	mut new_current := zero_int
-	mut digit := zero_int
+	mut new_current := big.zero_int
+	mut digit := big.zero_int
 	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
 		new_current, digit = current.div_mod_internal(divisor)
@@ -969,9 +969,9 @@ pub fn (a Integer) bytes() ([]u8, int) {
 // factorial returns the factorial of the integer `a`.
 pub fn (a Integer) factorial() Integer {
 	if a.signum == 0 {
-		return one_int
+		return big.one_int
 	}
-	mut product := one_int
+	mut product := big.one_int
 	mut current := a
 	for current.signum != 0 {
 		product *= current
@@ -1005,10 +1005,10 @@ pub fn (a Integer) isqrt_checked() !Integer {
 	if shift & 1 == 1 {
 		shift += 1
 	}
-	mut result := zero_int
+	mut result := big.zero_int
 	for shift >= 0 {
 		result = result.left_shift(1)
-		larger := result + one_int
+		larger := result + big.one_int
 		if (larger * larger).abs_cmp(a.right_shift(u32(shift))) <= 0 {
 			result = larger
 		}
@@ -1048,8 +1048,8 @@ pub fn (a Integer) gcd_binary(b Integer) Integer {
 	if b.signum == 0 {
 		return a.abs()
 	}
-	if a.abs_cmp(one_int) == 0 || b.abs_cmp(one_int) == 0 {
-		return one_int
+	if a.abs_cmp(big.one_int) == 0 || b.abs_cmp(big.one_int) == 0 {
+		return big.one_int
 	}
 
 	mut aa, az := a.abs().rsh_to_set_bit()
@@ -1098,7 +1098,7 @@ pub fn (a Integer) gcd_euclid(b Integer) Integer {
 pub fn (a Integer) mod_inverse(n Integer) !Integer {
 	return if n.bit_len() <= 1 {
 		error('math.big: Modulus `n` must be greater than 1')
-	} else if a.gcd(n) != one_int {
+	} else if a.gcd(n) != big.one_int {
 		error('math.big: No multiplicative inverse')
 	} else {
 		a.mod_inv(n)
@@ -1124,16 +1124,16 @@ fn (a Integer) mod_inv(m Integer) Integer {
 		signum: 1
 	}
 	mut b := a
-	mut x := one_int
-	mut y := zero_int
+	mut x := big.one_int
+	mut y := big.zero_int
 	if b.signum < 0 || b.abs_cmp(n) >= 0 {
 		b = b % n
 	}
 	mut sign := -1
 
-	for b != zero_int {
+	for b != big.zero_int {
 		q, r := if n.bit_len() == b.bit_len() {
-			one_int, n - b
+			big.one_int, n - b
 		} else {
 			// safe because the loop terminates if b == 0
 			n.div_mod_internal(b)
@@ -1143,7 +1143,7 @@ fn (a Integer) mod_inv(m Integer) Integer {
 		b = r
 
 		// tmp := q * x + y
-		tmp := if q == one_int {
+		tmp := if q == big.one_int {
 			x
 		} else if q.digits.len == 1 && q.digits[0] & (q.digits[0] - 1) == 0 {
 			x.left_shift(u32(bits.trailing_zeros_32(q.digits[0])))
@@ -1161,7 +1161,7 @@ fn (a Integer) mod_inv(m Integer) Integer {
 	}
 
 	$if debug {
-		assert n == one_int
+		assert n == big.one_int
 	}
 
 	return if y.signum > 0 && y.abs_cmp(m) < 0 {
@@ -1177,7 +1177,7 @@ fn (a Integer) mod_inv(m Integer) Integer {
 @[direct_array_access; inline]
 fn (x Integer) rsh_to_set_bit() (Integer, u32) {
 	if x.digits.len == 0 {
-		return zero_int, 0
+		return big.zero_int, 0
 	}
 
 	mut n := u32(0)

@@ -1,58 +1,58 @@
 module sha3
 
 fn test_round_constants() {
-	assert iota_round_constants[0] == 0x0000000000000001
-	assert iota_round_constants[1] == 0x0000000000008082
-	assert iota_round_constants[2] == 0x800000000000808A
-	assert iota_round_constants[3] == 0x8000000080008000
-	assert iota_round_constants[4] == 0x000000000000808B
-	assert iota_round_constants[5] == 0x0000000080000001
-	assert iota_round_constants[6] == 0x8000000080008081
-	assert iota_round_constants[7] == 0x8000000000008009
-	assert iota_round_constants[8] == 0x000000000000008A
-	assert iota_round_constants[9] == 0x0000000000000088
-	assert iota_round_constants[10] == 0x0000000080008009
-	assert iota_round_constants[11] == 0x000000008000000A
-	assert iota_round_constants[12] == 0x000000008000808B
-	assert iota_round_constants[13] == 0x800000000000008B
-	assert iota_round_constants[14] == 0x8000000000008089
-	assert iota_round_constants[15] == 0x8000000000008003
-	assert iota_round_constants[16] == 0x8000000000008002
-	assert iota_round_constants[17] == 0x8000000000000080
-	assert iota_round_constants[18] == 0x000000000000800A
-	assert iota_round_constants[19] == 0x800000008000000A
-	assert iota_round_constants[20] == 0x8000000080008081
-	assert iota_round_constants[21] == 0x8000000000008080
-	assert iota_round_constants[22] == 0x0000000080000001
-	assert iota_round_constants[23] == 0x8000000080008008
+	assert sha3.iota_round_constants[0] == 0x0000000000000001
+	assert sha3.iota_round_constants[1] == 0x0000000000008082
+	assert sha3.iota_round_constants[2] == 0x800000000000808A
+	assert sha3.iota_round_constants[3] == 0x8000000080008000
+	assert sha3.iota_round_constants[4] == 0x000000000000808B
+	assert sha3.iota_round_constants[5] == 0x0000000080000001
+	assert sha3.iota_round_constants[6] == 0x8000000080008081
+	assert sha3.iota_round_constants[7] == 0x8000000000008009
+	assert sha3.iota_round_constants[8] == 0x000000000000008A
+	assert sha3.iota_round_constants[9] == 0x0000000000000088
+	assert sha3.iota_round_constants[10] == 0x0000000080008009
+	assert sha3.iota_round_constants[11] == 0x000000008000000A
+	assert sha3.iota_round_constants[12] == 0x000000008000808B
+	assert sha3.iota_round_constants[13] == 0x800000000000008B
+	assert sha3.iota_round_constants[14] == 0x8000000000008089
+	assert sha3.iota_round_constants[15] == 0x8000000000008003
+	assert sha3.iota_round_constants[16] == 0x8000000000008002
+	assert sha3.iota_round_constants[17] == 0x8000000000000080
+	assert sha3.iota_round_constants[18] == 0x000000000000800A
+	assert sha3.iota_round_constants[19] == 0x800000008000000A
+	assert sha3.iota_round_constants[20] == 0x8000000080008081
+	assert sha3.iota_round_constants[21] == 0x8000000000008080
+	assert sha3.iota_round_constants[22] == 0x0000000080000001
+	assert sha3.iota_round_constants[23] == 0x8000000080008008
 }
 
 fn test_rho_offsets() {
-	assert rho_offsets[0][0] == 0
-	assert rho_offsets[1][0] == 1
-	assert rho_offsets[2][0] == 62
-	assert rho_offsets[3][0] == 28
-	assert rho_offsets[4][0] == 27
-	assert rho_offsets[0][1] == 36
-	assert rho_offsets[1][1] == 44
-	assert rho_offsets[2][1] == 6
-	assert rho_offsets[3][1] == 55
-	assert rho_offsets[4][1] == 20
-	assert rho_offsets[0][2] == 3
-	assert rho_offsets[1][2] == 10
-	assert rho_offsets[2][2] == 43
-	assert rho_offsets[3][2] == 25
-	assert rho_offsets[4][2] == 39
-	assert rho_offsets[0][3] == 41
-	assert rho_offsets[1][3] == 45
-	assert rho_offsets[2][3] == 15
-	assert rho_offsets[3][3] == 21
-	assert rho_offsets[4][3] == 8
-	assert rho_offsets[0][4] == 18
-	assert rho_offsets[1][4] == 2
-	assert rho_offsets[2][4] == 61
-	assert rho_offsets[3][4] == 56
-	assert rho_offsets[4][4] == 14
+	assert sha3.rho_offsets[0][0] == 0
+	assert sha3.rho_offsets[1][0] == 1
+	assert sha3.rho_offsets[2][0] == 62
+	assert sha3.rho_offsets[3][0] == 28
+	assert sha3.rho_offsets[4][0] == 27
+	assert sha3.rho_offsets[0][1] == 36
+	assert sha3.rho_offsets[1][1] == 44
+	assert sha3.rho_offsets[2][1] == 6
+	assert sha3.rho_offsets[3][1] == 55
+	assert sha3.rho_offsets[4][1] == 20
+	assert sha3.rho_offsets[0][2] == 3
+	assert sha3.rho_offsets[1][2] == 10
+	assert sha3.rho_offsets[2][2] == 43
+	assert sha3.rho_offsets[3][2] == 25
+	assert sha3.rho_offsets[4][2] == 39
+	assert sha3.rho_offsets[0][3] == 41
+	assert sha3.rho_offsets[1][3] == 45
+	assert sha3.rho_offsets[2][3] == 15
+	assert sha3.rho_offsets[3][3] == 21
+	assert sha3.rho_offsets[4][3] == 8
+	assert sha3.rho_offsets[0][4] == 18
+	assert sha3.rho_offsets[1][4] == 2
+	assert sha3.rho_offsets[2][4] == 61
+	assert sha3.rho_offsets[3][4] == 56
+	assert sha3.rho_offsets[4][4] == 14
 }
 
 fn test_zero_state() {

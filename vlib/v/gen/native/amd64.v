@@ -457,7 +457,7 @@ fn (op JumpOp) amd64() u16 {
 fn (mut c Amd64) cjmp(op JumpOp) i32 {
 	c.g.write16(op.amd64())
 	pos := c.g.pos()
-	c.g.write32(placeholder)
+	c.g.write32(native.placeholder)
 	c.g.println('${op}')
 	return i32(pos)
 }

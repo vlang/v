@@ -368,10 +368,10 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.month))
 			}
 			'MMM' {
-				sb.write_string(long_months[t.month - 1][0..3])
+				sb.write_string(time.long_months[t.month - 1][0..3])
 			}
 			'MMMM' {
-				sb.write_string(long_months[t.month - 1])
+				sb.write_string(time.long_months[t.month - 1])
 			}
 			'D' {
 				sb.write_string(t.day.str())
@@ -383,26 +383,26 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(ordinal_suffix(t.day))
 			}
 			'DDD' {
-				sb.write_string((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))).str())
+				sb.write_string((t.day + time.days_before[t.month - 1] + int(is_leap_year(t.year))).str())
 			}
 			'DDDD' {
-				sb.write_string('${t.day + days_before[t.month - 1] + int(is_leap_year(t.year)):03}')
+				sb.write_string('${t.day + time.days_before[t.month - 1] + int(is_leap_year(t.year)):03}')
 			}
 			'DDDo' {
-				sb.write_string(ordinal_suffix(t.day + days_before[t.month - 1] +
+				sb.write_string(ordinal_suffix(t.day + time.days_before[t.month - 1] +
 					int(is_leap_year(t.year))))
 			}
 			'd' {
 				sb.write_string('${t.day_of_week() % 7}')
 			}
 			'dd' {
-				sb.write_string(long_days[t.day_of_week() - 1][0..2])
+				sb.write_string(time.long_days[t.day_of_week() - 1][0..2])
 			}
 			'ddd' {
-				sb.write_string(long_days[t.day_of_week() - 1][0..3])
+				sb.write_string(time.long_days[t.day_of_week() - 1][0..3])
 			}
 			'dddd' {
-				sb.write_string(long_days[t.day_of_week() - 1])
+				sb.write_string(time.long_days[t.day_of_week() - 1])
 			}
 			'YY' {
 				sb.write_string(t.year.str()[2..4])
@@ -451,15 +451,15 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${(t.hour + 1):02}')
 			}
 			'w' {
-				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
+				sb.write_string('${mceil((t.day + time.days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7):.0}')
 			}
 			'ww' {
-				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
+				sb.write_string('${mceil((t.day + time.days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7):02.0}')
 			}
 			'wo' {
-				sb.write_string(ordinal_suffix(int(mceil((t.day + days_before[t.month - 1] +
+				sb.write_string(ordinal_suffix(int(mceil((t.day + time.days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7))))
 			}
 			'Q' {
@@ -483,7 +483,7 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
-				mut hours := offset() / seconds_per_hour
+				mut hours := offset() / time.seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours}')
 				} else {
@@ -493,7 +493,7 @@ pub fn (t Time) custom_format(s string) string {
 			}
 			'ZZ' {
 				// TODO: update if minute differs?
-				mut hours := offset() / seconds_per_hour
+				mut hours := offset() / time.seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}00')
 				} else {
@@ -503,7 +503,7 @@ pub fn (t Time) custom_format(s string) string {
 			}
 			'ZZZ' {
 				// TODO: update if minute differs?
-				mut hours := offset() / seconds_per_hour
+				mut hours := offset() / time.seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}:00')
 				} else {

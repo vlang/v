@@ -14,13 +14,13 @@ import math.bits
 @[inline]
 fn g(mut v []u32, a u8, b u8, c u8, d u8, x u32, y u32) {
 	v[a] = v[a] + v[b] + x
-	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr1)
+	v[d] = bits.rotate_left_32((v[d] ^ v[a]), blake3.nr1)
 	v[c] = v[c] + v[d]
-	v[b] = bits.rotate_left_32((v[b] ^ v[c]), nr2)
+	v[b] = bits.rotate_left_32((v[b] ^ v[c]), blake3.nr2)
 	v[a] = v[a] + v[b] + y
-	v[d] = bits.rotate_left_32((v[d] ^ v[a]), nr3)
+	v[d] = bits.rotate_left_32((v[d] ^ v[a]), blake3.nr3)
 	v[c] = v[c] + v[d]
-	v[b] = bits.rotate_left_32((v[b] ^ v[c]), nr4)
+	v[b] = bits.rotate_left_32((v[b] ^ v[c]), blake3.nr4)
 }
 
 // one complete mixing round with the function g
@@ -43,7 +43,7 @@ fn f(h []u32, m []u32, counter u64, input_bytes u32, flags u32) []u32 {
 
 	// initialize the working vector
 	v << h[..8]
-	v << iv[..4]
+	v << blake3.iv[..4]
 
 	v << u32(counter & 0x00000000ffffffff)
 	v << u32(counter >> 32)
@@ -56,13 +56,13 @@ fn f(h []u32, m []u32, counter u64, input_bytes u32, flags u32) []u32 {
 	//
 	// These could potentially be spawned in concurrent tasks
 	// to see if there is any real speed improvement.
-	mixing_round(mut v, m, sigma[0])
-	mixing_round(mut v, m, sigma[1])
-	mixing_round(mut v, m, sigma[2])
-	mixing_round(mut v, m, sigma[3])
-	mixing_round(mut v, m, sigma[4])
-	mixing_round(mut v, m, sigma[5])
-	mixing_round(mut v, m, sigma[6])
+	mixing_round(mut v, m, blake3.sigma[0])
+	mixing_round(mut v, m, blake3.sigma[1])
+	mixing_round(mut v, m, blake3.sigma[2])
+	mixing_round(mut v, m, blake3.sigma[3])
+	mixing_round(mut v, m, blake3.sigma[4])
+	mixing_round(mut v, m, blake3.sigma[5])
+	mixing_round(mut v, m, blake3.sigma[6])
 
 	// combine internal hash state with both halves of the working vector
 

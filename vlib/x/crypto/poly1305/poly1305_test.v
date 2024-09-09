@@ -41,7 +41,7 @@ fn test_incremental_update_ported_from_poly1305donna() ! {
 		0x62, 0x3d, 0x39]
 
 	// poly1305_auth(mac, nacl_msg, sizeof(nacl_msg), nacl_key);
-	mut mac := []u8{len: tag_size}
+	mut mac := []u8{len: poly1305.tag_size}
 	create_tag(mut mac, nacl_msg, nacl_key)!
 	assert mac == nacl_mac
 	// result &= poly1305_verify(nacl_mac, mac);
@@ -63,7 +63,7 @@ fn test_incremental_update_ported_from_poly1305donna() ! {
 	// poly1305_finish(&ctx, mac);
 	//	result &= poly1305_verify(nacl_mac, mac);
 	mut po := new(nacl_key)!
-	mut tag := []u8{len: tag_size}
+	mut tag := []u8{len: poly1305.tag_size}
 
 	po.update(nacl_msg)
 	po.finish(mut tag)
@@ -95,7 +95,7 @@ fn test_incremental_update_ported_from_poly1305donna() ! {
 
 	// poly1305_init(&total_ctx, total_key);
 	dump(total_key.len)
-	mut tkey := []u8{len: key_size}
+	mut tkey := []u8{len: poly1305.key_size}
 	_ := copy(mut tkey, total_key)
 	mut ptot := new(tkey)!
 	mut all_key := []u8{len: 32}
@@ -120,7 +120,7 @@ fn test_poly1305_with_smoked_messages_are_working_normally() ! {
 	// generates smoked message with full bits is set
 	msg := u8(0xff).repeat(135).bytes()
 	// msg = ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-	mut tag := []u8{len: tag_size}
+	mut tag := []u8{len: poly1305.tag_size}
 	create_tag(mut tag, msg, key)!
 
 	// lets verify its working normally
@@ -136,7 +136,7 @@ fn test_poly1305_core_rfc_vector_tests() ! {
 		msg := hex.decode(c.msg) or { panic(err.msg()) }
 		expected_tag := hex.decode(c.tag) or { panic(err.msg()) }
 
-		mut tag := []u8{len: tag_size}
+		mut tag := []u8{len: poly1305.tag_size}
 
 		// check for instance based method
 		mut po := new(key)!
@@ -163,7 +163,7 @@ fn test_poly1305_function_based_core_functionality() ! {
 		mut msg := hex.decode(c.msg) or { panic(err.msg()) }
 
 		expected_tag := hex.decode(c.tag) or { panic(err.msg()) }
-		mut tag := []u8{len: tag_size}
+		mut tag := []u8{len: poly1305.tag_size}
 
 		mut po := new(key)!
 
@@ -198,7 +198,7 @@ fn test_poly1305_smoked_data_vectors() ! {
 			// set with accumulator s
 			poly.h = s
 		}
-		mut tag := []u8{len: tag_size}
+		mut tag := []u8{len: poly1305.tag_size}
 
 		poly.update(msg)
 		poly.finish(mut tag)

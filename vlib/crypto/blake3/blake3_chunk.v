@@ -57,7 +57,7 @@ fn (mut c Chunk) process_input(input []u8, key_words []u32, counter u64, flags u
 		panic('trying to process 0 bytes in chunk ${counter}')
 	}
 
-	if remaining_input.len > chunk_size {
+	if remaining_input.len > blake3.chunk_size {
 		panic('trying to process ${remaining_input.len} bytes in chunk ${counter}')
 	}
 
@@ -66,13 +66,13 @@ fn (mut c Chunk) process_input(input []u8, key_words []u32, counter u64, flags u
 	c.block_words = []u32{len: 16, cap: 16, init: 0}
 
 	for i in 0 .. 16 {
-		c.block_len = u32(block_size)
+		c.block_len = u32(blake3.block_size)
 		c.flags = flags | if i == 0 { u32(Flags.chunk_start) } else { u32(0) }
 
-		if remaining_input.len <= block_size {
+		if remaining_input.len <= blake3.block_size {
 			c.block_len = u32(remaining_input.len)
 
-			for remaining_input.len < block_size {
+			for remaining_input.len < blake3.block_size {
 				remaining_input << u8(0)
 			}
 
@@ -83,7 +83,7 @@ fn (mut c Chunk) process_input(input []u8, key_words []u32, counter u64, flags u
 			c.block_words[j] = binary.little_endian_u32_at(remaining_input, j * 4)
 		}
 
-		remaining_input = unsafe { remaining_input[block_size..] }
+		remaining_input = unsafe { remaining_input[blake3.block_size..] }
 
 		words := f(c.chaining_value, c.block_words, c.chunk_number, c.block_len, c.flags)
 
@@ -94,5 +94,5 @@ fn (mut c Chunk) process_input(input []u8, key_words []u32, counter u64, flags u
 		}
 	}
 
-	panic('processing more than 16 ${block_size} byte blocks in chunk ${c.chunk_number}')
+	panic('processing more than 16 ${blake3.block_size} byte blocks in chunk ${c.chunk_number}')
 }

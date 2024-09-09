@@ -437,7 +437,7 @@ fn (mut p Parser) decode_value() !Any {
 		.null {
 			p.next_with_err()!
 			if p.convert_type {
-				return Any(null)
+				return Any(json2.null)
 			}
 			return Any('null')
 		}

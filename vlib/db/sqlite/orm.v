@@ -23,7 +23,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	if config.is_count {
 		// 2. Get count of returned values & add it to ret array
 		step := stmt.step()
-		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
+		if step !in [sqlite.sqlite_row, sqlite.sqlite_ok, sqlite.sqlite_done] {
 			return db.error_message(step, query)
 		}
 		count := stmt.sqlite_select_column(0, 8)!
@@ -33,10 +33,10 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	for {
 		// 2. Parse returned values
 		step := stmt.step()
-		if step == sqlite_done {
+		if step == sqlite.sqlite_done {
 			break
 		}
-		if step != sqlite_ok && step != sqlite_row {
+		if step != sqlite.sqlite_ok && step != sqlite.sqlite_row {
 			break
 		}
 		mut row := []orm.Primitive{}

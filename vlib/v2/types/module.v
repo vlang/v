@@ -14,6 +14,6 @@ pub fn new_module(name string, path string) &Module {
 	return &Module{
 		name:  name
 		path:  path
-		scope: new_scope(universe)
+		scope: new_scope(types.universe)
 	}
 }

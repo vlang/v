@@ -18,7 +18,7 @@ pub fn (lhs Time) - (rhs Time) Duration {
 	// lhs.unix * 1_000_000_000 + i64(lhs.nanosecond) will overflow i64, for years > 3000 .
 	// Doing the diff first, and *then* multiplying by `second`, is less likely to overflow,
 	// since lhs and rhs will be likely close to each other.
-	unixs := i64(lhs.unix() - rhs.unix()) * second
+	unixs := i64(lhs.unix() - rhs.unix()) * time.second
 	nanos := lhs.nanosecond - rhs.nanosecond
 	return unixs + nanos
 }

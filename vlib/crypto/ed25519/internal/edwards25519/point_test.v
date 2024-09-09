@@ -119,7 +119,7 @@ fn test_generator() {
 
 	assert hex.encode(b.x.bytes()) == x
 	assert hex.encode(b.y.bytes()) == y
-	assert b.z.equal(fe_one) == 1
+	assert b.z.equal(edwards25519.fe_one) == 1
 	// Check that t is correct.
 	assert check_on_curve(b) == true
 }

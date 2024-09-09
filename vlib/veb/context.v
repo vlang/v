@@ -93,7 +93,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	ctx.res.body = response
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
-			ctx.res.body = response.replace('</html>', '<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
+			ctx.res.body = response.replace('</html>', '<script src="/veb_livereload/${veb.veb_livereload_server_start}/script.js"></script>\n</html>')
 		}
 	}
 
@@ -159,7 +159,7 @@ pub fn (mut ctx Context) file(file_path string) Result {
 		if ct := ctx.custom_mime_types[ext] {
 			content_type = ct
 		} else {
-			content_type = mime_types[ext]
+			content_type = veb.mime_types[ext]
 		}
 	}
 

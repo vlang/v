@@ -42,7 +42,7 @@ pub fn abs_path(path string) string {
 	if !is_abs_path(npath) {
 		mut sb := strings.new_builder(npath.len)
 		sb.write_string(wd)
-		sb.write_string(path_separator)
+		sb.write_string(os.path_separator)
 		sb.write_string(npath)
 		return norm_path(sb.str())
 	}
@@ -66,13 +66,13 @@ pub fn norm_path(path string) string {
 	volume_len := win_volume_len(path)
 	mut volume := path[..volume_len]
 	if volume_len != 0 && volume.contains(os.fslash_str) {
-		volume = volume.replace(os.fslash_str, path_separator)
+		volume = volume.replace(os.fslash_str, os.path_separator)
 	}
 	cpath := clean_path(path[volume_len..])
 	if cpath == '' && volume_len == 0 {
 		return os.dot_str
 	}
-	spath := cpath.split(path_separator)
+	spath := cpath.split(os.path_separator)
 	if os.dot_dot !in spath {
 		return if volume_len != 0 { volume + cpath } else { cpath }
 	}
@@ -80,7 +80,7 @@ pub fn norm_path(path string) string {
 	spath_len := spath.len
 	mut sb := strings.new_builder(cpath.len)
 	if rooted {
-		sb.write_string(path_separator)
+		sb.write_string(os.path_separator)
 	}
 	mut new_path := []string{cap: spath_len}
 	mut backlink_count := 0
@@ -107,10 +107,10 @@ pub fn norm_path(path string) string {
 			if new_path.len == 0 && i == backlink_count - 1 {
 				break
 			}
-			sb.write_string(path_separator)
+			sb.write_string(os.path_separator)
 		}
 	}
-	sb.write_string(new_path.join(path_separator))
+	sb.write_string(new_path.join(os.path_separator))
 	res := sb.str()
 	if res.len == 0 {
 		if volume_len != 0 {
@@ -119,7 +119,7 @@ pub fn norm_path(path string) string {
 		if !rooted {
 			return os.dot_str
 		}
-		return path_separator
+		return os.path_separator
 	}
 	if volume_len != 0 {
 		return volume + res
@@ -221,19 +221,19 @@ fn clean_path(path string) string {
 // to_slash returns the result of replacing each separator character
 // in path with a slash (`/`).
 pub fn to_slash(path string) string {
-	if path_separator == '/' {
+	if os.path_separator == '/' {
 		return path
 	}
-	return path.replace(path_separator, '/')
+	return path.replace(os.path_separator, '/')
 }
 
 // from_slash returns the result of replacing each slash (`/`) character
 // is path with a separator character.
 pub fn from_slash(path string) string {
-	if path_separator == '/' {
+	if os.path_separator == '/' {
 		return path
 	}
-	return path.replace('/', path_separator)
+	return path.replace('/', os.path_separator)
 }
 
 // win_volume_len returns the length of the

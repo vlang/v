@@ -10,7 +10,7 @@ pub fn log_n(x f64, b f64) f64 {
 // log10 returns the decimal logarithm of x.
 // The special cases are the same as for log.
 pub fn log10(x f64) f64 {
-	return log(x) * (1.0 / ln10)
+	return log(x) * (1.0 / math.ln10)
 }
 
 // log2 returns the binary logarithm of x.
@@ -22,7 +22,7 @@ pub fn log2(x f64) f64 {
 	if frac == 0.5 {
 		return f64(exp - 1)
 	}
-	return log(frac) * (1.0 / ln2) + f64(exp)
+	return log(frac) * (1.0 / math.ln2) + f64(exp)
 }
 
 // log1p returns log(1+x)
@@ -59,13 +59,13 @@ pub fn log_b(x f64) f64 {
 // ilog_b(nan) = max_i32
 pub fn ilog_b(x f64) int {
 	if x == 0 {
-		return int(min_i32)
+		return int(math.min_i32)
 	}
 	if is_nan(x) {
-		return int(max_i32)
+		return int(math.max_i32)
 	}
 	if is_inf(x, 0) {
-		return int(max_i32)
+		return int(math.max_i32)
 	}
 	return ilog_b_(x)
 }
@@ -74,7 +74,7 @@ pub fn ilog_b(x f64) int {
 // non-zero.
 fn ilog_b_(x_ f64) int {
 	x, exp := normalize(x_)
-	return int((f64_bits(x) >> shift) & mask) - bias + exp
+	return int((f64_bits(x) >> math.shift) & math.mask) - math.bias + exp
 }
 
 // log returns the natural logarithm of x
@@ -140,7 +140,7 @@ pub fn log(a f64) f64 {
 	}
 
 	mut f1, mut ki := frexp(x)
-	if f1 < sqrt2 / 2 {
+	if f1 < math.sqrt2 / 2 {
 		f1 *= 2
 		ki--
 	}

@@ -70,11 +70,11 @@ fn test_header_delete() {
 
 fn test_header_delete_not_existing() {
 	mut h := new_header()
-	assert h.data.len == max_headers
+	assert h.data.len == http.max_headers
 	assert h.values(.dnt).len == 0
 	// assert h.keys.len == 0
 	h.delete(.dnt)
-	assert h.data.len == max_headers
+	assert h.data.len == http.max_headers
 	assert h.values(.dnt).len == 0
 	// assert h.keys.len == 0
 }

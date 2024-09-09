@@ -120,22 +120,22 @@ fn parse_comparator(input string) ?Comparator {
 
 fn parse_xrange(input string) ?Version {
 	mut raw_ver := parse(input).complete()
-	for typ in versions {
+	for typ in semver.versions {
 		if raw_ver.raw_ints[typ].index_any(semver.x_range_symbols) == -1 {
 			continue
 		}
 		match typ {
-			ver_major {
-				raw_ver.raw_ints[ver_major] = '0'
-				raw_ver.raw_ints[ver_minor] = '0'
-				raw_ver.raw_ints[ver_patch] = '0'
+			semver.ver_major {
+				raw_ver.raw_ints[semver.ver_major] = '0'
+				raw_ver.raw_ints[semver.ver_minor] = '0'
+				raw_ver.raw_ints[semver.ver_patch] = '0'
 			}
-			ver_minor {
-				raw_ver.raw_ints[ver_minor] = '0'
-				raw_ver.raw_ints[ver_patch] = '0'
+			semver.ver_minor {
+				raw_ver.raw_ints[semver.ver_minor] = '0'
+				raw_ver.raw_ints[semver.ver_patch] = '0'
 			}
-			ver_patch {
-				raw_ver.raw_ints[ver_patch] = '0'
+			semver.ver_patch {
+				raw_ver.raw_ints[semver.ver_patch] = '0'
 			}
 			else {}
 		}
@@ -187,10 +187,10 @@ fn expand_hyphen(raw_range string) ?ComparatorSet {
 	}
 	min_ver := coerce_version(raw_versions[0]) or { return none }
 	raw_max_ver := parse(raw_versions[1])
-	if raw_max_ver.is_missing(ver_major) {
+	if raw_max_ver.is_missing(semver.ver_major) {
 		return none
 	}
-	if raw_max_ver.is_missing(ver_minor) {
+	if raw_max_ver.is_missing(semver.ver_minor) {
 		max_ver := raw_max_ver.coerce() or { return none }.increment(.minor)
 		return make_comparator_set_ge_lt(min_ver, max_ver)
 	}

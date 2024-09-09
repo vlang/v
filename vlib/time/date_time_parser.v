@@ -76,12 +76,12 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 }
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
-	for v in long_months {
+	for v in time.long_months {
 		if p.current_pos_datetime + v.len < p.datetime.len {
 			month_name := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == month_name {
 				p.current_pos_datetime += v.len
-				return long_months.index(month_name) + 1
+				return time.long_months.index(month_name) + 1
 			}
 		}
 	}
@@ -91,8 +91,8 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
 	if p.current_pos_datetime + 3 < p.datetime.len {
 		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
-		for m := 1; m <= long_months.len; m++ {
-			if months_string[(m - 1) * 3..m * 3] == letters {
+		for m := 1; m <= time.long_months.len; m++ {
+			if time.months_string[(m - 1) * 3..m * 3] == letters {
 				p.current_pos_datetime += 3
 				return m
 			}
@@ -102,7 +102,7 @@ fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_week_day() !string {
-	for v in long_days {
+	for v in time.long_days {
 		if p.current_pos_datetime + v.len < p.datetime.len {
 			weekday := p.datetime[p.current_pos_datetime..p.current_pos_datetime + v.len]
 			if v == weekday {
@@ -117,8 +117,8 @@ fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
 	if p.current_pos_datetime + 2 < p.datetime.len {
 		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 2]
-		for d := 1; d <= long_days.len; d++ {
-			if days_string[(d - 1) * 3..d * 3 - 1] == letters {
+		for d := 1; d <= time.long_days.len; d++ {
+			if time.days_string[(d - 1) * 3..d * 3 - 1] == letters {
 				p.current_pos_datetime += 2
 				return d
 			}
@@ -130,8 +130,8 @@ fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
 fn (mut p DateTimeParser) must_be_valid_three_letter_week_day() !int {
 	if p.current_pos_datetime + 3 < p.datetime.len {
 		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
-		for d := 1; d <= long_days.len; d++ {
-			if days_string[(d - 1) * 3..d * 3] == letters {
+		for d := 1; d <= time.long_days.len; d++ {
+			if time.days_string[(d - 1) * 3..d * 3] == letters {
 				p.current_pos_datetime += 3
 				return d
 			}

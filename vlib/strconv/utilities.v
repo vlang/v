@@ -69,14 +69,14 @@ fn mul_shift_32(m u32, mul u64, ishift int) u32 {
 
 @[direct_array_access; inline]
 fn mul_pow5_invdiv_pow2(m u32, q u32, j int) u32 {
-	assert1(q < pow5_inv_split_32.len, 'q < pow5_inv_split_32.len')
-	return mul_shift_32(m, pow5_inv_split_32[q], j)
+	assert1(q < strconv.pow5_inv_split_32.len, 'q < pow5_inv_split_32.len')
+	return mul_shift_32(m, strconv.pow5_inv_split_32[q], j)
 }
 
 @[direct_array_access; inline]
 fn mul_pow5_div_pow2(m u32, i u32, j int) u32 {
-	assert1(i < pow5_split_32.len, 'i < pow5_split_32.len')
-	return mul_shift_32(m, pow5_split_32[i], j)
+	assert1(i < strconv.pow5_split_32.len, 'i < pow5_split_32.len')
+	return mul_shift_32(m, strconv.pow5_split_32[i], j)
 }
 
 fn pow5_factor_32(i_v u32) u32 {

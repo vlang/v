@@ -76,9 +76,9 @@ fn satan(x f64) f64 {
 		return xatan(x)
 	}
 	if x > math.tan3pio8 {
-		return pi / 2.0 - xatan(1.0 / x) + f64(math.morebits)
+		return math.pi / 2.0 - xatan(1.0 / x) + f64(math.morebits)
 	}
-	return pi / 4 + xatan((x - 1.0) / (x + 1.0)) + 0.5 * f64(math.morebits)
+	return math.pi / 4 + xatan((x - 1.0) / (x + 1.0)) + 0.5 * f64(math.morebits)
 }
 
 // atan returns the arctangent, in radians, of x.
@@ -127,33 +127,33 @@ pub fn atan2(y f64, x f64) f64 {
 		if x >= 0 && !signbit(x) {
 			return copysign(0, y)
 		}
-		return copysign(pi, y)
+		return copysign(math.pi, y)
 	}
 	if x == 0.0 {
-		return copysign(pi / 2.0, y)
+		return copysign(math.pi / 2.0, y)
 	}
 	if is_inf(x, 0) {
 		if is_inf(x, 1) {
 			if is_inf(y, 0) {
-				return copysign(pi / 4, y)
+				return copysign(math.pi / 4, y)
 			}
 			return copysign(0, y)
 		}
 		if is_inf(y, 0) {
-			return copysign(3.0 * pi / 4.0, y)
+			return copysign(3.0 * math.pi / 4.0, y)
 		}
-		return copysign(pi, y)
+		return copysign(math.pi, y)
 	}
 	if is_inf(y, 0) {
-		return copysign(pi / 2.0, y)
+		return copysign(math.pi / 2.0, y)
 	}
 	// Call atan and determine the quadrant.
 	q := atan(y / x)
 	if x < 0 {
 		if q <= 0 {
-			return q + pi
+			return q + math.pi
 		}
-		return q - pi
+		return q - math.pi
 	}
 	return q
 }
@@ -185,7 +185,7 @@ pub fn asin(x_ f64) f64 {
 	}
 	mut temp := sqrt(1.0 - x * x)
 	if x > 0.7 {
-		temp = pi / 2.0 - satan(temp / x)
+		temp = math.pi / 2.0 - satan(temp / x)
 	} else {
 		temp = satan(x / temp)
 	}
@@ -207,8 +207,8 @@ pub fn acos(x f64) f64 {
 	if x > 0.5 {
 		return f64(2.0) * asin(sqrt(0.5 - 0.5 * x))
 	}
-	mut z := pi / f64(4.0) - asin(x)
+	mut z := math.pi / f64(4.0) - asin(x)
 	z = z + math.morebits
-	z = z + pi / f64(4.0)
+	z = z + math.pi / f64(4.0)
 	return z
 }

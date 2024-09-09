@@ -6,16 +6,16 @@ module os
 // args_after returns all os.args, located *after* a specified `cut_word`.
 // When `cut_word` is NOT found, os.args is returned unmodified.
 pub fn args_after(cut_word string) []string {
-	if args.len == 0 {
+	if os.args.len == 0 {
 		return []string{}
 	}
 	mut cargs := []string{}
-	if cut_word !in args {
-		cargs = args.clone()
+	if cut_word !in os.args {
+		cargs = os.args.clone()
 	} else {
 		mut found := false
-		cargs << args[0]
-		for a in args[1..] {
+		cargs << os.args[0]
+		for a in os.args[1..] {
 			if a == cut_word {
 				found = true
 				continue
@@ -32,15 +32,15 @@ pub fn args_after(cut_word string) []string {
 // args_before returns all os.args, located *before* a specified `cut_word`.
 // When `cut_word` is NOT found, os.args is returned unmodified.
 pub fn args_before(cut_word string) []string {
-	if args.len == 0 {
+	if os.args.len == 0 {
 		return []string{}
 	}
 	mut cargs := []string{}
-	if cut_word !in args {
-		cargs = args.clone()
+	if cut_word !in os.args {
+		cargs = os.args.clone()
 	} else {
-		cargs << args[0]
-		for a in args[1..] {
+		cargs << os.args[0]
+		for a in os.args[1..] {
 			if a == cut_word {
 				break
 			}

@@ -48,8 +48,8 @@ pub fn (doc XMLDocument) validate() !XMLDocument {
 		DocumentTypeDefinition {
 			// Store the element and entity definitions
 			mut elements := map[string]DTDElement{}
-			mut entities := default_entities.clone()
-			mut reverse_entities := default_entities_reverse.clone()
+			mut entities := xml.default_entities.clone()
+			mut reverse_entities := xml.default_entities_reverse.clone()
 
 			for item in doc.doctype.dtd.list {
 				match item {

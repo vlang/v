@@ -88,7 +88,7 @@ fn block_generic(mut dig Digest, p_ []u8) {
 		mut h5 := dig.h[5]
 		mut h6 := dig.h[6]
 		mut h7 := dig.h[7]
-		for p.len >= chunk {
+		for p.len >= sha256.chunk {
 			// Can interlace the computation of w with the
 			// rounds below if needed for speed.
 			for i in 0 .. 16 {
@@ -134,10 +134,10 @@ fn block_generic(mut dig Digest, p_ []u8) {
 			h5 += f
 			h6 += g
 			h7 += h
-			if chunk >= p.len {
+			if sha256.chunk >= p.len {
 				p = []
 			} else {
-				p = p[chunk..]
+				p = p[sha256.chunk..]
 			}
 		}
 		dig.h[0] = h0

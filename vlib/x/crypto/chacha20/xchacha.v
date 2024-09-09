@@ -15,17 +15,17 @@ const h_nonce_size = 16
 @[direct_array_access]
 fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	// early bound check
-	if key.len != key_size {
+	if key.len != chacha20.key_size {
 		return error('xchacha: Bad key size')
 	}
 	if nonce.len != chacha20.h_nonce_size {
 		return error('xchacha: Bad nonce size')
 	}
 	// initializes ChaCha20 state
-	mut x0 := cc0
-	mut x1 := cc1
-	mut x2 := cc2
-	mut x3 := cc3
+	mut x0 := chacha20.cc0
+	mut x1 := chacha20.cc1
+	mut x2 := chacha20.cc2
+	mut x3 := chacha20.cc3
 
 	mut x4 := binary.little_endian_u32(key[0..4])
 	mut x5 := binary.little_endian_u32(key[4..8])
@@ -83,7 +83,7 @@ fn xchacha20_encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 
 fn xchacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
 	// bound check elimination
-	_ = nonce[x_nonce_size - 1]
+	_ = nonce[chacha20.x_nonce_size - 1]
 	subkey := xchacha20(key, nonce[0..16])!
 	mut cnonce := nonce[16..24].clone()
 

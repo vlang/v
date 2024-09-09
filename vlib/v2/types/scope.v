@@ -141,7 +141,7 @@ pub fn (obj &Object) typ() Type {
 		Module {
 			// TODO:
 			println('#### got Module')
-			return Type(u16_)
+			return Type(types.u16_)
 		}
 		SmartCastSelector {
 			return obj.origin

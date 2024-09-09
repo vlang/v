@@ -98,8 +98,8 @@ pub fn (req &Request) do() !Response {
 	mut resp := Response{}
 	mut nredirects := 0
 	for {
-		if nredirects == max_redirects {
-			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
+		if nredirects == http.max_redirects {
+			return error('http.request.do: maximum number of redirects reached (${http.max_redirects})')
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl)!
 		resp = qresp
@@ -284,7 +284,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 type FnReceiveChunk = fn (con voidptr, buf &u8, bufsize int) !int
 
 fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
-	mut buff := [bufsize]u8{}
+	mut buff := [http.bufsize]u8{}
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0
 	mut body_pos := u64(0)
@@ -294,7 +294,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut status_code := -1
 	for {
 		readcounter++
-		len := receive_chunk_cb(con, bp, bufsize) or { break }
+		len := receive_chunk_cb(con, bp, http.bufsize) or { break }
 		$if debug_http ? {
 			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
 			eprintln('-'.repeat(20))

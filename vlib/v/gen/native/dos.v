@@ -163,7 +163,7 @@ pub fn (mut g Gen) gen_dos_stub() {
 		0x24,
 	])
 
-	g.pad_to(dos_stub_end)
+	g.pad_to(native.dos_stub_end)
 
 	g.println('')
 	g.println('^^^ DOS Stub')

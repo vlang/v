@@ -10,8 +10,8 @@ pub mut:
 // The key argument should be the Blowfish key, from 1 to 56 bytes.
 pub fn new_cipher(key []u8) !Blowfish {
 	mut bf := Blowfish{}
-	unsafe { vmemcpy(&bf.p[0], &p[0], int(sizeof(bf.p))) }
-	unsafe { vmemcpy(&bf.s[0], &s[0], int(sizeof(bf.s))) }
+	unsafe { vmemcpy(&bf.p[0], &blowfish.p[0], int(sizeof(bf.p))) }
+	unsafe { vmemcpy(&bf.s[0], &blowfish.s[0], int(sizeof(bf.s))) }
 	if key.len < 1 || key.len > 56 {
 		return error('invalid key')
 	}
@@ -26,8 +26,8 @@ pub fn new_salted_cipher(key []u8, salt []u8) !Blowfish {
 		return new_cipher(key)
 	}
 	mut bf := Blowfish{}
-	unsafe { vmemcpy(&bf.p[0], &p[0], int(sizeof(bf.p))) }
-	unsafe { vmemcpy(&bf.s[0], &s[0], int(sizeof(bf.s))) }
+	unsafe { vmemcpy(&bf.p[0], &blowfish.p[0], int(sizeof(bf.p))) }
+	unsafe { vmemcpy(&bf.s[0], &blowfish.s[0], int(sizeof(bf.s))) }
 	if key.len < 1 {
 		return error('invalid key')
 	}

@@ -16,7 +16,7 @@ struct MontgomeryContext {
 // the modulus provided in the integer `m`; assume m is odd and m != 0
 fn (m Integer) montgomery() MontgomeryContext {
 	$if debug {
-		assert m != zero_int
+		assert m != big.zero_int
 		assert m.is_odd()
 	}
 
@@ -29,8 +29,8 @@ fn (m Integer) montgomery() MontgomeryContext {
 		// ri := multiplicative inverse of r in the ring Z/nZ
 		// ri * r == 1 (mod n)
 		// ni = ((ri * 2^(log_2(n))) - 1) / n
-		ni: (one_int.left_shift(b).mod_inv(n).left_shift(b) - one_int) / n
-		rr: one_int.left_shift(b * 2) % n
+		ni: (big.one_int.left_shift(b).mod_inv(n).left_shift(b) - big.one_int) / n
+		rr: big.one_int.left_shift(b * 2) % n
 	}
 }
 
@@ -41,7 +41,7 @@ fn (m Integer) montgomery() MontgomeryContext {
 @[direct_array_access]
 fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 	$if debug {
-		assert a > one_int && x > one_int
+		assert a > big.one_int && x > big.one_int
 		assert m.is_odd()
 	}
 
@@ -77,7 +77,7 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 			signum: 1
 		}
 	} else {
-		one_int.to_mont(ctx)
+		big.one_int.to_mont(ctx)
 	}
 
 	mut start := true
@@ -159,12 +159,12 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 @[direct_array_access]
 fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	$if debug {
-		assert a > one_int && x > one_int
+		assert a > big.one_int && x > big.one_int
 		assert !m.is_odd()
 	}
 
 	m1, j := m.rsh_to_set_bit()
-	m2 := one_int.left_shift(j)
+	m2 := big.one_int.left_shift(j)
 
 	$if debug {
 		assert m1 * m2 == m
@@ -179,7 +179,7 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	m1i := m1.mod_inv(m2)
 
 	$if debug {
-		assert (m1i * m1).mask_bits(m2n) == one_int
+		assert (m1i * m1).mask_bits(m2n) == big.one_int
 	}
 
 	t1 := x1.mask_bits(m2n)
@@ -189,7 +189,7 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 		(t2 - t1).mask_bits(m2n)
 	} else {
 		// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
-		(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
+		(t1 - t2).abs().bitwise_not().mask_bits(m2n) + big.one_int
 	} * m1i).mask_bits(m2n)
 
 	return x1 + m1 * t
@@ -201,7 +201,7 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 @[direct_array_access]
 fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 	$if debug {
-		assert a > one_int && x > one_int
+		assert a > big.one_int && x > big.one_int
 		assert m.is_power_of_2()
 	}
 
@@ -221,7 +221,7 @@ fn (a Integer) exp_binary(x Integer, m Integer) Integer {
 		table[i] = (table[i - 1] * d).mask_bits(n)
 	}
 
-	mut r := one_int
+	mut r := big.one_int
 
 	mut start := true
 	mut wstart := if x.bit_len() - 1 > n {
@@ -303,7 +303,7 @@ fn get_window_size(n u32) int {
 // space and reduces the result to montgomery space
 fn (a Integer) mont_mul(b Integer, ctx MontgomeryContext) Integer {
 	if (a.digits.len + b.digits.len) > 2 * ctx.n.digits.len {
-		return zero_int
+		return big.zero_int
 	}
 
 	t := a * b

@@ -35,7 +35,7 @@ pub fn tan(a f64) f64 {
 		return 0.0
 	}
 	// compute x mod pi_4
-	mut y := floor(x * 4.0 / pi) // strip high bits of integer part
+	mut y := floor(x * 4.0 / math.pi) // strip high bits of integer part
 	mut z := ldexp(y, -3)
 	z = floor(z) // integer part of y/8
 	z = y - ldexp(z, 3) // y - 16 * (y/16) // integer and fractional part modulo one octant
@@ -82,7 +82,7 @@ pub fn cot(a f64) f64 {
 		return 0.0
 	}
 	// compute x mod pi_4
-	mut y := floor(x * 4.0 / pi) // strip high bits of integer part
+	mut y := floor(x * 4.0 / math.pi) // strip high bits of integer part
 	mut z := ldexp(y, -3)
 	z = floor(z) // integer part of y/8
 	z = y - ldexp(z, 3) // y - 16 * (y/16) // integer and fractional part modulo one octant

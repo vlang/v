@@ -47,7 +47,7 @@ pub fn leading_zeros_64(x u64) int {
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
 @[direct_array_access]
 pub fn trailing_zeros_8(x u8) int {
-	return int(ntz_8_tab[x])
+	return int(bits.ntz_8_tab[x])
 }
 
 // trailing_zeros_16 returns the number of trailing zero bits in x; the result is 16 for x == 0.
@@ -94,20 +94,20 @@ pub fn trailing_zeros_64(x u64) int {
 // ones_count_8 returns the number of one bits ("population count") in x.
 @[direct_array_access]
 pub fn ones_count_8(x u8) int {
-	return int(pop_8_tab[x])
+	return int(bits.pop_8_tab[x])
 }
 
 // ones_count_16 returns the number of one bits ("population count") in x.
 @[direct_array_access]
 pub fn ones_count_16(x u16) int {
-	return int(pop_8_tab[x >> 8] + pop_8_tab[x & u16(0xff)])
+	return int(bits.pop_8_tab[x >> 8] + bits.pop_8_tab[x & u16(0xff)])
 }
 
 // ones_count_32 returns the number of one bits ("population count") in x.
 @[direct_array_access]
 pub fn ones_count_32(x u32) int {
-	return int(pop_8_tab[x >> 24] + pop_8_tab[x >> 16 & 0xff] + pop_8_tab[x >> 8 & 0xff] +
-		pop_8_tab[x & u32(0xff)])
+	return int(bits.pop_8_tab[x >> 24] + bits.pop_8_tab[x >> 16 & 0xff] +
+		bits.pop_8_tab[x >> 8 & 0xff] + bits.pop_8_tab[x & u32(0xff)])
 }
 
 // ones_count_64 returns the number of one bits ("population count") in x.
@@ -190,13 +190,13 @@ pub fn rotate_left_64(x u64, k int) u64 {
 // reverse_8 returns the value of x with its bits in reversed order.
 @[direct_array_access; inline]
 pub fn reverse_8(x u8) u8 {
-	return rev_8_tab[x]
+	return bits.rev_8_tab[x]
 }
 
 // reverse_16 returns the value of x with its bits in reversed order.
 @[direct_array_access; inline]
 pub fn reverse_16(x u16) u16 {
-	return u16(rev_8_tab[x >> 8]) | (u16(rev_8_tab[x & u16(0xff)]) << 8)
+	return u16(bits.rev_8_tab[x >> 8]) | (u16(bits.rev_8_tab[x & u16(0xff)]) << 8)
 }
 
 // reverse_32 returns the value of x with its bits in reversed order.
@@ -249,7 +249,7 @@ pub fn reverse_bytes_64(x u64) u64 {
 // len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
 @[direct_array_access]
 pub fn len_8(x u8) int {
-	return int(len_8_tab[x])
+	return int(bits.len_8_tab[x])
 }
 
 // len_16 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
@@ -261,7 +261,7 @@ pub fn len_16(x u16) int {
 		y >>= 8
 		n = 8
 	}
-	return n + int(len_8_tab[y])
+	return n + int(bits.len_8_tab[y])
 }
 
 // len_32 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
@@ -277,7 +277,7 @@ pub fn len_32(x u32) int {
 		y >>= 8
 		n += 8
 	}
-	return n + int(len_8_tab[y])
+	return n + int(bits.len_8_tab[y])
 }
 
 // len_64 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
@@ -297,7 +297,7 @@ pub fn len_64(x u64) int {
 		y >>= 8
 		n += 8
 	}
-	return n + int(len_8_tab[y])
+	return n + int(bits.len_8_tab[y])
 }
 
 // --- Add with carry ---

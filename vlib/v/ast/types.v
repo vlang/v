@@ -993,7 +993,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin') // 5
 	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin') // 6
 	t.register_sym(kind: .i32, name: 'i32', cname: 'i32', mod: 'builtin') // 7
-	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin') // 8
+	t.register_sym(kind: .int, name: 'int', cname: ast.int_type_name, mod: 'builtin') // 8
 	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin') // 9
 	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin') // 10
 	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin') // 11

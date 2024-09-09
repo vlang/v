@@ -49,8 +49,8 @@ pub fn (block Block) encode(config EncodeConfig) !string {
 
 	inner += wrap_lines(base64.encode(block.data), newline, length)
 
-	return '${pem_begin}${block.block_type}${pem_eol}${newline}' + '${inner}' +
-		'${pem_end}${block.block_type}${pem_eol}'
+	return '${pem.pem_begin}${block.block_type}${pem.pem_eol}${newline}' + '${inner}' +
+		'${pem.pem_end}${block.block_type}${pem.pem_eol}'
 }
 
 @[inline]

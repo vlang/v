@@ -54,7 +54,7 @@ fn test_clean_path() {
 }
 
 fn test_to_slash() {
-	sep := path_separator
+	sep := os.path_separator
 	assert to_slash('') == ''
 	assert to_slash(sep) == ('/')
 	assert to_slash([sep, 'a', sep, 'b'].join('')) == '/a/b'
@@ -62,7 +62,7 @@ fn test_to_slash() {
 }
 
 fn test_from_slash() {
-	sep := path_separator
+	sep := os.path_separator
 	assert from_slash('') == ''
 	assert from_slash('/') == sep
 	assert from_slash('/a/b') == [sep, 'a', sep, 'b'].join('')
@@ -112,7 +112,7 @@ fn test_norm_path() {
 
 fn test_abs_path() {
 	wd := getwd()
-	wd_w_sep := wd + path_separator
+	wd_w_sep := wd + os.path_separator
 	$if windows {
 		assert abs_path('path/to/file.v') == '${wd_w_sep}path\\to\\file.v'
 		assert abs_path('path/to/file.v') == '${wd_w_sep}path\\to\\file.v'

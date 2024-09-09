@@ -40,7 +40,7 @@ fn test_str_invalid_escape() {
 }
 
 fn test_str_invalid_must_be_escape() {
-	for ch in important_escapable_chars {
+	for ch in json2.important_escapable_chars {
 		mut sc := Scanner{
 			text: [u8(`"`), `t`, ch, `"`]
 		}

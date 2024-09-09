@@ -8,13 +8,13 @@ pub const uint256_max = Uint256{uint128_max, uint128_max}
 // Uint256 is an unsigned 256-bit number
 pub struct Uint256 {
 pub mut:
-	lo Uint128 = uint128_zero // lower 128 bit half
-	hi Uint128 = uint128_zero // upper 128 bit half
+	lo Uint128 = unsigned.uint128_zero // lower 128 bit half
+	hi Uint128 = unsigned.uint128_zero // upper 128 bit half
 }
 
 // uint256_from_128 creates a new `unsigned.Uint256` from the given Uint128 value
 pub fn uint256_from_128(v Uint128) Uint256 {
-	return Uint256{v, uint128_zero}
+	return Uint256{v, unsigned.uint128_zero}
 }
 
 // uint256_from_64 creates a new `unsigned.Uint256` from the given u64 value
@@ -66,7 +66,7 @@ pub fn (u Uint256) and(v Uint256) Uint256 {
 
 // and_128 returns a Uint256 value that is the bitwise and of u and v, which is a Uint128
 pub fn (u Uint256) and_128(v Uint128) Uint256 {
-	return Uint256{u.lo.and(v), uint128_zero}
+	return Uint256{u.lo.and(v), unsigned.uint128_zero}
 }
 
 // or_ returns a Uint256 value that is the bitwise or of u and v
@@ -205,10 +205,10 @@ pub fn (u Uint256) quo_rem(v Uint256) (Uint256, Uint256) {
 pub fn (u Uint256) quo_rem_128(v Uint128) (Uint256, Uint128) {
 	if u.hi.cmp(v) < 0 {
 		lo, r := div_128(u.hi, u.lo, v)
-		return Uint256{lo, uint128_zero}, r
+		return Uint256{lo, unsigned.uint128_zero}, r
 	}
 
-	hi, r := div_128(uint128_zero, u.hi, v)
+	hi, r := div_128(unsigned.uint128_zero, u.hi, v)
 	lo, r2 := div_128(r, u.lo, v)
 	return Uint256{lo, hi}, r2
 }
@@ -228,7 +228,7 @@ pub fn (u Uint256) quo_rem_64(v u64) (Uint256, u64) {
 pub fn (u Uint256) rsh(n_ u32) Uint256 {
 	mut n := n_
 	if n > 128 {
-		return Uint256{u.hi.rsh(n - 128), uint128_zero}
+		return Uint256{u.hi.rsh(n - 128), unsigned.uint128_zero}
 	}
 
 	if n > 64 {
@@ -242,7 +242,7 @@ pub fn (u Uint256) rsh(n_ u32) Uint256 {
 pub fn (u Uint256) lsh(n_ u32) Uint256 {
 	mut n := n_
 	if n > 128 {
-		return Uint256{u.lo.lsh(n - 128), uint128_zero}
+		return Uint256{u.lo.lsh(n - 128), unsigned.uint128_zero}
 	}
 
 	if n > 64 {

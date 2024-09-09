@@ -40,6 +40,7 @@ fn run_fmt(mut input_files []string) {
 		}
 		mut table := ast.new_table()
 		file_ast := parser.parse_file(ipath, mut table, .parse_comments, fpref)
+		parse_others_in_same_module(file_ast.mod.name, ipath, mut table, fpref)
 		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
@@ -56,6 +57,21 @@ fn run_fmt(mut input_files []string) {
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	assert fmt_bench.nfail == 0
+}
+
+fn parse_others_in_same_module(mod_name string, file string, mut table ast.Table, prefs &pref.Preferences) {
+	if mod_name != 'main' && prefs.should_compile_c(file) && !file.ends_with('.c.v')
+		&& !file.starts_with('.#') && !file.contains('_d_') && !file.contains('_notd_') {
+		// other files in the same module also need to be parsed
+		cur_file_dir := os.dir(file)
+		mut files := os.ls(cur_file_dir) or { panic(err) }
+		should_compile_files := prefs.should_compile_filtered_files(cur_file_dir, files)
+		for compile_file in should_compile_files {
+			if compile_file != file {
+				parser.parse_file(compile_file, mut table, .skip_comments, prefs)
+			}
+		}
+	}
 }
 
 fn get_test_files(path string) []string {
