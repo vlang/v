@@ -21,8 +21,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	mut has_init := false
 	mut has_index := false
 	mut init_expr := ast.empty_expr
-	mut alias_type := alias_array_type
-	if alias_type == ast.void_type {
+	if alias_array_type == ast.void_type {
 		p.check(.lsbr)
 		if p.tok.kind == .rsbr {
 			last_pos = p.tok.pos()
@@ -125,7 +124,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			}
 		}
 	} else {
-		array_type = (p.table.sym(alias_type).info as ast.Alias).parent_type
+		array_type = (p.table.sym(alias_array_type).info as ast.Alias).parent_type
 		elem_type = p.table.sym(array_type).array_info().elem_type
 		p.next()
 	}
@@ -180,7 +179,7 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 		mod:           p.mod
 		elem_type:     elem_type
 		typ:           array_type
-		alias_type:    alias_type
+		alias_type:    alias_array_type
 		exprs:         exprs
 		ecmnts:        ecmnts
 		pre_cmnts:     pre_cmnts
