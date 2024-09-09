@@ -265,10 +265,10 @@ const max_error_code = 15841
 fn ptr_win_get_error_msg(code u32) voidptr {
 	mut buf := unsafe { nil }
 	// Check for code overflow
-	if code > u32(os.max_error_code) {
+	if code > u32(max_error_code) {
 		return buf
 	}
-	C.FormatMessageW(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
+	C.FormatMessageW(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
 		0, code, 0, voidptr(&buf), 0, 0)
 	return buf
 }

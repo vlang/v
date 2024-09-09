@@ -1219,9 +1219,9 @@ pub fn escape_string(s string) string {
 	mut out := []u8{cap: s.len}
 
 	for c in s {
-		if c in native.escape_codes {
-			out << native.escape_char
-			out << native.escape_codes[c]
+		if c in escape_codes {
+			out << escape_char
+			out << escape_codes[c]
 		} else {
 			out << c
 		}

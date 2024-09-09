@@ -212,10 +212,10 @@ fn test_angle_diff() {
 }
 
 fn test_acos() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := math.vf_[i] / 10
+	for i := 0; i < vf_.len; i++ {
+		a := vf_[i] / 10
 		f := acos(a)
-		assert soclose(math.acos_[i], f, 1e-7)
+		assert soclose(acos_[i], f, 1e-7)
 	}
 	vfacos_sc_ := [-pi, 1, pi, nan()]
 	acos_sc_ := [nan(), 0, nan(), nan()]
@@ -226,10 +226,10 @@ fn test_acos() {
 }
 
 fn test_acosh() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := 1.0 + abs(math.vf_[i])
+	for i := 0; i < vf_.len; i++ {
+		a := 1.0 + abs(vf_[i])
 		f := acosh(a)
-		assert veryclose(math.acosh_[i], f)
+		assert veryclose(acosh_[i], f)
 	}
 	vfacosh_sc_ := [inf(-1), 0.5, 1, inf(1), nan()]
 	acosh_sc_ := [nan(), nan(), 0, inf(1), nan()]
@@ -240,10 +240,10 @@ fn test_acosh() {
 }
 
 fn test_asin() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := math.vf_[i] / 10
+	for i := 0; i < vf_.len; i++ {
+		a := vf_[i] / 10
 		f := asin(a)
-		assert veryclose(math.asin_[i], f)
+		assert veryclose(asin_[i], f)
 	}
 	vfasin_sc_ := [-pi, copysign(0, -1), 0, pi, nan()]
 	asin_sc_ := [nan(), copysign(0, -1), 0, nan(), nan()]
@@ -254,9 +254,9 @@ fn test_asin() {
 }
 
 fn test_asinh() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := asinh(math.vf_[i])
-		assert veryclose(math.asinh_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := asinh(vf_[i])
+		assert veryclose(asinh_[i], f)
 	}
 	vfasinh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	asinh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
@@ -267,9 +267,9 @@ fn test_asinh() {
 }
 
 fn test_atan() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := atan(math.vf_[i])
-		assert veryclose(math.atan_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := atan(vf_[i])
+		assert veryclose(atan_[i], f)
 	}
 	vfatan_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	atan_sc_ := [f64(-pi / 2), copysign(0, -1), 0, pi / 2, nan()]
@@ -280,10 +280,10 @@ fn test_atan() {
 }
 
 fn test_atanh() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := math.vf_[i] / 10
+	for i := 0; i < vf_.len; i++ {
+		a := vf_[i] / 10
 		f := atanh(a)
-		assert veryclose(math.atanh_[i], f)
+		assert veryclose(atanh_[i], f)
 	}
 	vfatanh_sc_ := [inf(-1), -pi, -1, copysign(0, -1), 0, 1, pi, inf(1),
 		nan()]
@@ -296,9 +296,9 @@ fn test_atanh() {
 }
 
 fn test_atan2() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := atan2(10, math.vf_[i])
-		assert veryclose(math.atan2_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := atan2(10, vf_[i])
+		assert veryclose(atan2_[i], f)
 	}
 	vfatan2_sc_ := [[inf(-1), inf(-1)], [inf(-1), -pi], [inf(-1), 0],
 		[inf(-1), pi], [inf(-1), inf(1)], [inf(-1), nan()], [-pi, inf(-1)],
@@ -369,9 +369,9 @@ fn test_ceil() {
 }
 
 fn test_cos() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := cos(math.vf_[i])
-		assert veryclose(math.cos_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := cos(vf_[i])
+		assert veryclose(cos_[i], f)
 	}
 	vfcos_sc_ := [inf(-1), inf(1), nan()]
 	cos_sc_ := [nan(), nan(), nan()]
@@ -382,9 +382,9 @@ fn test_cos() {
 }
 
 fn test_cosh() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := cosh(math.vf_[i])
-		assert close(math.cosh_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := cosh(vf_[i])
+		assert close(cosh_[i], f)
 	}
 	vfcosh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	cosh_sc_ := [inf(1), 1, 1, inf(1), nan()]
@@ -395,15 +395,15 @@ fn test_cosh() {
 }
 
 fn test_expm1() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := math.vf_[i] / 100
+	for i := 0; i < vf_.len; i++ {
+		a := vf_[i] / 100
 		f := expm1(a)
-		assert veryclose(math.expm1_[i], f)
+		assert veryclose(expm1_[i], f)
 	}
-	for i := 0; i < math.vf_.len; i++ {
-		a := math.vf_[i] * 10
+	for i := 0; i < vf_.len; i++ {
+		a := vf_[i] * 10
 		f := expm1(a)
-		assert close(math.expm1_large_[i], f)
+		assert close(expm1_large_[i], f)
 	}
 	// vfexpm1_sc_            := [f64(-710), copysign(0, -1), 0, 710, inf(1), nan()]
 	// expm1_sc_              := [f64(-1), copysign(0, -1), 0, inf(1), inf(1), nan()]
@@ -414,9 +414,9 @@ fn test_expm1() {
 }
 
 fn test_abs() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := abs(math.vf_[i])
-		assert math.fabs_[i] == f
+	for i := 0; i < vf_.len; i++ {
+		f := abs(vf_[i])
+		assert fabs_[i] == f
 	}
 }
 
@@ -431,9 +431,9 @@ fn test_abs_zero() {
 }
 
 fn test_floor() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := floor(math.vf_[i])
-		assert alike(math.floor_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := floor(vf_[i])
+		assert alike(floor_[i], f)
 	}
 	vfceil_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	ceil_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
@@ -444,16 +444,16 @@ fn test_floor() {
 }
 
 fn test_max() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := max(math.vf_[i], math.ceil_[i])
-		assert math.ceil_[i] == f
+	for i := 0; i < vf_.len; i++ {
+		f := max(vf_[i], ceil_[i])
+		assert ceil_[i] == f
 	}
 }
 
 fn test_min() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := min(math.vf_[i], math.floor_[i])
-		assert math.floor_[i] == f
+	for i := 0; i < vf_.len; i++ {
+		f := min(vf_[i], floor_[i])
+		assert floor_[i] == f
 	}
 }
 
@@ -512,9 +512,9 @@ fn test_sign() {
 }
 
 fn test_mod() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := mod(10, math.vf_[i])
-		assert math.fmod_[i] == f
+	for i := 0; i < vf_.len; i++ {
+		f := mod(10, vf_[i])
+		assert fmod_[i] == f
 	}
 	// verify precision of result for extreme inputs
 	f := mod(5.9790119248836734e+200, 1.1258465975523544)
@@ -529,9 +529,9 @@ fn test_cbrt() {
 }
 
 fn test_exp() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := exp(math.vf_[i])
-		assert close(math.exp_[i], f), 'math.exp_[i]: ${math.exp_[i]:10}, ${f64_bits(math.exp_[i]):12} | f: ${f}, ${f64_bits(f):12}'
+	for i := 0; i < vf_.len; i++ {
+		f := exp(vf_[i])
+		assert close(exp_[i], f), 'math.exp_[i]: ${exp_[i]:10}, ${f64_bits(exp_[i]):12} | f: ${f}, ${f64_bits(f):12}'
 	}
 	vfexp_sc_ := [inf(-1), -2000, 2000, inf(1), nan(), // smallest f64 that overflows Exp(x)
 	 	7.097827128933841e+02, 1.48852223e+09, 1.4885222e+09, 1, // near zero
@@ -546,9 +546,9 @@ fn test_exp() {
 }
 
 fn test_exp2() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := exp2(math.vf_[i])
-		assert soclose(math.exp2_[i], f, 1e-9)
+	for i := 0; i < vf_.len; i++ {
+		f := exp2(vf_[i])
+		assert soclose(exp2_[i], f, 1e-9)
 	}
 	vfexp2_sc_ := [f64(-2000), 2000, inf(1), nan(), // smallest f64 that overflows Exp2(x)
 	 	1024, -1.07399999999999e+03, // near underflow
@@ -567,9 +567,9 @@ fn test_exp2() {
 }
 
 fn test_frexp() {
-	for i := 0; i < math.vf_.len; i++ {
-		f, j := frexp(math.vf_[i])
-		assert veryclose(math.frexp_[i].f, f) || math.frexp_[i].i != j
+	for i := 0; i < vf_.len; i++ {
+		f, j := frexp(vf_[i])
+		assert veryclose(frexp_[i].f, f) || frexp_[i].i != j
 	}
 	// vffrexp_sc_            := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	// frexp_sc_              := [Fi{inf(-1), 0}, Fi{copysign(0, -1), 0}, Fi{0, 0},
@@ -646,9 +646,9 @@ fn test_gamma() {
 }
 
 fn test_hypot() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := abs(1e+200 * math.tanh_[i] * sqrt(2.0))
-		f := hypot(1e+200 * math.tanh_[i], 1e+200 * math.tanh_[i])
+	for i := 0; i < vf_.len; i++ {
+		a := abs(1e+200 * tanh_[i] * sqrt(2.0))
+		f := hypot(1e+200 * tanh_[i], 1e+200 * tanh_[i])
 		assert veryclose(a, f)
 	}
 	vfhypot_sc_ := [[inf(-1), inf(-1)], [inf(-1), 0], [inf(-1),
@@ -669,9 +669,9 @@ fn test_hypot() {
 }
 
 fn test_ldexp() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := ldexp(math.frexp_[i].f, math.frexp_[i].i)
-		assert veryclose(math.vf_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := ldexp(frexp_[i].f, frexp_[i].i)
+		assert veryclose(vf_[i], f)
 	}
 	vffrexp_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	frexp_sc_ := [Fi{inf(-1), 0}, Fi{copysign(0, -1), 0}, Fi{0, 0},
@@ -695,9 +695,9 @@ fn test_ldexp() {
 }
 
 fn test_log_gamma() {
-	for i := 0; i < math.vf_.len; i++ {
-		f, s := log_gamma_sign(math.vf_[i])
-		assert soclose(math.log_gamma_[i].f, f, 1e-6) && math.log_gamma_[i].i == s
+	for i := 0; i < vf_.len; i++ {
+		f, s := log_gamma_sign(vf_[i])
+		assert soclose(log_gamma_[i].f, f, 1e-6) && log_gamma_[i].i == s
 	}
 	// vflog_gamma_sc_        := [inf(-1), -3, 0, 1, 2, inf(1), nan()]
 	// log_gamma_sc_          := [Fi{inf(-1), 1}, Fi{inf(1), 1}, Fi{inf(1), 1},
@@ -709,10 +709,10 @@ fn test_log_gamma() {
 }
 
 fn test_log() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := abs(math.vf_[i])
+	for i := 0; i < vf_.len; i++ {
+		a := abs(vf_[i])
 		f := log(a)
-		assert math.log_[i] == f
+		assert log_[i] == f
 	}
 	vflog_sc_ := [inf(-1), -pi, copysign(0, -1), 0, 1, inf(1),
 		nan()]
@@ -726,10 +726,10 @@ fn test_log() {
 }
 
 fn test_log10() {
-	for i := 0; i < math.vf_.len; i++ {
-		a := abs(math.vf_[i])
+	for i := 0; i < vf_.len; i++ {
+		a := abs(vf_[i])
 		f := log10(a)
-		assert veryclose(math.log10_[i], f)
+		assert veryclose(log10_[i], f)
 	}
 	vflog_sc_ := [inf(-1), -pi, copysign(0, -1), 0, 1, inf(1),
 		nan()]
@@ -741,9 +741,9 @@ fn test_log10() {
 }
 
 fn test_pow() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := pow(10, math.vf_[i])
-		assert close(math.pow_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := pow(10, vf_[i])
+		assert close(pow_[i], f)
 	}
 	vfpow_sc_ := [[inf(-1), -pi], [inf(-1), -3], [inf(-1), -0.0],
 		[inf(-1), 0], [inf(-1), 1], [inf(-1), 3], [inf(-1), pi],
@@ -843,9 +843,9 @@ fn test_pow() {
 }
 
 fn test_round() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := round(math.vf_[i])
-		assert alike(math.round_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := round(vf_[i])
+		assert alike(round_[i], f)
 	}
 	vfround_sc_ := [[f64(0), 0], [nan(), nan()], [inf(1), inf(1)]]
 	// vfround_even_sc_ := [[f64(0), 0], [f64(1.390671161567e-309), 0], // denormal
@@ -875,9 +875,9 @@ fn fn_test_round_sig() {
 }
 
 fn test_sin() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := sin(math.vf_[i])
-		assert veryclose(math.sin_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := sin(vf_[i])
+		assert veryclose(sin_[i], f)
 	}
 	vfsin_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	sin_sc_ := [nan(), copysign(0, -1), 0, nan(), nan()]
@@ -888,10 +888,10 @@ fn test_sin() {
 }
 
 fn test_sincos() {
-	for i := 0; i < math.vf_.len; i++ {
-		f, g := sincos(math.vf_[i])
-		assert veryclose(math.sin_[i], f)
-		assert veryclose(math.cos_[i], g)
+	for i := 0; i < vf_.len; i++ {
+		f, g := sincos(vf_[i])
+		assert veryclose(sin_[i], f)
+		assert veryclose(cos_[i], g)
 	}
 	vfsin_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	sin_sc_ := [nan(), copysign(0, -1), 0, nan(), nan()]
@@ -908,9 +908,9 @@ fn test_sincos() {
 }
 
 fn test_sinh() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := sinh(math.vf_[i])
-		assert close(math.sinh_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := sinh(vf_[i])
+		assert close(sinh_[i], f)
 	}
 	vfsinh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	sinh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
@@ -921,13 +921,13 @@ fn test_sinh() {
 }
 
 fn test_sqrt() {
-	for i := 0; i < math.vf_.len; i++ {
-		mut a := abs(math.vf_[i])
+	for i := 0; i < vf_.len; i++ {
+		mut a := abs(vf_[i])
 		mut f := sqrt(a)
-		assert veryclose(math.sqrt_[i], f)
-		a = abs(math.vf_[i])
+		assert veryclose(sqrt_[i], f)
+		a = abs(vf_[i])
 		f = sqrt(a)
-		assert veryclose(math.sqrt_[i], f)
+		assert veryclose(sqrt_[i], f)
 	}
 	vfsqrt_sc_ := [inf(-1), -pi, copysign(0, -1), 0, inf(1), nan()]
 	sqrt_sc_ := [nan(), nan(), copysign(0, -1), 0, inf(1), nan()]
@@ -940,9 +940,9 @@ fn test_sqrt() {
 }
 
 fn test_tan() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := tan(math.vf_[i])
-		assert veryclose(math.tan_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := tan(vf_[i])
+		assert veryclose(tan_[i], f)
 	}
 	vfsin_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	sin_sc_ := [nan(), copysign(0, -1), 0, nan(), nan()]
@@ -954,9 +954,9 @@ fn test_tan() {
 }
 
 fn test_tanh() {
-	for i := 0; i < math.vf_.len; i++ {
-		f := tanh(math.vf_[i])
-		assert veryclose(math.tanh_[i], f)
+	for i := 0; i < vf_.len; i++ {
+		f := tanh(vf_[i])
+		assert veryclose(tanh_[i], f)
 	}
 	vftanh_sc_ := [inf(-1), copysign(0, -1), 0, inf(1), nan()]
 	tanh_sc_ := [f64(-1), copysign(0, -1), 0, 1, nan()]
@@ -1049,27 +1049,27 @@ fn test_digits() {
 // a multiple of 2 * pi, is misleading.]
 fn test_large_cos() {
 	large := 100000.0 * pi
-	for i := 0; i < math.vf_.len; i++ {
-		f1 := math.cos_large_[i]
-		f2 := cos(math.vf_[i] + large)
+	for i := 0; i < vf_.len; i++ {
+		f1 := cos_large_[i]
+		f2 := cos(vf_[i] + large)
 		assert soclose(f1, f2, 4e-8)
 	}
 }
 
 fn test_large_sin() {
 	large := 100000.0 * pi
-	for i := 0; i < math.vf_.len; i++ {
-		f1 := math.sin_large_[i]
-		f2 := sin(math.vf_[i] + large)
+	for i := 0; i < vf_.len; i++ {
+		f1 := sin_large_[i]
+		f2 := sin(vf_[i] + large)
 		assert soclose(f1, f2, 4e-9)
 	}
 }
 
 fn test_large_tan() {
 	large := 100000.0 * pi
-	for i := 0; i < math.vf_.len; i++ {
-		f1 := math.tan_large_[i]
-		f2 := tan(math.vf_[i] + large)
+	for i := 0; i < vf_.len; i++ {
+		f1 := tan_large_[i]
+		f2 := tan(vf_[i] + large)
 		assert soclose(f1, f2, 4e-8)
 	}
 }

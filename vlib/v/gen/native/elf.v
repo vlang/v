@@ -151,24 +151,24 @@ mut:
 
 fn (mut g Gen) default_elf_header() ElfHeader {
 	machine := if g.pref.arch == .arm64 {
-		native.elf_arm64
+		elf_arm64
 	} else {
-		native.elf_amd64
+		elf_amd64
 	}
 
 	return ElfHeader{
-		ident_class:      native.elf_class64
-		ident_data:       native.elf_data_le
-		ident_version:    native.elf_version
-		ident_osabi:      native.elf_osabi_none
-		ident_abiversion: native.elf_abiversion
-		typ:              native.elf_type_none
+		ident_class:      elf_class64
+		ident_data:       elf_data_le
+		ident_version:    elf_version
+		ident_osabi:      elf_osabi_none
+		ident_abiversion: elf_abiversion
+		typ:              elf_type_none
 		machine:          i16(machine)
-		version:          native.elf_version
-		phoff:            native.elf_header_size
-		ehsize:           native.elf_header_size
-		phentsize:        native.elf_phentry_size
-		shentsize:        native.elf_shentry_size
+		version:          elf_version
+		phoff:            elf_header_size
+		ehsize:           elf_header_size
+		phentsize:        elf_phentry_size
+		shentsize:        elf_shentry_size
 	}
 }
 
@@ -250,13 +250,13 @@ fn (mut g Gen) gen_program_header(p ProgramHeader) {
 	g.write64(p.offset) // p_offset
 	g.println('; p_offset')
 	g.write64(if p.vaddr == 0 {
-		native.segment_start
+		segment_start
 	} else {
 		p.vaddr
 	}) // p_vaddr
 	g.println('; p_vaddr')
 	g.write64(if p.paddr == 0 {
-		native.segment_start
+		segment_start
 	} else {
 		p.paddr
 	}) // p_paddr
@@ -469,8 +469,8 @@ fn (mut g Gen) create_shstrtab(mut sections []Section) {
 
 	names[sections.len] = '.shstrtab'
 
-	mut shstrtab := g.create_section(names[sections.len], native.elf_sht_strtab, 0, 0,
-		1, 0, g.create_string_table_section(names))
+	mut shstrtab := g.create_section(names[sections.len], elf_sht_strtab, 0, 0, 1, 0,
+		g.create_string_table_section(names))
 	shstrtab.header.name = offset
 
 	sections << shstrtab
@@ -486,31 +486,30 @@ fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSect
 
 		entry.name = offset
 
-		if (entry.info >> 4) == native.elf_stb_local {
+		if (entry.info >> 4) == elf_stb_local {
 			local_symbols++
 		}
 
 		offset += i32(entry.str_name.len + 1)
 	}
 
-	sections << g.create_section('.strtab', native.elf_sht_strtab, 0, 0, 1, 0, g.create_string_table_section(names))
+	sections << g.create_section('.strtab', elf_sht_strtab, 0, 0, 1, 0, g.create_string_table_section(names))
 
 	sections << // index of .strtab
-	g.create_section('.symtab', native.elf_sht_symtab, i32(sections.len - 1), local_symbols,
-		native.elf_sh_symtab_align, native.elf_sh_symtab_entsize, table)
+	g.create_section('.symtab', elf_sht_symtab, i32(sections.len - 1), local_symbols,
+		elf_sh_symtab_align, elf_sh_symtab_entsize, table)
 }
 
 fn (mut g Gen) create_relocation(name string, mut sections []Section, table []RelASection) Section {
-	mut section := g.create_section(name, native.elf_sht_rela, g.find_section_header('.symtab',
+	mut section := g.create_section(name, elf_sht_rela, g.find_section_header('.symtab',
 		sections), 1, 8, 24, table)
-	section.header.flags = i64(native.elf_shf_info_link)
+	section.header.flags = i64(elf_shf_info_link)
 	sections << section
 	return section
 }
 
 fn (mut g Gen) create_progbits(name string, flags u64, data []u8) Section {
-	mut section := g.create_section(name, native.elf_sht_progbits, 0, 0, 1, data.len,
-		ProgBitsSection{data})
+	mut section := g.create_section(name, elf_sht_progbits, 0, 0, 1, data.len, ProgBitsSection{data})
 	section.header.flags = i64(flags)
 	return section
 }
@@ -576,7 +575,7 @@ fn (mut g Gen) gen_symtab_data(section Section, data []SymbolTableSection) {
 		g.println('; SHT_SYMTAB ${symbol.str_name}')
 	}
 
-	size := native.elf_symtab_size * data.len
+	size := elf_symtab_size * data.len
 	g.write64_at(section.header.pos + 32, i64(size))
 }
 
@@ -621,7 +620,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 					g.println('; SHT_RELA `${rela.name}` (${rela.offset}, ${rela.info}, ${rela.addend})')
 				}
 
-				size := native.elf_rela_size * data.len
+				size := elf_rela_size * data.len
 				g.write64_at(section.header.pos + 32, i64(size))
 			}
 			HashSection {
@@ -635,7 +634,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 					g.println('; SHT_DYNAMIC (${dyn.tag}, ${dyn.un})')
 				}
 
-				size := native.elf_dynamic_size * data.len
+				size := elf_dynamic_size * data.len
 				g.write64_at(section.header.pos + 32, i64(size))
 			}
 			NoteSection {
@@ -664,7 +663,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				g.write64(data.info)
 				g.println('; SHT_REL (${data.offset}, ${data.info})')
 
-				size := native.elf_rel_size
+				size := elf_rel_size
 				g.write64_at(section.header.pos + 32, i64(size))
 			}
 			ShLibSection {
@@ -690,30 +689,30 @@ pub fn (mut g Gen) symtab_get_index(symbols []SymbolTableSection, name string) i
 }
 
 pub fn (mut g Gen) generate_linkable_elf_header() {
-	elf_type := native.elf_type_rel // PIE (use _exec for non-relocatable executables)
+	elf_type := elf_type_rel // PIE (use _exec for non-relocatable executables)
 
 	// generate program headers
 	mut program_headers := []ProgramHeader{}
-	program_headers << g.create_program_header(native.elf_pt_load, 5, native.elf_p_align)
+	program_headers << g.create_program_header(elf_pt_load, 5, elf_p_align)
 	// generate sections
 	mut sections := [
 		Section{}, // null section as first section
-		g.create_progbits('.text', native.elf_shf_alloc | native.elf_shf_execinstr, []),
-		g.create_progbits('.data', native.elf_shf_write | native.elf_shf_alloc, []),
-		g.create_progbits('.bss', native.elf_shf_write | native.elf_shf_alloc, []),
+		g.create_progbits('.text', elf_shf_alloc | elf_shf_execinstr, []),
+		g.create_progbits('.data', elf_shf_write | elf_shf_alloc, []),
+		g.create_progbits('.bss', elf_shf_write | elf_shf_alloc, []),
 	]
 
 	g.symbol_table = [
 		SymbolTableSection{}, // first is null
-		g.create_symbol_table_section('main', native.elf_stt_notype, native.elf_stb_global,
-			native.elf_stv_default, 0, 0, i16(g.find_section_header('.text', sections))), // main label points to entry point address
-		g.create_symbol_table_section('_GLOBAL_OFFSET_TABLE_', native.elf_stt_notype,
-			native.elf_stb_global, native.elf_stv_default, 0, 0, 0),
+		g.create_symbol_table_section('main', elf_stt_notype, elf_stb_global, elf_stv_default,
+			0, 0, i16(g.find_section_header('.text', sections))), // main label points to entry point address
+		g.create_symbol_table_section('_GLOBAL_OFFSET_TABLE_', elf_stt_notype, elf_stb_global,
+			elf_stv_default, 0, 0, 0),
 	]
 
 	for symbol in g.extern_symbols {
-		g.symbol_table << g.create_symbol_table_section(symbol[2..], native.elf_stt_notype,
-			native.elf_stb_global, native.elf_stv_default, 0, 0, 0)
+		g.symbol_table << g.create_symbol_table_section(symbol[2..], elf_stt_notype, elf_stb_global,
+			elf_stv_default, 0, 0, 0)
 	}
 	g.create_symtab(mut sections, mut g.symbol_table) // create the .symtab section
 	g.create_relocation('.rela.text', mut sections, [])
@@ -722,7 +721,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	mut elf_header := g.default_elf_header()
 
 	elf_header.typ = i16(elf_type)
-	elf_header.shoff = native.elf_header_size + native.elf_phentry_size * program_headers.len
+	elf_header.shoff = elf_header_size + elf_phentry_size * program_headers.len
 	elf_header.phnum = i16(program_headers.len)
 	elf_header.shnum = i16(sections.len)
 	elf_header.shstrndx = i16(g.find_section_header('.shstrtab', sections))
@@ -757,7 +756,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
 
-	g.code_gen.call(native.placeholder)
+	g.code_gen.call(placeholder)
 	g.println('; call main.main')
 	g.code_gen.mov64(g.code_gen.main_reg(), 0)
 	g.code_gen.ret()
@@ -767,11 +766,11 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 }
 
 pub fn (mut g Gen) generate_simple_elf_header() {
-	elf_type := native.elf_type_exec
+	elf_type := elf_type_exec
 
-	mut phdr := g.create_program_header(native.elf_pt_load, 5, native.elf_p_align)
-	phdr.vaddr = native.segment_start
-	phdr.paddr = native.segment_start
+	mut phdr := g.create_program_header(elf_pt_load, 5, elf_p_align)
+	phdr.vaddr = segment_start
+	phdr.paddr = segment_start
 
 	mut elf_header := g.default_elf_header()
 	elf_header.typ = i16(elf_type)
@@ -780,7 +779,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	elf_header.shentsize = i16(0)
 	elf_header.shnum = i16(0)
 	elf_header.shstrndx = i16(0)
-	elf_header.entry = native.segment_start + native.elf_header_size + native.elf_phentry_size
+	elf_header.entry = segment_start + elf_header_size + elf_phentry_size
 
 	g.gen_elf_header(elf_header)
 
@@ -795,7 +794,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	g.code_start_pos = g.pos()
 	g.debug_pos = i32(g.pos())
 
-	g.code_gen.call(native.placeholder)
+	g.code_gen.call(placeholder)
 	g.println('; call main.main')
 
 	// generate exit syscall
@@ -845,8 +844,7 @@ pub fn (mut g Gen) gen_rela_section() {
 	mut relocations := []RelASection{}
 	for call_pos, symbol in g.extern_fn_calls {
 		relocations << g.create_rela_section(symbol, call_pos - g.code_start_pos + 2,
-			g.symtab_get_index(g.symbol_table, symbol[2..]), native.elf_r_amd64_gotpcrelx,
-			-4)
+			g.symtab_get_index(g.symbol_table, symbol[2..]), elf_r_amd64_gotpcrelx, -4)
 	}
 	g.elf_rela_section.data = relocations
 	g.gen_section_data([g.elf_rela_section])

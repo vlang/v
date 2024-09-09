@@ -42,13 +42,13 @@ struct Reloc {
 }
 
 fn (mut g Gen) macho_segment64_pagezero() {
-	g.macho_add_loadcommand(native.lc_segment_64, 72)
+	g.macho_add_loadcommand(lc_segment_64, 72)
 	g.write_string_with_padding('__PAGEZERO', 16) // section name
 	g.write64(0) // vmaddr
 	if g.pref.arch == .amd64 {
 		g.write64(i64(g.get_pagesize())) // vmsize
 	} else {
-		g.write64(native.base_addr) // vmsize
+		g.write64(base_addr) // vmsize
 	}
 	g.write64(0) // fileoff
 	g.write64(0) // filesize
@@ -72,17 +72,17 @@ fn (mut g Gen) macho_patch_header() {
 
 // probably unnecessary
 fn (mut g Gen) macho_chained_fixups() {
-	g.macho_add_loadcommand(native.lc_dyld_chained_fixups, 16)
+	g.macho_add_loadcommand(lc_dyld_chained_fixups, 16)
 	g.write32(0x4000) // dataoff
 	g.write32(56) // datasize
 
-	g.macho_add_loadcommand(native.lc_dyld_exports_trie, 16)
+	g.macho_add_loadcommand(lc_dyld_exports_trie, 16)
 	g.write32(0x4000) // dataoff
 	g.write32(56) // datasize
 }
 
 fn (mut g Gen) macho_segment64_linkedit() {
-	g.macho_add_loadcommand(native.lc_segment_64, 0x48)
+	g.macho_add_loadcommand(lc_segment_64, 0x48)
 	g.write_string_with_padding('__LINKEDIT', 16)
 
 	if g.pref.arch == .amd64 {
@@ -112,7 +112,7 @@ fn (mut g Gen) macho_header(ncmds i32, bintype i32) i32 {
 		g.write32(0x01000007) // CPU_TYPE_X64
 		g.write32(0x80000003) // CPU_SUBTYPE_X64
 	}
-	g.write32(native.mh_execute) // filetype
+	g.write32(mh_execute) // filetype
 	g.write32(ncmds) // ncmds
 
 	cmdsize_offset := i32(g.buf.len)
@@ -129,9 +129,9 @@ fn (mut g Gen) macho_header(ncmds i32, bintype i32) i32 {
 
 fn (mut g Gen) macho_segment64_text() []i32 {
 	mut patch := []i32{}
-	g.macho_add_loadcommand(native.lc_segment_64, 152)
+	g.macho_add_loadcommand(lc_segment_64, 152)
 	g.write_string_with_padding('__TEXT', 16) // section name
-	g.write64(native.base_addr) // vmaddr
+	g.write64(base_addr) // vmaddr
 
 	g.write64(i64(g.get_pagesize()) * 2) // vmsize
 	g.write64(0) // fileoff
@@ -145,12 +145,12 @@ fn (mut g Gen) macho_segment64_text() []i32 {
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
 	if g.pref.arch == .arm64 {
-		g.write64(native.base_addr + i64(g.get_pagesize())) // vmaddr
+		g.write64(base_addr + i64(g.get_pagesize())) // vmaddr
 		g.write64(0) // vmsize
 		g.write32(0) // offset
 		g.write32(4) // align
 	} else {
-		g.write64(native.base_addr + i64(g.get_pagesize())) // vmaddr
+		g.write64(base_addr + i64(g.get_pagesize())) // vmaddr
 		patch << i32(g.buf.len)
 		g.write64(0) // vmsize
 		g.write32(g.get_pagesize()) // offset
@@ -174,7 +174,7 @@ fn (mut g Gen) macho_segment64_text() []i32 {
 
 fn (mut g Gen) macho_symtab() {
 	if g.pref.arch == .arm64 {
-		g.macho_add_loadcommand(native.lc_dyld_info_only, 48)
+		g.macho_add_loadcommand(lc_dyld_info_only, 48)
 		g.write32(0) // rebase_off
 		g.write32(0) // rebase_size
 		g.write32(0) // bind_off
@@ -187,13 +187,13 @@ fn (mut g Gen) macho_symtab() {
 		g.write32(56) // export_size
 	}
 
-	g.macho_add_loadcommand(native.lc_symtab, 24)
+	g.macho_add_loadcommand(lc_symtab, 24)
 	g.write32(0x1000) // symoff
 	g.write32(0) // nsyms
 	g.write32(0x1000) // stroff
 	g.write32(0) // strsize
 
-	g.macho_add_loadcommand(native.lc_dysymtab, 0x50)
+	g.macho_add_loadcommand(lc_dysymtab, 0x50)
 	g.write32(0) // ilocalsym
 	g.write32(0) // nlocalsym
 	g.write32(0) // iextdefsym
@@ -215,12 +215,12 @@ fn (mut g Gen) macho_symtab() {
 }
 
 fn (mut g Gen) macho_dylibs() {
-	g.macho_add_loadcommand(native.lc_load_dylinker, 32)
+	g.macho_add_loadcommand(lc_load_dylinker, 32)
 	g.write32(12) // offset
 	g.write_string_with_padding('/usr/lib/dyld', 16)
 	g.write32(0) // padding // can be removed
 
-	g.macho_add_loadcommand(native.lc_load_dylib, 56)
+	g.macho_add_loadcommand(lc_load_dylib, 56)
 	g.write32(24) // offset
 	g.write32(0) // ts
 	// g.write32(0x051f6403) // g.write32(1) // current version
@@ -230,7 +230,7 @@ fn (mut g Gen) macho_dylibs() {
 }
 
 fn (mut g Gen) macho_main(addr i32) {
-	g.macho_add_loadcommand(native.lc_main, 24)
+	g.macho_add_loadcommand(lc_main, 24)
 	g.write32(addr) // entrypoint
 	g.write32(0) // initial_stacksize
 }
@@ -240,7 +240,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.code_start_pos = i64(pagesize)
 	g.debug_pos = pagesize
 	ncmds := i32(0) // 9+ 2 -2 -3 -1
-	cmdsize_offset := g.macho_header(ncmds, native.mh_execute)
+	cmdsize_offset := g.macho_header(ncmds, mh_execute)
 	g.macho_segment64_pagezero()
 
 	g.size_pos = g.macho_segment64_text()
@@ -281,7 +281,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 		g.write32(0x01000007) // CPU_TYPE_X64
 		g.write32(3) // CPU_SUBTYPE_X64
 	}
-	g.write32(native.mh_object) // MH_OBJECT
+	g.write32(mh_object) // MH_OBJECT
 	text_offset := i32(0x138)
 	g.write32(4) // # of load commands
 	g.write32(text_offset - 0x20) // size of load commands // 0x138-0x20
@@ -313,7 +313,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	}
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(i32(native.s_attr_some_instructions | native.s_attr_pure_instructions))
+	g.write32(i32(s_attr_some_instructions | s_attr_pure_instructions))
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
@@ -327,7 +327,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	// lc_symtab
 	g.sym_table_command()
 
-	g.macho_add_loadcommand(native.lc_dysymtab, native.macho_d_size)
+	g.macho_add_loadcommand(lc_dysymtab, macho_d_size)
 	g.write32(0)
 	g.write32(2)
 	g.write32(2)
@@ -420,7 +420,7 @@ fn (mut g Gen) sym_table_command() {
 		name:   'ltmp1'
 		is_ext: false
 	}
-	g.macho_add_loadcommand(native.lc_symtab, native.macho_symcmd_size)
+	g.macho_add_loadcommand(lc_symtab, macho_symcmd_size)
 	sym_table_offset := i32(0x168)
 	g.write32(sym_table_offset)
 	g_syms_len := i32(4)

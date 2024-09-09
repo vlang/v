@@ -9,7 +9,7 @@ import encoding.hex
 const github_job = os.getenv('GITHUB_JOB')
 
 fn testsuite_begin() {
-	if edwards25519.github_job != '' {
+	if github_job != '' {
 		// ensure that the CI does not run flaky tests:
 		rand.seed([u32(0xffff24), 0xabcd])
 	}
@@ -23,11 +23,11 @@ const mask_low_52_bits = (u64(1) << 52) - 1
 
 fn generate_field_element() Element {
 	return Element{
-		l0: rand.u64() & edwards25519.mask_low_52_bits
-		l1: rand.u64() & edwards25519.mask_low_52_bits
-		l2: rand.u64() & edwards25519.mask_low_52_bits
-		l3: rand.u64() & edwards25519.mask_low_52_bits
-		l4: rand.u64() & edwards25519.mask_low_52_bits
+		l0: rand.u64() & mask_low_52_bits
+		l1: rand.u64() & mask_low_52_bits
+		l2: rand.u64() & mask_low_52_bits
+		l3: rand.u64() & mask_low_52_bits
+		l4: rand.u64() & mask_low_52_bits
 	}
 }
 
@@ -80,11 +80,11 @@ const weird_limbs_52 = [
 
 fn generate_weird_field_element() Element {
 	return Element{
-		l0: edwards25519.weird_limbs_52[rand.intn(edwards25519.weird_limbs_52.len) or { 0 }]
-		l1: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
-		l2: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
-		l3: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
-		l4: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
+		l0: weird_limbs_52[rand.intn(weird_limbs_52.len) or { 0 }]
+		l1: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
+		l2: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
+		l3: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
+		l4: weird_limbs_51[rand.intn(weird_limbs_51.len) or { 0 }]
 	}
 }
 

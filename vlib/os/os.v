@@ -58,7 +58,7 @@ fn executable_fallback() string {
 		other_separator := if path_separator == '/' { '\\' } else { '/' }
 		rexepath := exepath.replace(other_separator, path_separator)
 		if rexepath.contains(path_separator) {
-			exepath = join_path_single(os.wd_at_startup, exepath)
+			exepath = join_path_single(wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }

@@ -656,7 +656,7 @@ pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
 	if idx > 0 {
 		return t.type_symbols[idx], idx
 	}
-	return ast.invalid_type_symbol, idx
+	return invalid_type_symbol, idx
 }
 
 pub const invalid_type_symbol = &TypeSymbol{
@@ -683,7 +683,7 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	// this should never happen
 	t.panic('table.sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.
 ')
-	return ast.invalid_type_symbol
+	return invalid_type_symbol
 }
 
 // final_sym follows aliases until it gets to a "real" Type
@@ -699,7 +699,7 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	}
 	// this should never happen
 	t.panic('table.final_sym: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
-	return ast.invalid_type_symbol
+	return invalid_type_symbol
 }
 
 @[inline]
@@ -869,7 +869,7 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
+		type_name := elem_type_sym.cname.replace_each(map_cname_escape_seq)
 		return 'Array_${opt}${res}${type_name}${suffix}'
 	} else {
 		return 'Array_${opt}${res}${elem_type_sym.cname}${suffix}'
@@ -899,7 +899,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
+		type_name := elem_type_sym.cname.replace_each(map_cname_escape_seq)
 		return 'Array_fixed_${opt}${res}${type_name}${suffix}_${size}'
 	} else {
 		return 'Array_fixed_${opt}${res}${elem_type_sym.cname}${suffix}_${size}'
@@ -928,7 +928,7 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 		suffix = '_ptr'
 	}
 	type_name := if elem_type_sym.cname.contains('[') {
-		elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
+		elem_type_sym.cname.replace_each(map_cname_escape_seq)
 	} else {
 		elem_type_sym.cname
 	}
@@ -1011,7 +1011,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	opt := if value_type.has_flag(.option) { '_option_' } else { '' }
 	res := if value_type.has_flag(.result) { '_result_' } else { '' }
 	if value_type_sym.cname.contains('[') {
-		type_name := value_type_sym.cname.replace_each(ast.map_cname_escape_seq)
+		type_name := value_type_sym.cname.replace_each(map_cname_escape_seq)
 		return 'Map_${key_type_sym.cname}_${opt}${res}${type_name}${suffix}'
 	} else {
 		return 'Map_${key_type_sym.cname}_${opt}${res}${value_type_sym.cname}${suffix}'
@@ -1199,7 +1199,7 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 	cname := if f.name == '' {
 		'anon_fn_${t.fn_type_signature(f)}'
 	} else {
-		util.no_dots(f.name.clone()).replace_each(ast.fn_type_escape_seq)
+		util.no_dots(f.name.clone()).replace_each(fn_type_escape_seq)
 	}
 	anon := f.name == '' || is_anon
 	existing_idx := t.type_idxs[name]

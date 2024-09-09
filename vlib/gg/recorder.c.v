@@ -7,15 +7,15 @@ import os
 // record_frame acts according to settings specified in `gg.recorder_settings`.
 @[if gg_record ?]
 pub fn (mut ctx Context) record_frame() {
-	if ctx.frame in gg.recorder_settings.screenshot_frames {
-		screenshot_file_path := '${gg.recorder_settings.screenshot_prefix}${ctx.frame}.png'
+	if ctx.frame in recorder_settings.screenshot_frames {
+		screenshot_file_path := '${recorder_settings.screenshot_prefix}${ctx.frame}.png'
 		$if gg_record_trace ? {
 			eprintln('>>> screenshoting ${screenshot_file_path}')
 		}
 
 		sapp.screenshot_png(screenshot_file_path) or { panic(err) }
 	}
-	if ctx.frame == gg.recorder_settings.stop_at_frame {
+	if ctx.frame == recorder_settings.stop_at_frame {
 		$if gg_record_trace ? {
 			eprintln('>>> exiting at frame ${ctx.frame}')
 		}

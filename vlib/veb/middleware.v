@@ -225,7 +225,7 @@ pub fn (options &CorsOptions) set_headers(mut ctx Context) {
 	} else if _ := ctx.req.header.get(.access_control_request_headers) {
 		// a server must respond with `Access-Control-Allow-Headers` if
 		// `Access-Control-Request-Headers` is present in a preflight request
-		ctx.set_header(.access_control_allow_headers, veb.cors_safelisted_response_headers.join(','))
+		ctx.set_header(.access_control_allow_headers, cors_safelisted_response_headers.join(','))
 	}
 
 	if options.allowed_methods.len > 0 {

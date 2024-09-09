@@ -79,13 +79,13 @@ fn (mut s Scanner) move_pos_with_newlines() {
 fn (mut s Scanner) move_pos(include_space bool, include_newlines bool) {
 	s.pos++
 	if s.pos < s.text.len {
-		if include_newlines && s.text[s.pos] in json2.newlines {
+		if include_newlines && s.text[s.pos] in newlines {
 			s.line++
 			s.col = 0
 			if s.text[s.pos] == `\r` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `\n` {
 				s.pos++
 			}
-			for s.pos < s.text.len && s.text[s.pos] in json2.newlines {
+			for s.pos < s.text.len && s.text[s.pos] in newlines {
 				s.move()
 			}
 		} else if include_space && s.text[s.pos] == ` ` {
@@ -130,15 +130,14 @@ fn (mut s Scanner) text_scan() Token {
 		if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`) && ch == `"` {
 			has_closed = true
 			break
-		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`)
-			&& ch in json2.important_escapable_chars {
+		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`) && ch in important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
 		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == u8(0) {
 			return s.error('invalid backslash escape')
 		} else if s.pos + 1 < s.text.len && ch == `\\` {
 			peek := s.text[s.pos + 1]
-			if peek in json2.valid_unicode_escapes {
-				chrs << json2.unicode_transform_escapes[int(peek)]
+			if peek in valid_unicode_escapes {
+				chrs << unicode_transform_escapes[int(peek)]
 				s.pos++
 				s.col++
 				continue
@@ -224,7 +223,7 @@ fn (mut s Scanner) num_scan() Token {
 	if s.pos < s.text.len && (s.text[s.pos] == `e` || s.text[s.pos] == `E`) {
 		digits << s.text[s.pos]
 		s.move_pos_with_newlines()
-		if s.pos < s.text.len && s.text[s.pos] in json2.exp_signs {
+		if s.pos < s.text.len && s.text[s.pos] in exp_signs {
 			digits << s.text[s.pos]
 			s.move_pos_with_newlines()
 		}
@@ -257,7 +256,7 @@ fn (s Scanner) invalid_token() Token {
 // used to set the next token
 @[manualfree]
 fn (mut s Scanner) scan() Token {
-	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in json2.newlines) {
+	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in newlines) {
 		s.move()
 	}
 	if s.pos >= s.text.len {
@@ -295,7 +294,7 @@ fn (mut s Scanner) scan() Token {
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
-	} else if s.text[s.pos] in json2.char_list {
+	} else if s.text[s.pos] in char_list {
 		chr := s.text[s.pos]
 		tok := s.tokenize([]u8{}, unsafe { TokenKind(int(chr)) })
 		s.move()

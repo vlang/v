@@ -67,21 +67,21 @@ pub fn compare_hash_and_password(password []u8, hashed_password []u8) ! {
 
 // generate_salt generate a string to be treated as a salt.
 pub fn generate_salt() string {
-	randbytes := rand.bytes(bcrypt.salt_length) or { panic(err) }
+	randbytes := rand.bytes(salt_length) or { panic(err) }
 	return randbytes.bytestr()
 }
 
 // new_from_password converting from password to a Hashed struct with bcrypt.
 fn new_from_password(password []u8, cost int) !&Hashed {
 	mut cost_ := cost
-	if cost < bcrypt.min_cost {
-		cost_ = bcrypt.default_cost
+	if cost < min_cost {
+		cost_ = default_cost
 	}
 	mut p := &Hashed{}
-	p.major = bcrypt.major_version
-	p.minor = bcrypt.minor_version
+	p.major = major_version
+	p.minor = minor_version
 
-	if cost_ < bcrypt.min_cost || cost_ > bcrypt.max_cost {
+	if cost_ < min_cost || cost_ > max_cost {
 		return error('invalid cost')
 	}
 	p.cost = cost_
@@ -96,7 +96,7 @@ fn new_from_password(password []u8, cost int) !&Hashed {
 // new_from_hash converting from hashed data to a Hashed struct.
 fn new_from_hash(hashed_secret []u8) !&Hashed {
 	mut tmp := hashed_secret.clone()
-	if tmp.len < bcrypt.min_hash_size {
+	if tmp.len < min_hash_size {
 		return error('hash to short')
 	}
 
@@ -107,15 +107,15 @@ fn new_from_hash(hashed_secret []u8) !&Hashed {
 	n = p.decode_cost(tmp) or { return err }
 	tmp = tmp[n..].clone()
 
-	p.salt = tmp[..bcrypt.encoded_salt_size].clone()
-	p.hash = tmp[bcrypt.encoded_salt_size..].clone()
+	p.salt = tmp[..encoded_salt_size].clone()
+	p.hash = tmp[encoded_salt_size..].clone()
 
 	return p
 }
 
 // bcrypt hashing passwords.
 fn bcrypt(password []u8, cost int, salt []u8) ![]u8 {
-	mut cipher_data := bcrypt.magic_cipher_data.clone()
+	mut cipher_data := magic_cipher_data.clone()
 	mut bf := expensive_blowfish_setup(password, u32(cost), salt) or { return err }
 
 	for i := 0; i < 24; i += 8 {
@@ -123,7 +123,7 @@ fn bcrypt(password []u8, cost int, salt []u8) ![]u8 {
 			bf.encrypt(mut cipher_data[i..i + 8], cipher_data[i..i + 8])
 		}
 	}
-	hash := base64_encode(cipher_data[..bcrypt.max_crypted_hash_size])
+	hash := base64_encode(cipher_data[..max_crypted_hash_size])
 	return hash.bytes()
 }
 
@@ -165,9 +165,9 @@ fn (mut h Hashed) hash_u8() []u8 {
 	arr[n] = `$`
 	n++
 	copy(mut arr[n..], h.salt)
-	n += bcrypt.encoded_salt_size
+	n += encoded_salt_size
 	copy(mut arr[n..], h.hash)
-	n += bcrypt.encoded_hash_size
+	n += encoded_hash_size
 	res := arr[..n].clone()
 	return res
 }
@@ -177,8 +177,8 @@ fn (mut h Hashed) decode_version(sbytes []u8) !int {
 	if sbytes[0] != `$` {
 		return error("bcrypt hashes must start with '$'")
 	}
-	if sbytes[1] != bcrypt.major_version[0] {
-		return error('bcrypt algorithm version ${bcrypt.major_version}')
+	if sbytes[1] != major_version[0] {
+		return error('bcrypt algorithm version ${major_version}')
 	}
 	h.major = sbytes[1].ascii_str()
 	mut n := 3
@@ -199,7 +199,7 @@ fn (mut h Hashed) decode_cost(sbytes []u8) !int {
 
 // check_cost check for reasonable quantities.
 fn check_cost(cost int) ! {
-	if cost < bcrypt.min_cost || cost > bcrypt.max_cost {
+	if cost < min_cost || cost > max_cost {
 		return error('invalid cost')
 	}
 }

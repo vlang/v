@@ -229,11 +229,11 @@ pub fn (lang Language) str() string {
 // Expressions
 pub struct ArrayInitExpr {
 pub:
-	typ   Expr = ast.empty_expr
+	typ   Expr = empty_expr
 	exprs []Expr
-	init  Expr = ast.empty_expr
-	cap   Expr = ast.empty_expr
-	len   Expr = ast.empty_expr
+	init  Expr = empty_expr
+	cap   Expr = empty_expr
+	len   Expr = empty_expr
 	pos   token.Pos
 }
 
@@ -287,8 +287,8 @@ pub:
 pub struct FieldDecl {
 pub:
 	name       string
-	typ        Expr = ast.empty_expr // can be empty as used for const (unless we use something else)
-	value      Expr = ast.empty_expr
+	typ        Expr = empty_expr // can be empty as used for const (unless we use something else)
+	value      Expr = empty_expr
 	attributes []Attribute
 }
 
@@ -326,8 +326,8 @@ pub:
 
 pub struct IfExpr {
 pub:
-	cond      Expr = ast.empty_expr
-	else_expr Expr = ast.empty_expr
+	cond      Expr = empty_expr
+	else_expr Expr = empty_expr
 	stmts     []Stmt
 }
 
@@ -388,7 +388,7 @@ pub:
 
 pub struct MapInitExpr {
 pub:
-	typ  Expr = ast.empty_expr
+	typ  Expr = empty_expr
 	keys []Expr
 	vals []Expr
 	pos  token.Pos
@@ -477,7 +477,7 @@ pub:
 	pos   token.Pos
 	stmt  Stmt
 	stmts []Stmt
-	next  Expr = ast.empty_expr
+	next  Expr = empty_expr
 }
 
 pub struct SelectorExpr {
@@ -562,7 +562,7 @@ pub:
 	expr      Expr
 	// TEMP: prob removed once individual
 	// fields are set, precision etc
-	format_expr Expr = ast.empty_expr
+	format_expr Expr = empty_expr
 }
 
 pub enum StringInterFormat {
@@ -630,7 +630,7 @@ pub:
 pub struct AssertStmt {
 pub:
 	expr  Expr
-	extra Expr = ast.empty_expr
+	extra Expr = empty_expr
 }
 
 pub struct AssignStmt {
@@ -690,7 +690,7 @@ pub:
 	attributes []Attribute
 	is_public  bool
 	name       string
-	as_type    Expr = ast.empty_expr
+	as_type    Expr = empty_expr
 	fields     []FieldDecl
 }
 
@@ -726,9 +726,9 @@ pub:
 
 pub struct ForStmt {
 pub:
-	init  Stmt = ast.empty_stmt // initialization
-	cond  Expr = ast.empty_expr // condition
-	post  Stmt = ast.empty_stmt // post iteration (afterthought)
+	init  Stmt = empty_stmt // initialization
+	cond  Expr = empty_expr // condition
+	post  Stmt = empty_stmt // post iteration (afterthought)
 	stmts []Stmt
 }
 
@@ -740,7 +740,7 @@ pub:
 	// value_is_mut bool
 	// expr	     Expr
 	// TODO:
-	key   Expr = ast.empty_expr
+	key   Expr = empty_expr
 	value Expr
 	expr  Expr
 }
@@ -772,7 +772,7 @@ pub:
 pub struct LabelStmt {
 pub:
 	name string
-	stmt Stmt = ast.empty_stmt
+	stmt Stmt = empty_stmt
 }
 
 pub struct ModuleStmt {
@@ -803,7 +803,7 @@ pub:
 	language       Language
 	name           string
 	generic_params []Expr
-	base_type      Expr = ast.empty_expr
+	base_type      Expr = empty_expr
 	variants       []Expr
 }
 
@@ -827,14 +827,14 @@ pub:
 
 pub struct ThreadType {
 pub:
-	elem_type Expr = ast.empty_expr
+	elem_type Expr = empty_expr
 }
 
 pub struct FnType {
 pub:
 	generic_params []Expr
 	params         []Parameter
-	return_type    Expr = ast.empty_expr
+	return_type    Expr = empty_expr
 }
 
 pub fn (ft &FnType) str() string {
@@ -890,12 +890,12 @@ pub struct NoneType {}
 
 pub struct OptionType {
 pub:
-	base_type Expr = ast.empty_expr
+	base_type Expr = empty_expr
 }
 
 pub struct ResultType {
 pub:
-	base_type Expr = ast.empty_expr
+	base_type Expr = empty_expr
 }
 
 pub struct TupleType {

@@ -83,18 +83,18 @@ fn test_mixing_function_g() {
 	}
 
 	for i in 0 .. 16 {
-		assert v[i] == blake2s.expected_v_initial_results[i], 'expeccted expected_v_initial_results[${i}] ${blake2s.expected_v_initial_results[i]:08x} actual v[${i}] ${v[i]:08x}'
+		assert v[i] == expected_v_initial_results[i], 'expeccted expected_v_initial_results[${i}] ${expected_v_initial_results[i]:08x} actual v[${i}] ${v[i]:08x}'
 	}
 
 	for i in 0 .. 16 {
-		assert d.m[i] == blake2s.expected_m_results[i], 'expeccted expected_m_results[${i}] ${blake2s.expected_m_results[i]:08x} actual d.m[${i}] ${d.m[i]:08x}'
+		assert d.m[i] == expected_m_results[i], 'expeccted expected_m_results[${i}] ${expected_m_results[i]:08x} actual d.m[${i}] ${d.m[i]:08x}'
 	}
 
-	for r in 0 .. blake2s.expected_v_results.len {
+	for r in 0 .. expected_v_results.len {
 		d.mixing_round(mut v, sigma[r])
 
 		for i in 0 .. 16 {
-			assert v[i] == blake2s.expected_v_results[r][i], 'expeccted expected_v_results[${r}][${i}] ${blake2s.expected_v_results[r][i]:08x} actual v[${i}] ${v[i]:08x}'
+			assert v[i] == expected_v_results[r][i], 'expeccted expected_v_results[${r}][${i}] ${expected_v_results[r][i]:08x} actual v[${i}] ${v[i]:08x}'
 		}
 	}
 
@@ -108,6 +108,6 @@ fn test_mixing_function_g() {
 	d.h[7] = d.h[7] ^ v[7] ^ v[15]
 
 	for i in 0 .. 8 {
-		assert d.h[i] == blake2s.expected_h_results[i], 'expeccted expected_h_results[${i}] ${blake2s.expected_h_results[i]:08x} actual d.h[${i}] ${d.h[i]:08x}'
+		assert d.h[i] == expected_h_results[i], 'expeccted expected_h_results[${i}] ${expected_h_results[i]:08x} actual d.h[${i}] ${d.h[i]:08x}'
 	}
 }

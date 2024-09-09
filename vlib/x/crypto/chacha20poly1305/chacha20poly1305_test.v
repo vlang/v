@@ -75,7 +75,7 @@ fn test_aead_decrypt_vector_test_51() ! {
 }
 
 fn test_decrypt_and_verify_tag() ! {
-	for i, c in chacha20poly1305.aead_cases {
+	for i, c in aead_cases {
 		key := hex.decode(c.key)!
 		aad := hex.decode(c.aad)!
 		nonce := hex.decode(c.nonce)!
@@ -167,7 +167,7 @@ struct ChapolyTest {
 
 // this test data come from golang vector tests of the same module
 fn test_cha20poly1305_vector_data() ! {
-	for i, t in chacha20poly1305.chapoly_testcases {
+	for i, t in chapoly_testcases {
 		plaintext := hex.decode(t.plaintext)!
 		aad := hex.decode(t.aad)!
 		key := hex.decode(t.key)!

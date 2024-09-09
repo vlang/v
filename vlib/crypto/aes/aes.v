@@ -16,7 +16,7 @@ pub const block_size = 16
 // handle only one block of data at a time. In most cases, you
 // probably want to encrypt and decrypt using [[AesCbc](#AesCbc)]
 struct AesCipher {
-	block_size int = aes.block_size
+	block_size int = block_size
 mut:
 	enc []u32
 	dec []u32
@@ -55,7 +55,7 @@ pub fn new_cipher(key []u8) cipher.Block {
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (c &AesCipher) block_size() int {
-	return aes.block_size
+	return block_size
 }
 
 // encrypt encrypts the first block of data in `src` to `dst`.
@@ -63,14 +63,14 @@ pub fn (c &AesCipher) block_size() int {
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
 pub fn (c &AesCipher) encrypt(mut dst []u8, src []u8) {
-	if src.len < aes.block_size {
+	if src.len < block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < aes.block_size {
+	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
 	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
-	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -82,13 +82,13 @@ pub fn (c &AesCipher) encrypt(mut dst []u8, src []u8) {
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
 pub fn (c &AesCipher) decrypt(mut dst []u8, src []u8) {
-	if src.len < aes.block_size {
+	if src.len < block_size {
 		panic('crypto.aes: input not full block')
 	}
-	if dst.len < aes.block_size {
+	if dst.len < block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version

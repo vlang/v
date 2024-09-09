@@ -39,12 +39,12 @@ const const_tabs = [
 pub const nr_jobs = runtime.nr_jobs()
 
 pub fn module_is_builtin(mod string) bool {
-	return mod in util.builtin_module_parts
+	return mod in builtin_module_parts
 }
 
 @[direct_array_access]
 pub fn tabs(n int) string {
-	return if n >= 0 && n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+	return if n >= 0 && n < const_tabs.len { const_tabs[n] } else { '\t'.repeat(n) }
 }
 
 //
@@ -120,14 +120,14 @@ const d_sig = "\$d('"
 // resolve_d_value replaces all occurrences of `$d('ident','value')`
 // in `str` with either the default `'value'` param or a compile value passed via `-d ident=value`.
 pub fn resolve_d_value(compile_values map[string]string, str string) !string {
-	at := str.index(util.d_sig) or {
-		return error('no "${util.d_sig}' + '...\')" could be found in "${str}".')
+	at := str.index(d_sig) or {
+		return error('no "${d_sig}' + '...\')" could be found in "${str}".')
 	}
-	mut all_parsed := util.d_sig
+	mut all_parsed := d_sig
 	mut ch := u8(`.`)
 	mut d_ident := ''
 	mut i := 0
-	for i = at + util.d_sig.len; i < str.len && ch != `'`; i++ {
+	for i = at + d_sig.len; i < str.len && ch != `'`; i++ {
 		ch = u8(str[i])
 		all_parsed += ch.ascii_str()
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
@@ -174,7 +174,7 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	d_value := compile_values[d_ident] or { d_default_value }
 	// if more `$d()` calls remains, resolve those as well:
 	rep := str.replace_once(all_parsed + ')', d_value)
-	if rep.contains(util.d_sig) {
+	if rep.contains(d_sig) {
 		return resolve_d_value(compile_values, rep)
 	}
 	return rep
@@ -230,7 +230,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool should_compile: ${should_compile}')
 	}
 	if should_compile {
-		emodules := util.external_module_dependencies_for_tool[tool_name]
+		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
@@ -537,7 +537,7 @@ and the existing module `${modulename}` may still work.')
 }
 
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-	for tool_name, tool_modules in util.external_module_dependencies_for_tool {
+	for tool_name, tool_modules in external_module_dependencies_for_tool {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
@@ -568,9 +568,9 @@ const map_prefix = 'map[string]'
 pub fn no_cur_mod(typename string, cur_mod string) string {
 	mut res := typename
 	mod_prefix := cur_mod + '.'
-	has_map_prefix := res.starts_with(util.map_prefix)
+	has_map_prefix := res.starts_with(map_prefix)
 	if has_map_prefix {
-		res = res.replace_once(util.map_prefix, '')
+		res = res.replace_once(map_prefix, '')
 	}
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(mod_prefix)
@@ -578,7 +578,7 @@ pub fn no_cur_mod(typename string, cur_mod string) string {
 		res = res.replace_once(mod_prefix, '')
 	}
 	if has_map_prefix {
-		res = util.map_prefix + res
+		res = map_prefix + res
 	}
 	return res
 }
@@ -613,8 +613,7 @@ pub fn get_vtmp_folder() string {
 }
 
 pub fn should_bundle_module(mod string) bool {
-	return mod in util.bundle_modules
-		|| (mod.contains('.') && mod.all_before('.') in util.bundle_modules)
+	return mod in bundle_modules || (mod.contains('.') && mod.all_before('.') in bundle_modules)
 }
 
 // find_all_v_files - given a list of files/folders, finds all .v/.vsh files

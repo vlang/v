@@ -243,7 +243,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		http.CommonHeader.content_type:   mimetype
 		http.CommonHeader.content_length: resp.body.len.str()
 	}).join(ctx.header)
-	resp.header = header.join(vweb.headers_close)
+	resp.header = header.join(headers_close)
 
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
@@ -291,7 +291,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		ctx.server_error(500)
 		return Result{}
 	}
-	content_type := vweb.mime_types[ext]
+	content_type := mime_types[ext]
 	if content_type.len == 0 {
 		eprintln('[vweb] no MIME type found for extension ${ext}')
 		ctx.server_error(500)
@@ -317,7 +317,7 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	if ctx.done {
 		return Result{}
 	}
-	send_string(mut ctx.conn, vweb.http_500.bytestr()) or {}
+	send_string(mut ctx.conn, http_500.bytestr()) or {}
 	return Result{}
 }
 
@@ -333,9 +333,9 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 		return Result{}
 	}
 	ctx.done = true
-	mut resp := vweb.http_302
+	mut resp := http_302
 	if params.status_code == 303 {
-		resp = vweb.http_303
+		resp = http_303
 	}
 	resp.header = resp.header.join(ctx.header)
 	resp.header.add(.location, url)
@@ -350,7 +350,7 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, vweb.http_404.bytestr()) or {}
+	send_string(mut ctx.conn, http_404.bytestr()) or {}
 	return Result{}
 }
 
@@ -718,7 +718,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 	// Form parse
 	form, files := parse_form_from_request(req) or {
 		// Bad request
-		conn.write(vweb.http_400.bytes()) or {}
+		conn.write(http_400.bytes()) or {}
 		return
 	}
 
@@ -984,7 +984,7 @@ fn serve_if_static[T](mut app T, url urllib.URL, host string) bool {
 		return false
 	}
 	data := os.read_file(static_file) or {
-		send_string(mut app.conn, vweb.http_404.bytestr()) or {}
+		send_string(mut app.conn, http_404.bytestr()) or {}
 		return true
 	}
 	app.send_response_to_client(mime_type, data)
@@ -1004,7 +1004,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use host_serve_static directly to add non-standard mime types.
-				if ext in vweb.mime_types {
+				if ext in mime_types {
 					ctx.host_serve_static(host, mount_path.trim_right('/') + '/' + file,
 						full_path)
 				}
@@ -1087,7 +1087,7 @@ pub fn (mut ctx Context) host_serve_static(host string, url string, file_path st
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
-	ctx.static_mime_types[url] = vweb.mime_types[ext]
+	ctx.static_mime_types[url] = mime_types[ext]
 	ctx.static_hosts[url] = host
 }
 

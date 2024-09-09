@@ -65,8 +65,8 @@ pub fn exp(x f64) f64 {
 	if x > 0 {
 		k = int(log2e * x + 0.5)
 	}
-	hi := x - f64(k) * math.ln2hi
-	lo := f64(k) * math.ln2lo
+	hi := x - f64(k) * ln2hi
+	lo := f64(k) * ln2lo
 	// compute
 	return expmulti(hi, lo, k)
 }
@@ -99,8 +99,8 @@ pub fn exp2(x f64) f64 {
 		k = int(x - 0.5)
 	}
 	mut t := x - f64(k)
-	hi := t * math.ln2hi
-	lo := -t * math.ln2lo
+	hi := t * ln2hi
+	lo := -t * ln2lo
 	// compute
 	return expmulti(hi, lo, k)
 }

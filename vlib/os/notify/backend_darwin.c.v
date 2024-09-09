@@ -109,8 +109,8 @@ fn (mut kn KqueueNotifier) modify(fd int, events FdEventType, conf ...FdConfigFl
 
 // remove removes a file descriptor from the watch list
 fn (mut kn KqueueNotifier) remove(fd int) ! {
-	filter := notify.kqueue_read | notify.kqueue_write | notify.kqueue_exception
-	flags := notify.kqueue_delete
+	filter := kqueue_read | kqueue_write | kqueue_exception
+	flags := kqueue_delete
 	kn.ctl(fd, filter, flags)!
 }
 
@@ -160,20 +160,20 @@ fn (mut kn KqueueNotifier) close() ! {
 fn event_mask_to_flag(filter i16, flags u16) FdEventType {
 	mut res := unsafe { FdEventType(0) }
 
-	if filter & notify.kqueue_read != 0 {
+	if filter & kqueue_read != 0 {
 		res.set(.read)
 	}
-	if filter & notify.kqueue_write != 0 {
+	if filter & kqueue_write != 0 {
 		res.set(.write)
 	}
-	if filter & notify.kqueue_exception != 0 {
+	if filter & kqueue_exception != 0 {
 		res.set(.exception)
 	}
 
-	if flags & notify.kqueue_eof != 0 {
+	if flags & kqueue_eof != 0 {
 		res.set(.hangup)
 	}
-	if flags & notify.kqueue_error != 0 {
+	if flags & kqueue_error != 0 {
 		res.set(.error)
 	}
 
@@ -185,13 +185,13 @@ fn event_mask_to_flag(filter i16, flags u16) FdEventType {
 fn filter_to_mask(events FdEventType) i16 {
 	mut mask := i16(0)
 	if events.has(.read) {
-		mask |= notify.kqueue_read
+		mask |= kqueue_read
 	}
 	if events.has(.write) {
-		mask |= notify.kqueue_write
+		mask |= kqueue_write
 	}
 	if events.has(.exception) {
-		mask |= notify.kqueue_exception
+		mask |= kqueue_exception
 	}
 	if events.has(.peer_hangup) {
 		panic("Kqueue does not support 'peer_hangup' event type.")
@@ -208,13 +208,13 @@ fn filter_to_mask(events FdEventType) i16 {
 // flags_to_mask is a helper function that converts FdConfigFlags
 // to a bitmask used by the C functions
 fn flags_to_mask(confs ...FdConfigFlags) u16 {
-	mut mask := notify.kqueue_add | notify.kqueue_enable
+	mut mask := kqueue_add | kqueue_enable
 	for conf in confs {
 		if conf.has(.edge_trigger) {
-			mask |= notify.kqueue_edge_trigger
+			mask |= kqueue_edge_trigger
 		}
 		if conf.has(.one_shot) {
-			mask |= notify.kqueue_oneshot
+			mask |= kqueue_oneshot
 		}
 		if conf.has(.wake_up) {
 			panic("Kqueue does not support 'wake_up' flag.")

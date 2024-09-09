@@ -96,7 +96,7 @@ pub fn atof_quick(s string) f64 {
 			i++
 		}
 		if exp_sign == 1 {
-			if exp > strconv.pos_exp.len {
+			if exp > pos_exp.len {
 				if sign > 0 {
 					f.u = double_plus_infinity
 				} else {
@@ -105,12 +105,12 @@ pub fn atof_quick(s string) f64 {
 				return unsafe { f.f }
 			}
 			tmp_mul := Float64u{
-				u: strconv.pos_exp[exp]
+				u: pos_exp[exp]
 			}
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)
 			f.f = unsafe { f.f * tmp_mul.f }
 		} else {
-			if exp > strconv.neg_exp.len {
+			if exp > neg_exp.len {
 				if sign > 0 {
 					f.u = double_plus_zero
 				} else {
@@ -119,7 +119,7 @@ pub fn atof_quick(s string) f64 {
 				return unsafe { f.f }
 			}
 			tmp_mul := Float64u{
-				u: strconv.neg_exp[exp]
+				u: neg_exp[exp]
 			}
 
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)

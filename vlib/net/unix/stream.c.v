@@ -45,8 +45,8 @@ pub fn connect_stream(socket_path string) !&StreamConn {
 
 	return &StreamConn{
 		sock:          s
-		read_timeout:  unix.unix_default_read_timeout
-		write_timeout: unix.unix_default_write_timeout
+		read_timeout:  unix_default_read_timeout
+		write_timeout: unix_default_write_timeout
 	}
 }
 
@@ -290,14 +290,14 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 	}
 
 	mut new_handle := $if is_coroutine ? {
-		C.photon_accept(l.sock.handle, 0, 0, unix.unix_default_read_timeout)
+		C.photon_accept(l.sock.handle, 0, 0, unix_default_read_timeout)
 	} $else {
 		C.accept(l.sock.handle, 0, 0)
 	}
 	if new_handle <= 0 {
 		l.wait_for_accept()!
 		new_handle = $if is_coroutine ? {
-			C.photon_accept(l.sock.handle, 0, 0, unix.unix_default_read_timeout)
+			C.photon_accept(l.sock.handle, 0, 0, unix_default_read_timeout)
 		} $else {
 			C.accept(l.sock.handle, 0, 0)
 		}
@@ -308,8 +308,8 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 
 	mut c := &StreamConn{
 		handle:        new_handle
-		read_timeout:  unix.unix_default_read_timeout
-		write_timeout: unix.unix_default_write_timeout
+		read_timeout:  unix_default_read_timeout
+		write_timeout: unix_default_write_timeout
 	}
 	c.sock = stream_socket_from_handle(c.handle)!
 	return c
@@ -447,7 +447,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 
 	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
-			C.photon_connect(s.handle, voidptr(&addr), alen, unix.unix_default_read_timeout)
+			C.photon_connect(s.handle, voidptr(&addr), alen, unix_default_read_timeout)
 		} $else {
 			C.connect(s.handle, voidptr(&addr), alen)
 		}
@@ -462,7 +462,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 			if ecode == int(net.error_ewouldblock) {
 				// The socket is nonblocking and the connection cannot be completed
 				// immediately. Wait till the socket is ready to write
-				write_result := s.@select(.write, unix.connect_timeout)!
+				write_result := s.@select(.write, connect_timeout)!
 				err := 0
 				len := sizeof(err)
 				// determine whether connect() completed successfully (SO_ERROR is zero)
@@ -484,7 +484,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 		return
 	} $else {
 		x := $if is_coroutine ? {
-			C.photon_connect(s.handle, voidptr(&addr), alen, unix.unix_default_read_timeout)
+			C.photon_connect(s.handle, voidptr(&addr), alen, unix_default_read_timeout)
 		} $else {
 			C.connect(s.handle, voidptr(&addr), alen)
 		}

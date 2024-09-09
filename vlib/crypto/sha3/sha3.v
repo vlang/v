@@ -41,32 +41,32 @@ const xof_pad = u8(0x1f)
 
 // new512 initializes the digest structure for a sha3 512 bit hash
 pub fn new512() !&Digest {
-	return new_digest(sha3.rate_512, sha3.size_512)!
+	return new_digest(rate_512, size_512)!
 }
 
 // new384 initializes the digest structure for a sha3 384 bit hash
 pub fn new384() !&Digest {
-	return new_digest(sha3.rate_384, sha3.size_384)!
+	return new_digest(rate_384, size_384)!
 }
 
 // new256 initializes the digest structure for a sha3 256 bit hash
 pub fn new256() !&Digest {
-	return new_digest(sha3.rate_256, sha3.size_256)!
+	return new_digest(rate_256, size_256)!
 }
 
 // new224 initializes the digest structure for a sha3 224 bit hash
 pub fn new224() !&Digest {
-	return new_digest(sha3.rate_224, sha3.size_224)!
+	return new_digest(rate_224, size_224)!
 }
 
 // new256_xof initializes the digest structure for a sha3 256 bit extended output function
 pub fn new256xof(output_len int) !&Digest {
-	return new_xof_digest(sha3.xof_rate_256, output_len)!
+	return new_xof_digest(xof_rate_256, output_len)!
 }
 
 // new128_xof initializes the digest structure for a sha3 128 bit extended output function
 pub fn new128xof(output_len int) !&Digest {
-	return new_xof_digest(sha3.xof_rate_128, output_len)!
+	return new_xof_digest(xof_rate_128, output_len)!
 }
 
 struct HashSizeError {
@@ -75,7 +75,7 @@ struct HashSizeError {
 }
 
 fn (err HashSizeError) msg() string {
-	return 'Hash size ${err.size} must be ${sha3.size_224}, ${sha3.size_256}, ${sha3.size_384}, or ${sha3.size_512}'
+	return 'Hash size ${err.size} must be ${size_224}, ${size_256}, ${size_384}, or ${size_512}'
 }
 
 struct AbsorptionRateError {
@@ -94,7 +94,7 @@ struct XOFRateError {
 }
 
 fn (err XOFRateError) msg() string {
-	return 'Extended output rate ${err.rate} must be ${sha3.xof_rate_128} or ${sha3.xof_rate_256}'
+	return 'Extended output rate ${err.rate} must be ${xof_rate_128} or ${xof_rate_256}'
 }
 
 struct XOFSizeError {
@@ -125,32 +125,32 @@ mut:
 //     Legal values are 224, 256, 384, and 512.
 pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
 	match hash_size {
-		sha3.size_224 {
-			if absorption_rate != sha3.rate_224 {
+		size_224 {
+			if absorption_rate != rate_224 {
 				return AbsorptionRateError{
 					rate: absorption_rate
 					size: hash_size
 				}
 			}
 		}
-		sha3.size_256 {
-			if absorption_rate != sha3.rate_256 {
+		size_256 {
+			if absorption_rate != rate_256 {
 				return AbsorptionRateError{
 					rate: absorption_rate
 					size: hash_size
 				}
 			}
 		}
-		sha3.size_384 {
-			if absorption_rate != sha3.rate_384 {
+		size_384 {
+			if absorption_rate != rate_384 {
 				return AbsorptionRateError{
 					rate: absorption_rate
 					size: hash_size
 				}
 			}
 		}
-		sha3.size_512 {
-			if absorption_rate != sha3.rate_512 {
+		size_512 {
+			if absorption_rate != rate_512 {
 				return AbsorptionRateError{
 					rate: absorption_rate
 					size: hash_size
@@ -166,7 +166,7 @@ pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
 
 	d := Digest{
 		rate:       absorption_rate
-		suffix:     sha3.hash_pad
+		suffix:     hash_pad
 		output_len: hash_size
 		s:          State{}
 	}
@@ -185,7 +185,7 @@ pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
 //     Legal values are positive integers.
 pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
 	match absorption_rate {
-		sha3.xof_rate_128, sha3.xof_rate_256 {
+		xof_rate_128, xof_rate_256 {
 			if hash_size < 1 {
 				return XOFSizeError{
 					size: hash_size
@@ -201,7 +201,7 @@ pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
 
 	d := Digest{
 		rate:       absorption_rate
-		suffix:     sha3.xof_pad
+		suffix:     xof_pad
 		output_len: hash_size
 		s:          State{}
 	}

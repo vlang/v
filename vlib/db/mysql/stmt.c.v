@@ -182,73 +182,73 @@ fn (stmt Stmt) get_field_count() u16 {
 
 // bind_bool binds a single boolean value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_bool(b &bool) {
-	stmt.bind(mysql.mysql_type_tiny, b, 0)
+	stmt.bind(mysql_type_tiny, b, 0)
 }
 
 // bind_byte binds a single byte value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_byte(b &u8) {
-	stmt.bind(mysql.mysql_type_tiny, b, 0)
+	stmt.bind(mysql_type_tiny, b, 0)
 }
 
 // bind_u8 binds a single u8 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u8(b &u8) {
-	stmt.bind(mysql.mysql_type_tiny, b, 0)
+	stmt.bind(mysql_type_tiny, b, 0)
 }
 
 // bind_i8 binds a single i8 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_i8(b &i8) {
-	stmt.bind(mysql.mysql_type_tiny, b, 0)
+	stmt.bind(mysql_type_tiny, b, 0)
 }
 
 // bind_i16 binds a single i16 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_i16(b &i16) {
-	stmt.bind(mysql.mysql_type_short, b, 0)
+	stmt.bind(mysql_type_short, b, 0)
 }
 
 // bind_u16 binds a single u16 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u16(b &u16) {
-	stmt.bind(mysql.mysql_type_short, b, 0)
+	stmt.bind(mysql_type_short, b, 0)
 }
 
 // bind_int binds a single int value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_int(b &int) {
-	stmt.bind(mysql.mysql_type_long, b, 0)
+	stmt.bind(mysql_type_long, b, 0)
 }
 
 // bind_u32 binds a single u32 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u32(b &u32) {
-	stmt.bind(mysql.mysql_type_long, b, 0)
+	stmt.bind(mysql_type_long, b, 0)
 }
 
 // bind_i64 binds a single i64 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_i64(b &i64) {
-	stmt.bind(mysql.mysql_type_longlong, b, 0)
+	stmt.bind(mysql_type_longlong, b, 0)
 }
 
 // bind_u64 binds a single u64 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_u64(b &u64) {
-	stmt.bind(mysql.mysql_type_longlong, b, 0)
+	stmt.bind(mysql_type_longlong, b, 0)
 }
 
 // bind_f32 binds a single f32 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_f32(b &f32) {
-	stmt.bind(mysql.mysql_type_float, b, 0)
+	stmt.bind(mysql_type_float, b, 0)
 }
 
 // bind_f64 binds a single f64 value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_f64(b &f64) {
-	stmt.bind(mysql.mysql_type_double, b, 0)
+	stmt.bind(mysql_type_double, b, 0)
 }
 
 // bind_text binds a single string value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_text(b string) {
-	stmt.bind(mysql.mysql_type_string, b.str, u32(b.len))
+	stmt.bind(mysql_type_string, b.str, u32(b.len))
 }
 
 // bind_null binds a single NULL value to the statement `stmt`
 pub fn (mut stmt Stmt) bind_null() {
 	stmt.binds << C.MYSQL_BIND{
-		buffer_type: mysql.mysql_type_null
+		buffer_type: mysql_type_null
 		length:      0
 	}
 }

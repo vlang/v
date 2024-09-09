@@ -44,7 +44,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('// Reset the C file/line numbers')
-		g.writeln('${c.reset_dbg_line} "${g.vlines_path}"')
+		g.writeln('${reset_dbg_line} "${g.vlines_path}"')
 		g.writeln('')
 	}
 }
@@ -62,7 +62,7 @@ pub fn fix_reset_dbg_line(src string, out_file string) string {
 	for idx, ob in src {
 		if ob == `\n` {
 			lines++
-			if unsafe { vmemcmp(src.str + idx + 1, c.reset_dbg_line.str, c.reset_dbg_line.len) } == 0 {
+			if unsafe { vmemcmp(src.str + idx + 1, reset_dbg_line.str, reset_dbg_line.len) } == 0 {
 				dbg_reset_line_idx = idx + 1
 				break
 			}

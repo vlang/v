@@ -160,13 +160,13 @@ fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 								first_digit := node.val[idx - 5] - 48
 								second_digit := node.val[idx - 4] - 48
 								if first_digit > 1 {
-									c.error(checker.unicode_lit_overflow_message, end_pos)
+									c.error(unicode_lit_overflow_message, end_pos)
 								} else if first_digit == 1 && second_digit > 0 {
-									c.error(checker.unicode_lit_overflow_message, end_pos)
+									c.error(unicode_lit_overflow_message, end_pos)
 								}
 							}
 							else {
-								c.error(checker.unicode_lit_overflow_message, end_pos)
+								c.error(unicode_lit_overflow_message, end_pos)
 							}
 						}
 						idx++
@@ -202,11 +202,11 @@ fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	lit := node.val.replace('_', '').all_after('-').to_upper()
 	is_neg := node.val.starts_with('-')
 	if lit.len > 2 && lit[0] == `0` && lit[1] in [`B`, `X`, `O`] {
-		if lohi := checker.iencoding_map[lit[1]] {
+		if lohi := iencoding_map[lit[1]] {
 			c.check_num_literal(lohi, is_neg, lit[2..]) or { c.num_lit_overflow_error(node) }
 		}
 	} else {
-		lohi := checker.iencoding_map[`_`]
+		lohi := iencoding_map[`_`]
 		c.check_num_literal(lohi, is_neg, lit) or { c.num_lit_overflow_error(node) }
 	}
 	return ast.int_literal_type

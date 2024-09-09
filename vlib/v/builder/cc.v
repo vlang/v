@@ -41,7 +41,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 		}
 		return
 	}
-	for emsg_marker in [builder.c_verror_message_marker, 'error: include file '] {
+	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
 			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
 			verror(emessage)
@@ -315,8 +315,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.args << '-Wl,--export-all'
 		ccoptions.args << '-Wl,--no-entry'
 	}
-	if ccoptions.debug_mode && builder.current_os != 'windows' && v.pref.build_mode != .build_module {
-		if ccoptions.cc != .tcc && builder.current_os == 'macos' {
+	if ccoptions.debug_mode && current_os != 'windows' && v.pref.build_mode != .build_module {
+		if ccoptions.cc != .tcc && current_os == 'macos' {
 			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
 		} else {
 			ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
@@ -438,9 +438,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if !v.pref.no_std {
 		if v.pref.os == .linux {
-			ccoptions.source_args << '-std=${builder.c_std_gnu}'
+			ccoptions.source_args << '-std=${c_std_gnu}'
 		} else {
-			ccoptions.source_args << '-std=${builder.c_std}'
+			ccoptions.source_args << '-std=${c_std}'
 		}
 		ccoptions.source_args << '-D_DEFAULT_SOURCE'
 	}
@@ -499,15 +499,15 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 	if !v.pref.no_std {
 		if v.pref.os == .linux {
 			if cpp_file {
-				all << '-std=${builder.cpp_std_gnu}'
+				all << '-std=${cpp_std_gnu}'
 			} else {
-				all << '-std=${builder.c_std_gnu}'
+				all << '-std=${c_std_gnu}'
 			}
 		} else {
 			if cpp_file {
-				all << '-std=${builder.cpp_std}'
+				all << '-std=${cpp_std}'
 			} else {
-				all << '-std=${builder.c_std}'
+				all << '-std=${c_std}'
 			}
 		}
 		all << '-D_DEFAULT_SOURCE'
@@ -1001,8 +1001,8 @@ fn (mut c Builder) cc_windows_cross() {
 	} else {
 		args << cflags.c_options_after_target()
 	}
-	if builder.current_os !in ['macos', 'linux', 'termux'] {
-		println(builder.current_os)
+	if current_os !in ['macos', 'linux', 'termux'] {
+		println(current_os)
 		panic('your platform is not supported yet')
 	}
 

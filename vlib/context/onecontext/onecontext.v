@@ -118,7 +118,7 @@ pub fn (mut octx OneContext) run_two_contexts(mut ctx1 context.Context, mut ctx2
 		c2done := ctx2.done()
 		select {
 			_ := <-octx_cancel_done {
-				octx.cancel(onecontext.canceled)
+				octx.cancel(canceled)
 			}
 			_ := <-c1done {
 				octx.cancel(ctx1.err())
@@ -136,7 +136,7 @@ pub fn (mut octx OneContext) run_multiple_contexts(mut ctx context.Context) {
 		cdone := ctx.done()
 		select {
 			_ := <-octx_cancel_done {
-				octx.cancel(onecontext.canceled)
+				octx.cancel(canceled)
 			}
 			_ := <-cdone {
 				octx.cancel(ctx.err())

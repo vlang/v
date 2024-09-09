@@ -611,7 +611,7 @@ pub fn (ctx &Context) end(options EndOptions) {
 			create_default_pass(ctx.clear_pass)
 		}
 		.passthru {
-			create_default_pass(gg.dontcare_pass)
+			create_default_pass(dontcare_pass)
 		}
 	}
 	gfx.begin_pass(pass)

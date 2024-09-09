@@ -291,8 +291,8 @@ fn parse(output_mode pref.OutputMode) ! {
 	mut files := []string{}
 	//	mode_files := os.walk_ext(os.join_path(vroot, 'vlib/v/parser/testdata/${output_mode}'), '.vv')
 	//	files << mode_files
-	scan_v(mut files, os.join_path(parser.vroot, 'vlib'))!
-	scan_v(mut files, os.join_path(parser.vroot, 'cmd'))!
+	scan_v(mut files, os.join_path(vroot, 'vlib'))!
+	scan_v(mut files, os.join_path(vroot, 'cmd'))!
 	mut pref_ := pref.new_preferences()
 	pref_.output_mode = output_mode
 	for idx, f in files {

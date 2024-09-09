@@ -32,7 +32,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.typ(node.typ)
 	}
 	mut shared_styp := '' // only needed for shared x := St{...
-	if styp in c.skip_struct_init {
+	if styp in skip_struct_init {
 		// needed for c++ compilers
 		g.go_back(3)
 		return

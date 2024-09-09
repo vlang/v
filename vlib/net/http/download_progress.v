@@ -65,7 +65,7 @@ const zz = &Downloader(unsafe { nil })
 fn download_progres_cb(request &Request, chunk []u8, body_so_far u64, expected_size u64, status_code int) ! {
 	// TODO: remove this hack, when `unsafe { &Downloader( request.user_ptr ) }` works reliably,
 	// by just casting, without trying to promote the argument to the heap at all.
-	mut d := unsafe { http.zz }
+	mut d := unsafe { zz }
 	pd := unsafe { &voidptr(&d) }
 	unsafe {
 		*pd = request.user_ptr

@@ -75,7 +75,7 @@ pub fn (mut app App) html_page() vweb.Result {
 @['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
 	linfo('>>>>> ${@LOCATION}, username: ${username}')
-	if username !in vweb_test_server.known_users {
+	if username !in known_users {
 		return app.not_found()
 	}
 	return app.html('username: ${username}')
@@ -84,7 +84,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 @['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
 	linfo('>>>>> ${@LOCATION}, username: ${username}, repository: ${repository}')
-	if username !in vweb_test_server.known_users {
+	if username !in known_users {
 		return app.not_found()
 	}
 	return app.html('username: ${username} | repository: ${repository}')

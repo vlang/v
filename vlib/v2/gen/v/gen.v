@@ -988,7 +988,7 @@ fn (mut g Gen) generic_list(exprs []ast.Expr) {
 @[inline]
 fn (mut g Gen) write(str string) {
 	if g.on_newline {
-		g.out.write_string(v.tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 	}
 	g.out.write_string(str)
 	g.on_newline = false
@@ -997,7 +997,7 @@ fn (mut g Gen) write(str string) {
 @[inline]
 fn (mut g Gen) writeln(str string) {
 	if g.on_newline {
-		g.out.write_string(v.tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 	}
 	g.out.writeln(str)
 	g.on_newline = true

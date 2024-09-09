@@ -32,12 +32,12 @@ fn get_func_char_table() [256]bool {
 
 @[direct_array_access; inline]
 pub fn is_name_char(c u8) bool {
-	return util.name_char_table[c]
+	return name_char_table[c]
 }
 
 @[direct_array_access; inline]
 pub fn is_func_char(c u8) bool {
-	return util.func_char_table[c]
+	return func_char_table[c]
 }
 
 pub fn contains_capital(s string) bool {

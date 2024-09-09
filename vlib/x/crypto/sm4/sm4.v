@@ -262,7 +262,7 @@ fn sm4_tl(ka u32) u32 {
 
 	// Divide ka into 4 bytes, then use sbox transfer, combine again into a new u32
 	big_endian_put_u32_fixed(mut a, ka)
-	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
+	b[3], b[2], b[1], b[0] = sbox[a[3]], sbox[a[2]], sbox[a[1]], sbox[a[0]]
 	bb := big_endian_u32_fixed(b)
 
 	// Rotate Left Shift 02, 10, 18, 24
@@ -283,7 +283,7 @@ fn calculate_irk(ka u32) u32 {
 
 	// Divide ka into 4 bytes, then use sbox transfer, combine them into a new u32
 	big_endian_put_u32_fixed(mut a, ka)
-	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
+	b[3], b[2], b[1], b[0] = sbox[a[3]], sbox[a[2]], sbox[a[1]], sbox[a[0]]
 	bb := big_endian_u32_fixed(b)
 
 	// Rotate Left Shift 13, 23
@@ -300,12 +300,12 @@ fn key_expansion(mut rk [32]u32, key [16]u8) {
 
 	// k = key ^ fk
 	big_endian_u128_fixed(key, mut mk)
-	k[3], k[2], k[1], k[0] = mk[3] ^ sm4.fk[3], mk[2] ^ sm4.fk[2], mk[1] ^ sm4.fk[1], mk[0] ^ sm4.fk[0]
+	k[3], k[2], k[1], k[0] = mk[3] ^ fk[3], mk[2] ^ fk[2], mk[1] ^ fk[1], mk[0] ^ fk[0]
 
 	// generate the round keys
 	for i in 0 .. 32 {
 		// TODO: use 8:32 lookup table speedup
-		k[i + 4] = k[i] ^ calculate_irk(k[i + 1] ^ k[i + 2] ^ k[i + 3] ^ sm4.ck[i])
+		k[i + 4] = k[i] ^ calculate_irk(k[i + 1] ^ k[i + 2] ^ k[i + 3] ^ ck[i])
 		rk[i] = k[i + 4]
 	}
 }
@@ -325,7 +325,7 @@ fn one_round(rk [32]u32, input [16]u8, mut output [16]u8) {
 			tmp1 = x[0] ^ sm4_tl(tmp)
 		} $else {
 			// use 8:32 lookup table
-			tmp1 = x[0] ^ sm4.table0[(tmp >> 24) & 0xff] ^ sm4.table1[(tmp >> 16) & 0xff] ^ sm4.table2[(tmp >> 8) & 0xff] ^ sm4.table3[(tmp >> 0) & 0xff]
+			tmp1 = x[0] ^ table0[(tmp >> 24) & 0xff] ^ table1[(tmp >> 16) & 0xff] ^ table2[(tmp >> 8) & 0xff] ^ table3[(tmp >> 0) & 0xff]
 		}
 		x[3], x[2], x[1], x[0] = tmp1, x[3], x[2], x[1]
 	}

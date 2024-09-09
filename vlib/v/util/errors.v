@@ -47,14 +47,14 @@ pub fn (e &EManager) set_support_color(b bool) {
 }
 
 pub fn bold(msg string) string {
-	if !util.emanager.support_color {
+	if !emanager.support_color {
 		return msg
 	}
 	return term.bold(msg)
 }
 
 pub fn color(kind string, msg string) string {
-	if !util.emanager.support_color {
+	if !emanager.support_color {
 		return msg
 	}
 	if kind.contains('error') {
@@ -95,11 +95,11 @@ const verror_paths_absolute = os.getenv('VERROR_PATHS') == 'absolute'
 pub fn path_styled_for_error_messages(path string) string {
 	mut rpath := os.real_path(path)
 	rpath = rpath.replace('\\', '/')
-	if util.verror_paths_absolute {
+	if verror_paths_absolute {
 		return rpath
 	}
-	if rpath.starts_with(util.normalised_workdir) {
-		rpath = rpath.replace_once(util.normalised_workdir, '')
+	if rpath.starts_with(normalised_workdir) {
+		rpath = rpath.replace_once(normalised_workdir, '')
 	}
 	return rpath
 }
@@ -152,8 +152,8 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 	if source_lines.len == 0 {
 		return clines
 	}
-	bline := mu.max(0, pos.line_nr - util.error_context_before)
-	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
+	bline := mu.max(0, pos.line_nr - error_context_before)
+	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline] or { '' }

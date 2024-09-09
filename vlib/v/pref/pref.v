@@ -1205,7 +1205,7 @@ fn (mut prefs Preferences) parse_define(define string) {
 }
 
 pub fn supported_test_runners_list() string {
-	return pref.supported_test_runners.map('`${it}`').join(', ')
+	return supported_test_runners.map('`${it}`').join(', ')
 }
 
 pub fn (pref &Preferences) should_trace_fn_name(fname string) bool {

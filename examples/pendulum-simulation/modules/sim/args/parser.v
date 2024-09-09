@@ -27,7 +27,7 @@ pub:
 pub struct ParallelArgs {
 	SequentialArgs
 pub:
-	workers int = args.max_parallel_workers
+	workers int = max_parallel_workers
 }
 
 pub type SimArgs = ParallelArgs | SequentialArgs
@@ -101,7 +101,7 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	fp.description('This is a pendulum simulation written in pure V')
 	fp.skip_executable()
 
-	workers := fp.int('workers', 0, args.max_parallel_workers, 'amount of workers to use on simulation. Defaults to ${args.max_parallel_workers}')
+	workers := fp.int('workers', 0, max_parallel_workers, 'amount of workers to use on simulation. Defaults to ${max_parallel_workers}')
 
 	// output parameters
 	width := fp.int('width', `w`, sim.default_width, 'width of the image output. Defaults to ${sim.default_width}')

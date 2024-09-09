@@ -39,9 +39,9 @@ pub fn (mut ctx Context) flush() {
 	if !ctx.enable_su {
 		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
 	} else {
-		C.write(1, ui.bsu.str, ui.bsu.len)
+		C.write(1, bsu.str, bsu.len)
 		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
-		C.write(1, ui.esu.str, ui.esu.len)
+		C.write(1, esu.str, esu.len)
 	}
 	ctx.print_buf.clear()
 }

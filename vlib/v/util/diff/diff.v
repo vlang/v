@@ -72,7 +72,7 @@ pub fn compare_files(path1 string, path2 string, opts CompareOptions) !string {
 	tool, cmd := opts.find_tool()!
 	mut args := opts.args
 	if args == '' {
-		args = if defaults := diff.known_diff_tool_defaults[tool] { defaults } else { '' }
+		args = if defaults := known_diff_tool_defaults[tool] { defaults } else { '' }
 		if opts.tool == .diff {
 			// Ensure that the diff command supports the color option.
 			// E.g., some BSD installations or macOS diff (based on FreeBSD diff)
@@ -133,7 +133,7 @@ fn (opts CompareOptions) find_tool() !(DiffTool, string) {
 // are used. Using a public constant will also allow for external checking of available tools.
 fn find_working_diff_tools() []DiffTool {
 	mut tools := []DiffTool{}
-	for tool in diff.known_diff_tool_defaults.keys() {
+	for tool in known_diff_tool_defaults.keys() {
 		cmd := tool.cmd()
 		os.find_abs_path_of_executable(cmd) or { continue }
 		if tool == .delta {
@@ -203,12 +203,12 @@ pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	if tool == 'diff' {
 		// Ensure that the diff command supports the color option.
 		// E.g., some BSD installations do not include `diffutils` as a core package alongside `diff`.
-		res := os.execute('${diff_cmd} --color=always ${diff.default_diff_args} ${p1} ${p2}')
+		res := os.execute('${diff_cmd} --color=always ${default_diff_args} ${p1} ${p2}')
 		if !res.output.starts_with('diff: unrecognized option') {
 			return res.output.trim_right('\r\n')
 		}
 	}
-	cmd := '${diff_cmd} ${diff.default_diff_args} ${p1} ${p2}'
+	cmd := '${diff_cmd} ${default_diff_args} ${p1} ${p2}'
 	return os.execute(cmd).output.trim_right('\r\n')
 }
 

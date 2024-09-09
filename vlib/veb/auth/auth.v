@@ -72,7 +72,7 @@ pub fn set_rand_crypto_safe_seed() {
 }
 
 fn generate_crypto_safe_int_u32() u32 {
-	return u32(crypto_rand.int_u64(auth.max_safe_unsigned_integer) or { 0 })
+	return u32(crypto_rand.int_u64(max_safe_unsigned_integer) or { 0 })
 }
 
 pub fn generate_salt() string {

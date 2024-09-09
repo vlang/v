@@ -8,7 +8,7 @@ const dsc_basepoint = [u8(0xf4), 0xef, 0x7c, 0xa, 0x34, 0x55, 0x7b, 0x9f, 0x72, 
 
 fn dalek_scalar_basepoint() Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.dsc_basepoint) or { panic(err) }
+	p.set_bytes(dsc_basepoint) or { panic(err) }
 	return p
 }
 
@@ -33,7 +33,7 @@ fn test_scalar_mult_small_scalars() {
 fn test_scalar_mult_vs_dalek() {
 	mut p := Point{}
 	mut b := new_generator_point()
-	mut dsc := edwards25519.dalek_scalar
+	mut dsc := dalek_scalar
 	p.scalar_mult(mut dsc, b)
 	mut ds := dalek_scalar_basepoint()
 	assert ds.equal(p) == 1
@@ -43,7 +43,7 @@ fn test_scalar_mult_vs_dalek() {
 
 fn test_scalar_base_mult_vs_dalek() {
 	mut p := Point{}
-	mut dsc := edwards25519.dalek_scalar
+	mut dsc := dalek_scalar
 	p.scalar_base_mult(mut dsc)
 	mut ds := dalek_scalar_basepoint()
 	assert ds.equal(p) == 1
@@ -55,13 +55,13 @@ fn test_vartime_double_basemult_vs_dalek() {
 	mut p := Point{}
 	mut z := Scalar{}
 	b := new_generator_point()
-	p.vartime_double_scalar_base_mult(edwards25519.dalek_scalar, b, z)
+	p.vartime_double_scalar_base_mult(dalek_scalar, b, z)
 
 	mut ds := dalek_scalar_basepoint()
 	assert ds.equal(p) == 1
 	assert check_on_curve(p)
 
-	p.vartime_double_scalar_base_mult(z, b, edwards25519.dalek_scalar)
+	p.vartime_double_scalar_base_mult(z, b, dalek_scalar)
 
 	assert ds.equal(p) == 1
 	assert check_on_curve(p)

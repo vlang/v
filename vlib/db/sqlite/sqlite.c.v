@@ -188,7 +188,7 @@ pub fn (db &DB) q_int(query string) !int {
 	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
-	if code != sqlite.sqlite_row {
+	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
 
@@ -204,7 +204,7 @@ pub fn (db &DB) q_string(query string) !string {
 	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
-	if code != sqlite.sqlite_row {
+	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
 
@@ -220,7 +220,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 		C.sqlite3_finalize(stmt)
 	}
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	if code != sqlite.sqlite_ok {
+	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
 
@@ -259,7 +259,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 	if rows.len == 0 {
 		return &SQLError{
 			msg:  'No rows'
-			code: sqlite.sqlite_done
+			code: sqlite_done
 		}
 	}
 	res := rows[0]
@@ -314,7 +314,7 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	mut rows := []Row{}
 	for {
 		res = C.sqlite3_step(stmt)
-		if res != sqlite.sqlite_row {
+		if res != sqlite_row {
 			if rows.len == 0 && is_error(res) {
 				return db.error_message(res, query)
 			}

@@ -136,7 +136,7 @@ const g_type_complex = u16(2)
 
 pub struct Glyph {
 pub mut:
-	g_type             u16 = ttf.g_type_simple
+	g_type             u16 = g_type_simple
 	contour_ends       []u16
 	number_of_contours i16
 	points             []Point
@@ -382,9 +382,9 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		in_glyph.points << Point{
 			x:        0
 			y:        0
-			on_curve: (flag & ttf.tfk_on_curve) > 0
+			on_curve: (flag & tfk_on_curve) > 0
 		}
-		if (flag & ttf.tfk_repeat) > 0 {
+		if (flag & tfk_repeat) > 0 {
 			mut repeat_count := tf.get_u8()
 			assert repeat_count > 0
 			i += repeat_count
@@ -393,7 +393,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 				in_glyph.points << Point{
 					x:        0
 					y:        0
-					on_curve: (flag & ttf.tfk_on_curve) > 0
+					on_curve: (flag & tfk_on_curve) > 0
 				}
 				repeat_count--
 			}
@@ -405,13 +405,13 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	mut value := 0
 	for i_x in 0 .. num_points {
 		flag_x := flags[i_x]
-		if (flag_x & ttf.tfk_x_is_byte) > 0 {
-			if (flag_x & ttf.tfk_x_delta) > 0 {
+		if (flag_x & tfk_x_is_byte) > 0 {
+			if (flag_x & tfk_x_delta) > 0 {
 				value += tf.get_u8()
 			} else {
 				value -= tf.get_u8()
 			}
-		} else if (~flag_x & ttf.tfk_x_delta) > 0 {
+		} else if (~flag_x & tfk_x_delta) > 0 {
 			value += tf.get_i16()
 		} else {
 			// value is unchanged
@@ -424,13 +424,13 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	value = 0
 	for i_y in 0 .. num_points {
 		flag_y := flags[i_y]
-		if (flag_y & ttf.tfk_y_is_byte) > 0 {
-			if (flag_y & ttf.tfk_y_delta) > 0 {
+		if (flag_y & tfk_y_is_byte) > 0 {
+			if (flag_y & tfk_y_delta) > 0 {
 				value += tf.get_u8()
 			} else {
 				value -= tf.get_u8()
 			}
-		} else if (~flag_y & ttf.tfk_y_delta) > 0 {
+		} else if (~flag_y & tfk_y_delta) > 0 {
 			value += tf.get_i16()
 		} else {
 			// value is unchanged
@@ -464,10 +464,10 @@ mut:
 }
 
 fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
-	in_glyph.g_type = ttf.g_type_complex
+	in_glyph.g_type = g_type_complex
 	mut component := Component{}
-	mut flags := ttf.tfkc_more_components
-	for (flags & ttf.tfkc_more_components) > 0 {
+	mut flags := tfkc_more_components
+	for (flags & tfkc_more_components) > 0 {
 		mut arg1 := i16(0)
 		mut arg2 := i16(0)
 
@@ -475,7 +475,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 
 		component.glyph_index = tf.get_u16()
 
-		if (flags & ttf.tfkc_arg_1_and_2_are_words) > 0 {
+		if (flags & tfkc_arg_1_and_2_are_words) > 0 {
 			arg1 = tf.get_i16()
 			arg2 = tf.get_i16()
 		} else {
@@ -483,7 +483,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 			arg2 = tf.get_u8()
 		}
 
-		if (flags & ttf.tfkc_args_are_xy_values) > 0 {
+		if (flags & tfkc_args_are_xy_values) > 0 {
 			component.matrix[4] = arg1
 			component.matrix[5] = arg2
 		} else {
@@ -491,13 +491,13 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 			component.src_point_index = arg2
 		}
 
-		if (flags & ttf.tfkc_we_have_a_scale) > 0 {
+		if (flags & tfkc_we_have_a_scale) > 0 {
 			component.matrix[0] = tf.get_2dot14()
 			component.matrix[3] = component.matrix[0]
-		} else if (flags & ttf.tfkc_we_have_an_x_and_y_scale) > 0 {
+		} else if (flags & tfkc_we_have_an_x_and_y_scale) > 0 {
 			component.matrix[0] = tf.get_2dot14()
 			component.matrix[3] = tf.get_2dot14()
-		} else if (flags & ttf.tfkc_we_have_a_two_by_two) > 0 {
+		} else if (flags & tfkc_we_have_a_two_by_two) > 0 {
 			component.matrix[0] = tf.get_2dot14()
 			component.matrix[1] = tf.get_2dot14()
 			component.matrix[2] = tf.get_2dot14()
@@ -532,7 +532,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 
 	in_glyph.number_of_contours = i16(in_glyph.contour_ends.len)
 
-	if (flags & ttf.tfkc_we_have_instructions) > 0 {
+	if (flags & tfkc_we_have_instructions) > 0 {
 		tf.pos = tf.get_u16() + tf.pos
 	}
 	// ok we have a valid glyph

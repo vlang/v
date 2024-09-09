@@ -17,19 +17,19 @@ const frac_mask = u64((u64(1) << u64(shift)) - u64(1))
 
 // inf returns positive infinity if sign >= 0, negative infinity if sign < 0.
 pub fn inf(sign int) f64 {
-	v := if sign >= 0 { math.uvinf } else { math.uvneginf }
+	v := if sign >= 0 { uvinf } else { uvneginf }
 	return f64_from_bits(v)
 }
 
 // nan returns an IEEE 754 ``not-a-number'' value.
 pub fn nan() f64 {
-	return f64_from_bits(math.uvnan)
+	return f64_from_bits(uvnan)
 }
 
 // is_nan reports whether f is an IEEE 754 ``not-a-number'' value.
 pub fn is_nan(f f64) bool {
 	$if fast_math {
-		if f64_bits(f) == math.uvnan {
+		if f64_bits(f) == uvnan {
 			return true
 		}
 	}
@@ -62,7 +62,7 @@ pub fn is_finite(f f64) bool {
 pub fn normalize(x f64) (f64, int) {
 	smallest_normal := 2.2250738585072014e-308 // 2**-1022
 	if abs(x) < smallest_normal {
-		return x * math.normalize_smallest_mask, -52
+		return x * normalize_smallest_mask, -52
 	}
 	return x, 0
 }

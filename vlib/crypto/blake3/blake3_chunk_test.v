@@ -280,7 +280,7 @@ const test_cases = [
 ]
 
 fn test_various_test_cases() {
-	for test_case in blake3.test_cases {
+	for test_case in test_cases {
 		mut chunk := Chunk{}
 		input := test_case.input
 		chunk.process_input(input.input_string.bytes(), input.key_words, input.chunk_number,

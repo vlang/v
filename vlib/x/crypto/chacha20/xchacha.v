@@ -18,7 +18,7 @@ fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	if key.len != key_size {
 		return error('xchacha: Bad key size')
 	}
-	if nonce.len != chacha20.h_nonce_size {
+	if nonce.len != h_nonce_size {
 		return error('xchacha: Bad nonce size')
 	}
 	// initializes ChaCha20 state

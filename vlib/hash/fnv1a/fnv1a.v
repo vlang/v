@@ -11,9 +11,9 @@ const fnv32_prime = u32(16777619)
 // sum32 returns a fnv1a hash of the string, described by `data`
 @[direct_array_access; inline]
 pub fn sum32_string(data string) u32 {
-	mut hash := fnv1a.fnv32_offset_basis
+	mut hash := fnv32_offset_basis
 	for i in 0 .. data.len {
-		hash = (hash ^ u32(data[i])) * fnv1a.fnv32_prime
+		hash = (hash ^ u32(data[i])) * fnv32_prime
 	}
 	return hash
 }
@@ -22,9 +22,9 @@ pub fn sum32_string(data string) u32 {
 // byte array `data`.
 @[direct_array_access; inline]
 pub fn sum32(data []u8) u32 {
-	mut hash := fnv1a.fnv32_offset_basis
+	mut hash := fnv32_offset_basis
 	for i in 0 .. data.len {
-		hash = (hash ^ u32(data[i])) * fnv1a.fnv32_prime
+		hash = (hash ^ u32(data[i])) * fnv32_prime
 	}
 	return hash
 }
@@ -34,9 +34,9 @@ pub fn sum32(data []u8) u32 {
 pub fn sum32_struct[T](s &T) u32 {
 	bp := unsafe { &u8(s) }
 	sz := int(sizeof(T))
-	mut hash := fnv1a.fnv32_offset_basis
+	mut hash := fnv32_offset_basis
 	for i in 0 .. sz {
-		hash = unsafe { (hash ^ u32(bp[i])) * fnv1a.fnv32_prime }
+		hash = unsafe { (hash ^ u32(bp[i])) * fnv32_prime }
 	}
 	return hash
 }
@@ -45,9 +45,9 @@ pub fn sum32_struct[T](s &T) u32 {
 // the address in the given &byte pointer `data`.
 @[direct_array_access; inline; unsafe]
 pub fn sum32_bytes(data &u8, data_len int) u32 {
-	mut hash := fnv1a.fnv32_offset_basis
+	mut hash := fnv32_offset_basis
 	for i in 0 .. data_len {
-		hash = unsafe { (hash ^ u32(data[i])) * fnv1a.fnv32_prime }
+		hash = unsafe { (hash ^ u32(data[i])) * fnv32_prime }
 	}
 	return hash
 }
@@ -55,9 +55,9 @@ pub fn sum32_bytes(data &u8, data_len int) u32 {
 // sum64 returns a fnv1a hash of the string, described by `data`
 @[direct_array_access; inline]
 pub fn sum64_string(data string) u64 {
-	mut hash := fnv1a.fnv64_offset_basis
+	mut hash := fnv64_offset_basis
 	for i in 0 .. data.len {
-		hash = (hash ^ u64(data[i])) * fnv1a.fnv64_prime
+		hash = (hash ^ u64(data[i])) * fnv64_prime
 	}
 	return hash
 }
@@ -66,9 +66,9 @@ pub fn sum64_string(data string) u64 {
 // byte array `data`.
 @[direct_array_access; inline]
 pub fn sum64(data []u8) u64 {
-	mut hash := fnv1a.fnv64_offset_basis
+	mut hash := fnv64_offset_basis
 	for i in 0 .. data.len {
-		hash = (hash ^ u64(data[i])) * fnv1a.fnv64_prime
+		hash = (hash ^ u64(data[i])) * fnv64_prime
 	}
 	return hash
 }
@@ -77,9 +77,9 @@ pub fn sum64(data []u8) u64 {
 // the address in the given &byte pointer `data`.
 @[direct_array_access; inline; unsafe]
 pub fn sum64_bytes(data &u8, data_len int) u64 {
-	mut hash := fnv1a.fnv64_offset_basis
+	mut hash := fnv64_offset_basis
 	for i in 0 .. data_len {
-		hash = unsafe { (hash ^ u64(data[i])) * fnv1a.fnv64_prime }
+		hash = unsafe { (hash ^ u64(data[i])) * fnv64_prime }
 	}
 	return hash
 }
@@ -89,9 +89,9 @@ pub fn sum64_bytes(data &u8, data_len int) u64 {
 pub fn sum64_struct[T](s &T) u64 {
 	bp := unsafe { &u8(s) }
 	sz := int(sizeof(T))
-	mut hash := fnv1a.fnv64_offset_basis
+	mut hash := fnv64_offset_basis
 	for i in 0 .. sz {
-		hash = unsafe { (hash ^ u64(bp[i])) * fnv1a.fnv64_prime }
+		hash = unsafe { (hash ^ u64(bp[i])) * fnv64_prime }
 	}
 	return hash
 }

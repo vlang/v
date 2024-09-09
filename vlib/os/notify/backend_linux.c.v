@@ -140,22 +140,22 @@ fn (mut en EpollNotifier) close() ! {
 fn event_mask_to_flag(mask u32) FdEventType {
 	mut flags := unsafe { FdEventType(0) }
 
-	if mask & notify.epoll_read != 0 {
+	if mask & epoll_read != 0 {
 		flags.set(.read)
 	}
-	if mask & notify.epoll_write != 0 {
+	if mask & epoll_write != 0 {
 		flags.set(.write)
 	}
-	if mask & notify.epoll_peer_hangup != 0 {
+	if mask & epoll_peer_hangup != 0 {
 		flags.set(.peer_hangup)
 	}
-	if mask & notify.epoll_exception != 0 {
+	if mask & epoll_exception != 0 {
 		flags.set(.exception)
 	}
-	if mask & notify.epoll_error != 0 {
+	if mask & epoll_error != 0 {
 		flags.set(.error)
 	}
-	if mask & notify.epoll_hangup != 0 {
+	if mask & epoll_hangup != 0 {
 		flags.set(.hangup)
 	}
 
@@ -167,35 +167,35 @@ fn event_mask_to_flag(mask u32) FdEventType {
 fn flags_to_mask(events FdEventType, confs ...FdConfigFlags) u32 {
 	mut mask := u32(0)
 	if events.has(.read) {
-		mask |= notify.epoll_read
+		mask |= epoll_read
 	}
 	if events.has(.write) {
-		mask |= notify.epoll_write
+		mask |= epoll_write
 	}
 	if events.has(.peer_hangup) {
-		mask |= notify.epoll_peer_hangup
+		mask |= epoll_peer_hangup
 	}
 	if events.has(.exception) {
-		mask |= notify.epoll_exception
+		mask |= epoll_exception
 	}
 	if events.has(.error) {
-		mask |= notify.epoll_error
+		mask |= epoll_error
 	}
 	if events.has(.hangup) {
-		mask |= notify.epoll_hangup
+		mask |= epoll_hangup
 	}
 	for conf in confs {
 		if conf.has(.edge_trigger) {
-			mask |= notify.epoll_edge_trigger
+			mask |= epoll_edge_trigger
 		}
 		if conf.has(.one_shot) {
-			mask |= notify.epoll_one_shot
+			mask |= epoll_one_shot
 		}
 		if conf.has(.wake_up) {
-			mask |= notify.epoll_wake_up
+			mask |= epoll_wake_up
 		}
 		if conf.has(.exclusive) {
-			mask |= notify.epoll_exclusive
+			mask |= epoll_exclusive
 		}
 	}
 	return mask

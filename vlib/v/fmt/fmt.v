@@ -167,7 +167,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if penalty_idx > 0 && f.line_len <= fmt.break_points[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= break_points[penalty_idx] {
 		return false
 	}
 	if f.out.last() == ` ` {
@@ -1782,7 +1782,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in variants {
 		// 3 = length of ' = ' or ' | '
 		line_length += 3 + variant.name.len
-		if line_length > fmt.max_len || (variant.id != node.variants.len - 1
+		if line_length > max_len || (variant.id != node.variants.len - 1
 			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
 			is_multiline = true
@@ -1889,7 +1889,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.pos().len > fmt.break_points[3]
+					|| f.line_len + expr.pos().len > break_points[3]
 			}
 		}
 		mut line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1911,7 +1911,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
 			mut estr := ''
-			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len {
+			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > max_len {
 				if inc_indent {
 					estr = f.node_str(expr)
 				}
@@ -2357,22 +2357,10 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			}
 		}
 		if !is_local && !node.name.contains('.') && !f.inside_const {
-			// Force usage of full path to const in the same module:
-			// `println(minute)` => `println(time.minute)`
-			// This makes it clear that a module const is being used
-			// (since V's consts are no longer ALL_CAP).
-			// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 			if obj := f.file.global_scope.find('${f.cur_mod}.${node.name}') {
 				if obj is ast.ConstField {
-					// "v.fmt.foo" => "fmt.foo"
 					const_name := node.name.all_after_last('.')
-					if f.cur_mod == 'main' {
-						f.write(const_name)
-					} else {
-						short := '${f.cur_mod.all_after_last('.')}.${const_name}'
-						f.write(short)
-						f.mark_import_as_used(short)
-					}
+					f.write(const_name)
 					if node.or_expr.kind == .block {
 						f.or_expr(node.or_expr)
 					}
@@ -2471,7 +2459,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		}
 		// When a single line if is really long, write it again as multiline,
 		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > fmt.max_len && !f.buffering {
+		if is_ternary && f.line_len > max_len && !f.buffering {
 			is_ternary = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
@@ -2596,7 +2584,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > fmt.max_len {
+		if !f.single_line_if && f.line_len > max_len {
 			is_cond := node.op in [.and, .logical_or]
 			f.wrap_infix(start_pos, start_len, is_cond)
 		}
@@ -2664,7 +2652,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 	defer { f.wsinfix_depth-- }
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		if f.line_len + c.len < fmt.break_points[penalties[i]] {
+		if f.line_len + c.len < break_points[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
 			}
@@ -2672,12 +2660,12 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 		} else {
 			is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
 			final_len := ((f.indent + 1) * 4) + c.len
-			if f.wsinfix_depth > fmt.wsinfix_depth_max {
+			if f.wsinfix_depth > wsinfix_depth_max {
 				// limit indefinite recursion, by just giving up splitting:
 				f.write(c)
 				continue
 			}
-			if final_len > fmt.max_len && is_paren_expr {
+			if final_len > max_len && is_paren_expr {
 				conds, pens := split_up_infix(c, true, is_cond)
 				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
@@ -2818,7 +2806,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		f.is_mbranch_expr = true
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
-			if f.line_len + estr.len + 2 > fmt.max_len {
+			if f.line_len + estr.len + 2 > max_len {
 				f.remove_new_line()
 				f.writeln('')
 			}
@@ -2913,7 +2901,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { ${str} }'
-				if single_line.len + f.line_len <= fmt.max_len {
+				if single_line.len + f.line_len <= max_len {
 					f.write(single_line)
 					return
 				}
@@ -3165,13 +3153,13 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		f.write('${quote}${node.val}${quote}')
 	} else {
-		unescaped_val := node.val.replace('${fmt.bs}${fmt.bs}', '\x01').replace_each([
-			"${fmt.bs}'",
+		unescaped_val := node.val.replace('${bs}${bs}', '\x01').replace_each([
+			"${bs}'",
 			"'",
-			'${fmt.bs}"',
+			'${bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '${fmt.bs}${fmt.bs}', quote, '${fmt.bs}${quote}'])
+		s := unescaped_val.replace_each(['\x01', '${bs}${bs}', quote, '${bs}${quote}'])
 		f.write('${quote}${s}${quote}')
 	}
 }
@@ -3199,13 +3187,13 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		unescaped_val := val.replace('${fmt.bs}${fmt.bs}', '\x01').replace_each([
-			"${fmt.bs}'",
+		unescaped_val := val.replace('${bs}${bs}', '\x01').replace_each([
+			"${bs}'",
 			"'",
-			'${fmt.bs}"',
+			'${bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '${fmt.bs}${fmt.bs}', quote, '${fmt.bs}${quote}'])
+		s := unescaped_val.replace_each(['\x01', '${bs}${bs}', quote, '${bs}${quote}'])
 		f.write('${s}')
 		if i >= node.exprs.len {
 			break

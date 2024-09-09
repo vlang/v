@@ -8,7 +8,7 @@ const mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const private_file_cacher = new_mod_file_cacher()
 
 pub fn get_cache() &ModFileCacher {
-	return vmod.private_file_cacher
+	return private_file_cacher
 }
 
 // This file provides a caching mechanism for seeking quickly whether a
@@ -144,7 +144,7 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 }
 
 fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in vmod.mod_file_stop_paths {
+	for i in mod_file_stop_paths {
 		if i in files {
 			return true
 		}
