@@ -952,6 +952,11 @@ pub fn (t &Struct) is_empty_struct() bool {
 	return t.fields.len == 0 && t.embeds.len == 0
 }
 
+@[inline]
+pub fn (t &Struct) is_unresolved_generic() bool {
+	return t.generic_types.len > 0 && t.concrete_types.len == 0
+}
+
 pub fn (t &TypeSymbol) is_array_fixed() bool {
 	if t.info is ArrayFixed {
 		return true

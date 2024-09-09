@@ -1054,6 +1054,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('static char * v_typeof_interface_${sym.cname}(int sidx) { /* ${sym.name} */ ')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
+				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+					continue
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
@@ -1062,6 +1065,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('static int v_typeof_interface_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
+				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
+					continue
+				}
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
 			}
 			g.writeln('\treturn ${int(ityp)};')
@@ -7687,6 +7693,10 @@ fn (mut g Gen) interface_table() string {
 		iinidx_minimum_base := 1000 // Note: NOT 0, to avoid map entries set to 0 later, so `if already_generated_mwrappers[name] > 0 {` works.
 		mut current_iinidx := iinidx_minimum_base
 		for st in inter_info.types {
+			st_sym_info := g.table.sym(st)
+			if st_sym_info.info is ast.Struct && st_sym_info.info.is_unresolved_generic() {
+				continue
+			}
 			st_sym := g.table.sym(ast.mktyp(st))
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
