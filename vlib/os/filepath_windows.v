@@ -11,7 +11,7 @@ module os
 pub fn windows_volume(path string) string {
 	volume_len := win_volume_len(path)
 	if volume_len == 0 {
-		return os.empty_str
+		return empty_str
 	}
 	return path[..volume_len]
 }

@@ -183,7 +183,8 @@ fn (foptions &FormatOptions) vlog(msg string) {
 
 fn parse_others_in_same_module(mod_name string, file string, mut table ast.Table, prefs &pref.Preferences) {
 	if mod_name != 'main' && prefs.should_compile_c(file) && !file.ends_with('.c.v')
-		&& !file.starts_with('.#') && !file.contains('_d_') && !file.contains('_notd_') {
+		&& !file.ends_with('_windows.v') && !file.starts_with('.#') && !file.contains('_d_')
+		&& !file.contains('_notd_') {
 		// other files in the same module also need to be parsed
 		cur_file_dir := os.dir(file)
 		mut files := os.ls(cur_file_dir) or { panic(err) }
