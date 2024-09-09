@@ -417,8 +417,8 @@ pub:
 	end_comments []Comment
 	embeds       []Embed
 
-	is_implements   bool
-	implements_type Type
+	is_implements    bool
+	implements_types []Type
 pub mut:
 	fields []StructField
 }
