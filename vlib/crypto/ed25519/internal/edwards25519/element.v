@@ -538,7 +538,7 @@ pub fn (mut v Element) pow_22523(x Element) Element {
 	for i := 1; i < 100; i++ { // 2^200 - 2^100
 		t2.square(t2)
 	}
-	t1.multiply(t2, &t1) // 2^200 - 1
+	t1.multiply(t2, t1) // 2^200 - 1
 	t1.square(t1) // 2^201 - 2
 	for i := 1; i < 50; i++ { // 2^250 - 2^50
 		t1.square(t1)
