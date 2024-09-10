@@ -170,24 +170,24 @@ fn test_flag_error_messages() {
 	}
 }
 
-fn test_flag_no_error_messages_when_relax_no_match() {
-	// Test that there's no errors in `mode: .relax_no_match`
+fn test_flag_no_error_messages_when_relaxed() {
+	// Test that there's no errors in `mode: .relaxed`
 	_, no_matches1 := flag.to_struct[Config](posix_and_gnu_args_with_subcmd,
 		skip:  1
 		style: .short
-		mode:  .relax_no_match
+		mode:  .relaxed
 	)!
 	assert no_matches1 == ['subcmd', '--device=two', '--amount=8']
 
 	_, no_matches2 := flag.to_struct[LongConfig](gnu_args_error,
 		style: .long
-		mode:  .relax_no_match
+		mode:  .relaxed
 	)!
 	assert no_matches2 == ['oo']
 
 	if _, _ := flag.to_struct[LongConfig](['--version=1.2.3'],
 		style: .long
-		mode:  .relax_no_match
+		mode:  .relaxed
 	)
 	{
 		assert false, 'flags should not have reached this assert'
@@ -198,7 +198,7 @@ fn test_flag_no_error_messages_when_relax_no_match() {
 
 	_, no_matches3 := flag.to_struct[IgnoreConfig](ignore_args_error,
 		style: .long
-		mode:  .relax_no_match
+		mode:  .relaxed
 	)!
 	assert no_matches3 == ['--some-test=ouch']
 }
