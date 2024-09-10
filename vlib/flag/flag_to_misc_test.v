@@ -1,6 +1,6 @@
 import flag
 
-const all_style_enums = [flag.Style.short, .short_long, .long, .v]
+const all_style_enums = [flag.Style.short, .short_long, .long, .v, .v_flag_parser]
 const posix_gnu_style_enums = [flag.Style.short, .short_long, .long]
 const mixed_args = ['/path/to/exe', '-vv', 'vvv', '-version', '--mix', '--mix-all=all', '-ldflags',
 	'-m', '2', '-fgh', '["test", "test"]', '-m', '{map: 2, ml-q:"hello"}']
@@ -168,4 +168,37 @@ fn test_flag_error_messages() {
 	if _, no_matches := flag.to_struct[IgnoreConfig](ignore_args_error, style: .long) {
 		assert no_matches == ['--some-test=ouch']
 	}
+}
+
+fn test_flag_no_error_messages_when_error_as_no_match() {
+	// Test that there's no errors in `mode: .error_as_no_match`
+	_, no_matches1 := flag.to_struct[Config](posix_and_gnu_args_with_subcmd,
+		skip:  1
+		style: .short
+		mode:  .error_as_no_match
+	)!
+	assert no_matches1 == ['subcmd', '--device=two', '--amount=8']
+
+	_, no_matches2 := flag.to_struct[LongConfig](gnu_args_error,
+		style: .long
+		mode:  .error_as_no_match
+	)!
+	assert no_matches2 == ['oo']
+
+	if _, _ := flag.to_struct[LongConfig](['--version=1.2.3'],
+		style: .long
+		mode:  .error_as_no_match
+	)
+	{
+		assert false, 'flags should not have reached this assert'
+	} else {
+		// Type errors should not be ignored, only non-matching flags/args
+		assert err.msg() == 'flag `--version=1.2.3` can not be assigned to bool field "show_version"'
+	}
+
+	_, no_matches3 := flag.to_struct[IgnoreConfig](ignore_args_error,
+		style: .long
+		mode:  .error_as_no_match
+	)!
+	assert no_matches3 == ['--some-test=ouch']
 }
