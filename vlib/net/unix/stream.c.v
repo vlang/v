@@ -424,13 +424,12 @@ pub fn (mut s StreamSocket) set_option_bool(opt net.SocketOption, value bool) ! 
 	if opt !in net.opts_bool {
 		return net.err_option_wrong_type
 	}
-	x := int(value)
-	s.set_option(C.SOL_SOCKET, int(opt), &x)!
+	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
 }
 
 // set_option_bool sets an int option on the socket
 pub fn (mut s StreamSocket) set_option_int(opt net.SocketOption, value int) ! {
-	s.set_option(C.SOL_SOCKET, int(opt), value)!
+	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
 }
 
 fn (mut s StreamSocket) connect(socket_path string) ! {

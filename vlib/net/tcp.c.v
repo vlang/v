@@ -582,12 +582,11 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// if opt !in opts_bool {
 	// 	return err_option_wrong_type
 	// }
-	x := int(value)
-	s.set_option(C.SOL_SOCKET, int(opt), &x)!
+	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
 }
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
-	s.set_option(C.SOL_SOCKET, int(opt), value)!
+	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
 }
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
