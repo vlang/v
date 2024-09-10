@@ -172,7 +172,7 @@ pub fn big_endian_put_u64_end(mut b []u8, v u64) {
 
 // big_endian_get_u64 creates u8 array from the unsigned 64-bit integer v in big endian order.
 pub fn big_endian_get_u64(v u64) []u8 {
-	mut b := []u8{}
+	mut b := []u8{cap: 8}
 	b << u8(v >> u64(56))
 	b << u8(v >> u64(48))
 	b << u8(v >> u64(40))
