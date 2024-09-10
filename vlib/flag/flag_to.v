@@ -19,8 +19,8 @@ struct FlagContext {
 }
 
 pub enum ParseMode {
-	strict            // return errors for unknown or malformed flags per default
-	error_as_no_match // ignore what would have been errors and add to `no_match` list
+	strict         // return errors for unknown or malformed flags per default
+	relax_no_match // pass thru flag match errors and add them to `no_match` list instead
 }
 
 pub enum Style {
@@ -428,7 +428,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			is_short_delimiter := used_delimiter.count(delimiter) == 1
 			is_invalid_delimiter := !is_long_delimiter && !is_short_delimiter
 			if is_invalid_delimiter {
-				if config.mode == .error_as_no_match {
+				if config.mode == .relax_no_match {
 					fm.no_match << pos
 					continue
 				}
@@ -436,14 +436,14 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			}
 			if is_long_delimiter {
 				if style == .v {
-					if config.mode == .error_as_no_match {
+					if config.mode == .relax_no_match {
 						fm.no_match << pos
 						continue
 					}
 					return error('long delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (V) style parsing mode. Maybe you meant `.v_flag_parser`?')
 				}
 				if style == .short {
-					if config.mode == .error_as_no_match {
+					if config.mode == .relax_no_match {
 						fm.no_match << pos
 						continue
 					}
@@ -453,14 +453,14 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 
 			if is_short_delimiter {
 				if style == .long {
-					if config.mode == .error_as_no_match {
+					if config.mode == .relax_no_match {
 						fm.no_match << pos
 						continue
 					}
 					return error('short delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (GNU) style parsing mode')
 				}
 				if style == .short_long && flag_name.len > 1 && flag_name.contains('-') {
-					if config.mode == .error_as_no_match {
+					if config.mode == .relax_no_match {
 						fm.no_match << pos
 						continue
 					}
@@ -469,7 +469,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			}
 
 			if flag_name == '' {
-				if config.mode == .error_as_no_match {
+				if config.mode == .relax_no_match {
 					fm.no_match << pos
 					continue
 				}

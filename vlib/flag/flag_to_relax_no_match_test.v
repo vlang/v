@@ -13,30 +13,30 @@ struct Config {
 	path  string @[tail]
 }
 
-fn test_flag_error_as_no_match_mode() {
-	// Test `mode: .error_as_no_match`
-	config1, no_matches1 := flag.to_struct[Config](one_ok_gnu_arg_no_tail, mode: .error_as_no_match)!
+fn test_flag_relax_no_match_mode() {
+	// Test `mode: .relax_no_match`
+	config1, no_matches1 := flag.to_struct[Config](one_ok_gnu_arg_no_tail, mode: .relax_no_match)!
 	assert config1.mix == true
 	assert config1.sound == ''
 	assert config1.beep == false
 	assert config1.path == ''
 	assert no_matches1 == ['-flip', '--g', '/path/to', '-ver']
 
-	config2, no_matches2 := flag.to_struct[Config](two_ok_gnu_arg_no_tail, mode: .error_as_no_match)!
+	config2, no_matches2 := flag.to_struct[Config](two_ok_gnu_arg_no_tail, mode: .relax_no_match)!
 	assert config2.mix == true
 	assert config2.sound == 'blop'
 	assert config2.beep == false
 	assert config2.path == ''
 	assert no_matches2 == ['-flip', '--g', '/path/to', '-ver']
 
-	config3, no_matches3 := flag.to_struct[Config](one_ok_gnu_arg_tail, mode: .error_as_no_match)!
+	config3, no_matches3 := flag.to_struct[Config](one_ok_gnu_arg_tail, mode: .relax_no_match)!
 	assert config3.mix == true
 	assert config3.sound == ''
 	assert config3.beep == false
 	assert config3.path == 'tail'
 	assert no_matches3 == ['-flip', '--g', '/path/to', '-ver']
 
-	config4, no_matches4 := flag.to_struct[Config](two_ok_gnu_arg_tail, mode: .error_as_no_match)!
+	config4, no_matches4 := flag.to_struct[Config](two_ok_gnu_arg_tail, mode: .relax_no_match)!
 	assert config4.mix == true
 	assert config4.sound == 'blop'
 	assert config4.beep == false
