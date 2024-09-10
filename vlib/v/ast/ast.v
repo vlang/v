@@ -2579,6 +2579,23 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	return res
 }
 
+pub fn (expr Expr) is_reference() bool {
+	return match expr {
+		PrefixExpr {
+			expr.op == .amp
+		}
+		UnsafeExpr {
+			expr.expr.is_reference()
+		}
+		ParExpr {
+			expr.expr.is_reference()
+		}
+		else {
+			false
+		}
+	}
+}
+
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
 pub fn (expr Expr) is_literal() bool {
 	return match expr {

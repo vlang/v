@@ -1,0 +1,5 @@
+vlib/v/checker/tests/ref_to_non_ref_err.vv:10:17: error: cannot use `&Foo` as `Foo` in argument 1 to `.index()`
+    8 | }
+    9 | 
+   10 | dump(list.index(unsafe { &list[1] }))
+      |                 ~~~~~~~~~~~~~~~~~~~

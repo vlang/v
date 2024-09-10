@@ -239,6 +239,12 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	} else {
+		// passing &expr where no-pointer is expected
+		if expected != ast.voidptr_type && !expected.is_ptr() && got.is_ptr()
+			&& arg.expr.is_reference() {
+			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+		}
 		if expected.has_flag(.option) {
 			got_is_ptr := got.is_ptr()
 				|| (arg.expr is ast.Ident && (arg.expr as ast.Ident).is_mut())
