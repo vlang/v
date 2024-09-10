@@ -461,6 +461,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				c.cur_struct_concrete_types = old_cur_struct_concrete_types
 			}
 		}
+		if struct_sym.info.is_union && node.init_fields.len > 1 {
+			c.error('union `${struct_sym.name}` can have only one field initialised',
+				node.pos)
+		}
 	} else if struct_sym.info is ast.Alias {
 		parent_sym := c.table.sym(struct_sym.info.parent_type)
 		// e.g. ´x := MyMapAlias{}´, should be a cast to alias type ´x := MyMapAlias(map[...]...)´
@@ -973,6 +977,13 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 	}
 
 	for embed in info.embeds {
+		embed_sym := c.table.sym(embed)
+		if embed_sym.info is ast.Struct {
+			if embed_sym.info.is_union && node.init_fields.len > 1 {
+				c.error('embed union `${embed_sym.name}` can have only one field initialised',
+					node.pos)
+			}
+		}
 		mut zero_struct_init := ast.StructInit{
 			pos: node.pos
 			typ: embed
