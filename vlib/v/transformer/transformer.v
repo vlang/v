@@ -248,11 +248,8 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 					t.expr(mut node.expr)
 				}
 			}
-			if mut node.expr is ast.CallExpr {
-				if node.expr.is_method && node.expr.left_type == t.strings_builder_type
-					&& node.expr.name == 'write_string' {
-					t.simplify_nested_interpolation_in_sb(mut onode, mut node.expr, node.typ)
-				}
+			if mut node.expr is ast.CallExpr && node.expr.is_expand_simple_interpolation {
+				t.simplify_nested_interpolation_in_sb(mut onode, mut node.expr, node.typ)
 			}
 		}
 		ast.FnDecl {

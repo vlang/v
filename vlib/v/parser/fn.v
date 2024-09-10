@@ -197,6 +197,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_ctor_new := false
 	mut is_c2v_variadic := false
 	mut is_markused := false
+	mut is_expand_simple_interpolation := false
 	mut comments := []ast.Comment{}
 	for fna in p.attrs {
 		match fna.name {
@@ -253,6 +254,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl',
 						p.prev_tok.pos())
 				}
+			}
+			'expand_simple_interpolation' {
+				is_expand_simple_interpolation = true
 			}
 			else {}
 		}
@@ -550,6 +554,8 @@ run them via `v file.v` instead',
 			pos:      start_pos
 			name_pos: name_pos
 			language: language
+			//
+			is_expand_simple_interpolation: is_expand_simple_interpolation
 		})
 	} else {
 		name = match language {
@@ -603,6 +609,8 @@ run them via `v file.v` instead',
 			pos:      start_pos
 			name_pos: name_pos
 			language: language
+			//
+			is_expand_simple_interpolation: is_expand_simple_interpolation
 		})
 	}
 	/*
@@ -688,6 +696,8 @@ run them via `v file.v` instead',
 		label_names:           p.label_names
 		end_comments:          p.eat_comments(same_line: true)
 		comments:              comments
+		//
+		is_expand_simple_interpolation: is_expand_simple_interpolation
 	}
 	if generic_names.len > 0 {
 		p.table.register_fn_generic_types(fn_decl.fkey())
