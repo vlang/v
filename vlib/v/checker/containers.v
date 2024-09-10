@@ -7,7 +7,7 @@ import v.token
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
-	unwrap_elem_type := c.unwrap_generic(node.elem_type)
+	mut unwrap_elem_type := c.unwrap_generic(node.elem_type)
 	if c.pref.warn_about_allocs {
 		c.warn_alloc('array initialization', node.pos)
 	}
@@ -59,6 +59,15 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				ast.Alias {
 					if elem_sym.name == 'byte' {
 						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+					}
+					parent_sym := c.table.sym(elem_sym.info.parent_type)
+					// check array to aliased array type
+					if parent_sym.info is ast.Array {
+						node.alias_type = c.table.find_or_register_array(unwrap_elem_type)
+						node.elem_type = c.table.find_or_register_array_with_dims(parent_sym.info.elem_type,
+							parent_sym.info.nr_dims)
+						unwrap_elem_type = node.elem_type
+						node.typ = c.table.find_or_register_array(node.elem_type)
 					}
 				}
 				else {}

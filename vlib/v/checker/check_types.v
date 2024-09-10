@@ -453,6 +453,21 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if got == ast.float_literal_type && expected_nonflagged.is_float() {
 		return true
 	}
+	// decode and check array to aliased array type
+	if got_sym.kind == .array && exp_sym.info is ast.Array {
+		exp_elem_sym := c.table.sym(exp_sym.info.elem_type)
+		if exp_elem_sym.info is ast.Alias {
+			parent_elem_sym := c.table.sym(exp_elem_sym.info.parent_type)
+			if parent_elem_sym.info is ast.Array {
+				array_info := parent_elem_sym.array_info()
+				elem_type := c.table.find_or_register_array_with_dims(array_info.elem_type,
+					array_info.nr_dims + exp_sym.info.nr_dims)
+				if c.table.type_to_str(got) == c.table.type_to_str(elem_type) {
+					return true
+				}
+			}
+		}
+	}
 	return false
 }
 
