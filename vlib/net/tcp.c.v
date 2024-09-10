@@ -570,8 +570,8 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 	return s
 }
 
-fn (mut s TcpSocket) set_option(level int, opt int, value voidptr) ! {
-	socket_error(C.setsockopt(s.handle, level, opt, value, sizeof(int)))!
+fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
+	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
@@ -582,16 +582,17 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// if opt !in opts_bool {
 	// 	return err_option_wrong_type
 	// }
-	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
+	x := int(value)
+	s.set_option(C.SOL_SOCKET, int(opt), x)!
 }
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
-	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
+	s.set_option(C.SOL_SOCKET, int(opt), value)!
 }
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
 	x := int(!on)
-	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x)!
+	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), x)!
 }
 
 fn (mut s TcpSocket) set_default_options() ! {

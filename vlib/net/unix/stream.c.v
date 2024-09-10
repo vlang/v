@@ -412,8 +412,8 @@ fn (mut s StreamSocket) @select(test Select, timeout time.Duration) !bool {
 }
 
 // set_option sets an option on the socket
-fn (mut s StreamSocket) set_option(level int, opt int, value voidptr) ! {
-	net.socket_error(C.setsockopt(s.handle, level, opt, value, sizeof(int)))!
+fn (mut s StreamSocket) set_option(level int, opt int, value int) ! {
+	net.socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
 }
 
 // set_option_bool sets a boolean option on the socket
@@ -424,12 +424,13 @@ pub fn (mut s StreamSocket) set_option_bool(opt net.SocketOption, value bool) ! 
 	if opt !in net.opts_bool {
 		return net.err_option_wrong_type
 	}
-	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
+	x := int(value)
+	s.set_option(C.SOL_SOCKET, int(opt), x)!
 }
 
 // set_option_bool sets an int option on the socket
 pub fn (mut s StreamSocket) set_option_int(opt net.SocketOption, value int) ! {
-	s.set_option(C.SOL_SOCKET, int(opt), &int(value))!
+	s.set_option(C.SOL_SOCKET, int(opt), value)!
 }
 
 fn (mut s StreamSocket) connect(socket_path string) ! {
