@@ -518,15 +518,6 @@ pub fn (x &Expr) str() string {
 			if x.cached_name != '' {
 				return x.cached_name
 			}
-			if obj := x.scope.find('${x.mod}.${x.name}') {
-				if obj is ConstField && x.mod != 'main' {
-					last_mod := x.mod.all_after_last('.')
-					unsafe {
-						x.cached_name = '${last_mod}.${x.name}'
-					}
-					return x.cached_name
-				}
-			}
 			unsafe {
 				x.cached_name = x.name.clone()
 			}
