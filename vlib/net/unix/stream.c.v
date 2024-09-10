@@ -412,8 +412,8 @@ fn (mut s StreamSocket) @select(test Select, timeout time.Duration) !bool {
 }
 
 // set_option sets an option on the socket
-fn (mut s StreamSocket) set_option(level int, opt int, value int) ! {
-	net.socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+fn (mut s StreamSocket) set_option(level int, opt int, value voidptr) ! {
+	net.socket_error(C.setsockopt(s.handle, level, opt, value, sizeof(int)))!
 }
 
 // set_option_bool sets a boolean option on the socket

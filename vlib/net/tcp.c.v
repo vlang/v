@@ -570,8 +570,8 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 	return s
 }
 
-fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
-	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+fn (mut s TcpSocket) set_option(level int, opt int, value voidptr) ! {
+	socket_error(C.setsockopt(s.handle, level, opt, value, sizeof(int)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
