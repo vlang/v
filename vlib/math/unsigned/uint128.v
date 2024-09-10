@@ -426,7 +426,7 @@ pub fn uint128_new(lo u64, hi u64) Uint128 {
 // unint_from_dec_str returns an error or new Uint128 from given string.
 // The `_` character is allowed as a separator.
 pub fn uint128_from_dec_str(value string) !Uint128 {
-	mut res := unsigned.uint128_zero
+	mut res := uint128_zero
 	underscore := `_`
 
 	for b_ in value {

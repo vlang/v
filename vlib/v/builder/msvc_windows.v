@@ -85,7 +85,7 @@ fn find_windows_kit_root_by_reg(target_arch string) !WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(builder.hkey_local_machine, path.to_wide(), 0, builder.key_query_value | builder.key_wow64_32key | builder.key_enumerate_sub_keys,
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key | key_enumerate_sub_keys,
 			voidptr(&root_key))
 
 		if rc != 0 {
@@ -447,7 +447,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	// Instead of failing, just retry several times in this case.
 	mut res := os.Result{}
 	mut i := 0
-	for i = 0; i < builder.thirdparty_obj_build_max_retries; i++ {
+	for i = 0; i < thirdparty_obj_build_max_retries; i++ {
 		res = os.execute(cmd)
 		if res.exit_code == 0 {
 			break
@@ -456,15 +456,15 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 			break
 		}
 		eprintln('---------------------------------------------------------------------')
-		eprintln('   msvc: failed to build a thirdparty object, try: ${i}/${builder.thirdparty_obj_build_max_retries}')
+		eprintln('   msvc: failed to build a thirdparty object, try: ${i}/${thirdparty_obj_build_max_retries}')
 		eprintln('    cmd: ${cmd}')
 		eprintln(' output:')
 		eprintln(res.output)
 		eprintln('---------------------------------------------------------------------')
-		time.sleep(builder.thirdparty_obj_build_retry_delay)
+		time.sleep(thirdparty_obj_build_retry_delay)
 	}
 	if res.exit_code != 0 {
-		verror('msvc: failed to build a thirdparty object after ${i}/${builder.thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
+		verror('msvc: failed to build a thirdparty object after ${i}/${thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
 	}
 	println(res.output)
 	flush_stdout()

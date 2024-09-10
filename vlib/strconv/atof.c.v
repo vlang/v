@@ -95,7 +95,7 @@ fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32, u32, u32) {
 
 // Utility functions
 fn is_digit(x u8) bool {
-	return x >= strconv.c_zero && x <= strconv.c_nine
+	return x >= c_zero && x <= c_nine
 }
 
 fn is_space(x u8) bool {
@@ -146,9 +146,9 @@ fn parser(s string) (ParserState, PrepNumber) {
 	// read mantissa
 	for i < s.len && s[i].is_digit() {
 		// println("$i => ${s[i]}")
-		if digx < strconv.digits {
+		if digx < digits {
 			pn.mantissa *= 10
-			pn.mantissa += u64(s[i] - strconv.c_zero)
+			pn.mantissa += u64(s[i] - c_zero)
 			digx++
 		} else if pn.exponent < 2147483647 {
 			pn.exponent++
@@ -160,9 +160,9 @@ fn parser(s string) (ParserState, PrepNumber) {
 	if i < s.len && s[i] == `.` {
 		i++
 		for i < s.len && s[i].is_digit() {
-			if digx < strconv.digits {
+			if digx < digits {
 				pn.mantissa *= 10
-				pn.mantissa += u64(s[i] - strconv.c_zero)
+				pn.mantissa += u64(s[i] - c_zero)
 				pn.exponent--
 				digx++
 			}
@@ -175,9 +175,9 @@ fn parser(s string) (ParserState, PrepNumber) {
 		i++
 		if i < s.len {
 			// esponent sign
-			if s[i] == strconv.c_plus {
+			if s[i] == c_plus {
 				i++
-			} else if s[i] == strconv.c_minus {
+			} else if s[i] == c_minus {
 				expneg = true
 				i++
 			}
@@ -185,7 +185,7 @@ fn parser(s string) (ParserState, PrepNumber) {
 			for i < s.len && s[i].is_digit() {
 				if expexp < 214748364 {
 					expexp *= 10
-					expexp += int(s[i] - strconv.c_zero)
+					expexp += int(s[i] - c_zero)
 				}
 				i++
 			}
@@ -266,18 +266,18 @@ fn converter(mut pn PrepNumber) u64 {
 			s1 = q1
 			s0 = q0
 		}
-		q2 = s2 / strconv.c_ten
-		r1 = s2 % strconv.c_ten
+		q2 = s2 / c_ten
+		r1 = s2 % c_ten
 		r2 = (s1 >> 8) | (r1 << 24)
-		q1 = r2 / strconv.c_ten
-		r1 = r2 % strconv.c_ten
+		q1 = r2 / c_ten
+		r1 = r2 % c_ten
 		r2 = ((s1 & u32(0xFF)) << 16) | (s0 >> 16) | (r1 << 24)
-		r0 = r2 / strconv.c_ten
-		r1 = r2 % strconv.c_ten
+		r0 = r2 / c_ten
+		r1 = r2 % c_ten
 		q1 = (q1 << 8) | ((r0 & u32(0x00FF0000)) >> 16)
 		q0 = r0 << 16
 		r2 = (s0 & u32(0xFFFF)) | (r1 << 16)
-		q0 |= r2 / strconv.c_ten
+		q0 |= r2 / c_ten
 		s2 = q2
 		s1 = q1
 		s0 = q0
@@ -365,15 +365,15 @@ fn converter(mut pn PrepNumber) u64 {
 	binexp += 1023
 	if binexp > 2046 {
 		if pn.negative {
-			result = strconv.double_minus_infinity
+			result = double_minus_infinity
 		} else {
-			result = strconv.double_plus_infinity
+			result = double_plus_infinity
 		}
 	} else if binexp < 1 {
 		if pn.negative {
-			result = strconv.double_minus_zero
+			result = double_minus_zero
 		} else {
-			result = strconv.double_plus_zero
+			result = double_plus_zero
 		}
 	} else if s2 != 0 {
 		mut q := u64(0)
@@ -399,16 +399,16 @@ pub fn atof64(s string) !f64 {
 			res.u = converter(mut pn)
 		}
 		.pzero {
-			res.u = strconv.double_plus_zero
+			res.u = double_plus_zero
 		}
 		.mzero {
-			res.u = strconv.double_minus_zero
+			res.u = double_minus_zero
 		}
 		.pinf {
-			res.u = strconv.double_plus_infinity
+			res.u = double_plus_infinity
 		}
 		.minf {
-			res.u = strconv.double_minus_infinity
+			res.u = double_minus_infinity
 		}
 		.invalid_number {
 			return error('not a number')

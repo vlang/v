@@ -41,8 +41,8 @@ pub fn compute_result(request SimRequest) &SimResult {
 	mut state := request.state
 	params := request.params
 
-	for _ in 0 .. sim.max_iterations {
-		state.increment(sim.simulation_delta_t, params)
+	for _ in 0 .. max_iterations {
+		state.increment(simulation_delta_t, params)
 		if state.done() {
 			println('done!')
 			break

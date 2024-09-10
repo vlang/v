@@ -33,10 +33,10 @@ fn abs64(x i64) u64 {
 @[inline]
 fn decode64(input u8) u8 {
 	$if debug {
-		assert input >= vlq.enc_char_special_plus
-		assert input <= vlq.enc_char_end_zl
+		assert input >= enc_char_special_plus
+		assert input <= enc_char_end_zl
 	}
-	return u8(vlq.enc_index[input - vlq.enc_char_special_plus])
+	return u8(enc_index[input - enc_char_special_plus])
 }
 
 // Decode a single VLQ value from the input stream, returning the value.
@@ -62,16 +62,16 @@ pub fn decode(mut input io.Reader) !i64 {
 			return error('no content')
 		}
 		digit = decode64(buf[0])
-		keep_going = (digit & vlq.continued) != 0
+		keep_going = (digit & continued) != 0
 
-		digit_value := u64(digit & vlq.mask) << u32(shifter) // TODO: check Overflow
+		digit_value := u64(digit & mask) << u32(shifter) // TODO: check Overflow
 
 		accum += digit_value
-		shifter += vlq.shift
+		shifter += shift
 	}
 
 	abs_value := accum / 2
-	if abs_value > vlq.max_i64 {
+	if abs_value > max_i64 {
 		return error('Overflow')
 	}
 
@@ -84,7 +84,7 @@ fn encode64(input u8) u8 {
 	$if debug {
 		assert input < 64
 	}
-	return vlq.enc_table[input]
+	return enc_table[input]
 }
 
 // Encode a value as Base64 VLQ, sending it to the writer
@@ -94,15 +94,15 @@ pub fn encode(value i64, mut output io.Writer) ! {
 	if signed {
 		if value_u64 == 0 {
 			// Wrapped
-			value_u64 = vlq.max_i64 + 1
+			value_u64 = max_i64 + 1
 		}
 		value_u64 |= 1
 	}
 	for {
-		mut digit := u8(value_u64) & vlq.mask
-		value_u64 >>= vlq.shift
+		mut digit := u8(value_u64) & mask
+		value_u64 >>= shift
 		if value_u64 > 0 {
-			digit |= vlq.continued
+			digit |= continued
 		}
 		bytes := [encode64(digit)]
 		output.write(bytes) or { return error('Write failed') }

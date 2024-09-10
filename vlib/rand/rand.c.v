@@ -40,7 +40,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 		// >> to zero and one, respectively.
 		// all nibbles starting with 10 are: 1000, 1001, 1010, 1011 -> hex digits `8`, `9`, `a`, `b`
 		// these are stored in clock_seq_hi_and_reserved_valid_values, choose one of them at random:
-		buf[19] = rand.clock_seq_hi_and_reserved_valid_values[d & 0x03]
+		buf[19] = clock_seq_hi_and_reserved_valid_values[d & 0x03]
 		// >> Set the four most significant bits (bits 12 through 15) of the
 		// >> time_hi_and_version field to the 4-bit version number from Section 4.1.3.
 		buf[14] = `4`
@@ -63,7 +63,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	mut i := 9
 	for i >= 0 {
 		unsafe {
-			buf[i] = rand.ulid_encoding[t & 0x1F]
+			buf[i] = ulid_encoding[t & 0x1F]
 		}
 		t = t >> 5
 		i--
@@ -73,7 +73,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	i = 10
 	for i < 19 {
 		unsafe {
-			buf[i] = rand.ulid_encoding[x & 0x1F]
+			buf[i] = ulid_encoding[x & 0x1F]
 		}
 		x = x >> 5
 		i++
@@ -82,7 +82,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	x = rng.u64()
 	for i < 26 {
 		unsafe {
-			buf[i] = rand.ulid_encoding[x & 0x1F]
+			buf[i] = ulid_encoding[x & 0x1F]
 		}
 		x = x >> 5
 		i++

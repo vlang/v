@@ -198,7 +198,7 @@ fn supports_truecolor() bool {
 
 fn termios_reset() {
 	// C.TCSANOW ??
-	mut startup := ui.termios_at_startup
+	mut startup := termios_at_startup
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut startup)
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
 	flush_stdout()

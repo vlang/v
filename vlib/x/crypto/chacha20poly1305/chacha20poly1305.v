@@ -67,17 +67,17 @@ pub fn decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 
 // Chacha20Poly1305 represents AEAD algorithm backed by `x.crypto.chacha20` and `x.crypto.poly1305`.
 struct Chacha20Poly1305 {
-	key    []u8 = []u8{len: chacha20poly1305.key_size}
-	ncsize int  = chacha20poly1305.nonce_size
+	key    []u8 = []u8{len: key_size}
+	ncsize int  = nonce_size
 }
 
 // new creates a new Chacha20Poly1305 AEAD instance with given 32 bytes of key
 // and the nonce size in ncsize. The ncsize should be 12 or 24 length, otherwise it would return error.
 pub fn new(key []u8, ncsize int) !&AEAD {
-	if key.len != chacha20poly1305.key_size {
+	if key.len != key_size {
 		return error('chacha20poly1305: bad key size')
 	}
-	if ncsize != chacha20poly1305.nonce_size && ncsize != chacha20poly1305.x_nonce_size {
+	if ncsize != nonce_size && ncsize != x_nonce_size {
 		return error('chacha20poly1305: bad nonce size supplied, its should 12 or 24')
 	}
 	c := &Chacha20Poly1305{
@@ -95,7 +95,7 @@ pub fn (c Chacha20Poly1305) nonce_size() int {
 // overhead returns maximum difference between the lengths of a plaintext to be encrypted and
 // ciphertext's output. In the context of Chacha20Poly1305, `.overhead() == .tag_size`.
 pub fn (c Chacha20Poly1305) overhead() int {
-	return chacha20poly1305.tag_size
+	return tag_size
 }
 
 // encrypt encrypts plaintext, along with nonce and additional data and generates
@@ -125,7 +125,7 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, ad []u8) ![]
 	// and given nonce. Actually its generates by performing ChaCha20 key stream function,
 	// and take the first 32 bytes as a one-time key for Poly1305 from 64 bytes results.
 	// see https://datatracker.ietf.org/doc/html/rfc8439#section-2.6
-	mut polykey := []u8{len: chacha20poly1305.key_size}
+	mut polykey := []u8{len: key_size}
 	mut s := chacha20.new_cipher(c.key, nonce)!
 	s.xor_key_stream(mut polykey, polykey)
 
@@ -143,7 +143,7 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, ad []u8) ![]
 
 	// Lets creates Poly1305 instance with one-time key generates in above step,
 	// updates Poly1305 state with this constructed_msg and finally generates tag.
-	mut tag := []u8{len: chacha20poly1305.tag_size}
+	mut tag := []u8{len: tag_size}
 	mut po := poly1305.new(polykey)!
 	po.update(constructed_msg)
 	po.finish(mut tag)
@@ -175,7 +175,7 @@ pub fn (c Chacha20Poly1305) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 
 
 fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
 	// generates poly1305 one-time key for later calculation
-	mut polykey := []u8{len: chacha20poly1305.key_size}
+	mut polykey := []u8{len: key_size}
 	mut s := chacha20.new_cipher(c.key, nonce)!
 	s.xor_key_stream(mut polykey, polykey)
 
@@ -192,7 +192,7 @@ fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![
 	mut constructed_msg := []u8{}
 	poly1305_construct_msg(mut constructed_msg, ad, encrypted)
 
-	mut tag := []u8{len: chacha20poly1305.tag_size}
+	mut tag := []u8{len: tag_size}
 	mut po := poly1305.new(polykey)!
 	po.update(constructed_msg)
 	po.finish(mut tag)

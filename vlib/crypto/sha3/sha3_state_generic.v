@@ -212,7 +212,7 @@ const rho_offsets = [[int(0), 36, 3, 41, 18], [int(1), 44, 10, 45, 2],
 fn (mut s State) rho() {
 	for x in 0 .. 5 {
 		for y in 0 .. 5 {
-			s.a[x][y] = bits.rotate_left_64(s.a[x][y], sha3.rho_offsets[x][y])
+			s.a[x][y] = bits.rotate_left_64(s.a[x][y], rho_offsets[x][y])
 		}
 	}
 }
@@ -298,7 +298,7 @@ const iota_round_constants = [u64(0x0000000000000001), 0x0000000000008082, 0x800
 // to xor with lane 0, 0.
 @[inline]
 fn (mut s State) iota(round_index int) {
-	s.a[0][0] ^= sha3.iota_round_constants[round_index]
+	s.a[0][0] ^= iota_round_constants[round_index]
 }
 
 fn (s State) str() string {

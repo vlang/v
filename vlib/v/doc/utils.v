@@ -104,7 +104,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			// Use own paragraph for "highlight" comments.
 			ll := l.to_lower()
 			mut continue_line_loop := false
-			for key in doc.highlight_keys {
+			for key in highlight_keys {
 				if ll.starts_with(key) {
 					comment += '\n\n${key.title()}${l[key.len..]}'
 					// Workaround for compiling with `v -cstrict -cc gcc vlib/v/doc/doc_test.v`
@@ -117,7 +117,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				continue
 			}
 			line_no_spaces := l.replace(' ', '')
-			for ch in doc.horizontal_rule_chars {
+			for ch in horizontal_rule_chars {
 				if line_no_spaces.starts_with(ch.repeat(3))
 					&& line_no_spaces.count(ch) == line_no_spaces.len {
 					comment += '\n' + l + '\n'

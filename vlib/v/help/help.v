@@ -39,7 +39,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 			exit(fail_code)
 		}
 	}
-	if topic in help.cli_topics {
+	if topic in cli_topics {
 		vexe := get_vexe()
 		os.system('${os.quoted_path(vexe)} ${topic} --help')
 		exit(opts.exit_code)

@@ -57,7 +57,7 @@ pub fn trailing_zeros_16(x u16) int {
 		return 16
 	}
 	// see comment in trailing_zeros_64
-	return int(bits.de_bruijn32tab[u32(x & -x) * bits.de_bruijn32 >> (32 - 5)])
+	return int(de_bruijn32tab[u32(x & -x) * de_bruijn32 >> (32 - 5)])
 }
 
 // trailing_zeros_32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
@@ -67,7 +67,7 @@ pub fn trailing_zeros_32(x u32) int {
 		return 32
 	}
 	// see comment in trailing_zeros_64
-	return int(bits.de_bruijn32tab[(x & -x) * bits.de_bruijn32 >> (32 - 5)])
+	return int(de_bruijn32tab[(x & -x) * de_bruijn32 >> (32 - 5)])
 }
 
 // trailing_zeros_64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
@@ -87,7 +87,7 @@ pub fn trailing_zeros_64(x u64) int {
 	// find by how many bits it was shifted by looking at which six bit
 	// substring ended up at the top of the word.
 	// (Knuth, volume 4, section 7.3.1)
-	return int(bits.de_bruijn64tab[(x & -x) * bits.de_bruijn64 >> (64 - 6)])
+	return int(de_bruijn64tab[(x & -x) * de_bruijn64 >> (64 - 6)])
 }
 
 // --- OnesCount ---
@@ -131,9 +131,9 @@ pub fn ones_count_64(x u64) int {
 	// Per "Hacker's Delight", the first line can be simplified
 	// more, but it saves at best one instruction, so we leave
 	// it alone for clarity.
-	mut y := (x >> u64(1) & (bits.m0 & max_u64)) + (x & (bits.m0 & max_u64))
-	y = (y >> u64(2) & (bits.m1 & max_u64)) + (y & (bits.m1 & max_u64))
-	y = ((y >> 4) + y) & (bits.m2 & max_u64)
+	mut y := (x >> u64(1) & (m0 & max_u64)) + (x & (m0 & max_u64))
+	y = (y >> u64(2) & (m1 & max_u64)) + (y & (m1 & max_u64))
+	y = ((y >> 4) + y) & (m2 & max_u64)
 	y += y >> 8
 	y += y >> 16
 	y += y >> 32
@@ -152,8 +152,8 @@ const n64 = u64(64)
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn rotate_left_8(x u8, k int) u8 {
-	s := u8(k) & (bits.n8 - u8(1))
-	return (x << s) | (x >> (bits.n8 - s))
+	s := u8(k) & (n8 - u8(1))
+	return (x << s) | (x >> (n8 - s))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -162,8 +162,8 @@ pub fn rotate_left_8(x u8, k int) u8 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn rotate_left_16(x u16, k int) u16 {
-	s := u16(k) & (bits.n16 - u16(1))
-	return (x << s) | (x >> (bits.n16 - s))
+	s := u16(k) & (n16 - u16(1))
+	return (x << s) | (x >> (n16 - s))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -172,8 +172,8 @@ pub fn rotate_left_16(x u16, k int) u16 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn rotate_left_32(x u32, k int) u32 {
-	s := u32(k) & (bits.n32 - u32(1))
-	return (x << s) | (x >> (bits.n32 - s))
+	s := u32(k) & (n32 - u32(1))
+	return (x << s) | (x >> (n32 - s))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -182,8 +182,8 @@ pub fn rotate_left_32(x u32, k int) u32 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn rotate_left_64(x u64, k int) u64 {
-	s := u64(k) & (bits.n64 - u64(1))
-	return (x << s) | (x >> (bits.n64 - s))
+	s := u64(k) & (n64 - u64(1))
+	return (x << s) | (x >> (n64 - s))
 }
 
 // --- Reverse ---
@@ -202,18 +202,18 @@ pub fn reverse_16(x u16) u16 {
 // reverse_32 returns the value of x with its bits in reversed order.
 @[inline]
 pub fn reverse_32(x u32) u32 {
-	mut y := ((x >> u32(1) & (bits.m0 & max_u32)) | ((x & (bits.m0 & max_u32)) << 1))
-	y = ((y >> u32(2) & (bits.m1 & max_u32)) | ((y & (bits.m1 & max_u32)) << u32(2)))
-	y = ((y >> u32(4) & (bits.m2 & max_u32)) | ((y & (bits.m2 & max_u32)) << u32(4)))
+	mut y := ((x >> u32(1) & (m0 & max_u32)) | ((x & (m0 & max_u32)) << 1))
+	y = ((y >> u32(2) & (m1 & max_u32)) | ((y & (m1 & max_u32)) << u32(2)))
+	y = ((y >> u32(4) & (m2 & max_u32)) | ((y & (m2 & max_u32)) << u32(4)))
 	return reverse_bytes_32(u32(y))
 }
 
 // reverse_64 returns the value of x with its bits in reversed order.
 @[inline]
 pub fn reverse_64(x u64) u64 {
-	mut y := ((x >> u64(1) & (bits.m0 & max_u64)) | ((x & (bits.m0 & max_u64)) << 1))
-	y = ((y >> u64(2) & (bits.m1 & max_u64)) | ((y & (bits.m1 & max_u64)) << 2))
-	y = ((y >> u64(4) & (bits.m2 & max_u64)) | ((y & (bits.m2 & max_u64)) << 4))
+	mut y := ((x >> u64(1) & (m0 & max_u64)) | ((x & (m0 & max_u64)) << 1))
+	y = ((y >> u64(2) & (m1 & max_u64)) | ((y & (m1 & max_u64)) << 2))
+	y = ((y >> u64(4) & (m2 & max_u64)) | ((y & (m2 & max_u64)) << 4))
 	return reverse_bytes_64(y)
 }
 
@@ -231,7 +231,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_32(x u32) u32 {
-	y := ((x >> u32(8) & (bits.m3 & max_u32)) | ((x & (bits.m3 & max_u32)) << u32(8)))
+	y := ((x >> u32(8) & (m3 & max_u32)) | ((x & (m3 & max_u32)) << u32(8)))
 	return u32((y >> 16) | (y << 16))
 }
 
@@ -240,8 +240,8 @@ pub fn reverse_bytes_32(x u32) u32 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_64(x u64) u64 {
-	mut y := ((x >> u64(8) & (bits.m3 & max_u64)) | ((x & (bits.m3 & max_u64)) << u64(8)))
-	y = ((y >> u64(16) & (bits.m4 & max_u64)) | ((y & (bits.m4 & max_u64)) << u64(16)))
+	mut y := ((x >> u64(8) & (m3 & max_u64)) | ((x & (m3 & max_u64)) << u64(8)))
+	y = ((y >> u64(16) & (m4 & max_u64)) | ((y & (m4 & max_u64)) << u64(16)))
 	return (y >> 32) | (y << 32)
 }
 
@@ -387,13 +387,13 @@ pub fn mul_32(x u32, y u32) (u32, u32) {
 //
 // This function's execution time does not depend on the inputs.
 pub fn mul_64(x u64, y u64) (u64, u64) {
-	x0 := x & bits.mask32
+	x0 := x & mask32
 	x1 := x >> 32
-	y0 := y & bits.mask32
+	y0 := y & mask32
 	y1 := y >> 32
 	w0 := x0 * y0
 	t := x1 * y0 + (w0 >> 32)
-	mut w1 := t & bits.mask32
+	mut w1 := t & mask32
 	w2 := t >> 32
 	w1 += x0 * y1
 	hi := x1 * y1 + w2 + (w1 >> 32)
@@ -408,7 +408,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 // div_32 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
 pub fn div_32(hi u32, lo u32, y u32) (u32, u32) {
 	if y != 0 && y <= hi {
-		panic(bits.overflow_error)
+		panic(overflow_error)
 	}
 	z := (u64(hi) << 32) | u64(lo)
 	quo := u32(z / u64(y))
@@ -423,15 +423,15 @@ pub fn div_32(hi u32, lo u32, y u32) (u32, u32) {
 pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut y := y1
 	if y == 0 {
-		panic(bits.overflow_error)
+		panic(overflow_error)
 	}
 	if y <= hi {
-		panic(bits.overflow_error)
+		panic(overflow_error)
 	}
 	s := u32(leading_zeros_64(y))
 	y <<= s
 	yn1 := y >> 32
-	yn0 := y & bits.mask32
+	yn0 := y & mask32
 	ss1 := (hi << s)
 	xxx := 64 - s
 	mut ss2 := lo >> xxx
@@ -454,28 +454,28 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	un32 := ss1 | ss2
 	un10 := lo << s
 	un1 := un10 >> 32
-	un0 := un10 & bits.mask32
+	un0 := un10 & mask32
 	mut q1 := un32 / yn1
 	mut rhat := un32 - (q1 * yn1)
-	for q1 >= bits.two32 || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
+	for q1 >= two32 || (q1 * yn0) > ((two32 * rhat) + un1) {
 		q1--
 		rhat += yn1
-		if rhat >= bits.two32 {
+		if rhat >= two32 {
 			break
 		}
 	}
-	un21 := (un32 * bits.two32) + (un1 - (q1 * y))
+	un21 := (un32 * two32) + (un1 - (q1 * y))
 	mut q0 := un21 / yn1
 	rhat = un21 - q0 * yn1
-	for q0 >= bits.two32 || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
+	for q0 >= two32 || (q0 * yn0) > ((two32 * rhat) + un0) {
 		q0--
 		rhat += yn1
-		if rhat >= bits.two32 {
+		if rhat >= two32 {
 			break
 		}
 	}
-	qq := ((q1 * bits.two32) + q0)
-	rr := ((un21 * bits.two32) + un0 - (q0 * y)) >> s
+	qq := ((q1 * two32) + q0)
+	rr := ((un21 * two32) + un0 - (q0 * y)) >> s
 	return qq, rr
 }
 

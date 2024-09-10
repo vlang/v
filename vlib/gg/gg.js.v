@@ -258,7 +258,7 @@ pub:
 const size = Size{0, 0}
 
 pub fn window_size() Size {
-	return gg.size
+	return size
 }
 
 pub struct Context {
@@ -324,7 +324,7 @@ pub fn new_context(cfg Config) &Context {
 	g.width = cfg.width
 	g.height = cfg.height
 	g.ui_mode = cfg.ui_mode
-	mut sz := gg.size
+	mut sz := size
 	sz.height = g.height
 	sz.width = g.width
 	g.config = cfg

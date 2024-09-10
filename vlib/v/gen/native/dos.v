@@ -92,7 +92,7 @@ pub fn (mut g Gen) gen_dos_header() {
 			g.println('; ' + dos_header_description[i])
 		}
 	}
-	if g.pos() != native.dos_header_size {
+	if g.pos() != dos_header_size {
 		g.n_error('Invalid dos header size')
 	}
 

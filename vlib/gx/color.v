@@ -309,7 +309,7 @@ pub fn color_from_string(s string) Color {
 		mut hex_str := '0x' + s[1..]
 		return hex(hex_str.int())
 	} else {
-		return gx.string_colors[s]
+		return string_colors[s]
 	}
 }
 

@@ -33,5 +33,5 @@ const whitelist = {
 }
 
 fn (g Gen) is_blacklisted(name string, is_builtin bool) bool {
-	return native.whitelist[name] or { is_builtin }
+	return whitelist[name] or { is_builtin }
 }

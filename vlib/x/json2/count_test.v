@@ -82,7 +82,7 @@ fn test_types() {
 
 	count_test(StructType[time.Time]{})
 
-	count_test(StructType[time.Time]{ val: json2.fixed_time })
+	count_test(StructType[time.Time]{ val: fixed_time })
 
 	count_test(StructType[StructType[int]]{
 		val: StructType[int]{

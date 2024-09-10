@@ -52,7 +52,7 @@ mut:
 	// Poly1305 accumulator
 	h Uint192
 	// buffer
-	buffer   []u8 = []u8{len: poly1305.block_size}
+	buffer   []u8 = []u8{len: block_size}
 	leftover int
 	// The done flag tells us if the instance should not be used again.
 	// It's set to true after calling finish or reset on the instance.
@@ -64,7 +64,7 @@ mut:
 // This is an oneshot function to create a tag and reset internal state after the call.
 // For incremental updates, use the method based on Poly1305 mac instance.
 pub fn create_tag(mut out []u8, msg []u8, key []u8) ! {
-	if out.len != poly1305.tag_size {
+	if out.len != tag_size {
 		return error('poly1305: bad out tag_size')
 	}
 	mut po := new(key)!
@@ -77,7 +77,7 @@ pub fn create_tag(mut out []u8, msg []u8, key []u8) ! {
 // It returns `true` if two tags is matching, `false` otherwise.
 pub fn verify_tag(tag []u8, msg []u8, key []u8) bool {
 	mut po := new(key) or { panic(err) }
-	mut out := []u8{len: poly1305.tag_size}
+	mut out := []u8{len: tag_size}
 	po.update(msg)
 	po.finish(mut out)
 	return subtle.constant_time_compare(tag, out) == 1
@@ -86,7 +86,7 @@ pub fn verify_tag(tag []u8, msg []u8, key []u8) bool {
 // new creates a new Poly1305 mac instance from 32 bytes of key provided.
 @[direct_array_access]
 pub fn new(key []u8) !&Poly1305 {
-	if key.len != poly1305.key_size {
+	if key.len != key_size {
 		return error('poly1305: bad key length')
 	}
 	// Read the r part of the key and clamp it. Clamping was done by clearing
@@ -99,8 +99,8 @@ pub fn new(key []u8) !&Poly1305 {
 	// mask value is 0x0ffffffc0ffffffc0ffffffc0fffffff.
 	// See the rmask0 and rmask1 constants above.
 	r := unsigned.Uint128{
-		lo: binary.little_endian_u64(key[0..8]) & poly1305.rmask0
-		hi: binary.little_endian_u64(key[8..16]) & poly1305.rmask1
+		lo: binary.little_endian_u64(key[0..8]) & rmask0
+		hi: binary.little_endian_u64(key[8..16]) & rmask1
 	}
 
 	// read s part from the rest bytes of key
@@ -124,10 +124,10 @@ pub fn (mut po Poly1305) update(msg []u8) {
 // verify verifies if the `tag` is a valid message authenticated code for current state of
 // Poly1305 instance. Internally, it works on clone of the current instance.
 pub fn (po Poly1305) verify(tag []u8) bool {
-	assert tag.len == poly1305.tag_size
+	assert tag.len == tag_size
 	// we work on copy of current instance
 	mut ctx := po
-	mut out := []u8{len: poly1305.tag_size}
+	mut out := []u8{len: tag_size}
 	if ctx.leftover > 0 {
 		poly1305_blocks(mut ctx, ctx.buffer[..ctx.leftover])
 	}
@@ -153,14 +153,14 @@ pub fn (mut po Poly1305) finish(mut out []u8) {
 // reinit reinitializes Poly1305 mac instance by resetting internal fields, and
 // then reinit instance with the new key.
 pub fn (mut po Poly1305) reinit(key []u8) {
-	if key.len != poly1305.key_size {
+	if key.len != key_size {
 		panic('bad key size')
 	}
 	// first, we reset the instance and than setup its again
 	po.reset()
 	po.r = unsigned.Uint128{
-		lo: binary.little_endian_u64(key[0..8]) & poly1305.rmask0
-		hi: binary.little_endian_u64(key[8..16]) & poly1305.rmask1
+		lo: binary.little_endian_u64(key[0..8]) & rmask0
+		hi: binary.little_endian_u64(key[8..16]) & rmask1
 	}
 	po.s = unsigned.Uint128{
 		lo: binary.little_endian_u64(key[16..24])
@@ -183,7 +183,7 @@ fn poly1305_update_block(mut po Poly1305, msg []u8) {
 	mut idx := 0
 	// handle leftover
 	if po.leftover > 0 {
-		want := math.min(poly1305.block_size - po.leftover, msglen)
+		want := math.min(block_size - po.leftover, msglen)
 		block := msg[idx..idx + want]
 		_ := copy(mut po.buffer[po.leftover..], block)
 
@@ -191,15 +191,15 @@ fn poly1305_update_block(mut po Poly1305, msg []u8) {
 		idx += want
 		po.leftover += want
 
-		if po.leftover < poly1305.block_size {
+		if po.leftover < block_size {
 			return
 		}
 		poly1305_blocks(mut po, po.buffer)
 		po.leftover = 0
 	}
 	// process full blocks
-	if msglen >= poly1305.block_size {
-		want := (msglen & ~(poly1305.block_size - 1))
+	if msglen >= block_size {
+		want := (msglen & ~(block_size - 1))
 		mut block := unsafe { msg[idx..idx + want] }
 		poly1305_blocks(mut po, block)
 		idx += want
@@ -233,13 +233,13 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 		return
 	}
 	// For correctness and clarity, we check whether r is properly clamped.
-	if po.r.lo & poly1305.not_rmask0 != 0 && po.r.hi & poly1305.not_rmask1 != 0 {
+	if po.r.lo & not_rmask0 != 0 && po.r.hi & not_rmask1 != 0 {
 		panic('poly1305: bad unclamped of r')
 	}
 	// We need the accumulator to be in correctly reduced form to make sure it is not overflowing.
 	// To be safe when used, only maximum of four low bits of the high part of the accumulator (h.hi)
 	// can be set, and the remaining high bits must not be set.
-	if po.h.hi & poly1305.mask_high60bits != 0 {
+	if po.h.hi & mask_high60bits != 0 {
 		panic('poly1305: h need to be reduced')
 	}
 
@@ -259,10 +259,10 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 	for msglen > 0 {
 		// carry
 		mut c := u64(0)
-		if msglen >= poly1305.block_size {
+		if msglen >= block_size {
 			// Read the 16 bytes msg block as a little-endian number
 			// and stored into the 128 bits of Uint128
-			block := msg[idx..idx + poly1305.block_size]
+			block := msg[idx..idx + block_size]
 			m := unsigned.Uint128{
 				lo: binary.little_endian_u64(block[0..8])
 				hi: binary.little_endian_u64(block[8..16])
@@ -276,12 +276,12 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 			// so we can just add 1 to the high part of accumulator (h.hi += 1)
 			// h.hi has been checked above, so, its safe to assume its not overflow
 			h.hi += c + 1
-			idx += poly1305.block_size
-			msglen -= poly1305.block_size
+			idx += block_size
+			msglen -= block_size
 		} else {
 			// The last one msg block might be shorter than 16 bytes long,
 			// pad it with zeros to align with block_size.
-			mut buf := []u8{len: poly1305.block_size}
+			mut buf := []u8{len: block_size}
 			subtle.constant_time_copy(1, mut buf[..msglen], msg[idx..idx + msglen])
 
 			// set a bit above msg size.
@@ -295,8 +295,8 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 			// add this number to the accumulator, ie, h += m
 			h, c = h.add_128_checked(m, 0)
 			h.hi += c
-			idx += poly1305.block_size
-			msglen -= poly1305.block_size
+			idx += block_size
+			msglen -= block_size
 		}
 
 		// perform h *= r and then do partial reduction modulo p to the output.
@@ -311,11 +311,11 @@ fn poly1305_blocks(mut po Poly1305, msg []u8) {
 // finalize finalizes the reduction of accumulator h, adds it with secret s,
 // and then take 128 bits of h stored into out.
 fn finalize(mut out []u8, mut ac Uint192, s unsigned.Uint128) {
-	assert out.len == poly1305.tag_size
+	assert out.len == tag_size
 	mut h := ac
 	// compute t = h - p = h - (2¹³⁰ - 5), and select h as the result if the
 	// subtraction underflows, and t otherwise.
-	t, b := h.sub_checked(poly1305.p)
+	t, b := h.sub_checked(p)
 
 	// h = h if h < p else h - p
 	h.lo = select_64(b, h.lo, t.lo)
@@ -358,9 +358,9 @@ fn poly1305_squeeze(mut h Uint192, t [4]u64) {
 	mut ac := Uint192{
 		lo: t[0]
 		mi: t[1]
-		hi: t[2] & poly1305.mask_low2bits
+		hi: t[2] & mask_low2bits
 	}
-	mut cc := unsigned.uint128_new(t[2] & poly1305.mask_high62bits, t[3])
+	mut cc := unsigned.uint128_new(t[2] & mask_high62bits, t[3])
 	// reduction of general mersene prime, x = c * 2¹³⁰ + h  =  c * 5 + h  (mod  2¹³⁰ - 5)
 	// because 2¹³⁰ = 5 (mod 2¹³⁰ - 5)
 	// here, we follow the go version

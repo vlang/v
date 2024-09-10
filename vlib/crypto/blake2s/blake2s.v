@@ -76,42 +76,42 @@ pub fn (d Digest) str() string {
 
 // new256 initializes the digest structure for a Blake2s 256 bit hash
 pub fn new256() !&Digest {
-	return new_digest(blake2s.size256, []u8{})!
+	return new_digest(size256, []u8{})!
 }
 
 // new_pmac256 initializes the digest structure for a Blake2s 256 bit prefix MAC
 pub fn new_pmac256(key []u8) !&Digest {
-	return new_digest(blake2s.size256, key)!
+	return new_digest(size256, key)!
 }
 
 // new224 initializes the digest structure for a Blake2s 224 bit hash
 pub fn new224() !&Digest {
-	return new_digest(blake2s.size224, []u8{})!
+	return new_digest(size224, []u8{})!
 }
 
 // new_pmac224 initializes the digest structure for a Blake2s 224 bit prefix MAC
 pub fn new_pmac224(key []u8) !&Digest {
-	return new_digest(blake2s.size224, key)!
+	return new_digest(size224, key)!
 }
 
 // new160 initializes the digest structure for a Blake2s 160 bit hash
 pub fn new160() !&Digest {
-	return new_digest(blake2s.size160, []u8{})!
+	return new_digest(size160, []u8{})!
 }
 
 // new_pmac160 initializes the digest structure for a Blake2s 160 bit prefix MAC
 pub fn new_pmac160(key []u8) !&Digest {
-	return new_digest(blake2s.size160, key)!
+	return new_digest(size160, key)!
 }
 
 // new126 initializes the digest structure for a Blake2s 128 bit hash
 pub fn new128() !&Digest {
-	return new_digest(blake2s.size128, []u8{})!
+	return new_digest(size128, []u8{})!
 }
 
 // new_pmac128 initializes the digest structure for a Blake2s 128 bit prefix MAC
 pub fn new_pmac128(key []u8) !&Digest {
-	return new_digest(blake2s.size128, key)!
+	return new_digest(size128, key)!
 }
 
 struct HashSizeError {
@@ -120,7 +120,7 @@ struct HashSizeError {
 }
 
 fn (err HashSizeError) msg() string {
-	return 'Hash size ${err.size} must be between 1 and ${blake2s.size256}'
+	return 'Hash size ${err.size} must be between 1 and ${size256}'
 }
 
 struct KeySizeError {
@@ -129,7 +129,7 @@ struct KeySizeError {
 }
 
 fn (err KeySizeError) msg() string {
-	return 'Key size ${err.size} must be between 0 and ${blake2s.size256}'
+	return 'Key size ${err.size} must be between 0 and ${size256}'
 }
 
 struct InputBufferSizeError {
@@ -138,7 +138,7 @@ struct InputBufferSizeError {
 }
 
 fn (err InputBufferSizeError) msg() string {
-	return 'The input buffer size ${err.size} .must be between 0 and ${blake2s.block_size}'
+	return 'The input buffer size ${err.size} .must be between 0 and ${block_size}'
 }
 
 // new_digest creates an initialized digest structure based on
@@ -151,20 +151,20 @@ fn (err InputBufferSizeError) msg() string {
 //     key is used for just generating a hash.  A key of 1 to
 //     32 bytes can be used for generating a prefix MAC.
 pub fn new_digest(hash_size u8, key []u8) !&Digest {
-	if hash_size < 1 || hash_size > blake2s.size256 {
+	if hash_size < 1 || hash_size > size256 {
 		return HashSizeError{
 			size: hash_size
 		}
 	}
 
-	if key.len < 0 || key.len > blake2s.size256 {
+	if key.len < 0 || key.len > size256 {
 		return KeySizeError{
 			size: i32(key.len)
 		}
 	}
 
 	mut d := Digest{
-		h:         blake2s.iv.clone()
+		h:         iv.clone()
 		t:         0
 		hash_size: hash_size
 	}
@@ -177,7 +177,7 @@ pub fn new_digest(hash_size u8, key []u8) !&Digest {
 		d.input_buffer.clear()
 		d.input_buffer << key
 
-		pad_length := blake2s.block_size - key.len
+		pad_length := block_size - key.len
 		for _ in 0 .. pad_length {
 			d.input_buffer << 0
 		}
@@ -208,7 +208,7 @@ pub fn new_digest(hash_size u8, key []u8) !&Digest {
 fn (mut d Digest) move_input_to_message_blocks() ! {
 	// the number of bytes in the input buffer
 	// should never exceed the block size.
-	if d.input_buffer.len < 0 || d.input_buffer.len > blake2s.block_size {
+	if d.input_buffer.len < 0 || d.input_buffer.len > block_size {
 		return InputBufferSizeError{
 			size: i32(d.input_buffer.len)
 		}
@@ -218,8 +218,8 @@ fn (mut d Digest) move_input_to_message_blocks() ! {
 	d.t += u64(d.input_buffer.len)
 
 	// pad the input buffer if necessary
-	if d.input_buffer.len < blake2s.block_size {
-		pad_length := blake2s.block_size - d.input_buffer.len
+	if d.input_buffer.len < block_size {
+		pad_length := block_size - d.input_buffer.len
 
 		for _ in 0 .. pad_length {
 			d.input_buffer << 0
@@ -248,7 +248,7 @@ pub fn (mut d Digest) write(data []u8) ! {
 	// if the input buffer is already full,
 	// process the existing input bytes first.
 	// this is not the final input.
-	if d.input_buffer.len >= blake2s.block_size {
+	if d.input_buffer.len >= block_size {
 		d.move_input_to_message_blocks()!
 		d.f(false)
 	}
@@ -256,7 +256,7 @@ pub fn (mut d Digest) write(data []u8) ! {
 	// add data to the input buffer until you
 	// run out of space in the input buffer or
 	// run out of data, whichever comes first.
-	empty_space := blake2s.block_size - d.input_buffer.len
+	empty_space := block_size - d.input_buffer.len
 	mut remaining_data := unsafe { data[..] }
 
 	if empty_space >= data.len {
@@ -277,7 +277,7 @@ pub fn (mut d Digest) write(data []u8) ! {
 	// process the data in block size amounts until
 	// all the data has been processed
 	for remaining_data.len > 0 {
-		if blake2s.block_size >= remaining_data.len {
+		if block_size >= remaining_data.len {
 			// running out of data
 			// just add it to the input buffer and return
 			d.input_buffer << remaining_data
@@ -286,8 +286,8 @@ pub fn (mut d Digest) write(data []u8) ! {
 
 		// add block size bytes to the input buffer
 		// and process it
-		d.input_buffer << remaining_data[..blake2s.block_size]
-		remaining_data = unsafe { remaining_data[blake2s.block_size..] }
+		d.input_buffer << remaining_data[..block_size]
+		remaining_data = unsafe { remaining_data[block_size..] }
 
 		d.move_input_to_message_blocks()!
 		d.f(false)

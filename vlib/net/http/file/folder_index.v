@@ -11,7 +11,7 @@ fn get_folder_index_html(requested_file_path string, uri_path string, filter_mye
 	sw := time.new_stopwatch()
 	mut files := os.ls(requested_file_path) or { [] }
 	if filter_myexe {
-		files = files.filter(!it.contains(file.myexe_prefix))
+		files = files.filter(!it.contains(myexe_prefix))
 	}
 	mut sb := strings.new_builder(files.len * 200)
 	write_page_header(mut sb, uri_path)

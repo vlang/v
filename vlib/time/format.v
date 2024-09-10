@@ -344,9 +344,9 @@ pub fn (t Time) custom_format(s string) string {
 			if i > s.len - j {
 				continue
 			}
-			if j == 1 || (j == 2 && s[i..i + j] in time.tokens_2)
-				|| (j == 3 && s[i..i + j] in time.tokens_3)
-				|| (j == 4 && s[i..i + j] in time.tokens_4) {
+			if j == 1 || (j == 2 && s[i..i + j] in tokens_2)
+				|| (j == 3 && s[i..i + j] in tokens_3)
+				|| (j == 4 && s[i..i + j] in tokens_4) {
 				tokens << s[i..i + j]
 				i += (j - 1)
 				break

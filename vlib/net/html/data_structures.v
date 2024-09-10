@@ -10,7 +10,7 @@ mut:
 
 @[inline]
 fn is_null(data int) bool {
-	return data == html.null_element
+	return data == null_element
 }
 
 @[inline]
@@ -19,11 +19,11 @@ fn (stack Stack) is_empty() bool {
 }
 
 fn (stack Stack) peek() int {
-	return if !stack.is_empty() { stack.elements[stack.size - 1] } else { html.null_element }
+	return if !stack.is_empty() { stack.elements[stack.size - 1] } else { null_element }
 }
 
 fn (mut stack Stack) pop() int {
-	mut to_return := html.null_element
+	mut to_return := null_element
 	if !stack.is_empty() {
 		to_return = stack.elements[stack.size - 1]
 		stack.size--

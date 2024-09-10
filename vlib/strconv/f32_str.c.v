@@ -79,8 +79,8 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 
 	if n_digit < out_len {
 		// println("orig: ${out_len_original}")
-		out += strconv.ten_pow_table_32[out_len - n_digit - 1] * 5 // round to up
-		out /= strconv.ten_pow_table_32[out_len - n_digit]
+		out += ten_pow_table_32[out_len - n_digit - 1] * 5 // round to up
+		out /= ten_pow_table_32[out_len - n_digit]
 		out_len = n_digit
 	}
 
@@ -147,11 +147,11 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 
 fn f32_to_decimal_exact_int(i_mant u32, exp u32) (Dec32, bool) {
 	mut d := Dec32{}
-	e := exp - strconv.bias32
-	if e > strconv.mantbits32 {
+	e := exp - bias32
+	if e > mantbits32 {
 		return d, false
 	}
-	shift := strconv.mantbits32 - e
+	shift := mantbits32 - e
 	mant := i_mant | 0x0080_0000 // implicit 1
 	// mant := i_mant | (1 << mantbits32) // implicit 1
 	d.m = mant >> shift
@@ -171,11 +171,11 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	if exp == 0 {
 		// We subtract 2 so that the bounds computation has
 		// 2 additional bits.
-		e2 = 1 - strconv.bias32 - int(strconv.mantbits32) - 2
+		e2 = 1 - bias32 - int(mantbits32) - 2
 		m2 = mant
 	} else {
-		e2 = int(exp) - strconv.bias32 - int(strconv.mantbits32) - 2
-		m2 = (u32(1) << strconv.mantbits32) | mant
+		e2 = int(exp) - bias32 - int(mantbits32) - 2
+		m2 = (u32(1) << mantbits32) | mant
 	}
 	even := (m2 & 1) == 0
 	accept_bounds := even
@@ -323,14 +323,14 @@ pub fn f32_to_str(f f32, n_digit int) string {
 	u1.f = f
 	u := unsafe { u1.u }
 
-	neg := (u >> (strconv.mantbits32 + strconv.expbits32)) != 0
-	mant := u & ((u32(1) << strconv.mantbits32) - u32(1))
-	exp := (u >> strconv.mantbits32) & ((u32(1) << strconv.expbits32) - u32(1))
+	neg := (u >> (mantbits32 + expbits32)) != 0
+	mant := u & ((u32(1) << mantbits32) - u32(1))
+	exp := (u >> mantbits32) & ((u32(1) << expbits32) - u32(1))
 
 	// println("${neg} ${mant} e ${exp-bias32}")
 
 	// Exit early for easy cases.
-	if exp == strconv.maxexp32 || (exp == 0 && mant == 0) {
+	if exp == maxexp32 || (exp == 0 && mant == 0) {
 		return get_string_special(neg, exp == 0, mant == 0)
 	}
 
@@ -350,14 +350,14 @@ pub fn f32_to_str_pad(f f32, n_digit int) string {
 	u1.f = f
 	u := unsafe { u1.u }
 
-	neg := (u >> (strconv.mantbits32 + strconv.expbits32)) != 0
-	mant := u & ((u32(1) << strconv.mantbits32) - u32(1))
-	exp := (u >> strconv.mantbits32) & ((u32(1) << strconv.expbits32) - u32(1))
+	neg := (u >> (mantbits32 + expbits32)) != 0
+	mant := u & ((u32(1) << mantbits32) - u32(1))
+	exp := (u >> mantbits32) & ((u32(1) << expbits32) - u32(1))
 
 	// println("${neg} ${mant} e ${exp-bias32}")
 
 	// Exit early for easy cases.
-	if exp == strconv.maxexp32 || (exp == 0 && mant == 0) {
+	if exp == maxexp32 || (exp == 0 && mant == 0) {
 		return get_string_special(neg, exp == 0, mant == 0)
 	}
 

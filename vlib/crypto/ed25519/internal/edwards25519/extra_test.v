@@ -7,7 +7,7 @@ import encoding.hex
 const github_job = os.getenv('GITHUB_JOB')
 
 fn testsuite_begin() {
-	if edwards25519.github_job != '' {
+	if github_job != '' {
 		// ensure that the CI does not run flaky tests:
 		rand.seed([u32(0xffff24), 0xabcd])
 	}
@@ -73,7 +73,7 @@ fn fn_cofactor(mut data []u8) bool {
 		panic('data.len should be 64')
 	}
 	mut loworder := Point{}
-	loworder.set_bytes(edwards25519.loworder_bytes) or { panic(err) }
+	loworder.set_bytes(loworder_bytes) or { panic(err) }
 
 	mut s := new_scalar()
 	mut p := Point{}

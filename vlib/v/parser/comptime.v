@@ -16,8 +16,8 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
 	p.check(.dollar)
 	name := p.check_name()
-	if name !in parser.comptime_types {
-		p.error('unsupported compile-time type `${name}`: only ${parser.comptime_types} are supported')
+	if name !in comptime_types {
+		p.error('unsupported compile-time type `${name}`: only ${comptime_types} are supported')
 	}
 	mut kind := ast.ComptimeTypeKind.unknown
 	kind = match name {
@@ -132,7 +132,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.dot)
 	}
 	method_name := p.check_name()
-	if method_name !in parser.supported_comptime_calls {
+	if method_name !in supported_comptime_calls {
 		p.error(error_msg)
 		return err_node
 	}

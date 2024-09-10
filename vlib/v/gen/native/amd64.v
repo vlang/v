@@ -103,10 +103,10 @@ const amd64_cpuregs = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 fn amd64_get_call_regs(os pref.OS) []Amd64Register {
 	return match os {
 		.windows {
-			native.amd64_windows_call_regs
+			amd64_windows_call_regs
 		}
 		else {
-			native.amd64_system_v_call_regs
+			amd64_system_v_call_regs
 		}
 	}
 }
@@ -114,10 +114,10 @@ fn amd64_get_call_regs(os pref.OS) []Amd64Register {
 fn amd64_get_call_sseregs(os pref.OS) []Amd64SSERegister {
 	return match os {
 		.windows {
-			native.amd64_windows_call_sseregs
+			amd64_windows_call_sseregs
 		}
 		else {
-			native.amd64_system_v_call_sseregs
+			amd64_system_v_call_sseregs
 		}
 	}
 }
@@ -2946,7 +2946,7 @@ fn (mut c Amd64) gen_asm_stmt(asm_node ast.AsmStmt) {
 			match a {
 				ast.AsmRegister {
 					regname = a.name
-					reg = i32(native.amd64_cpuregs.index(regname))
+					reg = i32(amd64_cpuregs.index(regname))
 					line += a.typ.str()
 				}
 				ast.IntegerLiteral {

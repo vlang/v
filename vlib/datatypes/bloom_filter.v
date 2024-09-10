@@ -51,8 +51,8 @@ pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions i
 	if table_size <= 0 {
 		return error('table_size should great that 0')
 	}
-	if num_functions < 1 || num_functions > datatypes.salts.len {
-		return error('num_functions should between 1~${datatypes.salts.len}')
+	if num_functions < 1 || num_functions > salts.len {
+		return error('num_functions should between 1~${salts.len}')
 	}
 
 	return &BloomFilter[T]{
@@ -68,7 +68,7 @@ pub fn (mut b BloomFilter[T]) add(element T) {
 	hash := b.hash_func(element)
 
 	for i in 0 .. b.num_functions {
-		subhash := hash ^ datatypes.salts[i]
+		subhash := hash ^ salts[i]
 		index := int(subhash % u32(b.table_size))
 		bb := u8((1 << (index % 8)))
 		b.table[index / 8] |= bb
@@ -79,7 +79,7 @@ pub fn (mut b BloomFilter[T]) add(element T) {
 pub fn (b &BloomFilter[T]) exists(element T) bool {
 	hash := b.hash_func(element)
 	for i in 0 .. b.num_functions {
-		subhash := hash ^ datatypes.salts[i]
+		subhash := hash ^ salts[i]
 		index := int(subhash % u32(b.table_size))
 		bb := b.table[index / 8]
 		bit := 1 << (index % 8)

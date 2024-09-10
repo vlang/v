@@ -71,13 +71,13 @@ fn eval_cf(whole i64, den []i64) Fraction {
 // within the default epsilon value (1.0e-4). This means the result will
 // be accurate to 3 places after the decimal.
 pub fn approximate(val f64) Fraction {
-	return approximate_with_eps(val, fractions.default_eps)
+	return approximate_with_eps(val, default_eps)
 }
 
 // approximate_with_eps returns a Fraction
 pub fn approximate_with_eps(val f64, eps f64) Fraction {
 	if val == 0.0 {
-		return fractions.zero
+		return zero
 	}
 	if eps < 0.0 {
 		panic('Epsilon value cannot be negative.')
@@ -94,12 +94,12 @@ pub fn approximate_with_eps(val f64, eps f64) Fraction {
 		return fraction(whole, 1)
 	}
 	mut d := []i64{}
-	mut partial := fractions.zero
+	mut partial := zero
 	// We must complete the approximation within the maximum number of
 	// itertations allowed. If we can't panic.
 	// Empirically tested: the hardest constant to approximate is the
 	// golden ratio (math.phi) and for f64s, it only needs 38 iterations.
-	for _ in 0 .. fractions.max_iterations {
+	for _ in 0 .. max_iterations {
 		// We calculate the reciprocal. That's why the numerator is
 		// always 1.
 		frac = 1.0 / frac

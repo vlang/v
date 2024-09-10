@@ -165,7 +165,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 					if s.len > 3 {
 						s = s[..3]
 					}
-					return error(error_msg(urllib.err_msg_escape, s))
+					return error(error_msg(err_msg_escape, s))
 				}
 				// Per https://tools.ietf.org/html/rfc3986#page-21
 				// in the host component %-encoding can only be used
@@ -175,7 +175,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 				// in IPv6 scoped-address literals. Yay.
 				if i + 3 >= s.len && mode == .encode_host && unhex(s[i + 1]) < 8
 					&& s[i..i + 3] != '%25' {
-					return error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
+					return error(error_msg(err_msg_escape, s[i..i + 3]))
 				}
 				if mode == .encode_zone {
 					// RFC 6874 says basically 'anything goes' for zone identifiers
@@ -190,7 +190,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 					}
 					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
+						error(error_msg(err_msg_escape, s[i..i + 3]))
 					}
 				}
 				i += 3
@@ -436,12 +436,11 @@ fn split(s string, sep u8, cutc bool) (string, string) {
 pub fn parse(rawurl string) !URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
-	mut url := parse_url(u, false) or { return error(error_msg(urllib.err_msg_parse, u)) }
+	mut url := parse_url(u, false) or { return error(error_msg(err_msg_parse, u)) }
 	if frag == '' {
 		return url
 	}
-	f := unescape(frag, .encode_fragment) or { return error(error_msg(urllib.err_msg_parse,
-		u)) }
+	f := unescape(frag, .encode_fragment) or { return error(error_msg(err_msg_parse, u)) }
 	url.fragment = f
 	return url
 }

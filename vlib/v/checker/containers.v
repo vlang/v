@@ -666,16 +666,16 @@ fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 	}
 	if typ.is_any_kind_of_pointer() {
 		if !c.pref.translated && !c.file.is_translated {
-			return checker.err_ref_uninitialized
+			return err_ref_uninitialized
 		} else {
 			return
 		}
 	}
 	sym := c.table.sym(typ)
 	if sym.kind == .interface_ {
-		return checker.err_interface_uninitialized
+		return err_interface_uninitialized
 	} else if sym.kind == .sum_type {
-		return checker.err_sumtype_uninitialized
+		return err_sumtype_uninitialized
 	}
 
 	match sym.info {

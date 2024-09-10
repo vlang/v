@@ -2,55 +2,55 @@ module pem
 
 // example PEM structures from the RFC
 fn test_decode_rfc1421() {
-	for i in 0 .. pem.test_data_rfc1421.len {
-		decoded, rest := decode(pem.test_data_rfc1421[i]) or { Block{}, '' }
-		assert decoded == pem.expected_results_rfc1421[i]
-		assert decoded == decode_only(pem.test_data_rfc1421[i]) or { Block{} }
+	for i in 0 .. test_data_rfc1421.len {
+		decoded, rest := decode(test_data_rfc1421[i]) or { Block{}, '' }
+		assert decoded == expected_results_rfc1421[i]
+		assert decoded == decode_only(test_data_rfc1421[i]) or { Block{} }
 		assert rest == ''
 	}
 }
 
 fn test_decode() {
-	for i in 0 .. pem.test_data.len {
-		decoded, rest := decode(pem.test_data[i]) or { Block{}, '' }
-		assert decoded == pem.expected_results[i]
-		assert decoded == decode_only(pem.test_data[i]) or { Block{} }
-		assert rest == pem.expected_rest[i]
+	for i in 0 .. test_data.len {
+		decoded, rest := decode(test_data[i]) or { Block{}, '' }
+		assert decoded == expected_results[i]
+		assert decoded == decode_only(test_data[i]) or { Block{} }
+		assert rest == expected_rest[i]
 	}
 }
 
 fn test_encode_rfc1421() {
-	for i in 0 .. pem.test_data_rfc1421.len {
-		encoded := pem.expected_results_rfc1421[i].encode() or { '' }
+	for i in 0 .. test_data_rfc1421.len {
+		encoded := expected_results_rfc1421[i].encode() or { '' }
 		decoded, rest := decode(encoded) or { Block{}, '' }
 		assert rest == ''
-		assert decoded == pem.expected_results_rfc1421[i]
+		assert decoded == expected_results_rfc1421[i]
 		assert decoded == decode_only(encoded) or { Block{} }
 	}
 }
 
 fn test_encode() {
-	for i in 0 .. pem.test_data.len {
-		encoded := pem.expected_results[i].encode() or { '' }
+	for i in 0 .. test_data.len {
+		encoded := expected_results[i].encode() or { '' }
 		decoded, rest := decode(encoded) or { Block{}, '' }
 		assert rest == ''
-		assert decoded == pem.expected_results[i]
+		assert decoded == expected_results[i]
 		assert decoded == decode_only(encoded) or { Block{} }
 	}
 }
 
 fn test_encode_config() {
-	for i in 0 .. pem.test_data.len {
-		encoded := pem.expected_results[i].encode(EncodeConfig{31, '\r\n'}) or { '' }
+	for i in 0 .. test_data.len {
+		encoded := expected_results[i].encode(EncodeConfig{31, '\r\n'}) or { '' }
 		decoded, rest := decode(encoded) or { Block{}, '' }
 		assert rest == ''
-		assert decoded == pem.expected_results[i]
+		assert decoded == expected_results[i]
 		assert decoded == decode_only(encoded) or { Block{} }
 	}
 }
 
 fn test_decode_no_pem() {
-	for test in pem.test_data_no_pem {
+	for test in test_data_no_pem {
 		if _, _ := decode(test) {
 			assert false, 'decode should return `none` on input without PEM data'
 		}

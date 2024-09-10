@@ -1171,9 +1171,9 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
 	if sym.language == .c && sym.kind == .struct_ {
-		styp = '${c.option_name}_${base.replace(' ', '_')}'
+		styp = '${option_name}_${base.replace(' ', '_')}'
 	} else {
-		styp = '${c.option_name}_${base}'
+		styp = '${option_name}_${base}'
 	}
 	if t.has_flag(.generic) || t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
@@ -1193,9 +1193,9 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
 	if sym.language == .c && sym.kind == .struct_ {
-		styp = '${c.result_name}_${base.replace(' ', '_')}'
+		styp = '${result_name}_${base.replace(' ', '_')}'
 	} else {
-		styp = '${c.result_name}_${base}'
+		styp = '${result_name}_${base}'
 	}
 	if t.has_flag(.generic) || t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
@@ -1471,11 +1471,11 @@ fn (mut g Gen) write_chan_push_option_fns() {
 		done << styp
 		g.register_option(ast.void_type.set_flag(.option))
 		g.channel_definitions.writeln('
-static inline ${c.option_name}_void __Option_${styp}_pushval(${styp} ch, ${el_type} e) {
+static inline ${option_name}_void __Option_${styp}_pushval(${styp} ch, ${el_type} e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (${c.option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
-	return (${c.option_name}_void){0};
+	return (${option_name}_void){0};
 }')
 	}
 }
@@ -1521,7 +1521,7 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 
 pub fn (mut g Gen) write_typedef_types() {
 	for sym in g.table.type_symbols {
-		if sym.name in c.builtins {
+		if sym.name in builtins {
 			continue
 		}
 		match sym.kind {
@@ -1602,7 +1602,7 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 		}
 	}
 	for sym in g.table.type_symbols {
-		if sym.kind == .alias && sym.name !in c.builtins && sym.name !in ['byte', 'i32'] {
+		if sym.kind == .alias && sym.name !in builtins && sym.name !in ['byte', 'i32'] {
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
@@ -1610,12 +1610,12 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
 	for sym in g.table.type_symbols {
-		if sym.kind == .interface_ && sym.name !in c.builtins {
+		if sym.kind == .interface_ && sym.name !in builtins {
 			g.write_interface_typedef(sym)
 		}
 	}
 	for sym in g.table.type_symbols {
-		if sym.kind == .interface_ && sym.name !in c.builtins {
+		if sym.kind == .interface_ && sym.name !in builtins {
 			g.write_interface_typesymbol_declaration(sym)
 		}
 	}
@@ -1920,7 +1920,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							styp = g.base_type(ret_typ)
 							g.write('_option_ok(&(${styp}[]) { ')
 							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
-							g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+							g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 						}
 					}
 				}
@@ -1952,7 +1952,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							styp = g.base_type(ret_typ)
 							g.write('_result_ok(&(${styp}[]) { ')
 							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
-							g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
+							g.writeln(' }, (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
 						}
 					}
 				}
@@ -2099,10 +2099,10 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			if simple_assign {
 				g.writeln(';')
 			} else {
-				g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
+				g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
 			}
 		} else {
-			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
+			g.writeln(' }, (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
 		}
 		g.set_current_pos_as_last_stmt_pos()
 	}
@@ -5157,8 +5157,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					g.writeln('${g.typ(parent_type)} ${tmp_var2};')
 					g.write('_option_ok(&(${g.base_type(parent_type)}[]) { ')
 					g.expr(node.expr)
-					g.writeln(' }, (${c.option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));')
-					g.writeln('_option_ok(&(${g.typ(parent_type)}[]) { ${tmp_var2} }, (${c.option_name}*)&${tmp_var}, sizeof(${g.typ(parent_type)}));')
+					g.writeln(' }, (${option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));')
+					g.writeln('_option_ok(&(${g.typ(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.typ(parent_type)}));')
 					g.write(cur_stmt)
 					g.write(tmp_var)
 				} else if node.expr_type.has_flag(.option) {
@@ -5532,7 +5532,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	// handle promoting error/function returning result
 	if fn_return_is_result {
 		ftyp := g.typ(node.types[0])
-		mut is_regular_result := ftyp == c.result_name
+		mut is_regular_result := ftyp == result_name
 		if is_regular_result || node.types[0] == ast.error_type_idx {
 			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
@@ -5642,11 +5642,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_option {
-			g.writeln(' }, (${c.option_name}*)(&${tmpvar}), sizeof(${styp}));')
+			g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.write('return ${tmpvar}')
 		} else if fn_return_is_result {
-			g.writeln(' }, (${c.result_name}*)(&${tmpvar}), sizeof(${styp}));')
+			g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.write('return ${tmpvar}')
 		}
@@ -5679,7 +5679,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.option)
 			}
 		}
-		if fn_return_is_option && !expr_type_is_opt && return_sym.name != c.option_name {
+		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_option_ok(&(${styp}[]) { ')
@@ -5700,7 +5700,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (${c.option_name}*)(&${tmpvar}), sizeof(${styp}));')
+			g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
@@ -5714,7 +5714,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.result)
 			}
 		}
-		if fn_return_is_result && !expr_type_is_result && return_sym.name != c.result_name {
+		if fn_return_is_result && !expr_type_is_result && return_sym.name != result_name {
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_result_ok(&(${styp}[]) { ')
@@ -5737,7 +5737,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (${c.result_name}*)(&${tmpvar}), sizeof(${styp}));')
+			g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
@@ -6633,7 +6633,7 @@ fn (mut g Gen) write_builtin_types() {
 	mut builtin_types := []&ast.TypeSymbol{} // builtin types
 	// builtin types need to be on top
 	// everything except builtin will get sorted
-	for builtin_name in c.builtins {
+	for builtin_name in builtins {
 		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
 		if sym.kind == .interface_ {
 			g.write_interface_typedef(sym)
@@ -6656,7 +6656,7 @@ fn (mut g Gen) write_sorted_types() {
 	unsafe {
 		mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
 		for sym in g.table.type_symbols {
-			if sym.name !in c.builtins {
+			if sym.name !in builtins {
 				symbols << sym
 			}
 		}
@@ -6846,7 +6846,7 @@ fn (mut g Gen) write_sorted_fn_typesymbol_declaration() {
 	}
 	mut syms := []&ast.TypeSymbol{} // functions to be defined
 	for sym in g.table.type_symbols {
-		if sym.kind == .function && sym.name !in c.builtins {
+		if sym.kind == .function && sym.name !in builtins {
 			syms << sym
 		}
 	}
@@ -7178,7 +7178,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				styp := g.typ(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
 				g.writeln('\t${styp} ${err_obj};')
-				g.writeln('\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(${c.result_name}));')
+				g.writeln('\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(${result_name}));')
 				g.writeln('\treturn ${err_obj};')
 			}
 		}
@@ -7219,7 +7219,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 @[inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if c.c_reserved_chk.matches(name) {
+	if c_reserved_chk.matches(name) {
 		return '__v_${name}'
 	}
 	return name
@@ -7228,7 +7228,7 @@ fn c_name(name_ string) string {
 @[inline]
 fn c_fn_name(name_ string) string {
 	name := util.no_dots(name_)
-	if c.c_reserved_chk.matches(name) {
+	if c_reserved_chk.matches(name) {
 		return '_v_${name}'
 	}
 	return name

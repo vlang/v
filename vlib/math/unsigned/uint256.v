@@ -389,7 +389,7 @@ pub fn (u_ Uint256) str() string {
 // uint256_from_dec_str creates a new `unsigned.Uint256` from the given string if possible
 // The `_` character is allowed as a separator.
 pub fn uint256_from_dec_str(value string) !Uint256 {
-	mut res := unsigned.uint256_zero
+	mut res := uint256_zero
 	underscore := `_`
 
 	for b_ in value {

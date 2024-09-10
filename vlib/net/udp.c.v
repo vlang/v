@@ -35,8 +35,8 @@ pub fn dial_udp(raddr string) !&UdpConn {
 		if sock := new_udp_socket_for_remote(addr) {
 			return &UdpConn{
 				sock:          sock
-				read_timeout:  net.udp_default_read_timeout
-				write_timeout: net.udp_default_write_timeout
+				read_timeout:  udp_default_read_timeout
+				write_timeout: udp_default_write_timeout
 			}
 		}
 	}
@@ -186,8 +186,8 @@ pub fn listen_udp(laddr string) !&UdpConn {
 	addr := addrs[0]
 	return &UdpConn{
 		sock:          new_udp_socket(addr)!
-		read_timeout:  net.udp_default_read_timeout
-		write_timeout: net.udp_default_write_timeout
+		read_timeout:  udp_default_read_timeout
+		write_timeout: udp_default_write_timeout
 	}
 }
 

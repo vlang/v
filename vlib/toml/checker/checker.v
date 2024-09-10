@@ -462,7 +462,7 @@ fn (c Checker) check_quoted_escapes(q ast.Quoted) ! {
 						continue
 					}
 				}
-				if next_ch !in checker.allowed_basic_escape_chars {
+				if next_ch !in allowed_basic_escape_chars {
 					st := s.state()
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unknown basic string escape character `${next_ch.ascii_str()}` in `${escape}` (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
@@ -507,7 +507,7 @@ fn (c Checker) check_utf8_validity(q ast.Quoted) ! {
 // Any preludes or prefixes like `0x` could pontentially yield wrong results.
 fn validate_utf8_codepoint_string(str string) ! {
 	int_val := strconv.parse_int(str, 16, 64) or { i64(-1) }
-	if int_val > checker.utf8_max || int_val < 0 {
+	if int_val > utf8_max || int_val < 0 {
 		return error('Unicode code point `${str}` is outside the valid Unicode scalar value ranges.')
 	}
 	// Check if the Unicode value is actually in the valid Unicode scalar value ranges.

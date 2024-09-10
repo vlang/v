@@ -198,11 +198,11 @@ fn fe_mul_generic(a Element, b Element) Element {
 	c3 := shift_right_by_51(r3)
 	c4 := shift_right_by_51(r4)
 
-	rr0 := r0.lo & edwards25519.mask_low_51_bits + c4 * 19
-	rr1 := r1.lo & edwards25519.mask_low_51_bits + c0
-	rr2 := r2.lo & edwards25519.mask_low_51_bits + c1
-	rr3 := r3.lo & edwards25519.mask_low_51_bits + c2
-	rr4 := r4.lo & edwards25519.mask_low_51_bits + c3
+	rr0 := r0.lo & mask_low_51_bits + c4 * 19
+	rr1 := r1.lo & mask_low_51_bits + c0
+	rr2 := r2.lo & mask_low_51_bits + c1
+	rr3 := r3.lo & mask_low_51_bits + c2
+	rr4 := r4.lo & mask_low_51_bits + c3
 
 	// Now all coefficients fit into 64-bit registers but are still too large to
 	// be passed around as a Element. We therefore do one last carry chain,
@@ -229,11 +229,11 @@ fn (mut v Element) carry_propagate_generic() Element {
 	c3 := v.l3 >> 51
 	c4 := v.l4 >> 51
 
-	v.l0 = v.l0 & edwards25519.mask_low_51_bits + c4 * 19
-	v.l1 = v.l1 & edwards25519.mask_low_51_bits + c0
-	v.l2 = v.l2 & edwards25519.mask_low_51_bits + c1
-	v.l3 = v.l3 & edwards25519.mask_low_51_bits + c2
-	v.l4 = v.l4 & edwards25519.mask_low_51_bits + c3
+	v.l0 = v.l0 & mask_low_51_bits + c4 * 19
+	v.l1 = v.l1 & mask_low_51_bits + c0
+	v.l2 = v.l2 & mask_low_51_bits + c1
+	v.l3 = v.l3 & mask_low_51_bits + c2
+	v.l4 = v.l4 & mask_low_51_bits + c3
 	return v
 }
 
@@ -310,11 +310,11 @@ fn fe_square_generic(a Element) Element {
 	c3 := shift_right_by_51(r3)
 	c4 := shift_right_by_51(r4)
 
-	rr0 := r0.lo & edwards25519.mask_low_51_bits + c4 * 19
-	rr1 := r1.lo & edwards25519.mask_low_51_bits + c0
-	rr2 := r2.lo & edwards25519.mask_low_51_bits + c1
-	rr3 := r3.lo & edwards25519.mask_low_51_bits + c2
-	rr4 := r4.lo & edwards25519.mask_low_51_bits + c3
+	rr0 := r0.lo & mask_low_51_bits + c4 * 19
+	rr1 := r1.lo & mask_low_51_bits + c0
+	rr2 := r2.lo & mask_low_51_bits + c1
+	rr3 := r3.lo & mask_low_51_bits + c2
+	rr4 := r4.lo & mask_low_51_bits + c3
 
 	mut v := Element{
 		l0: rr0
@@ -329,13 +329,13 @@ fn fe_square_generic(a Element) Element {
 
 // zero sets v = 0, and returns v.
 pub fn (mut v Element) zero() Element {
-	v = edwards25519.fe_zero
+	v = fe_zero
 	return v
 }
 
 // one sets v = 1, and returns v.
 pub fn (mut v Element) one() Element {
-	v = edwards25519.fe_one
+	v = fe_one
 	return v
 }
 
@@ -359,15 +359,15 @@ pub fn (mut v Element) reduce() Element {
 	v.l0 += 19 * c
 
 	v.l1 += v.l0 >> 51
-	v.l0 = v.l0 & edwards25519.mask_low_51_bits
+	v.l0 = v.l0 & mask_low_51_bits
 	v.l2 += v.l1 >> 51
-	v.l1 = v.l1 & edwards25519.mask_low_51_bits
+	v.l1 = v.l1 & mask_low_51_bits
 	v.l3 += v.l2 >> 51
-	v.l2 = v.l2 & edwards25519.mask_low_51_bits
+	v.l2 = v.l2 & mask_low_51_bits
 	v.l4 += v.l3 >> 51
-	v.l3 = v.l3 & edwards25519.mask_low_51_bits
+	v.l3 = v.l3 & mask_low_51_bits
 	// no additional carry
-	v.l4 = v.l4 & edwards25519.mask_low_51_bits
+	v.l4 = v.l4 & mask_low_51_bits
 
 	return v
 }
@@ -400,7 +400,7 @@ pub fn (mut v Element) subtract(a Element, b Element) Element {
 
 // negate sets v = -a, and returns v.
 pub fn (mut v Element) negate(a Element) Element {
-	return v.subtract(edwards25519.fe_zero, a)
+	return v.subtract(fe_zero, a)
 }
 
 // invert sets v = 1/z mod p, and returns v.
@@ -493,7 +493,7 @@ pub fn (mut v Element) multiply(x Element, y Element) Element {
 // mul_51 returns lo + hi * 2⁵¹ = a * b.
 fn mul_51(a u64, b u32) (u64, u64) {
 	mh, ml := bits.mul_64(a, u64(b))
-	lo := ml & edwards25519.mask_low_51_bits
+	lo := ml & mask_low_51_bits
 	hi := (mh << 13) | (ml >> 51)
 	return lo, hi
 }
@@ -568,9 +568,9 @@ pub fn (mut r Element) sqrt_ratio(u Element, v Element) (Element, int) {
 	mut uneg := b.negate(u)
 	correct_sign_sqrt := check.equal(u)
 	flipped_sign_sqrt := check.equal(uneg)
-	flipped_sign_sqrt_i := check.equal(uneg.multiply(uneg, edwards25519.sqrt_m1))
+	flipped_sign_sqrt_i := check.equal(uneg.multiply(uneg, sqrt_m1))
 
-	rprime := b.multiply(r, edwards25519.sqrt_m1) // r_prime = SQRT_M1 * r
+	rprime := b.multiply(r, sqrt_m1) // r_prime = SQRT_M1 * r
 	// r = CT_selected(r_prime IF flipped_sign_sqrt | flipped_sign_sqrt_i ELSE r)
 	r.selected(rprime, r, flipped_sign_sqrt | flipped_sign_sqrt_i)
 
@@ -629,20 +629,20 @@ pub fn (mut v Element) set_bytes(x []u8) !Element {
 
 	// Bits 0:51 (bytes 0:8, bits 0:64, shift 0, mask 51).
 	v.l0 = binary.little_endian_u64(x[0..8])
-	v.l0 &= edwards25519.mask_low_51_bits
+	v.l0 &= mask_low_51_bits
 	// Bits 51:102 (bytes 6:14, bits 48:112, shift 3, mask 51).
 	v.l1 = binary.little_endian_u64(x[6..14]) >> 3
-	v.l1 &= edwards25519.mask_low_51_bits
+	v.l1 &= mask_low_51_bits
 	// Bits 102:153 (bytes 12:20, bits 96:160, shift 6, mask 51).
 	v.l2 = binary.little_endian_u64(x[12..20]) >> 6
-	v.l2 &= edwards25519.mask_low_51_bits
+	v.l2 &= mask_low_51_bits
 	// Bits 153:204 (bytes 19:27, bits 152:216, shift 1, mask 51).
 	v.l3 = binary.little_endian_u64(x[19..27]) >> 1
-	v.l3 &= edwards25519.mask_low_51_bits
+	v.l3 &= mask_low_51_bits
 	// Bits 204:251 (bytes 24:32, bits 192:256, shift 12, mask 51).
 	// Note: not bytes 25:33, shift 4, to avoid overread.
 	v.l4 = binary.little_endian_u64(x[24..32]) >> 12
-	v.l4 &= edwards25519.mask_low_51_bits
+	v.l4 &= mask_low_51_bits
 
 	return v
 }

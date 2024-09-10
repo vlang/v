@@ -58,7 +58,7 @@ fn find_file_marker(data string) (string, string, string) {
 		if name != '' {
 			return data[..i], name, after
 		}
-		j := data[i..].index(txtar.nlm) or { return fix_nl(data), '', '' }
+		j := data[i..].index(nlm) or { return fix_nl(data), '', '' }
 		i += j + 1 // positioned at start of new possible marker
 	}
 	return '', '', ''
@@ -68,7 +68,7 @@ fn find_file_marker(data string) (string, string, string) {
 // If so, it returns the name from the line, and the data after the line.
 // Otherwise it returns name == "".
 fn is_marker(data string) (string, string) {
-	if !data.starts_with(txtar.mstart) {
+	if !data.starts_with(mstart) {
 		return '', ''
 	}
 	mut ndata := data
@@ -77,10 +77,10 @@ fn is_marker(data string) (string, string) {
 	if i >= 0 {
 		ndata, after = data[..i], data[i + 1..]
 	}
-	if !(ndata.ends_with(txtar.mend) && ndata.len >= txtar.mstart.len + txtar.mend.len) {
+	if !(ndata.ends_with(mend) && ndata.len >= mstart.len + mend.len) {
 		return '', ''
 	}
-	name := ndata[txtar.mstart.len..ndata.len - txtar.mend.len].trim_space()
+	name := ndata[mstart.len..ndata.len - mend.len].trim_space()
 	return name, after
 }
 

@@ -36,8 +36,8 @@ pub fn tanh(x f64) f64 {
 			return x
 		}
 		s := x * x
-		z = x + x * s * ((math.tanh_p[0] * s + math.tanh_p[1]) * s + math.tanh_p[2]) / (((s +
-			math.tanh_q[0]) * s + math.tanh_q[1]) * s + math.tanh_q[2])
+		z = x + x * s * ((tanh_p[0] * s + tanh_p[1]) * s + tanh_p[2]) / (((s + tanh_q[0]) * s +
+			tanh_q[1]) * s + tanh_q[2])
 	}
 	return z
 }

@@ -66,8 +66,8 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 
 		mut conn := &TcpConn{
 			sock:          s
-			read_timeout:  net.tcp_default_read_timeout
-			write_timeout: net.tcp_default_write_timeout
+			read_timeout:  tcp_default_read_timeout
+			write_timeout: tcp_default_write_timeout
 		}
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
@@ -114,8 +114,8 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 
 		mut conn := &TcpConn{
 			sock:          s
-			read_timeout:  net.tcp_default_read_timeout
-			write_timeout: net.tcp_default_write_timeout
+			read_timeout:  tcp_default_read_timeout
+			write_timeout: tcp_default_write_timeout
 		}
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
@@ -392,7 +392,7 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 		for {
 			code := error_code()
 			if code in [int(error_einprogress), int(error_ewouldblock), int(error_eagain), C.EINTR] {
-				@select(s.handle, .read, net.connect_timeout)!
+				@select(s.handle, .read, connect_timeout)!
 				res = C.listen(s.handle, options.backlog)
 				if res == 0 {
 					break
@@ -449,7 +449,7 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	}
 
 	mut new_handle := $if is_coroutine ? {
-		C.photon_accept(l.sock.handle, 0, 0, net.tcp_default_read_timeout)
+		C.photon_accept(l.sock.handle, 0, 0, tcp_default_read_timeout)
 	} $else {
 		C.accept(l.sock.handle, 0, 0)
 	}
@@ -459,7 +459,7 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 		if code in [int(error_einprogress), int(error_ewouldblock), int(error_eagain), C.EINTR] {
 			l.wait_for_accept()!
 			new_handle = $if is_coroutine ? {
-				C.photon_accept(l.sock.handle, 0, 0, net.tcp_default_read_timeout)
+				C.photon_accept(l.sock.handle, 0, 0, tcp_default_read_timeout)
 			} $else {
 				C.accept(l.sock.handle, 0, 0)
 			}
@@ -471,8 +471,8 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 
 	return &TcpConn{
 		handle:        new_handle
-		read_timeout:  net.tcp_default_read_timeout
-		write_timeout: net.tcp_default_write_timeout
+		read_timeout:  tcp_default_read_timeout
+		write_timeout: tcp_default_write_timeout
 		is_blocking:   l.is_blocking
 	}
 }
@@ -635,7 +635,7 @@ const connect_timeout = 5 * time.second
 fn (mut s TcpSocket) connect(a Addr) ! {
 	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
-			C.photon_connect(s.handle, voidptr(&a), a.len(), net.tcp_default_read_timeout)
+			C.photon_connect(s.handle, voidptr(&a), a.len(), tcp_default_read_timeout)
 		} $else {
 			C.connect(s.handle, voidptr(&a), a.len())
 		}
@@ -655,7 +655,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			// determine whether connect() completed successfully (SO_ERROR is zero) or
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
-			write_result := @select(s.handle, .write, net.connect_timeout)!
+			write_result := @select(s.handle, .write, connect_timeout)!
 			err := 0
 			len := sizeof(err)
 			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
@@ -675,7 +675,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 		return
 	} $else {
 		x := $if is_coroutine ? {
-			C.photon_connect(s.handle, voidptr(&a), a.len(), net.tcp_default_read_timeout)
+			C.photon_connect(s.handle, voidptr(&a), a.len(), tcp_default_read_timeout)
 		} $else {
 			C.connect(s.handle, voidptr(&a), a.len())
 		}

@@ -60,8 +60,8 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	pp.set_max_jobs(nthreads)
 	pp.work_on_items(o_postfixes)
 	eprintln('> C compilation on ${nthreads} threads, working on ${o_postfixes.len} files took: ${sw.elapsed().milliseconds()} ms')
-	link_cmd := '${os.quoted_path(cbuilder.cc_compiler)} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
-		'.o')).join(' ')} out_x.o -lpthread ${cbuilder.cc_ldflags}'
+	link_cmd := '${os.quoted_path(cc_compiler)} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
+		'.o')).join(' ')} out_x.o -lpthread ${cc_ldflags}'
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_time('link_cmd', link_cmd, link_res, sw_link)
@@ -70,7 +70,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr {
 	postfix := p.get_item[string](idx)
 	sw := time.new_stopwatch()
-	cmd := '${os.quoted_path(cbuilder.cc_compiler)} ${cbuilder.cc_cflags} -c -w -o out_${postfix}.o out_${postfix}.c'
+	cmd := '${os.quoted_path(cc_compiler)} ${cc_cflags} -c -w -o out_${postfix}.o out_${postfix}.c'
 	res := os.execute(cmd)
 	eprint_time('c cmd', cmd, res, sw)
 	return unsafe { nil }
