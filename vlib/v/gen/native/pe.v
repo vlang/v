@@ -372,8 +372,8 @@ struct PeDataDir {
 
 struct PeDataDirs {
 mut:
-	debugnames [native.pe_num_data_dirs]string
-	dirs       [native.pe_num_data_dirs]PeDataDir
+	debugnames [pe_num_data_dirs]string
+	dirs       [pe_num_data_dirs]PeDataDir
 	base_addr  i64
 }
 
