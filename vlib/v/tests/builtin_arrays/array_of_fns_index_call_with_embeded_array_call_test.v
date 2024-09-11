@@ -53,7 +53,7 @@ fn decelerate(speed int) int {
 
 fn test_array_of_fns_index_call_with_embeded_array_call() {
 	funcs := [first_gear, second_gear, third_gear]
-	
+
 	speed1 := max_speed(funcs, decelerate, 3)
 	println(speed1)
 	assert speed1 == 1
