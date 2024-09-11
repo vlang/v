@@ -617,7 +617,7 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == '' {
-			return text
+			return html.escape(text)
 		}
 		output := html_highlight(text, f.table)
 		// Reset the language, so that it will not persist between blocks,
