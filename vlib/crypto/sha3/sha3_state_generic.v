@@ -28,6 +28,7 @@ mut:
 // 5 x 5 array.
 //
 // The state is not modified by this method.
+@[direct_array_access]
 fn (s State) to_bytes() []u8 {
 	mut byte_array := []u8{len: 200, cap: 200}
 	mut index := 0
@@ -54,6 +55,7 @@ fn (s State) to_bytes() []u8 {
 // that the input byte array is 200 bytes long.
 //
 // All 25 u64 values are set from the input byte array.
+@[direct_array_access]
 fn (mut s State) from_bytes(byte_array []u8) {
 	mut index := 0
 
@@ -79,6 +81,7 @@ fn (mut s State) from_bytes(byte_array []u8) {
 //
 // The rate must be less than the size of the state
 // in bytes.
+@[direct_array_access]
 fn (mut s State) xor_bytes(byte_array []u8, rate int) {
 	mut index := 0
 
@@ -158,7 +161,7 @@ fn (mut s State) rnd(round_index int) {
 // on all the bite in the lane with a single 64-bit operation.  And, since
 // we represent a lane as a u64 value, we can reduce the state to a 2
 // dimensional array of u64 values.
-@[inline]
+@[direct_array_access; inline]
 fn (mut s State) theta() {
 	// calculate the 5 intermediate C values
 	mut c := [5]Lane{init: 0}
@@ -208,7 +211,7 @@ const rho_offsets = [[int(0), 36, 3, 41, 18], [int(1), 44, 10, 45, 2],
 // The effect of step 3a is to rotate a 64-bit lane by the amount calculated by
 // (((t + 1) * (t + 2)) / 2) % 64.  In order to save time, these rotation values,
 // called offsets, can be calculated ahead of time.
-@[inline]
+@[direct_array_access; inline]
 fn (mut s State) rho() {
 	for x in 0 .. 5 {
 		for y in 0 .. 5 {
@@ -226,7 +229,7 @@ fn (mut s State) rho() {
 //
 // For this function, we will need to have a temporary version of the state for
 // holding the rearranged lanes.
-@[inline]
+@[direct_array_access; inline]
 fn (mut s State) pi() {
 	mut a_prime := [5][5]Lane{}
 	for x in 0 .. 5 {
@@ -255,7 +258,7 @@ fn (mut s State) pi() {
 //
 // For this function, we will need to have a temporary version of the state for
 // holding the changed lanes.
-@[inline]
+@[direct_array_access; inline]
 fn (mut s State) chi() {
 	mut a_prime := [5][5]Lane{}
 	for x in 0 .. 5 {
@@ -296,7 +299,7 @@ const iota_round_constants = [u64(0x0000000000000001), 0x0000000000008082, 0x800
 // precomputed values are indexed by the round which is being applied.  For sha3,
 // the number of rounds is 24 so we just need to precompute the 24 valuse needed
 // to xor with lane 0, 0.
-@[inline]
+@[direct_array_access; inline]
 fn (mut s State) iota(round_index int) {
 	s.a[0][0] ^= iota_round_constants[round_index]
 }

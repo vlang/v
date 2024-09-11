@@ -13,6 +13,7 @@ const _k1 = 0x6ED9EBA1
 const _k2 = u32(0x8F1BBCDC)
 const _k3 = u32(0xCA62C1D6)
 
+@[direct_array_access]
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
