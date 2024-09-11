@@ -163,6 +163,16 @@ extern ZIP_EXPORT void zip_close(struct zip_t *zip);
 extern ZIP_EXPORT int zip_is64(struct zip_t *zip);
 
 /**
+ * Returns the offset in the stream where the zip header is located.
+ *
+ * @param zip zip archive handler.
+ * @param offset zip header offset.
+ *
+ * @return the return code - 0 if successful, negative number (< 0) on error.
+ */
+extern ZIP_EXPORT int zip_offset(struct zip_t *zip, uint64_t *offset);
+
+/**
  * Opens an entry by name in the zip archive.
  *
  * For zip archive opened in 'w' or 'a' mode the function will append
