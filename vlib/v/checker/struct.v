@@ -979,9 +979,20 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 	for embed in info.embeds {
 		embed_sym := c.table.sym(embed)
 		if embed_sym.info is ast.Struct {
-			if embed_sym.info.is_union && node.init_fields.len > 1 {
-				c.error('embed union `${embed_sym.name}` can have only one field initialised',
-					node.pos)
+			if embed_sym.info.is_union {
+				mut embed_union_fields := c.table.struct_fields(embed_sym)
+				mut found := false
+				for init_field in inited_fields {
+					for union_field in embed_union_fields {
+						if init_field == union_field.name && found {
+							c.error('embed union `${embed_sym.name}` can have only one field initialised',
+								node.pos)
+						}
+						if init_field == union_field.name {
+							found = true
+						}
+					}
+				}
 			}
 		}
 		mut zero_struct_init := ast.StructInit{
