@@ -1720,14 +1720,15 @@ pub fn (s string) trim(cutset string) string {
 	if s == '' || cutset == '' {
 		return s.clone()
 	}
-	left, right := s.trim_indexes(cutset)
-	return s.substr(left, right)
+	if cutset.len_utf8() == cutset.len {
+		return s.trim_chars(cutset)
+	} else {
+		return s.trim_runes(cutset)
+	}
 }
 
-// trim_indexes gets the new start and end indices of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
-// Example: left, right := '-hi-'.trim_indexes('-')
 @[direct_array_access]
-pub fn (s string) trim_indexes(cutset string) (int, int) {
+pub fn (s string) trim_chars(cutset string) string {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
@@ -1748,10 +1749,40 @@ pub fn (s string) trim_indexes(cutset string) (int, int) {
 			}
 		}
 		if pos_left > pos_right {
-			return 0, 0
+			return ''
 		}
 	}
-	return pos_left, pos_right + 1
+	return s.substr(pos_left, pos_right + 1)
+}
+
+@[direct_array_access]
+pub fn (s string) trim_runes(cutset string) string {
+	s_runes := s.runes()
+	c_runes := cutset.runes()
+	mut pos_left := 0
+	mut pos_right := s_runes.len - 1
+	mut cs_match := true
+	for pos_left <= s_runes.len && pos_right >= -1 && cs_match {
+		cs_match = false
+		for cs in c_runes {
+			if s_runes[pos_left] == cs {
+				pos_left++
+				cs_match = true
+				break
+			}
+		}
+		for cs in c_runes {
+			if s_runes[pos_right] == cs {
+				pos_right--
+				cs_match = true
+				break
+			}
+		}
+		if pos_left > pos_right {
+			return ''
+		}
+	}
+	return s_runes[pos_left..pos_right + 1].string()
 }
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
