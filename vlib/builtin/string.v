@@ -1728,7 +1728,7 @@ pub fn (s string) trim(cutset string) string {
 }
 
 @[direct_array_access]
-pub fn (s string) trim_chars(cutset string) string {
+fn (s string) trim_chars(cutset string) string {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
@@ -1756,7 +1756,7 @@ pub fn (s string) trim_chars(cutset string) string {
 }
 
 @[direct_array_access]
-pub fn (s string) trim_runes(cutset string) string {
+fn (s string) trim_runes(cutset string) string {
 	s_runes := s.runes()
 	c_runes := cutset.runes()
 	mut pos_left := 0
