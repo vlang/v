@@ -32,8 +32,15 @@ jobs:
 
       - name: Build V
         id: build
-        run: make && sudo ./v symlink
-
+        shell: bash
+        run: |
+        if [[ $RUNNER_OS == 'Windows' ]]; then
+           .\make.bat
+           .\v.exe symlink
+        else
+           make
+           sudo ./v symlink
+        fi
       - name: Run additional crypto tests
         run: |
           v retry -- git clone --depth 1 https://github.com/vlang/hash_validation_tests
