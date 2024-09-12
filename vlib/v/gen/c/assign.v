@@ -228,6 +228,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut ident := ast.Ident{
 			scope: unsafe { nil }
 		}
+		mut cur_indexexpr := -1
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
 		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {
@@ -696,6 +697,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
+			if left is ast.IndexExpr && g.cur_indexexpr.len > 0 {
+				cur_indexexpr = g.cur_indexexpr.index(left.pos().pos)
+			}
 			if is_fixed_array_var || is_va_list {
 				if is_decl {
 					g.writeln(';')
@@ -703,7 +707,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						continue
 					}
 				}
-			} else if !g.is_arraymap_set && !str_add && !op_overloaded {
+			} else if cur_indexexpr == -1 && !str_add && !op_overloaded {
 				g.write(' ${op} ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
@@ -813,9 +817,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if str_add || op_overloaded {
 				g.write(')')
 			}
-			if g.is_arraymap_set {
+			if cur_indexexpr != -1 {
+				g.cur_indexexpr.delete(cur_indexexpr)
 				g.write(' })')
-				g.is_arraymap_set = false
+				g.is_arraymap_set = g.cur_indexexpr.len > 0
 			}
 			g.is_shared = false
 		}
