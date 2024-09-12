@@ -1,5 +1,11 @@
 name: Workflow Lint
 
+## Note: to install `prettier` locally, see https://prettier.io/docs/en/install,
+## or just: `npm install --save-dev --save-exact prettier`
+
+## If you already have `prettier` installed, to run it locally,
+## just run: `npx prettier --check .github/**/**.yml` .
+
 on:
   push:
     paths:

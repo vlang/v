@@ -31,16 +31,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build V
-        id: build
-        shell: bash
-        run: |
-        if [[ $RUNNER_OS == 'Windows' ]]; then
-           .\make.bat
-           .\v.exe symlink
-        else
-           make
-           sudo ./v symlink
-        fi
+        if: runner.os != 'Windows'
+        run: make -j4 && ./v symlink
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: ./make.bat && ./v symlink
+
       - name: Run additional crypto tests
         run: |
           v retry -- git clone --depth 1 https://github.com/vlang/hash_validation_tests
