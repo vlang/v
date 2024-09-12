@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   server:
     container_name: autobahn_server
@@ -16,6 +16,6 @@ services:
       - "8081:8080"
   client:
     container_name: autobahn_client
-    build: 
-      dockerfile: vlib/net/websocket/tests/autobahn/ws_test/Dockerfile 
+    build:
+      dockerfile: vlib/net/websocket/tests/autobahn/ws_test/Dockerfile
       context: ../../../../../
