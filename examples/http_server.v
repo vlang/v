@@ -7,7 +7,7 @@ struct ExampleHandler {}
 fn (h ExampleHandler) handle(req Request) Response {
 	mut res := Response{
 		header: http.new_header_from_map({
-			CommonHeader.content_type: 'text/plain'
+			.content_type: 'text/plain'
 		})
 	}
 	mut status_code := 200
