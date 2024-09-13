@@ -627,7 +627,7 @@ fn (t Tree) struct_decl(node ast.StructDecl) &Node {
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
 	obj.add_terse('embeds', t.array_node_embed(node.embeds))
 	obj.add('is_implements', t.bool_node(node.is_implements))
-	obj.add_terse('implements_types', t.array_node_type_expr(node.implement_types))
+	obj.add_terse('implements_types', t.array_node_type_expr(node.implements_types))
 	return obj
 }
 
