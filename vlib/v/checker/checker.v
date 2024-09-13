@@ -3641,7 +3641,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = hash
 		}
 		.build_date {
-			node.val = util.stable_build_time.strftime('%Y-%M-%d')
+			node.val = util.stable_build_time.strftime('%Y-%m-%d')
 		}
 		.build_time {
 			node.val = util.stable_build_time.strftime('%H:%M:%S')
