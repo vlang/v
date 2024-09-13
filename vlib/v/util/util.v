@@ -47,6 +47,7 @@ pub fn tabs(n int) string {
 	return if n >= 0 && n < const_tabs.len { const_tabs[n] } else { '\t'.repeat(n) }
 }
 
+pub const stable_build_time = get_build_time()
 // get_build_time returns the current build time, while taking into account SOURCE_DATE_EPOCH
 // to support transparent reproducible builds. See also https://reproducible-builds.org/docs/source-date-epoch/
 // When SOURCE_DATE_EPOCH is not set, it will return the current UTC time.

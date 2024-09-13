@@ -1,4 +1,5 @@
 import os
+import time
 import v.pref
 
 struct TestStruct {
@@ -172,4 +173,18 @@ fn test_at_location() {
 	MyStruct.new().mymethod()
 	assert @LOCATION.contains('comptime_at_test.v:')
 	assert @LOCATION.ends_with('main.test_at_location')
+}
+
+fn test_at_build_date_time_timestamp() {
+	bd := dump(@BUILD_DATE)
+	bt := dump(@BUILD_TIME)
+	bts := dump(@BUILD_TIMESTAMP)
+	assert bd.len > 0
+	assert bt.len > 0
+	assert bd.count('-') == 2
+	assert bt.count(':') == 2
+	assert bts.len > 0
+	assert bts.i64() > 1_000_000_000
+	now_utc := dump(time.utc().unix())
+	assert now_utc >= bts.i64()
 }
