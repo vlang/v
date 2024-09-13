@@ -871,9 +871,12 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 							} else {
 								parts.last()
 							}
-							c.error('cannot access private field `${field.name}` on `${mod_type}`',
-								init_field.pos)
-							break
+							if !c.inside_unsafe {
+								c.error('cannot access private field `${field.name}` on `${mod_type}`',
+									init_field.pos)
+
+								break
+							}
 						}
 					}
 				}
