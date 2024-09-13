@@ -329,7 +329,7 @@ fn astar_path_finding(mut app App, mut grid [][]Cell, start Point, end Point) {
 
 	g_score[start.x][start.y] = 0
 	f_score[start.x][start.y] = g_score[start.x][start.y] + hf(start, end)
-	priority_queue.insert(&Node{
+	priority_queue.insert(Node{
 		f_score: f_score[start.x][start.y]
 		cell:    &Point{
 			x: start.x
