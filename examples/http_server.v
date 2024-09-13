@@ -1,6 +1,6 @@
 module main
 
-import net.http { CommonHeader, Request, Response, Server }
+import net.http { Request, Response, Server }
 
 struct ExampleHandler {}
 
