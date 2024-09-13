@@ -161,13 +161,13 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 							decoded_s += escape
 							continue
 						}
-						if unicode_val > decoder.utf8_max || unicode_val < 0 {
+						if unicode_val > utf8_max || unicode_val < 0 {
 							decoded_s += escape
 							continue
 						}
 						// Check if the Unicode value is actually in the valid Unicode scalar value ranges.
 						if !((unicode_val >= 0x0000 && unicode_val <= 0xD7FF)
-							|| (unicode_val >= 0xE000 && unicode_val <= decoder.utf8_max)) {
+							|| (unicode_val >= 0xE000 && unicode_val <= utf8_max)) {
 							decoded_s += escape
 							continue
 						}

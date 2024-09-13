@@ -8,7 +8,7 @@ const bar = (foo << 5) + 9
 
 @[export: Tatltuae]
 pub fn test_tatltuae() int {
-	return test.foo + test.bar
+	return foo + bar
 }
 
 @[callconv: stdcall]

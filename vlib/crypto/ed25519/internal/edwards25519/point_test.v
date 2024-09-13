@@ -10,8 +10,8 @@ fn test_invalid_encodings() {
 	inv_bytes := hex.decode(invalid) or { panic(err) }
 	mut p := new_generator_point()
 
-	out := p.set_bytes(inv_bytes) or { edwards25519.zero_point }
-	assert out == edwards25519.zero_point
+	out := p.set_bytes(inv_bytes) or { zero_point }
+	assert out == zero_point
 	// assert p.equal(bgp) == 1 //not makes sense when error
 
 	assert check_on_curve(p) == true

@@ -12,7 +12,7 @@ const session_id_length = 32
 // new_session_id creates and returns a random session id and its signed version.
 // You can directly use the signed version as a cookie value
 pub fn new_session_id(secret []u8) (string, string) {
-	sid := rand.hex(sessions.session_id_length)
+	sid := rand.hex(session_id_length)
 
 	hashed := hmac.new(secret, sid.bytes(), sha256.sum, sha256.block_size)
 

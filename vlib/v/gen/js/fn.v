@@ -407,7 +407,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := g.js_name(it.name)
 
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
-	if name in js.builtin_functions {
+	if name in builtin_functions {
 		name = 'builtin__${name}'
 	}
 	print_method := name
@@ -624,7 +624,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.cur_concrete_types, name)
-	if name in js.builtin_functions {
+	if name in builtin_functions {
 		name = 'builtin__${name}'
 	}
 	if it.is_pub && !it.is_method {
@@ -802,7 +802,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name)
-	if name in js.builtin_functions {
+	if name in builtin_functions {
 		name = 'builtin__${name}'
 	}
 	if it.is_pub && !it.is_method {

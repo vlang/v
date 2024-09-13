@@ -19,34 +19,34 @@ pub fn (d Duration) nanoseconds() i64 {
 
 // microseconds returns the duration as an integer number of microseconds.
 pub fn (d Duration) microseconds() i64 {
-	return i64(d) / time.microsecond
+	return i64(d) / microsecond
 }
 
 // milliseconds returns the duration as an integer number of milliseconds.
 pub fn (d Duration) milliseconds() i64 {
-	return i64(d) / time.millisecond
+	return i64(d) / millisecond
 }
 
 // The following functions return floating point numbers because it's common to
 // consider all of them in sub-one intervals
 // seconds returns the duration as a floating point number of seconds.
 pub fn (d Duration) seconds() f64 {
-	return f64(d) / f64(time.second)
+	return f64(d) / f64(second)
 }
 
 // minutes returns the duration as a floating point number of minutes.
 pub fn (d Duration) minutes() f64 {
-	return f64(d) / f64(time.minute)
+	return f64(d) / f64(minute)
 }
 
 // hours returns the duration as a floating point number of hours.
 pub fn (d Duration) hours() f64 {
-	return f64(d) / f64(time.hour)
+	return f64(d) / f64(hour)
 }
 
 // days returns the duration as a floating point number of days.
 pub fn (d Duration) days() f64 {
-	return f64(d) / f64(time.hour * 24)
+	return f64(d) / f64(hour * 24)
 }
 
 // str pretty prints the duration
@@ -60,7 +60,7 @@ pub fn (d Duration) days() f64 {
 // ns<ns>     // 234ns
 // ```
 pub fn (d Duration) str() string {
-	if d == time.infinite {
+	if d == infinite {
 		return 'inf'
 	}
 	mut sign := ''
@@ -69,16 +69,16 @@ pub fn (d Duration) str() string {
 		sign = '-'
 		t = -t
 	}
-	hr := t / time.hour
-	t -= hr * time.hour
-	min := t / time.minute
-	t -= min * time.minute
-	sec := t / time.second
-	t -= sec * time.second
-	ms := t / time.millisecond
-	t -= ms * time.millisecond
-	us := t / time.microsecond
-	t -= us * time.microsecond
+	hr := t / hour
+	t -= hr * hour
+	min := t / minute
+	t -= min * minute
+	sec := t / second
+	t -= sec * second
+	ms := t / millisecond
+	t -= ms * millisecond
+	us := t / microsecond
+	t -= us * microsecond
 	ns := t
 
 	return match true {
@@ -101,12 +101,12 @@ pub fn (d Duration) debug() string {
 		x = -x
 	}
 	for label, v in {
-		'days': 24 * time.hour
-		'h':    time.hour
-		'm':    time.minute
-		's':    time.second
-		'ms':   time.millisecond
-		'us':   time.microsecond
+		'days': 24 * hour
+		'h':    hour
+		'm':    minute
+		's':    second
+		'ms':   millisecond
+		'us':   microsecond
 	} {
 		if x > v {
 			xx := x / v

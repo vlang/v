@@ -97,26 +97,25 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	//
 	// Let's process for multiple blocks
 	// number of blocks the src bytes should be split into
-	nr_blocks := src.len / chacha20.block_size
+	nr_blocks := src.len / block_size
 	for i := 0; i < nr_blocks; i++ {
 		// generate ciphers keystream block, stored in c.block
 		c.generic_key_stream()
 		// get current src block to be xor-ed
-		block := unsafe { src[i * chacha20.block_size..(i + 1) * chacha20.block_size] }
+		block := unsafe { src[i * block_size..(i + 1) * block_size] }
 
 		// instead allocating output buffer for every block, we use dst buffer directly.
 		// xor current block of plaintext with keystream in c.block
-		n := cipher.xor_bytes(mut dst[i * chacha20.block_size..(i + 1) * chacha20.block_size],
-			block, c.block)
+		n := cipher.xor_bytes(mut dst[i * block_size..(i + 1) * block_size], block, c.block)
 		assert n == c.block.len
 	}
 	// process for partial block
-	if src.len % chacha20.block_size != 0 {
+	if src.len % block_size != 0 {
 		c.generic_key_stream()
 		// get the remaining last partial block
-		block := unsafe { src[nr_blocks * chacha20.block_size..] }
+		block := unsafe { src[nr_blocks * block_size..] }
 		// xor block with keystream
-		_ := cipher.xor_bytes(mut dst[nr_blocks * chacha20.block_size..], block, c.block)
+		_ := cipher.xor_bytes(mut dst[nr_blocks * block_size..], block, c.block)
 	}
 }
 
@@ -180,11 +179,11 @@ pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
 @[direct_array_access]
 fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	// check for correctness of key and nonce length
-	if key.len != chacha20.key_size {
+	if key.len != key_size {
 		return error('chacha20: bad key size provided ')
 	}
 	// check for nonce's length is 12 or 24
-	if nonce.len != chacha20.nonce_size && nonce.len != chacha20.x_nonce_size {
+	if nonce.len != nonce_size && nonce.len != x_nonce_size {
 		return error('chacha20: bad nonce size provided')
 	}
 	mut nonces := nonce.clone()
@@ -192,18 +191,18 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 
 	// if nonce's length is 24 bytes, we derive a new key and nonce with xchacha20 function
 	// and supplied to setup process.
-	if nonces.len == chacha20.x_nonce_size {
+	if nonces.len == x_nonce_size {
 		keys = xchacha20(keys, nonces[0..16])!
-		mut cnonce := []u8{len: chacha20.nonce_size}
+		mut cnonce := []u8{len: nonce_size}
 		_ := copy(mut cnonce[4..12], nonces[16..24])
 		nonces = cnonce.clone()
-	} else if nonces.len != chacha20.nonce_size {
+	} else if nonces.len != nonce_size {
 		return error('chacha20: wrong nonce size')
 	}
 
 	// bounds check elimination hint
-	_ = keys[chacha20.key_size - 1]
-	_ = nonces[chacha20.nonce_size - 1]
+	_ = keys[key_size - 1]
+	_ = nonces[nonce_size - 1]
 
 	// setup ChaCha20 cipher key
 	c.key[0] = binary.little_endian_u32(keys[0..4])
@@ -233,7 +232,7 @@ fn (mut c Cipher) chacha20_block() {
 	//     12:bbbbbbbb  13:nnnnnnnn  14:nnnnnnnn  15:nnnnnnnn
 	//
 	// where c=constant k=key b=blockcounter n=nonce
-	c0, c1, c2, c3 := chacha20.cc0, chacha20.cc1, chacha20.cc2, chacha20.cc3
+	c0, c1, c2, c3 := cc0, cc1, cc2, cc3
 	c4 := c.key[0]
 	c5 := c.key[1]
 	c6 := c.key[2]
@@ -371,14 +370,14 @@ fn quarter_round(a u32, b u32, c u32, d u32) (u32, u32, u32, u32) {
 
 // encrypt_with_counter encrypts plaintext with internal counter set to ctr
 fn encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
-	if key.len != chacha20.key_size {
+	if key.len != key_size {
 		return error('bad key size')
 	}
-	if nonce.len == chacha20.x_nonce_size {
+	if nonce.len == x_nonce_size {
 		ciphertext := xchacha20_encrypt_with_counter(key, nonce, ctr, plaintext)!
 		return ciphertext
 	}
-	if nonce.len == chacha20.nonce_size {
+	if nonce.len == nonce_size {
 		ciphertext := chacha20_encrypt_with_counter(key, nonce, ctr, plaintext)!
 		return ciphertext
 	}

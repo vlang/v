@@ -99,7 +99,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 	for {
 		c := s.next()
 		byte_c := u8(c)
-		if c == scanner.end_of_text {
+		if c == end_of_text {
 			s.inc_line_number()
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'reached EOF')
 			return s.new_token(.eof, '', 1)
@@ -268,7 +268,7 @@ pub fn (mut s Scanner) next() u32 {
 		c := s.text[opos]
 		return c
 	}
-	return scanner.end_of_text
+	return end_of_text
 }
 
 // skip skips one character ahead.
@@ -300,7 +300,7 @@ pub fn (s &Scanner) at() u32 {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
 	}
-	return scanner.end_of_text
+	return end_of_text
 }
 
 // at_crlf returns `true` if the scanner is at a `\r` character
@@ -321,7 +321,7 @@ pub fn (s &Scanner) peek(n int) u32 {
 		}
 		return s.text[s.pos + n]
 	}
-	return scanner.end_of_text
+	return end_of_text
 }
 
 // reset resets the internal state of the scanner.
@@ -355,7 +355,7 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 fn (mut s Scanner) ignore_line() !string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
 	start := s.pos
-	for c := s.at(); c != scanner.end_of_text && c != `\n`; c = s.at() {
+	for c := s.at(); c != end_of_text && c != `\n`; c = s.at() {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${u8(c).ascii_str()} / ${c}"')
 		if s.at_crlf() {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
@@ -510,7 +510,7 @@ fn (mut s Scanner) extract_multiline_string() !string {
 
 		if c == quote {
 			if s.peek(1) == quote && s.peek(2) == quote {
-				if s.peek(3) == scanner.end_of_text {
+				if s.peek(3) == end_of_text {
 					s.pos += 3
 					s.col += 3
 					lit += quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
@@ -593,7 +593,7 @@ fn (mut s Scanner) extract_number() !string {
 		mut float_precision := 0
 		if c == `.` {
 			mut i := 1
-			for c_ := u8(s.peek(i)); c_ != scanner.end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
+			for c_ := u8(s.peek(i)); c_ != end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
 				if !c_.is_digit() && c_ != `,` {
 					float_precision = 0
 					break
@@ -610,7 +610,7 @@ fn (mut s Scanner) extract_number() !string {
 			s.col += 2
 		}
 		c = s.at()
-		if !(u8(c).is_hex_digit() || c in scanner.digit_extras) || (c == `.` && s.is_left_of_assign) {
+		if !(u8(c).is_hex_digit() || c in digit_extras) || (c == `.` && s.is_left_of_assign) {
 			break
 		}
 		s.pos++

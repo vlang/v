@@ -16,5 +16,5 @@ pub mut:
 const params = &UIParams{}
 
 pub fn get_params() &UIParams {
-	return objects.params
+	return params
 }

@@ -150,4 +150,14 @@ A code block without a specific language should be rendered verbatim:
 └── main.v
 ```
 
+The s tags here in the code block, should be rendered verbatim, not interpreted as HTML ones:
+```
+h:m:s      // 5:02:33
+m:s.mi<s>  // 2:33.015
+s.mi<s>    // 33.015s
+mi.mc<ms>  // 15.007ms
+mc.ns<ns>  // 7.234us
+ns<ns>     // 234ns
+```
+
 The End.

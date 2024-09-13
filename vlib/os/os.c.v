@@ -89,10 +89,10 @@ const buf_size = 4096
 // but to read the file in `buf_size` chunks.
 @[manualfree]
 fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
-	buf := [os.buf_size]u8{}
-	mut sb := strings.new_builder(os.buf_size)
+	buf := [buf_size]u8{}
+	mut sb := strings.new_builder(buf_size)
 	for {
-		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
+		mut read_bytes := fread(&buf[0], 1, buf_size, fp) or {
 			if err is Eof {
 				break
 			}
@@ -1044,7 +1044,7 @@ pub const error_code_not_set = int(0x7EFEFEFE)
 pub struct SystemError {
 pub:
 	msg  string
-	code int = os.error_code_not_set
+	code int = error_code_not_set
 }
 
 // Return a POSIX error:
@@ -1052,7 +1052,7 @@ pub:
 // Message defaults to POSIX error message for the error code
 @[inline]
 pub fn error_posix(e SystemError) IError {
-	code := if e.code == os.error_code_not_set { C.errno } else { e.code }
+	code := if e.code == error_code_not_set { C.errno } else { e.code }
 	message := if e.msg == '' { posix_get_error_msg(code) } else { e.msg }
 	return error_with_code(message, code)
 }
@@ -1063,7 +1063,7 @@ pub fn error_posix(e SystemError) IError {
 @[inline]
 pub fn error_win32(e SystemError) IError {
 	$if windows {
-		code := if e.code == os.error_code_not_set { int(C.GetLastError()) } else { e.code }
+		code := if e.code == error_code_not_set { int(C.GetLastError()) } else { e.code }
 		message := if e.msg == '' { get_error_msg(code) } else { e.msg }
 		return error_with_code(message, code)
 	} $else {

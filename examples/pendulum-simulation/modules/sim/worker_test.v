@@ -29,8 +29,8 @@ const worker_test_mock_state = SimState{
 fn test_compute_result() {
 	request := SimRequest{
 		id:     0
-		params: sim.worker_test_mock_params
-		state:  sim.worker_test_mock_state
+		params: worker_test_mock_params
+		state:  worker_test_mock_state
 	}
 	expected_state := SimState{
 		position: vector(

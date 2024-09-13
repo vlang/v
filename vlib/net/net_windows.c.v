@@ -230,7 +230,7 @@ fn init() {
 	mut wsadata := C.WSAData{
 		lpVendorInfo: 0
 	}
-	res := C.WSAStartup(net.wsa_v22, &wsadata)
+	res := C.WSAStartup(wsa_v22, &wsadata)
 	if res != 0 {
 		panic('socket: WSAStartup failed')
 	}

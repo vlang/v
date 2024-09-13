@@ -23,7 +23,7 @@ pub enum Ccc {
 
 pub fn debugger() string {
 	v := Bbb{}
-	return hello.hello
+	return hello
 }
 
 pub fn excited() string {

@@ -30,9 +30,9 @@ pub fn (cf &CFlag) eval() string {
 		x := cf.value[i]
 		if x == `$` {
 			remainder := cf.value[i..]
-			if remainder.starts_with(cflag.fexisting_literal) {
-				sparams := remainder[cflag.fexisting_literal.len + 1..].all_before(')')
-				i += sparams.len + cflag.fexisting_literal.len + 1
+			if remainder.starts_with(fexisting_literal) {
+				sparams := remainder[fexisting_literal.len + 1..].all_before(')')
+				i += sparams.len + fexisting_literal.len + 1
 				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim('\t \'"'))
 				// mut found_spath := ''
 				for spath in svalues {

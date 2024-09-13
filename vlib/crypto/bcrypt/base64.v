@@ -3,7 +3,7 @@ module bcrypt
 const alphabet = './ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 fn char64(c u8) u8 {
-	for i, ch in bcrypt.alphabet {
+	for i, ch in alphabet {
 		if ch == c {
 			return u8(i)
 		}
@@ -69,28 +69,28 @@ fn base64_encode(data []u8) string {
 	for src_index < data.len {
 		mut c1 := data[src_index]
 		src_index += 1
-		result << bcrypt.alphabet[c1 >> 2]
+		result << alphabet[c1 >> 2]
 		c1 = (c1 & 0x03) << 4
 		if src_index >= data.len {
-			result << bcrypt.alphabet[c1]
+			result << alphabet[c1]
 			break
 		}
 
 		mut c2 := data[src_index]
 		src_index += 1
 		c1 |= (c2 >> 4) & 0x0f
-		result << bcrypt.alphabet[c1]
+		result << alphabet[c1]
 		c1 = (c2 & 0x0f) << 2
 		if src_index >= data.len {
-			result << bcrypt.alphabet[c1]
+			result << alphabet[c1]
 			break
 		}
 
 		c2 = data[src_index]
 		src_index += 1
 		c1 |= (c2 >> 6) & 0x03
-		result << bcrypt.alphabet[c1]
-		result << bcrypt.alphabet[c2 & 0x3f]
+		result << alphabet[c1]
+		result << alphabet[c2 & 0x3f]
 	}
 
 	return result.bytestr()

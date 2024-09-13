@@ -29,8 +29,8 @@ pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string        = ':${http.default_server_port}'
-	port               int           = http.default_server_port @[deprecated: 'use addr']
+	addr               string        = ':${default_server_port}'
+	port               int           = default_server_port @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
@@ -55,7 +55,7 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// remove when s.port is removed
 	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != http.default_server_port {
+	if addr.len > 1 && s.port != default_server_port {
 		s.addr = '${addr[0]}:${s.port}'
 	}
 

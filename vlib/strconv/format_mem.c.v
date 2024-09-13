@@ -105,12 +105,12 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 			d_i = (n - (n1 * 100)) << 1
 			n = n1
 			unsafe {
-				buf[i] = strconv.digit_pairs.str[d_i]
+				buf[i] = digit_pairs.str[d_i]
 			}
 			i--
 			d_i++
 			unsafe {
-				buf[i] = strconv.digit_pairs.str[d_i]
+				buf[i] = digit_pairs.str[d_i]
 			}
 			i--
 		}
@@ -328,8 +328,8 @@ pub fn format_fl(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [strconv.max_size_f64_char]u8{} // out buffer
+		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -399,8 +399,8 @@ pub fn format_es(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := [strconv.max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [strconv.max_size_f64_char]u8{} // out buffer
+		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 

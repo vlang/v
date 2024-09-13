@@ -159,7 +159,7 @@ fn (mut pc PkgConfig) resolve(pkgname string) !string {
 }
 
 pub fn atleast(v string) bool {
-	v0 := semver.from(pkgconfig.version) or { return false }
+	v0 := semver.from(version) or { return false }
 	v1 := semver.from(v) or { return false }
 	return v0 > v1
 }
@@ -250,7 +250,7 @@ fn (mut pc PkgConfig) load_paths() {
 		}
 	} else {
 		if pc.options.use_default_paths {
-			for path in pkgconfig.default_paths {
+			for path in default_paths {
 				pc.add_path(path)
 			}
 		}

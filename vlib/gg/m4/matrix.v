@@ -46,7 +46,7 @@ pub fn (a Mat4) clean() Mat4 {
 	unsafe {
 		x := Mat4{}
 		for c, value in a.e {
-			if f32_abs(value) < m4.precision {
+			if f32_abs(value) < precision {
 				x.e[c] = 0
 			} else {
 				x.e[c] = value
@@ -70,7 +70,7 @@ pub fn (x Mat4) sum_all() f32 {
 pub fn (x Mat4) is_equal(y Mat4) bool {
 	unsafe {
 		for c, value in x.e {
-			if f32_abs(value - y.e[c]) > m4.precision {
+			if f32_abs(value - y.e[c]) > precision {
 				return false
 			}
 		}

@@ -32,15 +32,15 @@ pub fn u64toa(buf_start &u8, value u64) !int {
 		d2 := u32((v % 100) << 1)
 		unsafe {
 			if v >= 1000 {
-				*buf++ = picohttpparser.g_digits_lut[d1]
+				*buf++ = g_digits_lut[d1]
 			}
 			if v >= 100 {
-				*buf++ = picohttpparser.g_digits_lut[d1 + 1]
+				*buf++ = g_digits_lut[d1 + 1]
 			}
 			if v >= 10 {
-				*buf++ = picohttpparser.g_digits_lut[d2]
+				*buf++ = g_digits_lut[d2]
 			}
-			*buf++ = picohttpparser.g_digits_lut[d2 + 1]
+			*buf++ = g_digits_lut[d2 + 1]
 		}
 	} else {
 		b := v / 10_000
@@ -54,20 +54,20 @@ pub fn u64toa(buf_start &u8, value u64) !int {
 
 		unsafe {
 			if value >= 10_000_000 {
-				*buf++ = picohttpparser.g_digits_lut[d1]
+				*buf++ = g_digits_lut[d1]
 			}
 			if value >= 1_000_000 {
-				*buf++ = picohttpparser.g_digits_lut[d1 + 1]
+				*buf++ = g_digits_lut[d1 + 1]
 			}
 			if value >= 100_000 {
-				*buf++ = picohttpparser.g_digits_lut[d2]
+				*buf++ = g_digits_lut[d2]
 			}
-			*buf++ = picohttpparser.g_digits_lut[d2 + 1]
+			*buf++ = g_digits_lut[d2 + 1]
 
-			*buf++ = picohttpparser.g_digits_lut[d3]
-			*buf++ = picohttpparser.g_digits_lut[d3 + 1]
-			*buf++ = picohttpparser.g_digits_lut[d4]
-			*buf++ = picohttpparser.g_digits_lut[d4 + 1]
+			*buf++ = g_digits_lut[d3]
+			*buf++ = g_digits_lut[d3 + 1]
+			*buf++ = g_digits_lut[d4]
+			*buf++ = g_digits_lut[d4 + 1]
 		}
 	}
 

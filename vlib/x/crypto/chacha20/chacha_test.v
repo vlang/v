@@ -48,7 +48,7 @@ struct BlockCase {
 }
 
 fn test_chacha20_no_overlap_xor_key_stream() ! {
-	for i, t in chacha20.xorkeystream_testcases {
+	for i, t in xorkeystream_testcases {
 		key := hex.decode(t.key)!
 		nonce := hex.decode(t.nonce)!
 		mut cs := new_cipher(key, nonce)!
@@ -67,7 +67,7 @@ fn test_chacha20_no_overlap_xor_key_stream() ! {
 }
 
 fn test_chacha20_block_function() ! {
-	for val in chacha20.blocks_testcases {
+	for val in blocks_testcases {
 		key_bytes := hex.decode(val.key)!
 		nonce_bytes := hex.decode(val.nonce)!
 		mut cs := new_cipher(key_bytes, nonce_bytes)!
@@ -107,7 +107,7 @@ fn test_chacha20_quarter_round() {
 
 // test poly1305 key generator as specified in https://datatracker.ietf.org/doc/html/rfc8439#section-2.6.2
 fn test_chacha20_onetime_poly1305_key_generation() ! {
-	for i, v in chacha20.otk_cases {
+	for i, v in otk_cases {
 		key := hex.decode(v.key)!
 		nonce := hex.decode(v.nonce)!
 
@@ -208,7 +208,7 @@ struct EncryptionCase {
 }
 
 fn test_chacha20_cipher_encrypt() ! {
-	for c in chacha20.encryption_test_cases {
+	for c in encryption_test_cases {
 		key_bytes := hex.decode(c.key)!
 		nonce_bytes := hex.decode(c.nonce)!
 		plaintext_bytes := hex.decode(c.plaintext)!
@@ -225,7 +225,7 @@ fn test_chacha20_cipher_encrypt() ! {
 }
 
 fn test_chacha20_cipher_decrypt() ! {
-	for c in chacha20.encryption_test_cases {
+	for c in encryption_test_cases {
 		key_bytes := hex.decode(c.key)!
 		nonce_bytes := hex.decode(c.nonce)!
 

@@ -17,7 +17,7 @@ pub const max_headers = 50
 pub struct Header {
 pub mut:
 	// data map[string][]string
-	data [http.max_headers]HeaderKV
+	data [max_headers]HeaderKV
 mut:
 	cur_pos int
 	// map of lowercase header keys to their original keys
@@ -508,7 +508,7 @@ pub fn (mut h Header) coerce(flags HeaderCoerceConfig) {
 	if keys.len == new_keys.len {
 		return
 	}
-	mut new_data := [http.max_headers]HeaderKV{}
+	mut new_data := [max_headers]HeaderKV{}
 	mut i := 0
 	for _, key in new_keys {
 		for _, old_key in keys {
@@ -756,8 +756,8 @@ pub fn (h Header) join(other Header) Header {
 // NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
 fn canonicalize(name string) string {
 	// check if we have a common header
-	if name in http.common_header_map {
-		return http.common_header_map[name].str()
+	if name in common_header_map {
+		return common_header_map[name].str()
 	}
 	return name.split('-').map(it.capitalize()).join('-')
 }

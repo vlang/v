@@ -1332,7 +1332,7 @@ fn is_excluding_latin(table &RangeTable, r rune) bool {
 const linear_max = 18
 
 fn is_16(ranges []Range16, r u16) bool {
-	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1 {
+	if ranges.len <= linear_max && r <= max_latin_1 {
 		for range in ranges {
 			if r < range.lo {
 				return false
@@ -1363,7 +1363,7 @@ fn is_16(ranges []Range16, r u16) bool {
 }
 
 fn is_32(ranges []Range32, r u32) bool {
-	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1 {
+	if ranges.len <= linear_max && r <= max_latin_1 {
 		for range in ranges {
 			if r < range.lo {
 				return false

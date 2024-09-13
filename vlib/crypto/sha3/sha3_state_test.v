@@ -135,7 +135,7 @@ fn test_2_x_24_rounds_on_zero() {
 	}
 
 	mut round := 0
-	for rv in sha3.first_24 {
+	for rv in first_24 {
 		s.theta()
 
 		println('round ${round} verifying theta')
@@ -187,13 +187,13 @@ fn test_2_x_24_rounds_on_zero() {
 	// check the actual bytes in the state
 	first_state_bytes := s.to_bytes()
 	for i in 0 .. 200 {
-		assert first_state_bytes[i] == sha3.first_state_as_bytes[i], 'examining state byte ${i} ${first_state_bytes[i]:02x} != ${sha3.first_state_as_bytes[i]:02x}'
+		assert first_state_bytes[i] == first_state_as_bytes[i], 'examining state byte ${i} ${first_state_bytes[i]:02x} != ${first_state_as_bytes[i]:02x}'
 	}
 
 	println('verifying using previous state')
 
 	round = 0
-	for rv in sha3.second_24 {
+	for rv in second_24 {
 		s.theta()
 
 		println('round ${round} verifying theta')
@@ -245,7 +245,7 @@ fn test_2_x_24_rounds_on_zero() {
 	// check the actual bytes in the state
 	second_state_bytes := s.to_bytes()
 	for i in 0 .. 200 {
-		assert second_state_bytes[i] == sha3.second_state_as_bytes[i], 'examining state byte ${i} ${second_state_bytes[i]:02x} != ${sha3.second_state_as_bytes[i]:02x}'
+		assert second_state_bytes[i] == second_state_as_bytes[i], 'examining state byte ${i} ${second_state_bytes[i]:02x} != ${second_state_as_bytes[i]:02x}'
 	}
 }
 
@@ -255,32 +255,32 @@ fn test_to_from_bytes() {
 	// going from bytes to state as 5 x 5 u64 words to bytes
 	// should give you the original byte array
 
-	s.from_bytes(sha3.first_state_as_bytes)
+	s.from_bytes(first_state_as_bytes)
 
 	for x in 0 .. 5 {
 		for y in 0 .. 5 {
-			assert s.a[x][y] == sha3.first_state_as_words[x][y], 'x ${x} y ${y} ${s.a[x][y]:016x} != ${sha3.first_state_as_words[x][y]:016x}'
+			assert s.a[x][y] == first_state_as_words[x][y], 'x ${x} y ${y} ${s.a[x][y]:016x} != ${first_state_as_words[x][y]:016x}'
 		}
 	}
 
 	mut result_bytes := s.to_bytes()
 
 	for i in 0 .. 200 {
-		assert result_bytes[i] == sha3.first_state_as_bytes[i], 'examining state byte ${i} ${result_bytes[i]:02x} != ${sha3.first_state_as_bytes[i]:02x}'
+		assert result_bytes[i] == first_state_as_bytes[i], 'examining state byte ${i} ${result_bytes[i]:02x} != ${first_state_as_bytes[i]:02x}'
 	}
 
-	s.from_bytes(sha3.second_state_as_bytes)
+	s.from_bytes(second_state_as_bytes)
 
 	for x in 0 .. 5 {
 		for y in 0 .. 5 {
-			assert s.a[x][y] == sha3.second_state_as_words[x][y], 'x ${x} y ${y} ${s.a[x][y]:016x} != ${sha3.second_state_as_words[x][y]:016x}'
+			assert s.a[x][y] == second_state_as_words[x][y], 'x ${x} y ${y} ${s.a[x][y]:016x} != ${second_state_as_words[x][y]:016x}'
 		}
 	}
 
 	result_bytes = s.to_bytes()
 
 	for i in 0 .. 200 {
-		assert result_bytes[i] == sha3.second_state_as_bytes[i], 'examining state byte ${i} ${result_bytes[i]:02x} != ${sha3.second_state_as_bytes[i]:02x}'
+		assert result_bytes[i] == second_state_as_bytes[i], 'examining state byte ${i} ${result_bytes[i]:02x} != ${second_state_as_bytes[i]:02x}'
 	}
 }
 

@@ -15,7 +15,7 @@ pub fn (nodes []DocNode) find(symname string) !DocNode {
 
 // arrange sorts the DocNodes based on their symbols and names.
 pub fn (mut nodes []DocNode) arrange() {
-	if !doc.should_sort {
+	if !should_sort {
 		return
 	}
 	mut kinds := []SymbolKind{}

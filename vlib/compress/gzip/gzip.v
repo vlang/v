@@ -70,7 +70,7 @@ pub mut:
 
 // validate validates the header and returns its details if valid
 pub fn validate(data []u8, params DecompressParams) !GzipHeader {
-	if data.len < gzip.min_header_length {
+	if data.len < min_header_length {
 		return error('data is too short, not gzip compressed?')
 	} else if data[0] != 0x1f || data[1] != 0x8b {
 		return error('wrong magic numbers, not gzip compressed?')
@@ -83,7 +83,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 	// correctly, so we dont accidently decompress something that belongs
 	// to the header
 
-	if data[3] & gzip.reserved_bits > 0 {
+	if data[3] & reserved_bits > 0 {
 		// rfc 1952 2.3.1.2 Compliance
 		// A compliant decompressor must give an error indication if any
 		// reserved bit is non-zero, since such a bit could indicate the
@@ -92,12 +92,12 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 		return error('reserved flags are set, unsupported field detected')
 	}
 
-	if data[3] & gzip.fextra > 0 {
+	if data[3] & fextra > 0 {
 		xlen := data[header.length]
 		header.extra = data[header.length + 1..header.length + 1 + xlen]
 		header.length += xlen + 1
 	}
-	if data[3] & gzip.fname > 0 {
+	if data[3] & fname > 0 {
 		// filename is zero-terminated, so skip until we hit a zero byte
 		for header.length < data.len && data[header.length] != 0x00 {
 			header.filename << data[header.length]
@@ -105,7 +105,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 		}
 		header.length++
 	}
-	if data[3] & gzip.fcomment > 0 {
+	if data[3] & fcomment > 0 {
 		// comment is zero-terminated, so skip until we hit a zero byte
 		for header.length < data.len && data[header.length] != 0x00 {
 			header.comment << data[header.length]
@@ -113,7 +113,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 		}
 		header.length++
 	}
-	if data[3] & gzip.fhcrc > 0 {
+	if data[3] & fhcrc > 0 {
 		if header.length + 12 > data.len {
 			return error('data too short')
 		}

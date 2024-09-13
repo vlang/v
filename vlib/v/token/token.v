@@ -206,10 +206,10 @@ pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
-		key := token.token_str[t]
+		key := token_str[t]
 
 		// Exclude custom ORM operators from V keyword list
-		if key in token.orm_custom_operators {
+		if key in orm_custom_operators {
 			continue
 		}
 
@@ -357,7 +357,7 @@ fn build_token_str() []string {
 
 @[inline]
 pub fn is_key(key string) bool {
-	return int(token.keywords[key]) > 0
+	return int(keywords[key]) > 0
 }
 
 @[inline]
@@ -368,17 +368,17 @@ pub fn is_decl(t Kind) bool {
 
 @[inline]
 pub fn (t Kind) is_assign() bool {
-	return t in token.assign_tokens
+	return t in assign_tokens
 }
 
 // note: used for some code generation, so no quoting
 @[inline]
 pub fn (t Kind) str() string {
 	idx := int(t)
-	if idx < 0 || token.token_str.len <= idx {
+	if idx < 0 || token_str.len <= idx {
 		return 'unknown'
 	}
-	return token.token_str[idx]
+	return token_str[idx]
 }
 
 @[inline]
@@ -491,13 +491,13 @@ const precedences = build_precedences()
 // precedence returns a tokens precedence if defined, otherwise 0
 @[direct_array_access; inline]
 pub fn (tok Token) precedence() int {
-	return int(token.precedences[tok.kind])
+	return int(precedences[tok.kind])
 }
 
 // precedence returns the precedence of the given token `kind` if defined, otherwise 0
 @[direct_array_access; inline]
 pub fn (kind Kind) precedence() int {
-	return int(token.precedences[kind])
+	return int(precedences[kind])
 }
 
 // is_scalar returns true if the token is a scalar

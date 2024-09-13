@@ -606,19 +606,19 @@ const extra_size = 32 * isize(sizeof(usize))
 
 fn raw_array_cap[T]() isize {
 	size := isize(sizeof(T))
-	if size > arrays.extra_size {
+	if size > extra_size {
 		return 1
 	} else {
-		return arrays.extra_size / size
+		return extra_size / size
 	}
 }
 
 fn raw_array_malloc_size[T]() isize {
 	size := isize(sizeof(T))
-	if size > arrays.extra_size {
+	if size > extra_size {
 		return size * 2
 	} else {
-		return arrays.extra_size
+		return extra_size
 	}
 }
 

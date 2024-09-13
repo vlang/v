@@ -176,7 +176,7 @@ pub fn is_number(r rune) bool {
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
 pub fn is_uchar_punct(uchar int) bool {
-	return find_punct_in_table(uchar, utf8.unicode_punct_western) != 0
+	return find_punct_in_table(uchar, unicode_punct_western) != 0
 }
 
 // Global
@@ -188,7 +188,7 @@ pub fn is_global_punct(s string, index int) bool {
 
 // is_uchar_global_punct return true if the input unicode is a global unicode punctuation
 pub fn is_uchar_global_punct(uchar int) bool {
-	return find_punct_in_table(uchar, utf8.unicode_punct) != 0
+	return find_punct_in_table(uchar, unicode_punct) != 0
 }
 
 // Private functions

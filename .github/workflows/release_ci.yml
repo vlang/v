@@ -81,7 +81,7 @@ jobs:
           find . -type d -name ".git" -exec rm -rf {} +
           rm -rf vc/
           rm -rf v_old
-          rm -rf vlib/v/tests/bench/gcboehm/*.svg
+          rm -rf vlib/v/tests/bench/gcboehm/*.svg.xz
       - name: Create ZIP archive
         shell: bash
         run: |

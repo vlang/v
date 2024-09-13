@@ -47,7 +47,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 
 	// infinite timeout is signaled by passing null as the timeout to
 	// select
-	if timeout == unix.infinite_timeout {
+	if timeout == infinite_timeout {
 		timeval_timeout = &C.timeval(unsafe { nil })
 	}
 

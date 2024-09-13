@@ -562,7 +562,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 		return name
 	}
 	name = name_.replace('.', '__')
-	if name in js.js_reserved {
+	if name in js_reserved {
 		return '_v_${name}'
 	}
 	return name
@@ -1095,7 +1095,7 @@ fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
 				if sym.kind == .struct_ {
 					if (sym.info as ast.Struct).is_union {
-						return js.unsupported_ctemp_assert_transform
+						return unsupported_ctemp_assert_transform
 					}
 				}
 				return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -1103,7 +1103,7 @@ fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type
 		}
 		else {}
 	}
-	return js.unsupported_ctemp_assert_transform
+	return unsupported_ctemp_assert_transform
 }
 
 fn (mut g JsGen) new_ctemp_var(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
@@ -1406,7 +1406,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			// TODO: Multiple types??
 
 			should_cast := stmt.left_types.len != 0
-				&& g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
+				&& g.table.type_kind(stmt.left_types.first()) in shallow_equatables
 				&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 			if should_cast {
 				g.cast_stack << stmt.left_types.first()
@@ -1826,7 +1826,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	if fn_return_is_option {
 		option_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
-		mut is_regular_option := ftyp == js.option_name
+		mut is_regular_option := ftyp == option_name
 		if option_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			if !isnil(g.fn_decl) && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
@@ -1851,7 +1851,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		tmp := g.new_tmp_var()
 		g.write('const ${tmp} = new ')
 
-		g.writeln('${js.option_name}({});')
+		g.writeln('${option_name}({});')
 		g.write('${tmp}.state = new u8(0);')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
@@ -1898,7 +1898,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if name.starts_with('JS.') {
 		return
 	}
-	if name in js.v_types && g.ns.name == 'builtin' {
+	if name in v_types && g.ns.name == 'builtin' {
 		return
 	}
 	js_name := g.js_name(name)
@@ -2106,7 +2106,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	} else {
 		styp := g.typ(it.elem_type)
 
-		c := if styp in js.v_types {
+		c := if styp in v_types {
 			g.gen_array_init_values_prim(it.exprs, styp)
 		} else {
 			g.gen_array_init_values(it.exprs)
@@ -2991,7 +2991,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		right := g.unwrap(node.right_type)
 		has_operator_overloading := g.table.has_method(left.sym, '==')
 		if has_operator_overloading
-			|| (l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables) {
+			|| (l_sym.kind in shallow_equatables && r_sym.kind in shallow_equatables) {
 			if node.op == .ne {
 				g.write('!')
 			}

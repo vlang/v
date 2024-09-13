@@ -94,7 +94,7 @@ const xml_elements = [
 
 fn test_single_element_parsing() ! {
 	mut reader := FullBufferReader{
-		contents: xml.sample_doc.bytes()
+		contents: sample_doc.bytes()
 	}
 	// Skip the "<root>" tag
 	mut skip := []u8{len: 6}
@@ -105,7 +105,7 @@ fn test_single_element_parsing() ! {
 
 	mut count := 0
 
-	for count < xml.xml_elements.len {
+	for count < xml_elements.len {
 		match ch {
 			`<` {
 				next_ch := next_char(mut reader, mut local_buf)!
@@ -113,7 +113,7 @@ fn test_single_element_parsing() ! {
 					`/` {}
 					else {
 						parsed_element := parse_single_node(next_ch, mut reader)!
-						assert xml.xml_elements[count] == parsed_element
+						assert xml_elements[count] == parsed_element
 						count++
 					}
 				}

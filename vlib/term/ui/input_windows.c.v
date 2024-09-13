@@ -17,7 +17,7 @@ struct ExtraContext {
 mut:
 	stdin_handle  C.HANDLE
 	stdout_handle C.HANDLE
-	read_buf      [ui.buf_size]C.INPUT_RECORD
+	read_buf      [buf_size]C.INPUT_RECORD
 	mouse_down    MouseButton
 }
 
@@ -136,7 +136,7 @@ fn (mut ctx Context) parse_events() {
 	}
 
 	// print('$nr_events | ')
-	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], ui.buf_size, &nr_events) {
+	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, &nr_events) {
 		panic('could not read from stdin')
 	}
 	for i in 0 .. nr_events {

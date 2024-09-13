@@ -38,6 +38,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			if i < node.implements_types.len - 1 {
 				f.write(', ')
 			}
+			f.mark_types_import_as_used(t)
 		}
 	}
 	// Calculate the alignments first

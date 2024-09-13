@@ -20,16 +20,16 @@ fn test_0_length_hash() {
 	input := []u8{}
 
 	output_224 := sum224(input)
-	assert output_224 == sha3.empty_message_sha3_224
+	assert output_224 == empty_message_sha3_224
 
 	output_256 := sum256(input)
-	assert output_256 == sha3.empty_message_sha3_256
+	assert output_256 == empty_message_sha3_256
 
 	output_384 := sum384(input)
-	assert output_384 == sha3.empty_message_sha3_384
+	assert output_384 == empty_message_sha3_384
 
 	output_512 := sum512(input)
-	assert output_512 == sha3.empty_message_sha3_512
+	assert output_512 == empty_message_sha3_512
 }
 
 const input_200 = [u8(0xa3), 0xa3, 0xa3, 0xa3, 0xa3, 0xa3, 0xa3, 0xa3, 0xa3, 0xa3, 0xa3, 0xa3,
@@ -66,17 +66,17 @@ const test_200_message_sha3_512 = [u8(0xE7), 0x6D, 0xFA, 0xD2, 0x20, 0x84, 0xA8,
 	0x54, 0x5A, 0x1C, 0xE8, 0xBA, 0x00]
 
 fn test_200_length_hash() {
-	output_224 := sum224(sha3.input_200)
-	assert output_224 == sha3.test_200_message_sha3_224
+	output_224 := sum224(input_200)
+	assert output_224 == test_200_message_sha3_224
 
-	output_256 := sum256(sha3.input_200)
-	assert output_256 == sha3.test_200_message_sha3_256
+	output_256 := sum256(input_200)
+	assert output_256 == test_200_message_sha3_256
 
-	output_384 := sum384(sha3.input_200)
-	assert output_384 == sha3.test_200_message_sha3_384
+	output_384 := sum384(input_200)
+	assert output_384 == test_200_message_sha3_384
 
-	output_512 := sum512(sha3.input_200)
-	assert output_512 == sha3.test_200_message_sha3_512
+	output_512 := sum512(input_200)
+	assert output_512 == test_200_message_sha3_512
 }
 
 const empty_message_shake128 = [u8(0x7F), 0x9C, 0x2B, 0xA4, 0xE8, 0x8F, 0x82, 0x7D, 0x61, 0x60,
@@ -151,10 +151,10 @@ fn test_0_length_xof() {
 	input := []u8{}
 
 	output_128 := shake128(input, 512)
-	assert output_128 == sha3.empty_message_shake128
+	assert output_128 == empty_message_shake128
 
 	output_256 := shake256(input, 512)
-	assert output_256 == sha3.empty_message_shake256
+	assert output_256 == empty_message_shake256
 }
 
 const test_200_message_shake128 = [u8(0x13), 0x1A, 0xB8, 0xD2, 0xB5, 0x94, 0x94, 0x6B, 0x9C, 0x81,
@@ -228,9 +228,9 @@ const test_200_message_shake256 = [u8(0xCD), 0x8A, 0x92, 0x0E, 0xD1, 0x41, 0xAA,
 fn test_200_length_xof() {
 	input := []u8{}
 
-	output_128 := shake128(sha3.input_200, 512)
-	assert output_128 == sha3.test_200_message_shake128
+	output_128 := shake128(input_200, 512)
+	assert output_128 == test_200_message_shake128
 
-	output_256 := shake256(sha3.input_200, 512)
-	assert output_256 == sha3.test_200_message_shake256
+	output_256 := shake256(input_200, 512)
+	assert output_256 == test_200_message_shake256
 }

@@ -28,10 +28,10 @@ const sim_test_mock_state = SimState{
 
 pub fn test_satisfy_rope_constraint() {
 	mut state := SimState{
-		...sim.sim_test_mock_state
+		...sim_test_mock_state
 	}
 
-	state.satisfy_rope_constraint(sim.sim_test_mock_params)
+	state.satisfy_rope_constraint(sim_test_mock_params)
 	assert state.position.x == -0.016957230930171364
 	assert state.position.y == -0.02937078552673521
 	assert state.position.z == 0.002311063475327252
@@ -45,11 +45,11 @@ pub fn test_satisfy_rope_constraint() {
 
 pub fn test_increment() {
 	mut state := SimState{
-		...sim.sim_test_mock_state
+		...sim_test_mock_state
 	}
 
 	delta_t := 0.0005
-	state.increment(delta_t, sim.sim_test_mock_params)
+	state.increment(delta_t, sim_test_mock_params)
 	assert state.position.x == -0.016957230930171364
 	assert state.position.y == -0.02937078552673524
 	assert state.position.z == 0.0023110634753272796

@@ -26,7 +26,7 @@ fn msqrt(a f64) f64 {
 	// relative error of approximation = 7.47e-3
 	x = 4.173075996388649989089e-1 + 5.9016206709064458299663e-1 * z // adjust for odd powers of 2
 	if (ex & 1) != 0 {
-		x *= rand.sqrt2
+		x *= sqrt2
 	}
 	x = scalbn(x, ex >> 1)
 	// newton iterations
@@ -49,7 +49,7 @@ fn mlog(a f64) f64 {
 	l7 := 0.1479819860511658591
 	x := a
 	mut f1, mut ki := frexp(x)
-	if f1 < rand.sqrt2 / 2 {
+	if f1 < sqrt2 / 2 {
 		f1 *= 2
 		ki--
 	}

@@ -16,10 +16,10 @@ pub const valid_comptime_compression_types = ['none', 'zlib']
 
 fn all_valid_comptime_idents() []string {
 	mut res := []string{}
-	res << ast.valid_comptime_if_os
-	res << ast.valid_comptime_if_compilers
-	res << ast.valid_comptime_if_platforms
-	res << ast.valid_comptime_if_cpu_features
-	res << ast.valid_comptime_if_other
+	res << valid_comptime_if_os
+	res << valid_comptime_if_compilers
+	res << valid_comptime_if_platforms
+	res << valid_comptime_if_cpu_features
+	res << valid_comptime_if_other
 	return res
 }

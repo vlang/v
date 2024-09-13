@@ -203,7 +203,7 @@ const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator)
 pub fn (mut p Parser) set_path(path string) {
 	p.file_path = path
 	p.file_base = os.base(path)
-	p.file_display_path = os.real_path(p.file_path).replace_once(parser.normalised_working_folder,
+	p.file_display_path = os.real_path(p.file_path).replace_once(normalised_working_folder,
 		'').replace('\\', '/')
 	p.inside_vlib_file = os.dir(path).contains('vlib')
 	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
@@ -1259,8 +1259,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				p.next()
 
 				has_suffix := p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
-				if !(p.tok.lit in parser.allowed_lock_prefix_ins || (has_suffix
-					&& p.tok.lit[0..p.tok.lit.len - 1] in parser.allowed_lock_prefix_ins)) {
+				if !(p.tok.lit in allowed_lock_prefix_ins
+					|| (has_suffix && p.tok.lit[0..p.tok.lit.len - 1] in allowed_lock_prefix_ins)) {
 					p.error('The lock prefix cannot be used on this instruction')
 				}
 				name += ' '
@@ -2545,7 +2545,7 @@ fn (mut p Parser) is_generic_cast() bool {
 			break
 		}
 
-		if i > 20 || tok.kind !in parser.valid_tokens_inside_types {
+		if i > 20 || tok.kind !in valid_tokens_inside_types {
 			return false
 		}
 	}

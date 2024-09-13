@@ -397,7 +397,7 @@ const max_nested_expr_str_calls = 300
 // string representation of expr
 pub fn (x &Expr) str() string {
 	str_calls := stdatomic.add_i64(&nested_expr_str_calls, 1)
-	if str_calls > ast.max_nested_expr_str_calls {
+	if str_calls > max_nested_expr_str_calls {
 		$if panic_on_deeply_nested_expr_str_calls ? {
 			eprintln('${@LOCATION}: too many nested Expr.str() calls: ${str_calls}, expr type: ${x.type_name()}')
 			exit(1)
@@ -517,15 +517,6 @@ pub fn (x &Expr) str() string {
 		Ident {
 			if x.cached_name != '' {
 				return x.cached_name
-			}
-			if obj := x.scope.find('${x.mod}.${x.name}') {
-				if obj is ConstField && x.mod != 'main' {
-					last_mod := x.mod.all_after_last('.')
-					unsafe {
-						x.cached_name = '${last_mod}.${x.name}'
-					}
-					return x.cached_name
-				}
 			}
 			unsafe {
 				x.cached_name = x.name.clone()

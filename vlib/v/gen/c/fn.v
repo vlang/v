@@ -407,7 +407,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	g.writeln(') {')
 	if is_closure {
-		g.writeln('${cur_closure_ctx}* ${c.closure_ctx} = __CLOSURE_GET_DATA();')
+		g.writeln('${cur_closure_ctx}* ${closure_ctx} = __CLOSURE_GET_DATA();')
 	}
 	for i, is_promoted in heap_promoted {
 		if is_promoted {
@@ -535,7 +535,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 		unwrapped_rec_typ := g.unwrap_generic(node.receiver.typ)
 		name = g.cc_type(unwrapped_rec_typ, false) + '_' + name
 		if g.table.sym(unwrapped_rec_typ).kind == .placeholder {
-			name = name.replace_each(c.c_fn_name_escape_seq)
+			name = name.replace_each(c_fn_name_escape_seq)
 		}
 	}
 	if node.language == .c {
@@ -601,11 +601,11 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					if var_sym.info is ast.ArrayFixed {
 						g.write('.${var.name} = {')
 						for i in 0 .. var_sym.info.size {
-							g.write('${c.closure_ctx}->${var.name}[${i}],')
+							g.write('${closure_ctx}->${var.name}[${i}],')
 						}
 						g.writeln('},')
 					} else {
-						g.writeln('.${var.name} = ${c.closure_ctx}->${var.name},')
+						g.writeln('.${var.name} = ${closure_ctx}->${var.name},')
 					}
 				}
 			}
@@ -730,7 +730,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
-		mut param_type_name := g.typ(typ).replace_each(c.c_fn_name_escape_seq)
+		mut param_type_name := g.typ(typ).replace_each(c_fn_name_escape_seq)
 		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
@@ -2177,7 +2177,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								mut is_ptr := false
 								if i == 0 {
 									if obj.is_inherited {
-										g.write(c.closure_ctx + '->' + node.name)
+										g.write(closure_ctx + '->' + node.name)
 									} else {
 										g.write(node.name)
 									}
@@ -2199,7 +2199,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							}
 							is_fn_var = true
 						} else if obj.is_inherited {
-							g.write(c.closure_ctx + '->' + node.name)
+							g.write(closure_ctx + '->' + node.name)
 							is_fn_var = true
 						}
 					}

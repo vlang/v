@@ -593,10 +593,10 @@ fn sql_field_type(field TableField) int {
 	for attr in field.attrs {
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
 			if attr.arg.to_lower() == 'serial' {
-				typ = orm.serial
+				typ = serial
 				break
 			}
-			typ = orm.type_idx[attr.arg]
+			typ = type_idx[attr.arg]
 			break
 		}
 	}
@@ -622,7 +622,7 @@ fn bool_to_primitive(b bool) Primitive {
 }
 
 fn option_bool_to_primitive(b ?bool) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn f32_to_primitive(b f32) Primitive {
@@ -630,7 +630,7 @@ fn f32_to_primitive(b f32) Primitive {
 }
 
 fn option_f32_to_primitive(b ?f32) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn f64_to_primitive(b f64) Primitive {
@@ -638,7 +638,7 @@ fn f64_to_primitive(b f64) Primitive {
 }
 
 fn option_f64_to_primitive(b ?f64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn i8_to_primitive(b i8) Primitive {
@@ -646,7 +646,7 @@ fn i8_to_primitive(b i8) Primitive {
 }
 
 fn option_i8_to_primitive(b ?i8) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn i16_to_primitive(b i16) Primitive {
@@ -654,7 +654,7 @@ fn i16_to_primitive(b i16) Primitive {
 }
 
 fn option_i16_to_primitive(b ?i16) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn int_to_primitive(b int) Primitive {
@@ -662,7 +662,7 @@ fn int_to_primitive(b int) Primitive {
 }
 
 fn option_int_to_primitive(b ?int) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 // int_literal_to_primitive handles int literal value
@@ -671,7 +671,7 @@ fn int_literal_to_primitive(b int) Primitive {
 }
 
 fn option_int_literal_to_primitive(b ?int) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 // float_literal_to_primitive handles float literal value
@@ -680,7 +680,7 @@ fn float_literal_to_primitive(b f64) Primitive {
 }
 
 fn option_float_literal_to_primitive(b ?f64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn i64_to_primitive(b i64) Primitive {
@@ -688,7 +688,7 @@ fn i64_to_primitive(b i64) Primitive {
 }
 
 fn option_i64_to_primitive(b ?i64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u8_to_primitive(b u8) Primitive {
@@ -696,7 +696,7 @@ fn u8_to_primitive(b u8) Primitive {
 }
 
 fn option_u8_to_primitive(b ?u8) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u16_to_primitive(b u16) Primitive {
@@ -704,7 +704,7 @@ fn u16_to_primitive(b u16) Primitive {
 }
 
 fn option_u16_to_primitive(b ?u16) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u32_to_primitive(b u32) Primitive {
@@ -712,7 +712,7 @@ fn u32_to_primitive(b u32) Primitive {
 }
 
 fn option_u32_to_primitive(b ?u32) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u64_to_primitive(b u64) Primitive {
@@ -720,7 +720,7 @@ fn u64_to_primitive(b u64) Primitive {
 }
 
 fn option_u64_to_primitive(b ?u64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn string_to_primitive(b string) Primitive {
@@ -728,7 +728,7 @@ fn string_to_primitive(b string) Primitive {
 }
 
 fn option_string_to_primitive(b ?string) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn time_to_primitive(b time.Time) Primitive {
@@ -736,7 +736,7 @@ fn time_to_primitive(b time.Time) Primitive {
 }
 
 fn option_time_to_primitive(b ?time.Time) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn infix_to_primitive(b InfixType) Primitive {

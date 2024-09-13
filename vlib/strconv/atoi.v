@@ -79,14 +79,14 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	}
 
 	if bit_size == 0 {
-		bit_size = strconv.int_size
+		bit_size = int_size
 	} else if bit_size < 0 || bit_size > 64 {
 		return u64(0), -2
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
-	cutoff := strconv.max_u64 / u64(base) + u64(1)
-	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+	cutoff := max_u64 / u64(base) + u64(1)
+	max_val := if bit_size == 64 { max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
 	basem1 := base - 1
 
 	mut n := u64(0)
@@ -162,7 +162,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	}
 	mut bit_size := _bit_size
 	if bit_size == 0 {
-		bit_size = strconv.int_size
+		bit_size = int_size
 	}
 	mut s := _s
 	// Pick off leading sign.
@@ -223,8 +223,8 @@ pub fn atoi(s string) !int {
 	if s == '' {
 		return error('strconv.atoi: parsing "": invalid syntax')
 	}
-	if (strconv.int_size == 32 && (0 < s.len && s.len < 10))
-		|| (strconv.int_size == 64 && (0 < s.len && s.len < 19)) {
+	if (int_size == 32 && (0 < s.len && s.len < 10))
+		|| (int_size == 64 && (0 < s.len && s.len < 19)) {
 		// Fast path for small integers that fit int type.
 		mut start_idx := 0
 		if s[0] == `-` || s[0] == `+` {

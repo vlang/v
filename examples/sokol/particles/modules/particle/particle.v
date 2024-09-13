@@ -14,9 +14,9 @@ pub fn new(location vec.Vec2[f64]) &Particle {
 		location:       location
 		velocity:       vec.Vec2[f64]{0, 0}
 		acceleration:   vec.Vec2[f64]{0, 0}
-		color:          particle.default_v_color
-		life_time:      particle.default_life_time
-		life_time_init: particle.default_life_time
+		color:          default_v_color
+		life_time:      default_life_time
+		life_time_init: default_life_time
 	}
 	return p
 }
@@ -73,7 +73,7 @@ pub fn (mut p Particle) reset() {
 	p.acceleration.zero()
 	p.velocity.zero()
 	// p.color = Color{93, 136, 193, 255}
-	p.color = particle.default_v_color
-	p.life_time = particle.default_life_time
+	p.color = default_v_color
+	p.life_time = default_life_time
 	p.life_time_init = p.life_time
 }

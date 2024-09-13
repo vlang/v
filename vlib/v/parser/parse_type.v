@@ -416,9 +416,9 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	}
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
-		if variants.len > parser.maximum_inline_sum_type_variants {
+		if variants.len > maximum_inline_sum_type_variants {
 			pos := variants[0].pos.extend(variants.last().pos)
-			p.warn_with_pos('an inline sum type expects a maximum of ${parser.maximum_inline_sum_type_variants} types (${variants.len} were given)',
+			p.warn_with_pos('an inline sum type expects a maximum of ${maximum_inline_sum_type_variants} types (${variants.len} were given)',
 				pos)
 		}
 		mut variant_names := []string{}
@@ -870,7 +870,7 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	defer {
 		p.generic_type_level--
 	}
-	if p.generic_type_level > parser.generic_type_level_cutoff_limit {
+	if p.generic_type_level > generic_type_level_cutoff_limit {
 		p.error('too many levels of Parser.parse_generic_inst_type() calls: ${p.generic_type_level}, probably due to too many layers embedded generic type')
 		return ast.void_type
 	}

@@ -390,7 +390,7 @@ fn (mut cb Clipboard) start_listener() {
 fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << Atom(4) // XA_ATOM
 	cb.atoms << Atom(31) // XA_STRING
-	for i, name in x11.atom_names {
+	for i, name in atom_names {
 		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
 		cb.atoms << C.XInternAtom(cb.display, &char(name.str), only_if_exists)
 		if i == int(AtomType.utf8_string) && cb.atoms[i] == Atom(0) {

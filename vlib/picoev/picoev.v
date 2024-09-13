@@ -88,11 +88,11 @@ pub:
 
 // init fills the `file_descriptors` array
 pub fn (mut pv Picoev) init() {
-	assert picoev.max_fds > 0
+	assert max_fds > 0
 
 	pv.num_loops = 0
 
-	for i in 0 .. picoev.max_fds {
+	for i in 0 .. max_fds {
 		pv.file_descriptors[i] = &Target{}
 	}
 }
@@ -100,7 +100,7 @@ pub fn (mut pv Picoev) init() {
 // add a file descriptor to the event loop
 @[direct_array_access]
 pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) int {
-	if pv == unsafe { nil } || fd < 0 || fd >= picoev.max_fds {
+	if pv == unsafe { nil } || fd < 0 || fd >= max_fds {
 		return -1 // Invalid arguments
 	}
 
@@ -110,7 +110,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	target.loop_id = pv.loop.id
 	target.events = 0
 
-	if pv.update_events(fd, events | picoev.picoev_add) != 0 {
+	if pv.update_events(fd, events | picoev_add) != 0 {
 		if pv.delete(fd) != 0 {
 			eprintln('Error during del')
 		}
@@ -132,7 +132,7 @@ pub fn (mut pv Picoev) del(fd int) int {
 // remove a file descriptor from the event loop
 @[direct_array_access]
 pub fn (mut pv Picoev) delete(fd int) int {
-	if fd < 0 || fd >= picoev.max_fds {
+	if fd < 0 || fd >= max_fds {
 		return -1 // Invalid fd
 	}
 
@@ -142,7 +142,7 @@ pub fn (mut pv Picoev) delete(fd int) int {
 		eprintln('remove ${fd}')
 	}
 
-	if pv.update_events(fd, picoev.picoev_del) != 0 {
+	if pv.update_events(fd, picoev_del) != 0 {
 		eprintln('Error during update_events. event: `picoev.picoev_del`')
 		return -1
 	}
@@ -177,7 +177,7 @@ fn (mut pv Picoev) loop_once(max_wait_in_sec int) int {
 // the file descriptors target callback is called with a timeout event
 @[direct_array_access; inline]
 fn (mut pv Picoev) set_timeout(fd int, secs int) {
-	assert fd < picoev.max_fds
+	assert fd < max_fds
 	if secs != 0 {
 		pv.timeouts[fd] = pv.loop.now + secs
 	} else {
@@ -202,7 +202,7 @@ fn (mut pv Picoev) handle_timeout() {
 		target := pv.file_descriptors[fd]
 		assert target.loop_id == pv.loop.id
 		pv.timeouts.delete(fd)
-		unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
+		unsafe { target.cb(fd, picoev_timeout, &pv) }
 	}
 }
 
@@ -220,7 +220,7 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 		return
 	}
 
-	if accepted_fd >= picoev.max_fds {
+	if accepted_fd >= max_fds {
 		// should never happen
 		close_socket(accepted_fd)
 		return
@@ -237,7 +237,7 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 		close_socket(accepted_fd) // Close fd on failure
 		return
 	}
-	pv.add(accepted_fd, picoev.picoev_read, pv.timeout_secs, raw_callback)
+	pv.add(accepted_fd, picoev_read, pv.timeout_secs, raw_callback)
 }
 
 // close_conn closes the socket `fd` and removes it from the loop
@@ -257,7 +257,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 		pv.idx[fd] = 0
 	}
 
-	if events & picoev.picoev_timeout != 0 {
+	if events & picoev_timeout != 0 {
 		$if trace_fd ? {
 			eprintln('timeout ${fd}')
 		}
@@ -269,7 +269,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 
 		pv.close_conn(fd)
 		return
-	} else if events & picoev.picoev_read != 0 {
+	} else if events & picoev_read != 0 {
 		pv.set_timeout(fd, pv.timeout_secs)
 		if !isnil(pv.raw_callback) {
 			pv.raw_callback(mut pv, fd, events)
@@ -334,7 +334,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 
 		// Callback (should call .end() itself)
 		pv.cb(pv.user_data, req, mut &res)
-	} else if events & picoev.picoev_write != 0 {
+	} else if events & picoev_write != 0 {
 		pv.set_timeout(fd, pv.timeout_secs)
 		if !isnil(pv.raw_callback) {
 			pv.raw_callback(mut pv, fd, events)
@@ -368,8 +368,8 @@ pub fn new(config Config) !&Picoev {
 	}
 
 	if isnil(pv.raw_callback) {
-		pv.buf = unsafe { malloc_noscan(picoev.max_fds * config.max_read + 1) }
-		pv.out = unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
+		pv.buf = unsafe { malloc_noscan(max_fds * config.max_read + 1) }
+		pv.out = unsafe { malloc_noscan(max_fds * config.max_write + 1) }
 	}
 
 	// epoll on linux
@@ -391,7 +391,7 @@ pub fn new(config Config) !&Picoev {
 
 	pv.init()
 
-	pv.add(listening_socket_fd, picoev.picoev_read, 0, accept_callback)
+	pv.add(listening_socket_fd, picoev_read, 0, accept_callback)
 	return pv
 }
 

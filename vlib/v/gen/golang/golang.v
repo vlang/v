@@ -2229,13 +2229,13 @@ pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		f.write('`${node.val}`')
 	} else {
-		unescaped_val := node.val.replace('${golang.bs}${golang.bs}', '\x01').replace_each([
-			"${golang.bs}'",
+		unescaped_val := node.val.replace('${bs}${bs}', '\x01').replace_each([
+			"${bs}'",
 			"'",
-			'${golang.bs}"',
+			'${bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '${golang.bs}${golang.bs}', '"', '${golang.bs}"'])
+		s := unescaped_val.replace_each(['\x01', '${bs}${bs}', '"', '${bs}"'])
 		f.write('"${s}"')
 	}
 }
@@ -2247,7 +2247,7 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val.replace("${golang.bs}'", "'"))
+		f.write(val.replace("${bs}'", "'"))
 		if i >= node.exprs.len {
 			break
 		}

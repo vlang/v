@@ -18,6 +18,11 @@ struct FlagContext {
 	pos       int    // position in arg array
 }
 
+pub enum ParseMode {
+	strict  // return errors for unknown or malformed flags per default
+	relaxed // relax flag match errors and add them to `no_match` list instead
+}
+
 pub enum Style {
 	short         // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
 	long          // GNU style long option *only*. E.g.: `--name` or `--name=value`
@@ -73,8 +78,9 @@ fn (sf StructField) shortest_match_name() ?string {
 @[params]
 pub struct ParseConfig {
 pub:
-	delimiter string = '-'         // delimiter used for flags
-	style     Style  = .short_long // expected flag style
+	delimiter string    = '-'         // delimiter used for flags
+	mode      ParseMode = .strict     // return errors for unknown or malformed flags per default
+	style     Style     = .short_long // expected flag style
 	stop      ?string // single, usually '--', string that stops parsing flags/options
 	skip      u16     // skip this amount in the input argument array, usually `1` for skipping executable or subcmd entry
 }
@@ -422,27 +428,51 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			is_short_delimiter := used_delimiter.count(delimiter) == 1
 			is_invalid_delimiter := !is_long_delimiter && !is_short_delimiter
 			if is_invalid_delimiter {
+				if config.mode == .relaxed {
+					fm.no_match << pos
+					continue
+				}
 				return error('invalid delimiter `${used_delimiter}` for flag `${arg}`')
 			}
 			if is_long_delimiter {
 				if style == .v {
+					if config.mode == .relaxed {
+						fm.no_match << pos
+						continue
+					}
 					return error('long delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (V) style parsing mode. Maybe you meant `.v_flag_parser`?')
 				}
 				if style == .short {
+					if config.mode == .relaxed {
+						fm.no_match << pos
+						continue
+					}
 					return error('long delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (POSIX) style parsing mode')
 				}
 			}
 
 			if is_short_delimiter {
 				if style == .long {
+					if config.mode == .relaxed {
+						fm.no_match << pos
+						continue
+					}
 					return error('short delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (GNU) style parsing mode')
 				}
 				if style == .short_long && flag_name.len > 1 && flag_name.contains('-') {
+					if config.mode == .relaxed {
+						fm.no_match << pos
+						continue
+					}
 					return error('long name `${flag_name}` used with short delimiter `${used_delimiter}` in flag `${arg}` in ${style} (POSIX/GNU) style parsing mode')
 				}
 			}
 
 			if flag_name == '' {
+				if config.mode == .relaxed {
+					fm.no_match << pos
+					continue
+				}
 				return error('invalid delimiter-only flag `${arg}`')
 			}
 

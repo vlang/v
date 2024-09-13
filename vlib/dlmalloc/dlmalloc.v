@@ -63,7 +63,7 @@ fn chunk_overhead() usize {
 
 @[inline]
 fn min_large_size() usize {
-	return 1 << dlmalloc.tree_bin_shift
+	return 1 << tree_bin_shift
 }
 
 @[inline]
@@ -140,15 +140,15 @@ fn is_aligned(a usize) bool {
 }
 
 fn is_small(s usize) bool {
-	return s >> dlmalloc.small_bin_shift < dlmalloc.n_small_bins
+	return s >> small_bin_shift < n_small_bins
 }
 
 fn small_index2size(idx u32) usize {
-	return usize(idx) << dlmalloc.small_bin_shift
+	return usize(idx) << small_bin_shift
 }
 
 fn small_index(size usize) u32 {
-	return u32(size >> dlmalloc.small_bin_shift)
+	return u32(size >> small_bin_shift)
 }
 
 fn align_up(a usize, alignment usize) usize {
@@ -169,10 +169,10 @@ fn least_bit(x u32) u32 {
 
 fn leftshift_for_tree_index(x u32) u32 {
 	y := usize(x)
-	if y == dlmalloc.n_tree_bins - 1 {
+	if y == n_tree_bins - 1 {
 		return 0
 	} else {
-		return u32(sizeof(usize) * 8 - 1 - ((y >> 1) + dlmalloc.tree_bin_shift - 2))
+		return u32(sizeof(usize) * 8 - 1 - ((y >> 1) + tree_bin_shift - 2))
 	}
 }
 
@@ -242,8 +242,8 @@ pub fn new(system_allocator Allocator) Dlmalloc {
 	return Dlmalloc{
 		smallmap:         0
 		treemap:          0
-		smallbins:        unsafe { [(dlmalloc.n_small_bins + 1) * 2]&Chunk{} }
-		treebins:         unsafe { [dlmalloc.n_tree_bins]&TreeChunk{} }
+		smallbins:        unsafe { [(n_small_bins + 1) * 2]&Chunk{} }
+		treebins:         unsafe { [n_tree_bins]&TreeChunk{} }
 		dvsize:           0
 		topsize:          0
 		dv:               unsafe { nil }
@@ -293,15 +293,15 @@ const inuse = pinuse | cinuse
 const flag_bits = pinuse | cinuse | flag4
 
 fn fencepost_head() usize {
-	return dlmalloc.inuse | sizeof(usize)
+	return inuse | sizeof(usize)
 }
 
 fn (c &Chunk) size() usize {
-	return c.head & ~dlmalloc.flag_bits
+	return c.head & ~flag_bits
 }
 
 fn (c &Chunk) mmapped() bool {
-	return c.head & dlmalloc.inuse == 0
+	return c.head & inuse == 0
 }
 
 fn (c &Chunk) next() &Chunk {
@@ -317,39 +317,39 @@ fn (c &Chunk) prev() &Chunk {
 }
 
 fn (c &Chunk) cinuse() bool {
-	return c.head & dlmalloc.cinuse != 0
+	return c.head & cinuse != 0
 }
 
 fn (c &Chunk) pinuse() bool {
-	return c.head & dlmalloc.pinuse != 0
+	return c.head & pinuse != 0
 }
 
 fn (mut c Chunk) clear_pinuse() {
-	c.head &= ~dlmalloc.pinuse
+	c.head &= ~pinuse
 }
 
 fn (c &Chunk) inuse() bool {
-	return c.head & dlmalloc.inuse != dlmalloc.pinuse
+	return c.head & inuse != pinuse
 }
 
 fn (mut c Chunk) set_inuse(size usize) {
-	c.head = (c.head & dlmalloc.pinuse) | size | dlmalloc.cinuse
+	c.head = (c.head & pinuse) | size | cinuse
 	mut next := c.plus_offset(size)
-	next.head |= dlmalloc.pinuse
+	next.head |= pinuse
 }
 
 fn (mut c Chunk) set_inuse_and_pinuse(size usize) {
-	c.head = dlmalloc.pinuse | size | dlmalloc.cinuse
+	c.head = pinuse | size | cinuse
 	mut next := c.plus_offset(size)
-	next.head |= dlmalloc.pinuse
+	next.head |= pinuse
 }
 
 fn (mut c Chunk) set_size_and_pinuse_of_inuse_chunk(size usize) {
-	c.head = size | dlmalloc.pinuse | dlmalloc.cinuse
+	c.head = size | pinuse | cinuse
 }
 
 fn (mut c Chunk) set_size_and_pinuse_of_free_chunk(size usize) {
-	c.head = size | dlmalloc.pinuse
+	c.head = size | pinuse
 	c.set_foot(size)
 }
 
@@ -395,7 +395,7 @@ fn (tree &TreeChunk) chunk() &Chunk {
 }
 
 fn (tree &TreeChunk) size(treemap u32) usize {
-	return tree.chunk.head & ~dlmalloc.flag_bits
+	return tree.chunk.head & ~flag_bits
 }
 
 @[unsafe]
@@ -415,7 +415,7 @@ fn (tree &TreeChunk) prev() &TreeChunk {
 const extern = 1 << 0
 
 fn (seg &Segment) is_extern() bool {
-	return seg.flags & dlmalloc.extern != 0
+	return seg.flags & extern != 0
 }
 
 fn (seg &Segment) can_release_part(sys_alloc &Allocator) bool {
@@ -453,14 +453,14 @@ fn (mut dl Dlmalloc) treebin_at(idx u32) &&TreeChunk {
 }
 
 fn (dl &Dlmalloc) compute_tree_index(size usize) u32 {
-	x := size >> dlmalloc.tree_bin_shift
+	x := size >> tree_bin_shift
 	if x == 0 {
 		return 0
 	} else if x > 0xffff {
-		return dlmalloc.n_tree_bins - 1
+		return n_tree_bins - 1
 	} else {
 		k := sizeof(usize) * 8 - 1 - usize_leading_zeros(x)
-		return u32((k << 1) + ((size >> (k + dlmalloc.tree_bin_shift - 1)) & 1))
+		return u32((k << 1) + ((size >> (k + tree_bin_shift - 1)) & 1))
 	}
 }
 
@@ -615,7 +615,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 			p = prev
 			if voidptr(p) != voidptr(dl.dv) {
 				dl.unlink_chunk(p, prevsize)
-			} else if (next.head & dlmalloc.inuse) == dlmalloc.inuse {
+			} else if (next.head & inuse) == inuse {
 				dl.dvsize = psize
 				p.set_free_with_pinuse(psize, next)
 
@@ -630,7 +630,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 
 				tsize := dl.topsize
 				dl.top = p
-				p.head = tsize | dlmalloc.pinuse
+				p.head = tsize | pinuse
 				if voidptr(p) == voidptr(dl.dv) {
 					dl.dv = nil
 					dl.dvsize = 0
@@ -765,10 +765,10 @@ fn (mut dl Dlmalloc) release_unused_segments() usize {
 			pred = sp
 			sp = next
 		}
-		dl.release_checks = if nsegs > dlmalloc.max_release_check_rate {
+		dl.release_checks = if nsegs > max_release_check_rate {
 			nsegs
 		} else {
-			dlmalloc.max_release_check_rate
+			max_release_check_rate
 		}
 		return released
 	}
@@ -1024,7 +1024,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 			mut p := dl.top
 			dl.top = p.plus_offset(nb)
 			mut r := dl.top
-			r.head = rsize | dlmalloc.pinuse
+			r.head = rsize | pinuse
 			p.set_size_and_pinuse_of_inuse_chunk(nb)
 			ret := p.to_mem()
 
@@ -1038,7 +1038,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 @[unsafe]
 fn (mut dl Dlmalloc) init_bins() {
 	unsafe {
-		for i in 0 .. dlmalloc.n_small_bins {
+		for i in 0 .. n_small_bins {
 			mut bin := dl.smallbin_at(i)
 			bin.prev = bin
 			bin.next = bin
@@ -1056,7 +1056,7 @@ fn (mut dl Dlmalloc) init_top(ptr &Chunk, size_ usize) {
 	dl.top = p
 	dl.topsize = size
 	// C.VALGRIND_MAKE_MEM_UNDEFINED(p.plus_offset(sizeof(usize)),sizeof(usize))
-	p.head = size | dlmalloc.pinuse
+	p.head = size | pinuse
 	// C.VALGRIND_MAKE_MEM_UNDEFINED(p.plus_offset(size + sizeof(usize)),sizeof(usize))
 	p.plus_offset(size).head = top_foot_size()
 	dl.trim_check = u32(default_trim_threshold())
@@ -1088,7 +1088,7 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 			dl.seg.base = tbase
 			dl.seg.size = tsize
 			dl.seg.flags = flags
-			dl.release_checks = dlmalloc.max_release_check_rate
+			dl.release_checks = max_release_check_rate
 			dl.init_bins()
 			tsize_ := tsize - top_foot_size()
 			dl.init_top(&Chunk(tbase), tsize_)
@@ -1131,7 +1131,7 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 			mut p := dl.top
 			dl.top = p.plus_offset(size)
 			mut r := dl.top
-			r.head = rsize | dlmalloc.pinuse
+			r.head = rsize | pinuse
 			p.set_size_and_pinuse_of_inuse_chunk(size)
 			ret := p.to_mem()
 
@@ -1270,7 +1270,7 @@ fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize)
 			dl.topsize += qsize
 			tsize := dl.topsize
 			dl.top = q
-			q.head = tsize | dlmalloc.pinuse
+			q.head = tsize | pinuse
 		} else if voidptr(oldfirst) == voidptr(dl.dv) {
 			dl.dvsize += qsize
 			dsize := dl.dvsize
@@ -1475,7 +1475,7 @@ fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chun
 			newtopsize := newsize - nb
 			mut newtop := p.plus_offset(nb)
 			p.set_inuse(nb)
-			newtop.head = newtopsize | dlmalloc.pinuse
+			newtop.head = newtopsize | pinuse
 			dl.top = newtop
 			dl.topsize = newtopsize
 			return p
@@ -1589,7 +1589,7 @@ fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
 			p = prev
 			if voidptr(p) != voidptr(dl.dv) {
 				dl.unlink_chunk(p, prevsize)
-			} else if next.head & dlmalloc.inuse == dlmalloc.inuse {
+			} else if next.head & inuse == inuse {
 				dl.dvsize = psize
 				p.set_free_with_pinuse(psize, next)
 				return
@@ -1601,7 +1601,7 @@ fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
 				dl.topsize += psize
 				tsize := dl.topsize
 				dl.top = p
-				p.head = tsize | dlmalloc.pinuse
+				p.head = tsize | pinuse
 				if voidptr(p) == voidptr(dl.dv) {
 					dl.dv = nil
 					dl.dvsize = 0

@@ -39,7 +39,7 @@ pub enum Style {
 const debug_flag = false
 
 fn dprintln(txt string) {
-	if ttf.debug_flag {
+	if debug_flag {
 		println(txt)
 	}
 }

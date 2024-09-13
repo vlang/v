@@ -154,8 +154,8 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 		is_print_rel_paths_on_error: true
 		is_fmt:                      pref_.is_fmt
 		comments_mode:               comments_mode
-		file_path:                   scanner.internally_generated_v_code
-		file_base:                   scanner.internally_generated_v_code
+		file_path:                   internally_generated_v_code
+		file_base:                   internally_generated_v_code
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -267,7 +267,7 @@ fn (s Scanner) num_lit(start int, end int) string {
 		mut b := malloc_noscan(end - start + 1) // add a byte for the endstring 0
 		mut i_no_sep := 0
 		for i in start .. end {
-			if txt[i] != scanner.num_sep {
+			if txt[i] != num_sep {
 				b[i_no_sep] = txt[i]
 				i_no_sep++
 			}
@@ -283,15 +283,15 @@ fn (mut s Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
-	if s.pos < s.text.len && s.text[s.pos] == scanner.num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_bin_digit() && c != scanner.num_sep {
+		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
@@ -302,7 +302,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == scanner.num_sep {
+	if s.text[s.pos - 1] == num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
@@ -327,15 +327,15 @@ fn (mut s Scanner) ident_hex_number() string {
 		return '0x'
 	}
 	s.pos += 2 // skip '0x'
-	if s.pos < s.text.len && s.text[s.pos] == scanner.num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_hex_digit() && c != scanner.num_sep {
+		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
@@ -346,7 +346,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == scanner.num_sep {
+	if s.text[s.pos - 1] == num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
@@ -367,15 +367,15 @@ fn (mut s Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
-	if s.pos < s.text.len && s.text[s.pos] == scanner.num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_oct_digit() && c != scanner.num_sep {
+		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
@@ -386,7 +386,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == scanner.num_sep {
+	if s.text[s.pos - 1] == num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
@@ -410,10 +410,10 @@ fn (mut s Scanner) ident_dec_number() string {
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_digit() && c != scanner.num_sep {
+		if !c.is_digit() && c != num_sep {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string || s.is_nested_string {
 				break
 			} else if !has_wrong_digit {
@@ -424,7 +424,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == scanner.num_sep {
+	if s.text[s.pos - 1] == num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	}
@@ -548,15 +548,15 @@ fn (mut s Scanner) skip_whitespace() {
 		if util.non_whitespace_table[c] {
 			return
 		}
-		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
+		c_is_nl := c == b_cr || c == b_lf
 		if c_is_nl && s.is_vh {
 			return
 		}
-		if s.pos + 1 < s.text.len && c == scanner.b_cr && s.text[s.pos + 1] == scanner.b_lf {
+		if s.pos + 1 < s.text.len && c == b_cr && s.text[s.pos + 1] == b_lf {
 			s.is_crlf = true
 		}
 		// Count \r\n as one line
-		if c_is_nl && !(s.pos > 0 && s.text[s.pos - 1] == scanner.b_cr && c == scanner.b_lf) {
+		if c_is_nl && !(s.pos > 0 && s.text[s.pos - 1] == b_cr && c == b_lf) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -567,7 +567,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	s.eofs++
 	if s.eofs > s.max_eofs {
 		s.line_nr--
-		if s.file_path == scanner.internally_generated_v_code {
+		if s.file_path == internally_generated_v_code {
 			// show a bit more context for that case, since the source may not be easily visible by just inspecting a source file on the filesystem
 			dump(s.text#[0..50])
 			dump(s.text#[-50..])
@@ -804,7 +804,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			`?` {
 				return s.new_token(.question, '?', 1)
 			}
-			scanner.single_quote, scanner.double_quote {
+			single_quote, double_quote {
 				start_line := s.line_nr
 				ident_string := s.ident_string()
 				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
@@ -1091,7 +1091,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
-					if s.text[s.pos - 1] == scanner.b_cr {
+					if s.text[s.pos - 1] == b_cr {
 						comment_line_end--
 					} else {
 						// fix line_nr, \n was read; the comment is marked on the next line
@@ -1103,7 +1103,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 						mut comment := s.line_comment
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
-						for j := start - 2; j >= 0 && s.text[j] != scanner.b_lf; j-- {
+						for j := start - 2; j >= 0 && s.text[j] != b_lf; j-- {
 							if s.text[j] !in [`\t`, ` `] {
 								is_separate_line_comment = false
 							}
@@ -1129,7 +1129,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 							s.line_nr = start_line
 							s.error('unterminated multiline comment')
 						}
-						if s.text[s.pos] == scanner.b_lf {
+						if s.text[s.pos] == b_lf {
 							s.inc_line_number()
 							continue
 						}
@@ -1215,7 +1215,7 @@ pub fn (mut s Scanner) ident_string() string {
 		col:     s.pos - s.last_nl_pos - 1
 	}
 	q := s.text[s.pos]
-	is_quote := q in [scanner.single_quote, scanner.double_quote]
+	is_quote := q in [single_quote, double_quote]
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c` && !s.is_inside_string
 	// don't interpret quote as "start of string" quote when a string interpolation has
@@ -1234,14 +1234,14 @@ pub fn (mut s Scanner) ident_string() string {
 	if start_char == s.quote
 		|| (start_char == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
 		start++
-	} else if start_char == scanner.b_lf {
+	} else if start_char == b_lf {
 		s.inc_line_number()
 	}
 	s.is_inside_string = false
 	s.u16_escapes_pos.clear()
 	s.u32_escapes_pos.clear()
 	s.h_escapes_pos.clear()
-	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
+	mut backslash_count := if start_char == backslash { 1 } else { 0 }
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
@@ -1253,7 +1253,7 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]
-		if c == scanner.backslash {
+		if c == backslash {
 			backslash_count++
 		}
 		// end of string
@@ -1264,10 +1264,10 @@ pub fn (mut s Scanner) ident_string() string {
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
 			break
 		}
-		if c == scanner.b_cr {
+		if c == b_cr {
 			n_cr_chars++
 		}
-		if c == scanner.b_lf {
+		if c == b_lf {
 			s.inc_line_number()
 		}
 		// Escape `\x` `\u` `\U`
@@ -1311,7 +1311,7 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
+			&& s.count_symbol_before(s.pos - 2, backslash) & 1 == 0 {
 			s.is_inside_string = true
 			if s.is_enclosed_inter {
 				s.is_nested_enclosed_inter = true
@@ -1324,13 +1324,13 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.name_char_table[c] && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
+			&& s.count_symbol_before(s.pos - 2, backslash) & 1 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
 			break
 		}
-		if c != scanner.backslash {
+		if c != backslash {
 			backslash_count = 0
 		}
 	}
@@ -1686,7 +1686,7 @@ fn (mut s Scanner) ignore_line() {
 
 @[direct_array_access; inline]
 fn (mut s Scanner) eat_to_end_of_line() {
-	for s.pos < s.text.len && s.text[s.pos] != scanner.b_lf {
+	for s.pos < s.text.len && s.text[s.pos] != b_lf {
 		s.pos++
 	}
 }

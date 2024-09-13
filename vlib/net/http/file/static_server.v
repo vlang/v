@@ -78,7 +78,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	}
 	if !os.exists(requested_file_path) {
 		res.set_status(.not_found)
-		res.body = file.no_such_file_doc
+		res.body = no_such_file_doc
 		res.header.add(.content_type, 'text/html; charset=utf-8')
 		return res
 	}
@@ -98,7 +98,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		} else {
 			body = os.read_file(ipath) or {
 				res.set_status(.not_found)
-				file.no_such_file_doc
+				no_such_file_doc
 			}
 		}
 	} else {

@@ -475,13 +475,13 @@ fn test_find_first() {
 	})? == 3, 'find element couldnt find the right element'
 
 	// find struct
-	find_by_name := find_first(arrays.test_structs, fn (arr FindTest) bool {
+	find_by_name := find_first(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'one'
 	})?
 	assert find_by_name == FindTest{'one', 1}
 
 	// not found
-	if _ := find_first(arrays.test_structs, fn (arr FindTest) bool {
+	if _ := find_first(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'nothing'
 	})
 	{
@@ -499,13 +499,13 @@ fn test_find_last() {
 	})? == 3, 'find element couldnt find the right element'
 
 	// find struct
-	find_by_name := find_last(arrays.test_structs, fn (arr FindTest) bool {
+	find_by_name := find_last(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'one'
 	})?
 	assert find_by_name == FindTest{'one', 4}
 
 	// not found
-	if _ := find_last(arrays.test_structs, fn (arr FindTest) bool {
+	if _ := find_last(test_structs, fn (arr FindTest) bool {
 		return arr.name == 'nothing'
 	})
 	{
@@ -516,10 +516,10 @@ fn test_find_last() {
 }
 
 fn test_join_to_string() {
-	assert join_to_string[FindTest](arrays.test_structs, ':', fn (it FindTest) string {
+	assert join_to_string[FindTest](test_structs, ':', fn (it FindTest) string {
 		return it.name
 	}) == 'one:two:three:one'
-	assert join_to_string[FindTest](arrays.test_structs, '', fn (it FindTest) string {
+	assert join_to_string[FindTest](test_structs, '', fn (it FindTest) string {
 		return it.name
 	}) == 'onetwothreeone'
 	assert join_to_string[int]([]int{}, ':', fn (it int) string {

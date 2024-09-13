@@ -10,8 +10,8 @@ const max_expr_level = 100
 
 @[inline]
 fn (mut p Parser) check_expr_level() ! {
-	if p.expr_level > parser.max_expr_level {
-		return error('expr level > ${parser.max_expr_level}')
+	if p.expr_level > max_expr_level {
+		return error('expr level > ${max_expr_level}')
 	}
 }
 

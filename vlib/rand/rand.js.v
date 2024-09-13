@@ -27,7 +27,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
-		buf[i] = rand.ulid_encoding[int(t & 0x1f)]
+		buf[i] = ulid_encoding[int(t & 0x1f)]
 		t = t >> 5
 		i--
 	}
@@ -35,7 +35,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	mut x := rng.u64()
 	i = 10
 	for i < 19 {
-		buf[i] = rand.ulid_encoding[int(x & 0x1f)]
+		buf[i] = ulid_encoding[int(x & 0x1f)]
 
 		x = x >> 5
 		i++
@@ -43,7 +43,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 
 	x = rng.u64()
 	for i < 26 {
-		buf[i] = rand.ulid_encoding[int(x & 0x1f)]
+		buf[i] = ulid_encoding[int(x & 0x1f)]
 		x = x >> 5
 		i++
 	}

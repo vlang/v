@@ -62,11 +62,11 @@ pub struct MT19937RNG {
 	buffer.PRNGBuffer
 mut:
 	state []u64 = get_first_state(seed.time_seed_array(2))
-	mti   int   = mt19937.nn
+	mti   int   = nn
 }
 
 fn get_first_state(seed_data []u32) []u64 {
-	mut state := []u64{len: mt19937.nn}
+	mut state := []u64{len: nn}
 	calculate_state(seed_data, mut state)
 	return state
 }
@@ -76,7 +76,7 @@ fn calculate_state(seed_data []u32, mut state []u64) []u64 {
 	lo := u64(seed_data[0])
 	hi := u64(seed_data[1])
 	state[0] = u64((hi << 32) | lo)
-	for j := 1; j < mt19937.nn; j++ {
+	for j := 1; j < nn; j++ {
 		state[j] = u64(6364136223846793005) * (state[j - 1] ^ (state[j - 1] >> 62)) + u64(j)
 	}
 	return *state
@@ -90,7 +90,7 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	rng.state = calculate_state(seed_data, mut rng.state)
-	rng.mti = mt19937.nn
+	rng.mti = nn
 	rng.bytes_left = 0
 	rng.buffer = 0
 }
@@ -149,18 +149,18 @@ const mag01 = [u64(0), u64(matrix_a)]
 pub fn (mut rng MT19937RNG) u64() u64 {
 	mut x := u64(0)
 	mut i := int(0)
-	if rng.mti >= mt19937.nn {
-		for i = 0; i < mt19937.nn - mt19937.mm; i++ {
-			x = (rng.state[i] & mt19937.um) | (rng.state[i + 1] & mt19937.lm)
-			rng.state[i] = rng.state[i + mt19937.mm] ^ (x >> 1) ^ mt19937.mag01[int(x & 1)]
+	if rng.mti >= nn {
+		for i = 0; i < nn - mm; i++ {
+			x = (rng.state[i] & um) | (rng.state[i + 1] & lm)
+			rng.state[i] = rng.state[i + mm] ^ (x >> 1) ^ mag01[int(x & 1)]
 		}
-		for i < mt19937.nn - 1 {
-			x = (rng.state[i] & mt19937.um) | (rng.state[i + 1] & mt19937.lm)
-			rng.state[i] = rng.state[i + (mt19937.mm - mt19937.nn)] ^ (x >> 1) ^ mt19937.mag01[int(x & 1)]
+		for i < nn - 1 {
+			x = (rng.state[i] & um) | (rng.state[i + 1] & lm)
+			rng.state[i] = rng.state[i + (mm - nn)] ^ (x >> 1) ^ mag01[int(x & 1)]
 			i++
 		}
-		x = (rng.state[mt19937.nn - 1] & mt19937.um) | (rng.state[0] & mt19937.lm)
-		rng.state[mt19937.nn - 1] = rng.state[mt19937.mm - 1] ^ (x >> 1) ^ mt19937.mag01[int(x & 1)]
+		x = (rng.state[nn - 1] & um) | (rng.state[0] & lm)
+		rng.state[nn - 1] = rng.state[mm - 1] ^ (x >> 1) ^ mag01[int(x & 1)]
 		rng.mti = 0
 	}
 	x = rng.state[rng.mti]

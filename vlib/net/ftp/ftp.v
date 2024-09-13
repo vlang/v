@@ -105,7 +105,7 @@ pub fn (mut zftp FTP) connect(oaddress string) !bool {
 	zftp.conn = net.dial_tcp(oaddress)!
 	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
 	code, _ := zftp.read()!
-	if code == ftp.connected {
+	if code == connected {
 		return true
 	}
 	return false
@@ -120,10 +120,10 @@ pub fn (mut zftp FTP) login(user string, passwd string) !bool {
 		return false
 	}
 	mut code, _ := zftp.read()!
-	if code == ftp.logged_in {
+	if code == logged_in {
 		return true
 	}
-	if code != ftp.specify_password {
+	if code != specify_password {
 		return false
 	}
 	zftp.write('PASS ${passwd}') or {
@@ -133,7 +133,7 @@ pub fn (mut zftp FTP) login(user string, passwd string) !bool {
 		return false
 	}
 	code, _ = zftp.read()!
-	if code == ftp.logged_in {
+	if code == logged_in {
 		return true
 	}
 	return false
@@ -161,12 +161,12 @@ pub fn (mut zftp FTP) cd(dir string) ! {
 	zftp.write('CWD ${dir}') or { return }
 	mut code, mut data := zftp.read()!
 	match int(code) {
-		ftp.denied {
+		denied {
 			$if debug {
 				println('CD ${dir} denied!')
 			}
 		}
-		ftp.complete {
+		complete {
 			code, data = zftp.read()!
 		}
 		else {}
@@ -198,7 +198,7 @@ fn (mut zftp FTP) pasv() !&DTP {
 	$if debug {
 		println('pass: ${data}')
 	}
-	if code != ftp.passive_mode {
+	if code != passive_mode {
 		return error('passive mode not allowed')
 	}
 	dtp := new_dtp(data)!
@@ -210,15 +210,15 @@ pub fn (mut zftp FTP) dir() ![]string {
 	mut dtp := zftp.pasv() or { return error('Cannot establish data connection') }
 	zftp.write('LIST')!
 	code, _ := zftp.read()!
-	if code == ftp.denied {
+	if code == denied {
 		return error('`LIST` denied')
 	}
-	if code != ftp.open_data_connection {
+	if code != open_data_connection {
 		return error('Data channel empty')
 	}
 	list_dir := dtp.read()!
 	result, _ := zftp.read()!
-	if result != ftp.close_data_connection {
+	if result != close_data_connection {
 		println('`LIST` not ok')
 	}
 	dtp.close()
@@ -243,10 +243,10 @@ pub fn (mut zftp FTP) get(file string) ![]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
 	zftp.write('RETR ${file}')!
 	code, _ := zftp.read()!
-	if code == ftp.denied {
+	if code == denied {
 		return error('Permission denied')
 	}
-	if code != ftp.open_data_connection {
+	if code != open_data_connection {
 		return error('Data connection not ready')
 	}
 	blob := dtp.read()!

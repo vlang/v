@@ -74,7 +74,7 @@ struct XChachaTestCases {
 }
 
 fn test_xchacha20_encrypt_vector_test() ! {
-	for c in chacha20.xchacha_vector_test {
+	for c in xchacha_vector_test {
 		plaintext_bytes := hex.decode(c.input)!
 		key_bytes := hex.decode(c.key)!
 		// assert key_bytes.len == 32

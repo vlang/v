@@ -58,30 +58,30 @@ pub fn (mut d Digest) free() {
 
 fn (mut d Digest) init() {
 	d.h = []u32{len: (8)}
-	d.x = []u8{len: sha256.chunk}
+	d.x = []u8{len: chunk}
 	d.reset()
 }
 
 // reset the state of the Digest `d`
 pub fn (mut d Digest) reset() {
 	if !d.is224 {
-		d.h[0] = u32(sha256.init0)
-		d.h[1] = u32(sha256.init1)
-		d.h[2] = u32(sha256.init2)
-		d.h[3] = u32(sha256.init3)
-		d.h[4] = u32(sha256.init4)
-		d.h[5] = u32(sha256.init5)
-		d.h[6] = u32(sha256.init6)
-		d.h[7] = u32(sha256.init7)
+		d.h[0] = u32(init0)
+		d.h[1] = u32(init1)
+		d.h[2] = u32(init2)
+		d.h[3] = u32(init3)
+		d.h[4] = u32(init4)
+		d.h[5] = u32(init5)
+		d.h[6] = u32(init6)
+		d.h[7] = u32(init7)
 	} else {
-		d.h[0] = u32(sha256.init0_224)
-		d.h[1] = u32(sha256.init1_224)
-		d.h[2] = u32(sha256.init2_224)
-		d.h[3] = u32(sha256.init3_224)
-		d.h[4] = u32(sha256.init4_224)
-		d.h[5] = u32(sha256.init5_224)
-		d.h[6] = u32(sha256.init6_224)
-		d.h[7] = u32(sha256.init7_224)
+		d.h[0] = u32(init0_224)
+		d.h[1] = u32(init1_224)
+		d.h[2] = u32(init2_224)
+		d.h[3] = u32(init3_224)
+		d.h[4] = u32(init4_224)
+		d.h[5] = u32(init5_224)
+		d.h[6] = u32(init6_224)
+		d.h[7] = u32(init7_224)
 	}
 	d.nx = 0
 	d.len = 0
@@ -119,7 +119,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 		if d.nx > 0 {
 			n := copy(mut d.x[d.nx..], p)
 			d.nx += n
-			if d.nx == sha256.chunk {
+			if d.nx == chunk {
 				block(mut d, d.x)
 				d.nx = 0
 			}
@@ -129,8 +129,8 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 				p = p[n..]
 			}
 		}
-		if p.len >= sha256.chunk {
-			n := p.len & ~(sha256.chunk - 1)
+		if p.len >= chunk {
+			n := p.len & ~(chunk - 1)
 			block(mut d, p[..n])
 			if n >= p.len {
 				p = []
@@ -152,7 +152,7 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	hash := d0.checksum_internal()
 	mut b_out := b_in.clone()
 	if d0.is224 {
-		for b in hash[..sha256.size224] {
+		for b in hash[..size224] {
 			b_out << b
 		}
 	} else {
@@ -182,7 +182,7 @@ fn (mut d Digest) checksum_internal() []u8 {
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
-	mut digest := []u8{len: sha256.size}
+	mut digest := []u8{len: size}
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest[4..], d.h[1])
 	binary.big_endian_put_u32(mut digest[8..], d.h[2])
@@ -204,7 +204,7 @@ pub fn (mut d Digest) checksum() []u8 {
 	out := d.checksum_internal()
 	// if this digest has `size224` length, return the correct `size224` checksum
 	if d.is224 {
-		return out[0..sha256.size224]
+		return out[0..size224]
 	}
 	// otherwise, returns a normal size
 	return out
@@ -228,8 +228,8 @@ pub fn sum224(data []u8) []u8 {
 	mut d := new224()
 	d.write(data) or { panic(err) }
 	sum := d.checksum_internal()
-	mut sum224 := []u8{len: sha256.size224}
-	copy(mut sum224, sum[..sha256.size224])
+	mut sum224 := []u8{len: size224}
+	copy(mut sum224, sum[..size224])
 	return sum224
 }
 
@@ -242,14 +242,14 @@ fn block(mut dig Digest, p []u8) {
 // size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
 	if !d.is224 {
-		return sha256.size
+		return size
 	}
-	return sha256.size224
+	return size224
 }
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
-	return sha256.block_size
+	return block_size
 }
 
 // hexhash returns a hexadecimal SHA256 hash sum `string` of `s`.

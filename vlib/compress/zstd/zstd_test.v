@@ -5,7 +5,7 @@ import os
 const samples_folder = os.join_path(os.dir(@FILE), 'samples')
 
 fn s(fname string) string {
-	return os.join_path(zstd.samples_folder, fname)
+	return os.join_path(samples_folder, fname)
 }
 
 fn test_zstd() {

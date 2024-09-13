@@ -124,7 +124,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 
 	// infinite timeout is signaled by passing null as the timeout to
 	// select
-	if timeout == net.infinite_timeout {
+	if timeout == infinite_timeout {
 		timeval_timeout = &C.timeval(unsafe { nil })
 	}
 
@@ -148,7 +148,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix() == 0
 	for infinite || time.now() <= deadline {
-		timeout := if infinite { net.infinite_timeout } else { deadline - time.now() }
+		timeout := if infinite { infinite_timeout } else { deadline - time.now() }
 		ready := @select(handle, test, timeout) or {
 			if err.code() == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
@@ -169,7 +169,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ! {
 	// Convert timeouts to deadlines
-	real_deadline := if timeout == net.infinite_timeout {
+	real_deadline := if timeout == infinite_timeout {
 		time.unix(0)
 	} else if timeout == 0 {
 		// No timeout set, so assume deadline

@@ -56,7 +56,7 @@ fn (mut s StringReaderTest) read(mut buf []u8) !int {
 const newline_count = 100000
 
 fn test_stringreadertest() {
-	text := '12345\n'.repeat(io.newline_count)
+	text := '12345\n'.repeat(newline_count)
 	mut s := StringReaderTest{
 		text: text
 	}
@@ -64,7 +64,7 @@ fn test_stringreadertest() {
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
 		} else {
-			assert i == io.newline_count
+			assert i == newline_count
 			break
 		}
 	}
@@ -81,7 +81,7 @@ fn test_stringreadertest() {
 }
 
 fn test_stringreadertest2() {
-	text := '12345\r\n'.repeat(io.newline_count)
+	text := '12345\r\n'.repeat(newline_count)
 	mut s := StringReaderTest{
 		text: text
 	}
@@ -89,7 +89,7 @@ fn test_stringreadertest2() {
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
 		} else {
-			assert i == io.newline_count
+			assert i == newline_count
 			break
 		}
 	}

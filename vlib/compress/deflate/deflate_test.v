@@ -6,7 +6,7 @@ fn test_gzip() {
 	uncompressed := 'Hello world!'
 	compressed := compress(uncompressed.bytes())!
 	first2 := compressed[0..2]
-	assert first2 != deflate.gzip_magic_numbers
+	assert first2 != gzip_magic_numbers
 	decompressed := decompress(compressed)!
 	assert decompressed == uncompressed.bytes()
 }

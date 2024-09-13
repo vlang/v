@@ -338,17 +338,17 @@ pub fn (mut rng PRNG) string_from_set(charset string, len int) string {
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn (mut rng PRNG) string(len int) string {
-	return internal_string_from_set(mut rng, rand.english_letters, len)
+	return internal_string_from_set(mut rng, english_letters, len)
 }
 
 // hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
 pub fn (mut rng PRNG) hex(len int) string {
-	return internal_string_from_set(mut rng, rand.hex_chars, len)
+	return internal_string_from_set(mut rng, hex_chars, len)
 }
 
 // ascii returns a random string of the printable ASCII characters with length `len`.
 pub fn (mut rng PRNG) ascii(len int) string {
-	return internal_string_from_set(mut rng, rand.ascii_chars, len)
+	return internal_string_from_set(mut rng, ascii_chars, len)
 }
 
 // fill_buffer_from_set fills the mutable `buf` with random characters from the given `charset`
@@ -689,17 +689,17 @@ pub fn fill_buffer_from_set(charset string, mut buf []u8) {
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn string(len int) string {
-	return string_from_set(rand.english_letters, len)
+	return string_from_set(english_letters, len)
 }
 
 // hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
 pub fn hex(len int) string {
-	return string_from_set(rand.hex_chars, len)
+	return string_from_set(hex_chars, len)
 }
 
 // ascii returns a random string of the printable ASCII characters with length `len`.
 pub fn ascii(len int) string {
-	return string_from_set(rand.ascii_chars, len)
+	return string_from_set(ascii_chars, len)
 }
 
 // shuffle randomly permutates the elements in `a`. The range for shuffling is

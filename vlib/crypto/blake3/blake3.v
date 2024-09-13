@@ -131,7 +131,7 @@ mut:
 
 // Digest.new_hash initializes a Digest structure for a Blake3 hash
 pub fn Digest.new_hash() !Digest {
-	return Digest.new(blake3.iv, 0)
+	return Digest.new(iv, 0)
 }
 
 // Digest.new_keyed_hash initializes a Digest structure for a Blake3 keyed hash
@@ -147,10 +147,10 @@ pub fn Digest.new_keyed_hash(key []u8) !Digest {
 
 // Digest.new_derive_key_hash initializes a Digest structure for deriving a Blake3 key
 pub fn Digest.new_derive_key_hash(context []u8) !Digest {
-	mut context_digest := Digest.new(blake3.iv, u32(Flags.derive_key_context))!
+	mut context_digest := Digest.new(iv, u32(Flags.derive_key_context))!
 
 	context_digest.write(context)!
-	context_key := context_digest.checksum_internal(blake3.key_length)
+	context_key := context_digest.checksum_internal(key_length)
 
 	// treat the context key bytes as little endian u32 values
 	mut key_words := []u32{len: 8, cap: 8}
@@ -206,15 +206,15 @@ pub fn (mut d Digest) write(data []u8) ! {
 	// if we have more than 1024 bytes in the input,
 	// process it in chunks.
 
-	for d.input.len > blake3.chunk_size {
+	for d.input.len > chunk_size {
 		mut chunk := Chunk{}
-		words := chunk.process_input(d.input[..blake3.chunk_size], d.key_words, d.chunk_counter,
+		words := chunk.process_input(d.input[..chunk_size], d.key_words, d.chunk_counter,
 			d.flags, false)
 
 		d.add_node(Node{ chaining_value: words[..8] }, 0)
 
 		d.chunk_counter += 1
-		d.input = d.input[blake3.chunk_size..]
+		d.input = d.input[chunk_size..]
 	}
 }
 
@@ -261,12 +261,12 @@ fn (mut d Digest) checksum_internal(size u64) []u8 {
 				mut flags := d.flags | u32(Flags.parent)
 				flags |= if i == d.binary_edge.len - 1 { u32(Flags.root) } else { u32(0) }
 
-				words = f(d.key_words, block_words, u64(0), blake3.block_size, flags)
+				words = f(d.key_words, block_words, u64(0), block_size, flags)
 
 				state.words = words
 				state.chaining_value = d.key_words
 				state.block_words = block_words
-				state.block_len = blake3.block_size
+				state.block_len = block_size
 				state.flags = flags
 
 				right_node = Node{
@@ -327,7 +327,7 @@ fn (mut d Digest) add_node(node Node, level u8) {
 			mut block_words := edge_node.chaining_value.clone()
 			block_words << node.chaining_value
 
-			words := f(d.key_words, block_words, u64(0), blake3.block_size, d.flags | u32(Flags.parent))
+			words := f(d.key_words, block_words, u64(0), block_size, d.flags | u32(Flags.parent))
 			parent_node := Node{
 				chaining_value: words[..8]
 			}
@@ -345,19 +345,19 @@ fn (mut d Digest) add_node(node Node, level u8) {
 pub fn sum256(data []u8) []u8 {
 	mut d := Digest.new_hash() or { panic(err) }
 	d.write(data) or { panic(err) }
-	return d.checksum_internal(blake3.size256)
+	return d.checksum_internal(size256)
 }
 
 // sum_keyed256 returns the Blake3 256 bit keyed hash of the data.
 pub fn sum_keyed256(data []u8, key []u8) []u8 {
 	mut d := Digest.new_keyed_hash(key) or { panic(err) }
 	d.write(data) or { panic(err) }
-	return d.checksum_internal(blake3.size256)
+	return d.checksum_internal(size256)
 }
 
 // sum_derived_key256 returns the Blake3 256 bit derived key hash of the key material
 pub fn sum_derive_key256(context []u8, key_material []u8) []u8 {
 	mut d := Digest.new_derive_key_hash(context) or { panic(err) }
 	d.write(key_material) or { panic(err) }
-	return d.checksum_internal(blake3.size256)
+	return d.checksum_internal(size256)
 }

@@ -38,7 +38,7 @@ pub fn new_app(args simargs.ParallelArgs) &App {
 		create_window: true
 		window_title:  'V Pendulum Simulation'
 		user_data:     app
-		bg_color:      anim.bg_color
+		bg_color:      bg_color
 		frame_fn:      frame
 		init_fn:       init
 	)
