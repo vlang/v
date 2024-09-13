@@ -1,0 +1,21 @@
+vlib/v/checker/tests/implements_generic_err.vv:12:31: error: missing generic type on IB
+   10 | }
+   11 | 
+   12 | struct Foo1[T] implements IA, IB {
+      |                               ~~
+   13 |     a int
+   14 |     b T
+vlib/v/checker/tests/implements_generic_err.vv:17:31: error: unknown generic type Y
+   15 | }
+   16 | 
+   17 | struct Foo2[T] implements IA, IB[Y] {
+      |                               ~~
+   18 |     a int
+   19 |     b T
+vlib/v/checker/tests/implements_generic_err.vv:22:31: error: unknown generic type Y
+   20 | }
+   21 | 
+   22 | struct Foo3[T] implements IA, IB[T,Y] {
+      |                               ~~
+   23 |     a int
+   24 |     b T
