@@ -846,6 +846,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.writeln(';')
 	mr_types := (return_sym.info as ast.MultiReturn).types
 	for i, lx in node.left {
+		mut cur_indexexpr := -1
 		mut is_auto_heap := false
 		mut ident := ast.Ident{
 			scope: unsafe { nil }
@@ -858,6 +859,9 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			if lx.obj is ast.Var {
 				is_auto_heap = lx.obj.is_auto_heap
 			}
+		}
+		if lx is ast.IndexExpr && g.cur_indexexpr.len > 0 {
+			cur_indexexpr = g.cur_indexexpr.index(lx.pos.pos)
 		}
 		styp := if ident.name in g.defer_vars { '' } else { g.typ(node.left_types[i]) }
 		if node.op == .decl_assign {
@@ -894,7 +898,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				g.writeln(';')
 				g.writeln('memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
-				if g.is_arraymap_set {
+				if cur_indexexpr != -1 {
 					if is_auto_heap {
 						g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
 					} else if is_option {
@@ -902,6 +906,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					} else {
 						g.writeln('${mr_var_name}.arg${i} });')
 					}
+					g.cur_indexexpr.delete(cur_indexexpr)
 				} else {
 					if is_auto_heap {
 						g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
