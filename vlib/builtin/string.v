@@ -1727,6 +1727,36 @@ pub fn (s string) trim(cutset string) string {
 	}
 }
 
+// trim_indexes gets the new start and end indices of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
+// Example: left, right := '-hi-'.trim_indexes('-')
+@[direct_array_access]
+pub fn (s string) trim_indexes(cutset string) (int, int) {
+	mut pos_left := 0
+	mut pos_right := s.len - 1
+	mut cs_match := true
+	for pos_left <= s.len && pos_right >= -1 && cs_match {
+		cs_match = false
+		for cs in cutset {
+			if s[pos_left] == cs {
+				pos_left++
+				cs_match = true
+				break
+			}
+		}
+		for cs in cutset {
+			if s[pos_right] == cs {
+				pos_right--
+				cs_match = true
+				break
+			}
+		}
+		if pos_left > pos_right {
+			return 0, 0
+		}
+	}
+	return pos_left, pos_right + 1
+}
+
 @[direct_array_access]
 fn (s string) trim_chars(cutset string) string {
 	mut pos_left := 0
