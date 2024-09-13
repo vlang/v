@@ -360,7 +360,7 @@ fn astar_path_finding(mut app App, mut grid [][]Cell, start Point, end Point) {
 			if temp_g_score < g_score[neighbor.x][neighbor.y] {
 				g_score[neighbor.x][neighbor.y] = temp_g_score
 				if !(neighbor.x == start.x && neighbor.y == start.y) {
-					priority_queue.insert(&Node{
+					priority_queue.insert(Node{
 						f_score: g_score[neighbor.x][neighbor.y] + hf(neighbor, end)
 						cell:    neighbor
 						count:   curr_node.count + 1
