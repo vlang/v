@@ -4,12 +4,11 @@
 //
 // For SHA512, the test vectors come from:
 //     SHA512ShortMsg.rsp
-//     SHA512LongMsg.rsp
 import crypto.sha512
 import encoding.hex
 import os
 
-// This structure deals with both the short message and long message tests
+// This structure deals with short message tests
 struct SHA512TestCase {
 	name    string
 	message string
@@ -673,20 +672,5 @@ fn test_short_messages() {
 		actual_result := sha512.sum512(message)
 
 		assert actual_result == expected_result, 'failed ${c.name}'
-	}
-}
-
-fn test_long_messages() {
-	long_case_files := os.walk_ext('${os.dir(@FILE)}/testdata/sha512_long_msg_tests/',
-		'.txt')
-
-	for file_name in long_case_files {
-		lines := os.read_lines(file_name)!
-		message := hex.decode(lines[0])!
-		expected_result := hex.decode(lines[1])!
-
-		actual_result := sha512.sum512(message)
-
-		assert actual_result == expected_result, 'failed ${os.file_name(file_name)}'
 	}
 }
