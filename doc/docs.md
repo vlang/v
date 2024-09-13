@@ -687,7 +687,7 @@ To use a format specifier, follow this pattern:
 - width: may be an integer value describing the minimum width of total field to output.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
   point without any insignificant trailing zeros. If displaying insignificant zero's is desired,
-  append a `f` specifier to the precision value (see examples below). Applies only to float 
+  append a `f` specifier to the precision value (see examples below). Applies only to float
   variables and is ignored for integer variables.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
@@ -3598,7 +3598,6 @@ fn main() {
 #### Implement an interface
 
 A type implements an interface by implementing its methods and fields.
-There is no explicit declaration of intent, no "implements" keyword.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
@@ -3643,6 +3642,30 @@ fn fn1(s Foo) {
 // fn fn2(s Bar) { // does not match
 //      println(s.write('Foo'))
 // }
+```
+
+There is an **optional** `implements` keyword for explicit declaration
+of intent, which applies to `struct` declarations.
+
+```v
+struct PathError implements IError {
+	Error
+	path string
+}
+
+fn (err PathError) msg() string {
+	return 'Failed to open path: ${err.path}'
+}
+
+fn try_open(path string) ! {
+	return PathError{
+		path: path
+	}
+}
+
+fn main() {
+	try_open('/tmp') or { panic(err) }
+}
 ```
 
 #### Casting an interface
@@ -4040,7 +4063,7 @@ user := repo.find_user_by_id(7) or {
 
 #### Options/results when returning multiple values
 
-Only one `Option` or `Result` is allowed to be returned from a function. It is 
+Only one `Option` or `Result` is allowed to be returned from a function. It is
 possible to return multiple values and still signal an error.
 
 ```v
