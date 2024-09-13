@@ -240,8 +240,8 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	// build the header after the potential modification of resp.body from above
 	header := http.new_header_from_map({
-		http.CommonHeader.content_type:   mimetype
-		http.CommonHeader.content_length: resp.body.len.str()
+		.content_type:   mimetype
+		.content_length: resp.body.len.str()
 	}).join(ctx.header)
 	resp.header = header.join(headers_close)
 
