@@ -921,6 +921,7 @@ fn test_trim() {
 	assert 'banana'.trim('bna') == ''
 	assert 'abc'.trim('ac') == 'b'
 	assert 'aaabccc'.trim('ac') == 'b'
+	assert 'あいうえお'.trim('あい') == 'うえお'
 }
 
 fn test_trim_indexes() {
