@@ -24,9 +24,8 @@ pub struct App {
 // time is a simple POST request handler, that returns the current time. It should be available
 // to JS scripts, running on arbitrary other origins/domains.
 
-// pub fn (app &App) time() veb.Result {
 @[post]
-pub fn (app &App) time(mut ctx Context) veb.Result {
+pub fn (app &App) time() veb.Result {
 	return ctx.json({
 		'time': time.now().format_ss_milli()
 	})
@@ -34,7 +33,7 @@ pub fn (app &App) time(mut ctx Context) veb.Result {
 
 fn main() {
 	println("
-To test, if CORS works, copy this JS snippet, then go to for example https://stackoverflow.com/ ,
+To test if CORS works, copy this JS snippet, then go to for example https://stackoverflow.com/ ,
 press F12, then paste the snippet in the opened JS console. You should see the veb server's time:
 var xhr = new XMLHttpRequest();
 xhr.onload = function(data) {

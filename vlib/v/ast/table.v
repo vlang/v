@@ -30,7 +30,9 @@ pub mut:
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_vweb_types    []Type          // vweb context types, filled in by checker, when pref.skip_unused = true;
+	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
+	veb_res_idx_cache  int             // Cache of `veb.Result` type
+	veb_ctx_idx_cache  int             // Cache of `veb.Context` type
 	used_maps          int             // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
@@ -72,7 +74,7 @@ pub fn (mut t Table) free() {
 		t.used_fns.free()
 		t.used_consts.free()
 		t.used_globals.free()
-		t.used_vweb_types.free()
+		t.used_veb_types.free()
 	}
 }
 
@@ -231,6 +233,16 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// for faster lookup in the checker's fn_decl method
 	t.methods << new_fn
 	return t.methods.len - 1
+}
+
+pub fn (mut t TypeSymbol) update_method(f Fn) int {
+	for i, m in t.methods {
+		if m.name == f.name {
+			t.methods[i] = f
+			return i
+		}
+	}
+	return -1
 }
 
 pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) !Fn {
@@ -2549,4 +2561,13 @@ pub fn (t &Table) get_attrs(sym TypeSymbol) []Attr {
 			return []
 		}
 	}
+}
+
+pub fn (mut t Table) get_veb_result_type_idx() int {
+	if t.veb_res_idx_cache > 0 {
+		return t.veb_res_idx_cache
+	}
+
+	t.veb_res_idx_cache = t.find_type_idx('veb.Result')
+	return t.veb_res_idx_cache
 }

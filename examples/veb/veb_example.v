@@ -34,7 +34,7 @@ pub fn (mut app App) user_endpoint(mut ctx Context, user string) veb.Result {
 	})
 }
 
-pub fn (mut app App) index(mut ctx Context) veb.Result {
+pub fn (mut app App) index() veb.Result {
 	mut c := 0
 	lock app.state {
 		app.state.cnt++

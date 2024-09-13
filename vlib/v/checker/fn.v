@@ -434,11 +434,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	// Register implicit context var
-	typ_veb_result := c.table.find_type_idx('veb.Result')
+	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type_idx('veb.Result')
 	if node.return_type == typ_veb_result {
-		typ_veb_context := c.table.find_type_idx('veb.Context')
+		typ_veb_context := ast.Type(u32(c.table.find_type_idx('veb.Context'))).set_nr_muls(1)
 		// No `ctx` param? Add it
-		if !node.params.any(it.name == 'ctx') && node.params.len > 1 {
+		if !node.params.any(it.name == 'ctx') && node.params.len >= 1 {
 			params := node.params.clone()
 			ctx_param := ast.Param{
 				name:   'ctx'
@@ -449,11 +449,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			node.params << params[1..]
 			// println('new params ${node.name}')
 			// println(node.params)
+			// We've added ctx to the FnDecl node.
+			// Now update the existing method, already registered in Table.
+			mut rec_sym := c.table.sym(node.receiver.typ)
+			if mut m := c.table.find_method(rec_sym, node.name) {
+				m.params << ctx_param
+				rec_sym.update_method(m)
+			}
 		}
 		// sym := c.table.sym(typ_veb_context)
 		// println('reging ${typ_veb_context} ${sym}')
 		// println(c.fn_scope)
 		// println(node.params)
+		// Finally add ctx to the scope
 		c.fn_scope.register(ast.Var{
 			name:         'ctx'
 			typ:          typ_veb_context

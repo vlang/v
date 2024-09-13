@@ -223,6 +223,8 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 		$if trace_picoev_callback ? {
 			eprintln('> read event on file descriptor ${fd}')
 		}
+		// TODO figure out the POST repeat in ev_callback
+		// println('ev_callback fd=${fd} params.routes=${params.routes.len}')
 		handle_read[A, X](mut pv, mut params, fd)
 	} else {
 		// should never happen
@@ -323,7 +325,7 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 // handle_read reads data from the connection and if the request is complete
 // it calls `handle_route` and closes the connection.
-// If the request is not complete it stores the incomplete request in `params`
+// If the request is not complete, it stores the incomplete request in `params`
 // and the connection stays open until it is ready to read again
 @[direct_array_access; manualfree]
 fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
@@ -592,6 +594,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
+	// println('\n\nHANDLE ROUTE')
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
@@ -771,6 +774,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
+	// println('route_matches(url_words:${url_words} route_words:${route_words}')
 	// URL path should be at least as long as the route path
 	// except for the catchall route (`/:path...`)
 	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
