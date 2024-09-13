@@ -9,7 +9,7 @@ interface IB[T] {
 	fa()
 }
 
-struct Foo[T] implements IA, IB {
+struct Foo[T] implements IA, IB[T] {
 	a int
 	b T
 }
