@@ -5859,6 +5859,13 @@ A program that prints its own source code (a quine):
 print($embed_file(@FILE).to_string())
 ```
 
+A program that prints the time when it was built:
+```v
+import time
+
+println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).format_ss_milli()} .')
+```
+
 > [!NOTE]
 > you can have arbitrary source code in the file, without problems, since the full file
 > will be embedded into the executable, produced by compiling it. Also note that printing
