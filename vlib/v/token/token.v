@@ -185,6 +185,9 @@ pub enum AtKind {
 	vexeroot_path
 	file_path_line_nr
 	location
+	build_date
+	build_time
+	build_timestamp
 }
 
 pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assign, .mult_assign,
@@ -193,7 +196,7 @@ pub const assign_tokens = [Kind.assign, .decl_assign, .plus_assign, .minus_assig
 
 pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
 	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@VMODHASH',
-	'@FILE_LINE', '@LOCATION']
+	'@FILE_LINE', '@LOCATION', '@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
 
 pub const token_str = build_token_str()
 
