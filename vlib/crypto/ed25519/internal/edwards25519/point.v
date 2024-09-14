@@ -353,8 +353,8 @@ fn (mut v ProjectiveP1) sub(p Point, q ProjectiveCached) ProjectiveP1 {
 	ypx.add(p.y, p.x)
 	ymx.subtract(p.y, p.x)
 
-	pp.multiply(&ypx, q.ymx) // flipped sign
-	mm.multiply(&ymx, q.ypx) // flipped sign
+	pp.multiply(ypx, q.ymx) // flipped sign
+	mm.multiply(ymx, q.ypx) // flipped sign
 	tt2d.multiply(p.t, q.t2d)
 	zz2.multiply(p.z, q.z)
 
@@ -378,8 +378,8 @@ fn (mut v ProjectiveP1) add_affine(p Point, q AffineCached) ProjectiveP1 {
 	ypx.add(p.y, p.x)
 	ymx.subtract(p.y, p.x)
 
-	pp.multiply(&ypx, q.ypx)
-	mm.multiply(&ymx, q.ymx)
+	pp.multiply(ypx, q.ypx)
+	mm.multiply(ymx, q.ymx)
 	tt2d.multiply(p.t, q.t2d)
 
 	z2.add(p.z, p.z)

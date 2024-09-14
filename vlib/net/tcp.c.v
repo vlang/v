@@ -583,7 +583,7 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// 	return err_option_wrong_type
 	// }
 	x := int(value)
-	s.set_option(C.SOL_SOCKET, int(opt), &x)!
+	s.set_option(C.SOL_SOCKET, int(opt), x)!
 }
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
@@ -592,7 +592,7 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
 	x := int(!on)
-	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x)!
+	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), x)!
 }
 
 fn (mut s TcpSocket) set_default_options() ! {
