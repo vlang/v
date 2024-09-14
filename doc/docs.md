@@ -5632,6 +5632,40 @@ fn main() {
 }
 ```
 
+```v
+// @[_allow_multiple_values] allows enum to have multiple values
+// Use when actually needed too
+
+@[_allow_multiple_values]
+enum ButtonStyle {
+	primary   = 1
+	secondary = 2
+	success   = 3
+
+	blurple = 1
+	grey    = 2
+	gray    = 2
+	green   = 3
+}
+
+fn main() {
+	assert int(ButtonStyle.primary) == 1
+	assert int(ButtonStyle.blurple) == 1
+
+	assert int(ButtonStyle.secondary) == 2
+	assert int(ButtonStyle.gray) == 2
+	assert int(ButtonStyle.grey) == 2
+
+	assert int(ButtonStyle.success) == 3
+	assert int(ButtonStyle.green) == 3
+
+	assert ButtonStyle.primary == ButtonStyle.blurple
+	assert ButtonStyle.secondary == ButtonStyle.grey
+	assert ButtonStyle.secondary == ButtonStyle.gray
+	assert ButtonStyle.success == ButtonStyle.green
+}
+```
+
 Struct field deprecations:
 
 ```v oksyntax
