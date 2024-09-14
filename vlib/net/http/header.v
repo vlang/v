@@ -17,7 +17,7 @@ pub const max_headers = 50
 pub struct Header {
 pub mut:
 	// data map[string][]string
-	data [http.max_headers]HeaderKV
+	data [max_headers]HeaderKV
 mut:
 	cur_pos int
 	// map of lowercase header keys to their original keys

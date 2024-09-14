@@ -16,14 +16,22 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 	mut size := 0
 	match h {
 		sha256.Digest {
-			fun = sha256.sum256
-			block_size = sha256.block_size
-			size = sha256.size
+			block_size = h.block_size()
+			size = h.size()
+			if size == sha256.size224 {
+				fun = sha256.sum224
+			} else {
+				fun = sha256.sum256
+			}
 		}
 		sha512.Digest {
-			fun = sha512.sum512
-			block_size = sha512.block_size
-			size = sha512.size
+			block_size = h.block_size()
+			size = h.size()
+			if size == sha512.size384 {
+				fun = sha512.sum384
+			} else {
+				fun = sha512.sum512
+			}
 		}
 		else {
 			panic('Unsupported hash')
@@ -36,6 +44,7 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 	mut last := []u8{}
 	mut buf := []u8{len: 4}
 	for i := 1; i <= block_count; i++ {
+		last.clear()
 		last << salt
 
 		buf[0] = u8(i >> 24)

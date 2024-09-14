@@ -234,6 +234,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	} else {
 		is_direct_array_access := g.is_direct_array_access || node.is_direct
+		is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
 			&& g.fn_decl != unsafe { nil } && g.fn_decl.return_type.has_flag(.option))
@@ -257,7 +258,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if needs_clone {
 				g.write('/*2*/string_clone(')
 			}
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				if elem_sym.info is ast.FnType {
 					g.write('((')
 					g.write_fn_ptr_decl(&elem_sym.info, '')
@@ -297,13 +298,13 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('data)[')
 			g.expr(node.index)
 			g.write(']')
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				g.write(')')
 			}
 		} else {
 			g.write(', ')
 			g.expr(node.index)
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				g.write(')))')
 			} else {
 				g.write('))')

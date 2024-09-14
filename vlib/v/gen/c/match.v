@@ -491,7 +491,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.string {
-						g.write('string__eq(${cond_var}, ')
+						ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
+						g.write('string__eq(${ptr_str}${cond_var}, ')
 						g.expr(expr)
 						g.write(')')
 					}

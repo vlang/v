@@ -47,7 +47,20 @@ pub fn tabs(n int) string {
 	return if n >= 0 && n < const_tabs.len { const_tabs[n] } else { '\t'.repeat(n) }
 }
 
-//
+// get_build_time returns the current build time, while taking into account SOURCE_DATE_EPOCH
+// to support transparent reproducible builds. See also https://reproducible-builds.org/docs/source-date-epoch/
+// When SOURCE_DATE_EPOCH is not set, it will return the current UTC time.
+pub fn get_build_time() time.Time {
+	sde := os.getenv('SOURCE_DATE_EPOCH')
+	if sde == '' {
+		return time.utc()
+	}
+	return time.unix_nanosecond(sde.i64(), 0)
+}
+
+// set_vroot_folder sets the VCHILD env variable to 'true', and VEXE to the location of the V executable
+// It is called very early by launch_tool/3, so that those env variables can be available by all tools,
+// like `v doc`, `v fmt` etc, so they can use them to find how they were started.
 pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path() can return it
@@ -61,6 +74,8 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
+// resolve_vmodroot replaces all occurences of `@VMODROOT` in `str`, with an absolute path,
+// formed by resolving, where the nearest `v.mod` is, given the folder `dir`.
 pub fn resolve_vmodroot(str string, dir string) !string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
