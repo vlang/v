@@ -175,6 +175,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('*')
 			}
 		} else {
+			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true // special handling of assign_op and closing with '})'
 			g.write('array_set(')
 			if !left_is_ptr || node.left_type.has_flag(.shared_f) {
@@ -398,6 +399,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	get_and_set_types := val_sym.kind in [.struct_, .map, .array, .array_fixed]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
+			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true
 			g.write('map_set(')
 		} else {
