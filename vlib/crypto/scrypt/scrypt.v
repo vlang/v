@@ -17,8 +17,8 @@ pub const max_blocksize_parallal_product = u64(1 << 30)
 // salsa20_8 applies the salsa20/8 core transformation to a block
 // of 64 u8 bytes.  The block is modified in place.
 fn salsa20_8(mut block []u8) {
-	mut block_words := []u32{len: 16, cap: 16}
-	mut scratch := []u32{len: 16, cap: 16}
+	mut block_words := []u32{len: 16}
+	mut scratch := [16]u32{}
 
 	for i in 0 .. 16 {
 		block_words[i] = binary.little_endian_u32_at(block, i * 4)
@@ -73,8 +73,6 @@ fn salsa20_8(mut block []u8) {
 		scratch[i] += block_words[i]
 		binary.little_endian_put_u32_at(mut block, scratch[i], i * 4)
 	}
-
-	return
 }
 
 @[inline]
