@@ -418,7 +418,7 @@ pub:
 	embeds       []Embed
 
 	is_implements    bool
-	implements_types []Type
+	implements_types []TypeNode
 pub mut:
 	fields []StructField
 }

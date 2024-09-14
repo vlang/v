@@ -94,7 +94,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut is_field_pub := false
 	mut is_field_global := false
 	mut is_implements := false
-	mut implements_types := []ast.Type{cap: 3} // ast.void_type
+	mut implements_types := []ast.TypeNode{cap: 3} // ast.void_type
 	mut last_line := p.prev_tok.pos().line_nr + 1
 	mut end_comments := []ast.Comment{}
 	if !no_body {
@@ -102,7 +102,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_implements = true
 			for {
 				p.next()
-				implements_types << p.parse_type()
+				type_pos := p.tok.pos()
+				implements_types << ast.TypeNode{
+					typ: p.parse_type()
+					pos: type_pos
+				}
 				if p.tok.kind != .comma {
 					break
 				}

@@ -334,7 +334,24 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		// cgen error if I use `println(sym)` without handling the option with `or{}`
 		struct_type := c.table.find_type_idx(node.name) // or { panic(err) }
 		for t in node.implements_types {
-			c.type_implements(struct_type, t, node.pos)
+			t_sym := c.table.sym(t.typ)
+			if t_sym.info is ast.Interface {
+				if t_sym.info.is_generic {
+					itype_name := c.table.type_to_str(t.typ)
+					if !itype_name.contains('[') {
+						c.error('missing generic type on ${t_sym.name}', t.pos)
+					}
+					if itype_name.contains('<') {
+						struct_generic_letters := node.generic_types.map(c.table.type_to_str(it))
+						unknown_letters := itype_name.all_after('<').all_before('>').split(',').filter(it !in struct_generic_letters)
+						if unknown_letters.len > 0 {
+							c.error('unknown generic type ${unknown_letters.first()}',
+								t.pos)
+						}
+					}
+				}
+			}
+			c.type_implements(struct_type, t.typ, node.pos)
 		}
 	}
 }

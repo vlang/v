@@ -34,11 +34,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	if node.is_implements {
 		f.write(' implements ')
 		for i, t in node.implements_types {
-			f.write(f.table.type_to_str_using_aliases(t, f.mod2alias))
+			f.write(f.table.type_to_str_using_aliases(t.typ, f.mod2alias))
 			if i < node.implements_types.len - 1 {
 				f.write(', ')
 			}
-			f.mark_types_import_as_used(t)
+			f.mark_types_import_as_used(t.typ)
 		}
 	}
 	// Calculate the alignments first
