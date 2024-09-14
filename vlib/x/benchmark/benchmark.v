@@ -41,7 +41,7 @@ pub fn Benchmark.new(bench_func fn () !, n i64, duration time.Duration, is_paral
 	return Benchmark{
 		n:           n
 		bench_func:  bench_func
-		bench_time:  if duration > 0 { duration } else { benchmark.default_duration }
+		bench_time:  if duration > 0 { duration } else { default_duration }
 		is_parallel: is_parallel
 	}
 }
