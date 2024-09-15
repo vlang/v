@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:4:35: error: struct type Walker cannot implement interface `v.ast.walker.Visitor more than once`
+    2 | import v.ast { Node }
+    3 | 
+    4 | struct Walker implements Visitor, Visitor, Visitor {
+      |                                   ~~~~~~~
+    5 |     aaa string
+    6 | }

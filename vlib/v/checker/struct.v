@@ -333,6 +333,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		// XTODO2
 		// cgen error if I use `println(sym)` without handling the option with `or{}`
 		struct_type := c.table.find_type_idx(node.name) // or { panic(err) }
+		mut names_used := []string{}
 		for t in node.implements_types {
 			t_sym := c.table.sym(t.typ)
 			if t_sym.info is ast.Interface {
@@ -350,6 +351,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						}
 					}
 				}
+				variant_name := c.table.type_to_str(t.typ)
+				if variant_name in names_used {
+					c.error('struct type ${node.name} cannot implement interface `${t_sym.name} more than once`',
+						t.pos)
+				}
+				names_used << variant_name
 			}
 			c.type_implements(struct_type, t.typ, node.pos)
 		}
