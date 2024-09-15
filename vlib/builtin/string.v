@@ -1721,9 +1721,9 @@ pub fn (s string) trim(cutset string) string {
 		return s.clone()
 	}
 	if cutset.len_utf8() == cutset.len {
-		return s.trim_chars(cutset)
+		return s.trim_chars(cutset, .trim_both)
 	} else {
-		return s.trim_runes(cutset)
+		return s.trim_runes(cutset, .trim_both)
 	}
 }
 
@@ -1757,25 +1757,35 @@ pub fn (s string) trim_indexes(cutset string) (int, int) {
 	return pos_left, pos_right + 1
 }
 
+enum TrimMode {
+	trim_left
+	trim_right
+	trim_both
+}
+
 @[direct_array_access]
-fn (s string) trim_chars(cutset string) string {
+fn (s string) trim_chars(cutset string, mode TrimMode) string {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
 	for pos_left <= s.len && pos_right >= -1 && cs_match {
 		cs_match = false
-		for cs in cutset {
-			if s[pos_left] == cs {
-				pos_left++
-				cs_match = true
-				break
+		if mode in [.trim_left, .trim_both] {
+			for cs in cutset {
+				if s[pos_left] == cs {
+					pos_left++
+					cs_match = true
+					break
+				}
 			}
 		}
-		for cs in cutset {
-			if s[pos_right] == cs {
-				pos_right--
-				cs_match = true
-				break
+		if mode in [.trim_right, .trim_both] {
+			for cs in cutset {
+				if s[pos_right] == cs {
+					pos_right--
+					cs_match = true
+					break
+				}
 			}
 		}
 		if pos_left > pos_right {
@@ -1786,7 +1796,7 @@ fn (s string) trim_chars(cutset string) string {
 }
 
 @[direct_array_access]
-fn (s string) trim_runes(cutset string) string {
+fn (s string) trim_runes(cutset string, mode TrimMode) string {
 	s_runes := s.runes()
 	c_runes := cutset.runes()
 	mut pos_left := 0
@@ -1794,18 +1804,22 @@ fn (s string) trim_runes(cutset string) string {
 	mut cs_match := true
 	for pos_left <= s_runes.len && pos_right >= -1 && cs_match {
 		cs_match = false
-		for cs in c_runes {
-			if s_runes[pos_left] == cs {
-				pos_left++
-				cs_match = true
-				break
+		if mode in [.trim_left, .trim_both] {
+			for cs in c_runes {
+				if s_runes[pos_left] == cs {
+					pos_left++
+					cs_match = true
+					break
+				}
 			}
 		}
-		for cs in c_runes {
-			if s_runes[pos_right] == cs {
-				pos_right--
-				cs_match = true
-				break
+		if mode in [.trim_right, .trim_both] {
+			for cs in c_runes {
+				if s_runes[pos_right] == cs {
+					pos_right--
+					cs_match = true
+					break
+				}
 			}
 		}
 		if pos_left > pos_right {
@@ -1822,21 +1836,11 @@ pub fn (s string) trim_left(cutset string) string {
 	if s == '' || cutset == '' {
 		return s.clone()
 	}
-	mut pos := 0
-	for pos < s.len {
-		mut found := false
-		for cs in cutset {
-			if s[pos] == cs {
-				found = true
-				break
-			}
-		}
-		if !found {
-			break
-		}
-		pos++
+	if cutset.len_utf8() == cutset.len {
+		return s.trim_chars(cutset, .trim_left)
+	} else {
+		return s.trim_runes(cutset, .trim_left)
 	}
-	return s[pos..]
 }
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
@@ -1846,23 +1850,11 @@ pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
-	mut pos := s.len - 1
-	for pos >= 0 {
-		mut found := false
-		for cs in cutset {
-			if s[pos] == cs {
-				found = true
-			}
-		}
-		if !found {
-			break
-		}
-		pos--
+	if cutset.len_utf8() == cutset.len {
+		return s.trim_chars(cutset, .trim_right)
+	} else {
+		return s.trim_runes(cutset, .trim_right)
 	}
-	if pos < 0 {
-		return ''
-	}
-	return s[..pos + 1]
 }
 
 // trim_string_left strips `str` from the start of the string.
