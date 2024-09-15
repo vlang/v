@@ -318,13 +318,19 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		for method in methods {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
-			c.comptime.comptime_for_method = method.name
+			c.comptime.comptime_for_method = unsafe { &method }
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
 			c.comptime.type_map['${node.val_var}.return_type'] = method.return_type
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
+	} else if node.kind == .args {
+		c.push_new_comptime_info()
+		c.comptime.inside_comptime_for = true
+		c.comptime.comptime_for_method_arg_var = node.val_var
+		c.stmts(mut node.stmts)
+		c.pop_comptime_info()
 	} else if node.kind == .variants {
 		if c.variant_data_type == 0 {
 			c.variant_data_type = ast.idx_to_type(c.table.find_type_idx('VariantData'))

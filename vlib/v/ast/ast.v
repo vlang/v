@@ -1241,6 +1241,7 @@ pub mut:
 }
 
 pub enum ComptimeForKind {
+	args
 	methods
 	fields
 	attributes

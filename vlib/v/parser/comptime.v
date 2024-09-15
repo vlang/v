@@ -363,6 +363,14 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		p.close_scope()
 	}
 	match for_val {
+		'args' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ:  p.table.find_type_idx('MethodArgs')
+				pos:  var_pos
+			})
+			kind = .args
+		}
 		'methods' {
 			p.scope.register(ast.Var{
 				name: val_var

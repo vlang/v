@@ -139,7 +139,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
 	if node.method_name == 'method' {
 		// `app.$method()`
-		m := sym.find_method(g.comptime.comptime_for_method) or { return }
+		m := sym.find_method(g.comptime.comptime_for_method.name) or { return }
 		/*
 		vals := m.attrs[0].split('/')
 		args := vals.filter(it.starts_with(':')).map(it[1..])
@@ -583,15 +583,15 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				.eq, .ne {
 					// TODO: Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr && (g.comptime.comptime_for_field_var.len > 0
-						|| g.comptime.comptime_for_method.len > 0) {
+						|| g.comptime.comptime_for_method != unsafe { nil }) {
 						if cond.right is ast.StringLiteral {
 							if cond.left.expr is ast.Ident && cond.left.field_name == 'name' {
 								if g.comptime.comptime_for_method_var.len > 0
 									&& cond.left.expr.name == g.comptime.comptime_for_method_var {
 									is_true := if cond.op == .eq {
-										g.comptime.comptime_for_method == cond.right.val
+										g.comptime.comptime_for_method.name == cond.right.val
 									} else {
-										g.comptime.comptime_for_method != cond.right.val
+										g.comptime.comptime_for_method.name != cond.right.val
 									}
 									if is_true {
 										g.write('1')
@@ -828,7 +828,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					}
 				}
 			}
-			g.comptime.comptime_for_method = method.name
+			g.comptime.comptime_for_method = unsafe { &method }
 			g.comptime.comptime_for_method_var = node.val_var
 			g.writeln('/* method ${i} */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("${method.name}");')
@@ -1020,6 +1020,26 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			g.pop_comptime_info()
 		}
+	} else if node.kind == .args {
+		method := g.comptime.comptime_for_method
+
+		if method.params.len > 0 {
+			g.writeln('\tMethodArgs ${node.val_var} = {0};')
+		}
+		g.push_new_comptime_info()
+		g.comptime.inside_comptime_for = true
+		g.comptime.comptime_for_method_arg_var = node.val_var
+		for param in method.params[1..] {
+			g.comptime.type_map['${node.val_var}.typ'] = param.typ
+
+			g.writeln('/* method param ${i} */ {')
+			g.writeln('\t${node.val_var}.typ = ${int(param.typ)};')
+			g.writeln('\t${node.val_var}.name = _SLIT("${param.name}");')
+			g.stmts(node.stmts)
+			g.writeln('}')
+			i++
+		}
+		g.pop_comptime_info()
 	}
 	g.indent--
 	g.writeln('}// \$for')
