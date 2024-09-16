@@ -58,7 +58,7 @@ $if dynamic_boehm ? {
 		#flag -ldl
 		#flag -lpthread
 	} $else $if freebsd {
-		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
+		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
 		$if !tinyc {
@@ -73,10 +73,16 @@ $if dynamic_boehm ? {
 		}
 		#flag -lpthread
 	} $else $if openbsd {
+		// Tested on OpenBSD 7.5, with clang, gcc and tcc
 		#flag -DGC_BUILTIN_ATOMIC=1
-		#flag -I/usr/local/include
-		$if !use_bundled_libgc ? {
+		$if !tinyc {
+			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag @VEXEROOT/thirdparty/libgc/gc.o
+		}
+		$if tinyc {
+			#flag -I/usr/local/include
 			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+			#flag -lgc
 		}
 		#flag -lpthread
 	} $else $if windows {
