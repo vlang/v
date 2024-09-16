@@ -199,7 +199,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
-		g.write('${util.no_dots(sym.name)}_${g.comptime.comptime_for_method}(')
+		g.write('${util.no_dots(sym.name)}_${g.comptime.comptime_for_method.name}(')
 
 		// try to see if we need to pass a pointer
 		if mut node.left is ast.Ident {
