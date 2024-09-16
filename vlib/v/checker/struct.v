@@ -350,6 +350,8 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						}
 					}
 				}
+			} else {
+				c.error('`${t_sym.name}` is not an interface type', t.pos)
 			}
 			c.type_implements(struct_type, t.typ, node.pos)
 		}
