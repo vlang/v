@@ -1975,6 +1975,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							field.pos)
 					} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
 						&& ilast + 1 in iseen {
+						c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed')
 						c.error('enum value `${ilast + 1}` already exists', field.pos)
 					}
 					iseen << ilast + 1
@@ -1989,6 +1990,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							field.pos)
 					} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
 						&& ulast + 1 in useen {
+						c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed')
 						c.error('enum value `${ulast + 1}` already exists', field.pos)
 					}
 					useen << ulast + 1
@@ -2038,6 +2040,7 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 	}
 	if !overflows && !c.pref.translated && !c.file.is_translated && !is_multi_allowed {
 		if (is_signed && ival in iseen) || (!is_signed && uval in useen) {
+			c.add_error_detail('use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed')
 			c.error('enum value `${expr.val}` already exists', pos)
 		}
 	}

@@ -23,6 +23,12 @@
 #ifndef MBEDTLS_CHECK_CONFIG_H
 #define MBEDTLS_CHECK_CONFIG_H
 
+#if ( defined(__TINYC__) && defined(__APPLE__) && defined(__arm64__) )
+#undef MBEDTLS_HAVE_ASM
+#undef MBEDTLS_AESNI_C
+#undef MBEDTLS_PADLOCK_C
+#endif
+
 /*
  * We assume CHAR_BIT is 8 in many places. In practice, this is true on our
  * target platforms, so not an issue, but let's just be extra sure.

@@ -402,6 +402,13 @@ fn get_all_commands() []Command {
 			rmfile: 'v.c'
 		}
 	}
+	$if linux || macos {
+		res << Command{
+			line:   '${vexe} -gc none -no-retry-compilation -cc tcc -d use_openssl -showcc examples/veb/todo/main.v'
+			okmsg:  'A simple veb app, compiles with `-gc none -no-retry-compilation -cc tcc -d use_openssl` on macos and linux'
+			rmfile: 'examples/veb/todo/main'
+		}
+	}
 	$if linux {
 		res << Command{
 			line:     '${vexe} vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'

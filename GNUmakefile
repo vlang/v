@@ -144,7 +144,10 @@ fresh_vc:
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
+ifneq (,$(wildcard ./tcc.exe))
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+endif
+
 else
 latest_tcc:
 	@echo "Using local tcc"
@@ -161,7 +164,6 @@ ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --hea
 else
 	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
 	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 else
 	@echo "Using local tccbin"

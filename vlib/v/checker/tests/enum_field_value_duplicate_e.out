@@ -5,3 +5,4 @@ vlib/v/checker/tests/enum_field_value_duplicate_e.vv:4:6: error: enum value `2` 
       |         ~~~
     5 | }
     6 |
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed

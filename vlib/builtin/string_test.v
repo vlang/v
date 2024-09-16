@@ -943,6 +943,7 @@ fn test_trim_left() {
 	s = 'banana'
 	assert s.trim_left('ba') == 'nana'
 	assert s.trim_left('ban') == ''
+	assert 'あいうえお'.trim_left('あい') == 'うえお'
 }
 
 fn test_trim_right() {
@@ -954,6 +955,7 @@ fn test_trim_right() {
 	s = 'banana'
 	assert s.trim_right('na') == 'b'
 	assert s.trim_right('ban') == ''
+	assert 'あいうえお'.trim_right('うえお') == 'あい'
 }
 
 fn test_all_before() {
