@@ -859,9 +859,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error('json.decode: unknown type `${sym.name}`', node.pos)
 			}
 		} else {
-			typ_name := expr.type_name()
-			c.error('json.decode: first argument needs to be a type, got `${typ_name}`',
-				node.pos)
+			typ := expr.type_name()
+			c.error('json.decode: first argument needs to be a type, got `${typ}`', node.pos)
 			return ast.void_type
 		}
 		c.expected_type = ast.string_type
