@@ -88,5 +88,13 @@ fn test_samples() {
 			assert x.version == '2.64.3'
 			assert x.conflicts == []
 		}
+		if x.name == 'OpenSSL' {
+			assert x.modname == 'openssl-3.3.2'
+			assert x.version == '3.3.2'
+			assert x.description == 'Secure Sockets Layer and cryptography libraries and tools'
+			assert x.vars['prefix'] == '/opt/homebrew/Cellar/openssl@3/3.3.2'
+			assert x.vars['libdir'] == '/opt/homebrew/Cellar/openssl@3/3.3.2/lib'
+			assert x.vars['includedir'] == '/opt/homebrew/Cellar/openssl@3/3.3.2/include'
+		}
 	}
 }
