@@ -26,8 +26,8 @@ mut:
 	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
-	mouse_x     int = -1
-	mouse_y     int = -1
+	mouse_x     int         = -1
+	mouse_y     int         = -1
 }
 
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {

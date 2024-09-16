@@ -12,7 +12,7 @@ struct Config {
 	mix         bool
 	some_test   string = 'abc' @[long: test]
 	path        string @[tail]
-	amount      int = 1
+	amount      int    = 1
 	version_str string @[long: version]
 }
 

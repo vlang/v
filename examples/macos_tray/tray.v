@@ -51,7 +51,7 @@ fn main() {
 	}
 
 	my_app.tray_info = C.tray_app_init(TrayParams{
-		items: [TrayMenuItem{
+		items:    [TrayMenuItem{
 			id:   'hello'
 			text: 'Hello'
 		}, TrayMenuItem{

@@ -216,9 +216,9 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
 		return ast.SqlStmtLine{
-			kind:       kind
-			pos:        pos.extend(p.prev_tok.pos())
-			table_expr: ast.TypeNode{
+			kind:         kind
+			pos:          pos.extend(p.prev_tok.pos())
+			table_expr:   ast.TypeNode{
 				typ: typ
 				pos: typ_pos
 			}
@@ -235,9 +235,9 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
 		return ast.SqlStmtLine{
-			kind:       kind
-			pos:        pos.extend(p.prev_tok.pos())
-			table_expr: ast.TypeNode{
+			kind:         kind
+			pos:          pos.extend(p.prev_tok.pos())
+			table_expr:   ast.TypeNode{
 				typ: typ
 				pos: typ_pos
 			}
@@ -314,7 +314,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		}
 	}
 	return ast.SqlStmtLine{
-		table_expr: ast.TypeNode{
+		table_expr:      ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}

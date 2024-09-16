@@ -153,9 +153,9 @@ Footer content'
 @[name: 'flag_to_doc_test']
 @[version: '1.0']
 struct DocTest {
-	show_version bool @[short: v; xdoc: 'Show version and exit']
-	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32  @[only: l; xdoc: 'Override this doc string']
+	show_version bool  @[short: v; xdoc: 'Show version and exit']
+	debug_level  int   @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32   @[only: l; xdoc: 'Override this doc string']
 	example      string
 	square       bool
 	multi        int   @[only: m; repeats]
@@ -176,20 +176,20 @@ fn test_flag_to_doc_spacing_and_new_lines() {
 	assert flag.to_doc[DocTest](
 		description: 'Flag to doc test.
 Content here'
-		footer: '
+		footer:      '
 Footer content'
-		fields: unsafe { field_docs }
+		fields:      unsafe { field_docs }
 	)! == doc4
 
 	// Test in compact mode also
 	assert flag.to_doc[DocTest](
-		options: flag.DocOptions{
+		options:     flag.DocOptions{
 			compact: true
 		}
 		description: 'Flag to doc test.
 Content here'
-		footer: '
+		footer:      '
 Footer content'
-		fields: unsafe { field_docs }
+		fields:      unsafe { field_docs }
 	)! == doc5
 }

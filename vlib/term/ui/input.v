@@ -191,8 +191,8 @@ pub:
 	event_fn   ?fn (&Event, voidptr)
 	fail_fn    ?fn (string)
 
-	buffer_size int = 256
-	frame_rate  int = 30
+	buffer_size int  = 256
+	frame_rate  int  = 30
 	use_x11     bool
 
 	window_title         string

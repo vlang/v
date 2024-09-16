@@ -7,9 +7,9 @@ const exe_and_v_args_with_tail = ['/path/to/exe', '-version', '-d', 'ident=val',
 	'-done', '-d', 'two', '-live', 'run', '/path/to']
 
 struct Prefs {
-	version    bool @[short: v]
-	is_live    bool @[long: live]
-	is_done    bool @[long: done]
+	version    bool     @[short: v]
+	is_live    bool     @[long: live]
+	is_done    bool     @[long: done]
 	test       string
 	defines    []string @[long: define; short: d]
 	tail       []string @[tail]

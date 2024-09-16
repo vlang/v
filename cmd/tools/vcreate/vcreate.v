@@ -50,7 +50,7 @@ fn main() {
 		},
 	]
 	mut cmd := Command{
-		flags: [
+		flags:      [
 			Flag{
 				flag:        .bool
 				name:        'help'
@@ -70,7 +70,7 @@ fn main() {
 					'The <project_name> argument can be omitted and entered in the prompts dialog.',
 					'If git is installed, `git init` will be performed during the setup.',
 				].join_lines()
-				parent: &Command{
+				parent:      &Command{
 					name: 'v'
 				}
 				posix_mode:  true
@@ -87,7 +87,7 @@ fn main() {
 					'If no `.v` file exists, a project template is generated. If the current directory is not a',
 					'git project and git is installed, `git init` will be performed during the setup.',
 				].join_lines()
-				parent: &Command{
+				parent:      &Command{
 					name: 'v'
 				}
 				posix_mode:  true

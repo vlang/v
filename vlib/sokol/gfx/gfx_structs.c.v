@@ -12,11 +12,11 @@ pub mut:
 	attachments_pool_size                           int
 	uniform_buffer_size                             int
 	max_commit_listeners                            int
-	disable_validation                              bool // disable validation layer even in debug mode, useful for tests
-	mtl_force_managed_storage_mode                  bool // for debugging: use Metal managed storage mode for resources even with UMA
-	mtl_use_command_buffer_with_retained_references bool // Metal: use a managed MTLCommandBuffer which ref-counts used resources
-	wgpu_disable_bindgroups_cache                   bool // set to true to disable the WebGPU backend BindGroup cache
-	wgpu_bindgroups_cache_size                      int  // number of slots in the WebGPU bindgroup cache (must be 2^N)
+	disable_validation                              bool        // disable validation layer even in debug mode, useful for tests
+	mtl_force_managed_storage_mode                  bool        // for debugging: use Metal managed storage mode for resources even with UMA
+	mtl_use_command_buffer_with_retained_references bool        // Metal: use a managed MTLCommandBuffer which ref-counts used resources
+	wgpu_disable_bindgroups_cache                   bool        // set to true to disable the WebGPU backend BindGroup cache
+	wgpu_bindgroups_cache_size                      int         // number of slots in the WebGPU bindgroup cache (must be 2^N)
 	allocator                                       C.sg_allocator
 	logger                                          C.sg_logger // optional log function override
 	environment                                     C.sg_environment

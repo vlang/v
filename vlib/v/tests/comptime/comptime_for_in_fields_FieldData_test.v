@@ -19,9 +19,9 @@ struct Complex {
 	atomic_i atomic int
 	my_alias MyInt = 144
 
-	pointer1_i &int   = unsafe { nil }
-	pointer2_i &&int  = unsafe { nil }
-	pointer3_i &&&int = unsafe { nil }
+	pointer1_i &int      = unsafe { nil }
+	pointer2_i &&int     = unsafe { nil }
+	pointer3_i &&&int    = unsafe { nil }
 
 	array_i          []int
 	map_i            map[int]int

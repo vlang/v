@@ -13,7 +13,7 @@ fn test_valid_parsing() {
 				'count':       '5'
 				'uniqueCount': '5'
 			}
-			children: [
+			children:   [
 				xml.XMLNode{
 					name:     'si'
 					children: [
@@ -22,7 +22,7 @@ fn test_valid_parsing() {
 							attributes: {
 								'a': '1'
 							}
-							children: ['Item 1']
+							children:   ['Item 1']
 						},
 					]
 				},

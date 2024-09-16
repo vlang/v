@@ -108,7 +108,7 @@ fn test_valid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	mut valid := csrf.protect(mut ctx, csrf_config_origin)
@@ -127,7 +127,7 @@ fn test_invalid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	mut valid := csrf.protect(mut ctx, csrf_config_origin)
@@ -142,7 +142,7 @@ fn test_invalid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	valid = csrf.protect(mut ctx, csrf_config_origin)
@@ -156,7 +156,7 @@ fn test_invalid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	valid = csrf.protect(mut ctx, csrf_config_origin)
@@ -233,7 +233,7 @@ fn exit_after_timeout[T](mut app T, timeout_in_ms int) {
 
 fn test_run_app_in_background() {
 	mut app := &App{
-		csrf: csrf.CsrfApp{
+		csrf:        csrf.CsrfApp{
 			secret:         'my-256bit-secret'
 			allowed_hosts:  [allowed_origin]
 			session_cookie: session_id_cookie_name

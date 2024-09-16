@@ -44,8 +44,8 @@ pub mut:
 	client_state      shared ClientState // current state of connection
 	// logger used to log messages
 	logger        &log.Logger = default_logger
-	resource_name string // name of current resource
-	last_pong_ut  i64    // last time in unix time we got a pong message
+	resource_name string             // name of current resource
+	last_pong_ut  i64                // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
@@ -92,13 +92,13 @@ pub:
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{
-		conn:         unsafe { nil }
-		is_server:    false
-		ssl_conn:     ssl.new_ssl_conn()!
-		is_ssl:       address.starts_with('wss')
-		logger:       opt.logger
-		uri:          uri
-		client_state: ClientState{
+		conn:          unsafe { nil }
+		is_server:     false
+		ssl_conn:      ssl.new_ssl_conn()!
+		is_ssl:        address.starts_with('wss')
+		logger:        opt.logger
+		uri:           uri
+		client_state:  ClientState{
 			state: .closed
 		}
 		id:            rand.uuid_v4()

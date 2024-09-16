@@ -2,7 +2,7 @@ import net.http
 
 const write_set_cookie_tests = [
 	ReadSetCookiesTestCase{
-		header: {
+		header:  {
 			'Set-Cookie': ['special-7=","']
 		}
 		cookies: [&http.Cookie{

@@ -22,7 +22,7 @@ mut:
 	file_path string // current ast.File path
 	warnings  []errors.Warning
 	errors    []errors.Error
-	table     &ast.Table = unsafe { nil }
+	table     &ast.Table        = unsafe { nil }
 	eval      eval.Eval
 	enum_vals map[string]Enum
 
@@ -35,16 +35,16 @@ mut:
 	ret                    ast.Type
 	ret_types              []ast.Type
 	ret_br                 wasm.LabelIndex
-	bp_idx                 wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	bp_idx                 wasm.LocalIndex   = -1 // Base pointer temporary's index for function, if needed (-1 for none)
 	sp_global              ?wasm.GlobalIndex
 	heap_base              ?wasm.GlobalIndex
 	fn_local_idx_end       int
 	fn_name                string
-	stack_frame            int // Size of the current stack frame, if needed
-	is_leaf_function       bool = true
+	stack_frame            int  // Size of the current stack frame, if needed
+	is_leaf_function       bool              = true
 	loop_breakpoint_stack  []LoopBreakpoint
-	stack_top              int // position in linear memory
-	data_base              int // position in linear memory
+	stack_top              int  // position in linear memory
+	data_base              int  // position in linear memory
 	needs_address          bool
 	defer_vars             []Var
 	is_direct_array_access bool // inside a `[direct_array_access]` function

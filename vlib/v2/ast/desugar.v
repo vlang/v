@@ -54,7 +54,7 @@ pub fn (or_expr &OrExpr) desugar() Expr {
 			// 	args: [or_expr.expr.lhs, or_expr.expr.expr]
 			// }
 			// array.len
-			cond: InfixExpr{
+			cond:      InfixExpr{
 				lhs: SelectorExpr{
 					lhs: or_expr.expr.lhs
 					rhs: Ident{
@@ -64,7 +64,7 @@ pub fn (or_expr &OrExpr) desugar() Expr {
 				op:  .gt
 				rhs: or_expr.expr.expr
 			}
-			stmts: [ExprStmt{
+			stmts:     [ExprStmt{
 				expr: or_expr.expr
 			}]
 			else_expr: IfExpr{
@@ -73,7 +73,7 @@ pub fn (or_expr &OrExpr) desugar() Expr {
 		}
 	} else {
 		return IfExpr{
-			cond: InfixExpr{
+			cond:  InfixExpr{
 				lhs: or_expr.expr
 				op:  .eq
 				rhs: BasicLiteral{

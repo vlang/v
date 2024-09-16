@@ -42,12 +42,12 @@ pub mut:
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
-	quote                       u8 // which quote is used to denote current string: ' or "
+	quote                       u8            // which quote is used to denote current string: ' or "
 	inter_quote                 u8
-	just_closed_inter           bool // if is_enclosed_inter was set to false on the previous character: `}`
-	nr_lines                    int  // total number of lines in the source file that were scanned
-	is_vh                       bool // Keep newlines
-	is_fmt                      bool // Used for v fmt.
+	just_closed_inter           bool          // if is_enclosed_inter was set to false on the previous character: `}`
+	nr_lines                    int           // total number of lines in the source file that were scanned
+	is_vh                       bool          // Keep newlines
+	is_fmt                      bool          // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
@@ -60,13 +60,13 @@ pub mut:
 	errors                      []errors.Error
 	warnings                    []errors.Warning
 	notices                     []errors.Notice
-	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
+	should_abort                bool          // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
 
 	// the following are used only inside ident_string, but are here to avoid allocating new arrays for the most common case of strings without escapes
 	all_pos         []int
-	u16_escapes_pos []int // pos list of \uXXXX
-	u32_escapes_pos []int // pos list of \UXXXXXXXX
-	h_escapes_pos   []int // pos list of \xXX
+	u16_escapes_pos []int         // pos list of \uXXXX
+	u32_escapes_pos []int         // pos list of \UXXXXXXXX
+	h_escapes_pos   []int         // pos list of \xXX
 	str_segments    []string
 }
 

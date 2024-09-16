@@ -35,7 +35,7 @@ mut:
 	reader   ?&io.BufferedReader
 pub:
 	server   string
-	port     int = 25
+	port     int          = 25
 	username string
 	password string
 	from     string

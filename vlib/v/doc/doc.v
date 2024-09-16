@@ -37,7 +37,7 @@ pub enum Platform {
 	openbsd
 	netbsd
 	dragonfly
-	js // for interoperability in prefs.OS
+	js     // for interoperability in prefs.OS
 	android
 	termux // like android, but note that termux is running on devices natively, not cross compiling from other platforms
 	solaris
@@ -46,7 +46,7 @@ pub enum Platform {
 	vinix
 	haiku
 	raw
-	cross // TODO: add functionality for v doc -cross whenever possible
+	cross  // TODO: add functionality for v doc -cross whenever possible
 }
 
 // copy of pref.os_from_string
@@ -99,20 +99,20 @@ pub fn (sk SymbolKind) str() string {
 @[minify]
 pub struct Doc {
 pub mut:
-	prefs     &pref.Preferences = new_vdoc_preferences()
-	base_path string
-	table     &ast.Table      = ast.new_table()
-	checker   checker.Checker = checker.Checker{
+	prefs               &pref.Preferences = new_vdoc_preferences()
+	base_path           string
+	table               &ast.Table        = ast.new_table()
+	checker             checker.Checker   = checker.Checker{
 		table: unsafe { nil }
 		pref:  unsafe { nil }
 	}
 	fmt                 fmt.Fmt
 	filename            string
 	pos                 int
-	pub_only            bool = true
-	with_comments       bool = true
+	pub_only            bool              = true
+	with_comments       bool              = true
 	with_pos            bool
-	with_head           bool = true
+	with_head           bool              = true
 	is_vlib             bool
 	time_generated      time.Time
 	head                DocNode
@@ -141,7 +141,7 @@ pub mut:
 	children    []DocNode
 	attrs       map[string]string @[json: attributes]
 	from_scope  bool
-	is_pub      bool @[json: public]
+	is_pub      bool              @[json: public]
 	platform    Platform
 }
 

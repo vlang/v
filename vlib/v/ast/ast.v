@@ -285,15 +285,15 @@ pub:
 	mut_pos    token.Pos
 	next_token token.Kind
 pub mut:
-	expr                     Expr // expr.field_name
-	expr_type                Type // type of `Foo` in `Foo.bar`
-	typ                      Type // type of the entire thing (`Foo.bar`)
-	name_type                Type // T in `T.name` or typeof in `typeof(expr).name`
+	expr                     Expr             // expr.field_name
+	expr_type                Type             // type of `Foo` in `Foo.bar`
+	typ                      Type             // type of the entire thing (`Foo.bar`)
+	name_type                Type             // T in `T.name` or typeof in `typeof(expr).name`
 	or_block                 OrExpr
 	gkind_field              GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
 	scope                    &Scope = unsafe { nil }
-	from_embed_types         []Type   // holds the type of the embed that the method is called from
-	generic_from_embed_types [][]Type // holds the types of the embeds for each generic instance when the same generic method is called.
+	from_embed_types         []Type           // holds the type of the embed that the method is called from
+	generic_from_embed_types [][]Type         // holds the types of the embeds for each generic instance when the same generic method is called.
 	has_hidden_receiver      bool
 }
 
@@ -313,8 +313,8 @@ pub fn (e &SelectorExpr) root_ident() ?Ident {
 // module declaration
 pub struct Module {
 pub:
-	name       string // encoding.base64
-	short_name string // base64
+	name       string    // encoding.base64
+	short_name string    // base64
 	attrs      []Attr
 	pos        token.Pos
 	name_pos   token.Pos // `name` in import name
@@ -338,6 +338,7 @@ pub:
 	i                int
 	has_default_expr bool
 	has_prev_newline bool
+	has_break_line   bool
 	attrs            []Attr
 	is_pub           bool
 	default_val      string
@@ -371,7 +372,7 @@ pub:
 	mod         string
 	name        string
 	is_pub      bool
-	is_markused bool // an explicit `@[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	is_markused bool   // an explicit `@[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
 	attrs       []Attr // same value as `attrs` of the ConstDecl to which it belongs
 pub mut:
@@ -468,6 +469,7 @@ pub:
 	end_comments     []Comment
 	next_comments    []Comment
 	has_prev_newline bool
+	has_break_line   bool
 pub mut:
 	expr          Expr   // `val1`
 	name          string // 'field1'
@@ -485,9 +487,9 @@ pub struct StructInit {
 pub:
 	pos             token.Pos
 	name_pos        token.Pos
-	no_keys         bool // `Foo{val1, val2}`
-	is_short_syntax bool // `foo(field1: val1, field2: val2)`
-	is_anon         bool //  `x: struct{ foo: bar }`
+	no_keys         bool   // `Foo{val1, val2}`
+	is_short_syntax bool   // `foo(field1: val1, field2: val2)`
+	is_anon         bool   //  `x: struct{ foo: bar }`
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
@@ -498,7 +500,7 @@ pub mut:
 	update_expr_pos      token.Pos
 	update_expr_comments []Comment
 	is_update_embed      bool
-	has_update_expr      bool // has `...a`
+	has_update_expr      bool   // has `...a`
 	init_fields          []StructInitField
 	generic_types        []Type
 }
@@ -546,9 +548,9 @@ pub mut:
 @[minify]
 pub struct FnDecl {
 pub:
-	name                  string // 'math.bits.normalize'
-	short_name            string // 'normalize'
-	mod                   string // 'math.bits'
+	name                  string      // 'math.bits.normalize'
+	short_name            string      // 'normalize'
+	mod                   string      // 'math.bits'
 	is_deprecated         bool
 	is_pub                bool
 	is_c_variadic         bool
@@ -567,26 +569,27 @@ pub:
 	receiver              StructField // TODO: this is not a struct field
 	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method             bool
-	is_static_type_method bool      // true for `fn Foo.bar() {}`
-	static_type_pos       token.Pos // `Foo` in `fn Foo.bar() {}`
-	method_type_pos       token.Pos // `User` in ` fn (u User)` position
+	is_static_type_method bool        // true for `fn Foo.bar() {}`
+	static_type_pos       token.Pos   // `Foo` in `fn Foo.bar() {}`
+	method_type_pos       token.Pos   // `User` in ` fn (u User)` position
 	method_idx            int
-	rec_mut               bool // is receiver mutable
+	rec_mut               bool        // is receiver mutable
 	has_prev_newline      bool
+	has_break_line        bool
 	rec_share             ShareType
-	language              Language // V, C, JS
-	file_mode             Language // whether *the file*, where a function was a '.c.v', '.js.v' etc.
-	no_body               bool     // just a definition `fn C.malloc()`
-	is_builtin            bool     // this function is defined in builtin/strconv
+	language              Language    // V, C, JS
+	file_mode             Language    // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body               bool        // just a definition `fn C.malloc()`
+	is_builtin            bool        // this function is defined in builtin/strconv
 	name_pos              token.Pos
-	body_pos              token.Pos // function bodys position
+	body_pos              token.Pos   // function bodys position
 	file                  string
 	generic_names         []string
-	is_direct_arr         bool // direct array access
+	is_direct_arr         bool        // direct array access
 	attrs                 []Attr
 	ctdefine_idx          int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
-	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
+	idx               int       // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
@@ -594,9 +597,9 @@ pub mut:
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
-	should_be_skipped bool // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
-	ninstances        int  // 0 for generic functions with no concrete instances
-	has_await         bool // 'true' if this function uses JS.await
+	should_be_skipped bool      // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
+	ninstances        int       // 0 for generic functions with no concrete instances
+	has_await         bool      // 'true' if this function uses JS.await
 
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
@@ -646,18 +649,18 @@ pub:
 	is_c_variadic         bool
 	language              Language
 	is_pub                bool
-	is_ctor_new           bool // `@[use_new] fn JS.Array.prototype.constructor()`
-	is_deprecated         bool // `@[deprecated] fn abc(){}`
-	is_noreturn           bool // `@[noreturn] fn abc(){}`
-	is_unsafe             bool // `@[unsafe] fn abc(){}`
+	is_ctor_new           bool     // `@[use_new] fn JS.Array.prototype.constructor()`
+	is_deprecated         bool     // `@[deprecated] fn abc(){}`
+	is_noreturn           bool     // `@[noreturn] fn abc(){}`
+	is_unsafe             bool     // `@[unsafe] fn abc(){}`
 	is_placeholder        bool
-	is_main               bool // `fn main(){}`
-	is_test               bool // `fn test_abc(){}`
-	is_keep_alive         bool // passed memory must not be freed (by GC) before function returns
-	is_method             bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
-	is_static_type_method bool // true for `fn Foo.bar() {}`
-	no_body               bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	is_file_translated    bool // true, when the file it resides in is `@[translated]`
+	is_main               bool     // `fn main(){}`
+	is_test               bool     // `fn test_abc(){}`
+	is_keep_alive         bool     // passed memory must not be freed (by GC) before function returns
+	is_method             bool     // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
+	is_static_type_method bool     // true for `fn Foo.bar() {}`
+	no_body               bool     // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	is_file_translated    bool     // true, when the file it resides in is `@[translated]`
 	mod                   string
 	file                  string
 	file_mode             Language
@@ -665,10 +668,10 @@ pub:
 	return_type_pos       token.Pos
 pub mut:
 	return_type        Type
-	receiver_type      Type // != 0, when .is_method == true
+	receiver_type      Type     // != 0, when .is_method == true
 	name               string
 	params             []Param
-	source_fn          voidptr // set in the checker, while processing fn declarations // TODO: get rid of voidptr
+	source_fn          voidptr  // set in the checker, while processing fn declarations // TODO: get rid of voidptr
 	usages             int
 	generic_names      []string
 	dep_names          []string // globals or consts dependent names
@@ -771,32 +774,32 @@ pub:
 pub mut:
 	name                   string // left.name()
 	is_method              bool
-	is_field               bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
-	is_fn_var              bool // fn variable, `a := fn() {}`, then: `a()`
-	is_fn_a_const          bool // fn const, `const c = abc`, where `abc` is a function, then: `c()`
-	is_keep_alive          bool // GC must not free arguments before fn returns
-	is_noreturn            bool // whether the function/method is marked as [noreturn]
-	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
-	is_file_translated     bool // true, when the file it resides in is `@[translated]`
+	is_field               bool   // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
+	is_fn_var              bool   // fn variable, `a := fn() {}`, then: `a()`
+	is_fn_a_const          bool   // fn const, `const c = abc`, where `abc` is a function, then: `c()`
+	is_keep_alive          bool   // GC must not free arguments before fn returns
+	is_noreturn            bool   // whether the function/method is marked as [noreturn]
+	is_ctor_new            bool   // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
+	is_file_translated     bool   // true, when the file it resides in is `@[translated]`
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
 	language               Language
 	or_block               OrExpr
-	left                   Expr // `user` in `user.register()`
-	left_type              Type // type of `user`
-	receiver_type          Type // User / T, if receiver is generic, then cgen requires receiver_type to be T
-	receiver_concrete_type Type // if receiver_type is T, then receiver_concrete_type is concrete type, otherwise it is the same as receiver_type
+	left                   Expr   // `user` in `user.register()`
+	left_type              Type   // type of `user`
+	receiver_type          Type   // User / T, if receiver is generic, then cgen requires receiver_type to be T
+	receiver_concrete_type Type   // if receiver_type is T, then receiver_concrete_type is concrete type, otherwise it is the same as receiver_type
 	return_type            Type
-	return_type_generic    Type // the original generic return type from fn def
-	nr_ret_values          int = -1 // amount of return values
+	return_type_generic    Type   // the original generic return type from fn def
+	nr_ret_values          int    = -1 // amount of return values
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
 	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
 	concrete_types         []Type // concrete types, e.g. <int, string>
 	concrete_list_pos      token.Pos
 	raw_concrete_types     []Type
-	free_receiver          bool // true if the receiver expression needs to be freed
+	free_receiver          bool   // true if the receiver expression needs to be freed
 	scope                  &Scope = unsafe { nil }
 	from_embed_types       []Type // holds the type of the embed that the method is called from
 	comments               []Comment
@@ -855,13 +858,13 @@ pub:
 	is_inherited    bool
 	has_inherited   bool
 pub mut:
-	is_arg        bool // fn args should not be autofreed
+	is_arg        bool            // fn args should not be autofreed
 	is_auto_deref bool
-	is_unwrapped  bool // ct type smartcast unwrapped
+	is_unwrapped  bool            // ct type smartcast unwrapped
 	expr          Expr
 	typ           Type
-	orig_type     Type   // original sumtype type; 0 if it's not a sumtype
-	smartcasts    []Type // nested sum types require nested smart casting, for that a list of types is needed
+	orig_type     Type            // original sumtype type; 0 if it's not a sumtype
+	smartcasts    []Type          // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
@@ -882,7 +885,7 @@ pub mut:
 @[minify]
 pub struct ScopeStructField {
 pub:
-	struct_type Type // type of struct
+	struct_type Type   // type of struct
 	name        string
 	pos         token.Pos
 	typ         Type
@@ -944,13 +947,13 @@ pub:
 	nr_bytes      int    // number of processed source code bytes
 	mod           Module // the module of the source file (from `module xyz` at the top)
 	global_scope  &Scope = unsafe { nil }
-	is_test       bool // true for _test.v files
-	is_generated  bool // true for `@[generated] module xyz` files; turn off notices
-	is_translated bool // true for `@[translated] module xyz` files; turn off some checks
+	is_test       bool   // true for _test.v files
+	is_generated  bool   // true for `@[generated] module xyz` files; turn off notices
+	is_translated bool   // true for `@[translated] module xyz` files; turn off some checks
 pub mut:
-	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
-	path             string // absolute path of the source file - '/projects/v/file.v'
-	path_base        string // file name - 'file.v' (useful for tracing)
+	idx              int               // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
+	path             string            // absolute path of the source file - '/projects/v/file.v'
+	path_base        string            // file name - 'file.v' (useful for tracing)
 	scope            &Scope = unsafe { nil }
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports
@@ -961,9 +964,9 @@ pub mut:
 	warnings         []errors.Warning  // all the checker warnings in the file
 	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
-	global_labels    []string // from `asm { .globl labelname }`
-	template_paths   []string // all the .html/.md files that were processed with $tmpl
-	unique_prefix    string   // a hash of the `.path` field, used for making anon fn generation unique
+	global_labels    []string          // from `asm { .globl labelname }`
+	template_paths   []string          // all the .html/.md files that were processed with $tmpl
+	unique_prefix    string            // a hash of the `.path` field, used for making anon fn generation unique
 }
 
 @[unsafe]
@@ -1084,7 +1087,7 @@ pub mut:
 	right         Expr
 	left_type     Type
 	right_type    Type
-	promoted_type Type = void_type
+	promoted_type Type                = void_type
 	auto_locked   string
 	or_block      OrExpr
 
@@ -1197,10 +1200,10 @@ pub:
 pub mut:
 	cond          Expr
 	branches      []MatchBranch
-	is_expr       bool // returns a value
+	is_expr       bool      // returns a value
 	return_type   Type
-	cond_type     Type // type of `x` in `match x {`
-	expected_type Type // for debugging only
+	cond_type     Type      // type of `x` in `match x {`
+	expected_type Type      // for debugging only
 	is_sum_type   bool
 }
 
@@ -1209,8 +1212,8 @@ pub:
 	ecmnts        [][]Comment // inline comments for each left side expr
 	pos           token.Pos
 	is_else       bool
-	post_comments []Comment // comments below ´... }´
-	branch_pos    token.Pos // for checker errors about invalid branches
+	post_comments []Comment   // comments below ´... }´
+	branch_pos    token.Pos   // for checker errors about invalid branches
 pub mut:
 	stmts []Stmt // right side
 	exprs []Expr // left side
@@ -1262,7 +1265,7 @@ pub mut:
 
 pub struct ForStmt {
 pub:
-	is_inf   bool // `for {}`
+	is_inf   bool   // `for {}`
 	pos      token.Pos
 	comments []Comment
 pub mut:
@@ -1285,12 +1288,12 @@ pub:
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
 pub mut:
-	val_is_ref bool // `for val in &arr {` means that value of `val` will be the reference of the value in `arr`
+	val_is_ref bool   // `for val in &arr {` means that value of `val` will be the reference of the value in `arr`
 	cond       Expr
 	key_type   Type
 	val_type   Type
 	cond_type  Type
-	high       Expr // `10` in `for i in 0..10 {`
+	high       Expr   // `10` in `for i in 0..10 {`
 	high_type  Type
 	kind       Kind   // array/map/string
 	label      string // `label: for {`
@@ -1307,9 +1310,9 @@ pub:
 	pos      token.Pos
 	comments []Comment
 pub mut:
-	init  Stmt // i := 0;
-	cond  Expr // i < 10;
-	inc   Stmt // i++; i += 2
+	init  Stmt   // i := 0;
+	cond  Expr   // i < 10;
+	inc   Stmt   // i++; i += 2
 	stmts []Stmt
 	label string // `label: for {`
 	scope &Scope = unsafe { nil }
@@ -1342,9 +1345,9 @@ pub mut:
 	left          []Expr
 	left_types    []Type
 	right_types   []Type
-	is_static     bool // for translated code only
-	is_volatile   bool // for disabling variable access optimisations (needed for hardware drivers)
-	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
+	is_static     bool       // for translated code only
+	is_volatile   bool       // for disabling variable access optimisations (needed for hardware drivers)
+	is_simple     bool       // `x+=2` in `for x:=1; ; x+=2`
 	has_cross_var bool
 	attr          Attr
 }
@@ -1373,14 +1376,15 @@ pub mut:
 // enum field in enum declaration
 pub struct EnumField {
 pub:
-	name             string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
-	source_name      string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
+	name             string    // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
+	source_name      string    // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos              token.Pos
 	pre_comments     []Comment // comment before Enumfield
 	comments         []Comment // comment after Enumfield in the same line
 	next_comments    []Comment // comments between current EnumField and next EnumField
 	has_expr         bool      // true, when .expr has a value
 	has_prev_newline bool      // empty newline before Enumfield
+	has_break_line   bool
 	attrs            []Attr
 pub mut:
 	expr Expr // the value of current EnumField; 123 in `ename = 123`
@@ -1502,12 +1506,12 @@ pub:
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	pre_cmnts     []Comment
 	is_fixed      bool
-	has_val       bool // fixed size literal `[expr, expr]!`
+	has_val       bool        // fixed size literal `[expr, expr]!`
 	mod           string
 	has_len       bool
 	has_cap       bool
 	has_init      bool
-	has_index     bool // true if temp variable index is used
+	has_index     bool        // true if temp variable index is used
 pub mut:
 	exprs      []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	len_expr   Expr   // len: expr
@@ -1553,8 +1557,8 @@ pub mut:
 	typ                  Type
 	key_type             Type
 	value_type           Type
-	has_update_expr      bool // has `...a`
-	update_expr          Expr // `a` in `...a`
+	has_update_expr      bool        // has `...a`
+	update_expr          Expr        // `a` in `...a`
 	update_expr_pos      token.Pos
 	update_expr_comments []Comment
 }
@@ -1875,8 +1879,8 @@ pub mut:
 	pos_expr   token.Pos
 	expr       Expr
 	pos_end    token.Pos
-	scope      &Scope  = unsafe { nil }
-	func       &AnonFn = unsafe { nil }
+	scope      &Scope    = unsafe { nil }
+	func       &AnonFn   = unsafe { nil }
 	is_checked bool
 	typ        Type
 	call_ctx   &CallExpr = unsafe { nil }
@@ -2057,7 +2061,7 @@ pub mut:
 	fields          []StructField
 	sub_structs     map[int]SqlStmtLine
 	where_expr      Expr
-	update_exprs    []Expr // for `update`
+	update_exprs    []Expr   // for `update`
 }
 
 pub struct SqlExpr {

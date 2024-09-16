@@ -36,13 +36,13 @@ fn test_large_gtk_file() ! {
 					'name':         'new'
 					'c:identifier': 'gtk_window_new'
 				}
-				children: [
+				children:   [
 					xml.XMLNodeContents(xml.XMLNode{
 						name:       'doc'
 						attributes: {
 							'xml:space': 'preserve'
 						}
-						children: [
+						children:   [
 							xml.XMLNodeContents('Creates a new `GtkWindow`.
 
 To get an undecorated window (no window borders), use
@@ -62,13 +62,13 @@ To delete a `GtkWindow`, call [method@Gtk.Window.destroy].'),
 						attributes: {
 							'transfer-ownership': 'none'
 						}
-						children: [
+						children:   [
 							xml.XMLNodeContents(xml.XMLNode{
 								name:       'doc'
 								attributes: {
 									'xml:space': 'preserve'
 								}
-								children: [xml.XMLNodeContents('a new `GtkWindow`.')]
+								children:   [xml.XMLNodeContents('a new `GtkWindow`.')]
 							}),
 							xml.XMLNodeContents(xml.XMLNode{
 								name:       'type'
@@ -76,7 +76,7 @@ To delete a `GtkWindow`, call [method@Gtk.Window.destroy].'),
 									'name':   'Widget'
 									'c:type': 'GtkWidget*'
 								}
-								children: []
+								children:   []
 							}),
 						]
 					}),

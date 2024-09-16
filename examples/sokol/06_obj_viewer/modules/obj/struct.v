@@ -42,10 +42,10 @@ pub mut:
 // base object parts struct
 pub struct ObjPart {
 pub mut:
-	v  []m4.Vec4 // position
-	vn []m4.Vec4 // normals
-	vp []m4.Vec4 // vertex params
-	vt []m4.Vec4 // textures
+	v  []m4.Vec4              // position
+	vn []m4.Vec4              // normals
+	vp []m4.Vec4              // vertex params
+	vt []m4.Vec4              // textures
 
 	name          string
 	part          []Part                 // parts of the ObjPart
@@ -88,10 +88,10 @@ pub mut:
 	ka    m4.Vec4 = m4.Vec4{
 		e: [f32(0.1), 0.0, 0.0, 1.0]!
 	}
-	kd m4.Vec4 = m4.Vec4{
+	kd    m4.Vec4 = m4.Vec4{
 		e: [f32(0.5), 0.5, 0.5, 1.0]!
 	}
-	ks m4.Vec4 = m4.Vec4{
+	ks    m4.Vec4 = m4.Vec4{
 		e: [f32(1.0), 1.0, 1.0, 1.0]!
 	}
 }

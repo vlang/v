@@ -38,10 +38,10 @@ pub type IconDesc = C.sapp_icon_desc
 pub struct C.sapp_desc {
 pub:
 	// these are the user-provided callbacks without user data
-	init_cb    fn ()       = unsafe { nil }
-	frame_cb   fn ()       = unsafe { nil }
-	cleanup_cb fn ()       = unsafe { nil }
-	event_cb   fn (&Event) = unsafe { nil } // &sapp_event
+	init_cb    fn ()                = unsafe { nil }
+	frame_cb   fn ()                = unsafe { nil }
+	cleanup_cb fn ()                = unsafe { nil }
+	event_cb   fn (&Event)          = unsafe { nil } // &sapp_event
 	// fail_cb    fn (&u8)    = unsafe { nil }
 
 	user_data           voidptr // these are the user-provided callbacks with user data

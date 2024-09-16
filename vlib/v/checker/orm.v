@@ -72,12 +72,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlExpr{
-			pos:        node.pos
-			has_where:  true
-			where_expr: ast.None{}
-			typ:        field.typ.clear_flag(.option).set_flag(.result)
-			db_expr:    node.db_expr
-			table_expr: ast.TypeNode{
+			pos:          node.pos
+			has_where:    true
+			where_expr:   ast.None{}
+			typ:          field.typ.clear_flag(.option).set_flag(.result)
+			db_expr:      node.db_expr
+			table_expr:   ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: foreign_typ
 			}
@@ -89,9 +89,9 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.inside_sql = tmp_inside_sql
 
 		subquery_expr.where_expr = ast.InfixExpr{
-			op:   .eq
-			pos:  subquery_expr.pos
-			left: ast.Ident{
+			op:          .eq
+			pos:         subquery_expr.pos
+			left:        ast.Ident{
 				language: .v
 				tok_kind: .eq
 				scope:    c.fn_scope
@@ -102,7 +102,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				kind:     .unresolved
 				info:     ast.IdentVar{}
 			}
-			right: ast.Ident{
+			right:       ast.Ident{
 				language: .c
 				mod:      'main'
 				tok_kind: .eq
@@ -299,9 +299,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlStmtLine{
-			pos:        node.pos
-			kind:       node.kind
-			table_expr: ast.TypeNode{
+			pos:          node.pos
+			kind:         node.kind
+			table_expr:   ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: foreign_typ
 			}

@@ -32,8 +32,8 @@ mut:
 	search_data         []SearchResult
 	search_module_index []string // search results are split into a module part and the rest
 	search_module_data  []SearchModuleResult
-	example_failures    int // how many times an example failed to compile or run with non 0 exit code; when positive, finish with exit code 1
-	example_oks         int // how many ok examples were found when `-run-examples` was passed, that compiled and finished with 0 exit code.
+	example_failures    int      // how many times an example failed to compile or run with non 0 exit code; when positive, finish with exit code 1
+	example_oks         int      // how many ok examples were found when `-run-examples` was passed, that compiled and finished with 0 exit code.
 }
 
 //
@@ -299,7 +299,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			println(markdown.to_plain(readme_contents))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
-				head: doc.DocNode{
+				head:           doc.DocNode{
 					name:     'README'
 					comments: [comment]
 				}

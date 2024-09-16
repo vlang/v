@@ -335,7 +335,7 @@ fn astar_path_finding(mut app App, mut grid [][]Cell, start Point, end Point) {
 			x: start.x
 			y: start.y
 		}
-		count: 0
+		count:   0
 	})
 
 	for priority_queue.len() > 0 {

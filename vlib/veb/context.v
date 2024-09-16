@@ -57,7 +57,7 @@ pub mut:
 	res   http.Response
 	// use form_error to pass errors from the context to your frontend
 	form_error                  string
-	livereload_poll_interval_ms int = 250
+	livereload_poll_interval_ms int          = 250
 }
 
 // returns the request header data from the key

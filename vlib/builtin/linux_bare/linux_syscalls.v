@@ -10,15 +10,15 @@ enum SigIndex {
 }
 
 enum Signo {
-	sighup    = 1 // Hangup.
-	sigint    = 2 // Interactive attention signal.
-	sigquit   = 3 // Quit.
-	sigill    = 4 // Illegal instruction.
-	sigtrap   = 5 // Trace/breakpoint trap.
-	sigabrt   = 6 // Abnormal termination.
+	sighup    = 1  // Hangup.
+	sigint    = 2  // Interactive attention signal.
+	sigquit   = 3  // Quit.
+	sigill    = 4  // Illegal instruction.
+	sigtrap   = 5  // Trace/breakpoint trap.
+	sigabrt   = 6  // Abnormal termination.
 	sigbus    = 7
-	sigfpe    = 8 // Erroneous arithmetic operation.
-	sigkill   = 9 // Killed.
+	sigfpe    = 8  // Erroneous arithmetic operation.
+	sigkill   = 9  // Killed.
 	sigusr1   = 10
 	sigsegv   = 11 // Invalid access to memory.
 	sigusr2   = 12

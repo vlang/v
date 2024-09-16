@@ -9,9 +9,9 @@ const exe_and_go_flag_args_with_tail = ['/path/to/exe', '-version', '--flag', '-
 struct Prefs {
 	flag       bool
 	flag_value string
-	version    bool @[short: v]
-	is_live    bool @[long: live]
-	is_done    bool @[long: done]
+	version    bool     @[short: v]
+	is_live    bool     @[long: live]
+	is_done    bool     @[long: done]
 	test       string
 	defines    []string @[long: define; short: d]
 	tail       []string @[tail]

@@ -15,8 +15,8 @@ struct Config {
 	paths      []string @[tail]
 	not_mapped string = 'not changed'
 	e          bool
-	b          bool   @[long: Dev; only: d]
-	u          string @[short: c]
+	b          bool     @[long: Dev; only: d]
+	u          string   @[short: c]
 }
 
 fn test_cmd_exe() {

@@ -22,21 +22,21 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 // a server or to be sent by a client)
 pub struct Request {
 pub mut:
-	version    Version = .v1_1
-	method     Method  = .get
+	version    Version    = .v1_1
+	method     Method     = .get
 	header     Header
 	host       string
 	cookies    map[string]string @[deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
 	data       string
 	url        string
-	user_agent string = 'v.http'
+	user_agent string     = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
 	proxy      &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
-	read_timeout  i64 = 30 * time.second
-	write_timeout i64 = 30 * time.second
+	read_timeout  i64  = 30 * time.second
+	write_timeout i64  = 30 * time.second
 
 	validate               bool // when true, certificate failures will stop further processing
 	verify                 string

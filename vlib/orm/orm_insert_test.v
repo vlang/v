@@ -4,7 +4,7 @@ import db.sqlite
 import rand
 
 struct Parent {
-	id       int @[primary; sql: serial]
+	id       int     @[primary; sql: serial]
 	name     string
 	children []Child @[fkey: 'parent_id']
 	notes    []Note  @[fkey: 'owner_id']
@@ -305,7 +305,7 @@ fn test_orm_insert_with_multiple_child_elements() {
 				name: 'Steve'
 			},
 		]
-		notes: [
+		notes:    [
 			Note{
 				text: 'First note'
 			},

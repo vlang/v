@@ -38,13 +38,13 @@ fn (mut fa FieldAlign) add_new_info(len int, line int) {
 }
 
 @[direct_array_access]
-fn (mut fa FieldAlign) add_info(len int, line int) {
+fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
 	if fa.infos.len == 0 {
 		fa.add_new_info(len, line)
 		return
 	}
 	i := fa.infos.len - 1
-	if !fa.cfg.ignore_newline && line - fa.infos[i].line_nr > 1 {
+	if !fa.cfg.ignore_newline && has_break_line {
 		fa.add_new_info(len, line)
 		return
 	}

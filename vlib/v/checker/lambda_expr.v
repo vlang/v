@@ -107,7 +107,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				scope:           node.scope.parent
 				generic_names:   generic_names
 			}
-			typ: typ
+			typ:  typ
 		}
 		if node.func.decl.generic_names.len > 0 {
 			c.table.register_fn_generic_types(node.func.decl.fkey())
@@ -141,7 +141,7 @@ pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mu
 pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
 	is_auto_rec := param_type.is_ptr()
 	mut expected_fn := ast.Fn{
-		params: [
+		params:      [
 			ast.Param{
 				name:        'zza'
 				typ:         param_type
@@ -162,7 +162,7 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 
 pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
 	mut expected_fn := ast.Fn{
-		params: [
+		params:      [
 			ast.Param{
 				name:        'xx'
 				typ:         param_type

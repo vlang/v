@@ -288,7 +288,7 @@ pub mut:
 
 fn test_nested_pointer_smartcast() {
 	mut s := All_in_one{
-		ptr: &Sum1(Foo1{
+		ptr:  &Sum1(Foo1{
 			a: 1
 		})
 		ptrs: [&SumAll(Sum2(Bar1{

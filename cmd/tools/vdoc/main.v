@@ -14,17 +14,17 @@ const allowed_formats = ['md', 'markdown', 'json', 'text', 'ansi', 'html', 'htm'
 
 struct Config {
 mut:
-	pub_only         bool = true
+	pub_only         bool       = true
 	show_loc         bool // for plaintext
 	is_color         bool
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
 	include_readme   bool
-	include_examples bool = true
+	include_examples bool       = true
 	include_comments bool // for plaintext
 	inline_assets    bool
-	theme_dir        string = default_theme
+	theme_dir        string     = default_theme
 	no_timestamp     bool
 	output_path      string
 	output_type      OutputType = .unset

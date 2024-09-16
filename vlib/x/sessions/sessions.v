@@ -55,7 +55,7 @@ pub mut:
 // the `Sessions` struct.
 pub struct CookieOptions {
 pub:
-	cookie_name string = 'sid'
+	cookie_name string        = 'sid'
 	domain      string
 	http_only   bool          = true
 	path        string        = '/'

@@ -4,9 +4,9 @@ import flag
 @[name: 'flag_layout_editor']
 @[version: '1.0']
 struct DocTest {
-	show_version bool @[short: v; xdoc: 'Show version and exit']
-	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32  @[only: l; xdoc: 'Do not show this']
+	show_version bool  @[short: v; xdoc: 'Show version and exit']
+	debug_level  int   @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32   @[only: l; xdoc: 'Do not show this']
 	example      string
 	square       bool
 	multi        int   @[only: m; repeats]
@@ -209,11 +209,11 @@ Editing property: ${app.edit}, value: ${value}')
 	help_text := flag.to_doc[DocTest](
 		description: 'Simple DocLayout editor.
 Press ESCAPE or Ctrl+C to exit and print layout code'
-		footer: '
+		footer:      '
 Press ESCAPE or Ctrl+C to exit and print layout code'
-		fields:  unsafe { field_docs }
-		layout:  app.layout
-		options: app.options
+		fields:      unsafe { field_docs }
+		layout:      app.layout
+		options:     app.options
 	) or { '' }
 
 	app.tui.draw_text(0, 5, '${help_text}')

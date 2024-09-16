@@ -18,7 +18,7 @@ pub:
 	font_italic int
 pub mut:
 	fonts_map map[string]int // for storing custom fonts, provided via cfg.family in draw_text()
-	scale     f32 = 1.0
+	scale     f32                = 1.0
 }
 
 fn new_ft(c FTConfig) ?&FT {

@@ -21,11 +21,11 @@ pub:
 	end_index    i64    = -1
 	mem_buf_size int    = 1024 * 64 // default buffer size 64KByte
 	separator    u8     = `,`
-	comment      u8     = `#` // every line that start with the comment char is ignored
-	default_cell string = '*' // return this string if out of the csv boundaries
+	comment      u8     = `#`       // every line that start with the comment char is ignored
+	default_cell string = '*'       // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
-	end_line_len int = endline_cr_len // size of the endline rune
-	quote        u8  = `"`            // double quote is the standard quote char
+	end_line_len int    = endline_cr_len // size of the endline rune
+	quote        u8     = `"`            // double quote is the standard quote char
 }
 
 pub struct SequentialReader {
@@ -53,8 +53,8 @@ pub mut:
 	mem_buf_type  u32     // buffer type 0=File,1=RAM
 	mem_buf       voidptr // buffer used to load chars from file
 	mem_buf_size  i64     // size of the buffer
-	mem_buf_start i64 = -1 // start index in the file of the read buffer
-	mem_buf_end   i64 = -1 // end index in the file of the read buffer
+	mem_buf_start i64    = -1 // start index in the file of the read buffer
+	mem_buf_end   i64    = -1 // end index in the file of the read buffer
 
 	ch_buf []u8 = []u8{cap: 1024}
 	// error management

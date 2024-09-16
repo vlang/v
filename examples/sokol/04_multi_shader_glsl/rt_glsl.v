@@ -31,8 +31,8 @@ mut:
 	texture    gfx.Image
 	sampler    gfx.Sampler
 	init_flag  bool
-	mouse_x    int = 502
-	mouse_y    int = 394
+	mouse_x    int         = 502
+	mouse_y    int         = 394
 	mouse_down bool
 	// glsl
 	cube_pip_glsl gfx.Pipeline

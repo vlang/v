@@ -55,13 +55,13 @@ pub enum FieldHints {
 // to be mapped to this field. If users has indicated that they want to match a field as a short/abbrevation flag
 // `short` is accounted instead of `match_name`
 struct StructField {
-	name       string // name of the field on the struct, *not used* for resolving mappings, use `match_name`
-	match_name string // match_name is either `name` or the value of `@[long: x]` or `@[only: x]`
-	short      string // single char short alias of field, sat via `@[short: x]` or `@[only: x]`
+	name       string            // name of the field on the struct, *not used* for resolving mappings, use `match_name`
+	match_name string            // match_name is either `name` or the value of `@[long: x]` or `@[only: x]`
+	short      string            // single char short alias of field, sat via `@[short: x]` or `@[only: x]`
 	hints      FieldHints = FieldHints.zero()
 	attrs      map[string]string // collection of `@[x: y]` sat on the field, read via reflection
 	type_name  string
-	doc        string // documentation string sat via `@[xdoc: x y z]`
+	doc        string            // documentation string sat via `@[xdoc: x y z]`
 }
 
 fn (sf StructField) shortest_match_name() ?string {
@@ -123,7 +123,7 @@ pub struct DocOptions {
 pub mut:
 	flag_header string = '\nOptions:'
 	compact     bool
-	show        Show = ~Show.zero()
+	show        Show   = ~Show.zero()
 }
 
 // max_width returns the total width of the `DocLayout`.
@@ -340,7 +340,7 @@ pub fn to_doc[T](dc DocConfig) !string {
 			delimiter: dc.delimiter
 			style:     dc.style
 		}
-		input: []
+		input:  []
 	}
 	fm.si = fm.get_struct_info[T]()!
 	return fm.to_doc(dc)!

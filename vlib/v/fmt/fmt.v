@@ -18,17 +18,17 @@ pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	file               ast.File
-	table              &ast.Table = unsafe { nil }
+	table              &ast.Table        = unsafe { nil }
 	is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
 	indent             int
 	empty_line         bool
-	line_len           int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
-	buffering          bool   // disables line wrapping for exprs that will be analyzed later
-	par_level          int    // how many parentheses are put around the current expression
-	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int    // current level of hierarchy in array init
+	line_len           int               // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
+	buffering          bool              // disables line wrapping for exprs that will be analyzed later
+	par_level          int               // how many parentheses are put around the current expression
+	array_init_break   []bool            // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth   int               // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
@@ -39,19 +39,19 @@ pub mut:
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
-	single_line_fields bool // should struct fields be on a single line
+	single_line_fields bool              // should struct fields be on a single line
 	in_lambda_depth    int
 	inside_const       bool
 	inside_unsafe      bool
 	inside_comptime_if bool
 	is_assign          bool
 	is_index_expr      bool
-	is_mbranch_expr    bool // match a { x...y { } }
+	is_mbranch_expr    bool              // match a { x...y { } }
 	is_struct_init     bool
-	fn_scope           &ast.Scope = unsafe { nil }
+	fn_scope           &ast.Scope        = unsafe { nil }
 	wsinfix_depth      int
 	format_state       FormatState
-	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
+	source_text        string            // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
 @[params]
@@ -1044,23 +1044,23 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	mut comment_align := new_field_align()
 	for field in node.fields {
 		if field.has_expr {
-			value_align.add_info(field.name.len, field.pos.line_nr)
+			value_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
 		}
 		attrs_len := inline_attrs_len(field.attrs)
 		if field.attrs.len > 0 {
 			if field.has_expr {
-				attr_align.add_info(field.expr.str().len + 2, field.pos.line_nr)
+				attr_align.add_info(field.expr.str().len + 2, field.pos.line_nr, field.has_break_line)
 			} else {
-				attr_align.add_info(field.name.len, field.pos.line_nr)
+				attr_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
 			}
 		}
 		if field.comments.len > 0 {
 			if field.attrs.len > 0 {
-				comment_align.add_info(attrs_len, field.pos.line_nr)
+				comment_align.add_info(attrs_len, field.pos.line_nr, field.has_break_line)
 			} else if field.has_expr {
-				comment_align.add_info(field.expr.str().len + 2, field.pos.line_nr)
+				comment_align.add_info(field.expr.str().len + 2, field.pos.line_nr, field.has_break_line)
 			} else {
-				comment_align.add_info(field.name.len, field.pos.line_nr)
+				comment_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
 			}
 		}
 	}
@@ -1412,7 +1412,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
 		if end_comments.len > 0 {
 			method_str := f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).all_after_first('fn ')
-			method_comment_align.add_info(method_str.len, method.pos.line_nr)
+			method_comment_align.add_info(method_str.len, method.pos.line_nr, method.has_break_line)
 		}
 	}
 
@@ -1464,12 +1464,12 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align 
 		field_types << ft
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
-		type_align.add_info(field.name.len, field.pos.line_nr)
+		type_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
 		if field.has_default_expr {
-			default_expr_align.add_info(ft.len, field.pos.line_nr)
+			default_expr_align.add_info(ft.len, field.pos.line_nr, field.has_break_line)
 		}
 		if field.attrs.len > 0 {
-			attr_align.add_info(ft.len, field.pos.line_nr)
+			attr_align.add_info(ft.len, field.pos.line_nr, field.has_break_line)
 		}
 		for comment in field.comments {
 			if comment.pos.pos >= end_pos {
@@ -1478,7 +1478,7 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align 
 						if prev_state != AlignState.has_attributes {
 							comment_align.add_new_info(attrs_len, comment.pos.line_nr)
 						} else {
-							comment_align.add_info(attrs_len, comment.pos.line_nr)
+							comment_align.add_info(attrs_len, comment.pos.line_nr, field.has_break_line)
 						}
 						prev_state = AlignState.has_attributes
 					} else if field.has_default_expr {
@@ -1486,14 +1486,15 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut type_align 
 							comment_align.add_new_info(field.default_expr.str().len + 2,
 								comment.pos.line_nr)
 						} else {
-							comment_align.add_info(field.default_expr.str().len + 2, comment.pos.line_nr)
+							comment_align.add_info(field.default_expr.str().len + 2, comment.pos.line_nr,
+								field.has_break_line)
 						}
 						prev_state = AlignState.has_default_expression
 					} else {
 						if prev_state != AlignState.has_everything {
 							comment_align.add_new_info(ft.len, comment.pos.line_nr)
 						} else {
-							comment_align.add_info(ft.len, comment.pos.line_nr)
+							comment_align.add_info(ft.len, comment.pos.line_nr, field.has_break_line)
 						}
 						prev_state = AlignState.has_everything
 					}

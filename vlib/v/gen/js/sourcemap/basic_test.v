@@ -7,7 +7,7 @@ fn test_simple() {
 
 	mlist := [
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   1
 				gen_column: 0
 			}
@@ -18,7 +18,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 0
 			}
@@ -29,7 +29,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 2
 			}
@@ -40,7 +40,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 9
 			}
@@ -51,7 +51,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 10
 			}
@@ -62,7 +62,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 13
 			}
@@ -73,7 +73,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 14
 			}
@@ -84,7 +84,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 27
 			}
@@ -95,7 +95,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 28
 			}
@@ -106,7 +106,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   2
 				gen_column: 29
 			}
@@ -117,7 +117,7 @@ fn test_simple() {
 			}
 		},
 		MappingInput{
-			GenPosition: GenPosition{
+			GenPosition:     GenPosition{
 				gen_line:   3
 				gen_column: 0
 			}

@@ -67,7 +67,7 @@ pub mut:
 	tok          Token
 	next_tok     Token
 	n_level      int
-	convert_type bool = true
+	convert_type bool     = true
 }
 
 fn (mut p Parser) next() {
@@ -112,7 +112,7 @@ fn skip_bom(file_content string) string {
 fn new_parser(srce string, convert_type bool) Parser {
 	src := skip_bom(srce)
 	return Parser{
-		scanner: &Scanner{
+		scanner:      &Scanner{
 			text: src.bytes()
 		}
 		convert_type: convert_type

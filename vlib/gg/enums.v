@@ -37,11 +37,11 @@ pub enum PenLineType {
 pub enum KeyCode {
 	invalid       = 0
 	space         = 32
-	apostrophe    = 39 //'
-	comma         = 44 //,
-	minus         = 45 //-
-	period        = 46 //.
-	slash         = 47 ///
+	apostrophe    = 39  //'
+	comma         = 44  //,
+	minus         = 45  //-
+	period        = 46  //.
+	slash         = 47  ///
 	_0            = 48
 	_1            = 49
 	_2            = 50
@@ -52,8 +52,8 @@ pub enum KeyCode {
 	_7            = 55
 	_8            = 56
 	_9            = 57
-	semicolon     = 59 //;
-	equal         = 61 //=
+	semicolon     = 59  //;
+	equal         = 61  //=
 	a             = 65
 	b             = 66
 	c             = 67

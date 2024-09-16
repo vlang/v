@@ -39,8 +39,8 @@ mut:
 	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
-	mouse_x     int = -1
-	mouse_y     int = -1
+	mouse_x     int         = -1
+	mouse_y     int         = -1
 	// glsl
 	cube_pip_glsl gfx.Pipeline
 	cube_bind     gfx.Bindings

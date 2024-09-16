@@ -78,10 +78,10 @@ Single format functions
 */
 pub struct BF_param {
 pub mut:
-	pad_ch       u8   = u8(` `) // padding char
-	len0         int  = -1      // default len for whole the number or string
-	len1         int  = 6       // number of decimal digits, if needed
-	positive     bool = true    // mandatory: the sign of the number passed
+	pad_ch       u8         = u8(` `) // padding char
+	len0         int        = -1      // default len for whole the number or string
+	len1         int        = 6       // number of decimal digits, if needed
+	positive     bool       = true    // mandatory: the sign of the number passed
 	sign_flag    bool // flag for print sign as prefix in padding
 	align        Align_text = .right // alignment of the string
 	allign       Align_text = .right @[deprecated: 'use align instead'; deprecated_after: '2023-11-30']

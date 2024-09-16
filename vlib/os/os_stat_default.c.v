@@ -88,13 +88,13 @@ pub fn (st Stat) get_filetype() FileType {
 // in owner/group/others format
 pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
-		typ:   st.get_filetype()
-		owner: FilePermission{
+		typ:    st.get_filetype()
+		owner:  FilePermission{
 			read:    (st.mode & u32(C.S_IRUSR)) != 0
 			write:   (st.mode & u32(C.S_IWUSR)) != 0
 			execute: (st.mode & u32(C.S_IXUSR)) != 0
 		}
-		group: FilePermission{
+		group:  FilePermission{
 			read:    (st.mode & u32(C.S_IRGRP)) != 0
 			write:   (st.mode & u32(C.S_IWGRP)) != 0
 			execute: (st.mode & u32(C.S_IXGRP)) != 0

@@ -9,7 +9,7 @@ pub mut:
 	dtmi               &dtm.DynamicTemplateManager = unsafe { nil } @[vweb_global]
 	shared_data_string []string                    @[vweb_global]
 	shared_data_int    []int                       @[vweb_global]
-	shared_switch      int = 1                         @[vweb_global]
+	shared_switch      int                         = 1                         @[vweb_global]
 }
 
 fn main() {

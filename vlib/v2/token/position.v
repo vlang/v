@@ -33,7 +33,7 @@ mut:
 
 pub struct FileSet {
 mut:
-	base int = 1 // reserve 0 for no position
+	base int         = 1 // reserve 0 for no position
 	// files shared []&File
 	files []&File
 	mu    &sync.Mutex = sync.new_mutex()

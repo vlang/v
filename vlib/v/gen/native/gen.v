@@ -23,7 +23,7 @@ pub struct Gen {
 	files    []&ast.File
 mut:
 	code_gen                  CodeGen
-	table                     &ast.Table = unsafe { nil }
+	table                     &ast.Table        = unsafe { nil }
 	buf                       []u8
 	sect_header_name_pos      i32
 	offset                    i64
@@ -31,7 +31,7 @@ mut:
 	main_fn_addr              i64
 	main_fn_size              i64
 	start_symbol_addr         i64
-	code_start_pos            i64 // location of the start of the assembly instructions
+	code_start_pos            i64            // location of the start of the assembly instructions
 	symbol_table              []SymbolTableSection
 	extern_symbols            []string
 	linker_include_paths      []string
@@ -43,7 +43,7 @@ mut:
 	stack_var_pos             i32
 	stack_depth               i32
 	debug_pos                 i32
-	current_file              &ast.File = unsafe { nil }
+	current_file              &ast.File         = unsafe { nil }
 	errors                    []errors.Error
 	warnings                  []errors.Warning
 	syms                      []Symbol
@@ -51,7 +51,7 @@ mut:
 	nlines                    i32
 	callpatches               []CallPatch
 	strs                      []String
-	labels                    &LabelTable = unsafe { nil }
+	labels                    &LabelTable       = unsafe { nil }
 	defer_stmts               []ast.DeferStmt
 	builtins                  map[Builtin]BuiltinFn
 	structs                   []Struct
@@ -60,7 +60,7 @@ mut:
 	return_type               ast.Type
 	comptime_omitted_branches []ast.IfBranch
 	// elf specific
-	elf_text_header_addr i64 = -1
+	elf_text_header_addr i64        = -1
 	elf_rela_section     Section
 	// macho specific
 	macho_ncmds   i32
@@ -81,7 +81,7 @@ mut:
 	g &Gen
 	add(r Register, val i32)
 	address_size() i32
-	adr(r Arm64Register, delta i32) // Note: Temporary!
+	adr(r Arm64Register, delta i32)  // Note: Temporary!
 	allocate_var(name string, size i32, initial_val i32) i32
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
 	builtin_decl(builtin BuiltinFn)
@@ -107,7 +107,7 @@ mut:
 	gen_print(s string, fd i32)
 	gen_syscall(node ast.CallExpr)
 	inc_var(var Var, config VarConfig)
-	infix_expr(node ast.InfixExpr) // TODO: make platform-independent
+	infix_expr(node ast.InfixExpr)   // TODO: make platform-independent
 	infloop()
 	init_struct(var Var, init ast.StructInit)
 	init_array(var Var, init ast.ArrayInit)
@@ -134,7 +134,7 @@ mut:
 	return_stmt(node ast.Return)
 	reverse_string(r Register)
 	svc()
-	syscall() // unix syscalls
+	syscall()                        // unix syscalls
 	trap()
 	zero_fill(size i32, var LocalVar)
 }
@@ -338,8 +338,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
-		structs: []Struct{len: table.type_symbols.len}
-		eval:    eval.new_eval(table, pref_)
+		structs:  []Struct{len: table.type_symbols.len}
+		eval:     eval.new_eval(table, pref_)
 	}
 
 	g.code_gen.g = g

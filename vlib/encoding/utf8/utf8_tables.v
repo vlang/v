@@ -546,7 +546,7 @@ const max_latin_1 = rune(0x00ff)
 
 // Represents all unicode in unicode category L.
 const letter_table = RangeTable{
-	r16: [
+	r16:          [
 		Range16{0x0041, 0x005a, 1},
 		Range16{0x0061, 0x007a, 1},
 		Range16{0x00aa, 0x00b5, 11},
@@ -907,7 +907,7 @@ const letter_table = RangeTable{
 		Range16{0xffd2, 0xffd7, 1},
 		Range16{0xffda, 0xffdc, 1},
 	]
-	r32: [
+	r32:          [
 		Range32{0x10000, 0x1000b, 1},
 		Range32{0x1000d, 0x10026, 1},
 		Range32{0x10028, 0x1003a, 1},
@@ -1141,7 +1141,7 @@ const letter_table = RangeTable{
 
 // Represents all unicodes in unicode category Z with property white space.
 const white_space_table = RangeTable{
-	r16: [
+	r16:          [
 		Range16{0x0009, 0x000d, 1},
 		Range16{0x0020, 0x0085, 101},
 		Range16{0x00a0, 0x1680, 5600},
@@ -1156,7 +1156,7 @@ const white_space_table = RangeTable{
 
 // Represents all unicodes in unicode category N.
 const number_table = RangeTable{
-	r16: [
+	r16:          [
 		Range16{0x0030, 0x0039, 1},
 		Range16{0x00b2, 0x00b3, 1},
 		Range16{0x00b9, 0x00bc, 3},
@@ -1224,7 +1224,7 @@ const number_table = RangeTable{
 		Range16{0xabf0, 0xabf9, 1},
 		Range16{0xff10, 0xff19, 1},
 	]
-	r32: [
+	r32:          [
 		Range32{0x10107, 0x10133, 1},
 		Range32{0x10140, 0x10178, 1},
 		Range32{0x1018a, 0x1018b, 1},

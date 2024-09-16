@@ -53,7 +53,7 @@ struct StructTypeSkippedFields6 {
 mut:
 	val  string @[json: '-']
 	val1 i64
-	val2 f64 @[json: '-']
+	val2 f64    @[json: '-']
 	val3 time.Time
 }
 
@@ -68,7 +68,7 @@ mut:
 struct StructTypeSkippedFields8 {
 mut:
 	val  string
-	val1 i64 @[json: '-']
+	val1 i64       @[json: '-']
 	val2 f64
 	val3 time.Time @[json: '-']
 }
@@ -76,7 +76,7 @@ mut:
 struct StructTypeSkippedFields9 {
 mut:
 	val  string
-	val1 i64 @[skip]
+	val1 i64       @[skip]
 	val2 f64
 	val3 time.Time @[skip]
 }

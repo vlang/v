@@ -11,13 +11,13 @@ const rain_drops = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'.bytes()
 
 struct App {
 mut:
-	ctx          &gg.Context = unsafe { nil }
+	ctx          &gg.Context   = unsafe { nil }
 	rows         int
 	cols         int
 	char_width   int
 	char_height  int
 	screen_size  gg.Size
-	should_calc  bool = true
+	should_calc  bool          = true
 	rain_columns []RainColumn
 	delay        time.Duration = time.millisecond * 100
 }
@@ -45,7 +45,7 @@ fn rain(mut app App) {
 		init_fn:      fn (mut app App) {
 			gg.toggle_fullscreen()
 		}
-		event_fn: fn (event &gg.Event, mut app App) {
+		event_fn:     fn (event &gg.Event, mut app App) {
 			vprintln('event.typ: ${event.typ} | event.char_code: ${event.char_code}')
 			if event.typ == .resized {
 				app.should_calc = true
@@ -63,7 +63,7 @@ fn rain(mut app App) {
 				app.delay = if new_delay > 0 { new_delay } else { 0 }
 			}
 		}
-		frame_fn: frame
+		frame_fn:     frame
 	)
 	app.ctx.run()
 }
@@ -146,7 +146,7 @@ fn draw_rain_column(rc RainColumn, app App) {
 					b: if at_head { u8(255) } else { 0 }
 					a: alpha
 				}
-				mono: true
+				mono:  true
 			}
 			if i < rc.drops.len {
 				app.ctx.draw_text(x, y, rc.drops[i].ascii_str(), cfg)

@@ -5,7 +5,7 @@ import strings
 
 struct LexicalAttributes {
 mut:
-	current_tag      &Tag = unsafe { nil }
+	current_tag      &Tag            = unsafe { nil }
 	open_tag         bool
 	open_code        bool
 	open_string      int
@@ -29,10 +29,10 @@ mut:
 	lexical_attributes LexicalAttributes = LexicalAttributes{
 		current_tag: &Tag{}
 	}
-	filename    string = 'direct-parse'
-	initialized bool
-	tags        []&Tag
-	debug_file  os.File
+	filename           string            = 'direct-parse'
+	initialized        bool
+	tags               []&Tag
+	debug_file         os.File
 }
 
 // This function is used to add a tag for the parser ignore it's content.

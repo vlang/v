@@ -10,7 +10,7 @@ fn test_valid_parsing() ! {
 				text: ' Employee Information'
 			},
 		]
-		root: xml.XMLNode{
+		root:     xml.XMLNode{
 			name:     'address'
 			children: [
 				xml.XMLComment{

@@ -731,13 +731,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 
 				node = ast.AssignStmt{
-					op:           .assign
-					pos:          node.pos
-					end_comments: node.end_comments
-					left:         node.left
-					right:        [
+					op:            .assign
+					pos:           node.pos
+					end_comments:  node.end_comments
+					left:          node.left
+					right:         [
 						ast.Expr(ast.InfixExpr{
-							left: ast.CastExpr{
+							left:       ast.CastExpr{
 								expr:      node.left[0]
 								typ:       modified_left_type
 								typname:   c.table.type_str(modified_left_type)

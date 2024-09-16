@@ -12,21 +12,21 @@ fn test_valid_parsing() {
 			attributes: {
 				'category': 'web'
 			}
-			children: [
+			children:   [
 				xml.XMLNode{
 					name:       'title'
 					attributes: {
 						'lang':      'en'
 						'code:type': 'const char*'
 					}
-					children: ['Learning XML']
+					children:   ['Learning XML']
 				},
 				xml.XMLNode{
 					name:       'author'
 					attributes: {
 						'attr': ' surrounding spaces '
 					}
-					children: ['Erik T. Ray']
+					children:   ['Erik T. Ray']
 				},
 				xml.XMLNode{
 					name:     'year'

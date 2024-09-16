@@ -19,8 +19,8 @@ mut:
 	height   f64  = 30
 	alive    bool = true
 	gravity  f64
-	velocity f64 = 0.3
-	jump     f64 = -6
+	velocity f64  = 0.3
+	jump     f64  = -6
 }
 
 fn (mut b Bird) flap() {
@@ -73,17 +73,17 @@ mut:
 	birds            []Bird
 	score            int
 	max_score        int
-	width            f64 = win_width
-	height           f64 = win_height
-	spawn_interval   f64 = 90
+	width            f64         = win_width
+	height           f64         = win_height
+	spawn_interval   f64         = 90
 	interval         f64
 	nv               neuroevolution.Generations
 	gen              []neuroevolution.Network
 	alives           int
 	generation       int
-	background_speed f64 = 0.5
+	background_speed f64         = 0.5
 	background_x     f64
-	timer_period_ms  int = 24
+	timer_period_ms  int         = 24
 }
 
 fn (mut app App) start() {

@@ -2,9 +2,9 @@ import term.ui as tui
 import flag
 
 struct DocTest {
-	show_version bool @[short: v; xdoc: 'Show version and exit']
-	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32  @[only: l; xdoc: 'Do not show this']
+	show_version bool  @[short: v; xdoc: 'Show version and exit']
+	debug_level  int   @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32   @[only: l; xdoc: 'Do not show this']
 	example      string
 	square       bool
 	multi        int   @[only: m; repeats]
@@ -16,9 +16,9 @@ struct App {
 mut:
 	tui       &tui.Context = unsafe { nil }
 	frame     int
-	square    string = '.____.\n|    |\n|    |\n|____|'
-	pad       int    = 1
-	direction int    = 1
+	square    string       = '.____.\n|    |\n|    |\n|____|'
+	pad       int          = 1
+	direction int          = 1
 }
 
 fn event(e &tui.Event, mut app App) {
@@ -57,9 +57,9 @@ fn frame(mut app App) {
 		description: 'Hello! This should show an *animated* example application description.
 We are at frame ${app.frame}.
 Press ESCAPE or Ctrl+C to exit'
-		footer: '
+		footer:      '
 Press ESCAPE or Ctrl+C to exit'
-		fields: {
+		fields:      {
 			'level':                                    'Level of lorem ipsum\nand more\nmany many many more.\nNotice how user newlines/format is kept since\ninput lines are all less or within\nthe default layout.description_padding\nand max width'
 			'example':                                  'Looong example text without newlines or anything else and lorem ipsum and more and many many many more. Should be auto fitted'
 			'multi':                                    'This flag can be repeated'

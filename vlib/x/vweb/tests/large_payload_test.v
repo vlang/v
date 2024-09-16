@@ -90,7 +90,7 @@ fn test_bigger_content_length() {
 		header: http.new_header_from_map({
 			.content_length: '10'
 		})
-		data: data
+		data:   data
 	})!
 
 	// Content-length is larger than the data sent, so the request should timeout
@@ -105,7 +105,7 @@ fn test_smaller_content_length() {
 		header: http.new_header_from_map({
 			.content_length: '5'
 		})
-		data: data
+		data:   data
 	})!
 
 	assert x.status() == .bad_request

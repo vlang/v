@@ -20,9 +20,9 @@ pub mut:
 	out_imports        strings.Builder
 	indent             int
 	empty_line         bool
-	line_len           int  // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
-	buffering          bool // disables line wrapping for exprs that will be analyzed later
-	par_level          int  // how many parentheses are put around the current expression
+	line_len           int               // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
+	buffering          bool              // disables line wrapping for exprs that will be analyzed later
+	par_level          int               // how many parentheses are put around the current expression
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
@@ -35,11 +35,11 @@ pub mut:
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
-	single_line_fields bool   // should struct fields be on a single line
-	it_name            string // the name to replace `it` with
+	single_line_fields bool              // should struct fields be on a single line
+	it_name            string            // the name to replace `it` with
 	in_lambda_depth    int
 	inside_const       bool
-	is_mbranch_expr    bool // match a { x...y { } }
+	is_mbranch_expr    bool              // match a { x...y { } }
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 	nlines             int

@@ -281,9 +281,10 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			mut value_align := new_field_align()
 			mut comment_align := new_field_align(use_threshold: true)
 			for init_field in node.init_fields {
-				value_align.add_info(init_field.name.len, init_field.pos.line_nr)
+				value_align.add_info(init_field.name.len, init_field.pos.line_nr, init_field.has_break_line)
 				if init_field.end_comments.len > 0 {
-					comment_align.add_info(init_field.expr.str().len, init_field.pos.line_nr)
+					comment_align.add_info(init_field.expr.str().len, init_field.pos.line_nr,
+						init_field.has_break_line)
 				}
 			}
 			for i, init_field in node.init_fields {

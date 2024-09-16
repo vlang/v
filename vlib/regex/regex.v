@@ -254,8 +254,8 @@ mut:
 	// groups variables
 	group_neg bool // negation flag for the group, 0 => no negation > 0 => negataion
 	group_rep int  // repetition of the group
-	group_id  int = -1 // id of the group
-	goto_pc   int = -1 // jump to this PC if is needed
+	group_id  int         = -1 // id of the group
+	goto_pc   int         = -1 // jump to this PC if is needed
 	// OR flag for the token
 	next_is_or bool // true if the next token is an OR
 	// dot_char token variables
@@ -299,8 +299,8 @@ pub mut:
 	// groups
 	group_count      int   // number of groups in this regex struct
 	groups           []int // groups index results
-	group_max_nested int = 3 // max nested group
-	group_max        int = 8 // max allowed number of different groups
+	group_max_nested int   = 3 // max nested group
+	group_max        int   = 8 // max allowed number of different groups
 
 	state_list []StateObj
 

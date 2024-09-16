@@ -10,7 +10,7 @@ mut:
 		// Default ignore patterns.
 		'': ['testdata', 'tests', '*_test.v']
 	}
-	paths map[string]bool
+	paths    map[string]bool
 }
 
 fn get_modules(path string) []string {

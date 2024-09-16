@@ -23,7 +23,7 @@ interface Baz {
 }
 
 interface Bar {
-	speak() string // after
+	speak() string  // after
 	foo() string
 	speak2() string // also after
 	// and between

@@ -22,7 +22,7 @@ pub mut:
 	http_only bool
 	same_site SameSite
 	raw       string
-	unparsed  []string // Raw text of unparsed attribute-value pairs
+	unparsed  []string  // Raw text of unparsed attribute-value pairs
 }
 
 // SameSite allows a server to define a cookie attribute making it impossible for

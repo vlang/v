@@ -23,20 +23,20 @@ pub struct Parser {
 pub:
 	pref &pref.Preferences = unsafe { nil }
 mut:
-	file_base         string       // "hello.v"
-	file_path         string       // "/home/user/hello.v"
-	file_display_path string       // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
-	unique_prefix     string       // a hash of p.file_path, used for making anon fn generation unique
-	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
+	file_base         string            // "hello.v"
+	file_path         string            // "/home/user/hello.v"
+	file_display_path string            // just "hello.v", when your current folder for the compilation is "/home/user/", otherwise the full path "/home/user/hello.v"
+	unique_prefix     string            // a hash of p.file_path, used for making anon fn generation unique
+	file_backend_mode ast.Language      // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
 	// see comment in parse_file
 	tok                       token.Token
 	prev_tok                  token.Token
 	peek_tok                  token.Token
 	language                  ast.Language
-	fn_language               ast.Language // .c for `fn C.abcd()` declarations
-	expr_level                int          // prevent too deep recursions for pathological programs
-	inside_vlib_file          bool         // true for all vlib/ files
-	inside_test_file          bool         // when inside _test.v or _test.vv file
+	fn_language               ast.Language      // .c for `fn C.abcd()` declarations
+	expr_level                int               // prevent too deep recursions for pathological programs
+	inside_vlib_file          bool              // true for all vlib/ files
+	inside_test_file          bool              // when inside _test.v or _test.vv file
 	inside_if                 bool
 	inside_comptime_if        bool
 	inside_if_expr            bool
@@ -45,26 +45,26 @@ mut:
 	inside_or_expr            bool
 	inside_for                bool
 	inside_for_expr           bool
-	inside_fn                 bool // true even with implicit main
+	inside_fn                 bool              // true even with implicit main
 	inside_fn_return          bool
-	inside_fn_concrete_type   bool // parsing fn_name[concrete_type]() call expr
-	inside_call_args          bool // true inside f(  ....  )
+	inside_fn_concrete_type   bool              // parsing fn_name[concrete_type]() call expr
+	inside_call_args          bool              // true inside f(  ....  )
 	inside_unsafe_fn          bool
 	inside_str_interp         bool
 	inside_array_lit          bool
 	inside_in_array           bool
 	inside_infix              bool
-	inside_match              bool // to separate `match A { }` from `Struct{}`
-	inside_select             bool // to allow `ch <- Struct{} {` inside `select`
-	inside_match_case         bool // to separate `match_expr { }` from `Struct{}`
-	inside_match_body         bool // to fix eval not used TODO
+	inside_match              bool              // to separate `match A { }` from `Struct{}`
+	inside_select             bool              // to allow `ch <- Struct{} {` inside `select`
+	inside_match_case         bool              // to separate `match_expr { }` from `Struct{}`
+	inside_match_body         bool              // to fix eval not used TODO
 	inside_unsafe             bool
-	inside_sum_type           bool // to prevent parsing inline sum type again
+	inside_sum_type           bool              // to prevent parsing inline sum type again
 	inside_asm_template       bool
 	inside_asm                bool
 	inside_defer              bool
-	inside_generic_params     bool // indicates if parsing between `<` and `>` of a method/function
-	inside_receiver_param     bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
+	inside_generic_params     bool              // indicates if parsing between `<` and `>` of a method/function
+	inside_receiver_param     bool              // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
 	inside_struct_field_decl  bool
 	inside_struct_attr_decl   bool
 	inside_map_init           bool
@@ -86,18 +86,18 @@ mut:
 	used_imports              []string          // alias
 	auto_imports              []string          // imports, the user does not need to specify
 	imported_symbols          map[string]string
-	is_amp                    bool // for generating the right code for `&Foo{}`
+	is_amp                    bool              // for generating the right code for `&Foo{}`
 	returns                   bool
-	is_stmt_ident             bool // true while the beginning of a statement is an ident/selector
-	expecting_type            bool // `is Type`, expecting type
+	is_stmt_ident             bool              // true while the beginning of a statement is an ident/selector
+	expecting_type            bool              // `is Type`, expecting type
 	cur_fn_name               string
 	label_names               []string
-	name_error                bool // indicates if the token is not a name or the name is on another line
-	n_asm                     int  // controls assembly labels
+	name_error                bool              // indicates if the token is not a name or the name is on another line
+	n_asm                     int               // controls assembly labels
 	global_labels             []string
 	comptime_if_cond          bool
 	defer_vars                []ast.Ident
-	should_abort              bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	should_abort              bool              // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 	codegen_text              string
 	anon_struct_decl          ast.StructDecl
 	struct_init_generic_types []ast.Type
@@ -105,14 +105,14 @@ mut:
 	left_comments             []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
-	generic_type_level        int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
+	generic_type_level        int               // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 pub mut:
 	scanner &scanner.Scanner = unsafe { nil }
 	table   &ast.Table       = unsafe { nil }
 	scope   &ast.Scope       = unsafe { nil }
 
 	opened_scopes     int
-	max_opened_scopes int = 100 // values above 300 risk stack overflow
+	max_opened_scopes int              = 100 // values above 300 risk stack overflow
 
 	errors         []errors.Error
 	warnings       []errors.Warning
@@ -166,10 +166,10 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner(text, comments_mode, pref_)
-		table:   table
-		pref:    pref_
-		scope:   &ast.Scope{
+		scanner:  scanner.new_scanner(text, comments_mode, pref_)
+		table:    table
+		pref:     pref_
+		scope:    &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
 		}
@@ -246,10 +246,10 @@ pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.Commen
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path}')
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
-		table:   table
-		pref:    pref_
-		scope:   &ast.Scope{
+		scanner:  scanner.new_scanner_file(path, comments_mode, pref_) or { panic(err) }
+		table:    table
+		pref:     pref_
+		scope:    &ast.Scope{
 			start_pos: 0
 			parent:    table.global_scope
 		}
@@ -521,6 +521,12 @@ fn (p &Parser) has_prev_newline() bool {
 		break
 	}
 	return false
+}
+
+fn (p &Parser) has_prev_line_comment_or_label() bool {
+	return p.prev_tok.kind == .colon || (p.prev_tok.kind == .comment
+		&& p.tok.line_nr - p.prev_tok.line_nr == 1
+		&& p.prev_tok.line_nr - p.peek_token(-2).line_nr > 0)
 }
 
 fn (p &Parser) is_array_type() bool {
@@ -2244,7 +2250,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			vals: left
 			pos:  tok.pos()
 		}
-		pos: pos
+		pos:  pos
 	}
 }
 
@@ -2327,7 +2333,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 				is_volatile: false
 				is_option:   is_option
 			}
-			scope: p.scope
+			scope:    p.scope
 		}
 	}
 	is_following_concrete_types := p.is_following_concrete_types()
@@ -2368,16 +2374,16 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 		}
 	}
 	return ast.Ident{
-		tok_kind: p.tok.kind
-		kind:     .unresolved
-		name:     name
-		comptime: p.comptime_if_cond
-		language: language
-		mod:      p.mod
-		pos:      pos
-		is_mut:   is_mut
-		mut_pos:  mut_pos
-		info:     ast.IdentVar{
+		tok_kind:       p.tok.kind
+		kind:           .unresolved
+		name:           name
+		comptime:       p.comptime_if_cond
+		language:       language
+		mod:            p.mod
+		pos:            pos
+		is_mut:         is_mut
+		mut_pos:        mut_pos
+		info:           ast.IdentVar{
 			typ:         typ
 			is_mut:      is_mut
 			is_static:   is_static
@@ -2385,8 +2391,8 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			is_option:   or_kind != ast.OrKind.absent
 			share:       ast.sharetype_from_flags(is_shared, is_atomic)
 		}
-		scope:   p.scope
-		or_expr: ast.OrExpr{
+		scope:          p.scope
+		or_expr:        ast.OrExpr{
 			kind:  or_kind
 			stmts: or_stmts
 			pos:   or_pos
@@ -2911,7 +2917,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			}
 			pos.extend(p.tok.pos())
 			return ast.SelectorExpr{
-				expr: ast.Ident{
+				expr:        ast.Ident{
 					name:  name
 					scope: p.scope
 				}
@@ -2943,10 +2949,10 @@ fn (mut p Parser) name_expr() ast.Expr {
 				field_name := p.check_name()
 				pos.extend(p.tok.pos())
 				return ast.Ident{
-					name: p.prepend_mod(typ_name) + '__static__' + field_name
-					mod:  p.mod
-					kind: .function
-					info: ast.IdentFn{
+					name:  p.prepend_mod(typ_name) + '__static__' + field_name
+					mod:   p.mod
+					kind:  .function
+					info:  ast.IdentFn{
 						typ: fn_type
 					}
 					pos:   pos
@@ -3102,16 +3108,16 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			if p.tok.kind == .key_orelse {
 				or_stmts_high, or_pos_high = p.or_block(.no_err_var)
 				return ast.IndexExpr{
-					left:  left
-					pos:   pos_high
-					index: ast.RangeExpr{
+					left:     left
+					pos:      pos_high
+					index:    ast.RangeExpr{
 						low:      ast.empty_expr
 						high:     high
 						has_high: has_high
 						pos:      pos_high
 						is_gated: is_gated
 					}
-					or_expr: ast.OrExpr{
+					or_expr:  ast.OrExpr{
 						kind:  .block
 						stmts: or_stmts_high
 						pos:   or_pos_high
@@ -3131,16 +3137,16 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		}
 
 		return ast.IndexExpr{
-			left:  left
-			pos:   pos_high
-			index: ast.RangeExpr{
+			left:     left
+			pos:      pos_high
+			index:    ast.RangeExpr{
 				low:      ast.empty_expr
 				high:     high
 				has_high: has_high
 				pos:      pos_high
 				is_gated: is_gated
 			}
-			or_expr: ast.OrExpr{
+			or_expr:  ast.OrExpr{
 				kind:  or_kind_high
 				stmts: or_stmts_high
 				pos:   or_pos_high
@@ -3170,9 +3176,9 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			if p.tok.kind == .key_orelse {
 				or_stmts_low, or_pos_low = p.or_block(.no_err_var)
 				return ast.IndexExpr{
-					left:  left
-					pos:   pos_low
-					index: ast.RangeExpr{
+					left:     left
+					pos:      pos_low
+					index:    ast.RangeExpr{
 						low:      expr
 						high:     high
 						has_high: has_high
@@ -3180,7 +3186,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 						pos:      pos_low
 						is_gated: is_gated
 					}
-					or_expr: ast.OrExpr{
+					or_expr:  ast.OrExpr{
 						kind:  .block
 						stmts: or_stmts_low
 						pos:   or_pos_low
@@ -3200,9 +3206,9 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		}
 
 		return ast.IndexExpr{
-			left:  left
-			pos:   pos_low
-			index: ast.RangeExpr{
+			left:     left
+			pos:      pos_low
+			index:    ast.RangeExpr{
 				low:      expr
 				high:     high
 				has_high: has_high
@@ -3210,7 +3216,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 				pos:      pos_low
 				is_gated: is_gated
 			}
-			or_expr: ast.OrExpr{
+			or_expr:  ast.OrExpr{
 				kind:  or_kind_low
 				stmts: or_stmts_low
 				pos:   or_pos_low
@@ -3229,10 +3235,10 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		if p.tok.kind == .key_orelse {
 			or_stmts, or_pos = p.or_block(.no_err_var)
 			return ast.IndexExpr{
-				left:    left
-				index:   expr
-				pos:     pos
-				or_expr: ast.OrExpr{
+				left:     left
+				index:    expr
+				pos:      pos
+				or_expr:  ast.OrExpr{
 					kind:  .block
 					stmts: or_stmts
 					pos:   or_pos
@@ -3251,10 +3257,10 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		}
 	}
 	return ast.IndexExpr{
-		left:    left
-		index:   expr
-		pos:     pos
-		or_expr: ast.OrExpr{
+		left:     left
+		index:    expr
+		pos:      pos
+		or_expr:  ast.OrExpr{
 			kind:  or_kind
 			stmts: or_stmts
 			pos:   or_pos
@@ -3342,8 +3348,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				kind:  or_kind
 				pos:   or_pos
 			}
-			scope:    p.scope
-			comments: comments
+			scope:             p.scope
+			comments:          comments
 		}
 		return mcall_expr
 	}
@@ -4171,6 +4177,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pre_comments := p.eat_comments()
 		pos := p.tok.pos()
 		has_prev_newline := p.has_prev_newline()
+		has_break_line := has_prev_newline || p.has_prev_line_comment_or_label()
 		val := p.check_name()
 		vals << val
 		mut expr := ast.empty_expr
@@ -4198,6 +4205,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			expr:             expr
 			has_expr:         has_expr
 			has_prev_newline: has_prev_newline
+			has_break_line:   has_break_line
 			pre_comments:     pre_comments
 			comments:         comments
 			next_comments:    next_comments
@@ -4293,11 +4301,11 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 
 	idx := p.table.register_sym(ast.TypeSymbol{
-		kind:  .enum_
-		name:  name
-		cname: util.no_dots(name)
-		mod:   p.mod
-		info:  ast.Enum{
+		kind:   .enum_
+		name:   name
+		cname:  util.no_dots(name)
+		mod:    p.mod
+		info:   ast.Enum{
 			vals:             vals
 			is_flag:          is_flag
 			is_multi_allowed: is_multi_allowed
@@ -4408,11 +4416,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
 		typ := p.table.register_sym(ast.TypeSymbol{
-			kind:  .sum_type
-			name:  prepend_mod_name
-			cname: util.no_dots(prepend_mod_name)
-			mod:   p.mod
-			info:  ast.SumType{
+			kind:   .sum_type
+			name:   prepend_mod_name
+			cname:  util.no_dots(prepend_mod_name)
+			mod:    p.mod
+			info:   ast.SumType{
 				variants:      variant_types
 				is_generic:    generic_types.len > 0
 				generic_types: generic_types
@@ -4462,7 +4470,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			parent_type: parent_type
 			language:    parent_language
 		}
-		is_pub: is_pub
+		is_pub:     is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {

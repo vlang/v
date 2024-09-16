@@ -10,17 +10,17 @@ mut:
 	gg          &gg.Context = unsafe { nil }
 	touch       TouchInfo
 	ui          Ui
-	theme       &Theme = themes[0]
+	theme       &Theme      = themes[0]
 	theme_idx   int
 	board       Board
 	undo        []Undo
 	atickers    [4][4]int
-	state       GameState  = .play
-	tile_format TileFormat = .normal
+	state       GameState   = .play
+	tile_format TileFormat  = .normal
 	moves       int
 
 	is_ai_mode bool
-	ai_fpm     u64 = 8
+	ai_fpm     u64         = 8
 }
 
 struct Ui {
@@ -827,7 +827,7 @@ fn on_event(e &gg.Event, mut app App) {
 			if e.num_touches > 0 {
 				t := e.touches[0]
 				app.touch.start = Touch{
-					pos: Pos{
+					pos:  Pos{
 						x: int(t.pos_x / app.ui.dpi_scale)
 						y: int(t.pos_y / app.ui.dpi_scale)
 					}
@@ -839,7 +839,7 @@ fn on_event(e &gg.Event, mut app App) {
 			if e.num_touches > 0 {
 				t := e.touches[0]
 				app.touch.end = Touch{
-					pos: Pos{
+					pos:  Pos{
 						x: int(t.pos_x / app.ui.dpi_scale)
 						y: int(t.pos_y / app.ui.dpi_scale)
 					}
@@ -850,7 +850,7 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		.mouse_down {
 			app.touch.start = Touch{
-				pos: Pos{
+				pos:  Pos{
 					x: int(e.mouse_x / app.ui.dpi_scale)
 					y: int(e.mouse_y / app.ui.dpi_scale)
 				}
@@ -859,7 +859,7 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		.mouse_up {
 			app.touch.end = Touch{
-				pos: Pos{
+				pos:  Pos{
 					x: int(e.mouse_x / app.ui.dpi_scale)
 					y: int(e.mouse_y / app.ui.dpi_scale)
 				}

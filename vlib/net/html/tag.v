@@ -18,7 +18,7 @@ pub mut:
 	attributes         map[string]string // attributes will be like map[name]value
 	last_attribute     string
 	class_set          datatypes.Set[string]
-	parent             &Tag = unsafe { nil }
+	parent             &Tag         = unsafe { nil }
 	position_in_parent int
 	closed             bool
 	close_type         CloseTagType = .in_name

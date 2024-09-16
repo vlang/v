@@ -87,7 +87,7 @@ pub mut:
 	default_version_label   string = 'output version information and exit'
 	args                    []string // the current list of processed args
 	max_free_args           int
-	flags                   []Flag // registered flags
+	flags                   []Flag   // registered flags
 	application_name        string
 	application_version     string
 	application_description string

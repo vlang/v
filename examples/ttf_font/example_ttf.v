@@ -25,8 +25,8 @@ pub mut:
 	tf              []ttf.TTF_File
 	ttf_render      []ttf.TTF_render_Sokol
 	text_ready_flag bool
-	mouse_x         int = -1
-	mouse_y         int = -1
+	mouse_x         int         = -1
+	mouse_y         int         = -1
 }
 
 fn my_init(mut app App_data) {

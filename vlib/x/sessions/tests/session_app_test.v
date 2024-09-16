@@ -94,7 +94,7 @@ fn testsuite_begin() {
 			cookie_options: sessions.CookieOptions{
 				cookie_name: cookie_name
 			}
-			max_age: max_age
+			max_age:        max_age
 		}
 	}
 

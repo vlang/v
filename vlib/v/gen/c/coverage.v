@@ -14,8 +14,8 @@ import hash
 @[heap]
 struct CoverageInfo {
 mut:
-	idx           int   // index
-	points        []u64 // code point line nr
+	idx           int    // index
+	points        []u64  // code point line nr
 	file          &ast.File = unsafe { nil }
 	fhash         string // hash(fpath, build_options), prevents collisions for runs with different options, like `-os windows` or `-gc none`, which may affect the points, due to `$if ... {` etc
 	build_options string

@@ -35,7 +35,7 @@ fn test_valid_parsing() {
 				]
 			}
 		}
-		root: xml.XMLNode{
+		root:    xml.XMLNode{
 			name:     'note'
 			children: [
 				xml.XMLNode{

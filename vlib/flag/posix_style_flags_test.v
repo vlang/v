@@ -21,8 +21,8 @@ struct Config {
 	verbosity     int      @[repeats; short: v]
 	not_mapped    string = 'not changed'
 	x             bool
-	b             bool @[only: y]
-	u             int  @[short: z]
+	b             bool     @[only: y]
+	u             int      @[short: z]
 }
 
 fn test_pure_posix_short() {

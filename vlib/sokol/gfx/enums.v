@@ -13,7 +13,7 @@ pub enum Backend {
 
 // PixelFormat is C.sg_pixel_format
 pub enum PixelFormat as u32 {
-	_default // value 0 reserved for default-init
+	_default        // value 0 reserved for default-init
 	@none
 
 	r8
@@ -201,8 +201,8 @@ pub enum Filter as u32 {
 }
 
 pub enum Wrap as u32 {
-	_default // value 0 reserved for default-init
-	repeat   // The default wrap mode.
+	_default        // value 0 reserved for default-init
+	repeat          // The default wrap mode.
 	clamp_to_edge
 	clamp_to_border // not supported on all backends and platforms. To check for support, call sg_query_features(), and check the "clamp_to_border" boolean in the returned sg_features struct. Platforms which don't support SG_WRAP_CLAMP_TO_BORDER will silently fall back to clamp_to_edge without a validation error.
 	mirrored_repeat
@@ -382,5 +382,5 @@ pub enum UniformLayout as u32 {
 	uniformlayout_native // default: layout depends on currently active backend
 	uniformlayout_std140 // std140: memory layout according to std140
 	_num
-	_force_u32 = 0x7FFFFFFF
+	_force_u32            = 0x7FFFFFFF
 }
