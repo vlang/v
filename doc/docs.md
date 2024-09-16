@@ -5634,7 +5634,7 @@ fn main() {
 
 ```v
 // @[_allow_multiple_values] allows enum to have multiple values
-// Use when actually needed too
+// Use it carefully, only when you really need it.
 
 @[_allow_multiple_values]
 enum ButtonStyle {
