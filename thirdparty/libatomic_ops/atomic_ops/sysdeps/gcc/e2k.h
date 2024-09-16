@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2003-2004 Hewlett-Packard Development Company, L.P.
- * Copyright (c) 2011-2018 Ivan Maidanski
+ * Copyright (c) 2022 Ivan Maidanski
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,18 +20,21 @@
  * SOFTWARE.
  */
 
-#ifndef AO_ATOMIC_OPS_H
-# error This file should not be included directly.
+/* As of clang-9, all __GCC_HAVE_SYNC_COMPARE_AND_SWAP_n are missing.   */
+#define AO_GCC_FORCE_HAVE_CAS
+
+#if (__SIZEOF_SIZE_T__ == 4) \
+    || (defined(__GCC_HAVE_SYNC_COMPARE_AND_SWAP_16) && !defined(__clang__)) \
+    || (defined(__clang__) && __iset__ >= 5 /* elbrus-v5 or later */ \
+        && defined(AO_PREFER_BUILTIN_ATOMICS))
+  /* Note for 128-bit operations: clang reports warning                 */
+  /* "large atomic operation may incur significant performance penalty" */
+  /* and requires LDFLAGS="-latomic", thus this is not on by default.   */
+# define AO_GCC_HAVE_double_SYNC_CAS
+# include "../standard_ao_double_t.h"
 #endif
 
-/* The policy regarding version numbers: development code has odd       */
-/* "minor" number (and "micro" part is 0); when development is finished */
-/* and a release is prepared, "minor" number is incremented (keeping    */
-/* "micro" number still zero), whenever a defect is fixed a new release */
-/* is prepared incrementing "micro" part to odd value (the most stable  */
-/* release has the biggest "micro" number).                             */
+#include "generic.h"
 
-/* The version here should match that in configure.ac and README.       */
-#define AO_VERSION_MAJOR 7
-#define AO_VERSION_MINOR 9
-#define AO_VERSION_MICRO 0 /* 7.9.0 */
+#undef AO_GCC_FORCE_HAVE_CAS
+#undef AO_GCC_HAVE_double_SYNC_CAS
