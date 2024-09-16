@@ -5633,7 +5633,7 @@ fn main() {
 ```
 
 ```v
-// @[_allow_multiple_values] allows enum to have multiple values
+// @[_allow_multiple_values] allows an enum to have multiple duplicate values.
 // Use it carefully, only when you really need it.
 
 @[_allow_multiple_values]
