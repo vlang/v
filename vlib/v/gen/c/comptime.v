@@ -842,10 +842,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
-				g.writeln('\t${node.val_var}.args = __new_array_with_default(0, 0, sizeof(MethodArgs), 0);')
+				g.writeln('\t${node.val_var}.args = __new_array_with_default(0, 0, sizeof(MethodParam), 0);')
 			} else {
 				len := method.params.len - 1
-				g.write('\t${node.val_var}.args = new_array_from_c_array(${len}, ${len}, sizeof(MethodArgs), _MOV((MethodArgs[${len}]){')
+				g.write('\t${node.val_var}.args = new_array_from_c_array(${len}, ${len}, sizeof(MethodParam), _MOV((MethodParam[${len}]){')
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
@@ -1020,15 +1020,15 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			g.pop_comptime_info()
 		}
-	} else if node.kind == .args {
+	} else if node.kind == .params {
 		method := g.comptime.comptime_for_method
 
 		if method.params.len > 0 {
-			g.writeln('\tMethodArgs ${node.val_var} = {0};')
+			g.writeln('\tMethodParam ${node.val_var} = {0};')
 		}
 		g.push_new_comptime_info()
 		g.comptime.inside_comptime_for = true
-		g.comptime.comptime_for_method_arg_var = node.val_var
+		g.comptime.comptime_for_method_param_var = node.val_var
 		for param in method.params[1..] {
 			g.comptime.type_map['${node.val_var}.typ'] = param.typ
 

@@ -11,7 +11,7 @@ fn (mut s Struct1) do_thing(a f32, b voidptr) bool {
 fn register[T]() []string {
 	mut args := []string{}
 	$for method in T.methods {
-		$for arg in method.args {
+		$for arg in method.params {
 			$if arg.typ is f32 {
 				args << 'f32: ${arg.name} ${typeof(arg.typ).name}'
 			} $else $if arg.typ is voidptr {

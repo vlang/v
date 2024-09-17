@@ -891,11 +891,11 @@ fn field_to_string(f ConstField) string {
 
 pub fn (e ComptimeForKind) str() string {
 	match e {
-		.args { return 'args' }
 		.methods { return 'methods' }
 		.fields { return 'fields' }
 		.attributes { return 'attributes' }
 		.values { return 'values' }
 		.variants { return 'variants' }
+		.params { return 'params' }
 	}
 }

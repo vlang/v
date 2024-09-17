@@ -325,10 +325,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
-	} else if node.kind == .args {
+	} else if node.kind == .params {
 		c.push_new_comptime_info()
 		c.comptime.inside_comptime_for = true
-		c.comptime.comptime_for_method_arg_var = node.val_var
+		c.comptime.comptime_for_method_param_var = node.val_var
 		c.stmts(mut node.stmts)
 		c.pop_comptime_info()
 	} else if node.kind == .variants {

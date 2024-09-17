@@ -1241,12 +1241,12 @@ pub mut:
 }
 
 pub enum ComptimeForKind {
-	args
 	methods
 	fields
 	attributes
 	values
 	variants
+	params
 }
 
 pub struct ComptimeFor {

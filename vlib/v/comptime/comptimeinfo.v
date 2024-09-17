@@ -114,8 +114,8 @@ pub fn (mut ct ComptimeInfo) get_type_from_comptime_var(var ast.Ident) ast.Type 
 		ct.comptime_for_variant_var {
 			ct.type_map['${ct.comptime_for_variant_var}.typ']
 		}
-		ct.comptime_for_method_arg_var {
-			ct.type_map['${ct.comptime_for_method_arg_var}.typ']
+		ct.comptime_for_method_param_var {
+			ct.type_map['${ct.comptime_for_method_param_var}.typ']
 		}
 		else {
 			// field_var.typ from $for field
@@ -155,7 +155,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_selector_field_name(node ast.SelectorEx
 pub fn (mut ct ComptimeInfo) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if ct.inside_comptime_for && node.expr is ast.Ident {
 		return
-			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var, ct.comptime_for_method_arg_var]
+			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var, ct.comptime_for_method_param_var]
 			&& node.field_name == 'typ'
 	}
 	return false
@@ -276,8 +276,8 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 		ct.comptime_for_attr_var {
 			return .attributes
 		}
-		ct.comptime_for_method_arg_var {
-			return .args
+		ct.comptime_for_method_param_var {
+			return .params
 		}
 		else {
 			return none
@@ -348,5 +348,5 @@ pub mut:
 	comptime_for_method          &ast.Fn = unsafe { nil }
 	comptime_for_method_ret_type ast.Type
 	// .args
-	comptime_for_method_arg_var string
+	comptime_for_method_param_var string
 }
