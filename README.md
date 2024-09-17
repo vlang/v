@@ -80,7 +80,7 @@ Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essentia
 
 To get started, execute the following in your terminal/shell:
 ```bash
-git clone https://github.com/vlang/v
+git clone https://github.com/vlang/v --depth=1
 cd v
 make
 ```
