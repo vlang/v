@@ -14,7 +14,7 @@ fn test_manpage() {
 				description: 'another subcommand'
 			},
 		]
-		flags: [
+		flags:       [
 			Flag{
 				flag:        .string
 				name:        'str'

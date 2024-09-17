@@ -10,7 +10,7 @@ fn test_node() {
 				'test:key':   ' test_value '
 				'test:other': '123456'
 			}
-			children: [
+			children:   [
 				xml.XMLNode{
 					name:       'child'
 					attributes: {
@@ -25,7 +25,7 @@ fn test_node() {
 			attributes: {
 				'k': 'v'
 			}
-			children: [
+			children:   [
 				'Hello, world!',
 				xml.XMLNode{
 					name:       'c'
@@ -41,7 +41,7 @@ fn test_node() {
 				'uri':          '{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}'
 				'xmlns:xcalcf': 'http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures'
 			}
-			children: [
+			children:   [
 				xml.XMLNode{
 					name:     'xcalcf:calcFeatures'
 					children: [
@@ -130,7 +130,7 @@ fn test_doc() {
 					'test:key':   ' test_value '
 					'test:other': '123456'
 				}
-				children: [
+				children:   [
 					xml.XMLNode{
 						name:       'child'
 						attributes: {
@@ -147,7 +147,7 @@ fn test_doc() {
 				attributes: {
 					'k': 'v'
 				}
-				children: [
+				children:   [
 					'Hello, world!',
 					xml.XMLNode{
 						name:       'c'

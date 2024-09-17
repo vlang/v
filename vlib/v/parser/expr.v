@@ -462,7 +462,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 							kind:  or_kind
 							pos:   or_pos
 						}
-						scope: p.scope
+						scope:    p.scope
 					}
 				}
 				return node

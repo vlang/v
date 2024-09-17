@@ -33,7 +33,7 @@ pub fn serve(params StaticServeParams) {
 	mut nparams := params
 	nparams.folder = os.norm_path(os.real_path(params.folder))
 	mut server := &http.Server{
-		handler: StaticHttpHandler{
+		handler:    StaticHttpHandler{
 			params: nparams
 		}
 		addr:       params.on

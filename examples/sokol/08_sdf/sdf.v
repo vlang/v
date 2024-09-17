@@ -64,6 +64,6 @@ fn main() {
 		icon:              sapp.IconDesc{
 			sokol_default: true
 		}
-		user_data: &State{}
+		user_data:         &State{}
 	})
 }

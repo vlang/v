@@ -98,7 +98,7 @@ pub fn new_table() &Table {
 		global_scope: &Scope{
 			parent: unsafe { nil }
 		}
-		cur_fn: unsafe { nil }
+		cur_fn:       unsafe { nil }
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true

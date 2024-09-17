@@ -41,7 +41,7 @@ struct SomeStruct {
 mut:
 	// 2
 	// 3
-	somefield int /*
+	somefield  int /*
 	9
 10
 	*/

@@ -22,8 +22,8 @@ struct BumpTestCase {
 
 const test_cases = [
 	BumpTestCase{
-		file_name: 'v.mod'
-		contents:  "Module {
+		file_name:      'v.mod'
+		contents:       "Module {
 	name: 'Sample'
 	description: 'Sample project'
 	version: '1.2.6'
@@ -38,8 +38,8 @@ const test_cases = [
 		expected_major: "	version: '2.0.0'"
 	},
 	BumpTestCase{
-		file_name: 'random_versions.vv'
-		contents:  "
+		file_name:      'random_versions.vv'
+		contents:       "
 1.1.2
 1.2.5
 3.21.73
@@ -52,8 +52,8 @@ version = '1.5.1'
 		expected_major: "version = '2.0.0'"
 	},
 	BumpTestCase{
-		file_name: 'sample_tool.v'
-		contents:  "// Module comment and copyright information
+		file_name:      'sample_tool.v'
+		contents:       "// Module comment and copyright information
 import os
 import flag
 
@@ -110,8 +110,8 @@ struct SkipTestCase {
 
 const skip_test_cases = [
 	SkipTestCase{
-		file_name: 'CITATION.cff'
-		contents:  'abstract: A sample CLI tool made in V that prints geometric shapes to the screen.
+		file_name:      'CITATION.cff'
+		contents:       'abstract: A sample CLI tool made in V that prints geometric shapes to the screen.
 authors:
   - alias: hungrybluedev
     family-names: Haldar

@@ -27,19 +27,19 @@ pub fn (mut g Gen) init_builtins() {
 		// used to keep executable size small and the bytecode distraction-free
 		.int_to_string:  BuiltinFn{
 			// 32-bit signed integer to string conversion
-			body: fn (builtin BuiltinFn, mut g Gen) {
+			body:     fn (builtin BuiltinFn, mut g Gen) {
 				g.code_gen.convert_int_to_string(builtin.arg_regs[0], builtin.arg_regs[1])
 			}
 			arg_regs: [Amd64Register.rcx, Amd64Register.rdi]
 		}
 		.bool_to_string: BuiltinFn{
-			body: fn (builtin BuiltinFn, mut g Gen) {
+			body:     fn (builtin BuiltinFn, mut g Gen) {
 				g.code_gen.convert_bool_to_string(builtin.arg_regs[0])
 			}
 			arg_regs: [Amd64Register.rax]
 		}
 		.reverse_string: BuiltinFn{
-			body: fn (builtin BuiltinFn, mut g Gen) {
+			body:     fn (builtin BuiltinFn, mut g Gen) {
 				g.code_gen.reverse_string(builtin.arg_regs[0])
 			}
 			arg_regs: [Amd64Register.rdi]

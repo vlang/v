@@ -11,7 +11,7 @@ pub fn PartialEmoji.parse(j json2.Any) !PartialEmoji {
 	match j {
 		map[string]json2.Any {
 			return PartialEmoji{
-				id: if s := j['id'] {
+				id:       if s := j['id'] {
 					if s !is json2.Null {
 						?int(s.int())
 					} else {
@@ -56,13 +56,13 @@ pub fn Button.parse(j json2.Any) !Button {
 	match j {
 		map[string]json2.Any {
 			return Button{
-				style: unsafe { ButtonStyle(j['style']!.int()) }
-				label: if s := j['label'] {
+				style:     unsafe { ButtonStyle(j['style']!.int()) }
+				label:     if s := j['label'] {
 					?string(s as string)
 				} else {
 					none
 				}
-				emoji: if o := j['emoji'] {
+				emoji:     if o := j['emoji'] {
 					dump(PartialEmoji.parse(o)!)
 					?PartialEmoji(PartialEmoji.parse(o)!)
 				} else {
@@ -73,12 +73,12 @@ pub fn Button.parse(j json2.Any) !Button {
 				} else {
 					none
 				}
-				url: if s := j['url'] {
+				url:       if s := j['url'] {
 					?string(s as string)
 				} else {
 					none
 				}
-				disabled: if b := j['disabled'] {
+				disabled:  if b := j['disabled'] {
 					?bool(b as bool)
 				} else {
 					none

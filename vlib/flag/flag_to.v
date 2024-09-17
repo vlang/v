@@ -340,7 +340,7 @@ pub fn to_doc[T](dc DocConfig) !string {
 			delimiter: dc.delimiter
 			style:     dc.style
 		}
-		input: []
+		input:  []
 	}
 	fm.si = fm.get_struct_info[T]()!
 	return fm.to_doc(dc)!

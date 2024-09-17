@@ -209,11 +209,11 @@ Editing property: ${app.edit}, value: ${value}')
 	help_text := flag.to_doc[DocTest](
 		description: 'Simple DocLayout editor.
 Press ESCAPE or Ctrl+C to exit and print layout code'
-		footer: '
+		footer:      '
 Press ESCAPE or Ctrl+C to exit and print layout code'
-		fields:  unsafe { field_docs }
-		layout:  app.layout
-		options: app.options
+		fields:      unsafe { field_docs }
+		layout:      app.layout
+		options:     app.options
 	) or { '' }
 
 	app.tui.draw_text(0, 5, '${help_text}')

@@ -155,7 +155,7 @@ fn test_server_custom_handler() {
 			progress_calls.chunks << chunk.clone()
 			progress_calls.reads << read_so_far
 		}
-		on_finish: fn (req &http.Request, final_size u64) ! {
+		on_finish:   fn (req &http.Request, final_size u64) ! {
 			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
 			eprintln('>>>>>>>> on_finish, req.url: ${req.url}, final_size: ${final_size}')
 			progress_calls.finished_was_called = true

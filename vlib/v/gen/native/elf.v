@@ -453,7 +453,7 @@ fn (mut g Gen) create_section(name string, typ i32, link i32, info i32, addralig
 			addralign: addralign
 			entsize:   entsize
 		}
-		data: data
+		data:   data
 	}
 }
 

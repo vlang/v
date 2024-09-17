@@ -265,7 +265,7 @@ fn vweb_tmpl_${fn_name}() string {
 					pos:       start_of_line_pos + position
 					last_line: lines.len
 				}
-				reporter: .parser
+				reporter:  .parser
 			})
 			continue
 		}
@@ -280,7 +280,7 @@ fn vweb_tmpl_${fn_name}() string {
 					pos:       start_of_line_pos + position
 					last_line: lines.len
 				}
-				reporter: .parser
+				reporter:  .parser
 			})
 			continue
 		}
@@ -298,7 +298,7 @@ fn vweb_tmpl_${fn_name}() string {
 							col:       err.col()
 							last_line: lines.len
 						}
-						reporter: .parser
+						reporter:  .parser
 					})
 					[]string{}
 				} else {
@@ -311,7 +311,7 @@ fn vweb_tmpl_${fn_name}() string {
 							pos:       start_of_line_pos
 							last_line: lines.len
 						}
-						reporter: .parser
+						reporter:  .parser
 					})
 					[]string{}
 				}

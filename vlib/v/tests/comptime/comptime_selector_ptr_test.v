@@ -32,7 +32,7 @@ fn test_main() {
 		association: &Association{
 			price: APrice{}
 		}
-		price: APrice{}
+		price:       APrice{}
 	}
 
 	assert get_value_from_ref(&Association{

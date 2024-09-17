@@ -1145,7 +1145,7 @@ pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
 					expr: ast.StringLiteral{
 						val: fname
 					}
-					typ: ast.string_type_idx
+					typ:  ast.string_type_idx
 				},
 			]
 		}

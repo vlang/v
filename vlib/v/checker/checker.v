@@ -146,9 +146,9 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		timers_should_print = true
 	}
 	mut checker := &Checker{
-		table:  table
-		pref:   pref_
-		timers: util.new_timers(
+		table:                         table
+		pref:                          pref_
+		timers:                        util.new_timers(
 			should_print: timers_should_print
 			label:        'checker'
 		)

@@ -87,7 +87,7 @@ fn new_repl(folder string) Repl {
 	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	os.mkdir_all(folder) or {}
 	return Repl{
-		readline: readline.Readline{
+		readline:       readline.Readline{
 			skip_empty: true
 		}
 		folder:         folder

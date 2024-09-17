@@ -31,7 +31,7 @@ const xml_elements = [
 		attributes: {
 			'id': 'c2'
 		}
-		children: [
+		children:   [
 			'Sample Text',
 		]
 	},
@@ -80,7 +80,7 @@ const xml_elements = [
 		attributes: {
 			'id': 'c9'
 		}
-		children: [
+		children:   [
 			'More Sample Text',
 		]
 	},

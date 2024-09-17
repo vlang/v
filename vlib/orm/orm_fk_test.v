@@ -32,13 +32,13 @@ fn test_field_after_fkeys() {
 	}!
 
 	person := Person{
-		age:      21
-		brothers: [Brother{
+		age:               21
+		brothers:          [Brother{
 			name: 'aaa'
 		}, Brother{
 			name: 'bbb'
 		}]
-		sisters: [Sister{
+		sisters:           [Sister{
 			name: 'ccc'
 		}, Sister{
 			name: 'ddd'

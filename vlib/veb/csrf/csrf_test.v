@@ -49,7 +49,7 @@ fn test_protect() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: http.Request{
+		req:  http.Request{
 			method: .post
 		}
 	}
@@ -82,7 +82,7 @@ fn test_timeout() {
 		form: {
 			short_time_config.token_name: token
 		}
-		req: http.Request{
+		req:  http.Request{
 			method: .post
 		}
 	}
@@ -107,7 +107,7 @@ fn test_valid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	mut valid := csrf.protect(mut ctx, csrf_config_origin)
@@ -127,7 +127,7 @@ fn test_invalid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	mut valid := csrf.protect(mut ctx, csrf_config_origin)
@@ -142,7 +142,7 @@ fn test_invalid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	valid = csrf.protect(mut ctx, csrf_config_origin)
@@ -156,7 +156,7 @@ fn test_invalid_origin() {
 		form: {
 			csrf_config.token_name: token
 		}
-		req: req
+		req:  req
 	}
 
 	valid = csrf.protect(mut ctx, csrf_config_origin)

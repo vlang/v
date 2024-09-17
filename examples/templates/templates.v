@@ -78,7 +78,7 @@ fn data_get() []SiteConfig {
 			path_code: '/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_marketplace'
 			domains:   ['now.threefold.io', 'marketplace.threefold.io', 'now.threefold.me',
 				'marketplace.threefold.me']
-			descr: 'apps for community builders, runs on top of evdc'
+			descr:     'apps for community builders, runs on top of evdc'
 		},
 		SiteConfig{
 			name:      'www_conscious_internet'
@@ -90,7 +90,7 @@ fn data_get() []SiteConfig {
 			path_code: '/Users/despiegk/codewww/github/threefoldfoundation/www_conscious_internet'
 			domains:   ['www.consciousinternet.org', 'eco.threefold.io', 'community.threefold.io',
 				'eco.threefold.me', 'community.threefold.me']
-			descr: 'community around threefold, partners, friends, ...'
+			descr:     'community around threefold, partners, friends, ...'
 		},
 		SiteConfig{
 			name:      'www_threefold_tech'

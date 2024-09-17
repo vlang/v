@@ -19,7 +19,7 @@ const worker_test_mock_state = SimState{
 		y: -12.559375680227724
 		z: -105.91539687686381
 	)
-	accel: vector(
+	accel:    vector(
 		x: -8.337034766251843e-11
 		y: -2.842170943040401e-10
 		z: 1.2126596023639044e-10
@@ -43,7 +43,7 @@ fn test_compute_result() {
 			y: -12.55937568022536
 			z: -105.91539687684447
 		)
-		accel: vector(
+		accel:    vector(
 			x: -1.1368683772161603e-11
 			y: -1.5916157281026244e-10
 			z: 0

@@ -382,5 +382,5 @@ pub enum UniformLayout as u32 {
 	uniformlayout_native // default: layout depends on currently active backend
 	uniformlayout_std140 // std140: memory layout according to std140
 	_num
-	_force_u32 = 0x7FFFFFFF
+	_force_u32            = 0x7FFFFFFF
 }

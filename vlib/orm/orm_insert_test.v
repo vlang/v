@@ -305,7 +305,7 @@ fn test_orm_insert_with_multiple_child_elements() {
 				name: 'Steve'
 			},
 		]
-		notes: [
+		notes:    [
 			Note{
 				text: 'First note'
 			},

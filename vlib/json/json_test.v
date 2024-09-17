@@ -273,7 +273,7 @@ fn test_nested_type() {
 				cities: [City{'Donlon'}, City{'Termanches'}]
 			},
 		]
-		users: {
+		users:     {
 			'Foo': User{
 				age:           10
 				nums:          [1, 2, 3]
@@ -291,7 +291,7 @@ fn test_nested_type() {
 				pets:          'little boo'
 			}
 		}
-		extra: {
+		extra:     {
 			'2': {
 				'n1': 2
 				'n2': 4
@@ -527,7 +527,7 @@ fn test_encoding_struct_with_pointers() {
 		association: &Association{
 			price: APrice{}
 		}
-		price: APrice{}
+		price:       APrice{}
 	}
 	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
 }

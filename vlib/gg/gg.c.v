@@ -628,12 +628,12 @@ pub fn (ctx &Context) end(options EndOptions) {
 
 pub struct FPSConfig {
 pub mut:
-	x           int  // horizontal position on screen
-	y           int  // vertical position on screen
-	width       int  // minimum width
-	height      int  // minimum height
-	show        bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
-	text_config gx.TextCfg = gx.TextCfg{
+	x                int  // horizontal position on screen
+	y                int  // vertical position on screen
+	width            int  // minimum width
+	height           int  // minimum height
+	show             bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
+	text_config      gx.TextCfg = gx.TextCfg{
 		color:          gx.yellow
 		size:           20
 		align:          .center

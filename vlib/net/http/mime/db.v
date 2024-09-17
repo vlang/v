@@ -1774,9 +1774,9 @@ const db = {
 		charset:      ''
 	}
 	'application/octet-stream':                                                             MimeType{
-		source:     'iana'
-		extensions: ['bin', 'dms', 'lrf', 'mar', 'so', 'dist', 'distz', 'pkg', 'bpk', 'dump', 'elc',
-			'deploy', 'exe', 'dll', 'deb', 'dmg', 'iso', 'img', 'msi', 'msp', 'msm', 'buffer']
+		source:       'iana'
+		extensions:   ['bin', 'dms', 'lrf', 'mar', 'so', 'dist', 'distz', 'pkg', 'bpk', 'dump',
+			'elc', 'deploy', 'exe', 'dll', 'deb', 'dmg', 'iso', 'img', 'msi', 'msp', 'msm', 'buffer']
 		compressible: false
 		charset:      ''
 	}

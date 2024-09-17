@@ -16,8 +16,8 @@ fn test_array_filter_using_direct_closure() {
 	filenames := ['one', 'two', 'three']
 	files := filenames.map(fn (f string) File {
 		return File{
-			name: f
-			typ:  if f == 'one' {
+			name:   f
+			typ:    if f == 'one' {
 				'file'
 			} else {
 				'dir'

@@ -109,8 +109,8 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 			kind:  or_kind
 			pos:   or_pos
 		}
-		scope:    p.scope
-		comments: comments
+		scope:              p.scope
+		comments:           comments
 	}
 }
 
@@ -654,7 +654,7 @@ run them via `v file.v` instead',
 		is_conditional: conditional_ctdefine_idx != ast.invalid_type_idx
 		ctdefine_idx:   conditional_ctdefine_idx
 		//
-		receiver: ast.StructField{
+		receiver:              ast.StructField{
 			name: rec.name
 			typ:  rec.typ
 		}
@@ -870,7 +870,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
-		decl: ast.FnDecl{
+		decl:           ast.FnDecl{
 			name:            name
 			short_name:      ''
 			mod:             p.mod

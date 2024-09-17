@@ -22,7 +22,7 @@ fn main() {
 			println('hello app')
 			return
 		}
-		commands: [
+		commands:    [
 			cli.Command{
 				name:    'sub'
 				execute: fn (cmd cli.Command) ! {

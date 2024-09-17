@@ -696,7 +696,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 
 			node = ast.InfixExpr{
-				left: ast.CastExpr{
+				left:        ast.CastExpr{
 					expr:      node.left
 					typ:       modified_left_type
 					typname:   c.table.type_str(modified_left_type)

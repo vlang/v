@@ -299,7 +299,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			println(markdown.to_plain(readme_contents))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
-				head: doc.DocNode{
+				head:           doc.DocNode{
 					name:     'README'
 					comments: [comment]
 				}

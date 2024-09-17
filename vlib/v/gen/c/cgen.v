@@ -332,10 +332,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
-		static_modifier:    if pref_.parallel_cc { 'static' } else { '' }
-		has_reflection:     'v.reflection' in table.modules
-		has_debugger:       'v.debug' in table.modules
-		reflection_strings: &reflection_strings
+		static_modifier:      if pref_.parallel_cc { 'static' } else { '' }
+		has_reflection:       'v.reflection' in table.modules
+		has_debugger:         'v.debug' in table.modules
+		reflection_strings:   &reflection_strings
 	}
 
 	global_g.comptime = &comptime.ComptimeInfo{
@@ -2440,7 +2440,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 		} else {
 			got_sym.idx
 		}
-		exp: if exp_.has_flag(.option) {
+		exp:     if exp_.has_flag(.option) {
 			new_exp := ast.idx_to_type(exp).set_flag(.option)
 			new_exp
 		} else {

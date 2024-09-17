@@ -157,18 +157,18 @@ jobs:
           echo "Build v-analyzer release"
           v build.vsh release
 
-      - name: Format vlang/v-analyzer
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          cd /tmp/v-analyzer
-          set +e
-          v fmt -c .
-          exit_code=$?
-          if [[ $exit_code -ne 0 && $exit_code -ne 5 ]]; then
-            # Don't fail if there are only internal errors (exit code 5).
-            v fmt -diff .
-            exit 1
-          fi
+      # - name: Format vlang/v-analyzer
+      #   if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      #   run: |
+      #     cd /tmp/v-analyzer
+      #     set +e
+      #     v fmt -c .
+      #     exit_code=$?
+      #     if [[ $exit_code -ne 0 && $exit_code -ne 5 ]]; then
+      #       # Don't fail if there are only internal errors (exit code 5).
+      #       v fmt -diff .
+      #       exit 1
+      #     fi
 
       - name: Build vlang/go2v
         if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-14' }}

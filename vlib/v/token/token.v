@@ -76,12 +76,12 @@ pub enum Kind {
 	lsbr                        // [
 	nilsbr                      // #[
 	rsbr                        // ]
-	eq                          // ==
-	ne                          // !=
-	gt                          // >
-	lt                          // <
-	ge                          // >=
-	le                          // <=
+	eq // ==
+	ne // !=
+	gt // >
+	lt // <
+	ge // >=
+	le // <=
 	comment
 	nl
 	dot      // .

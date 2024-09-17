@@ -338,6 +338,7 @@ pub:
 	i                int
 	has_default_expr bool
 	has_prev_newline bool
+	has_break_line   bool
 	attrs            []Attr
 	is_pub           bool
 	default_val      string
@@ -468,6 +469,7 @@ pub:
 	end_comments     []Comment
 	next_comments    []Comment
 	has_prev_newline bool
+	has_break_line   bool
 pub mut:
 	expr          Expr   // `val1`
 	name          string // 'field1'
@@ -573,6 +575,7 @@ pub:
 	method_idx            int
 	rec_mut               bool // is receiver mutable
 	has_prev_newline      bool
+	has_break_line        bool
 	rec_share             ShareType
 	language              Language // V, C, JS
 	file_mode             Language // whether *the file*, where a function was a '.c.v', '.js.v' etc.
@@ -1381,6 +1384,7 @@ pub:
 	next_comments    []Comment // comments between current EnumField and next EnumField
 	has_expr         bool      // true, when .expr has a value
 	has_prev_newline bool      // empty newline before Enumfield
+	has_break_line   bool
 	attrs            []Attr
 pub mut:
 	expr Expr // the value of current EnumField; 123 in `ename = 123`

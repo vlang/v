@@ -244,8 +244,8 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			embed_file: ast.EmbeddedFile{
 				compression_type: embed_compression_type
 			}
-			args: [arg]
-			pos:  start_pos.extend(p.prev_tok.pos())
+			args:       [arg]
+			pos:        start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function

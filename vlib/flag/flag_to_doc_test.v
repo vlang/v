@@ -176,20 +176,20 @@ fn test_flag_to_doc_spacing_and_new_lines() {
 	assert flag.to_doc[DocTest](
 		description: 'Flag to doc test.
 Content here'
-		footer: '
+		footer:      '
 Footer content'
-		fields: unsafe { field_docs }
+		fields:      unsafe { field_docs }
 	)! == doc4
 
 	// Test in compact mode also
 	assert flag.to_doc[DocTest](
-		options: flag.DocOptions{
+		options:     flag.DocOptions{
 			compact: true
 		}
 		description: 'Flag to doc test.
 Content here'
-		footer: '
+		footer:      '
 Footer content'
-		fields: unsafe { field_docs }
+		fields:      unsafe { field_docs }
 	)! == doc5
 }

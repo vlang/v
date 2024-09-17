@@ -99,10 +99,10 @@ pub fn (sk SymbolKind) str() string {
 @[minify]
 pub struct Doc {
 pub mut:
-	prefs     &pref.Preferences = new_vdoc_preferences()
-	base_path string
-	table     &ast.Table      = ast.new_table()
-	checker   checker.Checker = checker.Checker{
+	prefs               &pref.Preferences = new_vdoc_preferences()
+	base_path           string
+	table               &ast.Table      = ast.new_table()
+	checker             checker.Checker = checker.Checker{
 		table: unsafe { nil }
 		pref:  unsafe { nil }
 	}

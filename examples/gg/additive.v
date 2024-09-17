@@ -42,8 +42,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: myconfig.img_rect.x + f32(math.sin(f32(window.ctx.frame) / 10.0) * 60)
 			y: myconfig.img_rect.y + f32(math.cos(f32(window.ctx.frame) / 10.0) * 60)
 		}
-		color:  gx.Color{255, 0, 0, 255}
-		effect: .add
+		color:    gx.Color{255, 0, 0, 255}
+		effect:   .add
 	})
 
 	// Green
@@ -54,8 +54,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: myconfig.img_rect.x + f32(math.sin(f32(window.ctx.frame) / 10.0) * 80)
 			y: myconfig.img_rect.y + f32(math.cos(f32(window.ctx.frame) / 10.0) * 80)
 		}
-		color:  gx.Color{0, 255, 0, 255}
-		effect: .add
+		color:    gx.Color{0, 255, 0, 255}
+		effect:   .add
 	})
 
 	// Blue
@@ -66,8 +66,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: myconfig.img_rect.x + f32(math.sin(f32(window.ctx.frame) / 10.0) * 100)
 			y: myconfig.img_rect.y + f32(math.cos(f32(window.ctx.frame) / 10.0) * 100)
 		}
-		color:  gx.Color{0, 0, 255, 255}
-		effect: .add
+		color:    gx.Color{0, 0, 255, 255}
+		effect:   .add
 	})
 
 	// More examples
@@ -78,8 +78,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: 50
 			y: 0
 		}
-		color:  gx.Color{255, 0, 0, 255}
-		effect: .add
+		color:    gx.Color{255, 0, 0, 255}
+		effect:   .add
 	})
 
 	window.ctx.draw_image_with_config(gg.DrawImageConfig{
@@ -89,8 +89,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: 50
 			y: 50
 		}
-		color:  gx.Color{0, 255, 0, 255}
-		effect: .add
+		color:    gx.Color{0, 255, 0, 255}
+		effect:   .add
 	})
 
 	window.ctx.draw_image_with_config(gg.DrawImageConfig{
@@ -100,8 +100,8 @@ pub fn (mut window Window) draw(_ voidptr) {
 			x: 50
 			y: 100
 		}
-		color:  gx.Color{0, 0, 255, 255}
-		effect: .add
+		color:    gx.Color{0, 0, 255, 255}
+		effect:   .add
 	})
 
 	window.ctx.end()

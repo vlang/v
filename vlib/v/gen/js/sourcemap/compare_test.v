@@ -2,7 +2,7 @@ module sourcemap
 
 fn test_cmp_eq() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -15,7 +15,7 @@ fn test_cmp_eq() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -32,7 +32,7 @@ fn test_cmp_eq() {
 
 fn test_cmp_name() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -45,7 +45,7 @@ fn test_cmp_name() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -62,7 +62,7 @@ fn test_cmp_name() {
 
 fn test_cmp_name_empty() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -75,7 +75,7 @@ fn test_cmp_name_empty() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -92,7 +92,7 @@ fn test_cmp_name_empty() {
 
 fn test_cmp_name_empty_empty() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -105,7 +105,7 @@ fn test_cmp_name_empty_empty() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -122,7 +122,7 @@ fn test_cmp_name_empty_empty() {
 
 fn test_cmp_source_position_empty_eq() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -132,7 +132,7 @@ fn test_cmp_source_position_empty_eq() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -146,7 +146,7 @@ fn test_cmp_source_position_empty_eq() {
 
 fn test_cmp_source_position_empty_diff() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -159,7 +159,7 @@ fn test_cmp_source_position_empty_diff() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -173,7 +173,7 @@ fn test_cmp_source_position_empty_diff() {
 
 fn test_cmp_source_position_column_diff() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -186,7 +186,7 @@ fn test_cmp_source_position_column_diff() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -203,7 +203,7 @@ fn test_cmp_source_position_column_diff() {
 
 fn test_cmp_source_position_line_diff() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -216,7 +216,7 @@ fn test_cmp_source_position_line_diff() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -233,7 +233,7 @@ fn test_cmp_source_position_line_diff() {
 
 fn test_cmp_sources() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -246,7 +246,7 @@ fn test_cmp_sources() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -263,7 +263,7 @@ fn test_cmp_sources() {
 
 fn test_cmp_gen_column() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -276,7 +276,7 @@ fn test_cmp_gen_column() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 99
 		}
@@ -293,7 +293,7 @@ fn test_cmp_gen_column() {
 
 fn test_cmp_gen_line() {
 	a := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 0
 		}
@@ -306,7 +306,7 @@ fn test_cmp_gen_line() {
 	}
 
 	b := Mapping{
-		GenPosition: GenPosition{
+		GenPosition:     GenPosition{
 			gen_line:   1
 			gen_column: 99
 		}
