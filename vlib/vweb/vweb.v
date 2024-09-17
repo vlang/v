@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+//@[deprecated: '`vweb` is deprecated `veb`. Please use `veb` instead.']
 module vweb
 
 import os
