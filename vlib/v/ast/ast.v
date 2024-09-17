@@ -1250,6 +1250,7 @@ pub enum ComptimeForKind {
 	attributes
 	values
 	variants
+	params
 }
 
 pub struct ComptimeFor {

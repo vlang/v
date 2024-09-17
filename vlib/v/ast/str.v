@@ -896,5 +896,6 @@ pub fn (e ComptimeForKind) str() string {
 		.attributes { return 'attributes' }
 		.values { return 'values' }
 		.variants { return 'variants' }
+		.params { return 'params' }
 	}
 }

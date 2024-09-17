@@ -284,14 +284,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									is_comptime_type_is_expr = true
 									match branch.cond.op {
 										.eq {
-											skip_state = if c.comptime.comptime_for_method == right.val.str() {
+											skip_state = if c.comptime.comptime_for_method.name == right.val.str() {
 												ComptimeBranchSkipState.eval
 											} else {
 												ComptimeBranchSkipState.skip
 											}
 										}
 										.ne {
-											skip_state = if c.comptime.comptime_for_method == right.val.str() {
+											skip_state = if c.comptime.comptime_for_method.name == right.val.str() {
 												ComptimeBranchSkipState.skip
 											} else {
 												ComptimeBranchSkipState.eval

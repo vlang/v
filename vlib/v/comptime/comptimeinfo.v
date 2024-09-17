@@ -95,7 +95,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 	} else if node is ast.SelectorExpr && ct.is_comptime_selector_type(node) {
 		return ct.get_type_from_comptime_var(node.expr as ast.Ident)
 	} else if node is ast.ComptimeCall {
-		method_name := ct.comptime_for_method
+		method_name := ct.comptime_for_method.name
 		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
 		f := left_sym.find_method(method_name) or {
 			ct.error('could not find method `${method_name}` on compile-time resolution',
@@ -113,6 +113,9 @@ pub fn (mut ct ComptimeInfo) get_type_from_comptime_var(var ast.Ident) ast.Type 
 	return match var.name {
 		ct.comptime_for_variant_var {
 			ct.type_map['${ct.comptime_for_variant_var}.typ']
+		}
+		ct.comptime_for_method_param_var {
+			ct.type_map['${ct.comptime_for_method_param_var}.typ']
 		}
 		else {
 			// field_var.typ from $for field
@@ -152,7 +155,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_selector_field_name(node ast.SelectorEx
 pub fn (mut ct ComptimeInfo) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if ct.inside_comptime_for && node.expr is ast.Ident {
 		return
-			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var]
+			node.expr.name in [ct.comptime_for_enum_var, ct.comptime_for_variant_var, ct.comptime_for_field_var, ct.comptime_for_method_param_var]
 			&& node.field_name == 'typ'
 	}
 	return false
@@ -251,7 +254,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 	}
 }
 
-// comptime_get_kind_var identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods  etc)
+// comptime_get_kind_var identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods, .args etc)
 fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKind {
 	if ct.inside_comptime_for {
 		return none
@@ -272,6 +275,9 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 		}
 		ct.comptime_for_attr_var {
 			return .attributes
+		}
+		ct.comptime_for_method_param_var {
+			return .params
 		}
 		else {
 			return none
@@ -339,6 +345,8 @@ pub mut:
 	comptime_for_attr_var string
 	// .methods
 	comptime_for_method_var      string
-	comptime_for_method          string
+	comptime_for_method          &ast.Fn = unsafe { nil }
 	comptime_for_method_ret_type ast.Type
+	// .args
+	comptime_for_method_param_var string
 }

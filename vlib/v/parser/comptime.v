@@ -363,6 +363,14 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		p.close_scope()
 	}
 	match for_val {
+		'params' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ:  p.table.find_type_idx('MethodParam')
+				pos:  var_pos
+			})
+			kind = .params
+		}
 		'methods' {
 			p.scope.register(ast.Var{
 				name: val_var
@@ -403,7 +411,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 			kind = .attributes
 		}
 		else {
-			p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, `variants` or `attributes`',
+			p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
 				p.prev_tok.pos())
 			return ast.ComptimeFor{}
 		}

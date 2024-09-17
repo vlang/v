@@ -1122,7 +1122,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	} else if left_node is ast.ComptimeCall {
 		if left_node.method_name == 'method' {
 			sym := g.table.sym(g.unwrap_generic(left_node.left_type))
-			if m := sym.find_method(g.comptime.comptime_for_method) {
+			if m := sym.find_method(g.comptime.comptime_for_method.name) {
 				rec_type = m.return_type
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
@@ -1436,7 +1436,7 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 				if call_arg.expr.method_name == 'method' {
 					sym := g.table.sym(g.unwrap_generic(call_arg.expr.left_type))
 					// `app.$method()`
-					if m := sym.find_method(g.comptime.comptime_for_method) {
+					if m := sym.find_method(g.comptime.comptime_for_method.name) {
 						comptime_args[k] = m.return_type
 					}
 				}
@@ -2043,7 +2043,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// Handle `print(x)`
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
-		|| g.comptime.comptime_for_method.len > 0
+		|| g.comptime.comptime_for_method != unsafe { nil }
 		|| g.comptime.is_comptime_var(node.args[0].expr)) {
 		g.inside_interface_deref = true
 		defer {
@@ -2059,7 +2059,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
-		if typ != ast.string_type || g.comptime.comptime_for_method.len > 0 {
+		if typ != ast.string_type || g.comptime.comptime_for_method != unsafe { nil } {
 			expr := node.args[0].expr
 			typ_sym := g.table.sym(typ)
 			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
@@ -2090,7 +2090,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				} else if expr is ast.ComptimeCall {
 					if expr.method_name == 'method' {
 						sym := g.table.sym(g.unwrap_generic(expr.left_type))
-						if m := sym.find_method(g.comptime.comptime_for_method) {
+						if m := sym.find_method(g.comptime.comptime_for_method.name) {
 							typ = m.return_type
 						}
 					}
