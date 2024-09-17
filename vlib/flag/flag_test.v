@@ -501,3 +501,16 @@ fn test_finalize_with_multi_shortargs() {
 	println(additional_args.join_lines())
 	assert additional_args == []
 }
+
+fn test_finalize_with_multi_shortargs_different_order() {
+	mut fp := flag.new_flag_parser(['-ba', '-c'])
+	a_bool := fp.bool('a_bool', `a`, false, '')
+	assert a_bool
+	b_bool := fp.bool('b_bool', `b`, false, '')
+	assert b_bool
+	c_bool := fp.bool('c_bool', `c`, false, '')
+	assert c_bool
+	additional_args := fp.finalize()!
+	println(additional_args.join_lines())
+	assert additional_args == []
+}
