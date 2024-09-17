@@ -837,8 +837,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				node.pos)
 			return ast.void_type
 		}
-		expr := node.args[0].expr
-		if expr is ast.TypeNode {
+		mut expr := node.args[0].expr
+		if mut expr is ast.TypeNode {
+			expr.typ = c.expr(mut expr)
 			mut unwrapped_typ := c.unwrap_generic(expr.typ)
 			if c.needs_unwrap_generic_type(expr.typ) {
 				unwrapped_typ = c.table.unwrap_generic_type(expr.typ, c.table.cur_fn.generic_names,

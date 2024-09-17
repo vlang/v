@@ -3216,8 +3216,13 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
-	f.mark_types_import_as_used(node.typ)
-	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+	if node.stmt == ast.empty_stmt {
+		f.mark_types_import_as_used(node.typ)
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+	} else {
+		f.struct_decl(ast.StructDecl{ fields: (node.stmt as ast.StructDecl).fields },
+			true)
+	}
 }
 
 pub fn (mut f Fmt) type_of(node ast.TypeOf) {

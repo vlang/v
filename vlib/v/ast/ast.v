@@ -130,6 +130,7 @@ pub:
 	pos token.Pos
 pub mut:
 	typ          Type
+	stmt         Stmt = empty_stmt // for anon struct
 	end_comments []Comment // comments that after current type node
 }
 
