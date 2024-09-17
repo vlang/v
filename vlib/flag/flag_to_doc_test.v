@@ -153,9 +153,9 @@ Footer content'
 @[name: 'flag_to_doc_test']
 @[version: '1.0']
 struct DocTest {
-	show_version bool  @[short: v; xdoc: 'Show version and exit']
-	debug_level  int   @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32   @[only: l; xdoc: 'Override this doc string']
+	show_version bool @[short: v; xdoc: 'Show version and exit']
+	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32  @[only: l; xdoc: 'Override this doc string']
 	example      string
 	square       bool
 	multi        int   @[only: m; repeats]

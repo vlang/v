@@ -79,8 +79,8 @@ mut:
 	ends_with   string         = ends_with_nothing
 	contains    string         = contains_nothing
 	output      string
-	before_cb   FnCheck        = unsafe { nil }
-	after_cb    FnCheck        = unsafe { nil }
+	before_cb   FnCheck = unsafe { nil }
+	after_cb    FnCheck = unsafe { nil }
 }
 
 fn get_all_commands() []Command {

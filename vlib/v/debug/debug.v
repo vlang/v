@@ -15,7 +15,7 @@ __global g_debugger = Debugger{}
 @[heap]
 struct Debugger {
 mut:
-	is_tty     bool              = os.is_atty(0) > 0 // is tty?
+	is_tty     bool = os.is_atty(0) > 0 // is tty?
 	exited     bool     // user exiting flag
 	last_cmd   string   // save the last cmd
 	last_args  string   // save the last args

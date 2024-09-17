@@ -18,9 +18,9 @@ struct App {
 mut:
 	tui       &tui.Context = unsafe { nil }
 	points    []Point
-	color     tui.Color    = colors[0]
+	color     tui.Color = colors[0]
 	color_idx int
-	cut_rate  f64          = 5
+	cut_rate  f64 = 5
 }
 
 fn frame(mut app App) {

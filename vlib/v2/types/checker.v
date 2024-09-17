@@ -47,8 +47,8 @@ struct Checker {
 mut:
 	env           &Environment = &Environment{}
 	file_set      &token.FileSet
-	scope         &Scope       = new_scope(unsafe { nil })
-	c_scope       &Scope       = new_scope(unsafe { nil })
+	scope         &Scope = new_scope(unsafe { nil })
+	c_scope       &Scope = new_scope(unsafe { nil })
 	deferred      []Deferred
 	expected_type ?Type
 

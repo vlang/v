@@ -109,7 +109,7 @@ mut:
 	e int
 	//	f  int     [default: 33]
 	g ?int
-	h ?int    = 55
+	h ?int = 55
 }
 
 fn test_option_struct_fields_and_none() {

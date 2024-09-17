@@ -10,17 +10,17 @@ mut:
 	gg          &gg.Context = unsafe { nil }
 	touch       TouchInfo
 	ui          Ui
-	theme       &Theme      = themes[0]
+	theme       &Theme = themes[0]
 	theme_idx   int
 	board       Board
 	undo        []Undo
 	atickers    [4][4]int
-	state       GameState   = .play
-	tile_format TileFormat  = .normal
+	state       GameState  = .play
+	tile_format TileFormat = .normal
 	moves       int
 
 	is_ai_mode bool
-	ai_fpm     u64         = 8
+	ai_fpm     u64 = 8
 }
 
 struct Ui {

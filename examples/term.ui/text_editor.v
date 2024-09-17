@@ -62,7 +62,7 @@ mut:
 	status        string
 	t             int
 	magnet_x      int
-	footer_height int          = 2
+	footer_height int = 2
 	viewport      int
 }
 

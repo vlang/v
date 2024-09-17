@@ -23,7 +23,7 @@ mut:
 	mode   Mode        = Mode.menu
 	width  int
 	height int
-	game   &Game       = unsafe { nil }
+	game   &Game = unsafe { nil }
 	dt     f32
 	ticks  i64
 }
@@ -193,7 +193,7 @@ struct Player {
 mut:
 	game        &Game = unsafe { nil }
 	pos         Vec
-	racket_size int   = 4
+	racket_size int = 4
 	score       int
 	ai          bool
 }

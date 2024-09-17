@@ -21,33 +21,33 @@ pub:
 pub enum Kind {
 	unknown
 	eof
-	name                        // user
-	number                      // 123
-	string                      // 'foo'
-	str_inter                   // 'name=$user.name'
-	chartoken                   // `A` - rune
-	plus                        // +
-	minus                       // -
-	mul                         // *
-	div                         // /
-	mod                         // %
-	xor                         // ^
-	pipe                        // |
-	inc                         // ++
-	dec                         // --
-	and                         // &&
-	logical_or                  // ||
-	not                         // !
-	bit_not                     // ~
-	question                    // ?
-	comma                       // ,
-	semicolon                   // ;
-	colon                       // :
-	arrow                       // <-
-	amp                         // &
-	hash                        // #
-	dollar                      // $
-	at                          // @
+	name       // user
+	number     // 123
+	string     // 'foo'
+	str_inter  // 'name=$user.name'
+	chartoken  // `A` - rune
+	plus       // +
+	minus      // -
+	mul        // *
+	div        // /
+	mod        // %
+	xor        // ^
+	pipe       // |
+	inc        // ++
+	dec        // --
+	and        // &&
+	logical_or // ||
+	not        // !
+	bit_not    // ~
+	question   // ?
+	comma      // ,
+	semicolon  // ;
+	colon      // :
+	arrow      // <-
+	amp        // &
+	hash       // #
+	dollar     // $
+	at         // @
 	str_dollar
 	left_shift                  // <<
 	right_shift                 // >>
@@ -76,17 +76,17 @@ pub enum Kind {
 	lsbr                        // [
 	nilsbr                      // #[
 	rsbr                        // ]
-	eq                          // ==
-	ne                          // !=
-	gt                          // >
-	lt                          // <
-	ge                          // >=
-	le                          // <=
+	eq // ==
+	ne // !=
+	gt // >
+	lt // <
+	ge // >=
+	le // <=
 	comment
 	nl
-	dot                         // .
-	dotdot                      // ..
-	ellipsis                    // ...
+	dot      // .
+	dotdot   // ..
+	ellipsis // ...
 	keyword_beg
 	key_as
 	key_asm
@@ -416,7 +416,7 @@ pub fn (t Token) debug() string {
 // Representation of highest and lowest precedence
 pub enum Precedence {
 	lowest
-	cond   // OR or AND
+	cond // OR or AND
 	in_as
 	assign // =
 	eq     // == or !=

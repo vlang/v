@@ -24,12 +24,12 @@ pub mut:
 	transformer         &transformer.Transformer = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
-	stats_lines         int    // size of backend generated source code in lines
-	stats_bytes         int    // size of backend generated source code in bytes
-	nr_errors           int    // accumulated error count of scanner, parser, checker, and builder
-	nr_warnings         int    // accumulated warning count of scanner, parser, checker, and builder
-	nr_notices          int    // accumulated notice count of scanner, parser, checker, and builder
-	pref                &pref.Preferences        = unsafe { nil }
+	stats_lines         int // size of backend generated source code in lines
+	stats_bytes         int // size of backend generated source code in bytes
+	nr_errors           int // accumulated error count of scanner, parser, checker, and builder
+	nr_warnings         int // accumulated warning count of scanner, parser, checker, and builder
+	nr_notices          int // accumulated notice count of scanner, parser, checker, and builder
+	pref                &pref.Preferences = unsafe { nil }
 	module_search_paths []string
 	parsed_files        []&ast.File
 	//$if windows {

@@ -85,7 +85,7 @@ mut:
 	nbr_of_remaining_template_request shared []RemainingTemplateRequest = []RemainingTemplateRequest{}
 	//	Dtm clock
 	c_time            i64
-	ch_stop_dtm_clock chan bool                         = chan bool{cap: 5}
+	ch_stop_dtm_clock chan bool = chan bool{cap: 5}
 	// Store small information about already cached pages to improve the verification speed of the check_tmpl_and_placeholders_size function.
 	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
 	// Indicates whether the cache file storage directory is located in a temporary OS area

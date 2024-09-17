@@ -218,9 +218,9 @@ pub:
 	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	family               net.AddrFamily = .ip6
 	host                 string
-	port                 int            = 8080
-	show_startup_message bool           = true
-	timeout_in_seconds   int            = 30
+	port                 int  = 8080
+	show_startup_message bool = true
+	timeout_in_seconds   int  = 30
 }
 
 struct FileResponse {

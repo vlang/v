@@ -3,7 +3,7 @@
 import db.sqlite
 
 struct Person {
-	id                int       @[primary; sql: serial]
+	id                int @[primary; sql: serial]
 	age               int
 	brothers          []Brother @[fkey: 'person_id']
 	sisters           []Sister  @[fkey: 'person_id']

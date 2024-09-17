@@ -61,28 +61,28 @@ mut:
 	texture    gfx.Image
 	sampler    gfx.Sampler
 	init_flag  bool
-	mouse_x    int         = -1
-	mouse_y    int         = -1
+	mouse_x    int = -1
+	mouse_y    int = -1
 	scroll_y   int
 
 	state Viewer_state = .scanning
 	// translation
 	tr_flag   bool
-	tr_x      f32          = 0.0
-	tr_y      f32          = 0.0
-	last_tr_x f32          = 0.0
-	last_tr_y f32          = 0.0
+	tr_x      f32 = 0.0
+	tr_y      f32 = 0.0
+	last_tr_x f32 = 0.0
+	last_tr_y f32 = 0.0
 	// scaling
 	sc_flag   bool
-	scale     f32          = 1.0
-	sc_x      f32          = 0.0
-	sc_y      f32          = 0.0
-	last_sc_x f32          = 0.0
-	last_sc_y f32          = 0.0
+	scale     f32 = 1.0
+	sc_x      f32 = 0.0
+	sc_y      f32 = 0.0
+	last_sc_x f32 = 0.0
+	last_sc_y f32 = 0.0
 	// loaded image
 	img_w     int
 	img_h     int
-	img_ratio f32          = 1.0
+	img_ratio f32 = 1.0
 	// item list
 	item_list &Item_list = unsafe { nil }
 	// Text info and help
@@ -102,7 +102,7 @@ mut:
 	logo_sampler gfx.Sampler
 	logo_w       int
 	logo_h       int
-	logo_ratio   f32       = 1.0
+	logo_ratio   f32 = 1.0
 	// string builder
 	bl strings.Builder = strings.new_builder(512)
 }

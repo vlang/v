@@ -144,9 +144,9 @@ enum AtomType {
 
 @[heap]
 pub struct Clipboard {
-	display &C.Display  = unsafe { nil }
+	display &C.Display = unsafe { nil }
 mut:
-	selection Atom   // the selection atom
+	selection Atom // the selection atom
 	window    Window
 	atoms     []Atom
 	mutex     &sync.Mutex = sync.new_mutex()

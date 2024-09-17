@@ -11,13 +11,13 @@ const rain_drops = '0123456789!@#$%^&*()-=+[]{}|;:<>?~bdjpqtvz'.bytes()
 
 struct App {
 mut:
-	ctx          &gg.Context   = unsafe { nil }
+	ctx          &gg.Context = unsafe { nil }
 	rows         int
 	cols         int
 	char_width   int
 	char_height  int
 	screen_size  gg.Size
-	should_calc  bool          = true
+	should_calc  bool = true
 	rain_columns []RainColumn
 	delay        time.Duration = time.millisecond * 100
 }

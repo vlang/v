@@ -10,36 +10,36 @@ import v.util
 @[heap; minify]
 pub struct Table {
 mut:
-	parsing_type string              // name of the type to enable recursive type parsing
+	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
 	type_symbols       []&TypeSymbol
 	type_idxs          map[string]int
 	fns                map[string]Fn
 	iface_types        map[string][]Type
-	dumps              map[int]string      // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports            []string            // List of all imports
-	modules            []string            // Topologically sorted list of all modules registered by the application
-	global_scope       &Scope         = unsafe { nil }
+	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports            []string       // List of all imports
+	modules            []string       // Topologically sorted list of all modules registered by the application
+	global_scope       &Scope = unsafe { nil }
 	cflags             []cflag.CFlag
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
 	interfaces         map[int]InterfaceDecl
 	sumtypes           map[int]SumTypeDecl
-	cmod_prefix        string              // needed for ast.type_to_str(Type) while vfmt; contains `os.`
+	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt             bool
-	used_fns           map[string]bool     // filled in by the checker, when pref.skip_unused = true;
-	used_consts        map[string]bool     // filled in by the checker, when pref.skip_unused = true;
-	used_globals       map[string]bool     // filled in by the checker, when pref.skip_unused = true;
-	used_veb_types     []Type              // veb context types, filled in by checker, when pref.skip_unused = true;
-	veb_res_idx_cache  int                 // Cache of `veb.Result` type
-	veb_ctx_idx_cache  int                 // Cache of `veb.Context` type
-	used_maps          int                 // how many times maps were used, filled in by checker, when pref.skip_unused = true;
+	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
+	veb_res_idx_cache  int             // Cache of `veb.Result` type
+	veb_ctx_idx_cache  int             // Cache of `veb.Context` type
+	used_maps          int             // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
-	cur_fn             &FnDecl        = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
-	cur_concrete_types []Type            // current concrete types, e.g. <int, string>
-	gostmts            int               // how many `go` statements there were in the parsed files.
+	cur_fn             &FnDecl = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_concrete_types []Type // current concrete types, e.g. <int, string>
+	gostmts            int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
 	module_deprecated map[string]bool
@@ -48,7 +48,7 @@ pub mut:
 	pointer_size      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
-	anon_struct_names  map[string]int    // anon struct name -> struct sym idx
+	anon_struct_names  map[string]int // anon struct name -> struct sym idx
 	// counter for anon struct, avoid name conflicts.
 	anon_struct_counter int
 }

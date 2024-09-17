@@ -6,7 +6,7 @@ module pref
 import os
 
 pub enum OS {
-	_auto   // Reserved so .macos cannot be misunderstood as auto
+	_auto // Reserved so .macos cannot be misunderstood as auto
 	ios
 	macos
 	linux
@@ -19,7 +19,7 @@ pub enum OS {
 	js_browser
 	js_freestanding
 	android
-	termux  // like android, but compiling/running natively on the devices
+	termux // like android, but compiling/running natively on the devices
 	solaris
 	qnx
 	serenity

@@ -83,7 +83,7 @@ mut:
 	dw_flags           u32
 	w_show_window      u16
 	cb_reserved2       u16
-	lp_reserved2       &u8  = unsafe { nil }
+	lp_reserved2       &u8 = unsafe { nil }
 	h_std_input        voidptr
 	h_std_output       voidptr
 	h_std_error        voidptr

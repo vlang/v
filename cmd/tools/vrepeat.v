@@ -56,9 +56,9 @@ mut:
 	warmup                  int
 	show_help               bool
 	show_output             bool
-	use_newline             bool   // use \n instead of \r, so the last line is not overwritten
+	use_newline             bool // use \n instead of \r, so the last line is not overwritten
 	fail_on_regress_percent int
-	fail_on_maxtime         int    // in ms
+	fail_on_maxtime         int // in ms
 	verbose                 bool
 	commands                []string
 	results                 []CmdResult
@@ -66,9 +66,9 @@ mut:
 	cmd_params              map[string][]string
 	cline                   string // a terminal clearing line
 	cgoback                 string
-	nmins                   int    // number of minimums to discard
-	nmaxs                   int    // number of maximums to discard
-	ignore_failed           bool   // ignore commands that exit with != 0 exit code
+	nmins                   int  // number of minimums to discard
+	nmaxs                   int  // number of maximums to discard
+	ignore_failed           bool // ignore commands that exit with != 0 exit code
 }
 
 fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {

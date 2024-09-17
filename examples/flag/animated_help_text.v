@@ -2,9 +2,9 @@ import term.ui as tui
 import flag
 
 struct DocTest {
-	show_version bool  @[short: v; xdoc: 'Show version and exit']
-	debug_level  int   @[long: debug; short: d; xdoc: 'Debug level']
-	level        f32   @[only: l; xdoc: 'Do not show this']
+	show_version bool @[short: v; xdoc: 'Show version and exit']
+	debug_level  int  @[long: debug; short: d; xdoc: 'Debug level']
+	level        f32  @[only: l; xdoc: 'Do not show this']
 	example      string
 	square       bool
 	multi        int   @[only: m; repeats]
@@ -16,9 +16,9 @@ struct App {
 mut:
 	tui       &tui.Context = unsafe { nil }
 	frame     int
-	square    string       = '.____.\n|    |\n|    |\n|____|'
-	pad       int          = 1
-	direction int          = 1
+	square    string = '.____.\n|    |\n|    |\n|____|'
+	pad       int    = 1
+	direction int    = 1
 }
 
 fn event(e &tui.Event, mut app App) {

@@ -58,7 +58,7 @@ fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
 // part of snake's body representation
 struct BodyPart {
 mut:
-	pos    Vec          = Vec{
+	pos    Vec = Vec{
 		x: block_size
 		y: block_size
 	}
@@ -72,7 +72,7 @@ mut:
 	app       &App = unsafe { nil }
 	direction Orientation
 	body      []BodyPart
-	velocity  Vec  = Vec{
+	velocity  Vec = Vec{
 		x: 0
 		y: 0
 	}
@@ -239,7 +239,7 @@ fn (s Snake) draw() {
 // rat representation
 struct Rat {
 mut:
-	pos      Vec          = Vec{
+	pos      Vec = Vec{
 		x: block_size
 		y: block_size
 	}
@@ -262,8 +262,8 @@ mut:
 	rat    Rat
 	width  int
 	height int
-	redraw bool            = true
-	state  GameState       = .game
+	redraw bool      = true
+	state  GameState = .game
 }
 
 // new_game setups the rat and snake for play

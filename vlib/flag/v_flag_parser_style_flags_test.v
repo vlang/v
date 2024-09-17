@@ -8,10 +8,10 @@ const exe_and_v_flag_parser_args_with_tail = ['/path/to/exe', '--version', '-p',
 const error_wrong_assignment_flags = ['--o=error']
 
 struct Prefs {
-	version    bool     @[short: v]
-	is_live    bool     @[long: live]
-	is_done    bool     @[long: done]
-	dump_usage bool     @[long: 'help'; short: h]
+	version    bool @[short: v]
+	is_live    bool @[long: live]
+	is_done    bool @[long: done]
+	dump_usage bool @[long: 'help'; short: h]
 	test       string
 	pop_flags  []string @[long: pop; short: p]
 	tail       []string @[tail]

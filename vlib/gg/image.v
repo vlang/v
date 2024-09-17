@@ -10,7 +10,7 @@ pub struct DrawImageConfig {
 pub mut:
 	flip_x    bool // set to true, if you need to flip the image horizontally (around a vertical axis), <- will become ->
 	flip_y    bool // set to true, if you need to flip the image vertically (around a horizontal axiz), -\/- will become -/\-
-	img       &Image      = unsafe { nil }
+	img       &Image = unsafe { nil }
 	img_id    int
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering

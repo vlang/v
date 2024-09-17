@@ -42,10 +42,10 @@ pub mut:
 // base object parts struct
 pub struct ObjPart {
 pub mut:
-	v  []m4.Vec4              // position
-	vn []m4.Vec4              // normals
-	vp []m4.Vec4              // vertex params
-	vt []m4.Vec4              // textures
+	v  []m4.Vec4 // position
+	vn []m4.Vec4 // normals
+	vp []m4.Vec4 // vertex params
+	vt []m4.Vec4 // textures
 
 	name          string
 	part          []Part                 // parts of the ObjPart

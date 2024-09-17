@@ -77,11 +77,11 @@ pub enum DOMModifier {
 pub enum DOMKeyCode {
 	invalid       = 0
 	space         = 32
-	apostrophe    = 39  //'
-	comma         = 44  //,
-	minus         = 45  //-
-	period        = 46  //.
-	slash         = 47  ///
+	apostrophe    = 39 //'
+	comma         = 44 //,
+	minus         = 45 //-
+	period        = 46 //.
+	slash         = 47 ///
 	_0            = 48
 	_1            = 49
 	_2            = 50
@@ -92,8 +92,8 @@ pub enum DOMKeyCode {
 	_7            = 55
 	_8            = 56
 	_9            = 57
-	semicolon     = 59  //;
-	equal         = 61  //=
+	semicolon     = 59 //;
+	equal         = 61 //=
 	a             = 65
 	b             = 66
 	c             = 67
@@ -234,9 +234,9 @@ pub:
 	scroll_fn  FNEvent   = unsafe { nil }
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen    bool
-	scale         f32       = 1.0
+	scale         f32 = 1.0
 	sample_count  int
-	swap_interval int       = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
+	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
 	// ved needs this
 	// init_text bool
 	font_path             string
@@ -250,9 +250,9 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int       = 1        // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int       = 2048     // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	html5_canvas_name            string    = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
+	max_dropped_files            int    = 1        // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int    = 2048     // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
 }
 
 const size = Size{0, 0}
@@ -271,7 +271,7 @@ pub mut:
 	scale         f32 = 1.0
 	width         int
 	height        int
-	window        JS.Window                   @[noinit]
+	window        JS.Window @[noinit]
 	config        Config
 	user_data     voidptr
 	ui_mode       bool

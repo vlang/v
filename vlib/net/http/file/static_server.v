@@ -16,7 +16,7 @@ pub mut:
 	filter_myexe   bool          = true             // whether to filter the name of the static file executable from the automatic folder listings for / . Useful with `v -e 'import net.http.file; file.serve()'`
 	on             string        = 'localhost:4001' // on which address:port to listen for http requests
 	workers        int           = runtime.nr_jobs() // how many worker threads to use for serving the responses, by default it is limited to the number of available cores; can be controlled with setting VJOBS
-	shutdown_after time.Duration = time.infinite    // after this time has passed, the webserver will gracefully shutdown on its own
+	shutdown_after time.Duration = time.infinite // after this time has passed, the webserver will gracefully shutdown on its own
 }
 
 // serve will start a static files web server.

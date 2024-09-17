@@ -81,8 +81,8 @@ pub mut:
 	vargs         string
 	fail_fast     bool
 	benchmark     benchmark.Benchmark
-	rm_binaries   bool     = true
-	build_tools   bool            // builds only executables in cmd/tools; used by `v build-tools'
+	rm_binaries   bool = true
+	build_tools   bool // builds only executables in cmd/tools; used by `v build-tools'
 	silent_mode   bool
 	show_stats    bool
 	show_asserts  bool
@@ -92,7 +92,7 @@ pub mut:
 	nmessage_idx  int             // currently printed message index
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
-	hash          string          // used as part of the name of the temporary directory created for tests, to ease cleanup
+	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
 
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 }

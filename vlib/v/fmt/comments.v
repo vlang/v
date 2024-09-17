@@ -20,7 +20,7 @@ pub struct CommentsOptions {
 	has_nl    bool = true
 	same_line bool
 	level     CommentsLevel
-	prev_line int  = -1
+	prev_line int = -1
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {

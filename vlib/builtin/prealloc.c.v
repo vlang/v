@@ -25,7 +25,7 @@ mut:
 	start     &u8           = 0
 	previous  &VMemoryBlock = 0
 	remaining isize
-	current   &u8           = 0
+	current   &u8 = 0
 	mallocs   int
 }
 

@@ -24,8 +24,8 @@ mut:
 	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
 	family net.AddrFamily = .ip
-	port   int                   // port used as listen to incoming connections
-	is_ssl bool                  // true if secure connection (not supported yet on server)
+	port   int  // port used as listen to incoming connections
+	is_ssl bool // true if secure connection (not supported yet on server)
 pub mut:
 	server_state shared ServerState
 }

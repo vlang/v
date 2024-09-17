@@ -9,7 +9,7 @@ pub enum Flags {
 @[flag]
 pub enum Align {
 	// Horizontal align
-	left     // Default
+	left // Default
 	center
 	right
 	// Vertical align

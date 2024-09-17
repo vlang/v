@@ -27,7 +27,7 @@ mut:
 	}
 
 	sel  Selection
-	segs int         = 8
+	segs int = 8
 }
 
 fn main() {

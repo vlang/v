@@ -9,7 +9,7 @@ struct Config {
 	device   []string @[short: d]
 	paths    []string @[tail]
 mut:
-	amount   int  = 1
+	amount   int = 1
 	mix      bool
 	mix_hard bool = true
 }

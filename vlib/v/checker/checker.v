@@ -43,8 +43,8 @@ pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 
-	table &ast.Table      = unsafe { nil }
-	file  &ast.File       = unsafe { nil }
+	table &ast.Table = unsafe { nil }
+	file  &ast.File  = unsafe { nil }
 
 	nr_errors     int
 	nr_warnings   int
@@ -56,34 +56,34 @@ pub mut:
 	warning_lines map[string]bool // dedup warns
 	notice_lines  map[string]bool // dedup notices
 	error_details []string
-	should_abort  bool            // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
+	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 
 	expected_type              ast.Type
-	expected_or_type           ast.Type        // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type         ast.Type        // if/match is_expr: expected_type
-	mod                        string          // current module name
+	expected_or_type           ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type         ast.Type // if/match is_expr: expected_type
+	mod                        string   // current module name
 	const_var                  &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                 []string
 	const_names                []string
 	global_names               []string
-	locked_names               []string  // vars that are currently locked
-	rlocked_names              []string  // vars that are currently read-locked
-	in_for_count               int       // if checker is currently in a for loop
+	locked_names               []string // vars that are currently locked
+	rlocked_names              []string // vars that are currently read-locked
+	in_for_count               int      // if checker is currently in a for loop
 	returns                    bool
 	scope_returns              bool
-	is_builtin_mod             bool      // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
-	is_just_builtin_mod        bool      // true only inside 'builtin'
-	is_generated               bool      // true for `@[generated] module xyz` .v files
-	inside_unsafe              bool      // true inside `unsafe {}` blocks
-	inside_const               bool      // true inside `const ( ... )` blocks
-	inside_anon_fn             bool      // true inside `fn() { ... }()`
-	inside_lambda              bool      // true inside `|...| ...`
-	inside_ref_lit             bool      // true inside `a := &something`
-	inside_defer               bool      // true inside `defer {}` blocks
-	inside_return              bool      // true inside `return ...` blocks
-	inside_fn_arg              bool      // `a`, `b` in `a.f(b)`
-	inside_ct_attr             bool      // true inside `[if expr]`
-	inside_x_is_type           bool      // true inside the Type expression of `if x is Type {`
+	is_builtin_mod             bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_just_builtin_mod        bool // true only inside 'builtin'
+	is_generated               bool // true for `@[generated] module xyz` .v files
+	inside_unsafe              bool // true inside `unsafe {}` blocks
+	inside_const               bool // true inside `const ( ... )` blocks
+	inside_anon_fn             bool // true inside `fn() { ... }()`
+	inside_lambda              bool // true inside `|...| ...`
+	inside_ref_lit             bool // true inside `a := &something`
+	inside_defer               bool // true inside `defer {}` blocks
+	inside_return              bool // true inside `return ...` blocks
+	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
+	inside_ct_attr             bool // true inside `[if expr]`
+	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
 	inside_generic_struct_init bool
 	cur_struct_generic_types   []ast.Type
 	cur_struct_concrete_types  []ast.Type
@@ -101,35 +101,35 @@ mut:
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
 	// files                            []ast.File
-	expr_level                       int                          // to avoid infinite recursion segfaults due to compiler bugs
-	type_level                       int                          // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
-	ensure_generic_type_level        int                          // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
+	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
+	type_level                       int // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
+	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
-	cur_anon_fn                      &ast.AnonFn     = unsafe { nil }
-	vmod_file_content                string                       // needed for @VMOD_FILE, contents of the file, *NOT its path**
-	loop_labels                      []string                     // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
-	vweb_gen_types                   []ast.Type                   // vweb route checks
-	timers                           &util.Timers    = util.get_timers()
-	comptime_info_stack              []comptime.ComptimeInfo      // stores the values from the above on each $for loop, to make nesting them easier
+	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
+	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
+	loop_labels                      []string   // filled, when inside labelled for loops: `a_label: for x in 0..10 {`
+	vweb_gen_types                   []ast.Type // vweb route checks
+	timers                           &util.Timers = util.get_timers()
+	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
 	comptime                         comptime.ComptimeInfo
-	fn_scope                         &ast.Scope      = unsafe { nil }
+	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
-	match_exhaustive_cutoff_limit    int             = 10
+	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
-	prevent_sum_type_unwrapping_once bool                         // needed for assign new values to sum type, stopping unwrapping then
+	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	using_new_err_struct             bool
-	need_recheck_generic_fns         bool                         // need recheck generic fns because there are cascaded nested generic fn
-	inside_sql                       bool                         // to handle sql table fields pseudo variables
+	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
+	inside_sql                       bool // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
-	inside_if_guard                  bool                         // true inside the guard condition of `if x := opt() {}`
+	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
 	// doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign   bool
-	comptime_call_pos int                          // needed for correctly checking use before decl for templates
-	goto_labels       map[string]ast.GotoLabel     // to check for unused goto labels
+	comptime_call_pos int                      // needed for correctly checking use before decl for templates
+	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
 	field_data_type   ast.Type
 	variant_data_type ast.Type

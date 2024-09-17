@@ -13,6 +13,7 @@ mut:
 struct AlignConfig {
 pub:
 	ignore_newline bool // ignore newline or comment
+	use_break_line bool
 	use_threshold  bool
 	threshold      int = 25
 }
@@ -44,7 +45,8 @@ fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
 		return
 	}
 	i := fa.infos.len - 1
-	if !fa.cfg.ignore_newline && has_break_line {
+	if !fa.cfg.ignore_newline && ((fa.cfg.use_break_line && has_break_line)
+		|| (!fa.cfg.use_break_line && line - fa.infos[i].line_nr > 1)) {
 		fa.add_new_info(len, line)
 		return
 	}

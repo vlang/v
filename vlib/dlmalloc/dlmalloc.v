@@ -218,7 +218,7 @@ pub:
 
 pub struct Dlmalloc {
 	system_allocator Allocator
-	max_request      usize  = 4294901657
+	max_request      usize = 4294901657
 mut:
 	// bin maps
 	smallmap u32 // bin map for small bins

@@ -57,7 +57,7 @@ pub:
 	font_size     int     // TODO: implement or deprecate
 	create_window bool    // TODO: implement or deprecate
 	// window_user_ptr voidptr
-	window_title      string   // the desired title of the window
+	window_title      string // the desired title of the window
 	html5_canvas_name string = 'canvas'
 	borderless_window bool     // TODO: implement or deprecate
 	always_on_top     bool     // TODO: implement or deprecate
@@ -85,9 +85,9 @@ pub:
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen    bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
-	scale         f32       = 1.0
-	sample_count  int  // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
-	swap_interval int       = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
+	scale         f32 = 1.0
+	sample_count  int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
 	// ved needs this
 	// init_text bool
 	font_path             string
@@ -101,8 +101,8 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int       = 1    // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int       = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	max_dropped_files            int = 1    // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 
 	min_width  int // desired minimum width of the window
 	min_height int // desired minimum height of the window
@@ -157,7 +157,7 @@ mut:
 pub:
 	native_rendering bool
 pub mut:
-	scale       f32                = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
+	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
 	clear_pass  gfx.PassAction
@@ -165,10 +165,10 @@ pub mut:
 	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
 	user_data   voidptr
-	ft          &FT                = unsafe { nil }
+	ft          &FT = unsafe { nil }
 	font_inited bool
-	ui_mode     bool         // do not redraw everything 60 times/second, but only when the user requests
-	frame       u64          // the current frame counted from the start of the application; always increasing
+	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
+	frame       u64  // the current frame counted from the start of the application; always increasing
 
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
@@ -639,7 +639,7 @@ pub mut:
 		align:          .center
 		vertical_align: .middle
 	}
-	background_color gx.Color   = gx.Color{
+	background_color gx.Color = gx.Color{
 		r: 0
 		g: 0
 		b: 0

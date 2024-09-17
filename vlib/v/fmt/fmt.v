@@ -18,17 +18,17 @@ pub:
 	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	file               ast.File
-	table              &ast.Table        = unsafe { nil }
+	table              &ast.Table = unsafe { nil }
 	is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
 	indent             int
 	empty_line         bool
-	line_len           int               // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
-	buffering          bool              // disables line wrapping for exprs that will be analyzed later
-	par_level          int               // how many parentheses are put around the current expression
-	array_init_break   []bool            // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int               // current level of hierarchy in array init
+	line_len           int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
+	buffering          bool   // disables line wrapping for exprs that will be analyzed later
+	par_level          int    // how many parentheses are put around the current expression
+	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth   int    // current level of hierarchy in array init
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
@@ -39,19 +39,19 @@ pub mut:
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
-	single_line_fields bool              // should struct fields be on a single line
+	single_line_fields bool // should struct fields be on a single line
 	in_lambda_depth    int
 	inside_const       bool
 	inside_unsafe      bool
 	inside_comptime_if bool
 	is_assign          bool
 	is_index_expr      bool
-	is_mbranch_expr    bool              // match a { x...y { } }
+	is_mbranch_expr    bool // match a { x...y { } }
 	is_struct_init     bool
-	fn_scope           &ast.Scope        = unsafe { nil }
+	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 	format_state       FormatState
-	source_text        string            // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
+	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
 @[params]
@@ -1039,9 +1039,9 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	f.writeln('enum ${name} {')
 	f.comments(node.comments, same_line: true, level: .indent)
 
-	mut value_align := new_field_align()
-	mut attr_align := new_field_align()
-	mut comment_align := new_field_align()
+	mut value_align := new_field_align(use_break_line: true)
+	mut attr_align := new_field_align(use_threshold: true)
+	mut comment_align := new_field_align(use_threshold: true)
 	for field in node.fields {
 		if field.has_expr {
 			value_align.add_info(field.name.len, field.pos.line_nr, field.has_break_line)
@@ -1397,7 +1397,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 	}
 
-	mut type_align := new_field_align()
+	mut type_align := new_field_align(use_break_line: true)
 	mut comment_align := new_field_align(use_threshold: true)
 	mut default_expr_align := new_field_align(use_threshold: true)
 	mut attr_align := new_field_align(use_threshold: true)

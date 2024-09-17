@@ -26,7 +26,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.writeln(' {}')
 		return
 	}
-	mut type_align := new_field_align()
+	mut type_align := new_field_align(use_break_line: true)
 	mut default_expr_align := new_field_align(use_threshold: true)
 	mut attr_align := new_field_align(use_threshold: true)
 	mut comment_align := new_field_align(use_threshold: true)
@@ -278,7 +278,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 				f.comments(node.update_expr_comments, same_line: true, has_nl: true, level: .keep)
 			}
-			mut value_align := new_field_align()
+			mut value_align := new_field_align(use_break_line: true)
 			mut comment_align := new_field_align(use_threshold: true)
 			for init_field in node.init_fields {
 				value_align.add_info(init_field.name.len, init_field.pos.line_nr, init_field.has_break_line)

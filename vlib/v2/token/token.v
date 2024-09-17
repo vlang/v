@@ -4,32 +4,32 @@
 module token
 
 pub enum Token {
-	amp                         // &
-	and                         // &&
-	and_assign                  // &=
-	arrow                       // <-
-	assign                      // =
+	amp        // &
+	and        // &&
+	and_assign // &=
+	arrow      // <-
+	assign     // =
 	// at // @
 	attribute
-	bit_not                     // ~
-	char                        // `A` - rune
-	colon                       // :
-	comma                       // ,
+	bit_not // ~
+	char    // `A` - rune
+	colon   // :
+	comma   // ,
 	comment
-	dec                         // --
-	decl_assign                 // :=
-	div                         // /
-	div_assign                  // /=
-	dollar                      // $
-	dot                         // .
-	dotdot                      // ..
-	ellipsis                    // ...
+	dec         // --
+	decl_assign // :=
+	div         // /
+	div_assign  // /=
+	dollar      // $
+	dot         // .
+	dotdot      // ..
+	ellipsis    // ...
 	eof
-	eq                          // ==
-	ge                          // >=
-	gt                          // >
-	hash                        // #
-	inc                         // ++
+	eq   // ==
+	ge   // >=
+	gt   // >
+	hash // #
+	inc  // ++
 	key_as
 	key_asm
 	key_assert
@@ -112,10 +112,10 @@ pub enum Token {
 	rsbr                        // ]
 	semicolon                   // ;
 	str_dollar
-	string                      // 'foo'
+	string // 'foo'
 	unknown
-	xor                         // ^
-	xor_assign                  // ^=
+	xor        // ^
+	xor_assign // ^=
 }
 
 pub enum BindingPower {

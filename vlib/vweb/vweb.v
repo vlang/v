@@ -181,7 +181,7 @@ pub mut:
 	header http.Header // response headers
 	// ? It doesn't seem to be used anywhere
 	form_error                  string
-	livereload_poll_interval_ms int          = 250
+	livereload_poll_interval_ms int = 250
 }
 
 struct FileData {
@@ -529,10 +529,10 @@ pub struct RunParams {
 pub:
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	host                 string
-	port                 int            = 8080
-	nr_workers           int            = runtime.nr_jobs()
-	pool_channel_slots   int            = 1000
-	show_startup_message bool           = true
+	port                 int  = 8080
+	nr_workers           int  = runtime.nr_jobs()
+	pool_channel_slots   int  = 1000
+	show_startup_message bool = true
 	startup_message      string
 }
 

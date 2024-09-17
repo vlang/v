@@ -22,9 +22,9 @@ mut:
 	is_help    bool
 	is_worker  bool
 	is_verbose bool
-	is_silent  bool     // do not print any status/progress during processing, just failures.
-	is_linear  bool     // print linear progress log, without trying to do term cursor up + \r msg. Easier to use in a CI job
-	show_src   bool     // show the partial source, that cause the parser to panic/fault, when it happens.
+	is_silent  bool // do not print any status/progress during processing, just failures.
+	is_linear  bool // print linear progress log, without trying to do term cursor up + \r msg. Easier to use in a CI job
+	show_src   bool // show the partial source, that cause the parser to panic/fault, when it happens.
 	timeout_ms int
 	myself     string   // path to this executable, so the supervisor can launch worker processes
 	all_paths  []string // all files given to the supervisor process
@@ -34,8 +34,8 @@ mut:
 	// parser context in the worker processes:
 	table      ast.Table
 	pref       &pref.Preferences = unsafe { nil }
-	period_ms  int      // print periodic progress
-	stop_print bool     // stop printing the periodic progress
+	period_ms  int  // print periodic progress
+	stop_print bool // stop printing the periodic progress
 }
 
 fn main() {

@@ -78,9 +78,9 @@ enum RerunCommand {
 
 struct Context {
 mut:
-	pid             int      // the pid of the current process; useful while debugging manager/worker interactions
-	is_worker       bool     // true in the workers, false in the manager process
-	check_period_ms int         = scan_period_ms
+	pid             int  // the pid of the current process; useful while debugging manager/worker interactions
+	is_worker       bool // true in the workers, false in the manager process
+	check_period_ms int = scan_period_ms
 	vexe            string
 	affected_paths  []string
 	vfiles          []VFileStat

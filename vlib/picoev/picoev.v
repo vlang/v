@@ -33,7 +33,7 @@ pub const picoev_readwrite = 3
 pub struct Target {
 pub mut:
 	fd      int // file descriptor
-	loop_id int                    = -1
+	loop_id int = -1
 	events  u32
 	cb      fn (int, int, voidptr) = unsafe { nil }
 	// used internally by the kqueue implementation
@@ -65,9 +65,9 @@ pub struct Picoev {
 	raw_callback   fn (mut Picoev, int, int) = unsafe { nil }
 
 	timeout_secs int
-	max_headers  int                       = 100
-	max_read     int                       = 4096
-	max_write    int                       = 8192
+	max_headers  int = 100
+	max_read     int = 4096
+	max_write    int = 8192
 
 	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback @[deprecated: 'use `error_callback` instead']
 	raw_cb fn (mut Picoev, int, int) = unsafe { nil } @[deprecated: 'use `raw_callback` instead']

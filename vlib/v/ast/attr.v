@@ -21,9 +21,9 @@ pub:
 	has_arg bool
 	arg     string // [name: arg]
 	kind    AttrKind
-	ct_opt  bool   // true for [if user_defined_name?]
+	ct_opt  bool // true for [if user_defined_name?]
 	pos     token.Pos
-	has_at  bool   // new syntax `@[attr]`
+	has_at  bool // new syntax `@[attr]`
 pub mut:
 	ct_expr   Expr // .kind == comptime_define, for [if !name]
 	ct_evaled bool // whether ct_skip has been evaluated already

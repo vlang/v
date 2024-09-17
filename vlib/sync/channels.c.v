@@ -35,8 +35,8 @@ pub struct Channel {
 	objsize   u32
 mut:
 	// atomic
-	writesem           Semaphore          // to wake thread that wanted to write, but buffer was full
-	readsem            Semaphore          // to wake thread that wanted to read, but buffer was empty
+	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
+	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
 	writesem_im        Semaphore
 	readsem_im         Semaphore
 	write_adr          C.atomic_uintptr_t // if != NULL the next obj can be written here without wait

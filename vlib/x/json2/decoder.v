@@ -67,7 +67,7 @@ pub mut:
 	tok          Token
 	next_tok     Token
 	n_level      int
-	convert_type bool     = true
+	convert_type bool = true
 }
 
 fn (mut p Parser) next() {

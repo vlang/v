@@ -44,8 +44,8 @@ pub mut:
 	client_state      shared ClientState // current state of connection
 	// logger used to log messages
 	logger        &log.Logger = default_logger
-	resource_name string             // name of current resource
-	last_pong_ut  i64                // last time in unix time we got a pong message
+	resource_name string // name of current resource
+	last_pong_ut  i64    // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake

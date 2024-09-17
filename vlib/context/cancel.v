@@ -26,7 +26,7 @@ mut:
 	mutex    &sync.Mutex = sync.new_mutex()
 	done     chan int
 	children map[string]Canceler
-	err      IError      = none
+	err      IError = none
 }
 
 // with_cancel returns a copy of parent with a new done channel. The returned

@@ -82,34 +82,34 @@ pub mut:
 	backend     Backend
 	build_mode  BuildMode
 	arch        Arch
-	output_mode OutputMode            = .stdout
+	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_glibc           bool     // if GLIBC will be linked
-	is_musl            bool     // if MUSL will be linked
-	is_test            bool     // `v test string_test.v`
-	is_script          bool     // single file mode (`v program.v`), main function can be skipped
-	is_vsh             bool     // v script (`file.vsh`) file, the `os` module should be made global
-	raw_vsh_tmp_prefix string   // The prefix used for executables, when a script lacks the .vsh extension
-	is_livemain        bool     // main program that contains live/hot code
-	is_liveshared      bool     // a shared library, that will be used in a -live main program
-	is_shared          bool     // an ordinary shared library, -shared, no matter if it is live or not
-	is_o               bool     // building an .o file
-	is_prof            bool     // benchmark every function
-	is_prod            bool     // use "-O2"
+	is_glibc           bool   // if GLIBC will be linked
+	is_musl            bool   // if MUSL will be linked
+	is_test            bool   // `v test string_test.v`
+	is_script          bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh             bool   // v script (`file.vsh`) file, the `os` module should be made global
+	raw_vsh_tmp_prefix string // The prefix used for executables, when a script lacks the .vsh extension
+	is_livemain        bool   // main program that contains live/hot code
+	is_liveshared      bool   // a shared library, that will be used in a -live main program
+	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_o               bool   // building an .o file
+	is_prof            bool   // benchmark every function
+	is_prod            bool   // use "-O2"
 	is_repl            bool
-	is_eval_argument   bool     // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
-	is_run             bool     // compile and run a v program, passing arguments to it, and deleting the executable afterwards
-	is_crun            bool     // similar to run, but does not recompile the executable, if there were no changes to the sources
-	is_debug           bool     // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines          bool     // turned on by -g (it slows down .tmp.c generation slightly).
-	is_stats           bool     // `v -stats file.v` will produce more detailed statistics for the file that is compiled
-	show_asserts       bool     // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
-	show_timings       bool     // show how much time each compiler stage took
+	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
+	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
+	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
+	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_vlines          bool // turned on by -g (it slows down .tmp.c generation slightly).
+	is_stats           bool // `v -stats file.v` will produce more detailed statistics for the file that is compiled
+	show_asserts       bool // `VTEST_SHOW_ASSERTS=1 v file_test.v` will show details about the asserts done by a test file. Also activated for `-stats` and `-show-asserts`.
+	show_timings       bool // show how much time each compiler stage took
 	is_fmt             bool
 	is_vet             bool
-	is_vweb            bool     // skip _ var warning in templates
+	is_vweb            bool // skip _ var warning in templates
 	is_ios_simulator   bool
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
@@ -131,7 +131,7 @@ pub mut:
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool // use Clang's new "-fsanitize" option
 	sourcemap              bool // JS Backend: -sourcemap will create a source map - default false
-	sourcemap_inline       bool                  = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
+	sourcemap_inline       bool = true // JS Backend: -sourcemap-inline will embed the source map in the generated JaaScript file -  currently default true only implemented
 	sourcemap_src_included bool   // JS Backend: -sourcemap-src-included includes V source code in source map -  default false
 	show_cc                bool   // -showcc, print cc command
 	show_c_output          bool   // -show-c-output, print all cc output even if the code was compiled correctly
@@ -142,9 +142,9 @@ pub mut:
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
-	retry_compilation      bool                  = true // retry the compilation with another C compiler, if tcc fails.
+	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
-	macosx_version_min     string                = '0' // relevant only for macos and ios targets
+	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
 	cflags  string // Additional options which will be passed to the C compiler *before* other options.
 	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
@@ -157,24 +157,24 @@ pub mut:
 	cppcompiler               string       // the name of the CPP compiler used
 	third_party_option        string
 	building_v                bool
-	no_bounds_checking        bool         // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
-	autofree                  bool         // `v -manualfree` => false, `v -autofree` => true; false by default for now.
-	print_autofree_vars       bool         // print vars that are not freed by autofree
-	print_autofree_vars_in_fn string       // same as above, but only for a single fn
+	no_bounds_checking        bool   // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
+	autofree                  bool   // `v -manualfree` => false, `v -autofree` => true; false by default for now.
+	print_autofree_vars       bool   // print vars that are not freed by autofree
+	print_autofree_vars_in_fn string // same as above, but only for a single fn
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	trace_calls bool     // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
 	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
 	compress    bool     // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
-	no_builtin       bool     // Skip adding the `builtin` module implicitly. The generated C code may not compile.
-	enable_globals   bool     // allow __global for low level code
-	is_bare          bool     // set by -freestanding
-	bare_builtin_dir string   // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
-	no_preludes      bool     // Prevents V from generating preludes in resulting .c files
-	custom_prelude   string   // Contents of custom V prelude that will be prepended before code in resulting .c files
-	cmain            string   // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
+	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
+	enable_globals   bool   // allow __global for low level code
+	is_bare          bool   // set by -freestanding
+	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
+	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
+	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path      []string
-	output_cross_c   bool     // true, when the user passed `-os cross` or `-cross`
+	output_cross_c   bool // true, when the user passed `-os cross` or `-cross`
 	output_es5       bool
 	prealloc         bool
 	vroot            string
@@ -182,8 +182,8 @@ pub mut:
 	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
 	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
-	path             string   // Path to file/folder to compile
-	line_info        string   // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
+	path             string // Path to file/folder to compile
+	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo            LineInfo
 
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
@@ -224,7 +224,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
-	message_limit       int                   = 150 // the maximum amount of warnings/errors/notices that will be accumulated
+	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	use_coroutines      bool // experimental coroutines
 	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend

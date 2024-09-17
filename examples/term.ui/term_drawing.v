@@ -87,7 +87,7 @@ const help_3 = '╰────────╯'
 
 struct App {
 mut:
-	ui                  &ui.Context  = unsafe { nil }
+	ui                  &ui.Context = unsafe { nil }
 	header_text         []string
 	mouse_pos           Point
 	msg                 string

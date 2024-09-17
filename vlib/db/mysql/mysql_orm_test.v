@@ -13,7 +13,7 @@ struct TestCustomSqlType {
 }
 
 struct TestCustomWrongSqlType {
-	id      int    @[primary; sql: serial]
+	id      int @[primary; sql: serial]
 	custom  string
 	custom1 string @[sql_type: 'VARCHAR']
 	custom2 string @[sql_type: 'money']
@@ -22,7 +22,7 @@ struct TestCustomWrongSqlType {
 
 struct TestTimeType {
 mut:
-	id         int       @[primary; sql: serial]
+	id         int @[primary; sql: serial]
 	username   string
 	created_at time.Time @[sql_type: 'DATETIME']
 	updated_at string    @[sql_type: 'DATETIME']
