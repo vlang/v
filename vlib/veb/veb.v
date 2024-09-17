@@ -223,7 +223,6 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 		$if trace_picoev_callback ? {
 			eprintln('> read event on file descriptor ${fd}')
 		}
-		// TODO figure out the POST repeat in ev_callback
 		// println('ev_callback fd=${fd} params.routes=${params.routes.len}')
 		handle_read[A, X](mut pv, mut params, fd)
 	} else {
@@ -329,6 +328,7 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 // and the connection stays open until it is ready to read again
 @[direct_array_access; manualfree]
 fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
+	// println('handle_read() fd=${fd} params.routes=${params.routes}')
 	mut conn := &net.TcpConn{
 		sock:        net.tcp_socket_from_handle_raw(fd)
 		handle:      fd
@@ -523,6 +523,7 @@ fn handle_complete_request(should_close bool, mut pv picoev.Picoev, fd int) {
 }
 
 fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?&Context {
+	// println('handle_request() params.routes=${params.routes}')
 	mut global_app := unsafe { &A(params.global_app) }
 
 	// TODO: change this variable to include the total wait time over each network cycle
@@ -594,7 +595,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
-	// println('\n\nHANDLE ROUTE')
+	// println('\n\nhandle_route() url=${url} routes=${routes}')
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
@@ -712,13 +713,16 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								args << data[param.name]
 							}
 
+							// println('m1')
 							app.$method(mut user_context, args)
 						} else {
+							// println('m2')
 							app.$method(mut user_context)
 						}
 						return
 					}
 
+					// println('route_words=${route_words} method=${method}')
 					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
@@ -741,8 +745,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								args << data[param.name]
 							}
 
+							// println('m3')
 							app.$method(mut user_context, args)
 						} else {
+							// println('m4')
 							app.$method(mut user_context)
 						}
 						return
@@ -760,6 +766,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 						if method_args.len + 1 != method.args.len {
 							eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 						}
+						// println('m5')
 						app.$method(mut user_context, method_args)
 						return
 					}

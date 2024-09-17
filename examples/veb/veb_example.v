@@ -64,8 +64,8 @@ pub fn (mut app App) cookie(mut ctx Context) veb.Result {
 }
 
 @[post]
-pub fn (mut app Context) post(mut ctx Context) veb.Result {
-	return ctx.text('Post body: ${app.req.data}')
+pub fn (mut app App) post(mut ctx Context) veb.Result {
+	return ctx.text('Post body: ${ctx.req.data}')
 }
 
 fn main() {
