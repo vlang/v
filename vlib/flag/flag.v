@@ -304,7 +304,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 		}
 		if arg.len > 1 && arg[0] == `-` && arg[1] != `-` {
 			mut found := false
-			for j in 1 .. arg.len - 1 {
+			for j in 1 .. arg.len {
 				if arg[j].is_space() {
 					break
 				} else if arg[j] == shorthand {
