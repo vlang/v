@@ -1,9 +1,11 @@
 struct Abc {
-    val string
+	val string
 }
+
 struct Xyz {
-    foo string
+	foo string
 }
+
 type AliasType = string
 type Alphabet1 = Abc | string | &Xyz
 type Alphabet2 = Abc | &Xyz | string

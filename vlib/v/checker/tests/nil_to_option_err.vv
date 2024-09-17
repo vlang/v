@@ -1,12 +1,12 @@
 struct Test {
 mut:
-    a ?int = unsafe { nil }
+	a ?int = unsafe { nil }
 }
 
 fn main() {
-    mut a := ?int(none)
-    a = unsafe { nil }
+	mut a := ?int(none)
+	a = unsafe { nil }
 
-    mut b := Test{}
-    b.a = unsafe { nil }
+	mut b := Test{}
+	b.a = unsafe { nil }
 }

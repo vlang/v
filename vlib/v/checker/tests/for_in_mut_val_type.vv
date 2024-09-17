@@ -7,7 +7,10 @@ fn main() {
 	for mut j in a2 {
 		j *= 2
 	}
-	m := {'aa': 1, 'bb': 2}
+	m := {
+		'aa': 1
+		'bb': 2
+	}
 	for _, mut j in m {
 		j *= 2
 	}
@@ -17,7 +20,10 @@ fn main() {
 	for mut j in [1, 2, 3]! {
 		j *= 2
 	}
-	for _, mut j in {'aa': 1, 'bb': 2} {
+	for _, mut j in {
+		'aa': 1
+		'bb': 2
+	} {
 		j *= 2
 	}
 }

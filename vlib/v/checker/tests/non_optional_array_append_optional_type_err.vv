@@ -4,7 +4,7 @@ pub enum Foobar {
 }
 
 fn get_foo_or_none(fail bool) ?Foobar {
-	return if fail {none} else {.foo}
+	return if fail { none } else { .foo }
 }
 
 fn main() {

@@ -1,11 +1,11 @@
 fn get_name[A, B](a A, b B) string {
-	return '$a, $b'
+	return '${a}, ${b}'
 }
 
 struct Foo {}
 
 fn (f Foo) get_name[A, B](a A, b B) string {
-	return '$a, $b'
+	return '${a}, ${b}'
 }
 
 fn main() {

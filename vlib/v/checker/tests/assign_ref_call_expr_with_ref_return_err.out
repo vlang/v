@@ -3,4 +3,3 @@ vlib/v/checker/tests/assign_ref_call_expr_with_ref_return_err.vv:8:6: error: can
     7 | 
     8 | _ := &foo()
       |      ^
-    9 |

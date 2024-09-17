@@ -1,14 +1,14 @@
-struct Foo{}
+struct Foo {}
 
-type FooFn = fn(mut f Foo) 
+type FooFn = fn (mut f Foo)
 
-struct Server{
-	foo_fn FooFn = unsafe{ nil }
+struct Server {
+	foo_fn FooFn = unsafe { nil }
 }
 
 fn foo(f &Foo) {}
 
-fn main(){
+fn main() {
 	srv := Server{
 		foo_fn: foo
 	}

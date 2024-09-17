@@ -1,4 +1,5 @@
 type Foo = int
+
 fn (_ Foo) f()
 
 fn f()

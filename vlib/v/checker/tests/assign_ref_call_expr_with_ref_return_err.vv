@@ -6,4 +6,3 @@ fn foo() &Foo {
 }
 
 _ := &foo()
-

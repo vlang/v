@@ -1,17 +1,17 @@
 // vtest vflags: -cc msvc -os windows
 
-@[aligned:8]
+@[aligned: 8]
 struct Test {
 	a int
 }
 
-@[aligned:16]
+@[aligned: 16]
 struct Test2 {
-	a int 
+	a int
 	b int
 }
 
-@[aligned:8]
+@[aligned: 8]
 union Test3 {
 	a int
 }

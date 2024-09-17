@@ -18,4 +18,3 @@ vlib/v/parser/tests/postfix_err_a.vv:9:9: warning: `--` operator can only be use
     9 |     _ = a[x--]
       |            ~~
    10 | }
-   11 |

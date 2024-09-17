@@ -1,7 +1,7 @@
 struct Tree {
 mut:
 	garbage int
-	parent   ?&Tree
+	parent  ?&Tree
 }
 
 fn main() {
@@ -10,7 +10,9 @@ fn main() {
 		garbage: 11
 	}
 	// taking a reference of `parent` and putting it under a `mut:` struct field
-	mut child := Tree{parent: &parent}
+	mut child := Tree{
+		parent: &parent
+	}
 
 	// unwrap the reference of `parent`, but declare it as `mut`
 	mut inner_parent := child.parent?

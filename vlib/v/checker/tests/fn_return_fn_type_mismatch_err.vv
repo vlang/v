@@ -12,7 +12,7 @@ pub type Fn = fn (&ExpectedType, i64, u64) int
 
 pub fn good_signature() Fn {
 	return fn (n &ExpectedType, a i64, b u64) int {
-		println('good signature param0=$n')
+		println('good signature param0=${n}')
 		return 0
 	}
 }
@@ -20,7 +20,7 @@ pub fn good_signature() Fn {
 pub fn bad_signature() Fn {
 	// create closure that has nonmatching signature due to first arg. Compiler should reject it
 	return fn (n &WrongType, a i64, b u64) int {
-		println('bad signature param0=$n')
+		println('bad signature param0=${n}')
 		return 0
 	}
 }

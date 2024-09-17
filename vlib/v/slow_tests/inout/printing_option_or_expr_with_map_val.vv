@@ -1,6 +1,6 @@
 struct MyError {
-  msg string
-  code int
+	msg  string
+	code int
 }
 
 fn (my MyError) msg() string {
@@ -14,9 +14,15 @@ fn (my MyError) code() int {
 type MapString = map[string]string | int
 
 fn f() ?MapString {
-  return MyError{msg: 'String Error'}
+	return MyError{
+		msg: 'String Error'
+	}
 }
 
 fn main() {
-  println(f() or { { 'abc': err.msg() } })
+	println(f() or {
+		{
+			'abc': err.msg()
+		}
+	})
 }

@@ -1,7 +1,7 @@
 struct LL[T] {
-	mut:
-		value T
-		next &LL = unsafe { 0 }
+mut:
+	value T
+	next  &LL = unsafe { 0 }
 }
 
 fn main() {

@@ -1,11 +1,11 @@
 vlib/v/checker/tests/cast_string_to_int_err.vv:2:7: error: cannot cast string to `int`, use `'456'.int()` instead.
-    1 | fn main(){
+    1 | fn main() {
     2 |     _ := int('456')
       |          ~~~~~~~~~~
     3 |     _ := i8('11')
     4 |     _ := i16('111')
 vlib/v/checker/tests/cast_string_to_int_err.vv:3:7: error: cannot cast string to `i8`, use `'11'.i8()` instead.
-    1 | fn main(){
+    1 | fn main() {
     2 |     _ := int('456')
     3 |     _ := i8('11')
       |          ~~~~~~~~

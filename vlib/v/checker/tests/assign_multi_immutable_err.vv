@@ -3,7 +3,7 @@ fn main() {
 	b := 20
 	a, b = 1, 2
 
-	println('$a, $b')
+	println('${a}, ${b}')
 }
 
 fn f() int {
@@ -11,11 +11,10 @@ fn f() int {
 }
 
 fn g() (int, int) {
-  return 1, 2
+	return 1, 2
 }
 
 fn assign_fn() {
 	_, error = g()
 	g = f()
 }
-

@@ -1,13 +1,13 @@
-vlib/v/checker/tests/alias_array_unknown_op_overloading_err.vv:17:7: error: undefined operation `Tuple` - `Tuple`
-   15 |     mut a := new_tuple(12, 4.5, 6.7, 6)
-   16 |     b := new_tuple(12, 4.5, 6.7, 6)
-   17 |     a -= b
+vlib/v/checker/tests/alias_array_unknown_op_overloading_err.vv:18:4: error: undefined operation `Tuple` - `Tuple`
+   16 |     mut a := new_tuple(12, 4.5, 6.7, 6)
+   17 |     b := new_tuple(12, 4.5, 6.7, 6)
+   18 |     a -= b
       |       ~~
-   18 |     println(a - b)
-   19 | }
-vlib/v/checker/tests/alias_array_unknown_op_overloading_err.vv:18:13: error: undefined operation `Tuple` - `Tuple`
-   16 |     b := new_tuple(12, 4.5, 6.7, 6)
-   17 |     a -= b
-   18 |     println(a - b)
+   19 |     println(a - b)
+   20 | }
+vlib/v/checker/tests/alias_array_unknown_op_overloading_err.vv:19:10: error: undefined operation `Tuple` - `Tuple`
+   17 |     b := new_tuple(12, 4.5, 6.7, 6)
+   18 |     a -= b
+   19 |     println(a - b)
       |             ~~~~~
-   19 | }
+   20 | }

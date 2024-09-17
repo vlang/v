@@ -3,8 +3,10 @@ struct Foo {
 }
 
 mut list := []Foo{}
-for i in 0..3 {
-	list << Foo { idx: i }
+for i in 0 .. 3 {
+	list << Foo{
+		idx: i
+	}
 }
 
 dump(list.index(unsafe { &list[1] }))

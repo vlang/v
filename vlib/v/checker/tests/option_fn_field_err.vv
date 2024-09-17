@@ -1,5 +1,5 @@
 struct Foo {
-	f ?fn(int)
+	f ?fn (int)
 }
 
 fn main() {

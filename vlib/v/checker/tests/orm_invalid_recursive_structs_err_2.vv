@@ -8,7 +8,7 @@ struct Parent {
 
 @[table: 'children']
 struct Child {
-	id        int    @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	parent_id int
 	parent    Parent
 }

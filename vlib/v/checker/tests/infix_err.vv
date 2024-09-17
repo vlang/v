@@ -1,9 +1,11 @@
 fn f() ?string {
 	return none
 }
+
 fn g() ?int {
 	return none
 }
+
 _ = '' + f()
 _ = f() + ''
 _ = f() + f()
@@ -19,6 +21,4 @@ _ = true || 2
 
 // boolean expressions
 _ = 1 == 1 && 2 == 2 || 3 == 3
-_ = 1 == 1
-	&& 2 == 2 || 3 == 3
-	&& 4 == 4
+_ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4

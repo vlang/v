@@ -1,7 +1,7 @@
 fn main() {
-    for true {
-        defer {
-            break
-        }
-    }
+	for true {
+		defer {
+			break
+		}
+	}
 }

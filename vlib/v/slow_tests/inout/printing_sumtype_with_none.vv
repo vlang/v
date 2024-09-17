@@ -10,9 +10,9 @@ struct MyStruct {
 
 fn main() {
 	s := MyStruct{
-		my_first_field: 'blah'
+		my_first_field:  'blah'
 		my_second_field: none
-		my_third_field: None{}
+		my_third_field:  None{}
 	}
 
 	println(if s.my_first_field is string {

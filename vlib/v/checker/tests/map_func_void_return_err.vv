@@ -1,5 +1,5 @@
 fn main() {
-	list := [1,2,3].map(voids(it))
+	list := [1, 2, 3].map(voids(it))
 }
 
 fn voids(arg int) {

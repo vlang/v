@@ -5,6 +5,7 @@ enum Color {
 }
 
 struct St1 {}
+
 struct St2 {}
 
 type St = St1 | St2
