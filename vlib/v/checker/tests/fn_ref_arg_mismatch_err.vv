@@ -1,6 +1,6 @@
 module main
 
-struct Foo[T] { }
+struct Foo[T] {}
 
 fn (f &Foo[T]) foo(a &T) {
 	println(a)

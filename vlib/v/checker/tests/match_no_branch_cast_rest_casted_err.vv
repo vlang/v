@@ -1,4 +1,4 @@
-fn main () {
+fn main() {
 	name := 'b'
 	nb := match name {
 		'a' { u8(10) }

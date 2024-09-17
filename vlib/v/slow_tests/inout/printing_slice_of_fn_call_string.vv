@@ -3,13 +3,13 @@ struct Wrapper {
 }
 
 fn (instance Wrapper) get() string {
-	println("Get called")
+	println('Get called')
 	return instance.element
 }
 
 fn main() {
 	wrapper := Wrapper{
-		element: "Hello"
+		element: 'Hello'
 	}
 	println(wrapper.get()[1..])
 }

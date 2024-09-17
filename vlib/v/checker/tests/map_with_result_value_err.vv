@@ -3,7 +3,7 @@ struct Foo {
 }
 
 fn main() {
-  _ := map[string]!string{}
+	_ := map[string]!string{}
 
-  dump(map[string]!string{})
+	dump(map[string]!string{})
 }

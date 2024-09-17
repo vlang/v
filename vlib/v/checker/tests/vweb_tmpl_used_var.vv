@@ -5,8 +5,8 @@ struct App {
 }
 
 pub fn (mut app App) index() vweb.Result {
-    test := 'test'
-    return $vweb.html()
+	test := 'test'
+	return $vweb.html()
 }
 
 fn main() {

@@ -1,13 +1,13 @@
 interface Thing {
-    kind string
+	kind string
 }
 
 interface Animal {
-    kind string
+	kind string
 }
 
 struct Dog {
-    kind string = 'labrador'
+	kind string = 'labrador'
 }
 
 dog := Dog{}

@@ -1,7 +1,6 @@
-
 pub struct C.Something {
-	fint int
-	ff32 f32
+	fint  int
+	ff32  f32
 	fchar char
 }
 

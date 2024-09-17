@@ -21,13 +21,13 @@ vlib/v/checker/tests/option_fn_err.vv:38:9: error: assert can be used only with 
    40 |     // struct
 vlib/v/checker/tests/option_fn_err.vv:43:3: error: cannot assign an Option value to a non-option struct field
    41 |     mut v := Data{
-   42 |         f: fn (_ int) {}
+   42 |         f:     fn (_ int) {}
    43 |         value: bar(0)
       |         ~~~~~~~~~~~~~
-   44 |         opt: bar(0)
+   44 |         opt:   bar(0)
    45 |     }
 vlib/v/checker/tests/option_fn_err.vv:46:8: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `Data.add`
-   44 |         opt: bar(0)
+   44 |         opt:   bar(0)
    45 |     }
    46 |     v.add(bar(0)) // call method
       |           ~~~~~~

@@ -4,6 +4,6 @@ fn get_bool() !bool {
 
 fn main() {
 	if get_bool() {
-		println("Using plain lists")
+		println('Using plain lists')
 	}
 }

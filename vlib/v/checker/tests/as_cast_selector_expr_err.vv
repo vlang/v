@@ -11,6 +11,8 @@ mut:
 type Foobar = Foo | Bar
 
 fn main() {
-	mut bar := Foobar(Bar{y: 123})
+	mut bar := Foobar(Bar{
+		y: 123
+	})
 	println(bar as Bar.y == 123)
 }

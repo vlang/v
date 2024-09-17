@@ -2,11 +2,12 @@ struct St {
 mut:
 	a int
 }
+
 fn (shared s St) r(x St) {
 }
+
 fn (s St) m(shared x St) {
 }
-
 
 fn f(w int, shared x St) {
 }

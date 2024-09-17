@@ -1,5 +1,5 @@
 fn foo() ! {
-	return error("error")
+	return error('error')
 }
 
 fn main() {
@@ -9,6 +9,6 @@ fn main() {
 	} else {
 		false
 	}
-	
+
 	println(a)
 }

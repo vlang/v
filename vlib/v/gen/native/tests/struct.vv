@@ -79,6 +79,7 @@ fn alias_test() {
 fn init_size28() Size28 {
 	return Size28{1, 2, 3, 4, 5, 6, 7}
 }
+
 type AliasedSize28 = Size28
 
 fn init_aliased() AliasedSize28 {

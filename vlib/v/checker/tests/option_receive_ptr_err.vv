@@ -15,7 +15,9 @@ fn wrap_unwrap_ptr(event_data &MyStruct) int {
 }
 
 fn main() {
-	data := MyStruct { x: 0 }
+	data := MyStruct{
+		x: 0
+	}
 	result := wrap_unwrap_ptr(&data)
 	assert data.x == result
 }

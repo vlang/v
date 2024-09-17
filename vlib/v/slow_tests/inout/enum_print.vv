@@ -2,8 +2,8 @@ module main
 
 enum Color {
 	orange
-	green = 5
-	red = 2
+	green  = 5
+	red    = 2
 	yellow = 3
 }
 

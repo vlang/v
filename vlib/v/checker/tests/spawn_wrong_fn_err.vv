@@ -29,4 +29,3 @@ fn main() {
 	go vlang_ip(mut wg)
 	wg.wait()
 }
-

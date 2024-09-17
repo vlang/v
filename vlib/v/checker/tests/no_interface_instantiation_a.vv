@@ -1,5 +1,5 @@
 interface Speaker {}
 
 fn main() {
-    _ = Speaker{}
+	_ = Speaker{}
 }

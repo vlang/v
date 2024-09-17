@@ -1,1 +1,3 @@
-__global ( test = int )
+__global (
+	test = int
+)

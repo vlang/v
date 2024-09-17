@@ -1,6 +1,6 @@
 interface User {
 	name string
-	age int
+	age  int
 }
 
 fn main() {

@@ -1,5 +1,5 @@
 fn main() {
-    ok1 := true
-    ok2 := false&&ok1
-    println(ok2)
+	ok1 := true
+	ok2 := false && ok1
+	println(ok2)
 }

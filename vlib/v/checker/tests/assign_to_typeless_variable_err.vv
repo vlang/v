@@ -1,4 +1,4 @@
 fn main() {
-  val := {}
-  val = 1
+	val := {}
+	val = 1
 }
