@@ -7203,7 +7203,9 @@ to race conditions. There are several approaches to deal with these:
 
 ## Cross compilation
 
-To cross compile your project simply run
+Cross compilation is supported for Windows, Linux and FreeBSD.
+
+To cross compile your project simply run:
 
 ```shell
 v -os windows .
@@ -7215,8 +7217,14 @@ or
 v -os linux .
 ```
 
+or
+
+```shell
+v -os freebsd .
+```
+
 > [!NOTE]
-> Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
+> Cross-compiling a Windows binary on a Linux machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed.
 
 For Ubuntu/Debian based distributions:
