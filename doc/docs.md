@@ -6065,6 +6065,30 @@ fn main() {
 // test2 returns string: foo
 ```
 
+#### <h4 id="comptime-method-params">.params</h4>
+
+You can retrieve information about struct method params.
+
+```v
+struct Test {
+}
+
+fn (t Test) foo(arg1 int, arg2 string) {	
+}
+
+fn main() {
+	$for m in Test.methods {
+		$for param in m.params {
+			println('${typeof(param.typ).name}: ${param.name}')
+		}
+	}
+}
+
+// Output:
+// int: arg1
+// string: arg2
+```
+
 See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
 for a more complete example.
 
