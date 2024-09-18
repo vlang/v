@@ -436,7 +436,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// Register implicit context var
 	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type_idx('veb.Result')
 	if node.return_type == typ_veb_result {
-		typ_veb_context := ast.Type(u32(c.table.find_type_idx('veb.Context'))).set_nr_muls(1)
+		// Find a custom user Context type first
+		mut ctx_idx := c.table.find_type_idx('main.Context')
+		if ctx_idx < 1 {
+			// If it doesn't exist, use veb.Context
+			ctx_idx = c.table.find_type_idx('veb.Context')
+		}
+		typ_veb_context := ast.Type(u32(ctx_idx)).set_nr_muls(1)
 		// No `ctx` param? Add it
 		if !node.params.any(it.name == 'ctx') && node.params.len >= 1 {
 			params := node.params.clone()
