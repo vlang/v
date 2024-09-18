@@ -232,7 +232,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 		optimization_options = ['-O3']
 		mut have_flto := true
-		$if openbsd || windows {
+		$if windows {
 			have_flto = false
 		}
 		if have_flto {
