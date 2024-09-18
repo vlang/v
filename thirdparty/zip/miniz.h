@@ -5026,7 +5026,7 @@ static int mz_mkdir(const char *pDirname) {
 }
 
 #ifndef MINIZ_NO_TIME
-#if ( defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+#if ( defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
    #include <utime.h>
 #else
    #include <sys/utime.h>
@@ -5073,7 +5073,7 @@ static int mz_mkdir(const char *pDirname) {
 
 #elif defined(__TINYC__)
 #ifndef MINIZ_NO_TIME
-#if ( defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+#if ( defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
    #include <utime.h>
 #else
    #include <sys/utime.h>
@@ -5113,7 +5113,7 @@ static int mz_mkdir(const char *pDirname) {
 #define MZ_DELETE_FILE remove
 #define MZ_MKDIR(d) mkdir(d, 0755)
 
-#elif defined(__APPLE__) || defined(__FreeBSD__)
+#elif defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__)
 #ifndef MINIZ_NO_TIME
 #include <utime.h>
 #endif
