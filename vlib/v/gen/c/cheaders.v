@@ -649,7 +649,7 @@ static void* g_live_info = NULL;
 
 const c_builtin_types = '
 //================================== builtin types ================================*/
-#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+#if defined(__x86_64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64) || (defined(__riscv_xlen) && __riscv_xlen == 64)
 typedef int64_t vint_t;
 #else
 typedef int32_t vint_t;
