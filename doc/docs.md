@@ -6073,7 +6073,7 @@ You can retrieve information about struct method params.
 struct Test {
 }
 
-fn (t Test) foo(arg1 int, arg2 string) {	
+fn (t Test) foo(arg1 int, arg2 string) {
 }
 
 fn main() {
