@@ -326,8 +326,8 @@ pub fn format_fl(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := []u8{len: p.len0 + 1} // write temp float buffer
-		mut out := []u8{len: p.len0 + 1} // out buffer
+		mut buf := []u8{len: p.len0 + 32} // write temp float buffer
+		mut out := []u8{len: p.len0 + 32} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -397,8 +397,8 @@ pub fn format_es(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := []u8{len: p.len0 + 1} // write temp float buffer
-		mut out := []u8{len: p.len0 + 1} // out buffer
+		mut buf := []u8{len: p.len0 + 32} // write temp float buffer
+		mut out := []u8{len: p.len0 + 32} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
