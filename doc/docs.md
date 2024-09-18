@@ -6367,28 +6367,29 @@ If a file has an environment-specific suffix, it will only be compiled for that 
   and `file_default.c.v` will be ignored.
 
 Here is a more complete example:
-main.v:
+
+`main.v`:
 
 ```v ignore
 module main
 fn main() { println(message) }
 ```
 
-main_default.c.v:
+`main_default.c.v`:
 
 ```v ignore
 module main
 const message = 'Hello world'
 ```
 
-main_linux.c.v:
+`main_linux.c.v`:
 
 ```v ignore
 module main
 const message = 'Hello linux'
 ```
 
-main_windows.c.v:
+`main_windows.c.v`:
 
 ```v ignore
 module main
@@ -6397,10 +6398,10 @@ const message = 'Hello windows'
 
 With the example above:
 
-- when you compile for windows, you will get 'Hello windows'
-- when you compile for linux, you will get 'Hello linux'
+- when you compile for Windows, you will get `Hello windows`
+- when you compile for Linux, you will get `Hello linux`
 - when you compile for any other platform, you will get the
-  non specific 'Hello world' message.
+  non specific `Hello world` message.
 
 - `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
   That corresponds to `$if customflag ? {}`, but for a whole file, not just a
