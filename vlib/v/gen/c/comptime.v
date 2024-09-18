@@ -1188,6 +1188,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'i386' {
 			return '__V_x86'
 		}
+		'rv64', 'riscv64' {
+			return '__V_rv64'
+		}
 		// bitness:
 		'x64' {
 			return 'TARGET_IS_64BIT'
