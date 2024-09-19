@@ -13,6 +13,9 @@ vlib/v/checker/tests/generics_fn_arguments_count_err.vv:15:18: error: expected 2
    16 |     println(ret2)
    17 |
 vlib/v/checker/tests/generics_fn_arguments_count_err.vv:15:45: error: expected 2 arguments, but got 3
+	have (int literal, int literal, string)
+	want (A, B)
+
    13 |     println(ret1)
    14 | 
    15 |     ret2 := get_name[int, int, string](11, 22, 'hello')
@@ -34,6 +37,9 @@ vlib/v/checker/tests/generics_fn_arguments_count_err.vv:22:22: error: expected 2
    23 |     println(ret4)
    24 | }
 vlib/v/checker/tests/generics_fn_arguments_count_err.vv:22:49: error: expected 2 arguments, but got 3
+	have (int literal, int literal, string)
+	want (A, B)
+
    20 |     println(ret3)
    21 | 
    22 |     ret4 := foo.get_name[int, int, string](11, 22, 'hello')

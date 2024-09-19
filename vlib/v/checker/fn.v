@@ -459,7 +459,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			// Now update the existing method, already registered in Table.
 			mut rec_sym := c.table.sym(node.receiver.typ)
 			if mut m := c.table.find_method(rec_sym, node.name) {
-				m.params << ctx_param
+				p := m.params.clone()
+				m.params = [m.params[0], ctx_param]
+				m.params << p[1..]
 				rec_sym.update_method(m)
 			}
 		}
@@ -2834,6 +2836,16 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			nr_args = node.args[0].expr.nr_ret_values
 			if nr_args != nr_params {
 				unexpected_args_pos := node.args[0].pos.extend(node.args.last().pos)
+				// TODO use this here as well
+				/*
+				c.fn_call_error_have_want(
+					nr_params: min_required_params
+					nr_args:   nr_args
+					params:    f.params
+					args:      node.args
+					pos:       node.pos
+				)
+				*/
 				c.error('expected ${min_required_params} arguments, but got ${nr_args} from multi-return ${c.table.type_to_str(node.args[0].expr.return_type)}',
 					unexpected_args_pos)
 				return error('')
@@ -2864,23 +2876,83 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			/*
 			first_typ := f.params[0].typ
 			first_sym := c.table.sym(first_typ)
-			if first_sym.info is ast.Struct {
-				if c.fileis('a.v') {
-					if first_sym.name == 'VContext' && f.params[0].name == 'ctx' { // TODO use int comparison for perf
-						// c.error('got ctx ${first_sym.name}', node.pos)
-						return
-					}
+			*/
+			if last_sym.info is ast.Struct {
+				if last_sym.name == 'main.Context' && f.params.last().name == 'ctx' { // TODO use int comparison for perf
+					// c.error('got ctx ${first_sym.name}', node.pos)
+					return
 				}
 			}
-			*/
 		}
-		c.error('expected ${min_required_params} arguments, but got ${nr_args}', node.pos)
+		c.fn_call_error_have_want(
+			nr_params: min_required_params
+			nr_args:   nr_args
+			params:    f.params
+			args:      node.args
+			pos:       node.pos
+		)
 		return error('')
 	} else if !f.is_variadic && nr_args > nr_params {
 		unexpected_args_pos := node.args[min_required_params].pos.extend(node.args.last().pos)
-		c.error('expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+		// c.error('3expected ${min_required_params} arguments, but got ${nr_args}', unexpected_args_pos)
+		c.fn_call_error_have_want(
+			nr_params: min_required_params
+			nr_args:   nr_args
+			params:    f.params
+			args:      node.args
+			pos:       unexpected_args_pos
+		)
 		return error('')
 	}
+}
+
+@[params]
+struct HaveWantParams {
+	nr_params int
+	nr_args   int
+	args      []ast.CallArg
+	params    []ast.Param
+	pos       token.Pos
+}
+
+fn (mut c Checker) fn_call_error_have_want(p HaveWantParams) {
+	mut have_want := '\n\thave ('
+	// Fetch arg types, they are always 0 at this point
+	// Duplicate logic, but we don't care, since this is an error, so no perf cost
+	mut arg_types := []ast.Type{len: p.args.len}
+	for i, arg in p.args {
+		mut e := arg.expr
+		arg_types[i] = c.expr(mut e)
+	}
+	// Args provided by the user
+	for i, _ in p.args {
+		if arg_types[i] == 0 { // arg.typ == 0 {
+			// Arguments can have an unknown (invalid) type
+			// This should never happen.
+			have_want += '?'
+		} else {
+			have_want += c.table.type_to_str(arg_types[i]) // arg.typ)
+		}
+		if i < p.args.len - 1 {
+			have_want += ', '
+		}
+	}
+	// Actual parameters we expect
+	have_want += ')\n\twant ('
+	for i, param in p.params {
+		if i == 0 && p.nr_params == p.params.len - 1 {
+			// Skip receiver
+			continue
+		}
+		have_want += c.table.type_to_str(param.typ)
+		if i < p.params.len - 1 {
+			have_want += ', '
+		}
+	}
+	have_want += ')\n'
+	args_plural := if p.nr_params == 1 { 'argument' } else { 'arguments' }
+	c.error('expected ${p.nr_params} ${args_plural}, but got ${p.nr_args}${have_want}',
+		p.pos)
 }
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast.CallExpr) {

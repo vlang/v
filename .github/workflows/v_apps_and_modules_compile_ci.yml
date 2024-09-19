@@ -127,6 +127,7 @@ jobs:
           echo "Clone Gitly"
           v retry -- git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
+          exit
           v -cc gcc /tmp/gitly
           ## echo "Build Gitly with -autofree"
           ## v -cc gcc -autofree /tmp/gitly

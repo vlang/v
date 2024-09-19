@@ -1,11 +1,17 @@
-vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:8:13: error: expected 1 arguments, but got 3
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:8:13: error: expected 1 argument, but got 3
+	have (bool, bool, int literal)
+	want (bool)
+
     6 | 
     7 | fn main() {
     8 |     test(true, false, 1)
       |                ~~~~~~~~
     9 |     test()
    10 |     test2(true, false, 1)
-vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:9:2: error: expected 1 arguments, but got 0
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:9:2: error: expected 1 argument, but got 0
+	have ()
+	want (bool)
+
     7 | fn main() {
     8 |     test(true, false, 1)
     9 |     test()
@@ -13,6 +19,9 @@ vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:9:2: error: expected
    10 |     test2(true, false, 1)
    11 |     test2(true)
 vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:10:21: error: expected 2 arguments, but got 3
+	have (bool, bool, int literal)
+	want (bool, T)
+
     8 |     test(true, false, 1)
     9 |     test()
    10 |     test2(true, false, 1)
@@ -20,6 +29,9 @@ vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:10:21: error: expect
    11 |     test2(true)
    12 | }
 vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:11:2: error: expected 2 arguments, but got 1
+	have (bool)
+	want (bool, T)
+
     9 |     test()
    10 |     test2(true, false, 1)
    11 |     test2(true)

@@ -6,6 +6,9 @@ vlib/v/checker/tests/multi_return_err.vv:18:10: error: cannot use `f64` as `int`
    19 |     my_func3(my_func2(), 'foo')
    20 |     my_func4('foo', my_func2())
 vlib/v/checker/tests/multi_return_err.vv:19:2: error: expected 3 arguments, but got 2
+	have ((int, f64), string)
+	want (int, int, string)
+
    17 | fn main() {
    18 |     my_func(my_func2())
    19 |     my_func3(my_func2(), 'foo')
@@ -13,6 +16,9 @@ vlib/v/checker/tests/multi_return_err.vv:19:2: error: expected 3 arguments, but 
    20 |     my_func4('foo', my_func2())
    21 |     my_func(my_func5())
 vlib/v/checker/tests/multi_return_err.vv:20:2: error: expected 3 arguments, but got 2
+	have (string, (int, f64))
+	want (string, int, int)
+
    18 |     my_func(my_func2())
    19 |     my_func3(my_func2(), 'foo')
    20 |     my_func4('foo', my_func2())
@@ -20,6 +26,9 @@ vlib/v/checker/tests/multi_return_err.vv:20:2: error: expected 3 arguments, but 
    21 |     my_func(my_func5())
    22 |     my_func(my_func6())
 vlib/v/checker/tests/multi_return_err.vv:21:2: error: expected 2 arguments, but got 1
+	have (void)
+	want (int, int)
+
    19 |     my_func3(my_func2(), 'foo')
    20 |     my_func4('foo', my_func2())
    21 |     my_func(my_func5())

@@ -243,6 +243,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				// last argument; try to expand if it's []string
 				idx := i - node.args.len
 				last_arg := g.expr_string(node.args.last().expr)
+				// t := g.table.sym(m.params[i].typ)
+				// g.write('/*nr_args=${node.args.len} m.params.len=${m.params.len} i=${i} t=${t.name} ${m.params}*/')
 				if m.params[i].typ.is_int() || m.params[i].typ.idx() == ast.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
 					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
