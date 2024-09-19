@@ -34,6 +34,8 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	}
 }
 
+const max_size_f64_char = 512 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, but alignment padding requires more
+
 // digit pairs in reverse order
 const digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 
@@ -326,8 +328,8 @@ pub fn format_fl(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := []u8{len: p.len0 + 32} // write temp float buffer
-		mut out := []u8{len: p.len0 + 32} // out buffer
+		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
@@ -397,8 +399,8 @@ pub fn format_es(f f64, p BF_param) string {
 			tmp.free()
 		}
 
-		mut buf := []u8{len: p.len0 + 32} // write temp float buffer
-		mut out := []u8{len: p.len0 + 32} // out buffer
+		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
+		mut out := [max_size_f64_char]u8{} // out buffer
 		mut buf_i := 0 // index temporary string
 		mut out_i := 0 // index output string
 
