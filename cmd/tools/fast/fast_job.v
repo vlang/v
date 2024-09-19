@@ -31,6 +31,17 @@ fn delay() {
 	time.sleep(sleep_period * time.second)
 }
 
+fn check_output_repo(url string, branch string, folder string) {
+	if os.exists(folder) {
+		elog('Note: ${folder} already exists; using it.')
+		return
+	}
+	cmd := 'git clone --filter=blob:none --branch=${branch}  ${url}  ${folder}'
+	elog('Note: ${folder} is missing. Cloning to `${folder}`, with: `${cmd}` ...')
+	res := os.system(cmd)
+	elog('... cloning done, result: ${res}')
+}
+
 fn main() {
 	elog('fast_job start setup ...')
 	// ensure a more stable working environment for the used tools, independent on how this executable was started:
@@ -48,14 +59,11 @@ fn main() {
 		elog('fast_job end')
 	}
 
-	if !os.exists('fast.vlang.io/') {
-		println('cloning the fast.vlang.io/ repo...')
-		os.system('git clone git@github.com:/vlang/website.git fast.vlang.io/')
-	}
-	if !os.exists('docs.vlang.io') {
-		println('cloning the docs.vlang.io/ repo...')
-		os.system('git clone git@github.com:/vlang/docs.git docs.vlang.io/')
-	}
+	elog('fast_job clone output repos...')
+	check_output_repo('https://github.com/vlang/website', 'gh-pages', 'fast.vlang.io/')
+	check_output_repo('https://github.com/vlang/docs/', 'main', 'docs.vlang.io/')
+	check_output_repo('https://github.com/vlang/docs/', 'generator', 'docs.vlang.io/docs_generator/')
+
 	mut i := 0
 	for {
 		i++

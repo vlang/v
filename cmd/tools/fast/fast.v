@@ -14,11 +14,11 @@ const discard_highest_samples = 16
 
 const voptions = ' -skip-unused -show-timings -stats '
 
-const fast_dir = os.dir(@FILE)
+const fast_dir = os.real_path(os.dir(@FILE))
 
-const fast_log_path = os.join_path(fast_dir, 'fast.log')
+const fast_log_path = os.real_path(os.join_path(fast_dir, 'fast.log'))
 
-const vdir = os.dir(os.dir(os.dir(fast_dir)))
+const vdir = os.real_path(os.dir(os.dir(os.dir(fast_dir))))
 
 fn elog(msg string) {
 	line := '${time.now().format_ss_micro()} ${msg}\n'
@@ -40,6 +40,9 @@ fn lexec(cmd string) string {
 }
 
 fn main() {
+	// ensure all log messages will be visible to the observers, even if the program panics
+	log.set_always_flush(true)
+
 	total_sw := time.new_stopwatch()
 	elog('fast.html generator start')
 	defer {
