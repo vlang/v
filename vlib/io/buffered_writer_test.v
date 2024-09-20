@@ -11,7 +11,7 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 	len := buf.len
 	mut res := 0
 	for i := 0; i < len; i++ {
-		aw.result = arrays.concat(aw.result, buf[i])
+		aw.result << buf[i]
 		res++
 	}
 	return res
@@ -20,9 +20,9 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 fn create_data(n int) []u8 {
 	mut res := []u8{}
 	for i := 0; i < n; i++ {
-		res = arrays.concat(res, 88) // x
+		res << `X`
 	}
-	res = arrays.concat(res, 10) // \n
+	res << `\n`
 	return res
 }
 
