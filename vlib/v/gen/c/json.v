@@ -669,9 +669,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		} else {
 			// Now generate decoders for all field types in this struct
 			// need to do it here so that these functions are generated first
-			if !name[0].is_capital() {
-				g.gen_json_for_type(field.typ)
-			}
+			g.gen_json_for_type(field.typ)
 			dec_name := js_dec_name(field_type)
 			if is_js_prim(field_type) {
 				tmp := g.new_tmp_var()
