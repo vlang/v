@@ -592,6 +592,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	for var in node.inherited_vars {
 		mut has_inherited := false
 		mut is_ptr := false
+		var_name := c_name(var.name)
 		if obj := node.decl.scope.find(var.name) {
 			if obj is ast.Var {
 				is_ptr = obj.typ.is_ptr()
@@ -599,13 +600,13 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					has_inherited = true
 					var_sym := g.table.sym(var.typ)
 					if var_sym.info is ast.ArrayFixed {
-						g.write('.${var.name} = {')
+						g.write('.${var_name} = {')
 						for i in 0 .. var_sym.info.size {
-							g.write('${closure_ctx}->${var.name}[${i}],')
+							g.write('${closure_ctx}->${var_name}[${i}],')
 						}
 						g.writeln('},')
 					} else {
-						g.writeln('.${var.name} = ${closure_ctx}->${var.name},')
+						g.writeln('.${var_name} = ${closure_ctx}->${var_name},')
 					}
 				}
 			}
@@ -613,15 +614,15 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		if !has_inherited {
 			var_sym := g.table.sym(var.typ)
 			if var_sym.info is ast.ArrayFixed {
-				g.write('.${var.name} = {')
+				g.write('.${var_name} = {')
 				for i in 0 .. var_sym.info.size {
-					g.write('${var.name}[${i}],')
+					g.write('${var_name}[${i}],')
 				}
 				g.writeln('},')
 			} else if g.is_autofree && !var.is_mut && var_sym.info is ast.Array {
-				g.writeln('.${var.name} = array_clone(&${var.name}),')
+				g.writeln('.${var_name} = array_clone(&${var_name}),')
 			} else if g.is_autofree && !var.is_mut && var_sym.kind == .string {
-				g.writeln('.${var.name} = string_clone(${var.name}),')
+				g.writeln('.${var_name} = string_clone(${var_name}),')
 			} else {
 				mut is_auto_heap := false
 				if obj := node.decl.scope.parent.find(var.name) {
@@ -630,9 +631,9 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					}
 				}
 				if is_auto_heap && !is_ptr {
-					g.writeln('.${var.name} = *${var.name},')
+					g.writeln('.${var_name} = *${var_name},')
 				} else {
-					g.writeln('.${var.name} = ${var.name},')
+					g.writeln('.${var_name} = ${var_name},')
 				}
 			}
 		}
@@ -661,11 +662,11 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			var_sym := g.table.sym(var.typ)
 			if var_sym.info is ast.FnType {
 				sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-					var.name)
+					c_name(var.name))
 				builder.writeln('\t' + sig + ';')
 			} else {
 				styp := g.typ(var.typ)
-				builder.writeln('\t${styp} ${var.name};')
+				builder.writeln('\t${styp} ${c_name(var.name)};')
 			}
 		}
 		builder.writeln('};\n')
@@ -2177,7 +2178,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								mut is_ptr := false
 								if i == 0 {
 									if obj.is_inherited {
-										g.write(closure_ctx + '->' + node.name)
+										g.write(closure_ctx + '->' + c_name(node.name))
 									} else {
 										g.write(node.name)
 									}
@@ -2199,7 +2200,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							}
 							is_fn_var = true
 						} else if obj.is_inherited {
-							g.write(closure_ctx + '->' + node.name)
+							g.write(closure_ctx + '->' + c_name(node.name))
 							is_fn_var = true
 						}
 					}
