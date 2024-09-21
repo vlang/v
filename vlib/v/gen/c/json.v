@@ -167,7 +167,7 @@ ${enc_fn_dec} {
 				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
-				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec)
+				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec, '')
 			} else if psym.kind == .enum_ {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
@@ -201,7 +201,7 @@ ${enc_fn_dec} {
 			if sym.info !is ast.Struct {
 				verror('json: ${sym.name} is not struct')
 			}
-			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec)
+			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec, '')
 		}
 		// cJSON_delete
 		dec.writeln('\t${result_name}_${ret_styp} ret;')
@@ -606,7 +606,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 @[inline]
 fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp string, mut enc strings.Builder,
-	mut dec strings.Builder) {
+	mut dec strings.Builder, embed_prefix string) {
 	info := type_info as ast.Struct
 	for field in info.fields {
 		mut name := field.name
@@ -646,7 +646,12 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		field_type := g.typ(field.typ)
 		field_sym := g.table.sym(field.typ)
 		op := if utyp.is_ptr() { '->' } else { '.' }
-		prefix := if utyp.has_flag(.option) { '(*(${g.base_type(utyp)}*)res.data)' } else { 'res' }
+		embed_member := if embed_prefix.len > 0 { '.${embed_prefix}' } else { '' }
+		prefix := if utyp.has_flag(.option) {
+			'(*(${g.base_type(utyp)}*)res${embed_member}.data)'
+		} else {
+			'res${embed_member}'
+		}
 		// First generate decoding
 		if is_raw {
 			if field.typ.has_flag(.option) {
@@ -757,6 +762,17 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					dec.writeln('\t}')
 				}
 			} else {
+				// embeded
+				if name.len > 0 && name[0].is_capital() && field_sym.info is ast.Struct {
+					for embed in info.embeds {
+						if embed == int(field.typ) {
+							g.gen_struct_enc_dec(field.typ, g.table.sym(field.typ).info,
+								styp, mut enc, mut dec, name)
+							break
+						}
+					}
+					continue
+				}
 				tmp := g.new_tmp_var()
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
@@ -780,6 +796,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				}
 				dec.writeln('\t}')
 			}
+		}
+		if embed_prefix.len > 0 {
+			return
 		}
 		// Encoding
 		mut enc_name := js_enc_name(field_type)
