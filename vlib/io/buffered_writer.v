@@ -15,6 +15,8 @@ pub:
 	cap    int = 128 * 1024
 }
 
+// new_buffered_writer creates a new BufferedWriter with the specified BufferedWriterConfig.
+// Returns an error when cap is 0 or negative.
 pub fn new_buffered_writer(o BufferedWriterConfig) !&BufferedWriter {
 	if o.cap < 1 {
 		return error('`o.cap` must be a positive integer')
@@ -26,16 +28,21 @@ pub fn new_buffered_writer(o BufferedWriterConfig) !&BufferedWriter {
 	}
 }
 
+// reset resets the buffer to its initial state.
 pub fn (mut b BufferedWriter) reset() {
 	cap := b.buf.len
 	b.buf = []u8{len: cap}
 	b.n = 0
 }
 
+// buffered returns the number of bytes currently stored in the buffer.
 pub fn (b BufferedWriter) buffered() int {
 	return b.n
 }
 
+// flush writes the buffered data to the underlying writer and clears the buffer, ensures all data is
+// written.
+// Returns an error if the writer fails to write all buffered data.
 pub fn (mut b BufferedWriter) flush() ! {
 	if b.buffered() == 0 {
 		return
@@ -50,10 +57,13 @@ pub fn (mut b BufferedWriter) flush() ! {
 	return
 }
 
+// available returns the amount of available space left in the buffer.
 pub fn (b BufferedWriter) available() int {
 	return b.buf.len - b.n
 }
 
+// write writes `src` in the buffer, flushing it to the underlying writer as needed, and returns the
+// number of bytes written.
 pub fn (mut b BufferedWriter) write(src []u8) !int {
 	mut p := src.clone()
 	len := p.len
