@@ -5,5 +5,7 @@ fn template() string {
 }
 
 fn test_tmpl_with_dot_var() {
-	assert template() == '.1\r\n.2\r\n'
+	assert template() == '.1
+.2
+'
 }
