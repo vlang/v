@@ -883,7 +883,7 @@ fn frame(mut app App) {
 		// do GC once per 2 seconds
 		// eprintln('> gc_memory_use: ${gc_memory_use()}')
 		if gc_is_enabled() {
-			// Avoid assert error when built with `-gc` on some systems
+			// Avoid assert error when built with `-cg` on some systems
 			gc_disable()
 		}
 		gc_enable()
