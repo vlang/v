@@ -767,8 +767,13 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if name.len > 0 && name[0].is_capital() && field_sym.info is ast.Struct {
 					for embed in info.embeds {
 						if embed == int(field.typ) {
+							prefix_embed := if embed_prefix != '' {
+								'${embed_prefix}.${name}'
+							} else {
+								name
+							}
 							g.gen_struct_enc_dec(field.typ, g.table.sym(field.typ).info,
-								styp, mut enc, mut dec, name)
+								styp, mut enc, mut dec, prefix_embed)
 							skip_embed = true
 							break
 						}
