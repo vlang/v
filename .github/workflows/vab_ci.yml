@@ -26,7 +26,8 @@ jobs:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
-      VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
+      VFLAGS: -d vab_no_notices
+      VAB_FLAGS: -v 3
     steps:
       - uses: actions/setup-java@v4
         with:
@@ -35,7 +36,7 @@ jobs:
 
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4 && ./v symlink
+        run: make && ./v symlink
 
       - name: Install vab
         run: |
@@ -43,8 +44,13 @@ jobs:
           v -g ~/.vmodules/vab
           sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
-      - name: Run tests
-        run: v -g test ~/.vmodules/vab
+      - name: Install Java 8 matching build-tools
+        run: vab install "build-tools;30.0.3"
+
+      - name: Install AAB dependencies
+        run: |
+          vab install bundletool
+          vab install aapt2
 
       - name: Run vab --help
         run: vab --help
@@ -54,6 +60,15 @@ jobs:
           vab doctor
           which d8 || true
           which dx || true
+
+      - name: Run vab --list-* flags
+        run: |
+          vab --list-apis
+          vab --list-build-tools
+          vab --list-ndks
+
+      - name: Run vab tests
+        run: v -g test ~/.vmodules/vab
 
       - name: Build graphical V examples as APK
         run: |
