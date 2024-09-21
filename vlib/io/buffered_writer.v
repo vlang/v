@@ -21,14 +21,14 @@ pub fn new_buffered_writer(o BufferedWriterConfig) !&BufferedWriter {
 	}
 
 	return &BufferedWriter{
-		buf: []u8{len: o.cap, cap: o.cap}
+		buf: []u8{len: o.cap}
 		wr:  o.writer
 	}
 }
 
 pub fn (mut b BufferedWriter) reset() {
 	cap := b.buf.len
-	b.buf = []u8{len: cap, cap: cap}
+	b.buf = []u8{len: cap}
 	b.n = 0
 }
 
