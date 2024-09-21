@@ -56,7 +56,7 @@ fn bytes_to_u64(b []u8) []u64 {
 }
 
 // int_big creates a random `big.Integer` with range [0, n)
-// panics if `n` is 0 or negative.
+// returns an error if `n` is 0 or negative.
 pub fn int_big(n big.Integer) !big.Integer {
 	if n.signum < 1 {
 		return error('`n` cannot be 0 or negative.')
@@ -66,7 +66,7 @@ pub fn int_big(n big.Integer) !big.Integer {
 	len := max.bit_len()
 
 	if len == 0 {
-		// max must be 0
+		// max = n - 1, if max = 0 then return max, as it is the only valid integer in [0, 1)
 		return max
 	}
 
@@ -74,17 +74,13 @@ pub fn int_big(n big.Integer) !big.Integer {
 	k := (len + 7) / 8
 
 	// b is the number of bits in the most significant byte of n-1
-	get_b := fn [len] () u64 {
-		b := u64(len % 8)
-		if b == 0 {
-			return 8
-		}
-		return b
+	mut b := u8(len % 8)
+	if b == 0 {
+		b = 8
 	}
-	b := get_b()
 
 	mut result := big.Integer{}
-	for found := false; found == false; {
+	for {
 		mut bytes := read(k)!
 
 		// Clear bits in the first byte to increase the probability that the result is < max
@@ -92,7 +88,7 @@ pub fn int_big(n big.Integer) !big.Integer {
 
 		result = big.integer_from_bytes(bytes)
 		if result < max {
-			found = true
+			break
 		}
 	}
 	return result
