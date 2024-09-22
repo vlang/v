@@ -2722,7 +2722,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						return
 					} else if arg.expr is ast.Ident && arg.expr.language == .c {
 						g.write('(voidptr)')
-					} else {
+					} else if !(!arg.is_mut && arg_sym.kind == .alias
+						&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()) {
 						g.write('(voidptr)&/*qq*/')
 					}
 				} else {
@@ -2731,7 +2732,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						atype = g.unwrap_generic(atype)
 					}
 					if atype.has_flag(.generic) || arg.expr is ast.StructInit {
-						g.write('(voidptr)&/*qq*/')
+						g.write('(voidptr)&/*qq2*/')
 					} else if arg.expr is ast.None {
 						g.expr_with_opt(arg.expr, arg_typ, expected_type)
 						return
