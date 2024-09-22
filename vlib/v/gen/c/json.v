@@ -614,6 +614,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		mut is_skip := false
 		mut is_required := false
 		mut is_omit_empty := false
+		mut skip_embed := false
 
 		for attr in field.attrs {
 			match attr.name {
@@ -766,12 +767,17 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if name.len > 0 && name[0].is_capital() && field_sym.info is ast.Struct {
 					for embed in info.embeds {
 						if embed == int(field.typ) {
+							prefix_embed := if embed_prefix != '' {
+								'${embed_prefix}.${name}'
+							} else {
+								name
+							}
 							g.gen_struct_enc_dec(field.typ, g.table.sym(field.typ).info,
-								styp, mut enc, mut dec, name)
+								styp, mut enc, mut dec, prefix_embed)
+							skip_embed = true
 							break
 						}
 					}
-					continue
 				}
 				tmp := g.new_tmp_var()
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
@@ -797,15 +803,15 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				dec.writeln('\t}')
 			}
 		}
-		if embed_prefix.len > 0 {
-			return
+		if skip_embed {
+			continue
 		}
 		// Encoding
 		mut enc_name := js_enc_name(field_type)
 		prefix_enc := if utyp.has_flag(.option) {
-			'(*(${g.base_type(utyp)}*)val.data)'
+			'(*(${g.base_type(utyp)}*)val${embed_member}.data)'
 		} else {
-			'val'
+			'val${embed_member}'
 		}
 		is_option := field.typ.has_flag(.option)
 		indent := if is_option { '\t\t' } else { '\t' }
