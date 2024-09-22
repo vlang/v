@@ -31,20 +31,6 @@ fn write_random_data(mut aw ArrayWriter, mut bw io.BufferedWriter, max int) !int
 	return total
 }
 
-// create_data returns an array with `n` elements plus `\n` as last character.
-fn create_data(n int) []u8 {
-	mut res := []u8{}
-	for i := 0; i < n; i++ {
-		res << `X`
-	}
-	res << `\n`
-	return res
-}
-
-fn test_create_buffered_writer() {
-	bw := io.new_buffered_writer(writer: ArrayWriter{}, cap: 10)!
-}
-
 fn test_flush() {
 	mut aw := ArrayWriter{}
 	max := 65536
@@ -91,6 +77,16 @@ fn test_write_big() {
 	assert bw.buffered() == 0
 	assert bw.available() == max
 	assert aw.result.len == more_than_max
+}
+
+// create_data returns an array with `n` elements plus `\n` as last character.
+fn create_data(n int) []u8 {
+	mut res := []u8{}
+	for i := 0; i < n; i++ {
+		res << `X`
+	}
+	res << `\n`
+	return res
 }
 
 fn test_simple_write() {
