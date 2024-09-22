@@ -19,3 +19,9 @@ fn test_main() {
 	println(fun)
 	assert fun == 'options'
 }
+
+fn test_ifguard() {
+	if req2 := find_func('vlang') {
+		assert req2('options') == 'options'
+	}
+}
