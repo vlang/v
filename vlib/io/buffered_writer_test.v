@@ -20,7 +20,7 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 // write less than max bytes, returns number of bytes written
 // data is written in chunks.
 fn write_random_data(mut aw ArrayWriter, mut bw io.BufferedWriter, max int) !int {
-	less_than_max := max - rand.u8() // guarantee 1 full u8 less than max
+	less_than_max := max - 255 // guarantee 1 full u8 less than max
 	mut total := 0
 	for total < less_than_max {
 		r := rand.u8()
