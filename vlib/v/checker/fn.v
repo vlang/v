@@ -3366,7 +3366,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 
 fn (mut c Checker) check_for_mut_receiver(mut expr ast.Expr) (string, token.Pos) {
 	to_lock, pos := c.fail_if_immutable(mut expr)
-	if !expr.is_lvalue() {
+	if !expr.is_lvalue() && expr !is ast.CallExpr {
 		c.error('cannot pass expression as `mut`', expr.pos())
 	}
 	return to_lock, pos
