@@ -133,7 +133,7 @@ pub fn (mut ws Client) listen() ! {
 	}
 	for ws.get_state() == .open {
 		msg := ws.read_next_message() or {
-			if err.code() == C.EINTR { // Check for EINTR and retry
+			if err.code() == net.error_eintr { // Check for EINTR and retry
 				continue
 			} else if ws.get_state() in [.closed, .closing] {
 				return
