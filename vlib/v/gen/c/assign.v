@@ -589,7 +589,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
 
-				if val_type.has_flag(.option) && val is ast.SelectorExpr {
+				if val_type.has_flag(.option) {
 					ret_styp := g.typ(g.unwrap_generic(val_type))
 					g.write('${ret_styp} ${fn_name}')
 				} else {
