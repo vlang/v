@@ -66,9 +66,8 @@ pub fn (b BufferedWriter) available() int {
 // number of bytes written.
 pub fn (mut b BufferedWriter) write(src []u8) !int {
 	mut p := src.clone()
-	len := p.len
 	mut nn := 0
-	for len > b.available() {
+	for p.len > b.available() {
 		mut n := 0
 		if b.buffered() == 0 {
 			n = b.wr.write(p)!

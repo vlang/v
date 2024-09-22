@@ -17,6 +17,7 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 	return res
 }
 
+// create_data returns an array with `n` elements plus `\n` as last character.
 fn create_data(n int) []u8 {
 	mut res := []u8{}
 	for i := 0; i < n; i++ {
@@ -33,16 +34,26 @@ fn test_create_buffered_writer() {
 fn test_write() {
 	mut aw := ArrayWriter{}
 	mut bw := io.new_buffered_writer(writer: aw, cap: 10)!
-	data := create_data(6)
+	mut data := create_data(6)
 	w1 := bw.write(data)!
 
+	// add data to buffer, less than cap
 	assert w1 == 7 // 6*x + \n
 	assert bw.buffered() == 7
 
+	// add more data, exceed cap
 	w2 := bw.write(data)!
 	assert w2 == 7
 	assert bw.buffered() == 4
 	assert aw.result.len == 10
+
+	// exceed cap immediately
+	aw.result = []u8{}
+	data = create_data(33)
+	bw.reset()
+	w3 := bw.write(data)!
+	assert bw.buffered() == 0 // All data is written without buffering
+	assert aw.result.len == 34 // 33*x + \n
 }
 
 fn test_flush() {
