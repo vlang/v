@@ -3,7 +3,6 @@ module main
 import datatypes
 import gg
 import gx
-import os
 import time
 import math
 import rand
@@ -123,7 +122,6 @@ fn main() {
 		frame_fn:      frame
 		event_fn:      on_event
 		user_data:     app
-		font_path:     os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
 	)
 	app.qt = app.qt.create(0, 0, 1340, 640, 8, 4, 0)
 	app.start()

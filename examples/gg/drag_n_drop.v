@@ -1,12 +1,10 @@
 module main
 
-import os
 import gg
 import gx
 import sokol.sapp
 
 const max_files = 12
-const text = 'Drag&Drop here max ${max_files} files.'
 const text_size = 16
 
 struct App {
@@ -16,7 +14,6 @@ mut:
 }
 
 fn main() {
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	mut app := &App{}
 	app.gg = gg.new_context(
 		bg_color:     gx.rgb(174, 198, 255)
@@ -24,7 +21,6 @@ fn main() {
 		height:       400
 		window_title: 'Drag and drop'
 		frame_fn:     frame
-		font_path:    font_path
 		user_data:    app
 		event_fn:     my_event_manager
 		// drag & drop
@@ -54,7 +50,7 @@ fn frame(mut app App) {
 		align: .left
 		size:  int(text_size * app.gg.scale + 0.5)
 	}
-	app.gg.draw_text(12, 12, text, txt_conf)
+	app.gg.draw_text(12, 12, 'Drag&Drop here max ${max_files} files.', txt_conf)
 
 	mut y := 40
 	for c, f in app.dropped_file_list {
