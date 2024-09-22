@@ -1197,6 +1197,18 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 					expr_ret_type = unaliased_ret_type
 				}
 			}
+			// var with option function
+			if expr.is_fn_var && expr.fn_var_type.has_option_or_result()
+				&& expr.or_block.kind == .absent {
+				ret_sym := c.table.sym(expr.fn_var_type)
+				if expr.fn_var_type.has_flag(.option) {
+					c.error('type `?${ret_sym.name}` is an Option, it must be unwrapped first',
+						expr.pos)
+				} else {
+					c.error('type `?${ret_sym.name}` is an Result, it must be unwrapped first',
+						expr.pos)
+				}
+			}
 			if expr_ret_type.has_option_or_result() {
 				if expr.or_block.kind == .absent {
 					ret_sym := c.table.sym(expr_ret_type)
