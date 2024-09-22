@@ -4,8 +4,6 @@ import time
 import math
 import sync
 
-const default_duration = time.second
-
 // Benchmark represent all significant data for benchmarking. Provide clear way for getting result in convinient way by exported methods
 @[noinit]
 pub struct Benchmark {
@@ -23,32 +21,42 @@ pub mut:
 	start_allocs     usize           // size of object allocated on heap
 }
 
+// BenchmarkDefaults is params struct for providing parameters of benchmarking to setup function
+// - n - number of iterations. set if you know how many runs of function you need. if you don't know how many you need - set 0
+// - duration - by default 1s. expecting duration of all benchmark runs. doesn't work if is_parallel == true
+// - is_parallel - if true, every bench_func run in separate coroutine
+@[params]
+pub struct BenchmarkDefaults {
+pub:
+	duration    time.Duration = time.second
+	is_parallel bool
+	n           i64
+}
+
 // Benchmark.new - constructor of benchmark
 // arguments:
 // - bench_func - function to benchmark. required, if you have no function - you don't need benchmark
-// - n - number of iterations. set if you know how many runs of function you need. if qou don't know how many you need - set 0
-// - duration - by default 1s. expecting duration of all benchmark runs. doesn't work if is_parallel == true
-// - is_parallel - if true, every bench_func run in separate coroutine
-pub fn Benchmark.new(bench_func fn () !, n i64, duration time.Duration, is_parallel bool) !Benchmark {
+// - params - structure of benchmark parameters
+pub fn setup(bench_func fn () !, params BenchmarkDefaults) !Benchmark {
 	if bench_func == unsafe { nil } {
-		return error('Benchmark function cannot be empty')
+		return error('Benchmark function cannot be `nil`')
 	}
 
-	if duration > 0 && is_parallel {
+	if params.duration > 0 && params.is_parallel {
 		return error('can not predict number of parallel iterations')
 	}
 
 	return Benchmark{
-		n:           n
+		n:           params.n
 		bench_func:  bench_func
-		bench_time:  if duration > 0 { duration } else { default_duration }
-		is_parallel: is_parallel
+		bench_time:  params.duration
+		is_parallel: params.is_parallel
 	}
 }
 
 // run_benchmark - function for start benchmarking
 // run benchmark n times, or duration time
-pub fn (mut b Benchmark) run_benchmark() {
+pub fn (mut b Benchmark) run() {
 	// run bench_func one time for heat up processor cache and get elapsed time for n prediction
 	b.run_n(1)
 

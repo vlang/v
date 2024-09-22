@@ -41,12 +41,12 @@ fn test_fn_with_error() {
 	f := fn () ! {
 		return error('error')
 	}
-	mut bench := Benchmark.new(f, 0, 0, false) or {
+	mut bench := setup(f) or {
 		eprintln('Error creating benchmark: ${err}')
 		return
 	}
 
-	bench.run_benchmark()
+	bench.run()
 
 	assert bench.failed == true
 	assert bench.benchmark_result.n == 1
@@ -57,12 +57,12 @@ fn test_n_must_be_over_1() {
 		mut i := 0
 		i++
 	}
-	mut bench := Benchmark.new(f, 0, 0, false) or {
+	mut bench := setup(f) or {
 		eprintln('Error creating benchmark: ${err}')
 		return
 	}
 
-	bench.run_benchmark()
+	bench.run()
 
 	assert bench.benchmark_result.n > 1
 }
@@ -72,12 +72,14 @@ fn test_n() {
 		mut i := 0
 		i++
 	}
-	mut bench := Benchmark.new(f, 1000, 0, false) or {
+	mut bench := setup(f, BenchmarkDefaults{
+		n: 1000
+	}) or {
 		eprintln('Error creating benchmark: ${err}')
 		return
 	}
 
-	bench.run_benchmark()
+	bench.run()
 
 	assert bench.benchmark_result.n == 1000
 }
@@ -86,12 +88,12 @@ fn test_max_bench_time() {
 	f := fn () ! {
 		time.sleep(500 * time.millisecond)
 	}
-	mut bench := Benchmark.new(f, 0, 0, false) or {
+	mut bench := setup(f) or {
 		eprintln('Error creating benchmark: ${err}')
 		return
 	}
 
-	bench.run_benchmark()
+	bench.run()
 
 	assert bench.benchmark_result.n == 3
 	assert bench.benchmark_result.t >= time.second
@@ -103,12 +105,12 @@ fn test_performance() {
 	mut actual := []bool{}
 
 	for i in scheduler {
-		mut bench := Benchmark.new(i, 0, 0, false) or {
+		mut bench := setup(i) or {
 			eprintln('Error creating benchmark: ${err}')
 			return
 		}
 
-		bench.run_benchmark()
+		bench.run()
 		actual << bench.failed
 	}
 
