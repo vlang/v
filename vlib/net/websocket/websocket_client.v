@@ -140,7 +140,7 @@ pub fn (mut ws Client) listen() ! {
 			} else {
 				ws.debug_log('failed to read next message: ${err}')
 				ws.send_error_event('failed to read next message: ${err}')
-				return
+				return err
 			}
 		}
 		if ws.get_state() in [.closed, .closing] {
