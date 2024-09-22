@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_fn_var_err.vv:18:9: error: type `?DataFn` is an Option, it must be unwrapped first
+   16 | fn main() {
+   17 |     req := find_func('vlang')
+   18 |     fun := req('options')
+      |            ~~~~~~~~~~~~~~
+   19 |     println(fun)
+   20 | }

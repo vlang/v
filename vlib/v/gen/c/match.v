@@ -92,10 +92,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		cur_line = g.go_before_last_stmt().trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		mut func_decl := ''
-		if g.table.final_sym(node.return_type).kind == .function {
-			func_sym := g.table.final_sym(node.return_type)
-			if func_sym.info is ast.FnType {
-				def := g.fn_var_signature(func_sym.info.func.return_type, func_sym.info.func.params.map(it.typ),
+		ret_final_sym := g.table.final_sym(node.return_type)
+		if !node.return_type.has_option_or_result() && ret_final_sym.kind == .function {
+			if ret_final_sym.info is ast.FnType {
+				def := g.fn_var_signature(ret_final_sym.info.func.return_type, ret_final_sym.info.func.params.map(it.typ),
 					tmp_var)
 				func_decl = '${def} = &${g.typ(node.return_type)};'
 			}
