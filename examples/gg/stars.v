@@ -1,6 +1,6 @@
 module main
 
-import os
+import os.asset
 import gg
 import gx
 import rand
@@ -78,10 +78,7 @@ fn main() {
 }
 
 fn init_images(mut app App) {
-	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
-	$if android {
-		logo_path = 'logo.png'
-	}
+	logo_path := asset.get_path('../assets', 'logo.png')
 	app.image = app.gg.create_image(logo_path) or { panic(err) }
 }
 

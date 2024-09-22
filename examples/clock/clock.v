@@ -2,7 +2,6 @@
 // This is a small V example that was based off of the fireworks example.
 // Written by Stefan Schroeder in 2021 for the v project examples.
 // See LICENSE for license information.
-import os
 import gg
 import gx
 import math
@@ -147,13 +146,7 @@ fn on_init(mut app App) {
 
 fn main() {
 	println("Press 'q' to quit.")
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
-
 	mut app := &App{}
-
 	app.gg = gg.new_context(
 		width:        design_size
 		height:       design_size
@@ -163,8 +156,6 @@ fn main() {
 		frame_fn:     on_frame
 		event_fn:     on_event
 		init_fn:      on_init
-		font_path:    font_path
 	)
-
 	app.gg.run()
 }

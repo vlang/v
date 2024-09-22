@@ -1,6 +1,6 @@
 import gg
 import gx
-import os
+import os.asset
 import sokol.sgl
 
 pub struct Window {
@@ -10,11 +10,7 @@ pub mut:
 }
 
 pub fn (mut window Window) init() {
-	image_path := $if android {
-		'logo.png'
-	} $else {
-		os.resource_abs_path('../assets/logo.png')
-	}
+	image_path := asset.get_path('../assets', 'logo.png')
 	window.img = window.ctx.create_image(image_path) or { panic(err) }
 }
 

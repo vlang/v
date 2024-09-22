@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
-import os
+import os.asset
 import rand
 import time
 import gx
@@ -157,10 +157,6 @@ fn frame(mut game Game) {
 
 fn main() {
 	mut game := &Game{}
-	mut fpath := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		fpath = 'fonts/RobotoMono-Regular.ttf'
-	}
 	game.gg = gg.new_context(
 		bg_color:      gx.white
 		width:         win_width
@@ -170,7 +166,8 @@ fn main() {
 		user_data:     game
 		frame_fn:      frame
 		event_fn:      on_event
-		font_path:     fpath // wait_events: true
+		font_path:     asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
+		// wait_events: true
 	)
 	game.init_game()
 	game.gg.run() // Run the render loop in the main thread

@@ -1,7 +1,7 @@
 import gg
 import gx
 import math
-import os
+import os.asset
 import rand
 import time
 
@@ -899,10 +899,6 @@ fn init(mut app App) {
 fn main() {
 	mut app := &App{}
 	app.new_game()
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
 	app.gg = gg.new_context(
 		bg_color:     app.theme.bg_color
 		width:        default_window_width
@@ -913,7 +909,7 @@ fn main() {
 		event_fn:     on_event
 		init_fn:      init
 		user_data:    app
-		font_path:    font_path
+		font_path:    asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
 	)
 	app.gg.run()
 }
