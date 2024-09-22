@@ -133,12 +133,15 @@ pub fn (mut ws Client) listen() ! {
 	}
 	for ws.get_state() == .open {
 		msg := ws.read_next_message() or {
-			if ws.get_state() in [.closed, .closing] {
+			if err.code() == C.EINTR { // Check for EINTR and retry
+				continue
+			} else if ws.get_state() in [.closed, .closing] {
+				return
+			} else {
+				ws.debug_log('failed to read next message: ${err}')
+				ws.send_error_event('failed to read next message: ${err}')
 				return
 			}
-			ws.debug_log('failed to read next message: ${err}')
-			ws.send_error_event('failed to read next message: ${err}')
-			return err
 		}
 		if ws.get_state() in [.closed, .closing] {
 			return
