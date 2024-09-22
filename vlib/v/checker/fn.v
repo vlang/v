@@ -1090,7 +1090,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					} else {
 						if obj.typ == 0 {
 							if mut obj.expr is ast.IfGuardExpr {
-								typ = c.expr(mut obj.expr.expr)
+								typ = c.expr(mut obj.expr.expr).clear_option_and_result()
 							} else {
 								typ = c.expr(mut obj.expr)
 							}
