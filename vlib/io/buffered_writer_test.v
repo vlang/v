@@ -18,11 +18,17 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 }
 
 // write less than max bytes, returns number of bytes written
+// data is written in chunks.
 fn write_random_data(mut aw ArrayWriter, mut bw io.BufferedWriter, max int) !int {
-	less_than_max := max - rand.u8()
-	d := rand.bytes(less_than_max)!
-	w := bw.write(d)!
-	return w
+	less_than_max := max - rand.u8() // guarantee 1 full u8 less than max
+	mut total := 0
+	for total < less_than_max {
+		r := rand.u8()
+		d := rand.bytes(r)!
+		w := bw.write(d)!
+		total += w
+	}
+	return total
 }
 
 // create_data returns an array with `n` elements plus `\n` as last character.
