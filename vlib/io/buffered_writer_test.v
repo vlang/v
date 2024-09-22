@@ -1,5 +1,5 @@
 import io
-import crypto.rand
+import rand
 
 struct ArrayWriter {
 pub mut:
@@ -17,6 +17,19 @@ fn (mut aw ArrayWriter) write(buf []u8) !int {
 	return res
 }
 
+// write less than max bytes, returns number of bytes written
+fn write_random_data(mut aw ArrayWriter, mut bw io.BufferedWriter, max int) !int {
+	less_than_max := max - rand.u8()
+	mut total := 0
+	for total < less_than_max {
+		r := rand.u8()
+		d := rand.bytes(r)!
+		w := bw.write(d)!
+		total += w
+	}
+	return total
+}
+
 // create_data returns an array with `n` elements plus `\n` as last character.
 fn create_data(n int) []u8 {
 	mut res := []u8{}
@@ -31,35 +44,55 @@ fn test_create_buffered_writer() {
 	bw := io.new_buffered_writer(writer: ArrayWriter{}, cap: 10)!
 }
 
-fn test_basic_write() {
+fn test_flush() {
 	mut aw := ArrayWriter{}
 	max := 65536
 	mut bw := io.new_buffered_writer(writer: aw, cap: max)!
 
 	// write less data than buffer capacity, the underlying writer should receive no data.
-	safe_max := 65536 - 255
-	mut total := 0
-	for total < safe_max {
-		a := rand.read(1)!
-		r := a[0]
-		d := rand.read(r)!
-		w := bw.write(d)!
-		total += w
-	}
-	assert total == bw.buffered()
+	written := write_random_data(mut aw, mut bw, 65536)!
+	assert written == bw.buffered()
 	assert aw.result.len == 0
 
+	bw.flush()!
+	assert aw.result.len == written
+	assert bw.buffered() == 0
+	assert bw.available() == max
+}
+
+fn test_write() {
+	mut aw := ArrayWriter{}
+	max := 65536
+	mut bw := io.new_buffered_writer(writer: aw, cap: max)!
+
+	// write less data than buffer capacity, the underlying writer should receive no data.
+	written := write_random_data(mut aw, mut bw, 65536)!
+
 	// now exceed buffer capacity by a little
-	random_array := rand.read(1)!
-	little := random_array[0]
+	little := rand.u8()
 	excess := bw.available() + little
-	excess_data := rand.read(excess)!
+	excess_data := rand.bytes(excess)!
 	w := bw.write(excess_data)!
+	assert bw.buffered() == little
 	assert bw.available() == max - little
 	assert aw.result.len == max
 }
 
-fn test_write() {
+fn test_write_big() {
+	mut aw := ArrayWriter{}
+	max := 65536
+	mut bw := io.new_buffered_writer(writer: aw, cap: max)!
+
+	more_than_max := max + rand.u8()
+	big_source := rand.bytes(more_than_max)!
+	w := bw.write(big_source)!
+	assert w == more_than_max
+	assert bw.buffered() == 0
+	assert bw.available() == max
+	assert aw.result.len == more_than_max
+}
+
+fn test_simple_write() {
 	mut aw := ArrayWriter{}
 	mut bw := io.new_buffered_writer(writer: aw, cap: 10)!
 	mut data := create_data(6)
@@ -88,7 +121,7 @@ fn test_write() {
 	assert aw.result.len == 34 // 33*x + \n
 }
 
-fn test_flush() {
+fn test_simple_flush() {
 	mut aw := ArrayWriter{}
 	mut bw := io.new_buffered_writer(writer: aw, cap: 10)!
 	data := create_data(6)
