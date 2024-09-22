@@ -2,11 +2,11 @@ module main
 
 import gg
 import gx
-import os
 import time
 import math
 import rand
 import neuroevolution
+import os.asset
 
 const win_width = 500
 const win_height = 512
@@ -173,10 +173,6 @@ fn (mut app App) update() {
 
 fn main() {
 	mut app := &App{}
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
 	app.gg = gg.new_context(
 		bg_color:      gx.white
 		width:         win_width
@@ -187,7 +183,7 @@ fn main() {
 		event_fn:      on_event
 		user_data:     app
 		init_fn:       app.init_images_wrapper
-		font_path:     font_path
+		font_path:     asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
 	)
 	app.nv = neuroevolution.Generations{
 		population: 50
@@ -210,21 +206,10 @@ fn (mut app App) init_images_wrapper() {
 }
 
 fn (mut app App) init_images() ! {
-	$if android {
-		background := os.read_apk_asset('img/background.png')!
-		app.background = app.gg.create_image_from_byte_array(background)!
-		bird := os.read_apk_asset('img/bird.png')!
-		app.bird = app.gg.create_image_from_byte_array(bird)!
-		pipetop := os.read_apk_asset('img/pipetop.png')!
-		app.pipetop = app.gg.create_image_from_byte_array(pipetop)!
-		pipebottom := os.read_apk_asset('img/pipebottom.png')!
-		app.pipebottom = app.gg.create_image_from_byte_array(pipebottom)!
-	} $else {
-		app.background = app.gg.create_image(os.resource_abs_path('assets/img/background.png'))!
-		app.bird = app.gg.create_image(os.resource_abs_path('assets/img/bird.png'))!
-		app.pipetop = app.gg.create_image(os.resource_abs_path('assets/img/pipetop.png'))!
-		app.pipebottom = app.gg.create_image(os.resource_abs_path('assets/img/pipebottom.png'))!
-	}
+	app.background = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/background.png')!)!
+	app.bird = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/bird.png')!)!
+	app.pipetop = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipetop.png')!)!
+	app.pipebottom = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipebottom.png')!)!
 }
 
 fn frame(app &App) {

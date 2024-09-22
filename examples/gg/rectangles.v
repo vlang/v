@@ -2,7 +2,7 @@ module main
 
 import gg
 import gx
-import os
+import os.asset
 
 const win_width = 600
 const win_height = 300
@@ -23,18 +23,10 @@ fn main() {
 		window_title:  'Rectangles'
 		frame_fn:      frame
 		user_data:     app
-		init_fn:       init_images
 	)
-	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
-	$if android {
-		logo_path = 'logo.png'
-	}
+	logo_path := asset.get_path('../assets', 'logo.png')
 	app.image = app.gg.create_image(logo_path)!.id
 	app.gg.run()
-}
-
-fn init_images(mut app App) {
-	// app.image = gg.create_image('logo.png')
 }
 
 fn frame(app &App) {
