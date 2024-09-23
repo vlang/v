@@ -32,6 +32,7 @@ numbers: [1, 2, 3]
 2
 3
 
+
 0 - 0
 2 - 1
 4 - 2
@@ -43,12 +44,12 @@ numbers: [1, 2, 3]
 16 - 8
 18 - 9
 
+
 vlang/ui, downloaded 3201 times.
 vlang/vtl, downloaded 123 times.
 
 
 this is not ignored
-
 
 so, it's basically true"
 
@@ -72,6 +73,7 @@ numbers: [1, 2, 3]
 2
 3
 
+
 0 - 0
 2 - 1
 4 - 2
@@ -83,12 +85,12 @@ numbers: [1, 2, 3]
 16 - 8
 18 - 9
 
+
 vlang/ui, downloaded 3201 times.
 vlang/vtl, downloaded 123 times.
 
 
 this is not ignored
-
 
 so, it's basically true"
 }
@@ -143,4 +145,17 @@ fn test_tmpl_include_grandchild() {
 	expected := [base, base, child, grandchild].join('\n')
 	child_tmpl := $tmpl('tmpl/nested/nested_deeper/grandchild.html')
 	assert child_tmpl.contains(expected)
+}
+
+fn test_tmpl_if_cond() {
+	cond := true
+	processed := $tmpl('tmpl/if_cond.txt')
+	assert processed == 'aaa
+bbb
+ccc
+
+aaa
+bbb
+ccc
+'
 }
