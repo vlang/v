@@ -1675,7 +1675,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
 	mut is_range_slice := false
-	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
+	if node.name == 'clone' && node.receiver_type.is_ptr() && !left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
 			idx := node.left.index
 			if idx is ast.RangeExpr {
