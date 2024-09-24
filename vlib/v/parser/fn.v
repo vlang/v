@@ -347,7 +347,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 			if is_duplicate {
-				if type_sym.kind == .enum_ {
+				if type_sym.kind == .enum_
+					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
 					if enum_fn := type_sym.find_method(name) {
 						name_pos = enum_fn.name_pos
 					}
