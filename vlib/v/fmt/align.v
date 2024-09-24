@@ -43,17 +43,17 @@ fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
 		fa.add_new_info(len, line)
 		return
 	}
-	mut last_info := fa.infos.last()
+	i := fa.infos.len - 1
 	if (fa.cfg.use_break_line && has_break_line)
-		|| (!fa.cfg.use_break_line && line - last_info.line_nr > 1) {
+		|| (!fa.cfg.use_break_line && line - fa.infos[i].line_nr > 1) {
 		fa.add_new_info(len, line)
 		return
 	}
 	if fa.cfg.use_threshold {
-		len_diff := if last_info.max_len >= len {
-			last_info.max_len - len
+		len_diff := if fa.infos[i].max_len >= len {
+			fa.infos[i].max_len - len
 		} else {
-			len - last_info.max_len
+			len - fa.infos[i].max_len
 		}
 
 		if len_diff >= fa.cfg.threshold {
@@ -61,9 +61,9 @@ fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
 			return
 		}
 	}
-	last_info.line_nr = line
-	if len > last_info.max_len {
-		last_info.max_len = len
+	fa.infos[i].line_nr = line
+	if len > fa.infos[i].max_len {
+		fa.infos[i].max_len = len
 	}
 }
 
