@@ -242,7 +242,6 @@ fn vweb_tmpl_${fn_name}() string {
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
-	mut in_write := false // continuing string write code
 	for i := 0; i < lines.len; i++ {
 		line := lines[i]
 		tline_number++
@@ -329,13 +328,12 @@ fn vweb_tmpl_${fn_name}() string {
 			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
 			source.write_string(tmpl_str_start)
-			in_write = true
 			continue
 		}
 		if line.contains('@end') {
 			source.writeln(tmpl_str_end)
 			source.writeln('}')
-			source.writeln(tmpl_str_start)
+			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@else') {
@@ -344,7 +342,6 @@ fn vweb_tmpl_${fn_name}() string {
 			source.writeln('}' + line[pos + 1..] + '{')
 			// source.writeln(' } else { ')
 			source.write_string(tmpl_str_start)
-			in_write = true
 			continue
 		}
 		if line.contains('@for') {
@@ -356,15 +353,10 @@ fn vweb_tmpl_${fn_name}() string {
 		}
 		if state == .simple {
 			// by default, just copy 1:1
-			if in_write {
-				source.write_string(insert_template_code(fn_name, tmpl_str_start, line))
-			} else {
-				source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
-			}
-			in_write = false
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 			continue
 		}
-		in_write = false
+		//in_write = false
 		// The .simple mode ends here. The rest handles .html/.css/.js state transitions.
 
 		if state != .simple {
