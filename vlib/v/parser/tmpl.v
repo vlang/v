@@ -77,7 +77,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `vweb.RawHtml` string
 	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
-	replace_pairs := ['\\', '\\\\', r"'", "\\'", r'@', r'$', r'$$', r'\@']
+	replace_pairs := ['\\', '\\\\', r"'", "\\'", r'@@', r'@', r'@', r'$', r'$$', r'\@']
 	mut rline := line.replace_each(replace_pairs)
 	comptime_call_str := rline.find_between('\${', '}')
 	if comptime_call_str.contains("\\'") {
