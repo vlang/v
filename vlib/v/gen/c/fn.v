@@ -1675,13 +1675,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
 	mut is_range_slice := false
-	if node.name == 'clone' && node.receiver_type.is_ptr() && !left_type.is_ptr() {
+	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
 			idx := node.left.index
 			if idx is ast.RangeExpr {
 				// expr is arr[range].clone()
 				// use array_clone_static instead of array_clone
-				name = util.no_dots('${receiver_type_name}_${node.name}_static')
+				if node.name == 'clone' {
+					name = util.no_dots('${receiver_type_name}_${node.name}_static')
+				}
 				is_range_slice = true
 			}
 		}
@@ -1758,6 +1760,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
 				&& g.typ(left_type) == g.typ(node.receiver_type)) {
 				g.write('&')
+			}
+		} else {
+			if node.name != 'clone' && !left_type.is_ptr() {
+				g.write('ADDR(${rec_cc_type}, ')
+				cast_n++
 			}
 		}
 	} else if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name != 'str'
