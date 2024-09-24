@@ -666,6 +666,7 @@ pub:
 	file                  string
 	file_mode             Language
 	pos                   token.Pos
+	name_pos              token.Pos
 	return_type_pos       token.Pos
 pub mut:
 	return_type        Type

@@ -347,7 +347,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 			if is_duplicate {
-				p.error_with_pos('duplicate method `${name}`', name_pos)
+				if type_sym.kind == .enum_
+					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
+					if enum_fn := type_sym.find_method(name) {
+						name_pos = enum_fn.name_pos
+					}
+					p.error_with_pos('duplicate method `${name}`, `${name}` is an enum type built-in method',
+						name_pos)
+				} else {
+					p.error_with_pos('duplicate method `${name}`', name_pos)
+				}
 				return ast.FnDecl{
 					scope: unsafe { nil }
 				}
@@ -539,6 +548,7 @@ run them via `v file.v` instead',
 			mod:      p.mod
 			file:     p.file_path
 			pos:      start_pos
+			name_pos: name_pos
 			language: language
 		})
 	} else {
@@ -591,6 +601,7 @@ run them via `v file.v` instead',
 			mod:      p.mod
 			file:     p.file_path
 			pos:      start_pos
+			name_pos: name_pos
 			language: language
 		})
 	}
