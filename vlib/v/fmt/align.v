@@ -12,7 +12,6 @@ mut:
 @[params]
 struct AlignConfig {
 pub:
-	ignore_newline bool // ignore newline or comment
 	use_break_line bool
 	use_threshold  bool
 	threshold      int = 25
@@ -44,17 +43,17 @@ fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
 		fa.add_new_info(len, line)
 		return
 	}
-	i := fa.infos.len - 1
-	if !fa.cfg.ignore_newline && ((fa.cfg.use_break_line && has_break_line)
-		|| (!fa.cfg.use_break_line && line - fa.infos[i].line_nr > 1)) {
+	last_idx := fa.infos.len - 1
+	if (fa.cfg.use_break_line && has_break_line)
+		|| (!fa.cfg.use_break_line && line - fa.infos[last_idx].line_nr > 1) {
 		fa.add_new_info(len, line)
 		return
 	}
 	if fa.cfg.use_threshold {
-		len_diff := if fa.infos[i].max_len >= len {
-			fa.infos[i].max_len - len
+		len_diff := if fa.infos[last_idx].max_len >= len {
+			fa.infos[last_idx].max_len - len
 		} else {
-			len - fa.infos[i].max_len
+			len - fa.infos[last_idx].max_len
 		}
 
 		if len_diff >= fa.cfg.threshold {
@@ -62,9 +61,9 @@ fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
 			return
 		}
 	}
-	fa.infos[i].line_nr = line
-	if len > fa.infos[i].max_len {
-		fa.infos[i].max_len = len
+	fa.infos[last_idx].line_nr = line
+	if len > fa.infos[last_idx].max_len {
+		fa.infos[last_idx].max_len = len
 	}
 }
 
