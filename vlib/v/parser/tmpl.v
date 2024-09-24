@@ -356,7 +356,7 @@ fn vweb_tmpl_${fn_name}() string {
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 			continue
 		}
-		//in_write = false
+		// in_write = false
 		// The .simple mode ends here. The rest handles .html/.css/.js state transitions.
 
 		if state != .simple {
