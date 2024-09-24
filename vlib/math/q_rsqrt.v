@@ -1,5 +1,11 @@
 module math
 
+// q_sqrt computes an approximation of the inverse square root (1 / √x) using a fast
+// inverse square root algorithm. This method is often used in applications
+// where performance is crucial, such as in computer graphics or physics
+// simulations.
+// (This algorithm is inspired by the famous "fast inverse square root" code
+// used in the Quake III Arena game engine.)
 @[inline]
 pub fn q_rsqrt(x f64) f64 {
 	x_half := 0.5 * x
