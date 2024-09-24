@@ -57,9 +57,9 @@ jobs:
         id: gen_tags
         run: |
           if [[ ${{ matrix.os }} == 'debian' ]]; then
-            echo 'TAGS=${{ vars.DOCKER_REPOSITORY }}/vlang:latest,${{ vars.DOCKER_REPOSITORY }}/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
+            echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
           else
-            echo 'TAGS=${{ vars.DOCKER_REPOSITORY }}/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
+            echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
           fi
 
       - uses: docker/build-push-action@v4
@@ -75,7 +75,7 @@ jobs:
         name: Build and deploy developer build
         with:
           platforms: linux/amd64,linux/arm64
-          tags: ${{ vars.DOCKER_REPOSITORY }}/vlang:${{ matrix.os }}-dev
+          tags: thevlang/vlang:${{ matrix.os }}-dev
           file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
           build-args: "USER=thevlang"
           push: ${{ github.event_name != 'pull_request' }}
