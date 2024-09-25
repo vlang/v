@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  example_matrix:
+  publish-new-docker-images:
     strategy:
       matrix:
         os: [debian, alpine]
