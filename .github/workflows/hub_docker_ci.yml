@@ -2,6 +2,10 @@ name: hub_docker_ci
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - '[0-9].[0-9]+.[0-9]+'   # trigger on new release tag
+      - 'weekly.*'              # trigger on weekly tag
 
 jobs:
   publish-new-docker-images:
@@ -35,17 +39,19 @@ jobs:
             echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
           fi
 
-      - uses: docker/build-push-action@v4
+      - uses: docker/build-push-action@v6
         name: Build and deploy v image
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.gen_tags.outputs.TAGS }}
           file: docker/vlang/Dockerfile.${{ matrix.os }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           build-args: 'USER=thevlang'
+          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
+          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
-      - uses: docker/build-push-action@v4
+      - uses: docker/build-push-action@v6
         name: Build and deploy developer build
         with:
           context: .
@@ -53,4 +59,6 @@ jobs:
           tags: thevlang/vlang:${{ matrix.os }}-dev
           file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
           build-args: 'USER=thevlang'
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
+          cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
+          cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max
