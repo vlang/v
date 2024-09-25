@@ -46,9 +46,7 @@ numbers: [1, 2, 3]
 vlang/ui, downloaded 3201 times.
 vlang/vtl, downloaded 123 times.
 
-
 this is not ignored
-
 
 so, it's basically true"
 
@@ -86,9 +84,7 @@ numbers: [1, 2, 3]
 vlang/ui, downloaded 3201 times.
 vlang/vtl, downloaded 123 times.
 
-
 this is not ignored
-
 
 so, it's basically true"
 }

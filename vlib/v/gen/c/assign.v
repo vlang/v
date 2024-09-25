@@ -525,6 +525,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					.mult_assign { '*' }
 					else { 'unknown op' }
 				}
+				pos := g.out.len
 				g.expr(left)
 				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 					concrete_types := left_sym.info.concrete_types
@@ -548,7 +549,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					return
 				} else {
-					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+					if g.table.final_sym(g.unwrap_generic(var_type)).kind == .array_fixed {
+						g.go_back_to(pos)
+						g.empty_line = true
+						g.write('memcpy(')
+						g.expr(left)
+						g.write(', ${styp}_${util.replace_op(extracted_op)}(')
+					} else {
+						g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+					}
 					method := g.table.find_method(left_sym, extracted_op) or {
 						// the checker will most likely have found this, already...
 						g.error('assignment operator `${extracted_op}=` used but no `${extracted_op}` method defined',
@@ -750,11 +759,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write(' = ')
 						g.expr(val)
 					} else {
-						g.write('memcpy(${final_typ_str}')
-						g.expr(left)
-						g.write(', ${final_ref_str}')
-						g.expr(val)
-						g.write(', sizeof(${typ_str})) /*assign*/')
+						if op_overloaded {
+							g.expr(left)
+							g.write(', ')
+							g.expr(val)
+							g.write(').ret_arr, sizeof(${typ_str})')
+						} else {
+							g.write('memcpy(${final_typ_str}')
+							g.expr(left)
+							g.write(', ${final_ref_str}')
+							g.expr(val)
+							g.write(', sizeof(${typ_str})) /*assign*/')
+						}
 					}
 				} else if is_decl {
 					g.is_shared = var_type.has_flag(.shared_f)
