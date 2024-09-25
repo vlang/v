@@ -964,7 +964,7 @@ fn (mut c Checker) check_duplicated_items(node &ast.ArrayInit) {
 		if item.str() !in unique_items {
 			unique_items << item_str
 		} else {
-			c.error('item `${item_str}` is duplicated in the list', item.pos())
+			c.note('item `${item_str}` is duplicated in the list', item.pos())
 		}
 	}
 }
