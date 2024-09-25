@@ -3359,6 +3359,14 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type
 		}
+		if node.args.len != 1 {
+			c.error('`.delete()` expected 1 argument, but got ${node.args.len}', node.pos)
+		} else {
+			arg_typ := c.expr(mut node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, ast.int_type, node.language, node.args[0]) or {
+				c.error('${err.msg()} in argument 1 to `.delete()`', node.args[0].pos)
+			}
+		}
 		node.return_type = ast.void_type
 	}
 	return node.return_type
