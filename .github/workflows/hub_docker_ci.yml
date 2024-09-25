@@ -26,33 +26,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-#      - name: Docker build
-#        run: |
-#          docker build -f Dockerfile.${{ matrix.os }} --platform linux/amd64,linux/arm64 -t thevlang/vlang:{{ version }} -t thevlang/vlang:latest
-#
-#      - name: Docker push
-#        run: |
-#          docker push thevlang/vlang:{{ version }} thevlang/vlang:latest
-#
-#      - uses: docker/build-push-action@v4
-#        with:
-#          platforms: ${{ vars.PLATFORMS}}
-#          tags: ${{ vars.DOCKER_REPOSITORY }}/vlang:${{ matrix.os}}-build
-#          push: ${{ github.event_name != 'pull_request' }}
-#          file: docker/vlang/Dockerfile.${{ matrix.os }}.build
-#          build-args: "USER=${{vars.DOCKER_REPOSITORY}}"
-#
-#      - name: Build and push
-#        uses: docker/build-push-action@v2
-#        with:
-#          context: .
-#          file: ./Dockerfile
-#          push: true
-#          tags: agasdrm/blog:latest,agasdrm/blog:${{ github.run_number }}
-#          platforms: linux/amd64,linux/arm64/v8
-#          cache-from: type=local,src=/tmp/.buildx-cache
-#          cache-to: type=local,dest=/tmp/.buildx-cache
-
       - name: generate tags conditionally
         id: gen_tags
         run: |
@@ -65,6 +38,7 @@ jobs:
       - uses: docker/build-push-action@v4
         name: Build and deploy v image
         with:
+          context: .
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.gen_tags.outputs.TAGS }}
           file: docker/vlang/Dockerfile.${{ matrix.os }}
@@ -74,6 +48,7 @@ jobs:
       - uses: docker/build-push-action@v4
         name: Build and deploy developer build
         with:
+          context: .
           platforms: linux/amd64,linux/arm64
           tags: thevlang/vlang:${{ matrix.os }}-dev
           file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
