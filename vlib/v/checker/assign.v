@@ -495,6 +495,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						left.recursive_mapset_is_setter(true)
 					}
 				}
+				if mut left is ast.InfixExpr {
+					c.error('cannot use infix expression on the left side of `${node.op}`',
+						left.pos)
+				}
 				if is_decl {
 					c.error('non-name `${left}` on left side of `:=`', left.pos())
 				}
