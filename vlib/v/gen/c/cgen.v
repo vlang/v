@@ -5473,12 +5473,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	tmpvar := g.new_tmp_var()
 	g.defer_return_tmp_var = tmpvar
-	mut ret_typ := g.typ(g.unwrap_generic(fn_ret_type))
-	if fn_ret_type.has_flag(.generic) && fn_return_is_fixed_array {
-		ret_typ = '_v_${ret_typ}'
-	} else if sym.kind == .alias && fn_return_is_fixed_array {
-		ret_typ = '_v_' + g.typ((sym.info as ast.Alias).parent_type)
-	}
+	ret_typ := g.ret_typ(g.unwrap_generic(fn_ret_type))
 	if node.exprs.len == 1 {
 		// `return fn_call_opt()`
 		if (fn_return_is_option || fn_return_is_result) && node.exprs[0] is ast.CallExpr
@@ -7661,7 +7656,7 @@ fn (mut g Gen) interface_table() string {
 		for k, method_name in inter_methods {
 			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			methodidx[method.name] = k
-			ret_styp := g.typ(method.return_type)
+			ret_styp := g.ret_typ(method.return_type)
 			methods_struct_def.write_string('\t${ret_styp} (*_method_${c_fn_name(method.name)})(void* _')
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
@@ -7847,7 +7842,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 					method_call = '${cctype}_${name}'
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
-					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} ${cctype}_${name}${iwpostfix}(')
+					methods_wrapper.write_string('static inline ${g.ret_typ(method.return_type)} ${cctype}_${name}${iwpostfix}(')
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
 					// hack to mutate typ
@@ -8034,6 +8029,23 @@ fn (mut g Gen) trace_last_lines(fbase string, params TraceLastLinesParams) {
 	println('> g.trace_last_lines g.out last ${params.nlines} lines, pos: ${i + 1} ... g.out.len: ${g.out.len} ${params.msg}')
 	println(term.colorize(term.green, g.out.after(i + 1)))
 	println('`'.repeat(80))
+}
+
+// ret_type generates proper type name for return type context
+pub fn (mut g Gen) ret_typ(typ ast.Type) string {
+	mut ret_styp := g.typ(typ)
+	if !typ.has_option_or_result() {
+		ret_sym := g.table.sym(typ)
+		if ret_sym.info is ast.ArrayFixed && !ret_sym.info.is_fn_ret {
+			ret_styp = '_v_${ret_styp}'
+		} else if ret_sym.info is ast.Alias {
+			unalias_sym := g.table.sym(ret_sym.info.parent_type)
+			if unalias_sym.info is ast.ArrayFixed && !unalias_sym.info.is_fn_ret {
+				ret_styp = '_v_${g.typ(ret_sym.info.parent_type)}'
+			}
+		}
+	}
+	return ret_styp
 }
 
 pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
