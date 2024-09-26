@@ -2607,16 +2607,22 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						}
 					}
 				} else {
-					noscan := g.check_noscan(arr_info.elem_type)
-					g.write('new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
-					for j in arg_nr .. args.len {
-						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+					if args.len == 1
+						&& g.table.type_to_str(arr_info.elem_type) == g.table.type_to_str(varg_type) {
+						g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
 							false)
-						if j < args.len - 1 {
-							g.write(', ')
+					} else {
+						noscan := g.check_noscan(arr_info.elem_type)
+						g.write('new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
+						for j in arg_nr .. args.len {
+							g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+								false)
+							if j < args.len - 1 {
+								g.write(', ')
+							}
 						}
+						g.write('}))')
 					}
-					g.write('}))')
 				}
 			} else {
 				g.write('__new_array(0, 0, sizeof(${elem_type}))')
