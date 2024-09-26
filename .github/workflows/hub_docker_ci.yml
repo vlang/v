@@ -35,7 +35,7 @@ jobs:
             echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> $GITHUB_OUTPUT
           fi
 
-      - uses: docker/build-push-action@v4
+      - uses: docker/build-push-action@v6
         name: Build and deploy v image
         with:
           context: .
@@ -45,7 +45,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           build-args: 'USER=thevlang'
 
-      - uses: docker/build-push-action@v4
+      - uses: docker/build-push-action@v6
         name: Build and deploy developer build
         with:
           context: .
