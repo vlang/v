@@ -241,6 +241,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
 								left_right_pos)
 						}
+						if mut node.right is ast.ArrayInit {
+							c.check_duplicated_items(node.right)
+						}
 					} else {
 						if mut node.right is ast.ArrayInit {
 							for i, typ in node.right.expr_types {
@@ -950,6 +953,18 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 			c.check_div_mod_by_zero(expr.expr, op_kind)
 		}
 		else {}
+	}
+}
+
+fn (mut c Checker) check_duplicated_items(node &ast.ArrayInit) {
+	mut unique_items := []string{cap: node.exprs.len}
+	for item in node.exprs {
+		item_str := item.str()
+		if item_str in unique_items {
+			c.note('item `${item_str}` is duplicated in the list', item.pos())
+		} else {
+			unique_items << item_str
+		}
 	}
 }
 

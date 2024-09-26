@@ -83,7 +83,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
 					} else if
-						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
+						(next_tok.kind in [.lcbr, .rpar, .eof, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
 						&& next_tok.lit !in highlight_builtin_types)
 						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .not, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis, .comma]
 						&& prev.lit !in highlight_builtin_types)
