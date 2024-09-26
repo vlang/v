@@ -2900,7 +2900,10 @@ fn (mut p Parser) name_expr() ast.Expr {
 		}
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
-		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.is_next_to(p.tok))) {
+		|| (p.inside_match_case && lit0_is_capital && p.tok.kind == .name
+		&& p.peek_tok.is_next_to(p.tok))) {
+		// XTODO check iscap
+		//|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.is_next_to(p.tok))) {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
 	} else if p.peek_tok.kind == .dot && lit0_is_capital && !known_var && language == .v {

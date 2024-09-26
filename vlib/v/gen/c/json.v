@@ -373,8 +373,26 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {
+		// Handle "key": null
+		// In this case the first variant must be used (something like InvalidExpr for example)
+		// An empty instance of the first variant is generated.
+		// This way the user can easily check if the sum type was not provided in json ("key":null):
+		// `if node.expr is InvalidExpr { ... }`
+		// (Do this only for structs)
 		type_tmp := g.new_tmp_var()
-		dec.writeln('\tif (cJSON_IsObject(root) || (cJSON_IsArray(root) && cJSON_IsObject(root->child))) {')
+		first_variant := info.variants[0]
+		variant_typ := g.typ(first_variant)
+		fv_sym := g.table.sym(first_variant)
+		first_variant_name := fv_sym.cname
+		// println('KIND=${fv_sym.kind}')
+		if fv_sym.kind == .struct_ && !is_option && field_op != '->' {
+			dec.writeln('/*sum type ${fv_sym.name} ret_styp=${ret_styp}*/\tif (root->type == cJSON_NULL) { ')
+			dec.writeln('\t\tstruct ${first_variant_name} empty = {0};')
+			dec.writeln('res = ${variant_typ}_to_sumtype_${ret_styp}(&empty); } \n else ')
+			// dec.writeln('res = ${variant_typ}_to_sumtype_${sym.cname}(&empty); } \n else ')
+		}
+		//
+		dec.writeln('if (cJSON_IsObject(root) || (cJSON_IsArray(root) && cJSON_IsObject(root->child))) {')
 		dec.writeln('\t\tcJSON* ${type_tmp} = cJSON_IsObject(root) ? js_get(root, "_type") : js_get(root->child, "_type");')
 		dec.writeln('\t\tif (${type_tmp} != 0) {')
 		dec.writeln('\t\t\tchar* ${type_var} = cJSON_GetStringValue(${type_tmp});')
@@ -924,6 +942,7 @@ fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, n
 	value_field_type := field_type.replace('*', '_ptr')
 	dec.writeln('\t${result_name}_${value_field_type.replace('*', '_ptr')} ${tmp} = {0};')
 	dec.writeln('\tif (jsonroot_${tmp}) {')
+	// dec.writeln('\t\tif (jsonroot_${tmp}->type == cJSON_NULL) { puts("${name} IS JSON_NULL"); }')
 	dec.writeln('\t\t${tmp} = ${dec_name}(jsonroot_${tmp});')
 	dec.writeln('\t\tif (${tmp}.is_error) {')
 	dec.writeln('\t\t\treturn (${result_name}_${styp}){ /*A*/ .is_error = true, .err = ${tmp}.err, .data = {0} };')
