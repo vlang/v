@@ -61,7 +61,8 @@ const symopt_include_32bit_modules = 0x00002000
 const symopt_allow_zero_address = 0x01000000
 const symopt_debug = u32(0x80000000)
 
-fn print_backtrace_skipping_top_frames(skipframes int) bool {
+// print_backtrace_skipping_top_frames prints the backtrace skipping N top frames
+pub fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	$if msvc {
 		return print_backtrace_skipping_top_frames_msvc(skipframes)
 	}

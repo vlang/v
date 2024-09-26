@@ -1,0 +1,9 @@
+a := [12, 34, 56]
+
+if a != unsafe { nil } {
+	println(a)
+}
+
+if 23 > unsafe { nil } {
+	println('hey')
+}

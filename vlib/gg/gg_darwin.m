@@ -100,7 +100,7 @@ gg__Image darwin_create_image(string path_) {
 	res.path = path_;
 	res.ok = true;
 	// printf("inited img width=%d\n", res.width) ;
-	//  need __brige_retained so that the pointer is not freed by ARC
+	//  need __bridge_retained so that the pointer is not freed by ARC
 	res.data = (__bridge_retained voidptr)(img);
 	return res;
 }
@@ -119,4 +119,17 @@ void darwin_draw_circle(float x, float y, float d, gx__Color color) {
 	// [circlePath stroke];
 	[circlePath fill];
 	// NSRectFill(rect);
+}
+
+void darwin_draw_circle_empty(float x, float y, float d, gx__Color color) {
+	NSColor* outlineColor = nscolor(color);
+	CGFloat outlineWidth = 1.0; //2.0;
+
+	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
+	NSBezierPath* circlePath = [NSBezierPath bezierPath];
+	[circlePath appendBezierPathWithOvalInRect:rect];
+
+	[outlineColor setStroke];
+	[circlePath setLineWidth:outlineWidth];
+	[circlePath stroke];
 }

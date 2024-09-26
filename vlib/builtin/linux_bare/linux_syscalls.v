@@ -307,7 +307,7 @@ fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
 
 // 59  sys_execve
 fn sys_execve(filename &u8, argv []&u8, envp []&u8) int {
-	return int(sys_call3(59, u64(filename), argv.data, envp.data))
+	return int(sys_call3(59, u64(filename), u64(argv.data), u64(envp.data)))
 }
 
 // 60 sys_exit

@@ -1,5 +1,5 @@
+// vtest retry: 5
 // vtest flaky: true
-// vtest retry: 8
 import net
 
 const test_port = 45123
@@ -35,6 +35,9 @@ fn echo(address string) ! {
 
 	println('local: ' + c.addr()!.str())
 	println(' peer: ' + c.peer_addr()!.str())
+	ip := c.peer_ip()!
+	println('   ip: ${ip}')
+	assert ip in ['::1', 'localhost', '127.0.0.1']
 
 	data := 'Hello from vlib/net!'
 	c.write_string(data)!
@@ -85,12 +88,4 @@ fn test_tcp_unix() {
 
 fn testsuite_end() {
 	eprintln('\ndone')
-}
-
-fn test_bind() {
-	$if !network ? {
-		return
-	}
-	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')!
-	conn.close()!
 }

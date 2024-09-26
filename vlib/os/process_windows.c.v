@@ -6,7 +6,8 @@ fn C.GenerateConsoleCtrlEvent(event u32, pgid u32) bool
 fn C.GetModuleHandleA(name &char) HMODULE
 fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
-fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize int, lpBytesRead voidptr, lpTotalBytesAvail voidptr, lpBytesLeftThisMessage voidptr) bool
+fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize int, lpBytesRead voidptr, lpTotalBytesAvail voidptr,
+	lpBytesLeftThisMessage voidptr) bool
 
 type FN_NTSuspendResume = fn (voidptr) u64
 
@@ -49,10 +50,10 @@ pub mut:
 	proc_info    ProcessInformation
 	command_line [65536]u8
 	child_stdin  &u32 = unsafe { nil }
-	//
+
 	child_stdout_read  &u32 = unsafe { nil }
 	child_stdout_write &u32 = unsafe { nil }
-	//
+
 	child_stderr_read  &u32 = unsafe { nil }
 	child_stderr_write &u32 = unsafe { nil }
 }
@@ -68,19 +69,19 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
-		child_stdin: unsafe { nil }
-		child_stdout_read: unsafe { nil }
+		child_stdin:        unsafe { nil }
+		child_stdout_read:  unsafe { nil }
 		child_stdout_write: unsafe { nil }
-		child_stderr_read: unsafe { nil }
+		child_stderr_read:  unsafe { nil }
 		child_stderr_write: unsafe { nil }
 	}
 	p.wdata = voidptr(wdata)
 	mut start_info := StartupInfo{
 		lp_reserved2: unsafe { nil }
-		lp_reserved: unsafe { nil }
-		lp_desktop: unsafe { nil }
-		lp_title: unsafe { nil }
-		cb: sizeof(C.PROCESS_INFORMATION)
+		lp_reserved:  unsafe { nil }
+		lp_desktop:   unsafe { nil }
+		lp_title:     unsafe { nil }
+		cb:           sizeof(StartupInfo)
 	}
 	if p.use_stdio_ctl {
 		mut sa := SecurityAttributes{}
@@ -155,6 +156,10 @@ fn (mut p Process) win_resume_process() {
 fn (mut p Process) win_kill_process() {
 	wdata := unsafe { &WProcess(p.wdata) }
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
+}
+
+fn (mut p Process) win_term_process() {
+	p.win_kill_process()
 }
 
 fn (mut p Process) win_kill_pgroup() {
@@ -277,6 +282,9 @@ fn (mut p Process) unix_stop_process() {
 }
 
 fn (mut p Process) unix_resume_process() {
+}
+
+fn (mut p Process) unix_term_process() {
 }
 
 fn (mut p Process) unix_kill_process() {

@@ -51,13 +51,13 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 	}
 
 	return &HttpProxy{
-		scheme: scheme
+		scheme:   scheme
 		username: url.user.username
 		password: url.user.password
-		host: host
+		host:     host
 		hostname: url.hostname()
-		port: port
-		url: str_url
+		port:     port
+		url:      str_url
 	}
 }
 
@@ -92,7 +92,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 		mut client := pr.ssl_dial('${host.host}:443')!
 
 		$if windows {
-			return error('Windows Not SUPPORTED') // todo windows ssl
+			return error('Windows Not SUPPORTED') // TODO: windows ssl
 			// response_text := req.do_request(req.build_request_headers(req.method, host_name,
 			// 	path))!
 			// client.shutdown()!
@@ -151,10 +151,10 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 		}
 
 		mut ssl_conn := ssl.new_ssl_conn(
-			verify: ''
-			cert: ''
-			cert_key: ''
-			validate: false
+			verify:                 ''
+			cert:                   ''
+			cert_key:               ''
+			validate:               false
 			in_memory_verification: false
 		)!
 		ssl_conn.connect(mut tcp, host.all_before_last(':'))!

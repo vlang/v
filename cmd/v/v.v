@@ -23,14 +23,17 @@ const external_tools = [
 	'check-md',
 	'complete',
 	'compress',
+	'cover',
 	'doc',
 	'doctor',
+	'download',
 	'fmt',
 	'gret',
 	'ls',
 	'missdoc',
 	'repl',
 	'repeat',
+	'retry',
 	'self',
 	'setup-freetype',
 	'shader',
@@ -58,14 +61,19 @@ fn main() {
 	$if time_v ? {
 		timers_should_print = true
 	}
-	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
-	timers.start('v total')
-	defer {
-		timers.show('v total')
+	if '-show-timings' in os.args {
+		timers_should_print = true
+		unbuffer_stdout()
 	}
+	mut timers := util.new_timers(should_print: timers_should_print, label: 'main')
 	timers.start('v start')
 	timers.show('v start')
-	timers.start('parse_CLI_args')
+	timers.start('TOTAL')
+	// use at_exit here, instead of defer, since some code paths later do early exit(0) or exit(1), for showing errors, or after `v run`
+	at_exit(fn [mut timers] () {
+		timers.show('TOTAL')
+	})!
+	timers.start('v parsing CLI args')
 	args := os.args[1..]
 
 	if args.len == 0 || args[0] in ['-', 'repl'] {
@@ -87,7 +95,7 @@ fn main() {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
 	}
-	timers.show('parse_CLI_args')
+	timers.show('v parsing CLI args')
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {

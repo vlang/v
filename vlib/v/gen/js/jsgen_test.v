@@ -52,7 +52,7 @@ fn test_example_compilation() {
 			if there_is_grep_available {
 				grep_code_sourcemap_found := os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" ${os.quoted_path(jsfile)}')
 				assert grep_code_sourcemap_found == 0
-				println('file has a source map embeded')
+				println('file has a source map embedded')
 			} else {
 				println(' ... skipping testing for sourcemap ${file}, there is no grep present')
 			}

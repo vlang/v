@@ -33,9 +33,9 @@ const pg_db = os.getenv_opt('PGDATABASE') or { 'test' }
 
 @[table: 'modules']
 struct Module {
-	id           int    @[primary; sql: serial]
+	id           int @[primary; sql: serial]
 	name         string
-	nr_downloads int    @[sql: u64]
+	nr_downloads int @[sql: u64]
 	creator      User
 }
 
@@ -48,13 +48,13 @@ struct User {
 }
 
 struct Parent {
-	id       int     @[primary; sql: serial]
+	id       int @[primary; sql: serial]
 	name     string
 	children []Child @[fkey: 'parent_id']
 }
 
 struct Child {
-	id        int    @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	parent_id int
 	name      string
 }
@@ -77,7 +77,7 @@ fn sqlite3_array() ! {
 		create table Child
 	}!
 	par := Parent{
-		name: 'test'
+		name:     'test'
 		children: [
 			Child{
 				name: 'abc'
@@ -99,11 +99,11 @@ fn sqlite3_array() ! {
 fn msql_array() ! {
 	eprintln('------------ ${@METHOD} -----------------')
 	mut db := mysql.connect(
-		host: mysql_host
-		port: mysql_port
+		host:     mysql_host
+		port:     mysql_port
 		username: mysql_user
 		password: mysql_pass
-		dbname: mysql_db
+		dbname:   mysql_db
 	)!
 	defer {
 		sql db {
@@ -119,7 +119,7 @@ fn msql_array() ! {
 		create table Child
 	}!
 	par := Parent{
-		name: 'test'
+		name:     'test'
 		children: [
 			Child{
 				name: 'abc'
@@ -152,7 +152,7 @@ fn psql_array() ! {
 		create table Child
 	}!
 	par := Parent{
-		name: 'test'
+		name:     'test'
 		children: [
 			Child{
 				name: 'abc'
@@ -189,11 +189,11 @@ fn sqlite3() ! {
 		create table User
 	}!
 	mod := Module{
-		name: 'test'
+		name:         'test'
 		nr_downloads: 10
-		creator: User{
-			age: 21
-			name: 'VUser'
+		creator:      User{
+			age:         21
+			name:        'VUser'
 			is_customer: true
 		}
 	}
@@ -209,11 +209,11 @@ fn sqlite3() ! {
 fn msql() ! {
 	eprintln('------------ ${@METHOD} -----------------')
 	mut conn := mysql.connect(
-		host: mysql_host
-		port: mysql_port
+		host:     mysql_host
+		port:     mysql_port
 		username: mysql_user
 		password: mysql_pass
-		dbname: mysql_db
+		dbname:   mysql_db
 	)!
 	defer {
 		conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
@@ -230,11 +230,11 @@ fn msql() ! {
 		create table User
 	}!
 	mod := Module{
-		name: 'test'
+		name:         'test'
 		nr_downloads: 10
-		creator: User{
-			age: 21
-			name: 'VUser'
+		creator:      User{
+			age:         21
+			name:        'VUser'
 			is_customer: true
 		}
 	}
@@ -260,11 +260,11 @@ fn psql() ! {
 		create table User
 	}!
 	mod := Module{
-		name: 'test'
+		name:         'test'
 		nr_downloads: 10
-		creator: User{
-			age: 21
-			name: 'VUser'
+		creator:      User{
+			age:         21
+			name:        'VUser'
 			is_customer: true
 		}
 	}

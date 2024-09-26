@@ -5,7 +5,7 @@ import time
 
 const vexe = os.getenv('VEXE')
 const vroot = os.dir(vexe)
-const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_process')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_process_tests')
 const test_os_process = os.join_path(tfolder, 'test_os_process.exe')
 const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 
@@ -88,7 +88,7 @@ fn test_run() {
 	p.wait()
 	assert p.code == 0
 	assert p.status == .exited
-	//
+
 	eprintln('polling iterations: ${i}')
 	assert i < 50
 	p.close()
@@ -126,7 +126,7 @@ fn test_slurping_output() {
 	assert output.contains('stdout, 2')
 	assert output.contains('stdout, 3')
 	assert output.contains('stdout, 4')
-	//
+
 	// dump(errors)
 	assert errors.contains('stderr, 1')
 	assert errors.contains('stderr, 2')

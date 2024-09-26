@@ -75,10 +75,17 @@ fn (mut g Gen) gen_jsons() {
 				g.set_current_pos_as_last_stmt_pos()
 				pos := g.out.len
 				g.write(init_styp)
+				if utyp.is_ptr() {
+					ptr_styp := g.typ(utyp.set_nr_muls(utyp.nr_muls() - 1))
+					g.write('HEAP(${ptr_styp}, ')
+				}
 				g.expr(ast.Expr(ast.StructInit{
-					typ: utyp
+					typ:     utyp.set_nr_muls(0)
 					typ_str: styp
 				}))
+				if utyp.is_ptr() {
+					g.write(')')
+				}
 				init_styp = g.out.cut_to(pos).trim_space()
 			}
 		}
@@ -160,7 +167,7 @@ ${enc_fn_dec} {
 				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
-				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec)
+				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec, '')
 			} else if psym.kind == .enum_ {
 				g.gen_enum_enc_dec(utyp, psym, mut enc, mut dec)
 			} else if psym.kind == .sum_type {
@@ -194,7 +201,7 @@ ${enc_fn_dec} {
 			if sym.info !is ast.Struct {
 				verror('json: ${sym.name} is not struct')
 			}
-			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec)
+			g.gen_struct_enc_dec(utyp, sym.info, ret_styp, mut enc, mut dec, '')
 		}
 		// cJSON_delete
 		dec.writeln('\t${result_name}_${ret_styp} ret;')
@@ -212,7 +219,8 @@ ${enc_fn_dec} {
 }
 
 @[inline]
-fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var string, result_var string, ident string, mut enc strings.Builder) {
+fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var string, result_var string, ident string,
+	mut enc strings.Builder) {
 	enum_prefix := g.gen_enum_prefix(utyp.clear_flag(.option))
 	enc.writeln('${ident}switch (${enum_var}) {')
 	for val in (sym.info as ast.Enum).vals {
@@ -231,7 +239,8 @@ fn (mut g Gen) gen_enum_to_str(utyp ast.Type, sym ast.TypeSymbol, enum_var strin
 }
 
 @[inline]
-fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string, result_var string, ident string, mut dec strings.Builder) {
+fn (mut g Gen) gen_str_to_enum(utyp ast.Type, sym ast.TypeSymbol, val_var string, result_var string, ident string,
+	mut dec strings.Builder) {
 	enum_prefix := g.gen_enum_prefix(utyp.clear_flag(.option))
 	is_option := utyp.has_flag(.option)
 	for k, val in (sym.info as ast.Enum).vals {
@@ -352,7 +361,8 @@ fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec
 }
 
 @[inline]
-fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder, ret_styp string) {
+fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder,
+	ret_styp string) {
 	info := sym.info as ast.SumType
 	type_var := g.new_tmp_var()
 	typ := g.table.type_idxs[sym.name]
@@ -552,7 +562,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 						'cJSON_IsString(root->child)'
 					} else if var_t.ends_with('bool') {
 						'cJSON_IsBool(root->child)'
-					} else if g.table.sym(g.table.value_type(ast.Type(variant_symbols[i].idx))).kind == .struct_ {
+					} else if g.table.sym(g.table.value_type(ast.idx_to_type(variant_symbols[i].idx))).kind == .struct_ {
 						'cJSON_IsObject(root->child)'
 					} else {
 						'cJSON_IsNumber(root->child)'
@@ -595,7 +605,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 }
 
 @[inline]
-fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
+fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp string, mut enc strings.Builder,
+	mut dec strings.Builder, embed_prefix string) {
 	info := type_info as ast.Struct
 	for field in info.fields {
 		mut name := field.name
@@ -603,6 +614,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		mut is_skip := false
 		mut is_required := false
 		mut is_omit_empty := false
+		mut skip_embed := false
 
 		for attr in field.attrs {
 			match attr.name {
@@ -635,7 +647,12 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		field_type := g.typ(field.typ)
 		field_sym := g.table.sym(field.typ)
 		op := if utyp.is_ptr() { '->' } else { '.' }
-		prefix := if utyp.has_flag(.option) { '(*(${g.base_type(utyp)}*)res.data)' } else { 'res' }
+		embed_member := if embed_prefix.len > 0 { '.${embed_prefix}' } else { '' }
+		prefix := if utyp.has_flag(.option) {
+			'(*(${g.base_type(utyp)}*)res${embed_member}.data)'
+		} else {
+			'res${embed_member}'
+		}
 		// First generate decoding
 		if is_raw {
 			if field.typ.has_flag(.option) {
@@ -673,7 +690,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				is_option_field := field.typ.has_flag(.option)
 				if field.typ.has_flag(.option) {
 					gen_js_get_opt(js_dec_name(field_type), field_type, styp, tmp, name, mut
-						dec, true)
+						dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp} && !cJSON_IsNull(jsonroot_${tmp})) {')
 				} else {
 					gen_js_get(styp, tmp, name, mut dec, is_required)
@@ -746,6 +763,22 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					dec.writeln('\t}')
 				}
 			} else {
+				// embeded
+				if name.len > 0 && name[0].is_capital() && field_sym.info is ast.Struct {
+					for embed in info.embeds {
+						if embed == int(field.typ) {
+							prefix_embed := if embed_prefix != '' {
+								'${embed_prefix}.${name}'
+							} else {
+								name
+							}
+							g.gen_struct_enc_dec(field.typ, g.table.sym(field.typ).info,
+								styp, mut enc, mut dec, prefix_embed)
+							skip_embed = true
+							break
+						}
+					}
+				}
 				tmp := g.new_tmp_var()
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
@@ -770,12 +803,15 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				dec.writeln('\t}')
 			}
 		}
+		if skip_embed {
+			continue
+		}
 		// Encoding
 		mut enc_name := js_enc_name(field_type)
 		prefix_enc := if utyp.has_flag(.option) {
-			'(*(${g.base_type(utyp)}*)val.data)'
+			'(*(${g.base_type(utyp)}*)val${embed_member}.data)'
 		} else {
-			'val'
+			'val${embed_member}'
 		}
 		is_option := field.typ.has_flag(.option)
 		indent := if is_option { '\t\t' } else { '\t' }
@@ -882,7 +918,8 @@ fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_
 	}
 }
 
-fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
+fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder,
+	is_required bool) {
 	gen_js_get(styp, tmp, name, mut dec, is_required)
 	value_field_type := field_type.replace('*', '_ptr')
 	dec.writeln('\t${result_name}_${value_field_type.replace('*', '_ptr')} ${tmp} = {0};')
@@ -895,20 +932,26 @@ fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, n
 }
 
 fn js_enc_name(typ string) string {
-	suffix := typ.replace('*', '_ptr')
+	mut suffix := typ.replace('*', '_ptr')
+	if typ == 'i32' {
+		suffix = typ.replace('i32', 'int')
+	}
 	name := 'json__encode_${suffix}'
 	return util.no_dots(name)
 }
 
 fn js_dec_name(typ string) string {
-	suffix := typ.replace('*', '_ptr')
+	mut suffix := typ.replace('*', '_ptr')
+	if typ == 'i32' {
+		suffix = typ.replace('i32', 'int')
+	}
 	name := 'json__decode_${suffix}'
 	return util.no_dots(name)
 }
 
 fn is_js_prim(typ string) bool {
-	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'byte']
+	return typ in ['int', 'rune', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'u8',
+		'u16', 'u32', 'u64', 'byte']
 }
 
 fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size int, ret_styp string) string {

@@ -58,8 +58,8 @@ fn main() {
 
 		state.satisfy_rope_constraint(args.params)
 		request := &sim.SimRequest{
-			id: request_index
-			state: state
+			id:     request_index
+			state:  state
 			params: args.params
 		}
 		select {

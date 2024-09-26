@@ -18,14 +18,14 @@ pub fn merge_comments(comments []ast.Comment) string {
 
 // ast_comment_to_doc_comment converts an `ast.Comment` node type to a `DocComment`
 pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
-	text := ast_node.text // TODO .trim_left('\x01') // BUG why are this byte here in the first place?
+	text := ast_node.text // TODO: .trim_left('\x01') // BUG why are this byte here in the first place?
 	return DocComment{
-		text: text
+		text:     text
 		is_multi: ast_node.is_multi
-		pos: token.Pos{
+		pos:      token.Pos{
 			line_nr: ast_node.pos.line_nr
-			col: 0 // ast_node.pos.pos - ast_node.text.len
-			len: text.len
+			col:     0 // ast_node.pos.pos - ast_node.text.len
+			len:     text.len
 		}
 	}
 }
@@ -62,30 +62,40 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	}
 	mut comment := ''
 	mut next_on_newline := true
+	mut is_codeblock := false
+	mut trimmed_indent := ''
 	for cmt in doc_comments.reverse() {
-		mut is_codeblock := false
 		line_loop: for line in cmt.split_into_lines() {
-			l := line.trim_left('\x01').trim_space()
-			if is_codeblock {
-				comment += l + '\n'
+			l_normalized := line.trim_left('\x01')
+			l := l_normalized.trim_space()
+			last_ends_with_lb := comment.ends_with('\n')
+			if l == '' {
+				comment += if last_ends_with_lb { '\n' } else { '\n\n' }
+				next_on_newline = true
 				continue
 			}
-			if l.starts_with('```') {
-				if !is_codeblock {
+			has_codeblock_quote := l.starts_with('```')
+			if is_codeblock {
+				comment += l_normalized.trim_string_left(trimmed_indent) + '\n'
+				if has_codeblock_quote {
+					is_codeblock = !is_codeblock
+				}
+				continue
+			}
+			if has_codeblock_quote {
+				if !is_codeblock && !last_ends_with_lb {
 					comment += '\n'
 				}
 				comment += l + '\n'
 				is_codeblock = !is_codeblock
+				trimmed_indent = l_normalized.all_before(l)
 				next_on_newline = true
 				continue
 			}
-			if l == '' {
-				comment += if comment.ends_with('\n') { '\n' } else { '\n\n' }
-				next_on_newline = true
-				continue
-			}
+			is_list := l.len > 1 && ((l[1] == ` ` && l[0] in [`-`, `*`, `+`])
+				|| (l.len > 2 && l[2] == ` ` && l[1] == `.` && l[0].is_digit()))
 			line_before_spaces := l.before(' ')
-			if (l.starts_with('|') && l.ends_with('|')) || l.starts_with('- ')
+			if is_list || (l.starts_with('|') && l.ends_with('|'))
 				|| (l.starts_with('#') && line_before_spaces.count('#') == line_before_spaces.len) {
 				comment += l + '\n'
 				next_on_newline = true
@@ -94,7 +104,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			// Use own paragraph for "highlight" comments.
 			ll := l.to_lower()
 			mut continue_line_loop := false
-			for key in doc.highlight_keys {
+			for key in highlight_keys {
 				if ll.starts_with(key) {
 					comment += '\n\n${key.title()}${l[key.len..]}'
 					// Workaround for compiling with `v -cstrict -cc gcc vlib/v/doc/doc_test.v`
@@ -107,7 +117,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				continue
 			}
 			line_no_spaces := l.replace(' ', '')
-			for ch in doc.horizontal_rule_chars {
+			for ch in horizontal_rule_chars {
 				if line_no_spaces.starts_with(ch.repeat(3))
 					&& line_no_spaces.count(ch) == line_no_spaces.len {
 					comment += '\n' + l + '\n'
@@ -132,7 +142,7 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 			return 'module ${stmt.name}'
 		}
 		ast.FnDecl {
-			return d.table.stringify_fn_decl(&stmt, d.fmt.cur_mod, d.fmt.mod2alias)
+			return d.table.stringify_fn_decl(&stmt, d.fmt.cur_mod, d.fmt.mod2alias, false)
 		}
 		else {
 			d.fmt.out = strings.new_builder(1000)

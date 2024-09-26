@@ -68,17 +68,17 @@ see also `v help build`.
          bare_panic(msg string)
             Print "V panic: " + msg, along with an optional backtrace
             and/or the V commit hash, and then exit.
-         [export: 'malloc']
+         @[export: 'malloc']
          __malloc(n usize) &C.void
             Allocates n bytes of memory and returns the pointer to the first
             byte.
-         [export: 'free']
+         @[export: 'free']
          __free(ptr &C.void)
             Free the block of memory ptr allocated by malloc.
          realloc(old_area &C.void, new_size usize) &C.void
             Allocates a new area of size new_size, copies old_area
             to the new area, and returns a pointer to the new area.
-         [export: 'calloc']
+         @[export: 'calloc']
          __calloc(nmemb usize, size usize) &C.void
             Like malloc, but sets all the bytes to `0` first.
          memcpy(dest &C.void, src &C.void, n usize) &C.void
@@ -102,7 +102,7 @@ see also `v help build`.
          bare_backtrace() string
             Return a backtrace that can be printed. If backtraces are not
             supported, return a message stating that backtraces do not work.
-         [export: 'exit']
+         @[export: 'exit']
          __exit(code int)
             Exit with code code. code is allowed to be ignored.
 
@@ -215,7 +215,7 @@ see also `v help build`.
       installing it), you can also tell V to use it instead of its own copy,
       by adding `-d dynamic_boehm` to the command line while compiling your program.
 
-      On Debian you can use `sudo apt-get install libgc-dev`.
+      On Debian you can use `sudo apt install libgc-dev`.
 
       On macOS, you can install it, using homebrew (https://homebrew.sh/)
       with `brew install libgc`.

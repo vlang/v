@@ -8,11 +8,11 @@ $if windows {
 	#flag windows -I@VEXEROOT/thirdparty/sqlite
 	#flag windows -L@VEXEROOT/thirdparty/sqlite
 	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	#include "sqlite3.h" # The SQLite header file is missing. Please run .github/workflows/windows-install-sqlite.bat to download an SQLite amalgamation.
 } $else {
 	#flag -lsqlite3
+	#include "sqlite3.h" # The SQLite header file is missing. Please install its development package first.
 }
-
-#include "sqlite3.h"
 
 // https://www.sqlite.org/rescode.html
 pub const sqlite_ok = 0
@@ -59,7 +59,7 @@ pub struct C.sqlite3_stmt {
 @[heap]
 pub struct Stmt {
 	stmt &C.sqlite3_stmt = unsafe { nil }
-	db   &DB = unsafe { nil }
+	db   &DB             = unsafe { nil }
 }
 
 struct SQLError {
@@ -131,12 +131,12 @@ pub fn connect(path string) !DB {
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
 		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db))) }
+			msg:  unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db))) }
 			code: code
 		}
 	}
 	return DB{
-		conn: db
+		conn:    db
 		is_open: true
 	}
 }
@@ -150,7 +150,7 @@ pub fn (mut db DB) close() !bool {
 		db.is_open = false
 	} else {
 		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
+			msg:  unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
 			code: code
 		}
 	}
@@ -188,7 +188,7 @@ pub fn (db &DB) q_int(query string) !int {
 	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
-	if code != sqlite.sqlite_row {
+	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
 
@@ -204,7 +204,7 @@ pub fn (db &DB) q_string(query string) !string {
 	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
-	if code != sqlite.sqlite_row {
+	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
 
@@ -220,7 +220,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 		C.sqlite3_finalize(stmt)
 	}
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	if code != sqlite.sqlite_ok {
+	if code != sqlite_ok {
 		return db.error_message(code, query)
 	}
 
@@ -258,8 +258,8 @@ pub fn (db &DB) exec_one(query string) !Row {
 	}
 	if rows.len == 0 {
 		return &SQLError{
-			msg: 'No rows'
-			code: sqlite.sqlite_done
+			msg:  'No rows'
+			code: sqlite_done
 		}
 	}
 	res := rows[0]
@@ -273,7 +273,7 @@ pub fn (db &DB) error_message(code int, query string) IError {
 	msg := '${errmsg} (${code}) (${query})'
 	unsafe { errmsg.free() }
 	return SQLError{
-		msg: msg
+		msg:  msg
 		code: code
 	}
 }
@@ -314,7 +314,10 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	mut rows := []Row{}
 	for {
 		res = C.sqlite3_step(stmt)
-		if res != sqlite.sqlite_row {
+		if res != sqlite_row {
+			if rows.len == 0 && is_error(res) {
+				return db.error_message(res, query)
+			}
 			break
 		}
 		mut row := Row{}

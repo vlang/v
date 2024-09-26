@@ -15,7 +15,7 @@ mut:
 pub fn new(input string) TextScanner {
 	return TextScanner{
 		input: input
-		ilen: input.len
+		ilen:  input.len
 	}
 }
 
@@ -50,7 +50,7 @@ pub fn (mut ss TextScanner) next() int {
 // `skip()` does not return a result.
 @[inline]
 pub fn (mut ss TextScanner) skip() {
-	if ss.pos + 1 < ss.ilen {
+	if ss.pos < ss.ilen {
 		ss.pos++
 	}
 }

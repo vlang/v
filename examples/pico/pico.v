@@ -50,6 +50,6 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 
 fn main() {
 	println('Starting webserver on http://localhost:${port}/ ...')
-	mut server := picoev.new(port: port, cb: callback)
+	mut server := picoev.new(port: port, cb: callback)!
 	server.serve()
 }

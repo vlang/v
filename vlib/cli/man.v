@@ -4,46 +4,35 @@ import time
 
 fn man_flag() Flag {
 	return Flag{
-		flag: .bool
-		name: 'man'
+		flag:        .bool
+		name:        'man'
 		description: 'Prints the auto-generated manpage.'
 	}
 }
 
 fn man_cmd() Command {
 	return Command{
-		name: 'man'
-		usage: '<subcommand>'
+		name:        'man'
+		usage:       '<subcommand>'
 		description: 'Prints the auto-generated manpage.'
-		execute: print_manpage_for_command
+		execute:     print_manpage_for_command
 	}
 }
 
 // print_manpage_for_command prints the manpage for the
 // command or subcommand in `man_cmd` to stdout
-pub fn print_manpage_for_command(man_cmd Command) ! {
-	if man_cmd.args.len > 0 {
-		mut cmd := man_cmd.parent
-		for arg in man_cmd.args {
-			mut found := false
-			for sub_cmd in cmd.commands {
-				if sub_cmd.name == arg {
-					cmd = unsafe { &sub_cmd }
-					found = true
-					break
-				}
-			}
-			if !found {
-				args := man_cmd.args.join(' ')
-				println('Invalid command: ${args}')
+pub fn print_manpage_for_command(cmd Command) ! {
+	if cmd.args.len > 0 {
+		for sub_cmd in cmd.commands {
+			if sub_cmd.name == cmd.args[0] {
+				man_cmd := unsafe { &sub_cmd }
+				print(man_cmd.manpage())
 				return
 			}
 		}
-		print(cmd.manpage())
-	} else {
-		if unsafe { man_cmd.parent != 0 } {
-			print(man_cmd.parent.manpage())
-		}
+		print('Invalid command: ${cmd.args.join(' ')}')
+	} else if cmd.parent != unsafe { nil } {
+		print(cmd.parent.manpage())
 	}
 }
 

@@ -12,7 +12,7 @@ struct Weather {
 	timezone    string @[skip]
 	server_time u32    @[skip]
 	location    []f32  @[skip]
-	result      Result //[json: result] if the field name is different in JSON, it can be specified
+	result      Result //@[json: result] if the field name is different in JSON, it can be specified
 }
 
 struct Result {

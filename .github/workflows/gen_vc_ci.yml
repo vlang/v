@@ -1,22 +1,39 @@
 name: VC gen
 
 on:
-  push:
-    branches:
-      - master
+  workflow_dispatch:
+  pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.vv'
+      - '**.out'
+      - '**.md'
+      - '**.yml'
+      - '!**/gen_vc_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+  push:
+    paths-ignore:
+      - '**.vv'
+      - '**.out'
+      - '**.md'
+      - '**.yml'
+      - '!**/gen_vc_ci.yml'
+      - 'cmd/tools/**'
+      - '!cmd/tools/builders/**.v'
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
 jobs:
   build-vc:
     runs-on: ubuntu-latest
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    env:
-      VREPO: github.com/vlang/vc.git
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make
+        run: make -j4
       - name: Regenerate v.c and v_win.c
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"
@@ -26,16 +43,20 @@ jobs:
           COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
           rm -rf vc
-          git clone --depth=1 \
-            https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@$VREPO
+          ./v retry -- git clone --depth=1 \
+            https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
 
           rm -rf vc/v.c vc/v_win.c
 
-          ./v -o vc/v.c -os cross cmd/v
+          ./v -o vc/v.c     -cross               cmd/v
           ./v -o vc/v_win.c -os windows -cc msvc cmd/v
 
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
+
+          # do some sanity checks for the generated v.c file:
+          grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c
+          grep '#define CUSTOM_DEFINE_cross' vc/v.c
 
           # ensure the C files are over 5000 lines long, as a safety measure
           [ $(wc -l < vc/v.c) -gt 5000 ]
@@ -45,7 +66,9 @@ jobs:
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
 
           # in case there are recent commits:
-          git -C vc pull --rebase origin master
-          # Note that failure below may happen, due to vlang/vc rejecting the push
-          # from forked repos; that is not usually a problem.
-          git -C vc push || true 
+          ./v retry -- git -C vc pull --rebase origin master
+          git -C vc log -3
+
+      - name: Deploy
+        if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
+        run: git -C vc push || true

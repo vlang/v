@@ -111,7 +111,7 @@ fn test_map() {
 	peter := users['1']
 	assert peter.name == 'Peter'
 	mut a := Aaa{
-		m: map[string]int{}
+		m:     map[string]int{}
 		users: map[string]User{}
 	}
 	a.users['Bob'] = User{'Bob'}

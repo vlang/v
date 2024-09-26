@@ -25,10 +25,6 @@
 
 #include <string.h>
 #include "mbedtls/platform.h"
-#if !defined(MBEDTLS_PLATFORM_C)
-#define mbedtls_calloc calloc
-#define mbedtls_free   free
-#endif
 
 void psa_reset_key_attributes( psa_key_attributes_t *attributes )
 {

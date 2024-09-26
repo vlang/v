@@ -67,6 +67,7 @@ fn test_union() {
 	first_set.add_all(['b', 'c', 'd'])
 	second_set.add_all(['a', 'e'])
 	mut third_set := first_set.@union(second_set)
+	assert first_set.elements.len == 3
 	assert third_set.exists('a')
 	assert third_set.exists('b')
 	assert third_set.exists('c')
@@ -80,6 +81,7 @@ fn test_intersection() {
 	mut second_set := Set[string]{}
 	second_set.add_all(['bar', 'baz', 'boo'])
 	mut third_set := first_set.intersection(second_set)
+	assert first_set.exists('foo') == true
 	assert third_set.exists('foo') == false
 	assert third_set.exists('bar')
 	assert third_set.exists('baz')
@@ -106,6 +108,20 @@ fn test_difference() {
 	assert third_set.exists('bar') == false
 	assert third_set.exists('baz') == false
 	assert third_set.exists('boo')
+}
+
+fn test_diff() {
+	m := ['a', 'b', 'c']
+	n := ['a', 'b', 'c']
+	assert m == n
+	mut set_m := Set[string]{}
+	mut set_n := Set[string]{}
+	set_m.add_all(m)
+	set_n.add_all(n)
+	assert set_m == set_n
+	diff1 := set_m - set_n
+	diff2 := set_n - set_m
+	assert diff1 == diff2
 }
 
 fn test_subset() {

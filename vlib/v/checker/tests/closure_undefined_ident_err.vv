@@ -9,7 +9,7 @@ interface MyInterface {
 }
 
 fn (c Custom) some_function() {
-	println('hello $c.name from ${@METHOD}')
+	println('hello ${c.name} from ${@METHOD}')
 }
 
 fn main() {

@@ -7,7 +7,10 @@ import v.token
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
-	unwrap_elem_type := c.unwrap_generic(node.elem_type)
+	mut unwrap_elem_type := c.unwrap_generic(node.elem_type)
+	if c.pref.warn_about_allocs {
+		c.warn_alloc('array initialization', node.pos)
+	}
 	// `x := []string{}` (the type was set in the parser)
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
@@ -56,6 +59,15 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				ast.Alias {
 					if elem_sym.name == 'byte' {
 						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+					}
+					parent_sym := c.table.sym(elem_sym.info.parent_type)
+					// check array to aliased array type
+					if parent_sym.info is ast.Array {
+						node.alias_type = c.table.find_or_register_array(unwrap_elem_type)
+						node.elem_type = c.table.find_or_register_array_with_dims(parent_sym.info.elem_type,
+							parent_sym.info.nr_dims)
+						unwrap_elem_type = node.elem_type
+						node.typ = c.table.find_or_register_array(node.elem_type)
 					}
 				}
 				else {}
@@ -305,6 +317,20 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 			ast.IntegerLiteral {
 				fixed_size = size_expr.val.int()
 			}
+			ast.ComptimeCall {
+				if size_expr.is_compile_value {
+					size_expr.resolve_compile_value(c.pref.compile_values) or {
+						c.error(err.msg(), size_expr.pos)
+					}
+					if size_expr.result_type != ast.i64_type {
+						c.error('value from \$d() can only be positive integers when used as fixed size',
+							size_expr.pos)
+					}
+					fixed_size = size_expr.compile_value.int()
+				} else {
+					c.error('only \$d() can be used for fixed size arrays', size_expr.pos)
+				}
+			}
 			ast.CastExpr {
 				if !size_expr.typ.is_pure_int() {
 					c.error('only integer types are allowed', size_expr.pos)
@@ -407,7 +433,7 @@ fn (mut c Checker) array_fixed_has_unresolved_size(info &ast.ArrayFixed) bool {
 
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `map = {}`
-	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
+	if node.keys.len == 0 && node.vals.len == 0 && !node.has_update_expr && node.typ == 0 {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
@@ -455,90 +481,107 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		return node.typ
 	}
 
-	if node.keys.len > 0 && node.vals.len > 0 {
-		mut key0_type := ast.void_type
-		mut val0_type := ast.void_type
+	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
+		mut map_type := ast.void_type
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg
 			&& c.expected_type.has_flag(.generic))
 		if use_expected_type {
-			sym := c.table.sym(c.expected_type)
+			map_type = c.expected_type
+		}
+		if node.has_update_expr {
+			update_type := c.expr(mut node.update_expr)
+			if map_type != ast.void_type {
+				if update_type != map_type {
+					msg := c.expected_msg(update_type, map_type)
+					c.error('invalid map update: ${msg}', node.update_expr_pos)
+				}
+			} else if c.table.sym(update_type).kind != .map {
+				c.error('invalid map update: non-map type', node.update_expr_pos)
+			} else {
+				map_type = update_type
+			}
+		}
+
+		mut map_key_type := ast.void_type
+		mut map_val_type := ast.void_type
+		if map_type != ast.void_type {
+			sym := c.table.sym(map_type)
 			info := sym.map_info()
-			key0_type = c.unwrap_generic(info.key_type)
-			val0_type = c.unwrap_generic(info.value_type)
-		} else {
+			map_key_type = info.key_type
+			map_val_type = info.value_type
+		} else if node.keys.len > 0 {
 			// `{'age': 20}`
 			mut key_ := node.keys[0]
-			key0_type = ast.mktyp(c.expr(mut key_))
+			map_key_type = ast.mktyp(c.expr(mut key_))
 			if node.keys[0].is_auto_deref_var() {
-				key0_type = key0_type.deref()
+				map_key_type = map_key_type.deref()
 			}
 			mut val_ := node.vals[0]
-			val0_type = ast.mktyp(c.expr(mut val_))
+			map_val_type = ast.mktyp(c.expr(mut val_))
 			if node.vals[0].is_auto_deref_var() {
-				val0_type = val0_type.deref()
+				map_val_type = map_val_type.deref()
 			}
-			node.val_types << val0_type
+			node.val_types << map_val_type
+			if node.keys.len == 1 && map_val_type == ast.none_type {
+				c.error('map value cannot be only `none`', node.vals[0].pos())
+			}
 		}
-		key0_type = c.unwrap_generic(key0_type)
-		val0_type = c.unwrap_generic(val0_type)
-		map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
-		node.typ = map_type
-		node.key_type = key0_type
-		node.value_type = val0_type
-		map_value_sym := c.table.sym(node.value_type)
+		map_key_type = c.unwrap_generic(map_key_type)
+		map_val_type = c.unwrap_generic(map_val_type)
+
+		node.typ = ast.new_type(c.table.find_or_register_map(map_key_type, map_val_type))
+		node.key_type = map_key_type
+		node.value_type = map_val_type
+
+		map_value_sym := c.table.sym(map_val_type)
 		expecting_interface_map := map_value_sym.kind == .interface_
-		//
 		mut same_key_type := true
-
-		if node.keys.len == 1 && val0_type == ast.none_type {
-			c.error('map value cannot be only `none`', node.vals[0].pos())
-		}
-
 		for i, mut key in node.keys {
-			if i == 0 && !use_expected_type {
-				continue
+			if i == 0 && map_type == ast.void_type {
+				continue // skip first key/value if we processed them above
 			}
 			mut val := node.vals[i]
-			c.expected_type = key0_type
+			c.expected_type = map_key_type
 			key_type := c.expr(mut key)
-			c.expected_type = val0_type
+			c.expected_type = map_val_type
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
-			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
-				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
-				msg := c.expected_msg(key_type, key0_type)
+			if !c.check_types(key_type, map_key_type)
+				|| (i == 0 && key_type.is_number() && map_key_type.is_number()
+				&& map_key_type != ast.mktyp(key_type)) {
+				msg := c.expected_msg(key_type, map_key_type)
 				c.error('invalid map key: ${msg}', key.pos())
 				same_key_type = false
 			}
 			if expecting_interface_map {
-				if val_type == node.value_type {
+				if val_type == map_val_type {
 					continue
 				}
 				if val_type_sym.kind == .struct_
-					&& c.type_implements(val_type, node.value_type, val.pos()) {
+					&& c.type_implements(val_type, map_val_type, val.pos()) {
 					node.vals[i] = ast.CastExpr{
-						expr: val
-						typname: c.table.get_type_name(node.value_type)
-						typ: node.value_type
+						expr:      val
+						typname:   c.table.get_type_name(map_val_type)
+						typ:       map_val_type
 						expr_type: val_type
-						pos: val.pos()
+						pos:       val.pos()
 					}
 					continue
 				} else {
-					msg := c.expected_msg(val_type, node.value_type)
+					msg := c.expected_msg(val_type, map_val_type)
 					c.error('invalid map value: ${msg}', val.pos())
 				}
 			}
-			if val_type == ast.none_type && val0_type.has_flag(.option) {
+			if val_type == ast.none_type && map_val_type.has_flag(.option) {
 				continue
 			}
-			if !c.check_types(val_type, val0_type)
-				|| val0_type.has_flag(.option) != val_type.has_flag(.option)
-				|| (i == 0 && val_type.is_number() && val0_type.is_number()
-				&& val0_type != ast.mktyp(val_type)) {
-				msg := c.expected_msg(val_type, val0_type)
+			if !c.check_types(val_type, map_val_type)
+				|| map_val_type.has_flag(.option) != val_type.has_flag(.option)
+				|| (i == 0 && val_type.is_number() && map_val_type.is_number()
+				&& map_val_type != ast.mktyp(val_type)) {
+				msg := c.expected_msg(val_type, map_val_type)
 				c.error('invalid map value: ${msg}', val.pos())
 			}
 		}
@@ -547,7 +590,6 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
-		return map_type
 	}
 	return node.typ
 }
@@ -563,7 +605,8 @@ fn (mut c Checker) check_elements_ref_fields_initialized(typ ast.Type, pos &toke
 }
 
 // Recursively check the element, and its children for ref uninitialized fields
-fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol, mut checked_types []ast.Type, pos &token.Pos) {
+fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol, mut checked_types []ast.Type,
+	pos &token.Pos) {
 	if sym.info is ast.Struct {
 		linked_name := sym.name
 		// For now, let's call this method and give a notice instead of an error.
@@ -631,13 +674,17 @@ fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 		return
 	}
 	if typ.is_any_kind_of_pointer() {
-		return checker.err_ref_uninitialized
+		if !c.pref.translated && !c.file.is_translated {
+			return err_ref_uninitialized
+		} else {
+			return
+		}
 	}
 	sym := c.table.sym(typ)
 	if sym.kind == .interface_ {
-		return checker.err_interface_uninitialized
+		return err_interface_uninitialized
 	} else if sym.kind == .sum_type {
-		return checker.err_sumtype_uninitialized
+		return err_sumtype_uninitialized
 	}
 
 	match sym.info {

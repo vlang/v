@@ -40,8 +40,8 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 		}
 		g.pcs_declarations.writeln('double ${fn_profile_counter_name} = 0.0; u64 ${fn_profile_counter_name_calls} = 0;')
 		g.pcs << ProfileCounterMeta{
-			fn_name: cfn_name
-			vpc_name: fn_profile_counter_name
+			fn_name:   cfn_name
+			vpc_name:  fn_profile_counter_name
 			vpc_calls: fn_profile_counter_name_calls
 		}
 	}
@@ -69,6 +69,11 @@ pub fn (mut g Gen) gen_vprint_profile_stats() {
 		g.pcs_declarations.writeln('\t${pc_meta.vpc_calls} = 0;')
 		g.pcs_declarations.writeln('\t${pc_meta.vpc_name} = 0.0;')
 	}
+	g.pcs_declarations.writeln('}')
+	g.pcs_declarations.writeln('')
+
+	g.pcs_declarations.writeln('void vprint_profile_stats_on_signal(int sig){')
+	g.pcs_declarations.writeln('\texit(130);')
 	g.pcs_declarations.writeln('}')
 	g.pcs_declarations.writeln('')
 }

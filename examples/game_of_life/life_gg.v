@@ -37,18 +37,17 @@ fn frame(mut app App) {
 
 fn main() {
 	mut app := App{
-		gg: 0
 		a: automaton.gun()
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		frame_fn: frame
-		user_data: &app
-		width: screen_width
-		height: screen_height
+		bg_color:      gx.white
+		frame_fn:      frame
+		user_data:     &app
+		width:         screen_width
+		height:        screen_height
 		create_window: true
-		resizable: false
-		window_title: 'v life (with gg, gx)'
+		resizable:     false
+		window_title:  'v life (with gg, gx)'
 	)
 	app.gg.run()
 }

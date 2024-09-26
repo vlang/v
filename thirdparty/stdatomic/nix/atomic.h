@@ -107,10 +107,10 @@ static inline void** atomic_load(void** x) {
 static inline void atomic_store(void** x, void* y) {
 	atomic_store_explicit((unsigned long long*)x, (uintptr_t)y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak(void** x, void** expected, void* y) {
+static inline int atomic_compare_exchange_weak(void** x, void** expected, intptr_t y) {
 	return (int)atomic_compare_exchange_weak_explicit((unsigned long long*)x, (unsigned long long*)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_strong(void** x,  void** expected, void* y) {
+static inline int atomic_compare_exchange_strong(void** x,  void** expected, intptr_t y) {
 	return (int)atomic_compare_exchange_strong_explicit((unsigned long long*)x, (unsigned long long*)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline uintptr_t atomic_exchange(void** x, void* y) {
@@ -311,10 +311,10 @@ static inline void* atomic_load_ptr(void** x) {
 static inline void atomic_store_ptr(void** x, void* y) {
 	atomic_store_explicit((_Atomic(uintptr_t)*)x, (uintptr_t)y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_ptr(void** x, void** expected, void* y) {
+static inline int atomic_compare_exchange_weak_ptr(void** x, void** expected, intptr_t y) {
 	return (int)atomic_compare_exchange_weak_explicit((_Atomic(uintptr_t)*)x, (unsigned long *)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_strong_ptr(void** x, void** expected, void* y) {
+static inline int atomic_compare_exchange_strong_ptr(void** x, void** expected, intptr_t y) {
 	return (int)atomic_compare_exchange_strong_explicit((_Atomic(uintptr_t)*)x, (unsigned long *)expected, (uintptr_t)y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline void* atomic_exchange_ptr(void** x, void* y) {

@@ -18,16 +18,18 @@ const auth_user_password = u8(2)
 // socks5_dial create new instance of &net.TcpConn
 pub fn socks5_dial(proxy_url string, host string, username string, password string) !&net.TcpConn {
 	mut con := net.dial_tcp(proxy_url)!
-	return handshake(mut con, host, username, password)!
+	socks_conn_as_interface := handshake(mut con, host, username, password)!
+	socks_conn := socks_conn_as_interface as net.TcpConn
+	return &socks_conn
 }
 
 // socks5_ssl_dial create new instance of &ssl.SSLConn
 pub fn socks5_ssl_dial(proxy_url string, host string, username string, password string) !&ssl.SSLConn {
 	mut ssl_conn := ssl.new_ssl_conn(
-		verify: ''
-		cert: ''
-		cert_key: ''
-		validate: false
+		verify:                 ''
+		cert:                   ''
+		cert_key:               ''
+		validate:               false
 		in_memory_verification: false
 	)!
 	mut con := socks5_dial(proxy_url, host, username, password)!
@@ -35,19 +37,47 @@ pub fn socks5_ssl_dial(proxy_url string, host string, username string, password 
 	return ssl_conn
 }
 
-fn handshake(mut con net.TcpConn, host string, username string, password string) !&net.TcpConn {
-	mut v := [socks.socks_version5, 1]
+// SOCKS5Dialer implements the Dialer interface initiating connections through a SOCKS5 proxy.
+pub struct SOCKS5Dialer {
+pub:
+	dialer        net.Dialer
+	proxy_address string
+	username      string
+	password      string
+}
+
+// new_socks5_dialer creates a dialer that will use a SOCKS5 proxy server to
+// initiate connections. An underlying dialer is required to initiate the
+// connection to the proxy server. Most users should use either
+// net.default_tcp_dialer or ssl.create_ssl_dialer.
+pub fn new_socks5_dialer(base net.Dialer, proxy_address string, username string, password string) net.Dialer {
+	return &SOCKS5Dialer{
+		dialer:        base
+		proxy_address: proxy_address
+		username:      username
+		password:      password
+	}
+}
+
+// dial initiates a new connection through the SOCKS5 proxy.
+pub fn (sd SOCKS5Dialer) dial(address string) !net.Connection {
+	mut conn := sd.dialer.dial(sd.proxy_address)!
+	return handshake(mut conn, address, sd.username, sd.password)!
+}
+
+fn handshake(mut con net.Connection, host string, username string, password string) !net.Connection {
+	mut v := [socks_version5, 1]
 	if username.len > 0 {
-		v << socks.auth_user_password
+		v << auth_user_password
 	} else {
-		v << socks.no_auth
+		v << no_auth
 	}
 
 	con.write(v)!
 	mut bf := []u8{len: 2}
 	con.read(mut bf)!
 
-	if bf[0] != socks.socks_version5 {
+	if bf[0] != socks_version5 {
 		con.close()!
 		return error('unexpected protocol version ${bf[0]}')
 	}
@@ -78,7 +108,7 @@ fn handshake(mut con net.TcpConn, host string, username string, password string)
 		}
 	}
 	v.clear()
-	v = [socks.socks_version5, 1, 0]
+	v = [socks_version5, 1, 0]
 
 	mut port := host.all_after_last(':').u64()
 	if port == 0 {
@@ -87,17 +117,17 @@ fn handshake(mut con net.TcpConn, host string, username string, password string)
 	address := host.all_before_last(':')
 
 	if address.contains_only('.1234567890') { // ipv4
-		v << socks.addr_type_ipv4
+		v << addr_type_ipv4
 		v << parse_ipv4(address)!
 	} else if address.contains_only(':1234567890abcdf') {
 		// v << addr_type_ipv6
 		// v << parse_ipv4(address)!
-		// todo support ipv6
+		// TODO: support ipv6
 	} else { // domain
 		if address.len > 255 {
 			return error('${address} is too long')
 		} else {
-			v << socks.addr_type_fqdn
+			v << addr_type_fqdn
 			v << u8(address.len)
 			v << address.bytes()
 		}

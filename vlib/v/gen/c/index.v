@@ -175,6 +175,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.write('*')
 			}
 		} else {
+			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true // special handling of assign_op and closing with '})'
 			g.write('array_set(')
 			if !left_is_ptr || node.left_type.has_flag(.shared_f) {
@@ -234,6 +235,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 	} else {
 		is_direct_array_access := g.is_direct_array_access || node.is_direct
+		is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
 			&& g.fn_decl != unsafe { nil } && g.fn_decl.return_type.has_flag(.option))
@@ -257,7 +259,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if needs_clone {
 				g.write('/*2*/string_clone(')
 			}
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				if elem_sym.info is ast.FnType {
 					g.write('((')
 					g.write_fn_ptr_decl(&elem_sym.info, '')
@@ -297,13 +299,13 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('data)[')
 			g.expr(node.index)
 			g.write(']')
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				g.write(')')
 			}
 		} else {
 			g.write(', ')
 			g.expr(node.index)
-			if g.is_fn_index_call {
+			if is_fn_index_call {
 				g.write(')))')
 			} else {
 				g.write('))')
@@ -324,7 +326,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, elem_type)
 			}
-			g.write('\n${cur_line}*(${elem_type_str}*)${tmp_opt}.data')
+			g.write('\n${cur_line}(*(${elem_type_str}*)${tmp_opt}.data)')
 		}
 	}
 }
@@ -342,6 +344,15 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.expr(node.left)
 		g.writeln(';')
 		g.past_tmp_var_done(past)
+	} else if node.left is ast.IndexExpr && node.left.is_setter {
+		past := g.past_tmp_var_new()
+		styp := g.typ(node.left_type)
+		g.write('${styp}* ${past.tmp_var} = &')
+		g.expr(node.left)
+		g.writeln(';')
+		g.write('(*')
+		g.past_tmp_var_done(past)
+		g.write(')')
 	} else {
 		if is_fn_index_call {
 			g.write('(*')
@@ -385,9 +396,10 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.typ(val_type.clear_flag(.result))
 		}
 	}
-	get_and_set_types := val_sym.kind in [.struct_, .map, .array]
+	get_and_set_types := val_sym.kind in [.struct_, .map, .array, .array_fixed]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
+			g.cur_indexexpr << node.pos.pos
 			g.is_arraymap_set = true
 			g.write('map_set(')
 		} else {

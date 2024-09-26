@@ -36,7 +36,8 @@ pub struct C.MYSQL_FIELD {
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 
 // C.mysql_real_connect attempts to establish a connection to a MySQL server running on `host`.
-fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db &char, port u32, unix_socket &char, client_flag ConnectionFlag) &C.MYSQL
+fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db &char, port u32, unix_socket &char,
+	client_flag ConnectionFlag) &C.MYSQL
 
 // C.mysql_query executes the SQL statement pointed to by the null-terminated string `stmt_str`.
 fn C.mysql_query(mysql &C.MYSQL, q &u8) int

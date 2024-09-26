@@ -8,7 +8,7 @@ import rand
 
 pub struct ServerState {
 mut:
-	ping_interval int   = 30 // interval for sending ping to clients (seconds)
+	ping_interval int   = 30      // interval for sending ping to clients (seconds)
 	state         State = .closed // current state of connection
 pub mut:
 	clients map[string]&ServerClient // clients connected to this server
@@ -17,9 +17,7 @@ pub mut:
 // Server represents a websocket server connection
 pub struct Server {
 mut:
-	logger &log.Logger = &log.Logger(&log.Log{
-	level: .info
-})
+	logger                  &log.Logger      = default_logger
 	ls                      &net.TcpListener = unsafe { nil } // listener used to get incoming connection to socket
 	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
@@ -44,17 +42,16 @@ pub mut:
 
 @[params]
 pub struct ServerOpt {
-	logger &log.Logger = &log.Logger(&log.Log{
-	level: .info
-})
+pub:
+	logger &log.Logger = default_logger
 }
 
 // new_server instance a new websocket server on provided port and route
 pub fn new_server(family net.AddrFamily, port int, route string, opt ServerOpt) &Server {
 	return &Server{
-		ls: unsafe { nil }
+		ls:     unsafe { nil }
 		family: family
-		port: port
+		port:   port
 		logger: opt.logger
 	}
 }
@@ -111,7 +108,7 @@ fn (mut s Server) handle_ping() {
 					}
 					clients_to_remove << c.client.id
 				}
-				if (time.now().unix - c.client.last_pong_ut) > s.get_ping_interval() * 2 {
+				if (time.now().unix() - c.client.last_pong_ut) > s.get_ping_interval() * 2 {
 					clients_to_remove << c.client.id
 					c.client.close(1000, 'no pong received') or { continue }
 				}
@@ -143,24 +140,24 @@ fn (mut s Server) serve_client(mut c Client) ! {
 
 // handle_handshake use an existing connection to respond to the handshake for a given key
 pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&ServerClient {
+	mut logger := &log.Log{}
+	logger.set_level(.debug)
 	mut c := &Client{
-		is_server: true
-		conn: conn
-		is_ssl: false
-		logger: &log.Log{
-			level: .debug
-		}
+		is_server:    true
+		conn:         conn
+		is_ssl:       false
+		logger:       logger
 		client_state: ClientState{
 			state: .open
 		}
-		last_pong_ut: time.now().unix
-		id: rand.uuid_v4()
+		last_pong_ut: time.now().unix()
+		id:           rand.uuid_v4()
 	}
 	mut server_client := &ServerClient{
 		resource_name: 'GET'
-		client_key: key
-		client: unsafe { c }
-		server: unsafe { &s }
+		client_key:    key
+		client:        unsafe { c }
+		server:        unsafe { &s }
 	}
 	digest := create_key_challenge_response(key)!
 	handshake_response := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${digest}\r\n\r\n'
@@ -221,15 +218,15 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 fn (mut s Server) accept_new_client() !&Client {
 	mut new_conn := s.ls.accept()!
 	c := &Client{
-		is_server: true
-		conn: new_conn
-		ssl_conn: ssl.new_ssl_conn()!
-		logger: s.logger
+		is_server:    true
+		conn:         new_conn
+		ssl_conn:     ssl.new_ssl_conn()!
+		logger:       s.logger
 		client_state: ClientState{
 			state: .open
 		}
-		last_pong_ut: time.now().unix
-		id: rand.uuid_v4()
+		last_pong_ut: time.now().unix()
+		id:           rand.uuid_v4()
 	}
 	return c
 }

@@ -37,7 +37,7 @@ fn play_sounds(files []string) ! {
 }
 
 //
-fn audio_player_callback(buffer &f32, num_frames int, num_channels int, mut p Player) {
+fn audio_player_callback(mut buffer &f32, num_frames int, num_channels int, mut p Player) {
 	if p.finished {
 		return
 	}
@@ -54,9 +54,9 @@ fn audio_player_callback(buffer &f32, num_frames int, num_channels int, mut p Pl
 
 fn (mut p Player) init() {
 	audio.setup(
-		num_channels: 2
+		num_channels:       2
 		stream_userdata_cb: audio_player_callback
-		user_data: p
+		user_data:          p
 	)
 }
 

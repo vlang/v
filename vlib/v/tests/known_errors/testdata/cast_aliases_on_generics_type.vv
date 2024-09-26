@@ -1,4 +1,4 @@
-type ParseRes = Result<[]Token, ParseErr>
+type ParseRes = Result[[]Token, ParseErr]
 
 struct ParseErr {}
 

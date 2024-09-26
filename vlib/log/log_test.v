@@ -75,12 +75,27 @@ fn test_logger_mutable_reference() {
 	println(@FN + ' end')
 }
 
+fn test_log_mutable_short_tag() {
+	println(@FN + ' start')
+	mut l := Log{}
+	l.set_level(.info)
+	l.set_short_tag(true)
+	log_mutable_statements(mut l)
+	assert true
+	println(@FN + ' end')
+}
+
 fn test_level_from_tag() ? {
 	assert level_from_tag('INFO')? == .info
 	assert level_from_tag('FATAL')? == .fatal
 	assert level_from_tag('WARN')? == .warn
 	assert level_from_tag('ERROR')? == .error
 	assert level_from_tag('DEBUG')? == .debug
+	assert level_from_tag('I')? == .info
+	assert level_from_tag('F')? == .fatal
+	assert level_from_tag('W')? == .warn
+	assert level_from_tag('E')? == .error
+	assert level_from_tag('D')? == .debug
 
 	invalid := ['', 'FOO', 'nope']
 

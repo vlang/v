@@ -82,7 +82,7 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 			}
 			val = parse_cookie_value(val, true) or { continue }
 			cookies << &Cookie{
-				name: name
+				name:  name
 				value: val
 			}
 		}
@@ -248,7 +248,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 	mut part_len := 0
 	for i, _ in s {
 		c := s[i]
-		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
+		if c.is_letter() {
 			// No '_' allowed here (in contrast to package net).
 			ok = true
 			part_len++
@@ -324,9 +324,9 @@ fn parse_cookie(line string) !Cookie {
 	}
 	value := parse_cookie_value(raw_value, true) or { return error('malformed cookie') }
 	mut c := Cookie{
-		name: name
+		name:  name
 		value: value
-		raw: line
+		raw:   line
 	}
 	for i, _ in parts {
 		parts[i] = parts[i].trim_space()

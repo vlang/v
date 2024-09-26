@@ -28,11 +28,7 @@ fn C.exit(code int)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-fn C.sprintf(a ...voidptr) int
-
 fn C.strlen(s &char) int
-
-fn C.sscanf(&u8, &u8, ...&u8) int
 
 @[trusted]
 fn C.isdigit(c int) bool
@@ -43,23 +39,33 @@ fn C.popen(c &char, t &char) voidptr
 // <libproc.h>
 pub fn proc_pidpath(int, voidptr, int) int
 
-fn C.realpath(&char, &char) &char
+fn C.realpath(const_path &char, resolved_path &char) &char
 
 // fn C.chmod(byteptr, mode_t) int
-fn C.chmod(&char, u32) int
+fn C.chmod(path &char, mode u32) int
 
-fn C.printf(&char, ...voidptr) int
+fn C.printf(const_format &char, opt ...voidptr) int
+fn C.dprintf(fd int, const_format &char, opt ...voidptr) int
+fn C.fprintf(fstream &C.FILE, const_format &char, opt ...voidptr) int
+fn C.sprintf(str &char, const_format &char, opt ...voidptr) int
+fn C.snprintf(str &char, size usize, const_format &char, opt ...voidptr) int
+fn C.wprintf(const_format &u16, opt ...voidptr) int
 
-fn C.scanf(&char, ...voidptr) int
+// used by Android for (e)println to output to the Android log system / logcat
+pub fn C.android_print(fstream voidptr, format &char, opt ...voidptr)
 
-fn C.puts(&char) int
+fn C.sscanf(str &char, const_format &char, opt ...voidptr) int
+fn C.scanf(const_format &char, opt ...voidptr) int
+
+fn C.puts(msg &char) int
+@[trusted]
 fn C.abs(f64) f64
 
-fn C.fputs(str &char, stream &C.FILE) int
+fn C.fputs(msg &char, fstream &C.FILE) int
 
-fn C.fflush(&C.FILE) int
+fn C.fflush(fstream &C.FILE) int
 
-// TODO define args in these functions
+// TODO: define args in these functions
 fn C.fseek(stream &C.FILE, offset int, whence int) int
 
 fn C.fopen(filename &char, mode &char) &C.FILE
@@ -81,8 +87,10 @@ fn C.strchr(s &char, c int) &char
 @[trusted]
 fn C.getpid() int
 
+@[trusted]
 fn C.getuid() int
 
+@[trusted]
 fn C.geteuid() int
 
 fn C.system(cmd &char) int
@@ -203,10 +211,6 @@ fn C.strncmp(s &char, s2 &char, n int) int
 @[trusted]
 fn C.strerror(int) &char
 
-fn C.snprintf(str &char, size usize, format &char, opt ...voidptr) int
-
-fn C.fprintf(voidptr, &char, ...voidptr)
-
 @[trusted]
 fn C.WIFEXITED(status int) bool
 
@@ -237,9 +241,11 @@ fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
-fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
+fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
+	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
+fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
+	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
 
@@ -258,7 +264,9 @@ fn C.SendMessageTimeout() isize
 
 fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) isize
 
-fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
+fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr,
+	bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr,
+	lpProcessInformation voidptr) bool
 
 fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
 
@@ -291,18 +299,18 @@ fn C.GetConsoleMode(voidptr, &u32) bool
 @[trusted]
 fn C.GetCurrentProcessId() u32
 
-fn C.wprintf()
-
 // fn C.setbuf()
 fn C.setbuf(voidptr, &char)
 
 fn C.SymCleanup(hProcess voidptr)
 
-fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
+fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMultiByte int, lpWideCharStr &u16,
+	cchWideChar int) int
 
 fn C.wcslen(str voidptr) usize
 
-fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr &char, cbMultiByte int, lpDefaultChar &char, lpUsedDefaultChar &int) int
+fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr &char,
+	cbMultiByte int, lpDefaultChar &char, lpUsedDefaultChar &int) int
 
 fn C._wstat(path &u16, buffer &C._stat) int
 
@@ -324,7 +332,8 @@ fn C._waccess(path &u16, mode int) int
 
 fn C._wremove(path &u16) int
 
-fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u32, out_read_chars &u32, in_input_control voidptr) bool
+fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u32, out_read_chars &u32,
+	in_input_control voidptr) bool
 
 fn C.WriteConsole() voidptr
 
@@ -354,7 +363,8 @@ fn C.FindClose(hFindFile voidptr)
 // macro
 fn C.MAKELANGID(lgid voidptr, srtid voidptr) int
 
-fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize u32, arguments ...voidptr) u32
+fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr,
+	nSize u32, arguments ...voidptr) u32
 
 fn C.CloseHandle(voidptr) int
 
@@ -496,8 +506,6 @@ fn C.glTexImage2D()
 // used by ios for println
 fn C.WrappedNSLog(str &u8)
 
-// used by Android for (e)println to output to the Android log system / logcat
-pub fn C.android_print(voidptr, &char, ...voidptr)
-
 // absolute value
+@[trusted]
 fn C.abs(number int) int

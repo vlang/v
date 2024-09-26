@@ -101,7 +101,7 @@ pub fn (mut func Function) new_local(v ValType) LocalIndex {
 pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
 	ret := func.locals.len
 	func.locals << FunctionLocal{
-		typ: v
+		typ:  v
 		name: name
 	}
 	return ret
@@ -991,7 +991,7 @@ pub fn (mut func Function) call(name string) {
 	func.code << 0x10 // call
 	func.patches << CallPatch(FunctionCallPatch{
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }
 
@@ -1001,9 +1001,9 @@ pub fn (mut func Function) call(name string) {
 pub fn (mut func Function) call_import(mod string, name string) {
 	func.code << 0x10 // call
 	func.patches << CallPatch(ImportCallPatch{
-		mod: mod
+		mod:  mod
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }
 
@@ -1198,7 +1198,7 @@ pub fn (mut func Function) ref_func(name string) {
 	func.code << 0xD2 // ref.func
 	func.patches << CallPatch(FunctionCallPatch{
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }
 
@@ -1208,8 +1208,8 @@ pub fn (mut func Function) ref_func(name string) {
 pub fn (mut func Function) ref_func_import(mod string, name string) {
 	func.code << 0xD2 // ref.func
 	func.patches << CallPatch(ImportCallPatch{
-		mod: mod
+		mod:  mod
 		name: name
-		pos: func.code.len
+		pos:  func.code.len
 	})
 }

@@ -36,6 +36,8 @@
 	--attribute-deprecated-background-color: #f59f0b48;
 	--attribute-deprecated-text-color: #92400e;
 	--attribute-text-color: #000000cf;
+	--table-header-line-color: #2c3e64;
+	--table-background-color: #edf2f7;
 }
 html.dark {
 	--background-color: #1a202c;
@@ -73,6 +75,8 @@ html.dark {
 	--attribute-background-color: #ffffff20;
 	--attribute-text-color: #ffffffaf;
 	--attribute-deprecated-text-color: #fef3c7;
+	--table-header-line-color: #cbd5e0;
+	--table-background-color: #2d3748;
 }
 html.dark .dark-icon {
 	display: none;
@@ -619,6 +623,7 @@ code {
 pre {
 	overflow: auto;
 	margin: 0;
+	position: relative;
 }
 .namespace {
 	opacity: 0.7;
@@ -663,6 +668,31 @@ pre {
 }
 .examples > h4 {
 	margin: 0 0 0.4rem 0;
+}
+
+table {
+	border: 1px solid var(--table-background-color);
+	border-collapse: collapse;
+}
+table tr td,
+table tr th {
+	padding: 4px 8px;
+}
+table tr th {
+	background-color: var(--table-background-color);
+}
+tr:nth-child(even) {
+	background-color: var(--table-background-color);
+}
+
+button.copy {
+	border: none;
+	background-color: transparent;
+	position: absolute;
+	font-size: 12px;
+	top: 5px;
+	right: 5px;
+	color: var(--ref-symbol-hover-color);
 }
 
 /* Medium screen and up */

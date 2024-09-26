@@ -40,7 +40,7 @@ fn map_hash_int_8(pkey voidptr) u64 {
 
 // Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
-	// TODO alloca?
+	// TODO: alloca?
 	mut tmp_value := unsafe { malloc(d.value_bytes) }
 	mut tmp_key := unsafe { malloc(d.key_bytes) }
 	mut count := 0

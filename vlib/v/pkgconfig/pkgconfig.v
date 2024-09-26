@@ -3,6 +3,8 @@ module pkgconfig
 import semver
 import os
 
+const version = '0.3.4'
+
 const default_paths = [
 	'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
 	'/usr/local/lib64/pkgconfig',
@@ -15,9 +17,9 @@ const default_paths = [
 	'/usr/share/pkgconfig',
 	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
 	'/usr/local/libdata/pkgconfig', // FreeBSD
+	'/usr/libdata/pkgconfig', // FreeBSD
 	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 ]
-const version = '0.3.3'
 
 pub struct Options {
 pub:
@@ -30,6 +32,7 @@ pub:
 
 pub struct PkgConfig {
 pub mut:
+	file_path        string
 	options          Options
 	name             string
 	modname          string
@@ -91,6 +94,7 @@ fn (mut pc PkgConfig) setvar(line string) {
 }
 
 fn (mut pc PkgConfig) parse(file string) bool {
+	pc.file_path = file
 	data := os.read_file(file) or { return false }
 	if pc.options.debug {
 		eprintln(data)
@@ -104,7 +108,8 @@ fn (mut pc PkgConfig) parse(file string) bool {
 			}
 		}
 	} else {
-		for line in lines {
+		for oline in lines {
+			line := oline.trim_space()
 			if line.starts_with('#') {
 				continue
 			}
@@ -158,7 +163,7 @@ fn (mut pc PkgConfig) resolve(pkgname string) !string {
 }
 
 pub fn atleast(v string) bool {
-	v0 := semver.from(pkgconfig.version) or { return false }
+	v0 := semver.from(version) or { return false }
 	v1 := semver.from(v) or { return false }
 	return v0 > v1
 }
@@ -203,7 +208,7 @@ fn (mut pc PkgConfig) load_require(dep string) ! {
 	}
 	pc.loaded << dep
 	mut pcdep := PkgConfig{
-		paths: pc.paths
+		paths:  pc.paths
 		loaded: pc.loaded
 	}
 	depfile := pcdep.resolve(dep) or {
@@ -241,24 +246,25 @@ fn (mut pc PkgConfig) load_paths() {
 	// Allow for full custom user control over the default paths too, through
 	// setting `PKG_CONFIG_PATH_DEFAULTS` to a list of search paths, separated
 	// by `:`.
+	split_c := $if windows { ';' } $else { ':' }
 	config_path_override := os.getenv('PKG_CONFIG_PATH_DEFAULTS')
 	if config_path_override != '' {
-		for path in config_path_override.split(':') {
+		for path in config_path_override.split(split_c) {
 			pc.add_path(path)
 		}
 	} else {
 		if pc.options.use_default_paths {
-			for path in pkgconfig.default_paths {
+			for path in default_paths {
 				pc.add_path(path)
 			}
 		}
 	}
-	for path in pc.options.path.split(':') {
+	for path in pc.options.path.split(split_c) {
 		pc.add_path(path)
 	}
 	env_var := os.getenv('PKG_CONFIG_PATH')
 	if env_var != '' {
-		env_paths := env_var.trim_space().split(':')
+		env_paths := env_var.trim_space().split(split_c)
 		for path in env_paths {
 			pc.add_path(path)
 		}

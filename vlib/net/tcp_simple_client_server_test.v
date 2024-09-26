@@ -64,6 +64,10 @@ fn test_socket() {
 
 fn test_socket_write_and_read() {
 	mut server, mut client, mut socket := setup()
+	addr := socket.peer_addr()!
+	ip := socket.peer_ip()!
+	assert ip in ['::1', 'localhost', '127.0.0.1']
+	println('> ip: ${ip} | addr: ${addr}')
 	defer {
 		cleanup(mut server, mut client, mut socket)
 	}
@@ -88,7 +92,7 @@ fn test_socket_read_line() {
 	message := '${message1}\n${message2}\n'
 	socket.write_string(message) or { assert false }
 	assert true
-	//
+
 	line1 := reader.read_line() or {
 		// println(reader.buf)
 		assert false

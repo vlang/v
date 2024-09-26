@@ -52,9 +52,9 @@ pub type Sqlite3_vfs = C.sqlite3_vfs
 pub struct C.sqlite3_vfs {
 pub mut:
 	// version 1 and later fields
-	iVersion   int // Structure version number (currently 3)
-	szOsFile   int // Size of subclassed sqlite3_file
-	mxPathname int // Maximum file pathname length
+	iVersion   int          // Structure version number (currently 3)
+	szOsFile   int          // Size of subclassed sqlite3_file
+	mxPathname int          // Maximum file pathname length
 	pNext      &Sqlite3_vfs // Next registered VFS
 	zName      &char        // Name of this virtual file system
 	pAppData   voidptr      // Pointer to application-specific data
@@ -155,12 +155,12 @@ pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB
 	code := C.sqlite3_open_v2(&char(path.str), &db, flags, vfs_name.str)
 	if code != 0 {
 		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			msg:  unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
 			code: code
 		}
 	}
 	return DB{
-		conn: db
+		conn:    db
 		is_open: true
 	}
 }

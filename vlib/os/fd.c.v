@@ -75,6 +75,7 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 pub struct C.fd_set {}
 
 pub struct C.timeval {
+pub:
 	tv_sec  u64
 	tv_usec u64
 }
@@ -93,7 +94,7 @@ pub fn fd_is_pending(fd int) bool {
 	C.FD_ZERO(&read_set)
 	C.FD_SET(fd, &read_set)
 	mut ts := C.timeval{
-		tv_sec: 0
+		tv_sec:  0
 		tv_usec: 0
 	}
 	res := C.@select(fd + 1, &read_set, C.NULL, C.NULL, &ts)

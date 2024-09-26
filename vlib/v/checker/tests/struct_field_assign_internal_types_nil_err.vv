@@ -4,7 +4,7 @@ struct Bar {}
 
 struct Foo {
 	name    string
-	bar 	Bar
+	bar     Bar
 	name2   String
 	arr     []int
 	mp      map[string]string
@@ -12,11 +12,11 @@ struct Foo {
 }
 
 a := &Foo{
-	name: unsafe { nil }
-	bar: unsafe { nil }
-	name2: unsafe { nil }
-	arr: unsafe { nil }
-	mp: unsafe { nil }
+	name:    unsafe { nil }
+	bar:     unsafe { nil }
+	name2:   unsafe { nil }
+	arr:     unsafe { nil }
+	mp:      unsafe { nil }
 	arr_fix: unsafe { nil }
 }
 println(a)

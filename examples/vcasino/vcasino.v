@@ -47,7 +47,7 @@ fn get_bet_nbr() int {
 		println('Reminder: odd numbers are red and even are black.')
 		println('Type the number you want to bet on (between 0 and 49):')
 		line := os.get_line().trim_space()
-		if line.len < 1 {
+		if line == '' {
 			println('error: empty line.')
 			continue
 		}
@@ -70,7 +70,7 @@ fn get_bet(money int) int {
 	for bet <= 0 || bet > money {
 		println('You have ${money} V. Type in the amount of your bet:')
 		line := os.get_line().trim_space()
-		if line.len < 1 {
+		if line == '' {
 			println('error: empty line.')
 			continue
 		}

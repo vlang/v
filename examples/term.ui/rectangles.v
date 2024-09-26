@@ -32,9 +32,9 @@ fn event(e &tui.Event, mut app App) {
 		.mouse_down {
 			app.is_drag = true
 			app.cur_rect = Rect{
-				c: random_color()
-				x: e.x
-				y: e.y
+				c:  random_color()
+				x:  e.x
+				y:  e.y
 				x2: e.x
 				y2: e.y
 			}
@@ -82,14 +82,18 @@ fn frame(mut app App) {
 	app.redraw = false
 }
 
+type EventFn = fn (&tui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data: app
-		event_fn: event
-		frame_fn: frame
+		user_data:   app
+		event_fn:    EventFn(event)
+		frame_fn:    FrameFn(frame)
 		hide_cursor: true
-		frame_rate: 60
+		frame_rate:  60
 	)
 	app.tui.run()!
 }

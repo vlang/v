@@ -1,0 +1,2 @@
+VV_LOCAL_SYMBOL void main__t2(voidptr fmt, ... );
+VV_LOCAL_SYMBOL void main__t2(voidptr fmt, ... ) {

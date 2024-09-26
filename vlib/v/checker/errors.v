@@ -32,18 +32,40 @@ fn (mut c Checker) warn(s string, pos token.Pos) {
 	c.warn_or_error(s, pos, allow_warnings)
 }
 
-fn (mut c Checker) error(message string, pos token.Pos) {
-	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
-		// TODO move this
+fn (mut c Checker) warn_alloc(s string, pos token.Pos) {
+	if c.assign_stmt_attr == 'freed' {
 		return
 	}
-	msg := message.replace('`Array_', '`[]')
+
+	if !c.is_builtin_mod && c.mod !in ['strings', 'math', 'math.bits', 'builtin', 'strconv'] {
+		c.warn('allocation (${s})', pos)
+	}
+}
+
+fn (mut c Checker) error(message string, pos token.Pos) {
+	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
+		// TODO: move this
+		return
+	}
+	mut msg := message.replace('`Array_', '`[]')
+	if c.pref.is_vweb {
+		// Show in which veb action the error occurred (for easier debugging)
+		veb_action := c.table.cur_fn.name.replace('vweb_tmpl_', '')
+		mut j := 0
+		for _, ch in veb_action {
+			if ch.is_digit() {
+				break
+			}
+			j++
+		}
+		msg += ' (veb action: ${veb_action[..j]})'
+	}
 	c.warn_or_error(msg, pos, false)
 }
 
 fn (mut c Checker) fatal(message string, pos token.Pos) {
 	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
-		// TODO move this
+		// TODO: move this
 		return
 	}
 	msg := message.replace('`Array_', '`[]')
@@ -72,11 +94,11 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	if kpos !in c.notice_lines {
 		c.notice_lines[kpos] = true
 		note := errors.Notice{
-			reporter: errors.Reporter.checker
-			pos: pos
+			reporter:  errors.Reporter.checker
+			pos:       pos
 			file_path: c.file.path
-			message: message
-			details: details
+			message:   message
+			details:   details
 		}
 		c.file.notices << note
 		c.notices << note
@@ -111,11 +133,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 		if kpos !in c.warning_lines {
 			c.warning_lines[kpos] = true
 			wrn := errors.Warning{
-				reporter: errors.Reporter.checker
-				pos: pos
+				reporter:  errors.Reporter.checker
+				pos:       pos
 				file_path: c.file.path
-				message: message
-				details: details
+				message:   message
+				details:   details
 			}
 			c.file.warnings << wrn
 			c.warnings << wrn
@@ -125,10 +147,10 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	if !warn {
 		if c.pref.fatal_errors {
 			util.show_compiler_message('error:', errors.CompilerMessage{
-				pos: pos
+				pos:       pos
 				file_path: c.file.path
-				message: message
-				details: details
+				message:   message
+				details:   details
 			})
 			exit(1)
 		}
@@ -142,11 +164,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 		if kpos !in c.error_lines {
 			c.error_lines[kpos] = true
 			err := errors.Error{
-				reporter: errors.Reporter.checker
-				pos: pos
+				reporter:  errors.Reporter.checker
+				pos:       pos
 				file_path: c.file.path
-				message: message
-				details: details
+				message:   message
+				details:   details
 			}
 			c.file.errors << err
 			c.errors << err
@@ -166,6 +188,8 @@ fn (mut c Checker) trace[T](fbase string, x &T) {
 }
 
 fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos token.Pos) {
+	// println('deprecate kind=${kind} name=${name} attrs=$attrs')
+	// print_backtrace()
 	mut deprecation_message := ''
 	now := time.now()
 	mut after_time := now
@@ -191,8 +215,11 @@ fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos tok
 		c.warn(semicolonize('${start_message} has been deprecated since ${after_time.ymmdd()}, it will be an error after ${error_time.ymmdd()}',
 			deprecation_message), pos)
 	} else if after_time == now {
+		// print_backtrace()
 		c.warn(semicolonize('${start_message} has been deprecated', deprecation_message),
 			pos)
+		// c.warn(semicolonize('${start_message} has been deprecated!11 m=${deprecation_message}',
+		// deprecation_message), pos)
 	} else {
 		c.note(semicolonize('${start_message} will be deprecated after ${after_time.ymmdd()}, and will become an error after ${error_time.ymmdd()}',
 			deprecation_message), pos)

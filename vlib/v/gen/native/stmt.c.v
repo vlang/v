@@ -33,7 +33,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 					jump_addr := g.code_gen.jmp(0)
 					g.labels.patches << LabelPatch{
-						id: label
+						id:  label
 						pos: jump_addr
 					}
 					g.println('; jump to ${label}: ${node.kind}')
@@ -157,14 +157,14 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	}
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
-		id: end_label
+		id:  end_label
 		pos: jump_addr
 	}
 	g.println('; jump to label ${end_label}')
 	g.labels.branches << BranchLabel{
-		name: node.label
+		name:  node.label
 		start: start_label
-		end: end_label
+		end:   end_label
 	}
 	g.stmts(node.stmts)
 	g.labels.addrs[start_label] = g.pos()
@@ -193,9 +193,9 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.println('; label ${start_label}')
 		end_label := g.labels.new_label()
 		g.labels.branches << BranchLabel{
-			name: node.label
+			name:  node.label
 			start: start_label
-			end: end_label
+			end:   end_label
 		}
 		g.stmts(node.stmts)
 		g.labels.branches.pop()
@@ -257,14 +257,14 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	}
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
-		id: end_label
+		id:  end_label
 		pos: jump_addr
 	}
 	g.println('; jump to label ${end_label}')
 	g.labels.branches << BranchLabel{
-		name: node.label
+		name:  node.label
 		start: start_label
-		end: end_label
+		end:   end_label
 	}
 	g.stmts(node.stmts)
 	g.labels.branches.pop()
@@ -294,14 +294,14 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 
 		end_label := g.labels.new_label()
 		g.labels.patches << LabelPatch{
-			id: end_label
+			id:  end_label
 			pos: jump_addr
 		}
 		g.println('; jump to label ${end_label}')
 		g.labels.branches << BranchLabel{
-			name: node.label
+			name:  node.label
 			start: start_label
-			end: end_label
+			end:   end_label
 		}
 		g.stmts(node.stmts) // writes the actual body of the loop
 		g.labels.addrs[start_label] = g.pos()
@@ -331,7 +331,7 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	label := g.labels.new_label()
 	cjmp_addr = g.condition(ane, true)
 	g.labels.patches << LabelPatch{
-		id: label
+		id:  label
 		pos: cjmp_addr
 	}
 	g.println('; jump to label ${label}')

@@ -20,7 +20,7 @@ pub fn regex_base(pattern string) (RE, int, int) {
 	// init regex
 	mut re := RE{}
 	re.prog = []Token{len: pattern.len + 1} // max program length, can not be longer then the pattern
-	re.cc = []CharClass{len: pattern.len} // can not be more char class the the length of the pattern
+	re.cc = []CharClass{len: pattern.len} // can not be more char class the length of the pattern
 	re.group_csave_flag = false // enable continuos group saving
 	re.group_max_nested = pattern.len >> 1 // set max 128 group nested
 	re.group_max = pattern.len >> 1 // we can't have more groups than the half of the pattern legth
@@ -104,7 +104,7 @@ pub fn (re RE) get_group_list() []Re_group {
 			if txt_st >= 0 && txt_en > txt_st {
 				tmp := Re_group{
 					start: re.groups[gi]
-					end: re.groups[gi + 1]
+					end:   re.groups[gi + 1]
 				}
 				// println(tmp)
 				res[gi >> 1] = tmp
@@ -320,18 +320,13 @@ pub fn (mut re RE) split(in_txt string) []string {
 		return [in_txt]
 	}
 	for i := 0; i < pos.len; i += 2 {
-		if pos[i] == 0 {
-			continue
-		}
 		if i == 0 {
 			sections << in_txt[..pos[i]]
 		} else {
 			sections << in_txt[pos[i - 1]..pos[i]]
 		}
 	}
-	if pos[pos.len - 1] != in_txt.len {
-		sections << in_txt[pos[pos.len - 1]..]
-	}
+	sections << in_txt[pos[pos.len - 1]..]
 	return sections
 }
 
@@ -472,7 +467,7 @@ fn (re RE) parsed_replace_string(in_txt string, repl string) string {
 }
 
 // replace return a string where the matches are replaced with the repl_str string,
-// this function support use groups in the replace string
+// this function supports groups in the replace string
 pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	mut i := 0
 	mut res := strings.new_builder(in_txt.len)

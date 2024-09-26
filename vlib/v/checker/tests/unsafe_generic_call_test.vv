@@ -1,0 +1,12 @@
+module main
+
+import arrays
+
+struct Blah {}
+
+fn test_main() {
+	pointers := [&int(1234)]
+	length := 1
+	array := unsafe { arrays.carray_to_varray[&Blah](pointers, length) }
+	println(array)
+}

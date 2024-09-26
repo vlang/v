@@ -38,9 +38,6 @@
   path = 'examples/gg/bezier_anim.v'
 
 [[apps]]
-  path = 'examples/gg/drag_n_drop.v'
-
-[[apps]]
   path = 'examples/ttf_font/example_ttf.v'
 
 # Reasons for ex- or inclusion:
@@ -59,7 +56,7 @@
 # 'examples/gg/worker_thread.v',        // OK
 # 'examples/gg/polygons.v',             // OK
 # 'examples/gg/bezier_anim.v',          // OK
-# 'examples/gg/drag_n_drop.v'           // OK
+# 'examples/gg/drag_n_drop.v'           // Default font, that can be different on different platforms
 # 'examples/2048/2048.v'                // Random start tiles
 # 'examples/clock/clock.v'              // Can only be tested on exact points in time :)
 # 'examples/flappylearning/game.v'      // Random movement
@@ -72,3 +69,4 @@
 # 'examples/sokol/04_multi_shader_glsl/rt_glsl.v',  // Inaccurate captures
 # 'examples/sokol/05_instancing_glsl/rt_glsl.v',    // Inaccurate captures
 # 'examples/sokol/06_obj_viewer/show_obj.v',        // Inaccurate captures
+# 'examples/sokol/sdf/sdf.v',                       // Inaccurate captures

@@ -29,6 +29,7 @@ fn empty_cb(mut p PoolProcessor, idx int, task_id int) voidptr {
 }
 
 pub struct PoolProcessorConfig {
+pub:
 	maxjobs  int
 	callback ThreadCB = empty_cb
 }
@@ -50,13 +51,13 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	mut pool := PoolProcessor{
-		items: []
-		results: []
-		shared_context: unsafe { nil }
+		items:           []
+		results:         []
+		shared_context:  unsafe { nil }
 		thread_contexts: []
-		njobs: context.maxjobs
-		ntask: 0
-		thread_cb: voidptr(context.callback)
+		njobs:           context.maxjobs
+		ntask:           0
+		thread_cb:       voidptr(context.callback)
 	}
 	pool.waitgroup.init()
 	return &pool
@@ -110,7 +111,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 	cb := ThreadCB(pool.thread_cb)
 	ilen := pool.items.len
 	for {
-		idx := int(C.atomic_fetch_add_u32(&pool.ntask, 1))
+		idx := int(C.atomic_fetch_add_u32(voidptr(&pool.ntask), 1))
 		if idx >= ilen {
 			break
 		}

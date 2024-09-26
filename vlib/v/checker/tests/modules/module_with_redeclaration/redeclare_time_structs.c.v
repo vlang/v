@@ -2,8 +2,6 @@ module module_with_redeclaration
 
 import sokol.memory
 
-pub const used = 1
-
 @[typedef]
 pub struct C.saudio_allocator {
 pub mut:

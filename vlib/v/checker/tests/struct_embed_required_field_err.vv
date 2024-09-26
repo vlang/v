@@ -9,7 +9,7 @@ struct Bar {
 }
 
 fn main() {
-	b := Bar {
+	b := Bar{
 		foo: 1
 	}
 	println(b)

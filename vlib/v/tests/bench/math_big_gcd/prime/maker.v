@@ -74,14 +74,14 @@ pub fn usage() string {
 // reads the Map[string] []string from disk
 // and returns the parsed content
 fn read_toml_file() map[string][]string {
-	fp := os.join_path(@VROOT, prime.toml_path)
+	fp := os.join_path(@VROOT, toml_path)
 
 	tm_doc := toml.parse_file(fp) or {
 		err_msg := 'expected ${fp}'
 		eprintln(err_msg)
 		panic(err)
 	}
-	// TODO what happens if this goes wrong ?
+	// TODO: what happens if this goes wrong ?
 	tm_primes := tm_doc.value('primes') as map[string]toml.Any
 
 	msg := 'expected a map[string][]string in TOML-data ? corrupt ?'

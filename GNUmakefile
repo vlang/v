@@ -101,8 +101,8 @@ ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
 	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	v2.exe -o $(VEXE) $(VFLAGS) cmd/v
-	del v1.exe
-	del v2.exe
+	$(RM) v1.exe
+	$(RM) v2.exe
 else
 ifdef LEGACY
 	$(MAKE) -C $(TMPLEGACY)
@@ -144,7 +144,10 @@ fresh_vc:
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
+ifneq (,$(wildcard ./tcc.exe))
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
+endif
+
 else
 latest_tcc:
 	@echo "Using local tcc"
@@ -161,7 +164,6 @@ ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --hea
 else
 	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
 	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
-	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 else
 	@echo "Using local tccbin"

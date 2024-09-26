@@ -24,7 +24,7 @@ pub mut:
 	sg_img       gfx.Image   // sokol image
 	sg_smp       gfx.Sampler // sokol sampler
 	scale_reduct f32 = 2.0 // scale of the cpu texture for filtering
-	device_dpi   int = 72 // device DPI
+	device_dpi   int = 72  // device DPI
 }
 
 /******************************************************************************
@@ -121,16 +121,16 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	h := tf_skl.bmp.height
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 	mut img_desc := gfx.ImageDesc{
-		width: w
-		height: h
+		width:       w
+		height:      h
 		num_mipmaps: 0
 		// usage: .dynamic
-		label: &char(0)
+		label:         &char(0)
 		d3d11_texture: 0
 	}
 	// comment for dynamic
 	img_desc.data.subimage[0][0] = gfx.Range{
-		ptr: tf_skl.bmp.buf
+		ptr:  tf_skl.bmp.buf
 		size: usize(sz)
 	}
 
@@ -140,8 +140,8 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	mut smp_desc := gfx.SamplerDesc{
 		min_filter: .linear
 		mag_filter: .linear
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		wrap_u:     .clamp_to_edge
+		wrap_v:     .clamp_to_edge
 	}
 
 	ssmp := gfx.make_sampler(&smp_desc)
@@ -160,7 +160,7 @@ pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr: tf_skl.bmp.buf
+		ptr:  tf_skl.bmp.buf
 		size: usize(sz)
 	}
 	gfx.update_image(tf_skl.sg_img, &tmp_sbc)
@@ -204,7 +204,7 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		1,
 	]
 	sgl.mult_matrix(m)
-	//
+
 	sgl.load_pipeline(ctx.pipeline.alpha)
 	sgl.enable_texture()
 	sgl.texture(tf_skl.sg_img, tf_skl.sg_smp)

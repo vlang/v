@@ -5,16 +5,16 @@ import time
 
 @[table: 'foos']
 struct Foo {
-	id         int        @[primary; sql: serial]
+	id         int @[primary; sql: serial]
 	name       string
-	created_at time.Time  @[default: 'CURRENT_TIME']
-	updated_at ?string    @[sql_type: 'TIMESTAMP']
+	created_at time.Time @[default: 'CURRENT_TIME']
+	updated_at ?string   @[sql_type: 'TIMESTAMP']
 	deleted_at ?time.Time
-	children   []Child    @[fkey: 'parent_id']
+	children   []Child @[fkey: 'parent_id']
 }
 
 struct Child {
-	id        int    @[primary; sql: serial]
+	id        int @[primary; sql: serial]
 	parent_id int
 	name      string
 }
@@ -27,9 +27,10 @@ fn test_main() {
 
 	sql db {
 		create table Foo
+		create table Child
 	}!
 	foo := Foo{
-		name: 'abc'
+		name:       'abc'
 		created_at: time.now()
 		// updated_at defaults to none
 		// deleted_at defaults to none

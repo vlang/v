@@ -1,0 +1,11 @@
+match true {
+}
+
+match true {
+	else {}
+	else {}
+}
+
+match true {
+	'foo' == 'bar' {}
+}

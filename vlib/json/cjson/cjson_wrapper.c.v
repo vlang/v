@@ -18,17 +18,15 @@ pub:
 	next  &C.cJSON // next/prev allow you to walk array/object chains. Alternatively, use GetArraySize/GetArrayItem/GetObjectItem
 	prev  &C.cJSON
 	child &C.cJSON // An array or object item will have a child pointer pointing to a chain of the items in the array/object
-	//
+
 	@type int // The type of the item, as above
-	//
+
 	valueint    int   // writing to valueint is DEPRECATED, use cJSON_SetNumberValue instead
 	valuedouble f64   // The item's number, if type==cJSON_Number
 	valuestring &char // The item's string, if type==cJSON_String  and type == cJSON_Raw
 	// @string &char // The item's name string, if this item is the child of, or is in the list of subitems of an object
 	// TODO: `@string &char` from above does not work. It should be fixed, at least inside `struct C.`.
 }
-
-pub const used = 1
 
 pub type Node = C.cJSON
 

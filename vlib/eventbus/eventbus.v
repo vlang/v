@@ -69,7 +69,7 @@ const dedup_buffer_len = 20
 // publish publish an event with provided Params & name.
 fn (mut pb Publisher[T]) publish(name T, sender voidptr, args voidptr) {
 	// println('Publisher.publish(name=${name} sender=${sender} args=${args})')
-	mut handled_receivers := unsafe { [eventbus.dedup_buffer_len]voidptr{} } // handle duplicate bugs TODO fix properly + perf
+	mut handled_receivers := unsafe { [dedup_buffer_len]voidptr{} } // handle duplicate bugs TODO fix properly + perf
 	// is_key_down := name == 'on_key_down'
 	mut j := 0
 	for event in pb.registry.events {
@@ -83,7 +83,7 @@ fn (mut pb Publisher[T]) publish(name T, sender voidptr, args voidptr) {
 			event.handler(event.receiver, args, sender)
 			// handled_receivers << event.receiver
 			handled_receivers[j] = event.receiver
-			j = (j + 1) % eventbus.dedup_buffer_len
+			j = (j + 1) % dedup_buffer_len
 		}
 	}
 	pb.registry.events = pb.registry.events.filter(!(it.name == name && it.once))
@@ -97,7 +97,7 @@ fn (mut p Publisher[T]) clear_all() {
 // subscribe subscribe to an event `name`.
 pub fn (mut s Subscriber[T]) subscribe(name T, handler EventHandlerFn) {
 	s.registry.events << EventHandler[T]{
-		name: name
+		name:    name
 		handler: handler
 	}
 }
@@ -105,8 +105,8 @@ pub fn (mut s Subscriber[T]) subscribe(name T, handler EventHandlerFn) {
 // subscribe_method subscribe to an event `name` and also set the `receiver` as a parameter.
 pub fn (mut s Subscriber[T]) subscribe_method(name T, handler EventHandlerFn, receiver voidptr) {
 	s.registry.events << EventHandler[T]{
-		name: name
-		handler: handler
+		name:     name
+		handler:  handler
 		receiver: receiver
 	}
 }
@@ -124,9 +124,9 @@ pub fn (mut s Subscriber[T]) unsubscribe_receiver(receiver voidptr) {
 // subscribe_once subscribe only once to an event `name`.
 pub fn (mut s Subscriber[T]) subscribe_once(name T, handler EventHandlerFn) {
 	s.registry.events << EventHandler[T]{
-		name: name
+		name:    name
 		handler: handler
-		once: true
+		once:    true
 	}
 }
 

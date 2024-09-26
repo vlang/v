@@ -1,4 +1,4 @@
-vlib/v/checker/tests/enum_err.vv:4:13: error: the default value for an enum has to be an integer
+vlib/v/checker/tests/enum_err.vv:4:10: error: the default value for an enum has to be an integer
     2 | 
     3 | enum Color {
     4 |     green = 'green'

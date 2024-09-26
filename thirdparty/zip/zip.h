@@ -13,6 +13,7 @@
 #define ZIP_H
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 
@@ -162,6 +163,16 @@ extern ZIP_EXPORT void zip_close(struct zip_t *zip);
 extern ZIP_EXPORT int zip_is64(struct zip_t *zip);
 
 /**
+ * Returns the offset in the stream where the zip header is located.
+ *
+ * @param zip zip archive handler.
+ * @param offset zip header offset.
+ *
+ * @return the return code - 0 if successful, negative number (< 0) on error.
+ */
+extern ZIP_EXPORT int zip_offset(struct zip_t *zip, uint64_t *offset);
+
+/**
  * Opens an entry by name in the zip archive.
  *
  * For zip archive opened in 'w' or 'a' mode the function will append
@@ -282,6 +293,25 @@ extern ZIP_EXPORT unsigned long long zip_entry_comp_size(struct zip_t *zip);
  * @return the CRC-32 checksum.
  */
 extern ZIP_EXPORT unsigned int zip_entry_crc32(struct zip_t *zip);
+
+/**
+ * Returns byte offset of the current zip entry
+ * in the archive's central directory.
+ *
+ * @param zip zip archive handler.
+ *
+ * @return the offset in bytes.
+ */
+extern ZIP_EXPORT unsigned long long zip_entry_dir_offset(struct zip_t *zip);
+
+/**
+ * Returns the current zip entry's local header file offset in bytes.
+ *
+ * @param zip zip archive handler.
+ *
+ * @return the entry's local header file offset in bytes.
+ */
+extern ZIP_EXPORT unsigned long long zip_entry_header_offset(struct zip_t *zip);
 
 /**
  * Compresses an input buffer for the current zip entry.
@@ -480,6 +510,49 @@ extern ZIP_EXPORT ssize_t zip_stream_copy(struct zip_t *zip, void **buf,
  * @return
  */
 extern ZIP_EXPORT void zip_stream_close(struct zip_t *zip);
+
+/**
+ * Opens zip archive from existing FILE stream with compression level using the
+ * given mode. The stream will not be closed when calling zip_close.
+ *
+ * @param stream C FILE stream.
+ * @param level compression level (0-9 are the standard zlib-style levels).
+ * @param mode file access mode. This mode should be equivalent to the mode
+ * provided when opening the file.
+ *        - 'r': opens a file for reading/extracting (the file must exists).
+ *        - 'w': creates an empty file for writing.
+ *        - 'a': appends to an existing archive.
+ *
+ * @return the zip archive handler or NULL on error
+ */
+extern ZIP_EXPORT struct zip_t *zip_cstream_open(FILE *stream, int level,
+                                                 char mode);
+
+/**
+ * Opens zip archive from existing FILE stream with compression level using the
+ * given mode. The function additionally returns @param errnum - The stream will
+ * not be closed when calling zip_close.
+ *
+ * @param stream C FILE stream.
+ * @param level compression level (0-9 are the standard zlib-style levels).
+ * @param mode file access mode.
+ *        - 'r': opens a file for reading/extracting (the file must exists).
+ *        - 'w': creates an empty file for writing.
+ *        - 'a': appends to an existing archive.
+ * @param errnum 0 on success, negative number (< 0) on error.
+ *
+ * @return the zip archive handler or NULL on error
+ */
+extern ZIP_EXPORT struct zip_t *
+zip_cstream_openwitherror(FILE *stream, int level, char mode, int *errnum);
+
+/**
+ * Closes the zip archive, releases resources - always finalize.
+ * This function is an alias for zip_close function.
+ *
+ * @param zip zip archive handler.
+ */
+extern ZIP_EXPORT void zip_cstream_close(struct zip_t *zip);
 
 /**
  * Creates a new archive and puts files into a single zip archive.

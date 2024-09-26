@@ -35,22 +35,24 @@ mut:
 	path_vc       string // the full path to the vc folder inside workdir.
 	cmd_to_run    string // the command that you want to run *in* the oldv repo
 	cc            string = 'cc' // the C compiler to use for bootstrapping.
-	cleanup       bool   // should the tool run a cleanup first
-	use_cache     bool   // use local cached copies for --vrepo and --vcrepo in
-	fresh_tcc     bool   // do use `make fresh_tcc`
-	is_bisect     bool   // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
+	cleanup       bool // should the tool run a cleanup first
+	use_cache     bool // use local cached copies for --vrepo and --vcrepo in
+	fresh_tcc     bool // do use `make fresh_tcc`
+	is_bisect     bool // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
+	show_vccommit bool // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 }
 
 fn (mut c Context) compile_oldv_if_needed() {
 	c.vgcontext = vgit.VGitContext{
-		workdir: c.vgo.workdir
-		v_repo_url: c.vgo.v_repo_url
-		vc_repo_url: c.vgo.vc_repo_url
-		cc: c.cc
-		commit_v: c.commit_v
-		path_v: c.path_v
-		path_vc: c.path_vc
+		workdir:        c.vgo.workdir
+		v_repo_url:     c.vgo.v_repo_url
+		vc_repo_url:    c.vgo.vc_repo_url
+		cc:             c.cc
+		commit_v:       c.commit_v
+		path_v:         c.path_v
+		path_vc:        c.path_vc
 		make_fresh_tcc: c.fresh_tcc
+		show_vccommit:  c.show_vccommit
 	}
 	c.vgcontext.compile_oldv_if_needed()
 	c.commit_v_hash = c.vgcontext.commit_v__hash
@@ -102,12 +104,12 @@ fn sync_cache() {
 
 fn main() {
 	scripting.used_tools_must_exist(['git'])
-	//
+
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will
 	// affect the V's run from the tool itself.
 	os.setenv('VEXE', '', true)
-	//
+
 	mut context := Context{}
 	context.vgo.workdir = cache_oldv_folder
 	mut fp := flag.new_flag_parser(os.args)
@@ -133,6 +135,7 @@ fn main() {
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
 	context.fresh_tcc = fp.bool('fresh_tcc', 0, true, 'Do `make fresh_tcc` when preparing a V compiler.')
 	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
+	context.show_vccommit = fp.bool('show_VC_commit', 0, false, 'Show the VC commit, that can be used to compile the given V commit, and exit.\n')
 	commits := vgit.add_common_tool_options(mut context.vgo, mut fp)
 	if should_sync {
 		sync_cache()
@@ -152,7 +155,9 @@ fn main() {
 	} else {
 		context.commit_v = scripting.run('git rev-list -n1 HEAD')
 	}
-	scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
+	if !context.show_vccommit {
+		scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
+	}
 	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	if !os.is_dir(context.vgo.workdir) {

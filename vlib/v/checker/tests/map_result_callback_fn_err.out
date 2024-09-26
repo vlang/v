@@ -1,0 +1,7 @@
+vlib/v/checker/tests/map_result_callback_fn_err.vv:19:17: error: cannot use Result type in `map`
+   17 |         threads << spawn update(den)
+   18 |     }
+   19 |     threads.map(it.wait()!)
+      |                    ~~~~~~~
+   20 | }
+   21 |

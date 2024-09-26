@@ -1,0 +1,3 @@
+import math
+
+_ = math.max_i8

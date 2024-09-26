@@ -5,7 +5,7 @@ interface Animal {
 struct Cow {
 }
 
-fn (c Cow)speak() {
+fn (c Cow) speak() {
 	println('moo')
 }
 

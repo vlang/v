@@ -27,6 +27,7 @@ pub type ImageDesc = C.sapp_image_desc
 
 @[typedef]
 pub struct C.sapp_icon_desc {
+pub:
 	sokol_default bool
 	images        [max_iconimages]ImageDesc
 }
@@ -44,9 +45,9 @@ pub:
 	// fail_cb    fn (&u8)    = unsafe { nil }
 
 	user_data           voidptr // these are the user-provided callbacks with user data
-	init_userdata_cb    fn (voidptr) = unsafe { nil }
-	frame_userdata_cb   fn (voidptr) = unsafe { nil }
-	cleanup_userdata_cb fn (voidptr) = unsafe { nil }
+	init_userdata_cb    fn (voidptr)         = unsafe { nil }
+	frame_userdata_cb   fn (voidptr)         = unsafe { nil }
+	cleanup_userdata_cb fn (voidptr)         = unsafe { nil }
 	event_userdata_cb   fn (&Event, voidptr) = unsafe { nil }
 	// fail_userdata_cb    fn (&char, voidptr)  = unsafe { nil }
 
@@ -76,6 +77,8 @@ pub:
 	ios_keyboard_resizes_canvas   bool  // if true, showing the iOS keyboard shrinks the canvas
 	// V patches
 	__v_native_render bool // V patch to allow for native rendering
+	min_width         int  // V patch to allow for min window width
+	min_height        int  // V patch to allow for min window height
 pub mut:
 	allocator C.sapp_allocator // optional memory allocation overrides (default: malloc/free)
 	logger    C.sapp_logger    // optional log callback overrides (default: SAPP_LOG(message))
@@ -86,25 +89,25 @@ pub type Desc = C.sapp_desc
 @[typedef]
 pub struct C.sapp_event {
 pub:
-	frame_count        u64         // current frame counter, always valid, useful for checking if two events were issued in the same frame
-	@type              EventType   // the event type, always valid
-	key_code           KeyCode     // the virtual key code, only valid in KEY_UP, KEY_DOWN
-	char_code          u32         // the UTF-32 character code, only valid in CHAR events
-	key_repeat         bool        // true if this is a key-repeat event, valid in KEY_UP, KEY_DOWN and CHAR
-	modifiers          u32         // current modifier keys, valid in all key-, char- and mouse-events
-	mouse_button       MouseButton // mouse button that was pressed or released, valid in MOUSE_DOWN, MOUSE_UP
-	mouse_x            f32 // current horizontal mouse position in pixels, always valid except during mouse lock
-	mouse_y            f32 // current vertical mouse position in pixels, always valid except during mouse lock
-	mouse_dx           f32 // relative horizontal mouse movement since last frame, always valid
-	mouse_dy           f32 // relative vertical mouse movement since last frame, always valid
-	scroll_x           f32 // horizontal mouse wheel scroll distance, valid in MOUSE_SCROLL events
-	scroll_y           f32 // vertical mouse wheel scroll distance, valid in MOUSE_SCROLL events
-	num_touches        int // number of valid items in the touches[] array
+	frame_count        u64                         // current frame counter, always valid, useful for checking if two events were issued in the same frame
+	@type              EventType                   // the event type, always valid
+	key_code           KeyCode                     // the virtual key code, only valid in KEY_UP, KEY_DOWN
+	char_code          u32                         // the UTF-32 character code, only valid in CHAR events
+	key_repeat         bool                        // true if this is a key-repeat event, valid in KEY_UP, KEY_DOWN and CHAR
+	modifiers          u32                         // current modifier keys, valid in all key-, char- and mouse-events
+	mouse_button       MouseButton                 // mouse button that was pressed or released, valid in MOUSE_DOWN, MOUSE_UP
+	mouse_x            f32                         // current horizontal mouse position in pixels, always valid except during mouse lock
+	mouse_y            f32                         // current vertical mouse position in pixels, always valid except during mouse lock
+	mouse_dx           f32                         // relative horizontal mouse movement since last frame, always valid
+	mouse_dy           f32                         // relative vertical mouse movement since last frame, always valid
+	scroll_x           f32                         // horizontal mouse wheel scroll distance, valid in MOUSE_SCROLL events
+	scroll_y           f32                         // vertical mouse wheel scroll distance, valid in MOUSE_SCROLL events
+	num_touches        int                         // number of valid items in the touches[] array
 	touches            [max_touchpoints]TouchPoint // current touch points, valid in TOUCHES_BEGIN, TOUCHES_MOVED, TOUCHES_ENDED
-	window_width       int // current window- and framebuffer width in pixels, always valid
-	window_height      int // current window- and framebuffer height in pixels, always valid
-	framebuffer_width  int // = window_width * dpi_scale
-	framebuffer_height int // = window_height * dpi_scale
+	window_width       int                         // current window- and framebuffer width in pixels, always valid
+	window_height      int                         // current window- and framebuffer height in pixels, always valid
+	framebuffer_width  int                         // = window_width * dpi_scale
+	framebuffer_height int                         // = window_height * dpi_scale
 }
 
 pub type Event = C.sapp_event

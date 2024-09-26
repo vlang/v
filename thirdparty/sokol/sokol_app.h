@@ -25,11 +25,12 @@
     the backend selected for sokol_gfx.h if both are used in the same
     project):
 
-        #define SOKOL_GLCORE33
+        #define SOKOL_GLCORE
         #define SOKOL_GLES3
         #define SOKOL_D3D11
         #define SOKOL_METAL
         #define SOKOL_WGPU
+        #define SOKOL_NOAPI
 
     Optionally provide the following defines with your own implementations:
 
@@ -54,13 +55,13 @@
     On Windows, SOKOL_DLL will define SOKOL_APP_API_DECL as __declspec(dllexport)
     or __declspec(dllimport) as needed.
 
-    On Linux, SOKOL_GLCORE33 can use either GLX or EGL.
+    On Linux, SOKOL_GLCORE can use either GLX or EGL.
     GLX is default, set SOKOL_FORCE_EGL to override.
 
     For example code, see https://github.com/floooh/sokol-samples/tree/master/sapp
 
     Portions of the Windows and Linux GL initialization, event-, icon- etc... code
-    have been taken from GLFW (http://www.glfw.org/)
+    have been taken from GLFW (http://www.glfw.org/).
 
     iOS onscreen keyboard support 'inspired' by libgdx.
 
@@ -94,7 +95,7 @@
     - makes the rendered frame visible
     - provides keyboard-, mouse- and low-level touch-events
     - platforms: MacOS, iOS, HTML5, Win32, Linux/RaspberryPi, Android
-    - 3D-APIs: Metal, D3D11, GL3.2, GLES3, WebGL, WebGL2
+    - 3D-APIs: Metal, D3D11, GL4.1, GL4.3, GLES3, WebGL, WebGL2, NOAPI
 
     FEATURE/PLATFORM MATRIX
     =======================
@@ -104,6 +105,7 @@
     gles3/webgl2        | ---     | ---   | YES(2)| YES   | YES     |  YES
     metal               | ---     | YES   | ---   | YES   | ---     |  ---
     d3d11               | YES     | ---   | ---   | ---   | ---     |  ---
+    noapi               | YES     | TODO  | TODO  | ---   | TODO    |  ---
     KEY_DOWN            | YES     | YES   | YES   | SOME  | TODO    |  YES
     KEY_UP              | YES     | YES   | YES   | SOME  | TODO    |  YES
     CHAR                | YES     | YES   | YES   | YES   | TODO    |  YES
@@ -273,8 +275,9 @@
             Return the MSAA sample count of the default framebuffer.
 
         const void* sapp_metal_get_device(void)
-        const void* sapp_metal_get_renderpass_descriptor(void)
-        const void* sapp_metal_get_drawable(void)
+        const void* sapp_metal_get_current_drawable(void)
+        const void* sapp_metal_get_depth_stencil_texture(void)
+        const void* sapp_metal_get_msaa_color_texture(void)
             If the Metal backend has been selected, these functions return pointers
             to various Metal API objects required for rendering, otherwise
             they return a null pointer. These void pointers are actually
@@ -294,14 +297,10 @@
             Before being used as Objective-C object, the void* must be converted
             back with a (ARC) __bridge cast.
 
-        const void* sapp_win32_get_hwnd(void)
-            On Windows, get the window's HWND, otherwise a null pointer. The
-            HWND has been cast to a void pointer in order to be tunneled
-            through code which doesn't include Windows.h.
-
         const void* sapp_d3d11_get_device(void)
         const void* sapp_d3d11_get_device_context(void)
-        const void* sapp_d3d11_get_render_target_view(void)
+        const void* sapp_d3d11_get_render_view(void)
+        const void* sapp_d3d11_get_resolve_view(void);
         const void* sapp_d3d11_get_depth_stencil_view(void)
             Similar to the sapp_metal_* functions, the sapp_d3d11_* functions
             return pointers to D3D11 API objects required for rendering,
@@ -310,6 +309,11 @@
             render-target-view and depth-stencil-view may change from one
             frame to the next!
 
+        const void* sapp_win32_get_hwnd(void)
+            On Windows, get the window's HWND, otherwise a null pointer. The
+            HWND has been cast to a void pointer in order to be tunneled
+            through code which doesn't include Windows.h.
+
         const void* sapp_wgpu_get_device(void)
         const void* sapp_wgpu_get_render_view(void)
         const void* sapp_wgpu_get_resolve_view(void)
@@ -317,6 +321,15 @@
             These are the WebGPU-specific functions to get the WebGPU
             objects and values required for rendering. If sokol_app.h
             is not compiled with SOKOL_WGPU, these functions return null.
+
+        uint32_t sapp_gl_get_framebuffer(void)
+            This returns the 'default framebuffer' of the GL context.
+            Typically this will be zero.
+
+        int sapp_gl_get_major_version(void)
+        int sapp_gl_get_minor_version(void)
+            Returns the major and minor version of the GL context
+            (only for SOKOL_GLCORE, all other backends return zero here, including SOKOL_GLES3)
 
         const void* sapp_android_get_native_activity(void);
             On Android, get the native activity ANativeActivity pointer, otherwise
@@ -349,7 +362,7 @@
         sapp_consume_event() from inside the event handler (NOTE that
         this behaviour is currently only implemented for some HTML5
         events, support for other platforms and event types will
-        be added as needed, please open a github ticket and/or provide
+        be added as needed, please open a GitHub ticket and/or provide
         a PR if needed).
 
         NOTE: Do *not* call any 3D API rendering functions in the event
@@ -544,7 +557,7 @@
     Like clipboard support, drag'n'drop support must be explicitly enabled
     at startup in the sapp_desc struct.
 
-        sapp_desc sokol_main() {
+        sapp_desc sokol_main(void) {
             return (sapp_desc) {
                 .enable_dragndrop = true,   // default is false
                 ...
@@ -554,7 +567,7 @@
     You can also adjust the maximum number of files that are accepted
     in a drop operation, and the maximum path length in bytes if needed:
 
-        sapp_desc sokol_main() {
+        sapp_desc sokol_main(void) {
             return (sapp_desc) {
                 .enable_dragndrop = true,               // default is false
                 .max_dropped_files = 8,                 // default is 1
@@ -694,7 +707,7 @@
     For instance on a Retina Mac, returning the following sapp_desc
     struct from sokol_main():
 
-    sapp_desc sokol_main() {
+    sapp_desc sokol_main(void) {
         return (sapp_desc) {
             .width = 640,
             .height = 480,
@@ -774,7 +787,7 @@
     A `programmatic quit` initiated by calling sapp_quit() or
     sapp_request_quit() will work as described above: the cleanup callback is
     called, platform-specific cleanup is performed (on the web
-    this means that JS event handlers are unregisters), and then
+    this means that JS event handlers are unregistered), and then
     the request-animation-loop will be exited. However that's all. The
     web page itself will continue to exist (e.g. it's not possible to
     programmatically close the browser tab).
@@ -933,7 +946,7 @@
           append a new favicon link element, but not delete any manually
           defined favicon in the page
 
-    For an example and test of the window icon feature, check out the the
+    For an example and test of the window icon feature, check out the
     'icon-sapp' sample on the sokol-samples git repository.
 
     ONSCREEN KEYBOARD
@@ -948,13 +961,46 @@
 
         sapp_show_keyboard(false);
 
-    Note that on the web platform, the keyboard can only be shown from
-    inside an input handler. On such platforms, sapp_show_keyboard()
-    will only work as expected when it is called from inside the
-    sokol-app event callback function. When called from other places,
-    an internal flag will be set, and the onscreen keyboard will be
-    called at the next 'legal' opportunity (when the next input event
-    is handled).
+    Note that onscreen keyboard functionality is no longer supported
+    on the browser platform (the previous hacks and workarounds to make browser
+    keyboards work for on web applications that don't use HTML UIs
+    never really worked across browsers).
+
+    INPUT EVENT BUBBLING ON THE WEB PLATFORM
+    ========================================
+    By default, input event bubbling on the web platform is configured in
+    a way that makes the most sense for 'full-canvas' apps that cover the
+    entire browser client window area:
+
+    - mouse, touch and wheel events do not bubble up, this prevents various
+      ugly side events, like:
+        - HTML text overlays being selected on double- or triple-click into
+          the canvas
+        - 'scroll bumping' even when the canvas covers the entire client area
+    - key_up/down events for 'character keys' *do* bubble up (otherwise
+      the browser will not generate UNICODE character events)
+    - all other key events *do not* bubble up by default (this prevents side effects
+      like F1 opening help, or F7 starting 'caret browsing')
+    - character events do no bubble up (although I haven't noticed any side effects
+      otherwise)
+
+    Event bubbling can be enabled for input event categories during initialization
+    in the sapp_desc struct:
+
+        sapp_desc sokol_main(int argc, char* argv[]) {
+            return (sapp_desc){
+                //...
+                .html5_bubble_mouse_events = true,
+                .html5_bubble_touch_events = true,
+                .html5_bubble_wheel_events = true,
+                .html5_bubble_key_events = true,
+                .html5_bubble_char_events = true,
+            };
+        }
+
+    This basically opens the floodgates lets *all* input events bubble up to the browser.
+    To prevent individual events from bubbling, call sapp_consume_event() from within
+    the sokol_app.h event callback.
 
     OPTIONAL: DON'T HIJACK main() (#define SOKOL_NO_ENTRY)
     ======================================================
@@ -1108,10 +1154,7 @@
 
     TEMP NOTE DUMP
     ==============
-    - onscreen keyboard support on Android requires Java :(, should we even bother?
     - sapp_desc needs a bool whether to initialize depth-stencil surface
-    - GL context initialization needs more control (at least what GL version to initialize)
-    - application icon
     - the Android implementation calls cleanup_cb() and destroys the egl context in onDestroy
       at the latest but should do it earlier, in onStop, as an app is "killable" after onStop
       on Android Honeycomb and later (it can't be done at the moment as the app may be started
@@ -1464,7 +1507,6 @@ typedef struct sapp_range {
     Note that the actual image pixel format depends on the use case:
 
     - window icon pixels are RGBA8
-    - cursor images are ??? (FIXME)
 */
 typedef struct sapp_image_desc {
     int width;
@@ -1519,7 +1561,7 @@ typedef struct sapp_allocator {
 #define _SAPP_LOG_ITEMS \
     _SAPP_LOGITEM_XMACRO(OK, "Ok") \
     _SAPP_LOGITEM_XMACRO(MALLOC_FAILED, "memory allocation failed") \
-    _SAPP_LOGITEM_XMACRO(MACOS_INVALID_NSOPENGL_PROFILE, "macos: invalid NSOpenGLProfile (valid choices are 1.0, 3.2 and 4.1)") \
+    _SAPP_LOGITEM_XMACRO(MACOS_INVALID_NSOPENGL_PROFILE, "macos: invalid NSOpenGLProfile (valid choices are 1.0 and 4.1)") \
     _SAPP_LOGITEM_XMACRO(WIN32_LOAD_OPENGL32_DLL_FAILED, "failed loading opengl32.dll") \
     _SAPP_LOGITEM_XMACRO(WIN32_CREATE_HELPER_WINDOW_FAILED, "failed to create helper window") \
     _SAPP_LOGITEM_XMACRO(WIN32_HELPER_WINDOW_GETDC_FAILED, "failed to get helper window DC") \
@@ -1532,7 +1574,7 @@ typedef struct sapp_allocator {
     _SAPP_LOGITEM_XMACRO(WIN32_WGL_SET_PIXELFORMAT_FAILED, "failed to set selected pixel format") \
     _SAPP_LOGITEM_XMACRO(WIN32_WGL_ARB_CREATE_CONTEXT_REQUIRED, "ARB_create_context required") \
     _SAPP_LOGITEM_XMACRO(WIN32_WGL_ARB_CREATE_CONTEXT_PROFILE_REQUIRED, "ARB_create_context_profile required") \
-    _SAPP_LOGITEM_XMACRO(WIN32_WGL_OPENGL_3_2_NOT_SUPPORTED, "OpenGL 3.2 not supported by GL driver (ERROR_INVALID_VERSION_ARB)") \
+    _SAPP_LOGITEM_XMACRO(WIN32_WGL_OPENGL_VERSION_NOT_SUPPORTED, "requested OpenGL version not supported by GL driver (ERROR_INVALID_VERSION_ARB)") \
     _SAPP_LOGITEM_XMACRO(WIN32_WGL_OPENGL_PROFILE_NOT_SUPPORTED, "requested OpenGL profile not support by GL driver (ERROR_INVALID_PROFILE_ARB)") \
     _SAPP_LOGITEM_XMACRO(WIN32_WGL_INCOMPATIBLE_DEVICE_CONTEXT, "CreateContextAttribsARB failed with ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB") \
     _SAPP_LOGITEM_XMACRO(WIN32_WGL_CREATE_CONTEXT_ATTRIBS_FAILED_OTHER, "CreateContextAttribsARB failed for other reason") \
@@ -1599,7 +1641,7 @@ typedef struct sapp_allocator {
     _SAPP_LOGITEM_XMACRO(ANDROID_NATIVE_ACTIVITY_DONE, "NativeActivity done") \
     _SAPP_LOGITEM_XMACRO(ANDROID_NATIVE_ACTIVITY_ONCREATE, "NativeActivity onCreate") \
     _SAPP_LOGITEM_XMACRO(ANDROID_CREATE_THREAD_PIPE_FAILED, "failed to create thread pipe") \
-    _SAPP_LOGITEM_XMACRO(ANDROID_NATIVE_ACTIVITY_CREATE_SUCCESS, "NativeActivity sucessfully created") \
+    _SAPP_LOGITEM_XMACRO(ANDROID_NATIVE_ACTIVITY_CREATE_SUCCESS, "NativeActivity successfully created") \
     _SAPP_LOGITEM_XMACRO(WGPU_SWAPCHAIN_CREATE_SURFACE_FAILED, "wgpu: failed to create surface for swapchain") \
     _SAPP_LOGITEM_XMACRO(WGPU_SWAPCHAIN_CREATE_SWAPCHAIN_FAILED, "wgpu: failed to create swapchain object") \
     _SAPP_LOGITEM_XMACRO(WGPU_SWAPCHAIN_CREATE_DEPTH_STENCIL_TEXTURE_FAILED, "wgpu: failed to create depth-stencil texture for swapchain") \
@@ -1672,8 +1714,8 @@ typedef struct sapp_desc {
     sapp_allocator allocator;           // optional memory allocation overrides (default: malloc/free)
     sapp_logger logger;                 // logging callback override (default: NO LOGGING!)
 
-    /* backend-specific options */
-    int gl_major_version;               // override GL major and minor version (the default GL version is 3.2)
+    // backend-specific options
+    int gl_major_version;               // override GL major and minor version (the default GL version is 4.1 on macOS, 4.3 elsewhere)
     int gl_minor_version;
     bool win32_console_utf8;            // if true, set the output console codepage to UTF-8
     bool win32_console_create;          // if true, attach stdout/stderr to a new console window
@@ -1683,9 +1725,18 @@ typedef struct sapp_desc {
     bool html5_preserve_drawing_buffer; // HTML5 only: whether to preserve default framebuffer content between frames
     bool html5_premultiplied_alpha;     // HTML5 only: whether the rendered pixels use premultiplied alpha convention
     bool html5_ask_leave_site;          // initial state of the internal html5_ask_leave_site flag (see sapp_html5_ask_leave_site())
+    bool html5_bubble_mouse_events;     // if true, mouse events will bubble up to the web page
+    bool html5_bubble_touch_events;     // same for touch events
+    bool html5_bubble_wheel_events;     // same for wheel events
+    bool html5_bubble_key_events;       // if true, bubble up *all* key events to browser, not just key events that represent characters
+    bool html5_bubble_char_events;      // if true, bubble up character events to browser
+    bool html5_use_emsc_set_main_loop;  // if true, use emscripten_set_main_loop() instead of emscripten_request_animation_frame_loop()
+    bool html5_emsc_set_main_loop_simulate_infinite_loop;   // this will be passed as the simulate_infinite_loop arg to emscripten_set_main_loop()
     bool ios_keyboard_resizes_canvas;   // if true, showing the iOS keyboard shrinks the canvas
     // __v_ start
     bool __v_native_render;             // V patch to allow for native rendering
+    int min_width;
+    int min_height;
     // __v_ end
 } sapp_desc;
 
@@ -1785,7 +1836,7 @@ SOKOL_APP_API_DECL sapp_desc sapp_query_desc(void);
 SOKOL_APP_API_DECL void sapp_request_quit(void);
 /* cancel a pending quit (when SAPP_EVENTTYPE_QUIT_REQUESTED has been received) */
 SOKOL_APP_API_DECL void sapp_cancel_quit(void);
-/* initiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUSTED) */
+/* initiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUESTED) */
 SOKOL_APP_API_DECL void sapp_quit(void);
 /* call from inside event callback to consume the current event (don't forward to platform) */
 SOKOL_APP_API_DECL void sapp_consume_event(void);
@@ -1823,10 +1874,12 @@ SOKOL_APP_API_DECL void sapp_html5_fetch_dropped_file(const sapp_html5_fetch_req
 
 /* Metal: get bridged pointer to Metal device object */
 SOKOL_APP_API_DECL const void* sapp_metal_get_device(void);
-/* Metal: get bridged pointer to this frame's renderpass descriptor */
-SOKOL_APP_API_DECL const void* sapp_metal_get_renderpass_descriptor(void);
-/* Metal: get bridged pointer to current drawable */
-SOKOL_APP_API_DECL const void* sapp_metal_get_drawable(void);
+/* Metal: get bridged pointer to MTKView's current drawable of type CAMetalDrawable */
+SOKOL_APP_API_DECL const void* sapp_metal_get_current_drawable(void);
+/* Metal: get bridged pointer to MTKView's depth-stencil texture of type MTLTexture */
+SOKOL_APP_API_DECL const void* sapp_metal_get_depth_stencil_texture(void);
+/* Metal: get bridged pointer to MTKView's msaa-color-texture of type MTLTexture (may be null) */
+SOKOL_APP_API_DECL const void* sapp_metal_get_msaa_color_texture(void);
 /* macOS: get bridged pointer to macOS NSWindow */
 SOKOL_APP_API_DECL const void* sapp_macos_get_window(void);
 /* iOS: get bridged pointer to iOS UIWindow */
@@ -1838,9 +1891,11 @@ SOKOL_APP_API_DECL const void* sapp_d3d11_get_device(void);
 SOKOL_APP_API_DECL const void* sapp_d3d11_get_device_context(void);
 /* D3D11: get pointer to IDXGISwapChain object */
 SOKOL_APP_API_DECL const void* sapp_d3d11_get_swap_chain(void);
-/* D3D11: get pointer to ID3D11RenderTargetView object */
-SOKOL_APP_API_DECL const void* sapp_d3d11_get_render_target_view(void);
-/* D3D11: get pointer to ID3D11DepthStencilView */
+/* D3D11: get pointer to ID3D11RenderTargetView object for rendering */
+SOKOL_APP_API_DECL const void* sapp_d3d11_get_render_view(void);
+/* D3D11: get pointer ID3D11RenderTargetView object for msaa-resolve (may return null) */
+SOKOL_APP_API_DECL const void* sapp_d3d11_get_resolve_view(void);
+/* D3D11: get pointer ID3D11DepthStencilView */
 SOKOL_APP_API_DECL const void* sapp_d3d11_get_depth_stencil_view(void);
 /* Win32: get the HWND window handle */
 SOKOL_APP_API_DECL const void* sapp_win32_get_hwnd(void);
@@ -1853,6 +1908,13 @@ SOKOL_APP_API_DECL const void* sapp_wgpu_get_render_view(void);
 SOKOL_APP_API_DECL const void* sapp_wgpu_get_resolve_view(void);
 /* WebGPU: get swapchain's WGPUTextureView for the depth-stencil surface */
 SOKOL_APP_API_DECL const void* sapp_wgpu_get_depth_stencil_view(void);
+
+/* GL: get framebuffer object */
+SOKOL_APP_API_DECL uint32_t sapp_gl_get_framebuffer(void);
+/* GL: get major version (only valid for desktop GL) */
+SOKOL_APP_API_DECL int sapp_gl_get_major_version(void);
+/* GL: get minor version (only valid for desktop GL) */
+SOKOL_APP_API_DECL int sapp_gl_get_minor_version(void);
 
 /* Android: get native activity handle */
 SOKOL_APP_API_DECL const void* sapp_android_get_native_activity(void);
@@ -1890,7 +1952,7 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 #endif
 
 #include <stdlib.h> // malloc, free
-#include <string.h> // memset
+#include <string.h> // memset, strncmp
 #include <stddef.h> // size_t
 #include <math.h>   // roundf
 
@@ -1904,19 +1966,8 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 // NOTE: the pixel format values *must* be compatible with sg_pixel_format
 #define _SAPP_PIXELFORMAT_RGBA8 (23)
 #define _SAPP_PIXELFORMAT_BGRA8 (28)
-#define _SAPP_PIXELFORMAT_DEPTH (42)
-#define _SAPP_PIXELFORMAT_DEPTH_STENCIL (43)
-
-#if defined(_SAPP_MACOS) || defined(_SAPP_IOS)
-    // this is ARC compatible
-    #if defined(__cplusplus)
-        #define _SAPP_CLEAR_ARC_STRUCT(type, item) { item = type(); }
-    #else
-        #define _SAPP_CLEAR_ARC_STRUCT(type, item) { item = (type) { 0 }; }
-    #endif
-#else
-    #define _SAPP_CLEAR_ARC_STRUCT(type, item) { _sapp_clear(&item, sizeof(item)); }
-#endif
+#define _SAPP_PIXELFORMAT_DEPTH (43)
+#define _SAPP_PIXELFORMAT_DEPTH_STENCIL (44)
 
 // check if the config defines are alright
 #if defined(__APPLE__)
@@ -1931,8 +1982,8 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
     #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
         /* MacOS */
         #define _SAPP_MACOS (1)
-        #if !defined(SOKOL_METAL) && !defined(SOKOL_GLCORE33)
-        #error("sokol_app.h: unknown 3D API selected for MacOS, must be SOKOL_METAL or SOKOL_GLCORE33")
+        #if !defined(SOKOL_METAL) && !defined(SOKOL_GLCORE)
+        #error("sokol_app.h: unknown 3D API selected for MacOS, must be SOKOL_METAL or SOKOL_GLCORE")
         #endif
     #else
         /* iOS or iOS Simulator */
@@ -1950,8 +2001,8 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 #elif defined(_WIN32)
     /* Windows (D3D11 or GL) */
     #define _SAPP_WIN32 (1)
-    #if !defined(SOKOL_D3D11) && !defined(SOKOL_GLCORE33)
-    #error("sokol_app.h: unknown 3D API selected for Win32, must be SOKOL_D3D11 or SOKOL_GLCORE33")
+    #if !defined(SOKOL_D3D11) && !defined(SOKOL_GLCORE) && !defined(SOKOL_NOAPI)
+    #error("sokol_app.h: unknown 3D API selected for Win32, must be SOKOL_D3D11, SOKOL_GLCORE or SOKOL_NOAPI")
     #endif
 #elif defined(__ANDROID__)
     /* Android */
@@ -1965,15 +2016,24 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 #elif defined(__linux__) || defined(__unix__)
     /* Linux */
     #define _SAPP_LINUX (1)
-    #if defined(SOKOL_GLCORE33)
+    #if defined(SOKOL_GLCORE)
         #if !defined(SOKOL_FORCE_EGL)
             #define _SAPP_GLX (1)
         #endif
-    #elif !defined(SOKOL_GLES3)
-        #error("sokol_app.h: unknown 3D API selected for Linux, must be SOKOL_GLCORE33, SOKOL_GLES3")
+        #define GL_GLEXT_PROTOTYPES
+        #include <GL/gl.h>
+    #elif defined(SOKOL_GLES3)
+        #include <GLES3/gl3.h>
+        #include <GLES3/gl3ext.h>
+    #else
+        #error("sokol_app.h: unknown 3D API selected for Linux, must be SOKOL_GLCORE, SOKOL_GLES3")
     #endif
 #else
 #error "sokol_app.h: Unknown platform"
+#endif
+
+#if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
+    #define _SAPP_ANY_GL (1)
 #endif
 
 #ifndef SOKOL_API_IMPL
@@ -2009,16 +2069,18 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
         #import <MetalKit/MetalKit.h>
     #endif
     #if defined(_SAPP_MACOS)
-        #if !defined(SOKOL_METAL)
+        #if defined(_SAPP_ANY_GL)
             #ifndef GL_SILENCE_DEPRECATION
             #define GL_SILENCE_DEPRECATION
             #endif
             #include <Cocoa/Cocoa.h>
+            #include <OpenGL/gl3.h>
         #endif
     #elif defined(_SAPP_IOS)
         #import <UIKit/UIKit.h>
-        #if !defined(SOKOL_METAL)
+        #if defined(_SAPP_ANY_GL)
             #import <GLKit/GLKit.h>
+            #include <OpenGLES/ES3/gl.h>
         #endif
     #endif
     #include <AvailabilityMacros.h>
@@ -2026,6 +2088,9 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 #elif defined(_SAPP_EMSCRIPTEN)
     #if defined(SOKOL_WGPU)
         #include <webgpu/webgpu.h>
+    #endif
+    #if defined(SOKOL_GLES3)
+        #include <GLES3/gl3.h>
     #endif
     #include <emscripten/emscripten.h>
     #include <emscripten/html5.h>
@@ -2089,6 +2154,7 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
     #include <android/native_activity.h>
     #include <android/looper.h>
     #include <EGL/egl.h>
+    #include <GLES3/gl3.h>
 #elif defined(_SAPP_LINUX)
     #define GL_GLEXT_PROTOTYPES
     #include <X11/Xlib.h>
@@ -2109,6 +2175,18 @@ inline void sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
     #include <pthread.h>    /* only used a linker-guard, search for _sapp_linux_run() and see first comment */
     #include <time.h>
 #endif
+
+#if defined(_SAPP_APPLE)
+    // this is ARC compatible
+    #if defined(__cplusplus)
+        #define _SAPP_CLEAR_ARC_STRUCT(type, item) { item = type(); }
+    #else
+        #define _SAPP_CLEAR_ARC_STRUCT(type, item) { item = (type) { 0 }; }
+    #endif
+#else
+    #define _SAPP_CLEAR_ARC_STRUCT(type, item) { _sapp_clear(&item, sizeof(item)); }
+#endif
+
 
 // ███████ ██████   █████  ███    ███ ███████     ████████ ██ ███    ███ ██ ███    ██  ██████
 // ██      ██   ██ ██   ██ ████  ████ ██             ██    ██ ████  ████ ██ ████   ██ ██
@@ -2363,11 +2441,11 @@ MyView2* g_view;
 #if defined(SOKOL_METAL)
     @interface _sapp_macos_view : MTKView
     @end
-#elif defined(SOKOL_GLCORE33)
+#elif defined(SOKOL_GLCORE)
     @interface _sapp_macos_view : NSOpenGLView
     - (void)timerFired:(id)sender;
     @end
-#endif // SOKOL_GLCORE33
+#endif // SOKOL_GLCORE
 
 typedef struct {
     uint32_t flags_changed_store;
@@ -2443,9 +2521,6 @@ typedef struct {
 #endif
 
 typedef struct {
-    bool textfield_created;
-    bool wants_show_keyboard;
-    bool wants_hide_keyboard;
     bool mouse_lock_requested;
     uint16_t mouse_buttons;
 } _sapp_emsc_t;
@@ -2515,7 +2590,7 @@ typedef struct {
     uint8_t raw_input_data[256];
 } _sapp_win32_t;
 
-#if defined(SOKOL_GLCORE33)
+#if defined(SOKOL_GLCORE)
 #define WGL_NUMBER_PIXEL_FORMATS_ARB 0x2000
 #define WGL_SUPPORT_OPENGL_ARB 0x2010
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
@@ -2531,6 +2606,7 @@ typedef struct {
 #define WGL_STENCIL_BITS_ARB 0x2023
 #define WGL_DOUBLE_BUFFER_ARB 0x2011
 #define WGL_SAMPLES_ARB 0x2042
+#define WGL_CONTEXT_DEBUG_BIT_ARB 0x00000001
 #define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x00000002
 #define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
@@ -2564,6 +2640,8 @@ typedef struct {
     PFNWGLGETEXTENSIONSSTRINGEXTPROC GetExtensionsStringEXT;
     PFNWGLGETEXTENSIONSSTRINGARBPROC GetExtensionsStringARB;
     PFNWGLCREATECONTEXTATTRIBSARBPROC CreateContextAttribsARB;
+    // special case glGetIntegerv
+    void (WINAPI *GetIntegerv)(uint32_t pname, int32_t* data);
     bool ext_swap_control;
     bool arb_multisample;
     bool arb_pixel_format;
@@ -2572,7 +2650,7 @@ typedef struct {
     HWND msg_hwnd;
     HDC msg_dc;
 } _sapp_wgl_t;
-#endif // SOKOL_GLCORE33
+#endif // SOKOL_GLCORE
 
 #endif // _SAPP_WIN32
 
@@ -2624,6 +2702,7 @@ typedef struct {
 #if defined(_SAPP_LINUX)
 
 #define _SAPP_X11_XDND_VERSION (5)
+#define _SAPP_X11_MAX_X11_KEYCODES (256)
 
 #define GLX_VENDOR 1
 #define GLX_RGBA_BIT 0x00000001
@@ -2717,6 +2796,9 @@ typedef struct {
     Atom NET_WM_STATE_FULLSCREEN;
     _sapp_xi_t xi;
     _sapp_xdnd_t xdnd;
+    // XLib manual says keycodes are in the range [8, 255] inclusive.
+    // https://tronche.com/gui/x/xlib/input/keyboard-encoding.html
+    bool key_repeat[_SAPP_X11_MAX_X11_KEYCODES];
 } _sapp_x11_t;
 
 #if defined(_SAPP_GLX)
@@ -2751,6 +2833,9 @@ typedef struct {
     PFNGLXSWAPINTERVALMESAPROC SwapIntervalMESA;
     PFNGLXCREATECONTEXTATTRIBSARBPROC CreateContextAttribsARB;
 
+    // special case glGetIntegerv
+    void (*GetIntegerv)(uint32_t pname, int32_t* data);
+
     // extension availability
     bool EXT_swap_control;
     bool MESA_swap_control;
@@ -2768,8 +2853,13 @@ typedef struct {
 } _sapp_egl_t;
 
 #endif // _SAPP_GLX
-
 #endif // _SAPP_LINUX
+
+#if defined(_SAPP_ANY_GL)
+typedef struct {
+    uint32_t framebuffer;
+} _sapp_gl_t;
+#endif
 
 typedef struct {
     bool enabled;
@@ -2835,7 +2925,7 @@ typedef struct {
         _sapp_win32_t win32;
         #if defined(SOKOL_D3D11)
             _sapp_d3d11_t d3d11;
-        #elif defined(SOKOL_GLCORE33)
+        #elif defined(SOKOL_GLCORE)
             _sapp_wgl_t wgl;
         #endif
     #elif defined(_SAPP_ANDROID)
@@ -2847,6 +2937,9 @@ typedef struct {
         #else
             _sapp_egl_t egl;
         #endif
+    #endif
+    #if defined(_SAPP_ANY_GL)
+        _sapp_gl_t gl;
     #endif
     char html5_canvas_selector[_SAPP_MAX_TITLE_LENGTH];
     char window_title[_SAPP_MAX_TITLE_LENGTH];      // UTF-8
@@ -3063,8 +3156,16 @@ _SOKOL_PRIVATE sapp_desc _sapp_desc_defaults(const sapp_desc* desc) {
     // (or expressed differently: zero is a valid value for gl_minor_version
     // and can't be used to indicate 'default')
     if (0 == res.gl_major_version) {
-        res.gl_major_version = 3;
-        res.gl_minor_version = 2;
+        #if defined(_SAPP_APPLE)
+            res.gl_major_version = 4;
+            res.gl_minor_version = 1;
+        #else
+            res.gl_major_version = 4;
+            res.gl_minor_version = 3;
+            // __v_ start
+            res.gl_minor_version = 1; // keep backwards compatibility
+            // __v_ end
+        #endif
     }
     res.html5_canvas_name = _sapp_def(res.html5_canvas_name, "canvas");
     res.clipboard_size = _sapp_def(res.clipboard_size, 8192);
@@ -3619,6 +3720,7 @@ _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
     else {
         _sapp.dpi_scale = 1.0f;
     }
+    _sapp.macos.view.layer.contentsScale = _sapp.dpi_scale; // NOTE: needed because we set layerContentsPlacement to a non-scaling value in windowWillStartLiveResize.
     const NSRect bounds = [_sapp.macos.view bounds];
     _sapp.window_width = (int)roundf(bounds.size.width);
     _sapp.window_height = (int)roundf(bounds.size.height);
@@ -3630,7 +3732,7 @@ _SOKOL_PRIVATE void _sapp_macos_update_dimensions(void) {
         const int cur_fb_height = (int)roundf(fb_size.height);
         const bool dim_changed = (_sapp.framebuffer_width != cur_fb_width) ||
                                  (_sapp.framebuffer_height != cur_fb_height);
-    #elif defined(SOKOL_GLCORE33)
+    #elif defined(SOKOL_GLCORE)
         const int cur_fb_width = (int)roundf(bounds.size.width * _sapp.dpi_scale);
         const int cur_fb_height = (int)roundf(bounds.size.height * _sapp.dpi_scale);
         const bool dim_changed = (_sapp.framebuffer_width != cur_fb_width) ||
@@ -3859,6 +3961,8 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     _sapp.macos.window.restorable = YES;
 
     // __v_ start
+   // Set min width/height
+    [_sapp.macos.window setMinSize:NSMakeSize(_sapp.desc.min_width, _sapp.desc.min_height)];
           // Quit menu
        NSMenu* menu_bar = [[NSMenu alloc] init];
 		NSMenuItem* app_menu_item = [[NSMenuItem alloc] init];
@@ -3873,6 +3977,16 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 		       action:@selector(terminate:)
 		       keyEquivalent:@"q"];
 		[app_menu addItem:quit_menu_item];
+		// Paste menu
+		/*
+NSMenuItem *paste_menu_item = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:)
+keyEquivalent:@"v"];
+//[paste_menu_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+//[paste_menu_item setTarget:self];
+ [paste_menu_item setEnabled:true];
+[app_menu addItem:paste_menu_item];
+*/
+
 		app_menu_item.submenu = app_menu;
 		_SAPP_OBJC_RELEASE( window_title_as_nsstring );
 		_SAPP_OBJC_RELEASE( app_menu );
@@ -3901,7 +4015,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         _sapp.macos.window.contentView = _sapp.macos.view;
         [_sapp.macos.window makeFirstResponder:_sapp.macos.view];
         _sapp.macos.view.layer.magnificationFilter = kCAFilterNearest;
-    #elif defined(SOKOL_GLCORE33)
+    #elif defined(SOKOL_GLCORE)
         NSOpenGLPixelFormatAttribute attrs[32];
         int i = 0;
         attrs[i++] = NSOpenGLPFAAccelerated;
@@ -3998,6 +4112,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         [overlayWindow setOpaque:YES];
         [_sapp.macos.window setIgnoresMouseEvents:NO];
         g_view = [[MyView2 alloc] init];
+        g_view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         overlayWindow.contentView = g_view;
 
         [   contentView addSubview:g_view];
@@ -4006,12 +4121,23 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     }
     //////////////////////////////////
     // __v_ end
-	
+
 
     [_sapp.macos.window makeKeyAndOrderFront:nil];
     _sapp_macos_update_dimensions();
+    [NSEvent setMouseCoalescingEnabled:NO];
+
 
     // __v_ start
+/*
+       NSApplicationPresentationOptions options = (NSApplicationPresentationAutoHideMenuBar |
+                                                NSApplicationPresentationAutoHideDock |
+                                                NSApplicationPresentationFullScreen |
+                                                NSApplicationPresentationHideDock);
+
+    [NSApp setPresentationOptions:options];
+   */
+
     //[NSEvent setMouseCoalescingEnabled:NO];
     // __v_ end
 }
@@ -4051,6 +4177,24 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         return NO;
     }
 }
+
+#if defined(SOKOL_METAL)
+- (void)windowWillStartLiveResize:(NSNotification *)notification {
+    // Work around the MTKView resizing glitch by "anchoring" the layer to the window corner opposite
+    // to the currently manipulated corner (or edge). This prevents the content stretching back and
+    // forth during resizing. This is a workaround for this issue: https://github.com/floooh/sokol/issues/700
+    // Can be removed if/when migrating to CAMetalLayer: https://github.com/floooh/sokol/issues/727
+    bool resizing_from_left = _sapp.mouse.x < _sapp.window_width/2;
+    bool resizing_from_top = _sapp.mouse.y < _sapp.window_height/2;
+    NSViewLayerContentsPlacement placement;
+    if (resizing_from_left) {
+        placement = resizing_from_top ? NSViewLayerContentsPlacementBottomRight : NSViewLayerContentsPlacementTopRight;
+    } else {
+        placement = resizing_from_top ? NSViewLayerContentsPlacementBottomLeft : NSViewLayerContentsPlacementTopLeft;
+    }
+    _sapp.macos.view.layerContentsPlacement = placement;
+}
+#endif
 
 - (void)windowDidResize:(NSNotification*)notification {
     _SOKOL_UNUSED(notification);
@@ -4156,7 +4300,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 @end
 
 @implementation _sapp_macos_view
-#if defined(SOKOL_GLCORE33)
+#if defined(SOKOL_GLCORE)
 - (void)timerFired:(id)sender {
     _SOKOL_UNUSED(sender);
     [self setNeedsDisplay:YES];
@@ -4170,7 +4314,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 }
 #endif
 
-_SOKOL_PRIVATE void _sapp_macos_poll_input_events() {
+_SOKOL_PRIVATE void _sapp_macos_poll_input_events(void) {
     /*
 
     NOTE: late event polling temporarily out-commented to check if this
@@ -4215,13 +4359,16 @@ _SOKOL_PRIVATE void _sapp_macos_poll_input_events() {
 
 - (void)drawRect:(NSRect)rect {
     _SOKOL_UNUSED(rect);
+    #if defined(_SAPP_ANY_GL)
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*)&_sapp.gl.framebuffer);
+    #endif
     _sapp_timing_measure(&_sapp.timing);
     /* Catch any last-moment input events */
     _sapp_macos_poll_input_events();
     @autoreleasepool {
         _sapp_macos_frame();
     }
-    #if !defined(SOKOL_METAL)
+    #if defined(_SAPP_ANY_GL)
     [[_sapp.macos.view openGLContext] flushBuffer];
     #endif
 }
@@ -4253,7 +4400,7 @@ _SOKOL_PRIVATE void _sapp_macos_poll_input_events() {
 
 // helper function to make GL context active
 static void _sapp_gl_make_current(void) {
-    #if defined(SOKOL_GLCORE33)
+    #if defined(SOKOL_GLCORE)
     [[_sapp.macos.view openGLContext] makeCurrentContext];
     #endif
 }
@@ -4744,6 +4891,9 @@ _SOKOL_PRIVATE void _sapp_ios_show_keyboard(bool shown) {
 @implementation _sapp_ios_view
 - (void)drawRect:(CGRect)rect {
     _SOKOL_UNUSED(rect);
+    #if defined(_SAPP_ANY_GL)
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*)&_sapp.gl.framebuffer);
+    #endif
     _sapp_timing_measure(&_sapp.timing);
     @autoreleasepool {
         _sapp_ios_frame();
@@ -4779,7 +4929,7 @@ _SOKOL_PRIVATE void _sapp_ios_show_keyboard(bool shown) {
 #if defined(_SAPP_EMSCRIPTEN)
 
 #if defined(EM_JS_DEPS)
-EM_JS_DEPS(sokol_app, "$withStackSave,$allocateUTF8OnStack");
+EM_JS_DEPS(sokol_app, "$withStackSave,$stringToUTF8OnStack");
 #endif
 
 #ifdef __cplusplus
@@ -4787,13 +4937,6 @@ extern "C" {
 #endif
 
 typedef void (*_sapp_html5_fetch_callback) (const sapp_html5_fetch_response*);
-
-/* this function is called from a JS event handler when the user hides
-    the onscreen keyboard pressing the 'dismiss keyboard key'
-*/
-EMSCRIPTEN_KEEPALIVE void _sapp_emsc_notify_keyboard_hidden(void) {
-    _sapp.onscreen_keyboard_shown = false;
-}
 
 EMSCRIPTEN_KEEPALIVE void _sapp_emsc_onpaste(const char* str) {
     if (_sapp.clipboard.enabled) {
@@ -4885,27 +5028,6 @@ EMSCRIPTEN_KEEPALIVE void _sapp_emsc_invoke_fetch_cb(int index, int success, int
 } /* extern "C" */
 #endif
 
-/* Javascript helper functions for mobile virtual keyboard input */
-EM_JS(void, sapp_js_create_textfield, (void), {
-    const _sapp_inp = document.createElement("input");
-    _sapp_inp.type = "text";
-    _sapp_inp.id = "_sokol_app_input_element";
-    _sapp_inp.autocapitalize = "none";
-    _sapp_inp.addEventListener("focusout", function(_sapp_event) {
-        __sapp_emsc_notify_keyboard_hidden()
-
-    });
-    document.body.append(_sapp_inp);
-});
-
-EM_JS(void, sapp_js_focus_textfield, (void), {
-    document.getElementById("_sokol_app_input_element").focus();
-});
-
-EM_JS(void, sapp_js_unfocus_textfield, (void), {
-    document.getElementById("_sokol_app_input_element").blur();
-});
-
 EM_JS(void, sapp_js_add_beforeunload_listener, (void), {
     Module.sokol_beforeunload = (event) => {
         if (__sapp_html5_get_ask_leave_site() != 0) {
@@ -4924,7 +5046,7 @@ EM_JS(void, sapp_js_add_clipboard_listener, (void), {
     Module.sokol_paste = (event) => {
         const pasted_str = event.clipboardData.getData('text');
         withStackSave(() => {
-            const cstr = allocateUTF8OnStack(pasted_str);
+            const cstr = stringToUTF8OnStack(pasted_str);
             __sapp_emsc_onpaste(cstr);
         });
     };
@@ -4981,7 +5103,7 @@ EM_JS(void, sapp_js_add_dragndrop_listeners, (const char* canvas_name_cstr), {
         __sapp_emsc_begin_drop(files.length);
         for (let i = 0; i < files.length; i++) {
             withStackSave(() => {
-                const cstr = allocateUTF8OnStack(files[i].name);
+                const cstr = stringToUTF8OnStack(files[i].name);
                 __sapp_emsc_drop(i, cstr);
             });
         }
@@ -5040,45 +5162,6 @@ EM_JS(void, sapp_js_remove_dragndrop_listeners, (const char* canvas_name_cstr), 
     canvas.removeEventListener('dragover',  Module.sokol_dragover);
     canvas.removeEventListener('drop',      Module.sokol_drop);
 });
-
-/* called from the emscripten event handler to update the keyboard visibility
-    state, this must happen from an JS input event handler, otherwise
-    the request will be ignored by the browser
-*/
-_SOKOL_PRIVATE void _sapp_emsc_update_keyboard_state(void) {
-    if (_sapp.emsc.wants_show_keyboard) {
-        /* create input text field on demand */
-        if (!_sapp.emsc.textfield_created) {
-            _sapp.emsc.textfield_created = true;
-            sapp_js_create_textfield();
-        }
-        /* focus the text input field, this will bring up the keyboard */
-        _sapp.onscreen_keyboard_shown = true;
-        _sapp.emsc.wants_show_keyboard = false;
-        sapp_js_focus_textfield();
-    }
-    if (_sapp.emsc.wants_hide_keyboard) {
-        /* unfocus the text input field */
-        if (_sapp.emsc.textfield_created) {
-            _sapp.onscreen_keyboard_shown = false;
-            _sapp.emsc.wants_hide_keyboard = false;
-            sapp_js_unfocus_textfield();
-        }
-    }
-}
-
-/* actually showing the onscreen keyboard must be initiated from a JS
-    input event handler, so we'll just keep track of the desired
-    state, and the actual state change will happen with the next input event
-*/
-_SOKOL_PRIVATE void _sapp_emsc_show_keyboard(bool show) {
-    if (show) {
-        _sapp.emsc.wants_show_keyboard = true;
-    }
-    else {
-        _sapp.emsc.wants_hide_keyboard = true;
-    }
-}
 
 EM_JS(void, sapp_js_init, (const char* c_str_target), {
     // lookup and store canvas object by name
@@ -5305,6 +5388,7 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_size_changed(int event_type, const EmscriptenU
 
 _SOKOL_PRIVATE EM_BOOL _sapp_emsc_mouse_cb(int emsc_type, const EmscriptenMouseEvent* emsc_event, void* user_data) {
     _SOKOL_UNUSED(user_data);
+    bool consume_event = !_sapp.desc.html5_bubble_mouse_events;
     _sapp.emsc.mouse_buttons = emsc_event->buttons;
     if (_sapp.mouse.locked) {
         _sapp.mouse.dx = (float) emsc_event->movementX;
@@ -5365,20 +5449,20 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_mouse_cb(int emsc_type, const EmscriptenMouseE
             } else {
                 _sapp.event.mouse_button = SAPP_MOUSEBUTTON_INVALID;
             }
-            _sapp_call_event(&_sapp.event);
+            consume_event |= _sapp_call_event(&_sapp.event);
         }
         // mouse lock can only be activated in mouse button events (not in move, enter or leave)
         if (is_button_event) {
             _sapp_emsc_update_mouse_lock_state();
         }
     }
-    _sapp_emsc_update_keyboard_state();
-    return true;
+    return consume_event;
 }
 
 _SOKOL_PRIVATE EM_BOOL _sapp_emsc_wheel_cb(int emsc_type, const EmscriptenWheelEvent* emsc_event, void* user_data) {
     _SOKOL_UNUSED(emsc_type);
     _SOKOL_UNUSED(user_data);
+    bool consume_event = !_sapp.desc.html5_bubble_wheel_events;
     _sapp.emsc.mouse_buttons = emsc_event->mouse.buttons;
     if (_sapp_events_enabled()) {
         _sapp_init_event(SAPP_EVENTTYPE_MOUSE_SCROLL);
@@ -5393,11 +5477,10 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_wheel_cb(int emsc_type, const EmscriptenWheelE
         }
         _sapp.event.scroll_x = scale * (float)emsc_event->deltaX;
         _sapp.event.scroll_y = scale * (float)emsc_event->deltaY;
-        _sapp_call_event(&_sapp.event);
+        consume_event |= _sapp_call_event(&_sapp.event);
     }
-    _sapp_emsc_update_keyboard_state();
     _sapp_emsc_update_mouse_lock_state();
-    return true;
+    return consume_event;
 }
 
 static struct {
@@ -5521,9 +5604,15 @@ _SOKOL_PRIVATE sapp_keycode _sapp_emsc_translate_key(const char* str) {
     return SAPP_KEYCODE_INVALID;
 }
 
+// returns true if the key code is a 'character key', this is used to decide
+// if a key event needs to bubble up to create a char event
+_SOKOL_PRIVATE bool _sapp_emsc_is_char_key(sapp_keycode key_code) {
+    return key_code < SAPP_KEYCODE_WORLD_1;
+}
+
 _SOKOL_PRIVATE EM_BOOL _sapp_emsc_key_cb(int emsc_type, const EmscriptenKeyboardEvent* emsc_event, void* user_data) {
     _SOKOL_UNUSED(user_data);
-    bool retval = true;
+    bool consume_event = false;
     if (_sapp_events_enabled()) {
         sapp_event_type type;
         switch (emsc_type) {
@@ -5546,14 +5635,10 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_key_cb(int emsc_type, const EmscriptenKeyboard
             _sapp.event.key_repeat = emsc_event->repeat;
             _sapp.event.modifiers = _sapp_emsc_key_event_mods(emsc_event);
             if (type == SAPP_EVENTTYPE_CHAR) {
-                // FIXME: this doesn't appear to work on Android Chrome
+                // NOTE: charCode doesn't appear to be supported on Android Chrome
                 _sapp.event.char_code = emsc_event->charCode;
-                /* workaround to make Cmd+V work on Safari */
-                if ((emsc_event->metaKey) && (emsc_event->charCode == 118)) {
-                    retval = false;
-                }
-            }
-            else {
+                consume_event |= !_sapp.desc.html5_bubble_char_events;
+            } else {
                 if (0 != emsc_event->code[0]) {
                     // This code path is for desktop browsers which send untranslated 'physical' key code strings
                     // (which is what we actually want for key events)
@@ -5577,91 +5662,27 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_key_cb(int emsc_type, const EmscriptenKeyboard
                 {
                     send_keyup_followup = true;
                 }
-                // only forward keys to the browser (can further be suppressed by sapp_consume_event())
-                switch (_sapp.event.key_code) {
-                    case SAPP_KEYCODE_WORLD_1:
-                    case SAPP_KEYCODE_WORLD_2:
-                    case SAPP_KEYCODE_ESCAPE:
-                    case SAPP_KEYCODE_ENTER:
-                    case SAPP_KEYCODE_TAB:
-                    case SAPP_KEYCODE_BACKSPACE:
-                    case SAPP_KEYCODE_INSERT:
-                    case SAPP_KEYCODE_DELETE:
-                    case SAPP_KEYCODE_RIGHT:
-                    case SAPP_KEYCODE_LEFT:
-                    case SAPP_KEYCODE_DOWN:
-                    case SAPP_KEYCODE_UP:
-                    case SAPP_KEYCODE_PAGE_UP:
-                    case SAPP_KEYCODE_PAGE_DOWN:
-                    case SAPP_KEYCODE_HOME:
-                    case SAPP_KEYCODE_END:
-                    case SAPP_KEYCODE_CAPS_LOCK:
-                    case SAPP_KEYCODE_SCROLL_LOCK:
-                    case SAPP_KEYCODE_NUM_LOCK:
-                    case SAPP_KEYCODE_PRINT_SCREEN:
-                    case SAPP_KEYCODE_PAUSE:
-                    case SAPP_KEYCODE_F1:
-                    case SAPP_KEYCODE_F2:
-                    case SAPP_KEYCODE_F3:
-                    case SAPP_KEYCODE_F4:
-                    case SAPP_KEYCODE_F5:
-                    case SAPP_KEYCODE_F6:
-                    case SAPP_KEYCODE_F7:
-                    case SAPP_KEYCODE_F8:
-                    case SAPP_KEYCODE_F9:
-                    case SAPP_KEYCODE_F10:
-                    case SAPP_KEYCODE_F11:
-                    case SAPP_KEYCODE_F12:
-                    case SAPP_KEYCODE_F13:
-                    case SAPP_KEYCODE_F14:
-                    case SAPP_KEYCODE_F15:
-                    case SAPP_KEYCODE_F16:
-                    case SAPP_KEYCODE_F17:
-                    case SAPP_KEYCODE_F18:
-                    case SAPP_KEYCODE_F19:
-                    case SAPP_KEYCODE_F20:
-                    case SAPP_KEYCODE_F21:
-                    case SAPP_KEYCODE_F22:
-                    case SAPP_KEYCODE_F23:
-                    case SAPP_KEYCODE_F24:
-                    case SAPP_KEYCODE_F25:
-                    case SAPP_KEYCODE_LEFT_SHIFT:
-                    case SAPP_KEYCODE_LEFT_CONTROL:
-                    case SAPP_KEYCODE_LEFT_ALT:
-                    case SAPP_KEYCODE_LEFT_SUPER:
-                    case SAPP_KEYCODE_RIGHT_SHIFT:
-                    case SAPP_KEYCODE_RIGHT_CONTROL:
-                    case SAPP_KEYCODE_RIGHT_ALT:
-                    case SAPP_KEYCODE_RIGHT_SUPER:
-                    case SAPP_KEYCODE_MENU:
-                        /* consume the event */
-                        break;
-                    default:
-                        /* forward key to browser */
-                        retval = false;
-                        break;
+
+                // 'character key events' will always need to bubble up, otherwise the browser
+                // wouldn't be able to generate character events.
+                if (!_sapp_emsc_is_char_key(_sapp.event.key_code)) {
+                    consume_event |= !_sapp.desc.html5_bubble_key_events;
                 }
             }
-            if (_sapp_call_event(&_sapp.event)) {
-                // event was consumed via sapp_consume_event()
-                retval = true;
-            }
+            consume_event |= _sapp_call_event(&_sapp.event);
             if (send_keyup_followup) {
                 _sapp.event.type = SAPP_EVENTTYPE_KEY_UP;
-                if (_sapp_call_event(&_sapp.event)) {
-                    retval = true;
-                }
+                consume_event |= _sapp_call_event(&_sapp.event);
             }
         }
     }
-    _sapp_emsc_update_keyboard_state();
     _sapp_emsc_update_mouse_lock_state();
-    return retval;
+    return consume_event;
 }
 
 _SOKOL_PRIVATE EM_BOOL _sapp_emsc_touch_cb(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data) {
     _SOKOL_UNUSED(user_data);
-    bool retval = true;
+    bool consume_event = !_sapp.desc.html5_bubble_touch_events;
     if (_sapp_events_enabled()) {
         sapp_event_type type;
         switch (emsc_type) {
@@ -5679,7 +5700,6 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_touch_cb(int emsc_type, const EmscriptenTouchE
                 break;
             default:
                 type = SAPP_EVENTTYPE_INVALID;
-                retval = false;
                 break;
         }
         if (type != SAPP_EVENTTYPE_INVALID) {
@@ -5697,11 +5717,10 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_touch_cb(int emsc_type, const EmscriptenTouchE
                 dst->pos_y = src->targetY * _sapp.dpi_scale;
                 dst->changed = src->isChanged;
             }
-            _sapp_call_event(&_sapp.event);
+            consume_event |= _sapp_call_event(&_sapp.event);
         }
     }
-    _sapp_emsc_update_keyboard_state();
-    return retval;
+    return consume_event;
 }
 
 _SOKOL_PRIVATE EM_BOOL _sapp_emsc_focus_cb(int emsc_type, const EmscriptenFocusEvent* emsc_event, void* user_data) {
@@ -5757,8 +5776,10 @@ _SOKOL_PRIVATE void _sapp_emsc_webgl_init(void) {
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(_sapp.html5_canvas_selector, &attrs);
     // FIXME: error message?
     emscripten_webgl_make_context_current(ctx);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*)&_sapp.gl.framebuffer);
 
-    /* some WebGL extension are not enabled automatically by emscripten */
+    // FIXME: remove PVRTC support here and in sokol-gfx at some point
+    // some WebGL extension are not enabled automatically by emscripten
     emscripten_webgl_enable_extension(ctx, "WEBKIT_WEBGL_compressed_texture_pvrtc");
 }
 #endif
@@ -5904,20 +5925,32 @@ _SOKOL_PRIVATE void _sapp_emsc_wgpu_request_adapter_cb(WGPURequestAdapterStatus 
     SOKOL_ASSERT(adapter);
     _sapp.wgpu.adapter = adapter;
     size_t cur_feature_index = 1;
-    WGPUFeatureName requiredFeatures[8] = {
+    #define _SAPP_WGPU_MAX_REQUESTED_FEATURES (8)
+    WGPUFeatureName requiredFeatures[_SAPP_WGPU_MAX_REQUESTED_FEATURES] = {
         WGPUFeatureName_Depth32FloatStencil8,
     };
     // check for optional features we're interested in
-    // FIXME: ASTC texture compression
     if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionBC)) {
+        SOKOL_ASSERT(cur_feature_index < _SAPP_WGPU_MAX_REQUESTED_FEATURES);
         requiredFeatures[cur_feature_index++] = WGPUFeatureName_TextureCompressionBC;
-    } else if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionETC2)) {
+    }
+    if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionETC2)) {
+        SOKOL_ASSERT(cur_feature_index < _SAPP_WGPU_MAX_REQUESTED_FEATURES);
         requiredFeatures[cur_feature_index++] = WGPUFeatureName_TextureCompressionETC2;
     }
+    if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionASTC)) {
+        SOKOL_ASSERT(cur_feature_index < _SAPP_WGPU_MAX_REQUESTED_FEATURES);
+        requiredFeatures[cur_feature_index++] = WGPUFeatureName_TextureCompressionASTC;
+    }
+    if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_Float32Filterable)) {
+        SOKOL_ASSERT(cur_feature_index < _SAPP_WGPU_MAX_REQUESTED_FEATURES);
+        requiredFeatures[cur_feature_index++] = WGPUFeatureName_Float32Filterable;
+    }
+    #undef _SAPP_WGPU_MAX_REQUESTED_FEATURES
 
     WGPUDeviceDescriptor dev_desc;
     _sapp_clear(&dev_desc, sizeof(dev_desc));
-    dev_desc.requiredFeaturesCount = cur_feature_index;
+    dev_desc.requiredFeatureCount = cur_feature_index;
     dev_desc.requiredFeatures = requiredFeatures,
     wgpuAdapterRequestDevice(adapter, &dev_desc, _sapp_emsc_wgpu_request_device_cb, 0);
 }
@@ -5944,6 +5977,9 @@ _SOKOL_PRIVATE void _sapp_emsc_wgpu_frame(void) {
 #endif // SOKOL_WGPU
 
 _SOKOL_PRIVATE void _sapp_emsc_register_eventhandlers(void) {
+    // NOTE: HTML canvas doesn't receive input focus, this is why key event handlers are added
+    // to the window object (this could be worked around by adding a "tab index" to the
+    // canvas)
     emscripten_set_mousedown_callback(_sapp.html5_canvas_selector, 0, true, _sapp_emsc_mouse_cb);
     emscripten_set_mouseup_callback(_sapp.html5_canvas_selector, 0, true, _sapp_emsc_mouse_cb);
     emscripten_set_mousemove_callback(_sapp.html5_canvas_selector, 0, true, _sapp_emsc_mouse_cb);
@@ -5974,7 +6010,7 @@ _SOKOL_PRIVATE void _sapp_emsc_register_eventhandlers(void) {
     #endif
 }
 
-_SOKOL_PRIVATE void _sapp_emsc_unregister_eventhandlers() {
+_SOKOL_PRIVATE void _sapp_emsc_unregister_eventhandlers(void) {
     emscripten_set_mousedown_callback(_sapp.html5_canvas_selector, 0, true, 0);
     emscripten_set_mouseup_callback(_sapp.html5_canvas_selector, 0, true, 0);
     emscripten_set_mousemove_callback(_sapp.html5_canvas_selector, 0, true, 0);
@@ -5992,6 +6028,9 @@ _SOKOL_PRIVATE void _sapp_emsc_unregister_eventhandlers() {
     emscripten_set_pointerlockerror_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, 0);
     emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, 0);
     emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, 0);
+    if (!_sapp.desc.html5_canvas_resize) {
+        emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, 0);
+    }
     sapp_js_remove_beforeunload_listener();
     if (_sapp.clipboard.enabled) {
         sapp_js_remove_clipboard_listener();
@@ -6005,7 +6044,7 @@ _SOKOL_PRIVATE void _sapp_emsc_unregister_eventhandlers() {
     #endif
 }
 
-_SOKOL_PRIVATE EM_BOOL _sapp_emsc_frame(double time, void* userData) {
+_SOKOL_PRIVATE EM_BOOL _sapp_emsc_frame_animation_loop(double time, void* userData) {
     _SOKOL_UNUSED(userData);
     _sapp_timing_external(&_sapp.timing, time / 1000.0);
 
@@ -6030,6 +6069,13 @@ _SOKOL_PRIVATE EM_BOOL _sapp_emsc_frame(double time, void* userData) {
         return EM_FALSE;
     }
     return EM_TRUE;
+}
+
+_SOKOL_PRIVATE void _sapp_emsc_frame_main_loop(void) {
+    const double time = emscripten_performance_now();
+    if (!_sapp_emsc_frame_animation_loop(time, 0)) {
+        emscripten_cancel_main_loop();
+    }
 }
 
 _SOKOL_PRIVATE void _sapp_emsc_run(const sapp_desc* desc) {
@@ -6062,8 +6108,11 @@ _SOKOL_PRIVATE void _sapp_emsc_run(const sapp_desc* desc) {
     sapp_set_icon(&desc->icon);
 
     // start the frame loop
-    emscripten_request_animation_frame_loop(_sapp_emsc_frame, 0);
-
+    if (_sapp.desc.html5_use_emsc_set_main_loop) {
+        emscripten_set_main_loop(_sapp_emsc_frame_main_loop, 0, _sapp.desc.html5_emsc_set_main_loop_simulate_infinite_loop);
+    } else {
+        emscripten_request_animation_frame_loop(_sapp_emsc_frame_animation_loop, 0);
+    }
     // NOT A BUG: do not call _sapp_discard_state() here, instead this is
     // called in _sapp_emsc_frame() when the application is ordered to quit
 }
@@ -6084,7 +6133,7 @@ int main(int argc, char* argv[]) {
 //  ██████  ███████     ██   ██ ███████ ███████ ██      ███████ ██   ██ ███████
 //
 // >>gl helpers
-#if defined(SOKOL_GLCORE33)
+#if defined(SOKOL_GLCORE)
 typedef struct {
     int         red_bits;
     int         green_bits;
@@ -6414,6 +6463,7 @@ _SOKOL_PRIVATE void _sapp_win32_init_keytable(void) {
     _sapp.keycodes[0x138] = SAPP_KEYCODE_RIGHT_ALT;
     _sapp.keycodes[0x11D] = SAPP_KEYCODE_RIGHT_CONTROL;
     _sapp.keycodes[0x036] = SAPP_KEYCODE_RIGHT_SHIFT;
+    _sapp.keycodes[0x136] = SAPP_KEYCODE_RIGHT_SHIFT;
     _sapp.keycodes[0x15C] = SAPP_KEYCODE_RIGHT_SUPER;
     _sapp.keycodes[0x150] = SAPP_KEYCODE_DOWN;
     _sapp.keycodes[0x14B] = SAPP_KEYCODE_LEFT;
@@ -6494,14 +6544,6 @@ static inline HRESULT _sapp_d3d11_CreateDepthStencilView(ID3D11Device* self, ID3
         return self->CreateDepthStencilView(pResource, pDesc, ppDepthStencilView);
     #else
         return self->lpVtbl->CreateDepthStencilView(self, pResource, pDesc, ppDepthStencilView);
-    #endif
-}
-
-static inline void _sapp_d3d11_ResolveSubresource(ID3D11DeviceContext* self, ID3D11Resource* pDstResource, UINT DstSubresource, ID3D11Resource* pSrcResource, UINT SrcSubresource, DXGI_FORMAT Format) {
-    #if defined(__cplusplus)
-        self->ResolveSubresource(pDstResource, DstSubresource, pSrcResource, SrcSubresource, Format);
-    #else
-        self->lpVtbl->ResolveSubresource(self, pDstResource, DstSubresource, pSrcResource, SrcSubresource, Format);
     #endif
 }
 
@@ -6730,12 +6772,6 @@ _SOKOL_PRIVATE void _sapp_d3d11_resize_default_render_target(void) {
 }
 
 _SOKOL_PRIVATE void _sapp_d3d11_present(bool do_not_wait) {
-    /* do MSAA resolve if needed */
-    if (_sapp.sample_count > 1) {
-        SOKOL_ASSERT(_sapp.d3d11.rt);
-        SOKOL_ASSERT(_sapp.d3d11.msaa_rt);
-        _sapp_d3d11_ResolveSubresource(_sapp.d3d11.device_context, (ID3D11Resource*)_sapp.d3d11.rt, 0, (ID3D11Resource*)_sapp.d3d11.msaa_rt, 0, DXGI_FORMAT_B8G8R8A8_UNORM);
-    }
     UINT flags = 0;
     if (_sapp.win32.is_win10_or_greater && do_not_wait) {
         /* this hack/workaround somewhat improves window-movement and -sizing
@@ -6749,7 +6785,7 @@ _SOKOL_PRIVATE void _sapp_d3d11_present(bool do_not_wait) {
 
 #endif /* SOKOL_D3D11 */
 
-#if defined(SOKOL_GLCORE33)
+#if defined(SOKOL_GLCORE)
 _SOKOL_PRIVATE void _sapp_wgl_init(void) {
     _sapp.wgl.opengl32 = LoadLibraryA("opengl32.dll");
     if (!_sapp.wgl.opengl32) {
@@ -6766,6 +6802,8 @@ _SOKOL_PRIVATE void _sapp_wgl_init(void) {
     SOKOL_ASSERT(_sapp.wgl.GetCurrentDC);
     _sapp.wgl.MakeCurrent = (PFN_wglMakeCurrent)(void*) GetProcAddress(_sapp.wgl.opengl32, "wglMakeCurrent");
     SOKOL_ASSERT(_sapp.wgl.MakeCurrent);
+    _sapp.wgl.GetIntegerv = (void(WINAPI*)(uint32_t, int32_t*)) GetProcAddress(_sapp.wgl.opengl32, "glGetIntegerv");
+    SOKOL_ASSERT(_sapp.wgl.GetIntegerv);
 
     _sapp.wgl.msg_hwnd = CreateWindowExW(WS_EX_OVERLAPPEDWINDOW,
         L"SOKOLAPP",
@@ -7001,7 +7039,11 @@ _SOKOL_PRIVATE void _sapp_wgl_create_context(void) {
     const int attrs[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, _sapp.desc.gl_major_version,
         WGL_CONTEXT_MINOR_VERSION_ARB, _sapp.desc.gl_minor_version,
+#if defined(SOKOL_DEBUG)
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | WGL_CONTEXT_DEBUG_BIT_ARB,
+#else
         WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+#endif
         WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
         0, 0
     };
@@ -7009,7 +7051,7 @@ _SOKOL_PRIVATE void _sapp_wgl_create_context(void) {
     if (!_sapp.wgl.gl_ctx) {
         const DWORD err = GetLastError();
         if (err == (0xc0070000 | ERROR_INVALID_VERSION_ARB)) {
-            _SAPP_PANIC(WIN32_WGL_OPENGL_3_2_NOT_SUPPORTED);
+            _SAPP_PANIC(WIN32_WGL_OPENGL_VERSION_NOT_SUPPORTED);
         }
         else if (err == (0xc0070000 | ERROR_INVALID_PROFILE_ARB)) {
             _SAPP_PANIC(WIN32_WGL_OPENGL_PROFILE_NOT_SUPPORTED);
@@ -7026,6 +7068,8 @@ _SOKOL_PRIVATE void _sapp_wgl_create_context(void) {
         /* FIXME: DwmIsCompositionEnabled() (see GLFW) */
         _sapp.wgl.SwapIntervalEXT(_sapp.swap_interval);
     }
+    const uint32_t gl_framebuffer_binding = 0x8CA6;
+    _sapp.wgl.GetIntegerv(gl_framebuffer_binding, (int32_t*)&_sapp.gl.framebuffer);
 }
 
 _SOKOL_PRIVATE void _sapp_wgl_destroy_context(void) {
@@ -7039,7 +7083,7 @@ _SOKOL_PRIVATE void _sapp_wgl_swap_buffers(void) {
     /* FIXME: DwmIsCompositionEnabled? (see GLFW) */
     SwapBuffers(_sapp.win32.dc);
 }
-#endif /* SOKOL_GLCORE33 */
+#endif /* SOKOL_GLCORE */
 
 _SOKOL_PRIVATE bool _sapp_win32_wide_to_utf8(const wchar_t* src, char* dst, int dst_num_bytes) {
     SOKOL_ASSERT(src && dst && (dst_num_bytes > 1));
@@ -7456,7 +7500,10 @@ _SOKOL_PRIVATE void _sapp_win32_timing_measure(void) {
         // fallback if swap model isn't "flip-discard" or GetFrameStatistics failed for another reason
         _sapp_timing_measure(&_sapp.timing);
     #endif
-    #if defined(SOKOL_GLCORE33)
+    #if defined(SOKOL_GLCORE)
+        _sapp_timing_measure(&_sapp.timing);
+    #endif
+    #if defined(SOKOL_NOAPI)
         _sapp_timing_measure(&_sapp.timing);
     #endif
 }
@@ -7658,7 +7705,7 @@ _SOKOL_PRIVATE LRESULT CALLBACK _sapp_win32_wndproc(HWND hWnd, UINT uMsg, WPARAM
                     // present with DXGI_PRESENT_DO_NOT_WAIT
                     _sapp_d3d11_present(true);
                 #endif
-                #if defined(SOKOL_GLCORE33)
+                #if defined(SOKOL_GLCORE)
                     _sapp_wgl_swap_buffers();
                 #endif
                 /* NOTE: resizing the swap-chain during resize leads to a substantial
@@ -8071,7 +8118,7 @@ _SOKOL_PRIVATE void _sapp_win32_run(const sapp_desc* desc) {
         _sapp_d3d11_create_device_and_swapchain();
         _sapp_d3d11_create_default_render_target();
     #endif
-    #if defined(SOKOL_GLCORE33)
+    #if defined(SOKOL_GLCORE)
         _sapp_wgl_init();
         _sapp_wgl_load_extensions();
         _sapp_wgl_create_context();
@@ -8099,7 +8146,7 @@ _SOKOL_PRIVATE void _sapp_win32_run(const sapp_desc* desc) {
                 Sleep((DWORD)(16 * _sapp.swap_interval));
             }
         #endif
-        #if defined(SOKOL_GLCORE33)
+        #if defined(SOKOL_GLCORE)
             _sapp_wgl_swap_buffers();
         #endif
         /* check for window resized, this cannot happen in WM_SIZE as it explodes memory usage */
@@ -8302,6 +8349,7 @@ _SOKOL_PRIVATE bool _sapp_android_init_egl_surface(ANativeWindow* window) {
         return false;
     }
     _sapp.android.surface = surface;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*)&_sapp.gl.framebuffer);
     return true;
 }
 
@@ -8437,8 +8485,8 @@ _SOKOL_PRIVATE bool _sapp_android_touch_event(const AInputEvent* e) {
     for (int32_t i = 0; i < _sapp.event.num_touches; i++) {
         sapp_touchpoint* dst = &_sapp.event.touches[i];
         dst->identifier = (uintptr_t)AMotionEvent_getPointerId(e, (size_t)i);
-        dst->pos_x = (AMotionEvent_getRawX(e, (size_t)i) / _sapp.window_width) * _sapp.framebuffer_width;
-        dst->pos_y = (AMotionEvent_getRawY(e, (size_t)i) / _sapp.window_height) * _sapp.framebuffer_height;
+        dst->pos_x = (AMotionEvent_getX(e, (size_t)i) / _sapp.window_width) * _sapp.framebuffer_width;
+        dst->pos_y = (AMotionEvent_getY(e, (size_t)i) / _sapp.window_height) * _sapp.framebuffer_height;
         dst->android_tooltype = (sapp_android_tooltype) AMotionEvent_getToolType(e, (size_t)i);
         if (action == AMOTION_EVENT_ACTION_POINTER_DOWN ||
             action == AMOTION_EVENT_ACTION_POINTER_UP) {
@@ -9749,6 +9797,354 @@ _SOKOL_PRIVATE void _sapp_x11_init_extensions(void) {
     }
 }
 
+// translate the X11 KeySyms for a key to sokol-app key code
+// NOTE: this is only used as a fallback, in case the XBK method fails
+//       it is layout-dependent and will fail partially on most non-US layouts.
+//
+_SOKOL_PRIVATE sapp_keycode _sapp_x11_translate_keysyms(const KeySym* keysyms, int width) {
+    if (width > 1) {
+        switch (keysyms[1]) {
+            case XK_KP_0:           return SAPP_KEYCODE_KP_0;
+            case XK_KP_1:           return SAPP_KEYCODE_KP_1;
+            case XK_KP_2:           return SAPP_KEYCODE_KP_2;
+            case XK_KP_3:           return SAPP_KEYCODE_KP_3;
+            case XK_KP_4:           return SAPP_KEYCODE_KP_4;
+            case XK_KP_5:           return SAPP_KEYCODE_KP_5;
+            case XK_KP_6:           return SAPP_KEYCODE_KP_6;
+            case XK_KP_7:           return SAPP_KEYCODE_KP_7;
+            case XK_KP_8:           return SAPP_KEYCODE_KP_8;
+            case XK_KP_9:           return SAPP_KEYCODE_KP_9;
+            case XK_KP_Separator:
+            case XK_KP_Decimal:     return SAPP_KEYCODE_KP_DECIMAL;
+            case XK_KP_Equal:       return SAPP_KEYCODE_KP_EQUAL;
+            case XK_KP_Enter:       return SAPP_KEYCODE_KP_ENTER;
+            default:                break;
+        }
+    }
+
+    switch (keysyms[0]) {
+        case XK_Escape:         return SAPP_KEYCODE_ESCAPE;
+        case XK_Tab:            return SAPP_KEYCODE_TAB;
+        case XK_Shift_L:        return SAPP_KEYCODE_LEFT_SHIFT;
+        case XK_Shift_R:        return SAPP_KEYCODE_RIGHT_SHIFT;
+        case XK_Control_L:      return SAPP_KEYCODE_LEFT_CONTROL;
+        case XK_Control_R:      return SAPP_KEYCODE_RIGHT_CONTROL;
+        case XK_Meta_L:
+        case XK_Alt_L:          return SAPP_KEYCODE_LEFT_ALT;
+        case XK_Mode_switch: // Mapped to Alt_R on many keyboards
+        case XK_ISO_Level3_Shift: // AltGr on at least some machines
+        case XK_Meta_R:
+        case XK_Alt_R:          return SAPP_KEYCODE_RIGHT_ALT;
+        case XK_Super_L:        return SAPP_KEYCODE_LEFT_SUPER;
+        case XK_Super_R:        return SAPP_KEYCODE_RIGHT_SUPER;
+        case XK_Menu:           return SAPP_KEYCODE_MENU;
+        case XK_Num_Lock:       return SAPP_KEYCODE_NUM_LOCK;
+        case XK_Caps_Lock:      return SAPP_KEYCODE_CAPS_LOCK;
+        case XK_Print:          return SAPP_KEYCODE_PRINT_SCREEN;
+        case XK_Scroll_Lock:    return SAPP_KEYCODE_SCROLL_LOCK;
+        case XK_Pause:          return SAPP_KEYCODE_PAUSE;
+        case XK_Delete:         return SAPP_KEYCODE_DELETE;
+        case XK_BackSpace:      return SAPP_KEYCODE_BACKSPACE;
+        case XK_Return:         return SAPP_KEYCODE_ENTER;
+        case XK_Home:           return SAPP_KEYCODE_HOME;
+        case XK_End:            return SAPP_KEYCODE_END;
+        case XK_Page_Up:        return SAPP_KEYCODE_PAGE_UP;
+        case XK_Page_Down:      return SAPP_KEYCODE_PAGE_DOWN;
+        case XK_Insert:         return SAPP_KEYCODE_INSERT;
+        case XK_Left:           return SAPP_KEYCODE_LEFT;
+        case XK_Right:          return SAPP_KEYCODE_RIGHT;
+        case XK_Down:           return SAPP_KEYCODE_DOWN;
+        case XK_Up:             return SAPP_KEYCODE_UP;
+        case XK_F1:             return SAPP_KEYCODE_F1;
+        case XK_F2:             return SAPP_KEYCODE_F2;
+        case XK_F3:             return SAPP_KEYCODE_F3;
+        case XK_F4:             return SAPP_KEYCODE_F4;
+        case XK_F5:             return SAPP_KEYCODE_F5;
+        case XK_F6:             return SAPP_KEYCODE_F6;
+        case XK_F7:             return SAPP_KEYCODE_F7;
+        case XK_F8:             return SAPP_KEYCODE_F8;
+        case XK_F9:             return SAPP_KEYCODE_F9;
+        case XK_F10:            return SAPP_KEYCODE_F10;
+        case XK_F11:            return SAPP_KEYCODE_F11;
+        case XK_F12:            return SAPP_KEYCODE_F12;
+        case XK_F13:            return SAPP_KEYCODE_F13;
+        case XK_F14:            return SAPP_KEYCODE_F14;
+        case XK_F15:            return SAPP_KEYCODE_F15;
+        case XK_F16:            return SAPP_KEYCODE_F16;
+        case XK_F17:            return SAPP_KEYCODE_F17;
+        case XK_F18:            return SAPP_KEYCODE_F18;
+        case XK_F19:            return SAPP_KEYCODE_F19;
+        case XK_F20:            return SAPP_KEYCODE_F20;
+        case XK_F21:            return SAPP_KEYCODE_F21;
+        case XK_F22:            return SAPP_KEYCODE_F22;
+        case XK_F23:            return SAPP_KEYCODE_F23;
+        case XK_F24:            return SAPP_KEYCODE_F24;
+        case XK_F25:            return SAPP_KEYCODE_F25;
+
+        // numeric keypad
+        case XK_KP_Divide:      return SAPP_KEYCODE_KP_DIVIDE;
+        case XK_KP_Multiply:    return SAPP_KEYCODE_KP_MULTIPLY;
+        case XK_KP_Subtract:    return SAPP_KEYCODE_KP_SUBTRACT;
+        case XK_KP_Add:         return SAPP_KEYCODE_KP_ADD;
+
+        // these should have been detected in secondary keysym test above!
+        case XK_KP_Insert:      return SAPP_KEYCODE_KP_0;
+        case XK_KP_End:         return SAPP_KEYCODE_KP_1;
+        case XK_KP_Down:        return SAPP_KEYCODE_KP_2;
+        case XK_KP_Page_Down:   return SAPP_KEYCODE_KP_3;
+        case XK_KP_Left:        return SAPP_KEYCODE_KP_4;
+        case XK_KP_Right:       return SAPP_KEYCODE_KP_6;
+        case XK_KP_Home:        return SAPP_KEYCODE_KP_7;
+        case XK_KP_Up:          return SAPP_KEYCODE_KP_8;
+        case XK_KP_Page_Up:     return SAPP_KEYCODE_KP_9;
+        case XK_KP_Delete:      return SAPP_KEYCODE_KP_DECIMAL;
+        case XK_KP_Equal:       return SAPP_KEYCODE_KP_EQUAL;
+        case XK_KP_Enter:       return SAPP_KEYCODE_KP_ENTER;
+
+        // last resort: Check for printable keys (should not happen if the XKB
+        // extension is available). This will give a layout dependent mapping
+        // (which is wrong, and we may miss some keys, especially on non-US
+        // keyboards), but it's better than nothing...
+        case XK_a:              return SAPP_KEYCODE_A;
+        case XK_b:              return SAPP_KEYCODE_B;
+        case XK_c:              return SAPP_KEYCODE_C;
+        case XK_d:              return SAPP_KEYCODE_D;
+        case XK_e:              return SAPP_KEYCODE_E;
+        case XK_f:              return SAPP_KEYCODE_F;
+        case XK_g:              return SAPP_KEYCODE_G;
+        case XK_h:              return SAPP_KEYCODE_H;
+        case XK_i:              return SAPP_KEYCODE_I;
+        case XK_j:              return SAPP_KEYCODE_J;
+        case XK_k:              return SAPP_KEYCODE_K;
+        case XK_l:              return SAPP_KEYCODE_L;
+        case XK_m:              return SAPP_KEYCODE_M;
+        case XK_n:              return SAPP_KEYCODE_N;
+        case XK_o:              return SAPP_KEYCODE_O;
+        case XK_p:              return SAPP_KEYCODE_P;
+        case XK_q:              return SAPP_KEYCODE_Q;
+        case XK_r:              return SAPP_KEYCODE_R;
+        case XK_s:              return SAPP_KEYCODE_S;
+        case XK_t:              return SAPP_KEYCODE_T;
+        case XK_u:              return SAPP_KEYCODE_U;
+        case XK_v:              return SAPP_KEYCODE_V;
+        case XK_w:              return SAPP_KEYCODE_W;
+        case XK_x:              return SAPP_KEYCODE_X;
+        case XK_y:              return SAPP_KEYCODE_Y;
+        case XK_z:              return SAPP_KEYCODE_Z;
+        case XK_1:              return SAPP_KEYCODE_1;
+        case XK_2:              return SAPP_KEYCODE_2;
+        case XK_3:              return SAPP_KEYCODE_3;
+        case XK_4:              return SAPP_KEYCODE_4;
+        case XK_5:              return SAPP_KEYCODE_5;
+        case XK_6:              return SAPP_KEYCODE_6;
+        case XK_7:              return SAPP_KEYCODE_7;
+        case XK_8:              return SAPP_KEYCODE_8;
+        case XK_9:              return SAPP_KEYCODE_9;
+        case XK_0:              return SAPP_KEYCODE_0;
+        case XK_space:          return SAPP_KEYCODE_SPACE;
+        case XK_minus:          return SAPP_KEYCODE_MINUS;
+        case XK_equal:          return SAPP_KEYCODE_EQUAL;
+        case XK_bracketleft:    return SAPP_KEYCODE_LEFT_BRACKET;
+        case XK_bracketright:   return SAPP_KEYCODE_RIGHT_BRACKET;
+        case XK_backslash:      return SAPP_KEYCODE_BACKSLASH;
+        case XK_semicolon:      return SAPP_KEYCODE_SEMICOLON;
+        case XK_apostrophe:     return SAPP_KEYCODE_APOSTROPHE;
+        case XK_grave:          return SAPP_KEYCODE_GRAVE_ACCENT;
+        case XK_comma:          return SAPP_KEYCODE_COMMA;
+        case XK_period:         return SAPP_KEYCODE_PERIOD;
+        case XK_slash:          return SAPP_KEYCODE_SLASH;
+        case XK_less:           return SAPP_KEYCODE_WORLD_1; // At least in some layouts...
+        default:                break;
+    }
+
+    // no matching translation was found
+    return SAPP_KEYCODE_INVALID;
+}
+
+
+// setup dynamic keycode/scancode mapping tables, this is required
+// for getting layout-independent keycodes on X11.
+//
+// see GLFW x11_init.c/createKeyTables()
+_SOKOL_PRIVATE void _sapp_x11_init_keytable(void) {
+    for (int i = 0; i < SAPP_MAX_KEYCODES; i++) {
+        _sapp.keycodes[i] = SAPP_KEYCODE_INVALID;
+    }
+    // use XKB to determine physical key locations independently of the current keyboard layout
+    XkbDescPtr desc = XkbGetMap(_sapp.x11.display, 0, XkbUseCoreKbd);
+    SOKOL_ASSERT(desc);
+    XkbGetNames(_sapp.x11.display, XkbKeyNamesMask | XkbKeyAliasesMask, desc);
+
+    const int scancode_min = desc->min_key_code;
+    const int scancode_max = desc->max_key_code;
+
+    const struct { sapp_keycode key; const char* name; } keymap[] = {
+        { SAPP_KEYCODE_GRAVE_ACCENT, "TLDE" },
+        { SAPP_KEYCODE_1, "AE01" },
+        { SAPP_KEYCODE_2, "AE02" },
+        { SAPP_KEYCODE_3, "AE03" },
+        { SAPP_KEYCODE_4, "AE04" },
+        { SAPP_KEYCODE_5, "AE05" },
+        { SAPP_KEYCODE_6, "AE06" },
+        { SAPP_KEYCODE_7, "AE07" },
+        { SAPP_KEYCODE_8, "AE08" },
+        { SAPP_KEYCODE_9, "AE09" },
+        { SAPP_KEYCODE_0, "AE10" },
+        { SAPP_KEYCODE_MINUS, "AE11" },
+        { SAPP_KEYCODE_EQUAL, "AE12" },
+        { SAPP_KEYCODE_Q, "AD01" },
+        { SAPP_KEYCODE_W, "AD02" },
+        { SAPP_KEYCODE_E, "AD03" },
+        { SAPP_KEYCODE_R, "AD04" },
+        { SAPP_KEYCODE_T, "AD05" },
+        { SAPP_KEYCODE_Y, "AD06" },
+        { SAPP_KEYCODE_U, "AD07" },
+        { SAPP_KEYCODE_I, "AD08" },
+        { SAPP_KEYCODE_O, "AD09" },
+        { SAPP_KEYCODE_P, "AD10" },
+        { SAPP_KEYCODE_LEFT_BRACKET, "AD11" },
+        { SAPP_KEYCODE_RIGHT_BRACKET, "AD12" },
+        { SAPP_KEYCODE_A, "AC01" },
+        { SAPP_KEYCODE_S, "AC02" },
+        { SAPP_KEYCODE_D, "AC03" },
+        { SAPP_KEYCODE_F, "AC04" },
+        { SAPP_KEYCODE_G, "AC05" },
+        { SAPP_KEYCODE_H, "AC06" },
+        { SAPP_KEYCODE_J, "AC07" },
+        { SAPP_KEYCODE_K, "AC08" },
+        { SAPP_KEYCODE_L, "AC09" },
+        { SAPP_KEYCODE_SEMICOLON, "AC10" },
+        { SAPP_KEYCODE_APOSTROPHE, "AC11" },
+        { SAPP_KEYCODE_Z, "AB01" },
+        { SAPP_KEYCODE_X, "AB02" },
+        { SAPP_KEYCODE_C, "AB03" },
+        { SAPP_KEYCODE_V, "AB04" },
+        { SAPP_KEYCODE_B, "AB05" },
+        { SAPP_KEYCODE_N, "AB06" },
+        { SAPP_KEYCODE_M, "AB07" },
+        { SAPP_KEYCODE_COMMA, "AB08" },
+        { SAPP_KEYCODE_PERIOD, "AB09" },
+        { SAPP_KEYCODE_SLASH, "AB10" },
+        { SAPP_KEYCODE_BACKSLASH, "BKSL" },
+        { SAPP_KEYCODE_WORLD_1, "LSGT" },
+        { SAPP_KEYCODE_SPACE, "SPCE" },
+        { SAPP_KEYCODE_ESCAPE, "ESC" },
+        { SAPP_KEYCODE_ENTER, "RTRN" },
+        { SAPP_KEYCODE_TAB, "TAB" },
+        { SAPP_KEYCODE_BACKSPACE, "BKSP" },
+        { SAPP_KEYCODE_INSERT, "INS" },
+        { SAPP_KEYCODE_DELETE, "DELE" },
+        { SAPP_KEYCODE_RIGHT, "RGHT" },
+        { SAPP_KEYCODE_LEFT, "LEFT" },
+        { SAPP_KEYCODE_DOWN, "DOWN" },
+        { SAPP_KEYCODE_UP, "UP" },
+        { SAPP_KEYCODE_PAGE_UP, "PGUP" },
+        { SAPP_KEYCODE_PAGE_DOWN, "PGDN" },
+        { SAPP_KEYCODE_HOME, "HOME" },
+        { SAPP_KEYCODE_END, "END" },
+        { SAPP_KEYCODE_CAPS_LOCK, "CAPS" },
+        { SAPP_KEYCODE_SCROLL_LOCK, "SCLK" },
+        { SAPP_KEYCODE_NUM_LOCK, "NMLK" },
+        { SAPP_KEYCODE_PRINT_SCREEN, "PRSC" },
+        { SAPP_KEYCODE_PAUSE, "PAUS" },
+        { SAPP_KEYCODE_F1, "FK01" },
+        { SAPP_KEYCODE_F2, "FK02" },
+        { SAPP_KEYCODE_F3, "FK03" },
+        { SAPP_KEYCODE_F4, "FK04" },
+        { SAPP_KEYCODE_F5, "FK05" },
+        { SAPP_KEYCODE_F6, "FK06" },
+        { SAPP_KEYCODE_F7, "FK07" },
+        { SAPP_KEYCODE_F8, "FK08" },
+        { SAPP_KEYCODE_F9, "FK09" },
+        { SAPP_KEYCODE_F10, "FK10" },
+        { SAPP_KEYCODE_F11, "FK11" },
+        { SAPP_KEYCODE_F12, "FK12" },
+        { SAPP_KEYCODE_F13, "FK13" },
+        { SAPP_KEYCODE_F14, "FK14" },
+        { SAPP_KEYCODE_F15, "FK15" },
+        { SAPP_KEYCODE_F16, "FK16" },
+        { SAPP_KEYCODE_F17, "FK17" },
+        { SAPP_KEYCODE_F18, "FK18" },
+        { SAPP_KEYCODE_F19, "FK19" },
+        { SAPP_KEYCODE_F20, "FK20" },
+        { SAPP_KEYCODE_F21, "FK21" },
+        { SAPP_KEYCODE_F22, "FK22" },
+        { SAPP_KEYCODE_F23, "FK23" },
+        { SAPP_KEYCODE_F24, "FK24" },
+        { SAPP_KEYCODE_F25, "FK25" },
+        { SAPP_KEYCODE_KP_0, "KP0" },
+        { SAPP_KEYCODE_KP_1, "KP1" },
+        { SAPP_KEYCODE_KP_2, "KP2" },
+        { SAPP_KEYCODE_KP_3, "KP3" },
+        { SAPP_KEYCODE_KP_4, "KP4" },
+        { SAPP_KEYCODE_KP_5, "KP5" },
+        { SAPP_KEYCODE_KP_6, "KP6" },
+        { SAPP_KEYCODE_KP_7, "KP7" },
+        { SAPP_KEYCODE_KP_8, "KP8" },
+        { SAPP_KEYCODE_KP_9, "KP9" },
+        { SAPP_KEYCODE_KP_DECIMAL, "KPDL" },
+        { SAPP_KEYCODE_KP_DIVIDE, "KPDV" },
+        { SAPP_KEYCODE_KP_MULTIPLY, "KPMU" },
+        { SAPP_KEYCODE_KP_SUBTRACT, "KPSU" },
+        { SAPP_KEYCODE_KP_ADD, "KPAD" },
+        { SAPP_KEYCODE_KP_ENTER, "KPEN" },
+        { SAPP_KEYCODE_KP_EQUAL, "KPEQ" },
+        { SAPP_KEYCODE_LEFT_SHIFT, "LFSH" },
+        { SAPP_KEYCODE_LEFT_CONTROL, "LCTL" },
+        { SAPP_KEYCODE_LEFT_ALT, "LALT" },
+        { SAPP_KEYCODE_LEFT_SUPER, "LWIN" },
+        { SAPP_KEYCODE_RIGHT_SHIFT, "RTSH" },
+        { SAPP_KEYCODE_RIGHT_CONTROL, "RCTL" },
+        { SAPP_KEYCODE_RIGHT_ALT, "RALT" },
+        { SAPP_KEYCODE_RIGHT_ALT, "LVL3" },
+        { SAPP_KEYCODE_RIGHT_ALT, "MDSW" },
+        { SAPP_KEYCODE_RIGHT_SUPER, "RWIN" },
+        { SAPP_KEYCODE_MENU, "MENU" }
+    };
+    const int num_keymap_items = (int)(sizeof(keymap) / sizeof(keymap[0]));
+
+    // find X11 keycode to sokol-app key code mapping
+    for (int scancode = scancode_min; scancode <= scancode_max; scancode++) {
+        sapp_keycode key = SAPP_KEYCODE_INVALID;
+        for (int i = 0; i < num_keymap_items; i++) {
+            if (strncmp(desc->names->keys[scancode].name, keymap[i].name, XkbKeyNameLength) == 0) {
+                key = keymap[i].key;
+                break;
+            }
+        }
+
+        // fall back to key aliases in case the key name did not match
+        for (int i = 0; i < desc->names->num_key_aliases; i++) {
+            if (key != SAPP_KEYCODE_INVALID) {
+                break;
+            }
+            if (strncmp(desc->names->key_aliases[i].real, desc->names->keys[scancode].name, XkbKeyNameLength) != 0) {
+                continue;
+            }
+            for (int j = 0; j < num_keymap_items; j++) {
+                if (strncmp(desc->names->key_aliases[i].alias, keymap[i].name, XkbKeyNameLength) == 0) {
+                    key = keymap[i].key;
+                    break;
+                }
+            }
+        }
+        _sapp.keycodes[scancode] = key;
+    }
+    XkbFreeNames(desc, XkbKeyNamesMask, True);
+    XkbFreeKeyboard(desc, 0, True);
+
+    int width = 0;
+    KeySym* keysyms = XGetKeyboardMapping(_sapp.x11.display, scancode_min, scancode_max - scancode_min + 1, &width);
+    for (int scancode = scancode_min; scancode <= scancode_max; scancode++) {
+        // translate untranslated key codes using the traditional X11 KeySym lookups
+        if (_sapp.keycodes[scancode] == SAPP_KEYCODE_INVALID) {
+            const size_t base = (size_t)((scancode - scancode_min) * width);
+            _sapp.keycodes[scancode] = _sapp_x11_translate_keysyms(&keysyms[base], width);
+        }
+    }
+    XFree(keysyms);
+}
+
 _SOKOL_PRIVATE void _sapp_x11_query_system_dpi(void) {
     /* from GLFW:
 
@@ -9828,7 +10224,7 @@ _SOKOL_PRIVATE void* _sapp_glx_getprocaddr(const char* procname)
     }
 }
 
-_SOKOL_PRIVATE void _sapp_glx_init() {
+_SOKOL_PRIVATE void _sapp_glx_init(void) {
     const char* sonames[] = { "libGL.so.1", "libGL.so", 0 };
     for (int i = 0; sonames[i]; i++) {
         _sapp.glx.libgl = dlopen(sonames[i], RTLD_LAZY|RTLD_GLOBAL);
@@ -9903,7 +10299,7 @@ _SOKOL_PRIVATE int _sapp_glx_attrib(GLXFBConfig fbconfig, int attrib) {
     return value;
 }
 
-_SOKOL_PRIVATE GLXFBConfig _sapp_glx_choosefbconfig() {
+_SOKOL_PRIVATE GLXFBConfig _sapp_glx_choosefbconfig(void) {
     GLXFBConfig* native_configs;
     _sapp_gl_fbconfig* usable_configs;
     const _sapp_gl_fbconfig* closest;
@@ -9990,6 +10386,11 @@ _SOKOL_PRIVATE void _sapp_glx_choose_visual(Visual** visual, int* depth) {
     XFree(result);
 }
 
+_SOKOL_PRIVATE void _sapp_glx_make_current(void) {
+    _sapp.glx.MakeCurrent(_sapp.x11.display, _sapp.glx.window, _sapp.glx.ctx);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*)&_sapp.gl.framebuffer);
+}
+
 _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
     GLXFBConfig native = _sapp_glx_choosefbconfig();
     if (0 == native){
@@ -10015,6 +10416,7 @@ _SOKOL_PRIVATE void _sapp_glx_create_context(void) {
     if (!_sapp.glx.window) {
         _SAPP_PANIC(LINUX_GLX_CREATE_WINDOW_FAILED);
     }
+    _sapp_glx_make_current();
 }
 
 _SOKOL_PRIVATE void _sapp_glx_destroy_context(void) {
@@ -10028,16 +10430,11 @@ _SOKOL_PRIVATE void _sapp_glx_destroy_context(void) {
     }
 }
 
-_SOKOL_PRIVATE void _sapp_glx_make_current(void) {
-    _sapp.glx.MakeCurrent(_sapp.x11.display, _sapp.glx.window, _sapp.glx.ctx);
-}
-
 _SOKOL_PRIVATE void _sapp_glx_swap_buffers(void) {
     _sapp.glx.SwapBuffers(_sapp.x11.display, _sapp.glx.window);
 }
 
 _SOKOL_PRIVATE void _sapp_glx_swapinterval(int interval) {
-    _sapp_glx_make_current();
     if (_sapp.glx.EXT_swap_control) {
         _sapp.glx.SwapIntervalEXT(_sapp.x11.display, _sapp.glx.window, interval);
     }
@@ -10547,139 +10944,10 @@ _SOKOL_PRIVATE void _sapp_x11_char_event(uint32_t chr, bool repeat, uint32_t mod
 }
 
 _SOKOL_PRIVATE sapp_keycode _sapp_x11_translate_key(int scancode) {
-    int dummy;
-    KeySym* keysyms = XGetKeyboardMapping(_sapp.x11.display, scancode, 1, &dummy);
-    SOKOL_ASSERT(keysyms);
-    KeySym keysym = keysyms[0];
-    XFree(keysyms);
-    switch (keysym) {
-        case XK_Escape:         return SAPP_KEYCODE_ESCAPE;
-        case XK_Tab:            return SAPP_KEYCODE_TAB;
-        case XK_Shift_L:        return SAPP_KEYCODE_LEFT_SHIFT;
-        case XK_Shift_R:        return SAPP_KEYCODE_RIGHT_SHIFT;
-        case XK_Control_L:      return SAPP_KEYCODE_LEFT_CONTROL;
-        case XK_Control_R:      return SAPP_KEYCODE_RIGHT_CONTROL;
-        case XK_Meta_L:
-        case XK_Alt_L:          return SAPP_KEYCODE_LEFT_ALT;
-        case XK_Mode_switch:    /* Mapped to Alt_R on many keyboards */
-        case XK_ISO_Level3_Shift: /* AltGr on at least some machines */
-        case XK_Meta_R:
-        case XK_Alt_R:          return SAPP_KEYCODE_RIGHT_ALT;
-        case XK_Super_L:        return SAPP_KEYCODE_LEFT_SUPER;
-        case XK_Super_R:        return SAPP_KEYCODE_RIGHT_SUPER;
-        case XK_Menu:           return SAPP_KEYCODE_MENU;
-        case XK_Num_Lock:       return SAPP_KEYCODE_NUM_LOCK;
-        case XK_Caps_Lock:      return SAPP_KEYCODE_CAPS_LOCK;
-        case XK_Print:          return SAPP_KEYCODE_PRINT_SCREEN;
-        case XK_Scroll_Lock:    return SAPP_KEYCODE_SCROLL_LOCK;
-        case XK_Pause:          return SAPP_KEYCODE_PAUSE;
-        case XK_Delete:         return SAPP_KEYCODE_DELETE;
-        case XK_BackSpace:      return SAPP_KEYCODE_BACKSPACE;
-        case XK_Return:         return SAPP_KEYCODE_ENTER;
-        case XK_Home:           return SAPP_KEYCODE_HOME;
-        case XK_End:            return SAPP_KEYCODE_END;
-        case XK_Page_Up:        return SAPP_KEYCODE_PAGE_UP;
-        case XK_Page_Down:      return SAPP_KEYCODE_PAGE_DOWN;
-        case XK_Insert:         return SAPP_KEYCODE_INSERT;
-        case XK_Left:           return SAPP_KEYCODE_LEFT;
-        case XK_Right:          return SAPP_KEYCODE_RIGHT;
-        case XK_Down:           return SAPP_KEYCODE_DOWN;
-        case XK_Up:             return SAPP_KEYCODE_UP;
-        case XK_F1:             return SAPP_KEYCODE_F1;
-        case XK_F2:             return SAPP_KEYCODE_F2;
-        case XK_F3:             return SAPP_KEYCODE_F3;
-        case XK_F4:             return SAPP_KEYCODE_F4;
-        case XK_F5:             return SAPP_KEYCODE_F5;
-        case XK_F6:             return SAPP_KEYCODE_F6;
-        case XK_F7:             return SAPP_KEYCODE_F7;
-        case XK_F8:             return SAPP_KEYCODE_F8;
-        case XK_F9:             return SAPP_KEYCODE_F9;
-        case XK_F10:            return SAPP_KEYCODE_F10;
-        case XK_F11:            return SAPP_KEYCODE_F11;
-        case XK_F12:            return SAPP_KEYCODE_F12;
-        case XK_F13:            return SAPP_KEYCODE_F13;
-        case XK_F14:            return SAPP_KEYCODE_F14;
-        case XK_F15:            return SAPP_KEYCODE_F15;
-        case XK_F16:            return SAPP_KEYCODE_F16;
-        case XK_F17:            return SAPP_KEYCODE_F17;
-        case XK_F18:            return SAPP_KEYCODE_F18;
-        case XK_F19:            return SAPP_KEYCODE_F19;
-        case XK_F20:            return SAPP_KEYCODE_F20;
-        case XK_F21:            return SAPP_KEYCODE_F21;
-        case XK_F22:            return SAPP_KEYCODE_F22;
-        case XK_F23:            return SAPP_KEYCODE_F23;
-        case XK_F24:            return SAPP_KEYCODE_F24;
-        case XK_F25:            return SAPP_KEYCODE_F25;
-
-        case XK_KP_Divide:      return SAPP_KEYCODE_KP_DIVIDE;
-        case XK_KP_Multiply:    return SAPP_KEYCODE_KP_MULTIPLY;
-        case XK_KP_Subtract:    return SAPP_KEYCODE_KP_SUBTRACT;
-        case XK_KP_Add:         return SAPP_KEYCODE_KP_ADD;
-
-        case XK_KP_Insert:      return SAPP_KEYCODE_KP_0;
-        case XK_KP_End:         return SAPP_KEYCODE_KP_1;
-        case XK_KP_Down:        return SAPP_KEYCODE_KP_2;
-        case XK_KP_Page_Down:   return SAPP_KEYCODE_KP_3;
-        case XK_KP_Left:        return SAPP_KEYCODE_KP_4;
-        case XK_KP_Begin:       return SAPP_KEYCODE_KP_5;
-        case XK_KP_Right:       return SAPP_KEYCODE_KP_6;
-        case XK_KP_Home:        return SAPP_KEYCODE_KP_7;
-        case XK_KP_Up:          return SAPP_KEYCODE_KP_8;
-        case XK_KP_Page_Up:     return SAPP_KEYCODE_KP_9;
-        case XK_KP_Delete:      return SAPP_KEYCODE_KP_DECIMAL;
-        case XK_KP_Equal:       return SAPP_KEYCODE_KP_EQUAL;
-        case XK_KP_Enter:       return SAPP_KEYCODE_KP_ENTER;
-
-        case XK_a:              return SAPP_KEYCODE_A;
-        case XK_b:              return SAPP_KEYCODE_B;
-        case XK_c:              return SAPP_KEYCODE_C;
-        case XK_d:              return SAPP_KEYCODE_D;
-        case XK_e:              return SAPP_KEYCODE_E;
-        case XK_f:              return SAPP_KEYCODE_F;
-        case XK_g:              return SAPP_KEYCODE_G;
-        case XK_h:              return SAPP_KEYCODE_H;
-        case XK_i:              return SAPP_KEYCODE_I;
-        case XK_j:              return SAPP_KEYCODE_J;
-        case XK_k:              return SAPP_KEYCODE_K;
-        case XK_l:              return SAPP_KEYCODE_L;
-        case XK_m:              return SAPP_KEYCODE_M;
-        case XK_n:              return SAPP_KEYCODE_N;
-        case XK_o:              return SAPP_KEYCODE_O;
-        case XK_p:              return SAPP_KEYCODE_P;
-        case XK_q:              return SAPP_KEYCODE_Q;
-        case XK_r:              return SAPP_KEYCODE_R;
-        case XK_s:              return SAPP_KEYCODE_S;
-        case XK_t:              return SAPP_KEYCODE_T;
-        case XK_u:              return SAPP_KEYCODE_U;
-        case XK_v:              return SAPP_KEYCODE_V;
-        case XK_w:              return SAPP_KEYCODE_W;
-        case XK_x:              return SAPP_KEYCODE_X;
-        case XK_y:              return SAPP_KEYCODE_Y;
-        case XK_z:              return SAPP_KEYCODE_Z;
-        case XK_1:              return SAPP_KEYCODE_1;
-        case XK_2:              return SAPP_KEYCODE_2;
-        case XK_3:              return SAPP_KEYCODE_3;
-        case XK_4:              return SAPP_KEYCODE_4;
-        case XK_5:              return SAPP_KEYCODE_5;
-        case XK_6:              return SAPP_KEYCODE_6;
-        case XK_7:              return SAPP_KEYCODE_7;
-        case XK_8:              return SAPP_KEYCODE_8;
-        case XK_9:              return SAPP_KEYCODE_9;
-        case XK_0:              return SAPP_KEYCODE_0;
-        case XK_space:          return SAPP_KEYCODE_SPACE;
-        case XK_minus:          return SAPP_KEYCODE_MINUS;
-        case XK_equal:          return SAPP_KEYCODE_EQUAL;
-        case XK_bracketleft:    return SAPP_KEYCODE_LEFT_BRACKET;
-        case XK_bracketright:   return SAPP_KEYCODE_RIGHT_BRACKET;
-        case XK_backslash:      return SAPP_KEYCODE_BACKSLASH;
-        case XK_semicolon:      return SAPP_KEYCODE_SEMICOLON;
-        case XK_apostrophe:     return SAPP_KEYCODE_APOSTROPHE;
-        case XK_grave:          return SAPP_KEYCODE_GRAVE_ACCENT;
-        case XK_comma:          return SAPP_KEYCODE_COMMA;
-        case XK_period:         return SAPP_KEYCODE_PERIOD;
-        case XK_slash:          return SAPP_KEYCODE_SLASH;
-        case XK_less:           return SAPP_KEYCODE_WORLD_1; /* At least in some layouts... */
-        default:                return SAPP_KEYCODE_INVALID;
+    if ((scancode >= 0) && (scancode < _SAPP_X11_MAX_X11_KEYCODES)) {
+        return _sapp.keycodes[scancode];
+    } else {
+        return SAPP_KEYCODE_INVALID;
     }
 }
 
@@ -10716,6 +10984,21 @@ _SOKOL_PRIVATE int32_t _sapp_x11_keysym_to_unicode(KeySym keysym) {
 
     /* No matching Unicode value found */
     return -1;
+}
+
+_SOKOL_PRIVATE bool _sapp_x11_keypress_repeat(int keycode) {
+    bool repeat = false;
+    if ((keycode >= 0) && (keycode < _SAPP_X11_MAX_X11_KEYCODES)) {
+        repeat = _sapp.x11.key_repeat[keycode];
+        _sapp.x11.key_repeat[keycode] = true;
+    }
+    return repeat;
+}
+
+_SOKOL_PRIVATE void _sapp_x11_keyrelease_repeat(int keycode) {
+    if ((keycode >= 0) && (keycode < _SAPP_X11_MAX_X11_KEYCODES)) {
+        _sapp.x11.key_repeat[keycode] = false;
+    }
 }
 
 _SOKOL_PRIVATE bool _sapp_x11_parse_dropped_files_list(const char* src) {
@@ -10796,293 +11079,331 @@ _SOKOL_PRIVATE bool _sapp_x11_parse_dropped_files_list(const char* src) {
     }
 }
 
-// XLib manual says keycodes are in the range [8, 255] inclusive.
-// https://tronche.com/gui/x/xlib/input/keyboard-encoding.html
-static bool _sapp_x11_keycodes[256];
+_SOKOL_PRIVATE void _sapp_x11_on_genericevent(XEvent* event) {
+    if (_sapp.mouse.locked && _sapp.x11.xi.available) {
+        if (event->xcookie.extension == _sapp.x11.xi.major_opcode) {
+            if (XGetEventData(_sapp.x11.display, &event->xcookie)) {
+                if (event->xcookie.evtype == XI_RawMotion) {
+                    XIRawEvent* re = (XIRawEvent*) event->xcookie.data;
+                    if (re->valuators.mask_len) {
+                        const double* values = re->raw_values;
+                        if (XIMaskIsSet(re->valuators.mask, 0)) {
+                            _sapp.mouse.dx = (float) *values;
+                            values++;
+                        }
+                        if (XIMaskIsSet(re->valuators.mask, 1)) {
+                            _sapp.mouse.dy = (float) *values;
+                        }
+                        _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xmotion.state));
+                    }
+                }
+                XFreeEventData(_sapp.x11.display, &event->xcookie);
+            }
+        }
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_focusin(XEvent* event) {
+    // NOTE: ignoring NotifyGrab and NotifyUngrab is same behaviour as GLFW
+    if ((event->xfocus.mode != NotifyGrab) && (event->xfocus.mode != NotifyUngrab)) {
+        _sapp_x11_app_event(SAPP_EVENTTYPE_FOCUSED);
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_focusout(XEvent* event) {
+    // if focus is lost for any reason, and we're in mouse locked mode, disable mouse lock
+    if (_sapp.mouse.locked) {
+        _sapp_x11_lock_mouse(false);
+    }
+    // NOTE: ignoring NotifyGrab and NotifyUngrab is same behaviour as GLFW
+    if ((event->xfocus.mode != NotifyGrab) && (event->xfocus.mode != NotifyUngrab)) {
+        _sapp_x11_app_event(SAPP_EVENTTYPE_UNFOCUSED);
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_keypress(XEvent* event) {
+    int keycode = (int)event->xkey.keycode;
+
+    const sapp_keycode key = _sapp_x11_translate_key(keycode);
+    const bool repeat = _sapp_x11_keypress_repeat(keycode);
+    uint32_t mods = _sapp_x11_mods(event->xkey.state);
+    // X11 doesn't set modifier bit on key down, so emulate that
+    mods |= _sapp_x11_key_modifier_bit(key);
+    if (key != SAPP_KEYCODE_INVALID) {
+        _sapp_x11_key_event(SAPP_EVENTTYPE_KEY_DOWN, key, repeat, mods);
+    }
+    KeySym keysym;
+    XLookupString(&event->xkey, NULL, 0, &keysym, NULL);
+    int32_t chr = _sapp_x11_keysym_to_unicode(keysym);
+    if (chr > 0) {
+        _sapp_x11_char_event((uint32_t)chr, repeat, mods);
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_keyrelease(XEvent* event) {
+    int keycode = (int)event->xkey.keycode;
+    const sapp_keycode key = _sapp_x11_translate_key(keycode);
+    _sapp_x11_keyrelease_repeat(keycode);
+    if (key != SAPP_KEYCODE_INVALID) {
+        uint32_t mods = _sapp_x11_mods(event->xkey.state);
+        // X11 doesn't clear modifier bit on key up, so emulate that
+        mods &= ~_sapp_x11_key_modifier_bit(key);
+        _sapp_x11_key_event(SAPP_EVENTTYPE_KEY_UP, key, false, mods);
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_buttonpress(XEvent* event) {
+    _sapp_x11_mouse_update(event->xbutton.x, event->xbutton.y, false);
+    const sapp_mousebutton btn = _sapp_x11_translate_button(event);
+    uint32_t mods = _sapp_x11_mods(event->xbutton.state);
+    // X11 doesn't set modifier bit on button down, so emulate that
+    mods |= _sapp_x11_button_modifier_bit(btn);
+    if (btn != SAPP_MOUSEBUTTON_INVALID) {
+        _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, btn, mods);
+        _sapp.x11.mouse_buttons |= (1 << btn);
+    }
+    else {
+        // might be a scroll event
+        switch (event->xbutton.button) {
+            case 4: _sapp_x11_scroll_event(0.0f, 1.0f, mods); break;
+            case 5: _sapp_x11_scroll_event(0.0f, -1.0f, mods); break;
+            case 6: _sapp_x11_scroll_event(1.0f, 0.0f, mods); break;
+            case 7: _sapp_x11_scroll_event(-1.0f, 0.0f, mods); break;
+        }
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_buttonrelease(XEvent* event) {
+    _sapp_x11_mouse_update(event->xbutton.x, event->xbutton.y, false);
+    const sapp_mousebutton btn = _sapp_x11_translate_button(event);
+    if (btn != SAPP_MOUSEBUTTON_INVALID) {
+        uint32_t mods = _sapp_x11_mods(event->xbutton.state);
+        // X11 doesn't clear modifier bit on button up, so emulate that
+        mods &= ~_sapp_x11_button_modifier_bit(btn);
+        _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, btn, mods);
+        _sapp.x11.mouse_buttons &= ~(1 << btn);
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_enternotify(XEvent* event) {
+    // don't send enter/leave events while mouse button held down
+    if (0 == _sapp.x11.mouse_buttons) {
+        _sapp_x11_mouse_update(event->xcrossing.x, event->xcrossing.y, true);
+        _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_ENTER, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xcrossing.state));
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_leavenotify(XEvent* event) {
+    if (0 == _sapp.x11.mouse_buttons) {
+        _sapp_x11_mouse_update(event->xcrossing.x, event->xcrossing.y, true);
+        _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_LEAVE, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xcrossing.state));
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_motionnotify(XEvent* event) {
+    if (!_sapp.mouse.locked) {
+        _sapp_x11_mouse_update(event->xmotion.x, event->xmotion.y, false);
+        _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xmotion.state));
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_configurenotify(XEvent* event) {
+    if ((event->xconfigure.width != _sapp.window_width) || (event->xconfigure.height != _sapp.window_height)) {
+        _sapp.window_width = event->xconfigure.width;
+        _sapp.window_height = event->xconfigure.height;
+        _sapp.framebuffer_width = _sapp.window_width;
+        _sapp.framebuffer_height = _sapp.window_height;
+        _sapp_x11_app_event(SAPP_EVENTTYPE_RESIZED);
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_propertynotify(XEvent* event) {
+    if (event->xproperty.state == PropertyNewValue) {
+        if (event->xproperty.atom == _sapp.x11.WM_STATE) {
+            const int state = _sapp_x11_get_window_state();
+            if (state != _sapp.x11.window_state) {
+                _sapp.x11.window_state = state;
+                if (state == IconicState) {
+                    _sapp_x11_app_event(SAPP_EVENTTYPE_ICONIFIED);
+                }
+                else if (state == NormalState) {
+                    _sapp_x11_app_event(SAPP_EVENTTYPE_RESTORED);
+                }
+            }
+        }
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_selectionnotify(XEvent* event) {
+    if (event->xselection.property == _sapp.x11.xdnd.XdndSelection) {
+        char* data = 0;
+        uint32_t result = _sapp_x11_get_window_property(event->xselection.requestor,
+                                                        event->xselection.property,
+                                                        event->xselection.target,
+                                                        (unsigned char**) &data);
+        if (_sapp.drop.enabled && result) {
+            if (_sapp_x11_parse_dropped_files_list(data)) {
+                _sapp.mouse.dx = 0.0f;
+                _sapp.mouse.dy = 0.0f;
+                if (_sapp_events_enabled()) {
+                    // FIXME: Figure out how to get modifier key state here.
+                    // The XSelection event has no 'state' item, and
+                    // XQueryKeymap() always returns a zeroed array.
+                    _sapp_init_event(SAPP_EVENTTYPE_FILES_DROPPED);
+                    _sapp_call_event(&_sapp.event);
+                }
+            }
+        }
+        if (_sapp.x11.xdnd.version >= 2) {
+            XEvent reply;
+            _sapp_clear(&reply, sizeof(reply));
+            reply.type = ClientMessage;
+            reply.xclient.window = _sapp.x11.xdnd.source;
+            reply.xclient.message_type = _sapp.x11.xdnd.XdndFinished;
+            reply.xclient.format = 32;
+            reply.xclient.data.l[0] = (long)_sapp.x11.window;
+            reply.xclient.data.l[1] = result;
+            reply.xclient.data.l[2] = (long)_sapp.x11.xdnd.XdndActionCopy;
+            XSendEvent(_sapp.x11.display, _sapp.x11.xdnd.source, False, NoEventMask, &reply);
+            XFlush(_sapp.x11.display);
+        }
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_x11_on_clientmessage(XEvent* event) {
+    if (XFilterEvent(event, None)) {
+        return;
+    }
+    if (event->xclient.message_type == _sapp.x11.WM_PROTOCOLS) {
+        const Atom protocol = (Atom)event->xclient.data.l[0];
+        if (protocol == _sapp.x11.WM_DELETE_WINDOW) {
+            _sapp.quit_requested = true;
+        }
+    } else if (event->xclient.message_type == _sapp.x11.xdnd.XdndEnter) {
+        const bool is_list = 0 != (event->xclient.data.l[1] & 1);
+        _sapp.x11.xdnd.source  = (Window)event->xclient.data.l[0];
+        _sapp.x11.xdnd.version = event->xclient.data.l[1] >> 24;
+        _sapp.x11.xdnd.format  = None;
+        if (_sapp.x11.xdnd.version > _SAPP_X11_XDND_VERSION) {
+            return;
+        }
+        uint32_t count = 0;
+        Atom* formats = 0;
+        if (is_list) {
+            count = _sapp_x11_get_window_property(_sapp.x11.xdnd.source, _sapp.x11.xdnd.XdndTypeList, XA_ATOM, (unsigned char**)&formats);
+        } else {
+            count = 3;
+            formats = (Atom*) event->xclient.data.l + 2;
+        }
+        for (uint32_t i = 0; i < count; i++) {
+            if (formats[i] == _sapp.x11.xdnd.text_uri_list) {
+                _sapp.x11.xdnd.format = _sapp.x11.xdnd.text_uri_list;
+                break;
+            }
+        }
+        if (is_list && formats) {
+            XFree(formats);
+        }
+    } else if (event->xclient.message_type == _sapp.x11.xdnd.XdndDrop) {
+        if (_sapp.x11.xdnd.version > _SAPP_X11_XDND_VERSION) {
+            return;
+        }
+        Time time = CurrentTime;
+        if (_sapp.x11.xdnd.format) {
+            if (_sapp.x11.xdnd.version >= 1) {
+                time = (Time)event->xclient.data.l[2];
+            }
+            XConvertSelection(_sapp.x11.display,
+                                _sapp.x11.xdnd.XdndSelection,
+                                _sapp.x11.xdnd.format,
+                                _sapp.x11.xdnd.XdndSelection,
+                                _sapp.x11.window,
+                                time);
+        } else if (_sapp.x11.xdnd.version >= 2) {
+            XEvent reply;
+            _sapp_clear(&reply, sizeof(reply));
+            reply.type = ClientMessage;
+            reply.xclient.window = _sapp.x11.xdnd.source;
+            reply.xclient.message_type = _sapp.x11.xdnd.XdndFinished;
+            reply.xclient.format = 32;
+            reply.xclient.data.l[0] = (long)_sapp.x11.window;
+            reply.xclient.data.l[1] = 0;    // drag was rejected
+            reply.xclient.data.l[2] = None;
+            XSendEvent(_sapp.x11.display, _sapp.x11.xdnd.source, False, NoEventMask, &reply);
+            XFlush(_sapp.x11.display);
+        }
+    } else if (event->xclient.message_type == _sapp.x11.xdnd.XdndPosition) {
+        // drag operation has moved over the window
+        //  FIXME: we could track the mouse position here, but
+        //  this isn't implemented on other platforms either so far
+        if (_sapp.x11.xdnd.version > _SAPP_X11_XDND_VERSION) {
+            return;
+        }
+        XEvent reply;
+        _sapp_clear(&reply, sizeof(reply));
+        reply.type = ClientMessage;
+        reply.xclient.window = _sapp.x11.xdnd.source;
+        reply.xclient.message_type = _sapp.x11.xdnd.XdndStatus;
+        reply.xclient.format = 32;
+        reply.xclient.data.l[0] = (long)_sapp.x11.window;
+        if (_sapp.x11.xdnd.format) {
+            /* reply that we are ready to copy the dragged data */
+            reply.xclient.data.l[1] = 1;    // accept with no rectangle
+            if (_sapp.x11.xdnd.version >= 2) {
+                reply.xclient.data.l[4] = (long)_sapp.x11.xdnd.XdndActionCopy;
+            }
+        }
+        XSendEvent(_sapp.x11.display, _sapp.x11.xdnd.source, False, NoEventMask, &reply);
+        XFlush(_sapp.x11.display);
+    }
+}
 
 _SOKOL_PRIVATE void _sapp_x11_process_event(XEvent* event) {
-    Bool filtered = XFilterEvent(event, None);
     switch (event->type) {
         case GenericEvent:
-            if (_sapp.mouse.locked && _sapp.x11.xi.available) {
-                if (event->xcookie.extension == _sapp.x11.xi.major_opcode) {
-                    if (XGetEventData(_sapp.x11.display, &event->xcookie)) {
-                        if (event->xcookie.evtype == XI_RawMotion) {
-                            XIRawEvent* re = (XIRawEvent*) event->xcookie.data;
-                            if (re->valuators.mask_len) {
-                                const double* values = re->raw_values;
-                                if (XIMaskIsSet(re->valuators.mask, 0)) {
-                                    _sapp.mouse.dx = (float) *values;
-                                    values++;
-                                }
-                                if (XIMaskIsSet(re->valuators.mask, 1)) {
-                                    _sapp.mouse.dy = (float) *values;
-                                }
-                                _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xmotion.state));
-                            }
-                        }
-                        XFreeEventData(_sapp.x11.display, &event->xcookie);
-                    }
-                }
-            }
+            _sapp_x11_on_genericevent(event);
             break;
         case FocusIn:
-            // NOTE: ignoring NotifyGrab and NotifyUngrab is same behaviour as GLFW
-            if ((event->xfocus.mode != NotifyGrab) && (event->xfocus.mode != NotifyUngrab)) {
-                _sapp_x11_app_event(SAPP_EVENTTYPE_FOCUSED);
-            }
+            _sapp_x11_on_focusin(event);
             break;
         case FocusOut:
-            /* if focus is lost for any reason, and we're in mouse locked mode, disable mouse lock */
-            if (_sapp.mouse.locked) {
-                _sapp_x11_lock_mouse(false);
-            }
-            // NOTE: ignoring NotifyGrab and NotifyUngrab is same behaviour as GLFW
-            if ((event->xfocus.mode != NotifyGrab) && (event->xfocus.mode != NotifyUngrab)) {
-                _sapp_x11_app_event(SAPP_EVENTTYPE_UNFOCUSED);
-            }
+            _sapp_x11_on_focusout(event);
             break;
         case KeyPress:
-            {
-                int keycode = (int)event->xkey.keycode;
-                const sapp_keycode key = _sapp_x11_translate_key(keycode);
-                bool repeat = _sapp_x11_keycodes[keycode & 0xFF];
-                _sapp_x11_keycodes[keycode & 0xFF] = true;
-                uint32_t mods = _sapp_x11_mods(event->xkey.state);
-                // X11 doesn't set modifier bit on key down, so emulate that
-                mods |= _sapp_x11_key_modifier_bit(key);
-                if (key != SAPP_KEYCODE_INVALID) {
-                    _sapp_x11_key_event(SAPP_EVENTTYPE_KEY_DOWN, key, repeat, mods);
-                }
-                KeySym keysym;
-                XLookupString(&event->xkey, NULL, 0, &keysym, NULL);
-                int32_t chr = _sapp_x11_keysym_to_unicode(keysym);
-                if (chr > 0) {
-                    _sapp_x11_char_event((uint32_t)chr, repeat, mods);
-                }
-            }
+            _sapp_x11_on_keypress(event);
             break;
         case KeyRelease:
-            {
-                int keycode = (int)event->xkey.keycode;
-                const sapp_keycode key = _sapp_x11_translate_key(keycode);
-                _sapp_x11_keycodes[keycode & 0xFF] = false;
-                if (key != SAPP_KEYCODE_INVALID) {
-                    uint32_t mods = _sapp_x11_mods(event->xkey.state);
-                    // X11 doesn't clear modifier bit on key up, so emulate that
-                    mods &= ~_sapp_x11_key_modifier_bit(key);
-                    _sapp_x11_key_event(SAPP_EVENTTYPE_KEY_UP, key, false, mods);
-                }
-            }
+            _sapp_x11_on_keyrelease(event);
             break;
         case ButtonPress:
-            {
-                _sapp_x11_mouse_update(event->xbutton.x, event->xbutton.y, false);
-                const sapp_mousebutton btn = _sapp_x11_translate_button(event);
-                uint32_t mods = _sapp_x11_mods(event->xbutton.state);
-                // X11 doesn't set modifier bit on button down, so emulate that
-                mods |= _sapp_x11_button_modifier_bit(btn);
-                if (btn != SAPP_MOUSEBUTTON_INVALID) {
-                    _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, btn, mods);
-                    _sapp.x11.mouse_buttons |= (1 << btn);
-                }
-                else {
-                    /* might be a scroll event */
-                    switch (event->xbutton.button) {
-                        case 4: _sapp_x11_scroll_event(0.0f, 1.0f, mods); break;
-                        case 5: _sapp_x11_scroll_event(0.0f, -1.0f, mods); break;
-                        case 6: _sapp_x11_scroll_event(1.0f, 0.0f, mods); break;
-                        case 7: _sapp_x11_scroll_event(-1.0f, 0.0f, mods); break;
-                    }
-                }
-            }
+            _sapp_x11_on_buttonpress(event);
             break;
         case ButtonRelease:
-            {
-                _sapp_x11_mouse_update(event->xbutton.x, event->xbutton.y, false);
-                const sapp_mousebutton btn = _sapp_x11_translate_button(event);
-                if (btn != SAPP_MOUSEBUTTON_INVALID) {
-                    uint32_t mods = _sapp_x11_mods(event->xbutton.state);
-                    // X11 doesn't clear modifier bit on button up, so emulate that
-                    mods &= ~_sapp_x11_button_modifier_bit(btn);
-                    _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_UP, btn, mods);
-                    _sapp.x11.mouse_buttons &= ~(1 << btn);
-                }
-            }
+            _sapp_x11_on_buttonrelease(event);
             break;
         case EnterNotify:
-            /* don't send enter/leave events while mouse button held down */
-            if (0 == _sapp.x11.mouse_buttons) {
-                _sapp_x11_mouse_update(event->xcrossing.x, event->xcrossing.y, true);
-                _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_ENTER, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xcrossing.state));
-            }
+            _sapp_x11_on_enternotify(event);
             break;
         case LeaveNotify:
-            if (0 == _sapp.x11.mouse_buttons) {
-                _sapp_x11_mouse_update(event->xcrossing.x, event->xcrossing.y, true);
-                _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_LEAVE, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xcrossing.state));
-            }
+            _sapp_x11_on_leavenotify(event);
             break;
         case MotionNotify:
-            if (!_sapp.mouse.locked) {
-                _sapp_x11_mouse_update(event->xmotion.x, event->xmotion.y, false);
-                _sapp_x11_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID, _sapp_x11_mods(event->xmotion.state));
-            }
+            _sapp_x11_on_motionnotify(event);
             break;
         case ConfigureNotify:
-            if ((event->xconfigure.width != _sapp.window_width) || (event->xconfigure.height != _sapp.window_height)) {
-                _sapp.window_width = event->xconfigure.width;
-                _sapp.window_height = event->xconfigure.height;
-                _sapp.framebuffer_width = _sapp.window_width;
-                _sapp.framebuffer_height = _sapp.window_height;
-                _sapp_x11_app_event(SAPP_EVENTTYPE_RESIZED);
-            }
+            _sapp_x11_on_configurenotify(event);
             break;
         case PropertyNotify:
-            if (event->xproperty.state == PropertyNewValue) {
-                if (event->xproperty.atom == _sapp.x11.WM_STATE) {
-                    const int state = _sapp_x11_get_window_state();
-                    if (state != _sapp.x11.window_state) {
-                        _sapp.x11.window_state = state;
-                        if (state == IconicState) {
-                            _sapp_x11_app_event(SAPP_EVENTTYPE_ICONIFIED);
-                        }
-                        else if (state == NormalState) {
-                            _sapp_x11_app_event(SAPP_EVENTTYPE_RESTORED);
-                        }
-                    }
-                }
-            }
-            break;
-        case ClientMessage:
-            if (filtered) {
-                return;
-            }
-            if (event->xclient.message_type == _sapp.x11.WM_PROTOCOLS) {
-                const Atom protocol = (Atom)event->xclient.data.l[0];
-                if (protocol == _sapp.x11.WM_DELETE_WINDOW) {
-                    _sapp.quit_requested = true;
-                }
-            }
-            else if (event->xclient.message_type == _sapp.x11.xdnd.XdndEnter) {
-                const bool is_list = 0 != (event->xclient.data.l[1] & 1);
-                _sapp.x11.xdnd.source  = (Window)event->xclient.data.l[0];
-                _sapp.x11.xdnd.version = event->xclient.data.l[1] >> 24;
-                _sapp.x11.xdnd.format  = None;
-                if (_sapp.x11.xdnd.version > _SAPP_X11_XDND_VERSION) {
-                    return;
-                }
-                uint32_t count = 0;
-                Atom* formats = 0;
-                if (is_list) {
-                    count = _sapp_x11_get_window_property(_sapp.x11.xdnd.source, _sapp.x11.xdnd.XdndTypeList, XA_ATOM, (unsigned char**)&formats);
-                }
-                else {
-                    count = 3;
-                    formats = (Atom*) event->xclient.data.l + 2;
-                }
-                for (uint32_t i = 0; i < count; i++) {
-                    if (formats[i] == _sapp.x11.xdnd.text_uri_list) {
-                        _sapp.x11.xdnd.format = _sapp.x11.xdnd.text_uri_list;
-                        break;
-                    }
-                }
-                if (is_list && formats) {
-                    XFree(formats);
-                }
-            }
-            else if (event->xclient.message_type == _sapp.x11.xdnd.XdndDrop) {
-                if (_sapp.x11.xdnd.version > _SAPP_X11_XDND_VERSION) {
-                    return;
-                }
-                Time time = CurrentTime;
-                if (_sapp.x11.xdnd.format) {
-                    if (_sapp.x11.xdnd.version >= 1) {
-                        time = (Time)event->xclient.data.l[2];
-                    }
-                    XConvertSelection(_sapp.x11.display,
-                                      _sapp.x11.xdnd.XdndSelection,
-                                      _sapp.x11.xdnd.format,
-                                      _sapp.x11.xdnd.XdndSelection,
-                                      _sapp.x11.window,
-                                      time);
-                }
-                else if (_sapp.x11.xdnd.version >= 2) {
-                    XEvent reply;
-                    _sapp_clear(&reply, sizeof(reply));
-                    reply.type = ClientMessage;
-                    reply.xclient.window = _sapp.x11.xdnd.source;
-                    reply.xclient.message_type = _sapp.x11.xdnd.XdndFinished;
-                    reply.xclient.format = 32;
-                    reply.xclient.data.l[0] = (long)_sapp.x11.window;
-                    reply.xclient.data.l[1] = 0;    // drag was rejected
-                    reply.xclient.data.l[2] = None;
-                    XSendEvent(_sapp.x11.display, _sapp.x11.xdnd.source, False, NoEventMask, &reply);
-                    XFlush(_sapp.x11.display);
-                }
-            }
-            else if (event->xclient.message_type == _sapp.x11.xdnd.XdndPosition) {
-                /* drag operation has moved over the window
-                   FIXME: we could track the mouse position here, but
-                   this isn't implemented on other platforms either so far
-                */
-                if (_sapp.x11.xdnd.version > _SAPP_X11_XDND_VERSION) {
-                    return;
-                }
-                XEvent reply;
-                _sapp_clear(&reply, sizeof(reply));
-                reply.type = ClientMessage;
-                reply.xclient.window = _sapp.x11.xdnd.source;
-                reply.xclient.message_type = _sapp.x11.xdnd.XdndStatus;
-                reply.xclient.format = 32;
-                reply.xclient.data.l[0] = (long)_sapp.x11.window;
-                if (_sapp.x11.xdnd.format) {
-                    /* reply that we are ready to copy the dragged data */
-                    reply.xclient.data.l[1] = 1;    // accept with no rectangle
-                    if (_sapp.x11.xdnd.version >= 2) {
-                        reply.xclient.data.l[4] = (long)_sapp.x11.xdnd.XdndActionCopy;
-                    }
-                }
-                XSendEvent(_sapp.x11.display, _sapp.x11.xdnd.source, False, NoEventMask, &reply);
-                XFlush(_sapp.x11.display);
-            }
+            _sapp_x11_on_propertynotify(event);
             break;
         case SelectionNotify:
-            if (event->xselection.property == _sapp.x11.xdnd.XdndSelection) {
-                char* data = 0;
-                uint32_t result = _sapp_x11_get_window_property(event->xselection.requestor,
-                                                                event->xselection.property,
-                                                                event->xselection.target,
-                                                                (unsigned char**) &data);
-                if (_sapp.drop.enabled && result) {
-                    if (_sapp_x11_parse_dropped_files_list(data)) {
-                        _sapp.mouse.dx = 0.0f;
-                        _sapp.mouse.dy = 0.0f;
-                        if (_sapp_events_enabled()) {
-                            // FIXME: Figure out how to get modifier key state here.
-                            // The XSelection event has no 'state' item, and
-                            // XQueryKeymap() always returns a zeroed array.
-                            _sapp_init_event(SAPP_EVENTTYPE_FILES_DROPPED);
-                            _sapp_call_event(&_sapp.event);
-                        }
-                    }
-                }
-                if (_sapp.x11.xdnd.version >= 2) {
-                    XEvent reply;
-                    _sapp_clear(&reply, sizeof(reply));
-                    reply.type = ClientMessage;
-                    reply.xclient.window = _sapp.x11.xdnd.source;
-                    reply.xclient.message_type = _sapp.x11.xdnd.XdndFinished;
-                    reply.xclient.format = 32;
-                    reply.xclient.data.l[0] = (long)_sapp.x11.window;
-                    reply.xclient.data.l[1] = result;
-                    reply.xclient.data.l[2] = (long)_sapp.x11.xdnd.XdndActionCopy;
-                    XSendEvent(_sapp.x11.display, _sapp.x11.xdnd.source, False, NoEventMask, &reply);
-                    XFlush(_sapp.x11.display);
-                }
-            }
+            _sapp_x11_on_selectionnotify(event);
             break;
         case DestroyNotify:
+            // not a bug
+            break;
+        case ClientMessage:
+            _sapp_x11_on_clientmessage(event);
             break;
     }
 }
@@ -11090,7 +11411,7 @@ _SOKOL_PRIVATE void _sapp_x11_process_event(XEvent* event) {
 #if !defined(_SAPP_GLX)
 
 _SOKOL_PRIVATE void _sapp_egl_init(void) {
-#if defined(SOKOL_GLCORE33)
+#if defined(SOKOL_GLCORE)
     if (!eglBindAPI(EGL_OPENGL_API)) {
         _SAPP_PANIC(LINUX_EGL_BIND_OPENGL_API_FAILED);
     }
@@ -11114,7 +11435,7 @@ _SOKOL_PRIVATE void _sapp_egl_init(void) {
     EGLint alpha_size = _sapp.desc.alpha ? 8 : 0;
     const EGLint config_attrs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        #if defined(SOKOL_GLCORE33)
+        #if defined(SOKOL_GLCORE)
             EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
         #elif defined(SOKOL_GLES3)
             EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
@@ -11177,7 +11498,7 @@ _SOKOL_PRIVATE void _sapp_egl_init(void) {
     }
 
     EGLint ctx_attrs[] = {
-        #if defined(SOKOL_GLCORE33)
+        #if defined(SOKOL_GLCORE)
             EGL_CONTEXT_MAJOR_VERSION, _sapp.desc.gl_major_version,
             EGL_CONTEXT_MINOR_VERSION, _sapp.desc.gl_minor_version,
             EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
@@ -11195,6 +11516,7 @@ _SOKOL_PRIVATE void _sapp_egl_init(void) {
     if (!eglMakeCurrent(_sapp.egl.display, _sapp.egl.surface, _sapp.egl.surface, _sapp.egl.context)) {
         _SAPP_PANIC(LINUX_EGL_MAKE_CURRENT_FAILED);
     }
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint*)&_sapp.gl.framebuffer);
 
     eglSwapInterval(_sapp.egl.display, _sapp.swap_interval);
 }
@@ -11240,11 +11562,12 @@ _SOKOL_PRIVATE void _sapp_linux_run(const sapp_desc* desc) {
     }
     _sapp.x11.screen = DefaultScreen(_sapp.x11.display);
     _sapp.x11.root = DefaultRootWindow(_sapp.x11.display);
-    XkbSetDetectableAutoRepeat(_sapp.x11.display, true, NULL);
     _sapp_x11_query_system_dpi();
     _sapp.dpi_scale = _sapp.x11.dpi / 96.0f;
     _sapp_x11_init_extensions();
     _sapp_x11_create_cursors();
+    XkbSetDetectableAutoRepeat(_sapp.x11.display, true, NULL);
+    _sapp_x11_init_keytable();
 #if defined(_SAPP_GLX)
     _sapp_glx_init();
     Visual* visual = 0;
@@ -11445,8 +11768,6 @@ SOKOL_API_IMPL const void* sapp_egl_get_context(void) {
 SOKOL_API_IMPL void sapp_show_keyboard(bool show) {
     #if defined(_SAPP_IOS)
     _sapp_ios_show_keyboard(show);
-    #elif defined(_SAPP_EMSCRIPTEN)
-    _sapp_emsc_show_keyboard(show);
     #elif defined(_SAPP_ANDROID)
     _sapp_android_show_keyboard(show);
     #else
@@ -11704,22 +12025,7 @@ SOKOL_API_IMPL const void* sapp_metal_get_device(void) {
     #endif
 }
 
-SOKOL_API_IMPL const void* sapp_metal_get_renderpass_descriptor(void) {
-    SOKOL_ASSERT(_sapp.valid);
-    #if defined(SOKOL_METAL)
-        #if defined(_SAPP_MACOS)
-            const void* obj = (__bridge const void*) [_sapp.macos.view currentRenderPassDescriptor];
-        #else
-            const void* obj = (__bridge const void*) [_sapp.ios.view currentRenderPassDescriptor];
-        #endif
-        SOKOL_ASSERT(obj);
-        return obj;
-    #else
-        return 0;
-    #endif
-}
-
-SOKOL_API_IMPL const void* sapp_metal_get_drawable(void) {
+SOKOL_API_IMPL const void* sapp_metal_get_current_drawable(void) {
     SOKOL_ASSERT(_sapp.valid);
     #if defined(SOKOL_METAL)
         #if defined(_SAPP_MACOS)
@@ -11728,6 +12034,34 @@ SOKOL_API_IMPL const void* sapp_metal_get_drawable(void) {
             const void* obj = (__bridge const void*) [_sapp.ios.view currentDrawable];
         #endif
         SOKOL_ASSERT(obj);
+        return obj;
+    #else
+        return 0;
+    #endif
+}
+
+SOKOL_API_IMPL const void* sapp_metal_get_depth_stencil_texture(void) {
+    SOKOL_ASSERT(_sapp.valid);
+    #if defined(SOKOL_METAL)
+        #if defined(_SAPP_MACOS)
+            const void* obj = (__bridge const void*) [_sapp.macos.view depthStencilTexture];
+        #else
+            const void* obj = (__bridge const void*) [_sapp.ios.view depthStencilTexture];
+        #endif
+        return obj;
+    #else
+        return 0;
+    #endif
+}
+
+SOKOL_API_IMPL const void* sapp_metal_get_msaa_color_texture(void) {
+    SOKOL_ASSERT(_sapp.valid);
+    #if defined(SOKOL_METAL)
+        #if defined(_SAPP_MACOS)
+            const void* obj = (__bridge const void*) [_sapp.macos.view multisampleColorTexture];
+        #else
+            const void* obj = (__bridge const void*) [_sapp.ios.view multisampleColorTexture];
+        #endif
         return obj;
     #else
         return 0;
@@ -11781,14 +12115,29 @@ SOKOL_API_IMPL const void* sapp_d3d11_get_swap_chain(void) {
 #endif
 }
 
-SOKOL_API_IMPL const void* sapp_d3d11_get_render_target_view(void) {
+SOKOL_API_IMPL const void* sapp_d3d11_get_render_view(void) {
     SOKOL_ASSERT(_sapp.valid);
     #if defined(SOKOL_D3D11)
-        if (_sapp.d3d11.msaa_rtv) {
+        if (_sapp.sample_count > 1) {
+            SOKOL_ASSERT(_sapp.d3d11.msaa_rtv);
             return _sapp.d3d11.msaa_rtv;
-        }
-        else {
+        } else {
+            SOKOL_ASSERT(_sapp.d3d11.rtv);
             return _sapp.d3d11.rtv;
+        }
+    #else
+        return 0;
+    #endif
+}
+
+SOKOL_API_IMPL const void* sapp_d3d11_get_resolve_view(void) {
+    SOKOL_ASSERT(_sapp.valid);
+    #if defined(SOKOL_D3D11)
+        if (_sapp.sample_count > 1) {
+            SOKOL_ASSERT(_sapp.d3d11.rtv);
+            return _sapp.d3d11.rtv;
+        } else {
+            return 0;
         }
     #else
         return 0;
@@ -11826,9 +12175,10 @@ SOKOL_API_IMPL const void* sapp_wgpu_get_render_view(void) {
     SOKOL_ASSERT(_sapp.valid);
     #if defined(_SAPP_EMSCRIPTEN) && defined(SOKOL_WGPU)
         if (_sapp.sample_count > 1) {
+            SOKOL_ASSERT(_sapp.wgpu.msaa_view);
             return (const void*) _sapp.wgpu.msaa_view;
-        }
-        else {
+        } else {
+            SOKOL_ASSERT(_sapp.wgpu.swapchain_view);
             return (const void*) _sapp.wgpu.swapchain_view;
         }
     #else
@@ -11840,9 +12190,9 @@ SOKOL_API_IMPL const void* sapp_wgpu_get_resolve_view(void) {
     SOKOL_ASSERT(_sapp.valid);
     #if defined(_SAPP_EMSCRIPTEN) && defined(SOKOL_WGPU)
         if (_sapp.sample_count > 1) {
+            SOKOL_ASSERT(_sapp.wgpu.swapchain_view);
             return (const void*) _sapp.wgpu.swapchain_view;
-        }
-        else {
+        } else {
             return 0;
         }
     #else
@@ -11854,6 +12204,33 @@ SOKOL_API_IMPL const void* sapp_wgpu_get_depth_stencil_view(void) {
     SOKOL_ASSERT(_sapp.valid);
     #if defined(_SAPP_EMSCRIPTEN) && defined(SOKOL_WGPU)
         return (const void*) _sapp.wgpu.depth_stencil_view;
+    #else
+        return 0;
+    #endif
+}
+
+SOKOL_API_IMPL uint32_t sapp_gl_get_framebuffer(void) {
+    SOKOL_ASSERT(_sapp.valid);
+    #if defined(_SAPP_ANY_GL)
+        return _sapp.gl.framebuffer;
+    #else
+        return 0;
+    #endif
+}
+
+SOKOL_API_IMPL int sapp_gl_get_major_version(void) {
+    SOKOL_ASSERT(_sapp.valid);
+    #if defined(SOKOL_GLCORE)
+        return _sapp.desc.gl_major_version;
+    #else
+        return 0;
+    #endif
+}
+
+SOKOL_API_IMPL int sapp_gl_get_minor_version(void) {
+    SOKOL_ASSERT(_sapp.valid);
+    #if defined(SOKOL_GLCORE)
+        return _sapp.desc.gl_minor_version;
     #else
         return 0;
     #endif

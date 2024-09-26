@@ -55,17 +55,17 @@ pub mut:
 	end_index   i64 = -1
 
 	end_line      u8  = `\n`
-	end_line_len  int = csv.endline_cr_len // size of the endline rune \n = 1, \r\n = 2
-	separator     u8  = `,` // comma is the default separator
-	separator_len int = 1 // size of the separator rune
-	quote         u8  = `"` // double quote is the standard quote char
+	end_line_len  int = endline_cr_len // size of the endline rune \n = 1, \r\n = 2
+	separator     u8  = `,`            // comma is the default separator
+	separator_len int = 1              // size of the separator rune
+	quote         u8  = `"`            // double quote is the standard quote char
 	quote_remove  bool // if true clear the cell from the quotes
 	comment       u8 = `#` // every line that start with the quote char is ignored
 
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string = '#' // retunrn this if empty cell
 	// ram buffer
-	mem_buf_type  u32    // buffer type 0=File,1=RAM
+	mem_buf_type  u32     // buffer type 0=File,1=RAM
 	mem_buf       voidptr // buffer used to load chars from file
 	mem_buf_size  i64     // size of the buffer
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
@@ -74,12 +74,13 @@ pub mut:
 	csv_map [][]i64
 	// header
 	header_row  int = -1 // row index of the header in the csv_map
-	header_list []HeaderItem // list of the header item
+	header_list []HeaderItem   // list of the header item
 	header_map  map[string]int // map from header label to column index
 }
 
 @[params]
 pub struct RandomAccessReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
@@ -90,9 +91,9 @@ pub struct RandomAccessReaderConfig {
 	comment      u8     = `#` // every line that start with the quote char is ignored
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
-	end_line_len int = csv.endline_cr_len // size of the endline rune
-	quote        u8  = `"` // double quote is the standard quote char
-	quote_remove bool   // if true clear the cell from the quotes
+	end_line_len int = endline_cr_len // size of the endline rune
+	quote        u8  = `"`            // double quote is the standard quote char
+	quote_remove bool // if true clear the cell from the quotes
 }
 
 /******************************************************************************
@@ -114,7 +115,7 @@ pub fn csv_reader(cfg RandomAccessReaderConfig) !&RandomAccessReader {
 	cr.end_index = cfg.end_index
 
 	if cfg.scr_buf != 0 && cfg.scr_buf_len > 0 {
-		cr.mem_buf_type = csv.ram_csv // RAM buffer
+		cr.mem_buf_type = ram_csv // RAM buffer
 		cr.mem_buf = cfg.scr_buf
 		cr.mem_buf_size = cfg.scr_buf_len
 		if cfg.end_index == -1 {
@@ -135,7 +136,7 @@ pub fn csv_reader(cfg RandomAccessReaderConfig) !&RandomAccessReader {
 		if !os.exists(cfg.file_path) {
 			return error('ERROR: file ${cfg.file_path} not found!')
 		}
-		cr.mem_buf_type = csv.file_csv // File buffer
+		cr.mem_buf_type = file_csv // File buffer
 		// allocate the memory
 		unsafe {
 			cr.mem_buf = malloc(cfg.mem_buf_size)
@@ -183,9 +184,9 @@ pub fn csv_reader(cfg RandomAccessReaderConfig) !&RandomAccessReader {
 
 // dispose_csv_reader release the resources used by the csv_reader
 pub fn (mut cr RandomAccessReader) dispose_csv_reader() {
-	if cr.mem_buf_type == csv.ram_csv {
+	if cr.mem_buf_type == ram_csv {
 		// do nothing, ram buffer is static
-	} else if cr.mem_buf_type == csv.file_csv {
+	} else if cr.mem_buf_type == file_csv {
 		// file close
 		if cr.f.is_opened {
 			cr.f.close()
@@ -204,7 +205,7 @@ pub fn (mut cr RandomAccessReader) dispose_csv_reader() {
 
 fn (mut cr RandomAccessReader) fill_buffer(i i64) !i64 {
 	// use ram
-	if cr.mem_buf_type == csv.ram_csv {
+	if cr.mem_buf_type == ram_csv {
 		// do nothing, ram buffer are static for now
 		cr.mem_buf_start = i
 		cr.mem_buf_end = cr.mem_buf_size
@@ -212,7 +213,7 @@ fn (mut cr RandomAccessReader) fill_buffer(i i64) !i64 {
 		// println("fill_buffer RAM: ${i} read_bytes_count: ${read_bytes_count} mem_buf_start: ${cr.mem_buf_start} mem_buf_end: ${cr.mem_buf_end}")
 		return i64(read_bytes_count)
 		// use file
-	} else if cr.mem_buf_type == csv.file_csv {
+	} else if cr.mem_buf_type == file_csv {
 		cr.start_index = i
 		cr.f.seek(cr.start_index, .start)!
 		// IMPORTANT: add 64 bit support in vlib!!
@@ -239,7 +240,7 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 	mut quote_flag := false // true if we are parsing inside a quote
 
 	// if File return to the start of the file
-	if cr.mem_buf_type == csv.file_csv {
+	if cr.mem_buf_type == file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 
@@ -252,7 +253,7 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := i64(0)
-			for i1 <= read_bytes_count {
+			for i1 < read_bytes_count {
 				// println("loop char: ${*&u8(p1):c}")
 				// manage quote char
 				if *p1 == cr.quote {
@@ -324,7 +325,7 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 	}
 
 	// if File return to the start of the file
-	if cr.mem_buf_type == csv.file_csv {
+	if cr.mem_buf_type == file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 
@@ -344,6 +345,7 @@ pub fn (mut cr RandomAccessReader) get_row(y int) ![]string {
 
 @[params]
 pub struct GetCellConfig {
+pub:
 	x int
 	y int
 }
@@ -444,6 +446,7 @@ pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
 ******************************************************************************/
 @[params]
 pub struct GetHeaderConf {
+pub:
 	header_row int // row where to inspect the header
 }
 
@@ -457,9 +460,9 @@ pub fn (mut cr RandomAccessReader) build_header_dict(cfg GetHeaderConf) ! {
 			// fill the base struct
 			label := cr.get_cell(x: col, y: cfg.header_row)!
 			mut h := HeaderItem{
-				label: label
+				label:  label
 				column: col
-				htype: .string
+				htype:  .string
 			}
 
 			// try to infer the type if we haev at least one more row
@@ -519,7 +522,7 @@ pub fn (mut cr RandomAccessReader) rows_count() !i64 {
 	mut count := i64(0)
 	mut i := i64(0)
 
-	if cr.mem_buf_type == csv.file_csv {
+	if cr.mem_buf_type == file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 	unsafe {
@@ -529,7 +532,7 @@ pub fn (mut cr RandomAccessReader) rows_count() !i64 {
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := 0
-			for i1 <= read_bytes_count {
+			for i1 < read_bytes_count {
 				if *p1 == cr.end_line {
 					count++
 				}
@@ -539,7 +542,7 @@ pub fn (mut cr RandomAccessReader) rows_count() !i64 {
 			i += read_bytes_count
 		}
 	}
-	if cr.mem_buf_type == csv.file_csv {
+	if cr.mem_buf_type == file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 	// println("rows_count Done!")

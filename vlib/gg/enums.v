@@ -23,8 +23,8 @@ pub enum MouseButtons {
 @[flag]
 pub enum Modifier {
 	shift // (1<<0)
-	ctrl // (1<<1)
-	alt // (1<<2)
+	ctrl  // (1<<1)
+	alt   // (1<<2)
 	super // (1<<3)
 }
 
@@ -80,10 +80,10 @@ pub enum KeyCode {
 	x             = 88
 	y             = 89
 	z             = 90
-	left_bracket  = 91 //[
-	backslash     = 92 //\
-	right_bracket = 93 //]
-	grave_accent  = 96 //`
+	left_bracket  = 91  //[
+	backslash     = 92  //\
+	right_bracket = 93  //]
+	grave_accent  = 96  //`
 	world_1       = 161 // non-us #1
 	world_2       = 162 // non-us #2
 	escape        = 256

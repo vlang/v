@@ -8,4 +8,3 @@ fn test_postfix() {
 	a := [x]
 	_ = a[x--]
 }
-

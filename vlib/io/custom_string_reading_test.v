@@ -29,7 +29,7 @@ fn read_from_string(text string, capacity int) []u8 {
 		text: text
 	}
 	mut stream := io.new_buffered_reader(reader: str, cap: capacity)
-	//
+
 	mut buf := []u8{len: 1}
 	mut res := []u8{}
 	mut i := 0
@@ -53,5 +53,25 @@ pub fn test_reading_from_a_string() {
 		large_string_bytes := []u8{len: 1000, init: `x`}
 		large_string := large_string_bytes.bytestr()
 		assert read_from_string(large_string, capacity) == large_string_bytes
+	}
+}
+
+pub fn test_buffered_reader_readline() {
+	text := 'hello\nworld'
+	want := text.split_into_lines()
+	mut str := StringReader{
+		text: text
+	}
+	mut stream := io.new_buffered_reader(reader: str)
+	mut buf := []u8{len: 1}
+	mut i := 0
+	for {
+		line := stream.read_line() or {
+			assert err is io.Eof
+			break
+		}
+		assert i < want.len
+		assert want[i] == line
+		i++
 	}
 }

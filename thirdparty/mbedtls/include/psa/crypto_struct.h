@@ -202,6 +202,12 @@ typedef struct
 #endif /* MBEDTLS_PSA_BUILTIN_ALG_HKDF ||
           MBEDTLS_PSA_BUILTIN_ALG_HKDF_EXTRACT ||
           MBEDTLS_PSA_BUILTIN_ALG_HKDF_EXPAND */
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_TLS12_ECJPAKE_TO_PMS)
+typedef struct
+{
+    uint8_t MBEDTLS_PRIVATE(data)[PSA_TLS12_ECJPAKE_TO_PMS_DATA_SIZE];
+} psa_tls12_ecjpake_to_pms_t;
+#endif /* MBEDTLS_PSA_BUILTIN_ALG_TLS12_ECJPAKE_TO_PMS */
 
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_TLS12_PRF) || \
     defined(MBEDTLS_PSA_BUILTIN_ALG_TLS12_PSK_TO_MS)
@@ -266,6 +272,9 @@ struct psa_key_derivation_s
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_TLS12_PRF) || \
     defined(MBEDTLS_PSA_BUILTIN_ALG_TLS12_PSK_TO_MS)
         psa_tls12_prf_key_derivation_t MBEDTLS_PRIVATE(tls12_prf);
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_TLS12_ECJPAKE_TO_PMS)
+        psa_tls12_ecjpake_to_pms_t MBEDTLS_PRIVATE(tls12_ecjpake_to_pms);
 #endif
     } MBEDTLS_PRIVATE(ctx);
 };

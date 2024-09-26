@@ -1,0 +1,22 @@
+struct Foo {
+	x int
+}
+
+fn main() {
+	foo := 'foo is a string'
+	a := {
+		...foo // not a map
+		'a': 5
+		'b': 6
+	}
+	println(a)
+	b := {
+		...(a.clone()) // ok
+		'c': 99
+	}
+	println(b)
+	c := {
+		...Foo{9} // also not ok
+	}
+	println(c)
+}

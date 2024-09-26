@@ -29,6 +29,7 @@ pub mut:
 }
 
 pub struct SSEMessage {
+pub:
 	id    string
 	event string
 	data  string

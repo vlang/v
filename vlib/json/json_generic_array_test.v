@@ -9,7 +9,7 @@ pub:
 	skip            ?int
 	fields          ?[]string // This breaks the compiler when encoding to JSON
 	conflicts       ?bool
-	read_quorum     ?int      @[json: r]
+	read_quorum     ?int @[json: r]
 	update          ?bool
 	stable          ?bool
 	stale           ?string
@@ -18,7 +18,7 @@ pub:
 
 fn test_string() {
 	t := DocumentFindFilter[string]{
-		selector: 'aa'
+		selector:  'aa'
 		selector2: ['a', 'b']
 		selector3: ['z']!
 	}
@@ -29,7 +29,7 @@ fn test_string() {
 
 fn test_int() ! {
 	t := DocumentFindFilter[int]{
-		selector: 1
+		selector:  1
 		selector2: [1, 2]
 		selector3: [3]!
 	}

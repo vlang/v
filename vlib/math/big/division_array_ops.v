@@ -1,15 +1,12 @@
 module big
 
-import math
 import math.bits
 
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are allocated but of length 0
 @[direct_array_access]
 fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
-	for index in 0 .. operand_a.len {
-		remainder << operand_a[index]
-	}
+	remainder << operand_a
 
 	len_diff := operand_a.len - operand_b.len
 	$if debug {
@@ -21,9 +18,7 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	for _ in 0 .. len_diff {
 		divisor << u32(0)
 	}
-	for index in 0 .. operand_b.len {
-		divisor << operand_b[index]
-	}
+	divisor << operand_b
 	for _ in 0 .. len_diff + 1 {
 		quotient << u32(0)
 	}

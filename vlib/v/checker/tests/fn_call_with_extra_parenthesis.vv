@@ -2,5 +2,5 @@ fn doit(i int) {
 }
 
 fn main() {
-	main.doit()(1)
+	doit()(1)
 }

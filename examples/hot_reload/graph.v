@@ -14,19 +14,17 @@ mut:
 }
 
 fn main() {
-	mut context := &Context{
-		gg: 0
-	}
+	mut context := &Context{}
 	context.gg = gg.new_context(
-		width: size
-		height: size
-		font_size: 20
-		user_data: context
-		window_title: 'Graph builder'
+		width:         size
+		height:        size
+		font_size:     20
+		user_data:     context
+		window_title:  'Graph builder'
 		create_window: true
-		frame_fn: frame
-		resizable: true
-		bg_color: gx.white
+		frame_fn:      frame
+		resizable:     true
+		bg_color:      gx.white
 	)
 	context.gg.run()
 }

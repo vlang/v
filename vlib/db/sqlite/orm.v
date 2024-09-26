@@ -140,7 +140,7 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 			err = stmt.bind_text(c, data)
 		}
 		time.Time {
-			err = stmt.bind_int(c, int(data.unix))
+			err = stmt.bind_int(c, int(data.unix()))
 		}
 		orm.InfixType {
 			err = bind(stmt, c, data.right)

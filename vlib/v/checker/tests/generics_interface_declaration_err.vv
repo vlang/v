@@ -1,8 +1,8 @@
 interface Expr {
-	accept(v Visitor<R>) R
+	accept(v Visitor[R]) R
 }
 
-interface Visitor<R> {
+interface Visitor[R] {
 }
 
 fn main() {

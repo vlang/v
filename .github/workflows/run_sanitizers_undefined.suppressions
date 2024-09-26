@@ -1,0 +1,4 @@
+## See https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html 
+function:rand__internal_ulid_at_millisecond
+function:sync__pool__process_in_thread
+function:rand__deinit

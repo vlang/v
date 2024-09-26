@@ -117,7 +117,8 @@ fn abs64(x i64) u64 {
 //---------------------------------------
 
 // convert from data format to compact u64
-pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
+pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool,
+	in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
 	width := if in_width != 0 { abs64(in_width) } else { u64(0) }
 	align := if in_width > 0 { u64(1 << 5) } else { u64(0) } // two bit 0 .left 1 .right, for now we use only one
 	upper_case := if in_upper_case { u64(1 << 7) } else { u64(0) }
@@ -134,7 +135,8 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 }
 
 // convert from data format to compact u32
-pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
+pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool,
+	in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
 	width := if in_width != 0 { abs64(in_width) } else { u32(0) }
 	align := if in_width > 0 { u32(1 << 5) } else { u32(0) } // two bit 0 .left 1 .right, for now we use only one
 	upper_case := if in_upper_case { u32(1 << 7) } else { u32(0) }
@@ -188,12 +190,12 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
-		pad_ch: pad_ch // padding char
-		len0: len0_set // default len for whole the number or string
-		len1: len1_set // number of decimal digits, if needed
-		positive: true // mandatory: the sign of the number passed
-		sign_flag: sign_set // flag for print sign as prefix in padding
-		align: .left // alignment of the string
+		pad_ch:       pad_ch     // padding char
+		len0:         len0_set   // default len for whole the number or string
+		len1:         len1_set   // number of decimal digits, if needed
+		positive:     true       // mandatory: the sign of the number passed
+		sign_flag:    sign_set   // flag for print sign as prefix in padding
+		align:        .left      // alignment of the string
 		rm_tail_zero: tail_zeros // false // remove the tail zeros from floats
 	}
 
@@ -212,38 +214,45 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	unsafe {
 		// strings
 		if typ == .si_s {
-			mut s := ''
 			if upper_case {
-				s = data.d.d_s.to_upper()
+				s := data.d.d_s.to_upper()
+				if width == 0 {
+					sb.write_string(s)
+				} else {
+					strconv.format_str_sb(s, bf, mut sb)
+				}
+				s.free()
 			} else {
-				s = data.d.d_s.clone()
+				if width == 0 {
+					sb.write_string(data.d.d_s)
+				} else {
+					strconv.format_str_sb(data.d.d_s, bf, mut sb)
+				}
 			}
-			if width == 0 {
-				sb.write_string(s)
-			} else {
-				strconv.format_str_sb(s, bf, mut sb)
-			}
-			s.free()
 			return
 		}
 
 		if typ == .si_r {
 			if width > 0 {
-				mut s := ''
 				if upper_case {
-					s = data.d.d_s.to_upper()
+					s := data.d.d_s.to_upper()
+					for _ in 1 .. (1 + (if width > 0 {
+						width
+					} else {
+						0
+					})) {
+						sb.write_string(s)
+					}
+					s.free()
 				} else {
-					s = data.d.d_s.clone()
+					for _ in 1 .. (1 + (if width > 0 {
+						width
+					} else {
+						0
+					})) {
+						sb.write_string(data.d.d_s)
+					}
 				}
-
-				for _ in 1 .. (1 + (if width > 0 {
-					width
-				} else {
-					0
-				})) {
-					sb.write_string(s)
-				}
-				s.free()
 			}
 			return
 		}

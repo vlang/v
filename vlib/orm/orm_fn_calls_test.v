@@ -3,7 +3,7 @@
 import db.sqlite
 
 struct User {
-	id   int    @[primary; sql: serial]
+	id   int @[primary; sql: serial]
 	name string
 	age  int
 }
@@ -21,12 +21,12 @@ fn test_fn_calls() {
 
 	first_user := User{
 		name: 'first'
-		age: 25
+		age:  25
 	}
 
 	second_user := User{
 		name: 'second'
-		age: 14
+		age:  14
 	}
 
 	sql db {

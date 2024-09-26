@@ -8,14 +8,14 @@ fn test_valid_parsing() {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'sample'
+			name:     'sample'
 			children: [
 				xml.XMLNode{
-					name: 'html'
+					name:     'html'
 					children: ['This is &lt;b&gt;bold&lt;/b&gt;']
 				},
 				xml.XMLNode{
-					name: 'html'
+					name:     'html'
 					children: [xml.XMLCData{
 						text: 'This is <b>bold</b>'
 					}]

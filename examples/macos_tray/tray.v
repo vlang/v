@@ -23,7 +23,7 @@ struct TrayMenuItem {
 // Parameters to configure the tray button.
 struct TrayParams {
 	items    []TrayMenuItem         @[required]
-	on_click fn (item TrayMenuItem)
+	on_click fn (item TrayMenuItem) @[required]
 }
 
 // Internal Cocoa application state.
@@ -47,15 +47,15 @@ fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {
 
 fn main() {
 	mut my_app := &MyApp{
-		tray_info: 0
+		tray_info: unsafe { nil }
 	}
 
 	my_app.tray_info = C.tray_app_init(TrayParams{
-		items: [TrayMenuItem{
-			id: 'hello'
+		items:    [TrayMenuItem{
+			id:   'hello'
 			text: 'Hello'
 		}, TrayMenuItem{
-			id: 'quit'
+			id:   'quit'
 			text: 'Quit!'
 		}]
 		on_click: my_app.on_menu_item_click

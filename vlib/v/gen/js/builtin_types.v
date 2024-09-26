@@ -335,164 +335,189 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'u16', 'u32', 'int_literal' {
+			'i8', 'i16', 'int', 'int_literal' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
-					typ_name: typ_name
+					typ_name:      typ_name
 					default_value: 'new Number(0)'
 					// mask <=32 bit numbers with 0xffffffff
 					constructor: 'this.val = Math.floor(Number(val) & 0xffffffff) '
-					value_of: 'Number(this.val)'
-					to_string: 'this.valueOf().toString()'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: '+this'
+					value_of:    'Number(this.val)'
+					to_string:   'this.valueOf().toString()'
+					eq:          'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:    '+this'
+				)
+			}
+			// u16 and u32 requires special handling in JavaScript to correctly represent it.
+			// u16, '>>> 0' combined with a mask of 0xffff limits it to the 0 to 2^16-1 range, correctly handling values as unsigned 16-bit integers.
+			'u16' {
+				g.gen_builtin_prototype(
+					typ_name:      typ_name
+					default_value: 'new Number(0)'
+					constructor:   'this.val = Math.floor(Number(val) & 0xffff) >>> 0'
+					value_of:      'Number(this.val)'
+					to_string:     'this.valueOf().toString()'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
+				)
+			}
+			// u32 '>>> 0' combined with a mask of 0xffffffff limits it to the 0 to 2^32-1 range, correctly handling values as unsigned 32-bit integers.
+			'u32' {
+				g.gen_builtin_prototype(
+					typ_name:      typ_name
+					default_value: 'new Number(0)'
+					constructor:   'this.val = Math.floor(Number(val) & 0xffffffff) >>> 0'
+					value_of:      'Number(this.val)'
+					to_string:     'this.valueOf().toString()'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
 				)
 			}
 			// u64 and i64 are so big that their values do not fit into JS number so we use BigInt.
 			'u64' {
 				if g.pref.output_es5 {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: '0'
-						constructor: 'this.val =val.floor() >> 0'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val =val.floor() >> 0'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				} else {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: 'BigInt(0)'
-						constructor: 'this.val = BigInt.asUintN(64,BigInt(val))'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val = BigInt.asUintN(64,BigInt(val))'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				}
 			}
 			'i64' {
 				if g.pref.output_es5 {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: '0'
-						constructor: 'this.val =val.floor() >> 0'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val =val.floor() >> 0'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				} else {
 					g.gen_builtin_prototype(
-						typ_name: typ_name
+						typ_name:      typ_name
 						default_value: 'BigInt(0)'
-						constructor: 'this.val = BigInt.asIntN(64,BigInt(val))'
-						value_of: 'this.val'
-						to_string: 'this.val.toString()'
-						eq: 'new bool(self.valueOf() === other.valueOf())'
-						to_jsval: 'this.val'
+						constructor:   'this.val = BigInt.asIntN(64,BigInt(val))'
+						value_of:      'this.val'
+						to_string:     'this.val.toString()'
+						eq:            'new bool(self.valueOf() === other.valueOf())'
+						to_jsval:      'this.val'
 					)
 				}
 			}
 			'u8' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
+					typ_name:      typ_name
 					default_value: 'new Number(0)'
-					constructor: 'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(Number(val)) }'
-					value_of: 'this.val | 0'
-					to_string: 'new string(this.val + "")'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: '+this'
+					constructor:   'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(Number(val)) }'
+					value_of:      'this.val | 0'
+					to_string:     'new string(this.val + "")'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
 				)
 			}
 			'rune' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
+					typ_name:      typ_name
 					default_value: 'new Number(0)'
-					constructor: 'val = val.valueOf(); if (typeof val == "string") {this.val = val.charCodeAt();}  else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
-					value_of: 'this.val | 0'
-					to_string: 'new string(this.val + "")'
-					eq: 'new bool(self.valueOf() === other.valueOf())'
-					to_jsval: '+this'
+					constructor:   'val = val.valueOf(); if (typeof val == "string") {this.val = val.charCodeAt();}  else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  val | 0 }'
+					value_of:      'this.val | 0'
+					to_string:     'new string(this.val + "")'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
 				)
 			}
 			'f32', 'f64', 'float_literal' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					constructor: 'this.val = Number(val)'
+					typ_name:      typ_name
+					constructor:   'this.val = Number(val)'
 					default_value: 'new Number(0)'
-					to_jsval: '+this'
+					to_jsval:      '+this'
 				)
 			}
 			'bool' {
 				g.gen_builtin_prototype(
-					constructor: 'this.val = val instanceof bool ? val.val : +val !== 0'
-					typ_name: typ_name
+					constructor:   'this.val = val instanceof bool ? val.val : +val !== 0'
+					typ_name:      typ_name
 					default_value: 'new Boolean(false)'
-					to_jsval: '+this != 0'
-					eq: 'new bool(self.val === other.valueOf())'
+					to_jsval:      '+this != 0'
+					eq:            'new bool(self.val === other.valueOf())'
 				)
 			}
 			'string' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'str'
+					typ_name:      typ_name
+					val_name:      'str'
 					default_value: 'new String("")'
-					constructor: 'this.str = str.toString(); this.len = this.str.length'
-					value_of: 'this.str'
-					to_string: 'this.str'
-					eq: 'new bool(self.str === other.str)'
-					has_strfn: false
-					to_jsval: 'this.str'
+					constructor:   'this.str = str.toString(); this.len = this.str.length'
+					value_of:      'this.str'
+					to_string:     'this.str'
+					eq:            'new bool(self.str === other.str)'
+					has_strfn:     false
+					to_jsval:      'this.str'
 				)
 			}
 			'map' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'map'
+					typ_name:      typ_name
+					val_name:      'map'
 					default_value: 'new map({})'
-					constructor: 'this.map = map; this.length = 0;'
-					value_of: 'this'
-					to_string: 'this.map.toString()'
-					eq: 'new bool(vEq(self, other))'
-					to_jsval: 'this.map'
+					constructor:   'this.map = map; this.length = 0;'
+					value_of:      'this'
+					to_string:     'this.map.toString()'
+					eq:            'new bool(vEq(self, other))'
+					to_jsval:      'this.map'
 				)
 			}
 			'array' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'arr'
+					typ_name:      typ_name
+					val_name:      'arr'
 					default_value: 'new array_buffer({})'
-					constructor: 'this.arr = arr\nif (arr.index_start.val != 0 || arr.has_slice.val) { v_makeSlice(this); } '
-					value_of: 'this'
-					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
-					eq: 'new bool(vEq(self, other))'
-					to_jsval: 'this.arr'
+					constructor:   'this.arr = arr\nif (arr.index_start.val != 0 || arr.has_slice.val) { v_makeSlice(this); } '
+					value_of:      'this'
+					to_string:     'JSON.stringify(this.arr.map(it => it.valueOf()))'
+					eq:            'new bool(vEq(self, other))'
+					to_jsval:      'this.arr'
 				)
 			}
 			'voidptr' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'val'
+					typ_name:      typ_name
+					val_name:      'val'
 					default_value: 'null'
-					constructor: 'this.val = val;'
-					value_of: 'this'
-					to_string: '"voidptr(" + this.val + ")"'
-					eq: 'this.val === other.val'
-					to_jsval: 'this.val'
+					constructor:   'this.val = val;'
+					value_of:      'this'
+					to_string:     '"voidptr(" + this.val + ")"'
+					eq:            'this.val === other.val'
+					to_jsval:      'this.val'
 				)
 			}
 			'any' {
 				g.gen_builtin_prototype(
-					typ_name: typ_name
-					val_name: 'any'
+					typ_name:      typ_name
+					val_name:      'any'
 					default_value: 'null'
-					constructor: 'this.val = any'
-					value_of: 'this.val'
-					to_string: '"&" + this.val'
-					eq: 'new bool(self == other)' // compare by ptr
-					to_jsval: 'this.val.\$toJS()'
+					constructor:   'this.val = any'
+					value_of:      'this.val'
+					to_string:     '"&" + this.val'
+					eq:            'new bool(self == other)' // compare by ptr
+					to_jsval:      'this.val.\$toJS()'
 				)
 			}
 			else {}

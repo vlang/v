@@ -32,7 +32,7 @@ fn cb_free(p voidptr) {
 #flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
 #include "stb_image_write.h"
-#include "stb_image_resize.h"
+#include "stb_image_resize2.h"
 #include "stb_v_header.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
@@ -42,7 +42,7 @@ pub mut:
 	height      int
 	nr_channels int
 	ok          bool
-	data        voidptr
+	data        &u8 = unsafe { nil }
 	ext         string
 }
 
@@ -112,6 +112,7 @@ fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file
 
 @[params]
 pub struct LoadParams {
+pub:
 	// the number of channels you expect the image to have.
 	// If set to 0 stbi will figure out the correct number of channels
 	desired_channels int = C.STBI_rgb_alpha
@@ -121,9 +122,8 @@ pub struct LoadParams {
 pub fn load(path string, params LoadParams) !Image {
 	ext := path.all_after_last('.')
 	mut res := Image{
-		ok: true
+		ok:  true
 		ext: ext
-		data: 0
 	}
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
 		params.desired_channels)
@@ -138,7 +138,6 @@ pub fn load(path string, params LoadParams) !Image {
 pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 	mut res := Image{
 		ok: true
-		data: 0
 	}
 	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels,
 		params.desired_channels)
@@ -153,16 +152,16 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 // Resize functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbir_resize_uint8(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8, output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
+fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8,
+	output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
 
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 	mut res := Image{
-		ok: true
-		ext: img.ext
-		data: 0
-		width: output_w
-		height: output_h
+		ok:          true
+		ext:         img.ext
+		width:       output_w
+		height:      output_h
 		nr_channels: img.nr_channels
 	}
 
@@ -171,8 +170,8 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		return error('stbi_image failed to resize file')
 	}
 
-	if 0 == C.stbir_resize_uint8(img.data, img.width, img.height, 0, res.data, output_w,
-		output_h, 0, img.nr_channels) {
+	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data,
+		output_w, output_h, 0, img.nr_channels) {
 		return error('stbi_image failed to resize file')
 	}
 	return res

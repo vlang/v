@@ -42,13 +42,13 @@ fn test_environ() {
 }
 
 fn test_setenv_var_not_exists() {
-	key := time.new_time(time.now()).unix
+	key := time.new(time.now()).unix()
 	os.setenv('foo${key}', 'bar', false)
 	assert os.getenv('foo${key}') == 'bar'
 }
 
 fn test_getenv_empty_var() {
-	key := time.new_time(time.now()).unix
+	key := time.new(time.now()).unix()
 	os.setenv('empty${key}', '""', false)
 	assert os.getenv('empty${key}') == '""'
 }

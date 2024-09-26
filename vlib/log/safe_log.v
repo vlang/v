@@ -37,6 +37,14 @@ pub fn (mut x ThreadSafeLog) set_level(level Level) {
 	x.mu.unlock()
 }
 
+// set_always_flush called with true, will make the log flush after every single .fatal(), .error(), .warn(), .info(), .debug() call.
+// That can be much slower, if you plan to do lots of frequent calls, but if your program exits early or crashes, your logs will be more complete.
+pub fn (mut x ThreadSafeLog) set_always_flush(should_flush bool) {
+	x.mu.@lock()
+	x.Log.set_always_flush(should_flush)
+	x.mu.unlock()
+}
+
 // debug logs a debug message
 pub fn (mut x ThreadSafeLog) debug(s string) {
 	x.mu.@lock()

@@ -19,7 +19,7 @@ fn test_record_measure() {
 	assert x > 50_000
 	// assert x < 200_000
 	flush_stdout()
-	//
+
 	println('step 2')
 	flush_stdout()
 	time.sleep(150 * time.millisecond)
@@ -27,7 +27,7 @@ fn test_record_measure() {
 	assert y > 100_000
 	// assert y < 200_000
 	flush_stdout()
-	//
+
 	res := b.all_recorded_measures()
 	println('All recorded measurements:')
 	println(res)
@@ -35,4 +35,30 @@ fn test_record_measure() {
 	assert res.contains('ms in sleeping 1')
 	assert res.contains('ms in sleeping 1')
 	assert res.contains('SPENT')
+}
+
+fn test_total_message() {
+	mut b := benchmark.start()
+	for _ in 0 .. 100 {
+		time.sleep(time.millisecond)
+		x := b.record_measure('sleeping 1')
+		assert x > 1_000
+	}
+
+	res := b.total_message('sleeping 1')
+	println(res)
+
+	assert res.contains(' Min: ')
+	assert res.contains(' Max: ')
+	assert res.contains(' Avg: ')
+
+	time.sleep(time.millisecond)
+	y := b.record_measure('sleeping 2')
+	assert y > 1_000
+	// Should not contain min max avg, insufficient information
+	res2 := b.total_message('sleeping 2')
+
+	assert !res2.contains(' Min: ')
+	assert !res2.contains(' Max: ')
+	assert !res2.contains(' Avg: ')
 }

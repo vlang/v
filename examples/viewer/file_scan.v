@@ -27,13 +27,13 @@ import os
 *
 ******************************************************************************/
 enum Item_type {
-	file         = 0
+	file = 0
 	folder
 	// archive format
-	zip          = 16
+	zip = 16
 	archive_file
 	// graphic format, MUST stay after the other types!!
-	bmp          = 32
+	bmp = 32
 	jpg
 	png
 	gif
@@ -139,7 +139,7 @@ fn (item_list Item_list) get_file_path() string {
 	if item_list.lst.len <= 0 || item_list.n_item <= 0 {
 		return ''
 	}
-	if item_list.lst[item_list.item_index].path.len > 0 {
+	if item_list.lst[item_list.item_index].path != '' {
 		return '${item_list.lst[item_list.item_index].path}${item_list.path_sep}${item_list.lst[item_list.item_index].name}'
 	}
 	return item_list.lst[item_list.item_index].name
@@ -159,9 +159,9 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	for c, x in lst {
 		pt := '${path}${item_list.path_sep}${x}'
 		mut item := Item{
-			path: path
-			name: x
-			container_index: in_index
+			path:                 path
+			name:                 x
+			container_index:      in_index
 			container_item_index: c
 		}
 		if os.is_dir(pt) {
@@ -189,8 +189,8 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	for x in folder_list {
 		pt := '${path}${item_list.path_sep}${x}'
 		item := Item{
-			path: path
-			name: x
+			path:   path
+			name:   x
 			i_type: .folder
 		}
 		item_list.lst << item
@@ -224,10 +224,10 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 		// scan folder
 		if os.is_dir(x) {
 			mut item := Item{
-				path: x
-				name: x
+				path:            x
+				name:            x
 				container_index: item_list.lst.len
-				i_type: .folder
+				i_type:          .folder
 			}
 			item_list.lst << item
 			item_list.scan_folder(x, item_list.lst.len - 1) or {
@@ -236,8 +236,8 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 			}
 		} else {
 			mut item := Item{
-				path: ''
-				name: x
+				path:            ''
+				name:            x
 				container_index: -1
 			}
 			ext := get_extension(x)

@@ -3,63 +3,27 @@ module gfx
 // C.sg_desc describes
 pub struct C.sg_desc {
 pub mut:
-	buffer_pool_size               int
-	image_pool_size                int
-	sampler_pool_size              int
-	shader_pool_size               int
-	pipeline_pool_size             int
-	pass_pool_size                 int
-	context_pool_size              int
-	uniform_buffer_size            int
-	max_commit_listeners           int
-	disable_validation             bool // disable validation layer even in debug mode, useful for tests
-	mtl_force_managed_storage_mode bool // for debugging: use Metal managed storage mode for resources even with UMA
-	wgpu_disable_bindgroups_cache  bool // set to true to disable the WebGPU backend BindGroup cache
-	wgpu_bindgroups_cache_size     int  // number of slots in the WebGPU bindgroup cache (must be 2^N)
-	//
-	allocator C.sg_allocator
-	logger    C.sg_logger
-	//
-	context C.sg_context_desc
+	_start_canary                                   u32
+	buffer_pool_size                                int
+	image_pool_size                                 int
+	sampler_pool_size                               int
+	shader_pool_size                                int
+	pipeline_pool_size                              int
+	attachments_pool_size                           int
+	uniform_buffer_size                             int
+	max_commit_listeners                            int
+	disable_validation                              bool // disable validation layer even in debug mode, useful for tests
+	mtl_force_managed_storage_mode                  bool // for debugging: use Metal managed storage mode for resources even with UMA
+	mtl_use_command_buffer_with_retained_references bool // Metal: use a managed MTLCommandBuffer which ref-counts used resources
+	wgpu_disable_bindgroups_cache                   bool // set to true to disable the WebGPU backend BindGroup cache
+	wgpu_bindgroups_cache_size                      int  // number of slots in the WebGPU bindgroup cache (must be 2^N)
+	allocator                                       C.sg_allocator
+	logger                                          C.sg_logger // optional log function override
+	environment                                     C.sg_environment
+	_end_canary                                     u32
 }
 
 pub type Desc = C.sg_desc
-
-pub struct C.sg_context_desc {
-pub mut:
-	color_format PixelFormat
-	depth_format PixelFormat
-	sample_count int
-	gl           GLContextDesc
-	metal        MetalContextDesc
-	d3d11        D3D11ContextDesc
-	// TODO C.sg_wgpu_context_desc wgpu;
-}
-
-pub type ContextDesc = C.sg_context_desc
-
-pub struct C.sg_gl_context_desc {
-	force_gles2 bool
-}
-
-pub type GLContextDesc = C.sg_gl_context_desc
-
-pub struct C.sg_metal_context_desc {
-	device                   voidptr
-	renderpass_descriptor_cb fn () voidptr = unsafe { nil }
-	drawable_cb              fn () voidptr = unsafe { nil }
-}
-
-pub type MetalContextDesc = C.sg_metal_context_desc
-
-pub struct C.sg_d3d11_context_desc {
-	device                voidptr
-	device_context        voidptr
-	render_target_view_cb fn () voidptr = unsafe { nil }
-	depth_stencil_view_cb fn () voidptr = unsafe { nil }
-}
-
-pub type D3D11ContextDesc = C.sg_d3d11_context_desc
 
 pub struct C.sg_color_target_state {
 pub mut:
@@ -108,6 +72,47 @@ pub fn (mut p C.sg_pipeline) free() {
 	C.sg_destroy_pipeline(*p)
 }
 
+pub struct C.sg_attachments {
+	id u32
+}
+
+// Attachments represents data that can be attached to a render pass.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+pub type Attachments = C.sg_attachments
+
+// free frees the resources occupied by the struct
+pub fn (mut a C.sg_attachments) free() {
+	C.sg_destroy_attachments(*a)
+}
+
+pub struct C.sg_attachment_desc {
+pub mut:
+	image     Image
+	mip_level int
+	slice     int
+}
+
+pub type AttachmentDesc = C.sg_attachment_desc
+
+pub struct C.sg_attachments_desc {
+pub mut:
+	_start_canary u32
+	colors        [4]AttachmentDesc
+	resolves      [4]AttachmentDesc
+	depth_stencil AttachmentDesc
+	label         &char = unsafe { nil }
+	_end_canary   u32
+}
+
+pub type AttachmentsDesc = C.sg_attachments_desc
+
+pub struct C.sg_attachments_info {
+pub mut:
+	slot SlotInfo // resource pool slot info
+}
+
+pub type AttachmentsInfo = C.sg_attachments_info
+
 pub struct C.sg_bindings {
 pub mut:
 	_start_canary         u32
@@ -134,7 +139,7 @@ pub fn (mut b Bindings) set_frag_image(index int, img Image) {
 
 pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	C.sg_update_buffer(b.vertex_buffers[index], &range)
@@ -142,7 +147,7 @@ pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size in
 
 pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size int, element_count int) int {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.vertex_buffers[index], &range)
@@ -150,7 +155,7 @@ pub fn (b &Bindings) append_vert_buffer(index int, data voidptr, element_size in
 
 pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element_count int) {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	C.sg_update_buffer(b.index_buffer, &range)
@@ -158,7 +163,7 @@ pub fn (b &Bindings) update_index_buffer(data voidptr, element_size int, element
 
 pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element_count int) int {
 	range := Range{
-		ptr: data
+		ptr:  data
 		size: usize(element_size * element_count)
 	}
 	return C.sg_append_buffer(b.index_buffer, &range)
@@ -215,13 +220,15 @@ pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, 
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &ShaderDesc {
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType,
+	array_count int) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &ShaderDesc {
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType,
+	array_count int) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
 	return desc
@@ -247,6 +254,7 @@ pub mut:
 	entry               &char
 	d3d11_target        &char
 	uniform_blocks      [4]ShaderUniformBlockDesc
+	storage_buffers     [8]ShaderStorageBufferDesc
 	images              [12]ShaderImageDesc
 	samplers            [8]ShaderSamplerDesc
 	image_sampler_pairs [12]ShaderImageSamplerPairDesc
@@ -289,6 +297,14 @@ pub mut:
 
 pub type ShaderImageDesc = C.sg_shader_image_desc
 
+pub struct C.sg_shader_storage_buffer_desc {
+pub mut:
+	used     bool
+	readonly bool
+}
+
+pub type ShaderStorageBufferDesc = C.sg_shader_storage_buffer_desc
+
 pub struct C.sg_shader_sampler_desc {
 pub mut:
 	used         bool
@@ -313,13 +329,6 @@ pub:
 }
 
 pub type ShaderInfo = C.sg_shader_info
-
-pub struct C.sg_context {
-pub:
-	id u32
-}
-
-pub type Context = C.sg_context
 
 pub struct C.sg_range {
 pub mut:
@@ -349,21 +358,6 @@ pub type Shader = C.sg_shader
 pub fn (mut s Shader) free() {
 	C.sg_destroy_shader(*s)
 }
-
-pub struct C.sg_pass_desc {
-pub mut:
-	color_attachments        [4]PassAttachmentDesc
-	depth_stencil_attachment PassAttachmentDesc
-	label                    &char
-}
-
-pub type PassDesc = C.sg_pass_desc
-
-pub struct C.sg_pass_info {
-	info SlotInfo
-}
-
-pub type PassInfo = C.sg_pass_info
 
 @[typedef]
 pub struct C.sg_frame_stats_gl {
@@ -476,6 +470,7 @@ pub struct C.sg_frame_stats_metal_bindings {
 	num_set_vertex_buffer          u32
 	num_set_vertex_texture         u32
 	num_set_vertex_sampler_state   u32
+	num_set_fragment_buffer        u32
 	num_set_fragment_texture       u32
 	num_set_fragment_sampler_state u32
 }
@@ -537,7 +532,7 @@ pub type FrameStatsWGPU = C.sg_frame_stats_wgpu
 @[typedef]
 pub struct C.sg_frame_stats {
 	frame_index u32 // current frame counter, starts at 0
-	//
+
 	num_passes             u32
 	num_apply_viewport     u32
 	num_apply_scissor_rect u32
@@ -548,12 +543,12 @@ pub struct C.sg_frame_stats {
 	num_update_buffer      u32
 	num_append_buffer      u32
 	num_update_image       u32
-	//
+
 	size_apply_uniforms u32
 	size_update_buffer  u32
 	size_append_buffer  u32
 	size_update_image   u32
-	//
+
 	gl    FrameStatsGL
 	d3d11 FrameStatsD3D11
 	metal FrameStatsMetal
@@ -571,15 +566,72 @@ pub mut:
 
 pub type PassAction = C.sg_pass_action
 
+@[typedef]
+pub struct C.sg_metal_swapchain {
+pub mut:
+	current_drawable      voidptr
+	depth_stencil_texture voidptr // MTLTexture
+	msaa_color_texture    voidptr // MTLTexture
+}
+
+pub type MetalSwapchain = C.sg_metal_swapchain
+
+@[typedef]
+pub struct C.sg_d3d11_swapchain {
+pub mut:
+	render_view        voidptr // ID3D11RenderTargetView
+	resolve_view       voidptr // ID3D11RenderTargetView
+	depth_stencil_view voidptr // ID3D11DepthStencilView
+}
+
+pub type D3d11Swapchain = C.sg_d3d11_swapchain
+
+@[typedef]
+pub struct C.sg_wgpu_swapchain {
+pub mut:
+	render_view        voidptr // WGPUTextureView
+	resolve_view       voidptr // WGPUTextureView
+	depth_stencil_view voidptr // WGPUTextureView
+}
+
+pub type WgpuSwapchain = C.sg_wgpu_swapchain
+
+@[typedef]
+pub struct C.sg_gl_swapchain {
+pub mut:
+	framebuffer u32
+}
+
+pub type GlSwapchain = C.sg_gl_swapchain
+
+@[typedef]
+pub struct C.sg_swapchain {
+pub mut:
+	width        int
+	height       int
+	sample_count int
+	color_format PixelFormat
+	depth_format PixelFormat
+	metal        MetalSwapchain
+	d3d11        D3d11Swapchain
+	wgpu         WgpuSwapchain
+	gl           GlSwapchain
+}
+
+pub type Swapchain = C.sg_swapchain
+
+@[typedef]
 pub struct C.sg_pass {
-	id u32
+pub mut:
+	_start_canary u32
+	action        PassAction
+	attachments   Attachments
+	swapchain     Swapchain
+	label         &char = unsafe { nil }
+	_end_canary   u32
 }
 
 pub type Pass = C.sg_pass
-
-pub fn (mut p Pass) free() {
-	C.sg_destroy_pass(*p)
-}
 
 pub struct C.sg_buffer_desc {
 pub mut:
@@ -728,11 +780,7 @@ pub:
 	image_clamp_to_border       bool // border color and clamp-to-border UV-wrap mode is supported
 	mrt_independent_blend_state bool // multiple-render-target rendering can use per-render-target blend state
 	mrt_independent_write_mask  bool // multiple-render-target rendering can use per-render-target color write masks
-	//	instancing                  bool // hardware instancing supported
-	//	multiple_render_targets     bool // offscreen render passes can have multiple render targets attached
-	//	msaa_render_targets         bool // offscreen render passes support MSAA antialiasing
-	//	imagetype_3d                bool // creation of SG_IMAGETYPE_3D images is supported
-	//	imagetype_array             bool // creation of SG_IMAGETYPE_ARRAY images is supported
+	storage_buffer              bool // storage buffers are supported
 }
 
 pub type Features = C.sg_features
@@ -745,7 +793,7 @@ pub:
 	max_image_size_array                int // max width/height pf SG_IMAGETYPE_ARRAY images
 	max_image_array_layers              int // max number of layers in SG_IMAGETYPE_ARRAY images
 	max_vertex_attrs                    int // <= SG_MAX_VERTEX_ATTRIBUTES (only on some GLES2 impls)
-	gl_max_vertex_uniform_vectors       int // <= GL_MAX_VERTEX_UNIFORM_VECTORS (only on GL backends)
+	gl_max_vertex_uniform_components    int // <= GL_MAX_VERTEX_UNIFORM_COMPONENTS (only on GL backends)
 	gl_max_combined_texture_image_units int // <= GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS (only on GL backends)
 }
 
@@ -868,21 +916,51 @@ pub:
 
 pub type PixelFormatInfo = C.sg_pixelformat_info
 
-pub struct C.sg_pass_attachment_desc {
+@[typedef]
+pub struct C.sg_environment_defaults {
 pub mut:
-	image     Image
-	mip_level int
-	slice     int
-	// image sg_image
-	// mip_level int
-	// union {
-	// face int
-	// layer int
-	// slice int
-	// }
+	color_format PixelFormat
+	depth_format PixelFormat
+	sample_count int
 }
 
-pub type PassAttachmentDesc = C.sg_pass_attachment_desc
+pub type EnvironmentDefaults = C.sg_environment_defaults
+
+@[typedef]
+pub struct C.sg_metal_environment {
+pub mut:
+	device voidptr
+}
+
+pub type MetalEnvironment = C.sg_metal_environment
+
+@[typedef]
+pub struct C.sg_d3d11_environment {
+pub mut:
+	device         voidptr
+	device_context voidptr
+}
+
+pub type D3d11Environment = C.sg_d3d11_environment
+
+@[typedef]
+pub struct C.sg_wgpu_environment {
+pub mut:
+	device voidptr
+}
+
+pub type WgpuEnvironment = C.sg_wgpu_environment
+
+@[typedef]
+pub struct C.sg_environment {
+pub mut:
+	defaults EnvironmentDefaults
+	metal    MetalEnvironment
+	d3d11    D3d11Environment
+	wgpu     WgpuEnvironment
+}
+
+pub type Environment = C.sg_environment
 
 // C.sg_commit_listener is used with sg_add_commit_listener, to add a callback,
 // which will be called in sg_commit(). This is useful for libraries building

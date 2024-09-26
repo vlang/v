@@ -10,6 +10,11 @@ struct Demo {
 }
 
 fn test_float_field() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working postgres server running on localhost.')
+		return
+	}
 	conn := 'host=localhost user=test password=test' // insert own connection string
 	db := pg.connect_with_conninfo(conn)!
 	defer {

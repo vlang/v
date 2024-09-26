@@ -1,0 +1,9 @@
+enum Operation {
+	get_area
+	get_sector
+}
+
+fn main() {
+	operation_name := 'get_area'
+	operation := if o := Operation.from(operation_name) { o } else { ?Operation(none) }
+}

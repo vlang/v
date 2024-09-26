@@ -3,13 +3,11 @@
 module checker
 
 import v.ast
-import v.pref
 
 // error_type_name returns a proper type name reference for error messages
 // ? => Option type
 // ! => Result type
 // others => type `name`
-@[inline]
 fn (mut c Checker) error_type_name(exp_type ast.Type) string {
 	return if exp_type == ast.void_type.set_flag(.result) {
 		'Result type'
@@ -20,10 +18,20 @@ fn (mut c Checker) error_type_name(exp_type ast.Type) string {
 	}
 }
 
+@[inline]
+fn (mut c Checker) error_unaliased_type_name(exp_type ast.Type) string {
+	return c.error_type_name(c.table.unaliased_type(exp_type))
+}
+
 // TODO: non deferred
 fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
 		return
+	}
+	prev_inside_return := c.inside_return
+	c.inside_return = true
+	defer {
+		c.inside_return = prev_inside_return
 	}
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
@@ -113,7 +121,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			for expr in node.exprs {
 				if expr is ast.Ident {
 					if expr.name in pnames {
-						c.note('returning a parameter in a fn marked with `[manualfree]` can cause double freeing in the caller',
+						c.note('returning a parameter in a fn marked with `@[manualfree]` can cause double freeing in the caller',
 							node.pos)
 					}
 				}
@@ -130,6 +138,21 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
 		c.error('Option and Result types have been split, use `?` to return none', node.pos)
 	}
+	expected_fn_return_type_has_option := c.table.cur_fn.return_type.has_flag(.option)
+	expected_fn_return_type_has_result := c.table.cur_fn.return_type.has_flag(.result)
+	if exp_is_option && expected_fn_return_type_has_result {
+		if got_types_0_idx == ast.none_type_idx {
+			c.error('cannot use `none` as ${c.error_type_name(c.table.unaliased_type(c.table.cur_fn.return_type))} in return argument',
+				node.pos)
+			return
+		}
+		return
+	}
+	if exp_is_result && expected_fn_return_type_has_option {
+		c.error('expecting to return a ?Type, but you are returning ${c.error_type_name(expected_type)} instead',
+			node.pos)
+		return
+	}
 	if (exp_is_option
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
 		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
@@ -144,11 +167,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if got_type_sym.kind == .struct_
 				&& c.type_implements(got_type, ast.error_type, node.pos) {
 				node.exprs[0] = ast.CastExpr{
-					expr: node.exprs[0]
-					typname: 'IError'
-					typ: ast.error_type
+					expr:      node.exprs[0]
+					typname:   'IError'
+					typ:       ast.error_type
 					expr_type: got_type
-					pos: node.pos
+					pos:       node.pos
 				}
 				node.types[0] = ast.error_type
 				return
@@ -224,11 +247,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if got_type_sym.kind == .struct_
 					&& c.type_implements(got_type, ast.error_type, node.pos) {
 					node.exprs[expr_idxs[i]] = ast.CastExpr{
-						expr: node.exprs[expr_idxs[i]]
-						typname: 'IError'
-						typ: ast.error_type
+						expr:      node.exprs[expr_idxs[i]]
+						typname:   'IError'
+						typ:       ast.error_type
 						expr_type: got_type
-						pos: node.pos
+						pos:       node.pos
 					}
 					node.types[expr_idxs[i]] = ast.error_type
 					continue
@@ -237,6 +260,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					'${c.table.type_to_str(got_type)}'
 				} else {
 					got_type_sym.name
+				}
+				// ignore generic casting expr on lambda in this phase
+				if c.inside_lambda && exp_type.has_flag(.generic)
+					&& node.exprs[expr_idxs[i]] is ast.CastExpr {
+					continue
 				}
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					pos)
@@ -285,7 +313,7 @@ fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.
 		if stmt is ast.ExprStmt {
 			if stmt.expr is ast.CallExpr {
 				if prev_stmt_was_noreturn_call {
-					c.error('unreachable code after a [noreturn] call', stmt.pos)
+					c.error('unreachable code after a @[noreturn] call', stmt.pos)
 					return
 				}
 				prev_stmt_was_noreturn_call = stmt.expr.is_noreturn
@@ -365,7 +393,7 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			else {}
 		}
 		if !is_valid_end_of_noreturn_fn {
-			c.error('[noreturn] functions should end with a call to another [noreturn] function, or with an infinite `for {}` loop',
+			c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
 				last_stmt.pos)
 			return
 		}

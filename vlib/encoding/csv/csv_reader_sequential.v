@@ -13,6 +13,7 @@ import os
 
 @[params]
 pub struct SequentialReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed by scr_buf as source of data
 	file_path    string
@@ -24,7 +25,7 @@ pub struct SequentialReaderConfig {
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
 	end_line_len int = endline_cr_len // size of the endline rune
-	quote        u8  = `"` // double quote is the standard quote char
+	quote        u8  = `"`            // double quote is the standard quote char
 }
 
 pub struct SequentialReader {
@@ -40,16 +41,16 @@ pub mut:
 
 	end_line      u8  = `\n`
 	end_line_len  int = endline_cr_len // size of the endline rune \n = 1, \r\n = 2
-	separator     u8  = `,` // comma is the default separator
-	separator_len int = 1 // size of the separator rune
-	quote         u8  = `"` // double quote is the standard quote char
+	separator     u8  = `,`            // comma is the default separator
+	separator_len int = 1              // size of the separator rune
+	quote         u8  = `"`            // double quote is the standard quote char
 
 	comment u8 = `#` // every line that start with the quote char is ignored
 
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string = '#' // retunrn this if empty cell
 	// ram buffer
-	mem_buf_type  u32 // buffer type 0=File,1=RAM
+	mem_buf_type  u32     // buffer type 0=File,1=RAM
 	mem_buf       voidptr // buffer used to load chars from file
 	mem_buf_size  i64     // size of the buffer
 	mem_buf_start i64 = -1 // start index in the file of the read buffer

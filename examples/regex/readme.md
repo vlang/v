@@ -1,8 +1,8 @@
 # regex
 
 There are 2 ways to do regex:
-a) using the native module called `regex`
-b) using an exteranl module called `pcre`, which wraps the C library pcre.
+1. using the native module called `regex`.
+2. using an external module called `pcre`, which wraps the C library pcre.
 
 > [!NOTE]
 > You need to first do: `v install pcre`, for the `pcre` module to work.

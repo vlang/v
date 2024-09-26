@@ -93,7 +93,7 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 }
 
 fn parse_comment(mut reader io.Reader) !XMLComment {
-	mut comment_buffer := strings.new_builder(xml.default_string_builder_cap)
+	mut comment_buffer := strings.new_builder(default_string_builder_cap)
 
 	mut local_buf := [u8(0)]
 	for {
@@ -128,7 +128,7 @@ enum CDATAParserState {
 }
 
 fn parse_cdata(mut reader io.Reader) !XMLCData {
-	mut contents_buf := strings.new_builder(xml.default_string_builder_cap)
+	mut contents_buf := strings.new_builder(default_string_builder_cap)
 
 	mut state := CDATAParserState.normal
 	mut local_buf := [u8(0)]
@@ -176,10 +176,10 @@ fn parse_cdata(mut reader io.Reader) !XMLCData {
 fn parse_entity(contents string) !(DTDEntity, string) {
 	// We find the nearest '>' to the start of the ENTITY
 	entity_end := contents.index('>') or { return error('Entity declaration not closed.') }
-	entity_contents := contents[xml.entity_len..entity_end]
+	entity_contents := contents[entity_len..entity_end]
 
 	name := entity_contents.trim_left(' \t\n').all_before(' ')
-	if name.len == 0 {
+	if name == '' {
 		return error('Entity is missing name.')
 	}
 	value := entity_contents.all_after_first(name).trim_space().trim('"\'')
@@ -195,7 +195,7 @@ fn parse_entity(contents string) !(DTDEntity, string) {
 fn parse_element(contents string) !(DTDElement, string) {
 	// We find the nearest '>' to the start of the ELEMENT
 	element_end := contents.index('>') or { return error('Element declaration not closed.') }
-	element_contents := contents[xml.element_len..element_end].trim_left(' \t\n')
+	element_contents := contents[element_len..element_end].trim_left(' \t\n')
 
 	mut name_span := TextSpan{}
 
@@ -221,7 +221,7 @@ fn parse_element(contents string) !(DTDElement, string) {
 	}
 
 	name := element_contents[name_span.start..name_span.end].trim_left(' \t\n')
-	if name.len == 0 {
+	if name == '' {
 		return error('Element is missing name.')
 	}
 	definition_string := element_contents.all_after_first(name).trim_space().trim('"\'')
@@ -248,7 +248,7 @@ fn parse_element(contents string) !(DTDElement, string) {
 fn parse_doctype(mut reader io.Reader) !DocumentType {
 	// We may have more < in the doctype so keep count
 	mut depth := 1
-	mut doctype_buffer := strings.new_builder(xml.default_string_builder_cap)
+	mut doctype_buffer := strings.new_builder(default_string_builder_cap)
 	mut local_buf := [u8(0)]
 	for {
 		ch := next_char(mut reader, mut local_buf)!
@@ -290,7 +290,7 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 
 	return DocumentType{
 		name: name
-		dtd: DocumentTypeDefinition{
+		dtd:  DocumentTypeDefinition{
 			list: items
 		}
 	}
@@ -309,13 +309,13 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 			`<` {
 				break
 			}
-			xml.byte_order_marking_first {
+			byte_order_marking_first {
 				// UTF-8 BOM
 				mut bom_buf := [u8(0), 0]
 				if reader.read(mut bom_buf)! != 2 {
 					return error('Invalid UTF-8 BOM.')
 				}
-				if bom_buf != xml.byte_order_marking_bytes {
+				if bom_buf != byte_order_marking_bytes {
 					return error('Invalid UTF-8 BOM.')
 				}
 				ch = next_char(mut reader, mut local_buf)!
@@ -347,7 +347,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 		return error('Expecting a prolog starting with "<?xml".')
 	}
 
-	mut prolog_buffer := strings.new_builder(xml.default_string_builder_cap)
+	mut prolog_buffer := strings.new_builder(default_string_builder_cap)
 
 	// Keep reading character by character until we find the end of the prolog
 	mut found_question_mark := false
@@ -380,7 +380,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	prolog_attributes := prolog_buffer.str().trim_space()
 
 	attributes := if prolog_attributes.len == 0 {
-		xml.default_prolog_attributes
+		default_prolog_attributes
 	} else {
 		parse_attributes(prolog_attributes)!
 	}
@@ -391,7 +391,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	mut comments := []XMLComment{}
 	mut doctype := DocumentType{
 		name: ''
-		dtd: ''
+		dtd:  ''
 	}
 	mut found_doctype := false
 	for {
@@ -423,7 +423,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 								if reader.read(mut doc_buf)! != 6 {
 									return error('Invalid DOCTYPE.')
 								}
-								if doc_buf != xml.doctype_chars {
+								if doc_buf != doctype_chars {
 									return error('Invalid DOCTYPE.')
 								}
 								found_doctype = true
@@ -445,15 +445,15 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	}
 
 	return Prolog{
-		version: version
+		version:  version
 		encoding: encoding
-		doctype: doctype
+		doctype:  doctype
 		comments: comments
 	}, ch
 }
 
 fn parse_children(name string, attributes map[string]string, mut reader io.Reader) !XMLNode {
-	mut inner_contents := strings.new_builder(xml.default_string_builder_cap)
+	mut inner_contents := strings.new_builder(default_string_builder_cap)
 
 	mut children := []XMLNodeContents{}
 	mut local_buf := [u8(0)]
@@ -470,17 +470,17 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						if reader.read(mut next_two)! != 2 {
 							return error('Invalid XML. Incomplete comment or CDATA declaration.')
 						}
-						if next_two == xml.double_dash {
+						if next_two == double_dash {
 							// Comment
 							comment := parse_comment(mut reader)!
 							children << comment
-						} else if next_two == xml.c_tag {
+						} else if next_two == c_tag {
 							// <![CDATA -> DATA
 							mut cdata_buf := []u8{len: 4}
 							if reader.read(mut cdata_buf)! != 4 {
 								return error('Invalid XML. Incomplete CDATA declaration.')
 							}
-							if cdata_buf != xml.data_chars {
+							if cdata_buf != data_chars {
 								return error('Invalid XML. Expected "CDATA" after "<![C".')
 							}
 							cdata := parse_cdata(mut reader)!
@@ -509,9 +509,9 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 							children << collected_contents.replace('\r\n', '\n')
 						}
 						return XMLNode{
-							name: name
+							name:       name
 							attributes: attributes
-							children: children
+							children:   children
 						}
 					}
 					else {
@@ -545,7 +545,7 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 // opposed to the recommended static functions makes it easier to parse smaller nodes in extremely large
 // XML documents without running out of memory.
 pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
-	mut contents := strings.new_builder(xml.default_string_builder_cap)
+	mut contents := strings.new_builder(default_string_builder_cap)
 	contents.write_u8(first_char)
 
 	mut local_buf := [u8(0)]
@@ -566,7 +566,7 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	if tag_contents.ends_with('/') {
 		// We're not looking for children and inner text
 		return XMLNode{
-			name: name
+			name:       name
 			attributes: parse_attributes(tag_contents[name.len..tag_contents.len - 1].trim_space())!
 		}
 	}
@@ -608,10 +608,10 @@ pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 	root := parse_single_node(first_char, mut reader)!
 
 	return XMLDocument{
-		version: prolog.version
+		version:  prolog.version
 		encoding: prolog.encoding
 		comments: prolog.comments
-		doctype: prolog.doctype
-		root: root
+		doctype:  prolog.doctype
+		root:     root
 	}
 }

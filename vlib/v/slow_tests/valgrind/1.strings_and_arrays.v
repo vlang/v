@@ -85,7 +85,7 @@ fn str_replace() {
 	mut s := 'hello world'
 	s = s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
 	println(s)
-	//
+
 	mut s2 := 'aa' + 'bb'
 	s2 = s2.replace('a', 'c')
 	println(s2)
@@ -115,7 +115,7 @@ fn reassign_str() {
 	}
 	mut x := 'a'
 	x = 'b' // nothing has to be freed here
-	//
+
 	mut s := 'a' + 'b'
 	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
 	s = s + '!' // old s ref must be copied and freed after the assignment, since s is still used in the right expr
@@ -133,7 +133,7 @@ fn reassign_arr() {
 	mut foo := Foo2{[10, 20, 30]}
 	foo.nums = [40, 50, 60] // same with struct fields
 	foo.nums = [70, 80, 90]
-	// TODO remove this once structs are freed automatically
+	// TODO: remove this once structs are freed automatically
 	foo.nums.free()
 }
 
@@ -211,7 +211,7 @@ fn tt() {
 }
 
 fn get_string(s string) string {
-	return s.clone() // TODO handle returning the argument without clone()
+	return s.clone() // TODO: handle returning the argument without clone()
 }
 
 fn if_expr() string {
@@ -374,7 +374,7 @@ fn parse_header1(s string) !string {
 	return words[0]
 }
 
-// TODO: remove this [manualfree] tag
+// TODO: remove this @[manualfree] tag
 @[manualfree]
 fn advanced_options() {
 	s := parse_header0('foo:bar') or { return }

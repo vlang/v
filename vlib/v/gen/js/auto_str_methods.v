@@ -35,7 +35,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	g.str_types << StrType{
-		typ: unwrapped
+		typ:  unwrapped
 		styp: styp
 	}
 	return str_fn_name
@@ -303,7 +303,7 @@ fn (mut g JsGen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string
 	s := util.no_dots(styp)
 
 	g.definitions.writeln('function ${str_fn_name}(it) { /* gen_str_for_enum */')
-	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
+	// Enums tagged with `@[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
 		clean_name := util.strip_main_name(styp.replace('__', '.'))
 		g.definitions.writeln('\tlet ret = new string("${clean_name}{");')

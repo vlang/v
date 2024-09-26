@@ -13,10 +13,10 @@ module ttf
 * TODO:
 **********************************************************************/
 pub struct Text_block {
-	x         int  // x position of the left high corner
-	y         int  // y position of the left high corner
-	w         int  // width of the text block
-	h         int  // height of the text block
+	x         int // x position of the left high corner
+	y         int // y position of the left high corner
+	w         int // width of the text block
+	h         int // height of the text block
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 
@@ -78,7 +78,7 @@ pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 			for c > 0 {
 				tmp_str := txt1[0..c].join(' ')
 				// println("tmp_str: ${tmp_str}")
-				if tmp_str.len < 1 {
+				if tmp_str == '' {
 					break
 				}
 

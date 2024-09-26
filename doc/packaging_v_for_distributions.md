@@ -97,13 +97,13 @@ efforts:
 
 ```sh
 echo "println('use your package manager to update V," > cmd/tools/vup.v
-echo "or if you want more recent V versions, just clone V from source," > cmd/tools/vup.v
-echo "see https://github.com/vlang/v#installing-v-from-source')" > cmd/tools/vup.v
+echo "or if you want more recent V versions, just clone V from source," >> cmd/tools/vup.v
+echo "see https://github.com/vlang/v#installing-v-from-source')" >> cmd/tools/vup.v
 
 echo "println('v self is disabled for packaged versions of V." > cmd/tools/vself.v
-echo "Use your package manager, to update your V package instead." > cmd/tools/vself.v
-echo "Alternatively, if you do want a more recent V version, just clone V from source," > cmd/tools/vself.v
-echo "then follow the instructions here: https://github.com/vlang/v#installing-v-from-source')" > cmd/tools/vself.v
+echo "Use your package manager, to update your V package instead." >> cmd/tools/vself.v
+echo "Alternatively, if you do want a more recent V version, just clone V from source," >> cmd/tools/vself.v
+echo "then follow the instructions here: https://github.com/vlang/v#installing-v-from-source')" >> cmd/tools/vself.v
 
 v -prod -o v cmd/v                            ## build V itself with -prod
 ./v -prod build-tools                         ## build all tools with -prod too

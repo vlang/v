@@ -8,9 +8,13 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"${escaped_val}"')
+		g.write('"')
+		g.write(escaped_val)
+		g.write('"')
 	} else {
-		g.write('_SLIT("${escaped_val}")')
+		g.write('_SLIT("')
+		g.write(escaped_val)
+		g.write('")')
 	}
 }
 
@@ -88,6 +92,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
 	} else if sym.kind == .none_ || typ == ast.void_type.set_flag(.option) {
+		if expr is ast.CallExpr {
+			stmt_str := g.go_before_last_stmt()
+			g.expr(expr)
+			g.writeln(';')
+			g.write(stmt_str)
+		}
 		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		if expr !is ast.EnumVal {
@@ -149,9 +159,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
-		g.write('${str_fn_name}(')
+		g.write(str_fn_name)
+		g.write('(')
 		if str_method_expects_ptr && !is_ptr {
-			if is_dump_expr {
+			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.typ(typ)}, ')
 				defer {
 					g.write(')')
@@ -162,7 +173,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
-			g.write('*'.repeat(typ.nr_muls()))
+			if sym.is_c_struct() {
+				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
+			} else {
+				g.write('*'.repeat(typ.nr_muls()))
+			}
+		} else if sym.is_c_struct() {
+			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -199,6 +216,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
+			} else {
+				if sym.is_c_struct() {
+					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
+				}
 			}
 			g.expr_with_cast(expr, typ, typ)
 		} else if typ.has_flag(.option) {

@@ -26,28 +26,28 @@ pub fn new_ofb(b Block, iv []u8) Ofb {
 		panic('cipher.new_ofb: IV length must be equal block size')
 	}
 	mut x := Ofb{
-		b: b
-		out: []u8{len: b.block_size}
-		next: []u8{len: b.block_size}
+		b:        b
+		out:      []u8{len: b.block_size}
+		next:     []u8{len: b.block_size}
 		out_used: block_size
 	}
 	copy(mut x.next, iv)
 	return x
 }
 
-pub fn (mut x Ofb) xor_key_stream(mut dst_ []u8, src_ []u8) {
+pub fn (mut x Ofb) xor_key_stream(mut dst []u8, src []u8) {
 	unsafe {
-		mut dst := *dst_
-		mut src := src_
-		if dst.len < src.len {
+		mut local_dst := *dst
+		mut local_src := src
+		if local_dst.len < local_src.len {
 			panic('crypto.cipher.xor_key_stream: output smaller than input')
 		}
 
-		if subtle.inexact_overlap(dst[..src.len], src) {
+		if subtle.inexact_overlap(local_dst[..local_src.len], local_src) {
 			panic('crypto.cipher.xor_key_stream: invalid buffer overlap')
 		}
 
-		for src.len > 0 {
+		for local_src.len > 0 {
 			if x.out_used == x.out.len {
 				x.b.encrypt(mut x.out, x.next)
 				x.out_used = 0
@@ -55,9 +55,9 @@ pub fn (mut x Ofb) xor_key_stream(mut dst_ []u8, src_ []u8) {
 
 			copy(mut x.next, x.out)
 
-			n := xor_bytes(mut dst, src, x.out)
-			dst = dst[n..]
-			src = src[n..]
+			n := xor_bytes(mut local_dst, local_src, x.out)
+			local_dst = local_dst[n..]
+			local_src = local_src[n..]
 			x.out_used += n
 		}
 	}

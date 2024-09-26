@@ -18,6 +18,12 @@ pub mut:
 @[heap]
 pub struct App {
 	vweb.Middleware[Context]
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
 }
 
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -66,28 +72,24 @@ fn after_middleware(mut ctx Context) bool {
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 
-	spawn fn () {
-		mut app := &App{}
-		// even though `route_use` is called first, global middleware is still executed first
-		app.Middleware.route_use('/unreachable', handler: middleware_unreachable)
+	mut app := &App{}
+	// even though `route_use` is called first, global middleware is still executed first
+	app.Middleware.route_use('/unreachable', handler: middleware_unreachable)
 
-		// global middleware
-		app.Middleware.use(handler: middleware_handler)
-		app.Middleware.use(handler: app.app_middleware)
+	// global middleware
+	app.Middleware.use(handler: middleware_handler)
+	app.Middleware.use(handler: app.app_middleware)
 
-		// should match only one slash
-		app.Middleware.route_use('/bar/:foo', handler: middleware_handler)
-		// should match multiple slashes
-		app.Middleware.route_use('/nested/:path...', handler: middleware_handler)
+	// should match only one slash
+	app.Middleware.route_use('/bar/:foo', handler: middleware_handler)
+	// should match multiple slashes
+	app.Middleware.route_use('/nested/:path...', handler: middleware_handler)
 
-		app.Middleware.route_use('/after', handler: after_middleware, after: true)
+	app.Middleware.route_use('/after', handler: after_middleware, after: true)
 
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
-			panic('could not start vweb app')
-		}
-	}()
+	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
-	time.sleep(time.second * 2)
+	_ := <-app.started
 
 	spawn fn () {
 		time.sleep(exit_after)

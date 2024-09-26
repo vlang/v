@@ -1,3 +1,4 @@
+// vtest retry: 3
 import os
 import v.vmod
 
@@ -87,10 +88,11 @@ fn init_and_check() ! {
 		'* text=auto eol=lf',
 		'*.bat eol=crlf',
 		'',
-		'**/*.v linguist-language=V',
-		'**/*.vv linguist-language=V',
-		'**/*.vsh linguist-language=V',
-		'**/v.mod linguist-language=V',
+		'*.v linguist-language=V',
+		'*.vv linguist-language=V',
+		'*.vsh linguist-language=V',
+		'v.mod linguist-language=V',
+		'.vdocignore linguist-language=ignore',
 		'',
 	].join_lines()
 

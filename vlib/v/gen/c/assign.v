@@ -7,7 +7,8 @@ import v.ast
 import v.util
 import v.token
 
-fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type, in_heap bool) {
+fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr ast.Expr, ret_typ ast.Type,
+	in_heap bool) {
 	gen_or := expr is ast.Ident && expr.or_expr.kind != .absent
 	if gen_or {
 		old_inside_opt_or_res := g.inside_opt_or_res
@@ -24,7 +25,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 		} else {
 			'${expr}'
 		}
-		g.writeln('if (${expr_var}.state != 0) { // assign')
+		g.writeln('if (${c_name(expr_var)}.state != 0) { // assign')
 		if expr is ast.Ident && expr.or_expr.kind == .propagate_option {
 			g.writeln('\tpanic_option_not_set(_SLIT("none"));')
 		} else {
@@ -36,7 +37,7 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			// handles stmt block which returns something
 			// e.g. { return none }
 			if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
-				g.gen_or_block_stmts(var_expr.str(), '', stmts, ret_typ, false)
+				g.gen_or_block_stmts(c_name(var_expr.str()), '', stmts, ret_typ, false)
 			} else {
 				// handles stmt block which doesn't returns value
 				// e.g. { return }
@@ -71,8 +72,12 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 		styp := g.base_type(ret_typ)
 		decl_styp := g.typ(ret_typ).replace('*', '_ptr')
 		g.writeln('${decl_styp} ${past.tmp_var};')
-		g.write('_option_ok(&(${styp}[]) {')
-
+		is_none := expr is ast.CastExpr && expr.expr is ast.None
+		if is_none {
+			g.write('_option_none(&(${styp}[]) {')
+		} else {
+			g.write('_option_ok(&(${styp}[]) {')
+		}
 		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
 			g.write('*((${g.base_type(expr_typ)}*)')
 			g.expr(expr)
@@ -165,7 +170,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if ok {
 				sref_name = '_sref${node.pos.pos}'
-				g.write('${type_to_free} ${sref_name} = (') // TODO we are copying the entire string here, optimize
+				g.write('${type_to_free} ${sref_name} = (') // TODO: we are copying the entire string here, optimize
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
 				g.expr(left0) // node.left[0])
@@ -205,6 +210,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if node.left_types.len < node.left.len {
 		g.checker_bug('node.left_types.len < node.left.len', node.pos)
 	}
+	last_curr_var_name := g.curr_var_name.clone()
+	g.curr_var_name = []
+	defer {
+		g.curr_var_name = last_curr_var_name
+	}
 
 	for i, mut left in node.left {
 		mut is_auto_heap := false
@@ -214,12 +224,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut is_call := false
 		mut gen_or := false
 		mut blank_assign := false
+		mut is_va_list := false // C varargs
 		mut ident := ast.Ident{
 			scope: unsafe { nil }
 		}
+		mut cur_indexexpr := -1
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
+		is_va_list = left_sym.language == .c && left_sym.name == 'C.va_list'
 		if mut left is ast.Ident {
 			ident = left
+			g.curr_var_name << ident.name
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = left.kind == .blank_ident
@@ -280,13 +294,24 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					g.assign_ct_type = var_type
 				} else if val is ast.IndexExpr {
-					if val.left is ast.Ident && g.is_generic_param_var(val.left) {
+					if val.left is ast.Ident && g.comptime.is_generic_param_var(val.left) {
 						ctyp := g.unwrap_generic(g.get_gn_var_type(val.left))
 						if ctyp != ast.void_type {
 							var_type = ctyp
 							val_type = var_type
 							left.obj.typ = var_type
 							g.assign_ct_type = var_type
+						}
+					}
+				} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
+					if val.return_type_generic != 0 && val.return_type_generic.has_flag(.generic) {
+						fn_ret_type := g.resolve_fn_return_type(val)
+						if fn_ret_type != ast.void_type {
+							var_type = fn_ret_type
+							val_type = var_type
+							left.obj.typ = var_type
+							g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+							// eprintln('>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
 						}
 					}
 				}
@@ -297,13 +322,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if key_str != '' {
 				var_type = g.comptime.type_map[key_str] or { var_type }
 			}
+			g.assign_ct_type = var_type
 			if val is ast.ComptimeSelector {
 				key_str_right := g.comptime.get_comptime_selector_key_type(val)
 				if key_str_right != '' {
 					val_type = g.comptime.type_map[key_str_right] or { var_type }
 				}
+			} else if val is ast.CallExpr {
+				g.assign_ct_type = g.comptime.comptime_for_field_type
 			}
-			g.assign_ct_type = var_type
 		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
 			key_str := g.comptime.get_comptime_selector_key_type(val)
 			if key_str != '' {
@@ -372,7 +399,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
-			|| (val is ast.UnsafeExpr && val.expr is ast.Ident)) && !g.pref.translated
+			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident]))
+			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
@@ -459,8 +487,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
-			mut op_expected_left := ast.Type(0)
-			mut op_expected_right := ast.Type(0)
+			mut op_expected_left := ast.no_type
+			mut op_expected_right := ast.no_type
 			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
 				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct_]
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
@@ -475,6 +503,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write('string__plus(')
 					}
 				} else {
+					// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
+					if left.is_auto_deref_var() {
+						g.write('*')
+					}
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
 					g.write(' = string__plus(')
@@ -494,6 +526,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					.mult_assign { '*' }
 					else { 'unknown op' }
 				}
+				pos := g.out.len
 				g.expr(left)
 				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 					concrete_types := left_sym.info.concrete_types
@@ -512,10 +545,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.expr(left)
 					g.write(' ${extracted_op} ')
 					g.expr(val)
-					g.write(';')
+					if !g.inside_for_c_stmt {
+						g.write(';')
+					}
 					return
 				} else {
-					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+					if g.table.final_sym(g.unwrap_generic(var_type)).kind == .array_fixed {
+						g.go_back_to(pos)
+						g.empty_line = true
+						g.write('memcpy(')
+						g.expr(left)
+						g.write(', ${styp}_${util.replace_op(extracted_op)}(')
+					} else {
+						g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+					}
 					method := g.table.find_method(left_sym, extracted_op) or {
 						// the checker will most likely have found this, already...
 						g.error('assignment operator `${extracted_op}=` used but no `${extracted_op}` method defined',
@@ -527,13 +570,36 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					op_overloaded = true
 				}
 			}
+			final_left_sym := g.table.final_sym(g.unwrap_generic(var_type))
+			final_right_sym := g.table.final_sym(unwrapped_val_type)
+			if final_left_sym.kind == .bool && final_right_sym.kind == .bool
+				&& node.op in [.boolean_or_assign, .boolean_and_assign] {
+				extracted_op := match node.op {
+					.boolean_or_assign {
+						'||'
+					}
+					.boolean_and_assign {
+						'&&'
+					}
+					else {
+						'unknown op'
+					}
+				}
+				g.expr(left)
+				g.write(' = ')
+				g.expr(left)
+				g.write(' ${extracted_op} ')
+				g.expr(val)
+				g.writeln(';')
+				return
+			}
 			if right_sym.info is ast.FnType && is_decl {
 				if is_inside_ternary {
 					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
 
-				if val_type.has_flag(.option) && val is ast.SelectorExpr {
+				if val_type.has_flag(.option) {
 					ret_styp := g.typ(g.unwrap_generic(val_type))
 					g.write('${ret_styp} ${fn_name}')
 				} else {
@@ -559,7 +625,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 					g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
 					def_pos := g.definitions.len
-					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
+					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false,
+						false)
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(')${call_conv_attribute_suffix}')
 				}
@@ -640,11 +707,17 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
-			if is_fixed_array_var {
+			if left is ast.IndexExpr && g.cur_indexexpr.len > 0 {
+				cur_indexexpr = g.cur_indexexpr.index(left.pos().pos)
+			}
+			if is_fixed_array_var || is_va_list {
 				if is_decl {
 					g.writeln(';')
+					if is_va_list {
+						continue
+					}
 				}
-			} else if !g.is_arraymap_set && !str_add && !op_overloaded {
+			} else if cur_indexexpr == -1 && !str_add && !op_overloaded {
 				g.write(' ${op} ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
@@ -652,7 +725,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut cloned := false
 			if g.is_autofree && right_sym.kind in [.array, .string]
 				&& !unwrapped_val_type.has_flag(.shared_f) {
-				if g.gen_clone_assignment(val, unwrapped_val_type, false) {
+				if g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
 					cloned = true
 				}
 			}
@@ -671,7 +744,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 				} else if is_fixed_array_var {
-					// TODO Instead of the translated check, check if it's a pointer already
+					// TODO: Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
@@ -687,11 +760,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.write(' = ')
 						g.expr(val)
 					} else {
-						g.write('memcpy(${final_typ_str}')
-						g.expr(left)
-						g.write(', ${final_ref_str}')
-						g.expr(val)
-						g.write(', sizeof(${typ_str})) /*assign*/')
+						if op_overloaded {
+							g.expr(left)
+							g.write(', ')
+							g.expr(val)
+							g.write(').ret_arr, sizeof(${typ_str})')
+						} else {
+							g.write('memcpy(${final_typ_str}')
+							g.expr(left)
+							g.write(', ${final_ref_str}')
+							g.expr(val)
+							g.write(', sizeof(${typ_str})) /*assign*/')
+						}
 					}
 				} else if is_decl {
 					g.is_shared = var_type.has_flag(.shared_f)
@@ -754,9 +834,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			if str_add || op_overloaded {
 				g.write(')')
 			}
-			if g.is_arraymap_set {
+			if cur_indexexpr != -1 {
+				g.cur_indexexpr.delete(cur_indexexpr)
 				g.write(' })')
-				g.is_arraymap_set = false
+				g.is_arraymap_set = g.cur_indexexpr.len > 0
 			}
 			g.is_shared = false
 		}
@@ -769,7 +850,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type, return_sym ast.TypeSymbol) {
 	// multi return
-	// TODO Handle in if_expr
+	// TODO: Handle in if_expr
 	mr_var_name := 'mr_${node.pos.pos}'
 	mut is_option := return_type.has_flag(.option)
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
@@ -782,6 +863,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.writeln(';')
 	mr_types := (return_sym.info as ast.MultiReturn).types
 	for i, lx in node.left {
+		mut cur_indexexpr := -1
 		mut is_auto_heap := false
 		mut ident := ast.Ident{
 			scope: unsafe { nil }
@@ -794,6 +876,9 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			if lx.obj is ast.Var {
 				is_auto_heap = lx.obj.is_auto_heap
 			}
+		}
+		if lx is ast.IndexExpr && g.cur_indexexpr.len > 0 {
+			cur_indexexpr = g.cur_indexexpr.index(lx.pos.pos)
 		}
 		styp := if ident.name in g.defer_vars { '' } else { g.typ(node.left_types[i]) }
 		if node.op == .decl_assign {
@@ -830,7 +915,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 				g.writeln(';')
 				g.writeln('memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
-				if g.is_arraymap_set {
+				if cur_indexexpr != -1 {
 					if is_auto_heap {
 						g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
 					} else if is_option {
@@ -838,6 +923,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					} else {
 						g.writeln('${mr_var_name}.arg${i} });')
 					}
+					g.cur_indexexpr.delete(cur_indexexpr)
 				} else {
 					if is_auto_heap {
 						g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')

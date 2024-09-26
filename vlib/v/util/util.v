@@ -4,6 +4,9 @@
 module util
 
 import os
+import os.filelock
+import term
+import rand
 import time
 import v.pref
 import v.vmod
@@ -13,7 +16,7 @@ import runtime
 // math.bits is needed by strconv.ftoa
 pub const builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings',
 	'builtin']
-pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
+pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']!
 
 pub const external_module_dependencies_for_tool = {
 	'vdoc': ['markdown']
@@ -31,19 +34,34 @@ const const_tabs = [
 	'\t\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t\t\t',
-]
+]!
 
 pub const nr_jobs = runtime.nr_jobs()
 
 pub fn module_is_builtin(mod string) bool {
-	return mod in util.builtin_module_parts
+	return mod in builtin_module_parts
 }
 
+@[direct_array_access]
 pub fn tabs(n int) string {
-	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+	return if n >= 0 && n < const_tabs.len { const_tabs[n] } else { '\t'.repeat(n) }
 }
 
-//
+pub const stable_build_time = get_build_time()
+// get_build_time returns the current build time, while taking into account SOURCE_DATE_EPOCH
+// to support transparent reproducible builds. See also https://reproducible-builds.org/docs/source-date-epoch/
+// When SOURCE_DATE_EPOCH is not set, it will return the current UTC time.
+pub fn get_build_time() time.Time {
+	sde := os.getenv('SOURCE_DATE_EPOCH')
+	if sde == '' {
+		return time.utc()
+	}
+	return time.unix_nanosecond(sde.i64(), 0)
+}
+
+// set_vroot_folder sets the VCHILD env variable to 'true', and VEXE to the location of the V executable
+// It is called very early by launch_tool/3, so that those env variables can be available by all tools,
+// like `v doc`, `v fmt` etc, so they can use them to find how they were started.
 pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path() can return it
@@ -57,6 +75,8 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
+// resolve_vmodroot replaces all occurences of `@VMODROOT` in `str`, with an absolute path,
+// formed by resolving, where the nearest `v.mod` is, given the folder `dir`.
 pub fn resolve_vmodroot(str string, dir string) !string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
@@ -111,6 +131,78 @@ pub fn resolve_env_value(str string, check_for_presence bool) !string {
 	return rep
 }
 
+const d_sig = "\$d('"
+
+// resolve_d_value replaces all occurrences of `$d('ident','value')`
+// in `str` with either the default `'value'` param or a compile value passed via `-d ident=value`.
+pub fn resolve_d_value(compile_values map[string]string, str string) !string {
+	at := str.index(d_sig) or {
+		return error('no "${d_sig}' + '...\')" could be found in "${str}".')
+	}
+	mut all_parsed := d_sig
+	mut ch := u8(`.`)
+	mut d_ident := ''
+	mut i := 0
+	for i = at + d_sig.len; i < str.len && ch != `'`; i++ {
+		ch = u8(str[i])
+		all_parsed += ch.ascii_str()
+		if ch.is_letter() || ch.is_digit() || ch == `_` {
+			d_ident += ch.ascii_str()
+		} else {
+			if !(ch == `'`) {
+				if ch == `$` {
+					return error('cannot use string interpolation in compile time \$d() expression')
+				}
+				return error('invalid `\$d` identifier in "${str}", invalid character "${ch.ascii_str()}"')
+			}
+		}
+	}
+	if d_ident == '' {
+		return error('first argument of `\$d` must be a string identifier')
+	}
+
+	// at this point we should have a valid identifier in `d_ident`.
+	// Next we parse out the default string value
+
+	// advance past the `,` and the opening `'` in second argument, or ... eat whatever is there
+	all_parsed += u8(str[i]).ascii_str()
+	i++
+	all_parsed += u8(str[i]).ascii_str()
+	i++
+	// Rinse, repeat for the expected default value string
+	ch = u8(`.`)
+	mut d_default_value := ''
+	for ; i < str.len && ch != `'`; i++ {
+		ch = u8(str[i])
+		all_parsed += ch.ascii_str()
+		if !(ch == `'`) {
+			d_default_value += ch.ascii_str()
+		}
+		if ch == `$` {
+			return error('cannot use string interpolation in compile time \$d() expression')
+		}
+	}
+	if d_default_value == '' {
+		return error('second argument of `\$d` must be a pure literal')
+	}
+	// at this point we have the identifier and the default value.
+	// now we need to resolve which one to use from `compile_values`.
+	d_value := compile_values[d_ident] or { d_default_value }
+	// if more `$d()` calls remains, resolve those as well:
+	rep := str.replace_once(all_parsed + ')', d_value)
+	if rep.contains(d_sig) {
+		return resolve_d_value(compile_values, rep)
+	}
+	return rep
+}
+
+// is_escape_sequence returns `true` if `c` is considered a valid escape sequence denoter.
+@[inline]
+pub fn is_escape_sequence(c u8) bool {
+	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
+		`}`, `'`, `"`, `U`]
+}
+
 // launch_tool - starts a V tool in a separate process, passing it the `args`.
 // All V tools are located in the cmd/tools folder, in files or folders prefixed by
 // the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.
@@ -154,9 +246,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool should_compile: ${should_compile}')
 	}
 	if should_compile {
-		emodules := util.external_module_dependencies_for_tool[tool_name]
+		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
@@ -176,32 +268,75 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 
 		current_work_dir := os.getwd()
-		retry_max_count := 3
-		for i in 0 .. retry_max_count {
-			// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
-			os.chdir(vroot) or {}
-			tool_compilation := os.execute(compilation_command)
-			os.chdir(current_work_dir) or {}
-			if tool_compilation.exit_code == 0 {
-				break
-			} else {
-				if i == retry_max_count - 1 {
-					eprintln('cannot compile `${tool_source}`: \n${tool_compilation.output}')
-					exit(1)
+		tlog('recompiling ${tool_source}')
+		lockfile := tool_exe + '.lock'
+		tlog('lockfile: ${lockfile}')
+		mut l := filelock.new(lockfile)
+		if l.try_acquire() {
+			tlog('lockfile acquired')
+			tool_recompile_retry_max_count := 7
+			for i in 0 .. tool_recompile_retry_max_count {
+				tlog('looping i: ${i} / ${tool_recompile_retry_max_count}')
+				// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
+				os.chdir(vroot) or {}
+				tool_compilation := os.execute(compilation_command)
+				os.chdir(current_work_dir) or {}
+				tlog('tool_compilation.exit_code: ${tool_compilation.exit_code}')
+				if tool_compilation.exit_code == 0 {
+					break
+				} else {
+					if i == tool_recompile_retry_max_count - 1 {
+						eprintln('cannot compile `${tool_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+						l.release()
+						exit(1)
+					}
 				}
-				time.sleep(20 * time.millisecond)
+				time.sleep((20 + rand.intn(40) or { 0 }) * time.millisecond)
 			}
+			tlog('lockfile releasing')
+			l.release()
+			tlog('lockfile released')
+		} else {
+			tlog('another process got the lock')
+			// wait till the other V tool recompilation process finished:
+			if l.wait_acquire(10 * time.second) {
+				tlog('the other process finished')
+				l.release()
+			} else {
+				tlog('timeout...')
+			}
+			time.sleep((50 + rand.intn(40) or { 0 }) * time.millisecond)
+			tlog('result of the other process compiling ${tool_exe}: ${os.exists(tool_exe)}')
 		}
 	}
+	tlog('executing: ${tool_exe} with ${tool_args}')
 	$if windows {
-		exit(os.system('${os.quoted_path(tool_exe)} ${tool_args}'))
+		cmd_system('${os.quoted_path(tool_exe)} ${tool_args}')
 	} $else $if js {
 		// no way to implement os.execvp in JS backend
-		exit(os.system('${tool_exe} ${tool_args}'))
+		cmd_system('${tool_exe} ${tool_args}')
 	} $else {
-		os.execvp(tool_exe, args) or { panic(err) }
+		os.execvp(tool_exe, args) or {
+			eprintln('> error while executing: ${tool_exe} ${args}')
+			panic(err)
+		}
 	}
 	exit(2)
+}
+
+@[if trace_launch_tool ?]
+fn tlog(s string) {
+	ts := time.now().format_ss_micro()
+	eprintln('${term.yellow(ts)} ${term.gray(s)}')
+}
+
+@[noreturn]
+fn cmd_system(cmd string) {
+	res := os.system(cmd)
+	if res != 0 {
+		tlog('> error ${res}, while executing: ${cmd}')
+	}
+	exit(res)
 }
 
 // Note: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
@@ -224,7 +359,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 		// eprintln('>>> should_recompile_tool: tool_source: $tool_source | $single_file_recompile | $newest_sfile')
 		return single_file_recompile
 	}
-	// TODO Caching should be done on the `vlib/v` level.
+	// TODO: Caching should be done on the `vlib/v` level.
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true
@@ -304,7 +439,7 @@ pub fn cached_read_source_file(path string) !string {
 	$if trace_cached_read_source_file ? {
 		println('cached_read_source_file            ${path}')
 	}
-	if path.len == 0 {
+	if path == '' {
 		unsafe { cache.sources.free() }
 		unsafe { free(cache) }
 		cache = &SourceCache(unsafe { nil })
@@ -365,7 +500,7 @@ fn non_empty(arg []string) []string {
 	return arg.filter(it != '')
 }
 
-pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
+pub fn check_module_is_installed(modulename string, is_verbose bool, need_update bool) !bool {
 	mpath := os.join_path_single(os.vmodules_dir(), modulename)
 	mod_v_file := os.join_path_single(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/${modulename}'
@@ -375,24 +510,26 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
 		eprintln('check_module_is_installed: murl: ${murl}')
 	}
 	if os.exists(mod_v_file) {
-		vexe := pref.vexe_path()
-		update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
-		if is_verbose {
-			eprintln('check_module_is_installed: updating with ${update_cmd} ...')
-		}
-		update_res := os.execute(update_cmd)
-		if update_res.exit_code < 0 {
-			return error('can not start ${update_cmd}, error: ${update_res.output}')
-		}
-		if update_res.exit_code != 0 {
-			eprintln('Warning: `${modulename}` exists, but is not updated.
+		if need_update {
+			vexe := pref.vexe_path()
+			update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
+			if is_verbose {
+				eprintln('check_module_is_installed: updating with ${update_cmd} ...')
+			}
+			update_res := os.execute(update_cmd)
+			if update_res.exit_code < 0 {
+				return error('can not start ${update_cmd}, error: ${update_res.output}')
+			}
+			if update_res.exit_code != 0 {
+				eprintln('Warning: `${modulename}` exists, but is not updated.
 V will continue, since updates can fail due to temporary network problems,
 and the existing module `${modulename}` may still work.')
-			if is_verbose {
-				eprintln('Details:')
-				eprintln(update_res.output)
+				if is_verbose {
+					eprintln('Details:')
+					eprintln(update_res.output)
+				}
+				eprintln('-'.repeat(50))
 			}
-			eprintln('-'.repeat(50))
 		}
 		return true
 	}
@@ -416,12 +553,12 @@ and the existing module `${modulename}` may still work.')
 }
 
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-	for tool_name, tool_modules in util.external_module_dependencies_for_tool {
+	for tool_name, tool_modules in external_module_dependencies_for_tool {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
 		for emodule in tool_modules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 	}
 }
@@ -447,9 +584,9 @@ const map_prefix = 'map[string]'
 pub fn no_cur_mod(typename string, cur_mod string) string {
 	mut res := typename
 	mod_prefix := cur_mod + '.'
-	has_map_prefix := res.starts_with(util.map_prefix)
+	has_map_prefix := res.starts_with(map_prefix)
 	if has_map_prefix {
-		res = res.replace_once(util.map_prefix, '')
+		res = res.replace_once(map_prefix, '')
 	}
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(mod_prefix)
@@ -457,7 +594,7 @@ pub fn no_cur_mod(typename string, cur_mod string) string {
 		res = res.replace_once(mod_prefix, '')
 	}
 	if has_map_prefix {
-		res = util.map_prefix + res
+		res = map_prefix + res
 	}
 	return res
 }
@@ -468,7 +605,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.sleep(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
+		time.sleep((1001 + rand.intn(20) or { 0 }) * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }
@@ -492,8 +629,7 @@ pub fn get_vtmp_folder() string {
 }
 
 pub fn should_bundle_module(mod string) bool {
-	return mod in util.bundle_modules
-		|| (mod.contains('.') && mod.all_before('.') in util.bundle_modules)
+	return mod in bundle_modules || (mod.contains('.') && mod.all_before('.') in bundle_modules)
 }
 
 // find_all_v_files - given a list of files/folders, finds all .v/.vsh files

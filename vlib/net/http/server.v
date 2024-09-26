@@ -23,24 +23,26 @@ mut:
 	handle(Request) Response
 }
 
+pub const default_server_port = 9009
+
 pub struct Server {
 mut:
 	state ServerStatus = .closed
 pub mut:
-	addr               string = ':8080' // change to ':8080' when port is removed
-	port               int = 8080             @[deprecated: 'use addr']
+	addr               string        = ':${default_server_port}'
+	port               int           = default_server_port @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
 	accept_timeout     time.Duration = 30 * time.second
-	pool_channel_slots int = 1024
-	worker_num         int = runtime.nr_jobs()
+	pool_channel_slots int           = 1024
+	worker_num         int           = runtime.nr_jobs()
 	listener           net.TcpListener
-	//
+
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
 	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
-	//
+
 	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
 }
 
@@ -53,7 +55,7 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// remove when s.port is removed
 	addr := s.addr.split(':')
-	if addr.len > 1 && s.port != 8080 {
+	if addr.len > 1 && s.port != default_server_port {
 		s.addr = '${addr[0]}:${s.port}'
 	}
 
@@ -61,15 +63,10 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
-	mut listening_address := s.addr.clone()
 	if l.family() == net.AddrFamily.unspec {
-		if listening_address == ':0' {
-			listening_address = 'localhost:0'
-		}
-		mut listen_family := net.AddrFamily.ip
-		//		$if !windows {
-		//			listen_family = net.AddrFamily.ip6
-		//		}
+		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
+		listen_family := net.AddrFamily.ip
+		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
 		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
@@ -84,7 +81,6 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// Create tcp connection channel
 	ch := chan &net.TcpConn{cap: s.pool_channel_slots}
-
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
@@ -101,14 +97,10 @@ pub fn (mut s Server) listen_and_serve() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	for {
-		// break if we have a stop signal
-		if s.state != .running {
-			break
-		}
+	for s.state == .running {
 		mut conn := s.listener.accept() or {
 			if err.code() == net.err_timed_out_code {
-				// just skip network timeouts, they are normal
+				// Skip network timeouts, they are normal
 				continue
 			}
 			eprintln('accept() failed, reason: ${err}; skipping')
@@ -153,7 +145,7 @@ pub fn (s &Server) status() ServerStatus {
 pub struct WaitTillRunningParams {
 pub:
 	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call
-	retry_period_ms int = 10 // how much time to wait between each check for the status, in milliseconds
+	retry_period_ms int = 10  // how much time to wait between each check for the status, in milliseconds
 }
 
 // wait_till_running allows you to synchronise your calling (main) thread, with the state of the server
@@ -182,8 +174,8 @@ pub mut:
 
 fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler) thread {
 	mut w := &HandlerWorker{
-		id: wid
-		ch: ch
+		id:      wid
+		ch:      ch
 		handler: handler
 	}
 	return spawn w.process_requests()
@@ -242,7 +234,7 @@ fn (d DebugHandler) handle(req Request) Response {
 		eprintln('[${time.now()}] ${req.method} ${req.url} - 200')
 	}
 	mut r := Response{
-		body: req.data
+		body:   req.data
 		header: req.header
 	}
 	r.set_status(.ok)

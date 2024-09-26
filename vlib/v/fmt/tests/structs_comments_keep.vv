@@ -2,7 +2,7 @@ struct User {
 	name                  string // name
 	name2                 []rune // name2
 	very_long_field       bool
-	age                   int // age
+	age                   int                   // age
 	very_long_type_field1 very_looooog_type     // long
 	very_long_type_field2 very_loooooooong_type // long
 }
@@ -32,7 +32,7 @@ struct Bar {
 fn new_user() User {
 	return User{
 		name: 'Serious Sam'
-		age: 19
+		age:  19
 	}
 }
 
@@ -41,7 +41,7 @@ struct SomeStruct {
 mut:
 	// 2
 	// 3
-	somefield int /*
+	somefield  int /*
 	9
 10
 	*/

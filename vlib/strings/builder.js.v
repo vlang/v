@@ -45,7 +45,7 @@ pub fn (b &Builder) byte_at(n int) u8 {
 }
 
 pub fn (mut b Builder) write_string(s string) {
-	if s.len == 0 {
+	if s == '' {
 		return
 	}
 
@@ -55,7 +55,7 @@ pub fn (mut b Builder) write_string(s string) {
 }
 
 pub fn (mut b Builder) writeln(s string) {
-	if s.len > 0 {
+	if s != '' {
 		b.write_string(s)
 	}
 

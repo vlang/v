@@ -230,8 +230,8 @@ fn test_vec4() {
 
 fn test_proj() {
 	ort := m4.ortho(0,300,0,200,0,0)
-	assert m4.mul_vec(ort, m4.Vec4{[ f32(150),  100,    0, 1]!}) == m4.Vec4{[ f32(0),   0,  0, 1]!}
-	assert m4.mul_vec(ort, m4.Vec4{[ f32(0),      0,    0, 1]!}) == m4.Vec4{[ f32(-1), -1,  0, 1]!}
-	assert m4.mul_vec(ort, m4.Vec4{[ f32(300),  200,    0, 1]!}) == m4.Vec4{[ f32(1),   1,  0, 1]!}
+	assert m4.mul_vec(ort, m4.Vec4{[ f32(150),  100,    0, 1]!}).is_equal(m4.Vec4{[ f32(0),   0,  0, 1]!})
+	assert m4.mul_vec(ort, m4.Vec4{[ f32(0),      0,    0, 1]!}).is_equal(m4.Vec4{[ f32(-1), -1,  0, 1]!})
+	assert m4.mul_vec(ort, m4.Vec4{[ f32(300),  200,    0, 1]!}).is_equal(m4.Vec4{[ f32(1),   1,  0, 1]!})
 }
 // vfmt on

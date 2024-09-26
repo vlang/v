@@ -28,8 +28,8 @@ const u32_iter_count = calculate_iterations_for(32)
 const u64_iter_count = calculate_iterations_for(64)
 
 fn calculate_iterations_for(bits_ int) int {
-	base := bits_ / sys.rand_bitsize
-	extra := if bits_ % sys.rand_bitsize == 0 { 0 } else { 1 }
+	base := bits_ / rand_bitsize
+	extra := if bits_ % rand_bitsize == 0 { 0 } else { 1 }
 	return base + extra
 }
 
@@ -70,7 +70,7 @@ pub fn (mut r SysRNG) u8() u8 {
 		return value
 	}
 	r.buffer = u64(r.default_rand())
-	r.bytes_left = sys.rand_bytesize - 1
+	r.bytes_left = rand_bytesize - 1
 	value := u8(r.buffer)
 	r.buffer >>= 8
 	return value
@@ -86,8 +86,8 @@ pub fn (mut r SysRNG) u16() u16 {
 		return value
 	}
 	mut result := u16(C.rand())
-	for i in 1 .. sys.u16_iter_count {
-		result = result ^ (u16(C.rand()) << (sys.rand_bitsize * i))
+	for i in 1 .. u16_iter_count {
+		result = result ^ (u16(C.rand()) << (rand_bitsize * i))
 	}
 	return result
 }
@@ -96,8 +96,8 @@ pub fn (mut r SysRNG) u16() u16 {
 @[inline]
 pub fn (r SysRNG) u32() u32 {
 	mut result := u32(C.rand())
-	for i in 1 .. sys.u32_iter_count {
-		result = result ^ (u32(C.rand()) << (sys.rand_bitsize * i))
+	for i in 1 .. u32_iter_count {
+		result = result ^ (u32(C.rand()) << (rand_bitsize * i))
 	}
 	return result
 }
@@ -106,8 +106,8 @@ pub fn (r SysRNG) u32() u32 {
 @[inline]
 pub fn (r SysRNG) u64() u64 {
 	mut result := u64(C.rand())
-	for i in 1 .. sys.u64_iter_count {
-		result = result ^ (u64(C.rand()) << (sys.rand_bitsize * i))
+	for i in 1 .. u64_iter_count {
+		result = result ^ (u64(C.rand()) << (rand_bitsize * i))
 	}
 	return result
 }
@@ -115,7 +115,7 @@ pub fn (r SysRNG) u64() u64 {
 // block_size returns the number of bits that the RNG can produce in a single iteration.
 @[inline]
 pub fn (r SysRNG) block_size() int {
-	return sys.rand_bitsize
+	return rand_bitsize
 }
 
 // free should be called when the generator is no longer needed

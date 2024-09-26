@@ -101,8 +101,8 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 }
 
 @[direct_array_access]
-fn (mut pv Picoev) poll_once(max_wait int) int {
-	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events, max_fds, max_wait * 1000)
+fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
+	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events, max_fds, max_wait_in_sec * 1000)
 
 	if nevents == -1 {
 		// timeout has occurred
@@ -116,13 +116,14 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 			assert event.data.fd < max_fds
 		}
 		if pv.loop.id == target.loop_id && target.events & picoev_readwrite != 0 {
-			// vfmt off
-			read_events := (
-				(if event.events & u32(C.EPOLLIN) != 0 { picoev_read } else { 0 })
-					|
-				(if event.events & u32(C.EPOLLOUT) != 0 { picoev_write } else { 0 })
-			)
-			// vfmt on
+			mut read_events := 0
+			if event.events & u32(C.EPOLLIN) != 0 {
+				read_events |= picoev_read
+			}
+			if event.events & u32(C.EPOLLOUT) != 0 {
+				read_events |= picoev_write
+			}
+
 			if read_events != 0 {
 				// do callback!
 				unsafe { target.cb(event.data.fd, read_events, &pv) }

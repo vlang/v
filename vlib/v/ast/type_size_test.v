@@ -35,9 +35,9 @@ fn test_type_size() {
 	mut b := builder.new_builder(pref_)
 	mut files := b.get_builtin_files()
 	b.set_module_lookup_paths()
-	parser.parse_files(files, b.table, b.pref)
+	parser.parse_files(files, mut b.table, b.pref)
 	b.parse_imports()
-	parser.parse_file(@FILE, b.table, .parse_comments, b.pref)
+	parser.parse_file(@FILE, mut b.table, .parse_comments, b.pref)
 
 	mut t := b.table
 

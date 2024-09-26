@@ -25,4 +25,4 @@ vlib/v/checker/tests/mut_assign_ref.vv:17:6: error: `constant` is immutable, can
    17 |     c = &constant
       |         ^
    18 |     ic := &constant // ok
-   19 |     _=ic
+   19 |     _ = ic

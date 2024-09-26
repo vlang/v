@@ -33,8 +33,8 @@ fn (mut x Integer) free() {
 
 fn (x Integer) clone() Integer {
 	return Integer{
-		digits: x.digits.clone()
-		signum: x.signum
+		digits:   x.digits.clone()
+		signum:   x.signum
 		is_const: false
 	}
 }
@@ -117,6 +117,7 @@ pub fn integer_from_u64(value u64) Integer {
 
 @[params]
 pub struct IntegerConfig {
+pub:
 	signum int = 1
 }
 
@@ -183,7 +184,7 @@ fn validate_string(characters string, radix u32) ! {
 
 	for index := start_index; index < characters.len; index++ {
 		digit := characters[index]
-		value := big.digit_array.index(digit)
+		value := digit_array.index(digit)
 
 		if value == -1 {
 			return error('math.big: Invalid character ${digit}')
@@ -211,7 +212,7 @@ fn integer_from_special_string(characters string, chunk_size int) Integer {
 	mut offset := 0
 	for index := characters.len - 1; index >= start_index; index-- {
 		digit := characters[index]
-		value := u32(big.digit_array.index(digit))
+		value := u32(digit_array.index(digit))
 
 		current |= value << offset
 		offset += chunk_size
@@ -253,7 +254,7 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 
 	for index := start_index; index < characters.len; index++ {
 		digit := characters[index]
-		value := big.digit_array.index(digit)
+		value := digit_array.index(digit)
 
 		result *= radix_int
 		result += integer_from_int(value)
@@ -615,12 +616,14 @@ pub fn (mut a Integer) dec() {
 }
 
 // == returns `true` if the integers `a` and `b` are equal in value and sign.
+@[inline]
 pub fn (a Integer) == (b Integer) bool {
 	return a.signum == b.signum && a.digits.len == b.digits.len && a.digits == b.digits
 }
 
 // abs_cmp returns the result of comparing the magnitudes of the integers `a` and `b`.
 // It returns a negative int if `|a| < |b|`, 0 if `|a| == |b|`, and a positive int if `|a| > |b|`.
+@[inline]
 pub fn (a Integer) abs_cmp(b Integer) int {
 	return compare_digit_array(a.digits, b.digits)
 }
@@ -873,7 +876,7 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
 		new_current, digit = current.div_mod_internal(divisor)
-		rune_array << big.digit_array[digit.int()]
+		rune_array << digit_array[digit.int()]
 		unsafe { digit.free() }
 		unsafe { current.free() }
 		current = new_current
@@ -921,6 +924,7 @@ fn u32_to_hex_with_lz(value u32) string {
 
 // int returns the integer value of the integer `a`.
 // NOTE: This may cause loss of precision.
+@[direct_array_access]
 pub fn (a Integer) int() int {
 	if a.signum == 0 {
 		return 0

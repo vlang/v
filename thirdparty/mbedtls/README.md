@@ -17,7 +17,9 @@ We provide some non-standard configurations focused on specific use cases in the
 Documentation
 -------------
 
-Documentation for the Mbed TLS interfaces in the default library configuration is available as part of the [Mbed TLS documentation](https://tls.mbed.org/api/).
+The main Mbed TLS documentation is available via [ReadTheDocs](https://mbed-tls.readthedocs.io/).
+
+Documentation for the PSA Cryptography API is available [on GitHub](https://arm-software.github.io/psa-api/crypto/).
 
 To generate a local copy of the library documentation in HTML format, tailored to your compile-time configuration:
 
@@ -103,9 +105,9 @@ Setting the variable `SHARED` in your environment will build shared libraries in
 
 Please note that setting `CFLAGS` overrides its default value of `-O2` and setting `WARNING_CFLAGS` overrides its default value (starting with `-Wall -Wextra`), so if you just want to add some warning options to the default ones, you can do so by setting `CFLAGS=-O2 -Werror` for example. Setting `WARNING_CFLAGS` is useful when you want to get rid of its default content (for example because your compiler doesn't accept `-Wall` as an option). Directory-specific options cannot be overridden from the command line.
 
-Depending on your platform, you might run into some issues. Please check the Makefiles in `library/`, `programs/` and `tests/` for options to manually add or remove for specific platforms. You can also check [the Mbed TLS Knowledge Base](https://tls.mbed.org/kb) for articles on your platform or issue.
+Depending on your platform, you might run into some issues. Please check the Makefiles in `library/`, `programs/` and `tests/` for options to manually add or remove for specific platforms. You can also check [the Mbed TLS Knowledge Base](https://mbed-tls.readthedocs.io/en/latest/kb/) for articles on your platform or issue.
 
-In case you find that you need to do something else as well, please let us know what, so we can add it to the [Mbed TLS Knowledge Base](https://tls.mbed.org/kb).
+In case you find that you need to do something else as well, please let us know what, so we can add it to the [Mbed TLS Knowledge Base](https://mbed-tls.readthedocs.io/en/latest/kb/).
 
 ### CMake
 
@@ -240,7 +242,7 @@ For machines with a Unix shell and OpenSSL (and optionally GnuTLS) installed, ad
 -   `tests/ssl-opt.sh` runs integration tests for various TLS options (renegotiation, resumption, etc.) and tests interoperability of these options with other implementations.
 -   `tests/compat.sh` tests interoperability of every ciphersuite with other implementations.
 -   `tests/scripts/test-ref-configs.pl` test builds in various reduced configurations.
--   `tests/scripts/key-exchanges.pl` test builds in configurations with a single key exchange enabled
+-   `tests/scripts/depends.py` test builds in configurations with a single curve, key exchange, hash, cipher, or pkalg on.
 -   `tests/scripts/all.sh` runs a combination of the above tests, plus some more, with various build options (such as ASan, full `mbedtls_config.h`, etc).
 
 Porting Mbed TLS
@@ -248,9 +250,9 @@ Porting Mbed TLS
 
 Mbed TLS can be ported to many different architectures, OS's and platforms. Before starting a port, you may find the following Knowledge Base articles useful:
 
--   [Porting Mbed TLS to a new environment or OS](https://tls.mbed.org/kb/how-to/how-do-i-port-mbed-tls-to-a-new-environment-OS)
--   [What external dependencies does Mbed TLS rely on?](https://tls.mbed.org/kb/development/what-external-dependencies-does-mbedtls-rely-on)
--   [How do I configure Mbed TLS](https://tls.mbed.org/kb/compiling-and-building/how-do-i-configure-mbedtls)
+-   [Porting Mbed TLS to a new environment or OS](https://mbed-tls.readthedocs.io/en/latest/kb/how-to/how-do-i-port-mbed-tls-to-a-new-environment-OS/)
+-   [What external dependencies does Mbed TLS rely on?](https://mbed-tls.readthedocs.io/en/latest/kb/development/what-external-dependencies-does-mbedtls-rely-on/)
+-   [How do I configure Mbed TLS](https://mbed-tls.readthedocs.io/en/latest/kb/compiling-and-building/how-do-i-configure-mbedtls/)
 
 Mbed TLS is mostly written in portable C99; however, it has a few platform requirements that go beyond the standard, but are met by most modern architectures:
 
@@ -263,11 +265,11 @@ Mbed TLS is mostly written in portable C99; however, it has a few platform requi
 PSA cryptography API
 --------------------
 
-### PSA API design
+### PSA API
 
 Arm's [Platform Security Architecture (PSA)](https://developer.arm.com/architectures/security-architectures/platform-security-architecture) is a holistic set of threat models, security analyses, hardware and firmware architecture specifications, and an open source firmware reference implementation. PSA provides a recipe, based on industry best practice, that allows security to be consistently designed in, at both a hardware and firmware level.
 
-The [PSA cryptography API](https://armmbed.github.io/mbed-crypto/psa/#application-programming-interface) provides access to a set of cryptographic primitives. It has a dual purpose. First, it can be used in a PSA-compliant platform to build services, such as secure boot, secure storage and secure communication. Second, it can also be used independently of other PSA components on any platform.
+The [PSA cryptography API](https://arm-software.github.io/psa-api/crypto/) provides access to a set of cryptographic primitives. It has a dual purpose. First, it can be used in a PSA-compliant platform to build services, such as secure boot, secure storage and secure communication. Second, it can also be used independently of other PSA components on any platform.
 
 The design goals of the PSA cryptography API include:
 
@@ -278,10 +280,6 @@ The design goals of the PSA cryptography API include:
 * The interface is designed to be easy to use and hard to accidentally misuse.
 
 Arm welcomes feedback on the design of the API. If you think something could be improved, please open an issue on our Github repository. Alternatively, if you prefer to provide your feedback privately, please email us at [`mbed-crypto@arm.com`](mailto:mbed-crypto@arm.com). All feedback received by email is treated confidentially.
-
-### PSA API documentation
-
-A browsable copy of the PSA Cryptography API documents is available on the [PSA cryptography interfaces documentation portal](https://armmbed.github.io/mbed-crypto/psa/#application-programming-interface) in [PDF](https://armmbed.github.io/mbed-crypto/PSA_Cryptography_API_Specification.pdf) and [HTML](https://armmbed.github.io/mbed-crypto/html/index.html) formats.
 
 ### PSA implementation in Mbed TLS
 

@@ -5,8 +5,6 @@ import time
 import dl
 import v.live
 
-pub const is_used = 1
-
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
 @[markused]
@@ -19,16 +17,16 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 	}
 	// $if msvc { so_extension = '.dll' } $else { so_extension = '.so' }
 	return &live.LiveReloadInfo{
-		original: original
-		vexe: vexe
-		vopts: vopts
-		live_fn_mutex: live_fn_mutex
-		live_linkfn: live_linkfn
-		so_extension: so_extension
+		original:         original
+		vexe:             vexe
+		vopts:            vopts
+		live_fn_mutex:    live_fn_mutex
+		live_linkfn:      live_linkfn
+		so_extension:     so_extension
 		so_name_template: '${so_dir}/tmp.%d.${file_base}'
-		live_lib: 0
-		reloads: 0
-		reload_time_ms: 0
+		live_lib:         0
+		reloads:          0
+		reload_time_ms:   0
 	}
 }
 
@@ -50,7 +48,7 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 
 // add_live_monitored_file will be called by the generated code inside main(), to add a list of all the .v files
 // that were used during the main program compilation. Any change to any of them, will later trigger a
-// recompilation and reloading of the produced shared library. This makes it possible for [live] functions
+// recompilation and reloading of the produced shared library. This makes it possible for @[live] functions
 // inside modules to also work, not just in the top level program.
 @[markused]
 pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {
@@ -105,18 +103,18 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex locking...')
 	C.pthread_mutex_lock(r.live_fn_mutex)
 	elog(r, 'live mutex locked')
-	//
+
 	if r.cb_locked_before != unsafe { nil } {
 		r.cb_locked_before(r)
 	}
-	//
+
 	protected_load_lib(mut r, new_lib_path)
-	//
+
 	r.reloads_ok++
 	if r.cb_locked_after != unsafe { nil } {
 		r.cb_locked_after(r)
 	}
-	//
+
 	elog(r, 'live mutex unlocking...')
 	C.pthread_mutex_unlock(r.live_fn_mutex)
 	elog(r, 'live mutex unlocked')

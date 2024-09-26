@@ -17,10 +17,10 @@ const sin_data = [
 	-1.1821555255364833468288e-19,
 ]
 const sin_cs = ChebSeries{
-	c: sin_data
+	c:     sin_data
 	order: 11
-	a: -1
-	b: 1
+	a:     -1
+	b:     1
 }
 const cos_data = [
 	0.165391825637921473505668118136,
@@ -36,10 +36,10 @@ const cos_data = [
 	-3.7363121133079412079201377318e-18,
 ]
 const cos_cs = ChebSeries{
-	c: cos_data
+	c:     cos_data
 	order: 10
-	a: -1
-	b: 1
+	a:     -1
+	b:     1
 }
 
 // sin calculates the sine of the angle in radians
@@ -69,11 +69,11 @@ pub fn sin(x f64) f64 {
 		mut result := 0.0
 		if octant == 0 {
 			t := 8.0 * abs(z) / pi - 1.0
-			sin_cs_val, _ := math.sin_cs.eval_e(t)
+			sin_cs_val, _ := sin_cs.eval_e(t)
 			result = z * (1.0 + z * z * sin_cs_val)
 		} else {
 			t := 8.0 * abs(z) / pi - 1.0
-			cos_cs_val, _ := math.cos_cs.eval_e(t)
+			cos_cs_val, _ := cos_cs.eval_e(t)
 			result = 1.0 - 0.5 * z * z * (1.0 - z * z * cos_cs_val)
 		}
 		result *= sgn_result
@@ -110,11 +110,11 @@ pub fn cos(x f64) f64 {
 		mut result := 0.0
 		if octant == 0 {
 			t := 8.0 * abs(z) / pi - 1.0
-			cos_cs_val, _ := math.cos_cs.eval_e(t)
+			cos_cs_val, _ := cos_cs.eval_e(t)
 			result = 1.0 - 0.5 * z * z * (1.0 - z * z * cos_cs_val)
 		} else {
 			t := 8.0 * abs(z) / pi - 1.0
-			sin_cs_val, _ := math.sin_cs.eval_e(t)
+			sin_cs_val, _ := sin_cs.eval_e(t)
 			result = z * (1.0 + z * z * sin_cs_val)
 		}
 		result *= sgn_result
@@ -168,8 +168,8 @@ pub fn sincos(x f64) (f64, f64) {
 		sgn_result_cos = if octant > 1 { -sgn_result_cos } else { sgn_result_cos }
 		z := ((abs_x - y * p1) - y * p2) - y * p3
 		t := 8.0 * abs(z) / pi - 1.0
-		sin_cs_val, _ := math.sin_cs.eval_e(t)
-		cos_cs_val, _ := math.cos_cs.eval_e(t)
+		sin_cs_val, _ := sin_cs.eval_e(t)
+		cos_cs_val, _ := cos_cs.eval_e(t)
 		mut result_sin := 0.0
 		mut result_cos := 0.0
 		if octant == 0 {

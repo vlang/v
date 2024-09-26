@@ -120,10 +120,10 @@ pub enum DOMKeyCode {
 	x             = 88
 	y             = 89
 	z             = 90
-	left_bracket  = 91 //[
-	backslash     = 92 //\
-	right_bracket = 93 //]
-	grave_accent  = 96 //`
+	left_bracket  = 91  //[
+	backslash     = 92  //\
+	right_bracket = 93  //]
+	grave_accent  = 96  //`
 	world_1       = 161 // non-us #1
 	world_2       = 162 // non-us #2
 	escape        = 256
@@ -202,7 +202,6 @@ pub struct Config {
 pub:
 	width         int
 	height        int
-	use_ortho     bool // unused, still here just for backwards compatibility
 	retina        bool
 	resizable     bool
 	user_data     voidptr
@@ -218,14 +217,14 @@ pub:
 	native_frame_fn   FNCb   = unsafe { nil }
 	cleanup_fn        FNCb   = unsafe { nil }
 	fail_fn           FNFail = unsafe { nil }
-	//
+
 	event_fn FNEvent = unsafe { nil }
 	quit_fn  FNEvent = unsafe { nil }
-	//
+
 	keydown_fn FNKeyDown = unsafe { nil }
 	keyup_fn   FNKeyUp   = unsafe { nil }
 	char_fn    FNChar    = unsafe { nil }
-	//
+
 	move_fn    FNMove    = unsafe { nil }
 	click_fn   FNClick   = unsafe { nil }
 	unclick_fn FNUnClick = unsafe { nil }
@@ -251,15 +250,15 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int    = 1 // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int    = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	max_dropped_files            int    = 1        // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int    = 2048     // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
 }
 
 const size = Size{0, 0}
 
 pub fn window_size() Size {
-	return gg.size
+	return size
 }
 
 pub struct Context {
@@ -272,7 +271,7 @@ pub mut:
 	scale         f32 = 1.0
 	width         int
 	height        int
-	window        JS.Window    @[noinit]
+	window        JS.Window @[noinit]
 	config        Config
 	user_data     voidptr
 	ui_mode       bool
@@ -285,9 +284,9 @@ pub mut:
 	mouse_dy      int
 	scroll_x      int
 	scroll_y      int
-	//
-	key_modifiers     Modifier // the current key modifiers
-	key_repeat        bool     // whether the pressed key was an autorepeated one
+
+	key_modifiers     Modifier           // the current key modifiers
+	key_repeat        bool               // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	context           JS.CanvasRenderingContext2D @[noinit]
@@ -325,7 +324,7 @@ pub fn new_context(cfg Config) &Context {
 	g.width = cfg.width
 	g.height = cfg.height
 	g.ui_mode = cfg.ui_mode
-	mut sz := gg.size
+	mut sz := size
 	sz.height = g.height
 	sz.width = g.width
 	g.config = cfg

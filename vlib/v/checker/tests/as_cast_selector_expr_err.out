@@ -1,0 +1,7 @@
+vlib/v/checker/tests/as_cast_selector_expr_err.vv:17:14: error: indeterminate `as` cast, use parenthesis to clarity
+   15 |         y: 123
+   16 |     })
+   17 |     println(bar as Bar.y == 123)
+      |                 ~~
+   18 | }
+Details: for example `(bar as main.Bar).y`

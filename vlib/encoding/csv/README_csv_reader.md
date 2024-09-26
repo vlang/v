@@ -42,6 +42,7 @@ Using these structs, it is possible to change the behavior of the CSV Reader.
 The config struct is as follows:
 ```v ignore
 pub struct SequentialReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed by scr_buf as source of data
 	file_path    string
@@ -128,6 +129,7 @@ Using these structs, it is possible to change the behavior of the CSV Reader.
 The config struct is as follows:
 ```v ignore
 pub struct RandomAccessReaderConfig {
+pub:
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
@@ -257,8 +259,8 @@ import encoding.csv
 fn main() {
 	file_path := 'big2.csv'
 	mut csvr := csv.csv_reader(
-		file_path: file_path // path to the file CSV
-		mem_buf_size: 1024 * 1024 * 64 // we set 64MByte of buffer for this file
+		file_path:    file_path                     // path to the file CSV
+		mem_buf_size: 1024 * 1024 * 64              // we set 64MByte of buffer for this file
 		end_line_len: csv.endline_crlf_len // we are using a windows text file
 	)!
 	// The data will be saved in this array
@@ -293,9 +295,9 @@ a,b,c
 
 fn main() {
 	mut csvr := csv.csv_reader(
-		scr_buf: txt.str
+		scr_buf:     txt.str
 		scr_buf_len: txt.len
-		comment: `#` // line starting with # will be ignored
+		comment:     `#` // line starting with # will be ignored
 	)!
 	// scan all rows, csvr.csv_map.len contain the valid
 	// rows number in the CSV file.
@@ -326,11 +328,11 @@ const txt = "
 
 fn main() {
 	mut csvr := csv.csv_reader(
-		scr_buf: txt.str // string pointer
-		scr_buf_len: txt.len // string length
-		comment: `#` // line starting with # will be ignored
-		quote: `'` // char used for quotes
-		quote_remove: true // remove quotes from the cells
+		scr_buf:      txt.str // string pointer
+		scr_buf_len:  txt.len // string length
+		comment:      `#`     // line starting with # will be ignored
+		quote:        `'`     // char used for quotes
+		quote_remove: true    // remove quotes from the cells
 	)!
 
 	// scan all rows, csvr.csv_map.len contain the valid

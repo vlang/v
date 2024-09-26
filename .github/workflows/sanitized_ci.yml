@@ -12,13 +12,12 @@ name: Sanitized CI
 ## V modules.
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '!**'
       - '!**.md'
       - '!**.yml'
-      - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/strconv/**.v'
       - 'vlib/strings/**.v'
@@ -41,11 +40,10 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
+      - '**/sanitized_ci.yml'
   pull_request:
     paths:
       - '!**'
-      - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/strconv/**.v'
       - 'vlib/strings/**.v'
@@ -68,100 +66,102 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
+      - '**/sanitized_ci.yml'
 
 concurrency:
-  group: build-sanitized-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   tests-sanitize-undefined-clang:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 240
     env:
       VFLAGS: -cc clang
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
   tests-sanitize-undefined-gcc:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 240
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
         run: ./v2 build-examples
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 240
     env:
       VFLAGS: -cc clang
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+        run: ./v -cflags -fsanitize=address -o v cmd/v &&
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 240
     env:
       VFLAGS: -cc msvc
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build
         run: |
           echo %VFLAGS%
@@ -169,72 +169,70 @@ jobs:
           .\make.bat -msvc
           .\v.exe self
       - name: Ensure code is well formatted
-        run: |
-          .\v.exe fmt -verify vlib/builtin/ vlib/v/scanner/ vlib/v/parser/ vlib/v/gen/
-      ## TODO: check to see why `v test-cleancode` does not work with msvc on windows
-
-      ##      - name: Install dependencies
-      ##        run: |
-      ##          .\v.exe setup-freetype
-      ##          .\.github\workflows\windows-install-sqlite.bat
-      ##      - name: Self tests (TODO: /fsanitize=address)
-      ##        run: |
-      ##          .\v.exe -cflags "/fsanitize=address" test-self
+        run: .\v.exe test-cleancode
+        # - name: Install dependencies
+        #   run: |
+        #     .\v.exe setup-freetype
+        #     .\.github\workflows\windows-install-sqlite.bat
+        # - name: Self tests (/fsanitize=address) # TODO:
+        #   run: .\v.exe -cflags "/fsanitize=address" test-self vlib
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 240
     env:
       VFLAGS: -cc gcc
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with -cstrict
+        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self vlib
       - name: Self tests (V compiled with -fsanitize=address)
         run:
           ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-memory-clang:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 240
     env:
       VFLAGS: -cc clang -gc none
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+      - uses: actions/checkout@v4
       - name: Build V
-        run: make && ./v -cc clang -cg -cstrict -o v cmd/v
+        run: make -j4 && ./v symlink
       - name: Ensure code is well formatted
         run: ./v test-cleancode
+      - name: Install dependencies
+        run: |
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev libasound2-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with clang and -cstrict
+        run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory test-self
+        run: ./v -cflags -fsanitize=memory test-self vlib
       - name: Self tests (V compiled with -fsanitize=memory)
         run: |
           ./v -cflags -fsanitize=memory -o v cmd/v
-          ./v -cc tcc test-self -msan-compiler
+          ./v -cc tcc test-self -msan-compiler vlib
       - name: Build examples (V compiled with -fsanitize=memory)
         run: ./v build-examples

@@ -30,6 +30,25 @@ pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	w.used_fns[fkey] = true
 }
 
+pub fn (mut w Walker) mark_builtin_array_method_as_used(method_name string) {
+	w.mark_builtin_type_method_as_used('${ast.array_type_idx}.${method_name}', '${int(ast.array_type.ref())}.${method_name}')
+}
+
+pub fn (mut w Walker) mark_builtin_map_method_as_used(method_name string) {
+	w.mark_builtin_type_method_as_used('${ast.map_type_idx}.${method_name}', '${int(ast.map_type.ref())}.${method_name}')
+}
+
+pub fn (mut w Walker) mark_builtin_type_method_as_used(k string, rk string) {
+	if mut cfn := w.all_fns[k] {
+		w.fn_decl(mut cfn)
+	}
+	if mut cfn := w.all_fns[rk] {
+		w.fn_decl(mut cfn)
+	}
+	w.mark_fn_as_used(k)
+	w.mark_fn_as_used(rk)
+}
+
 pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    const > |${ckey}|')
@@ -91,7 +110,7 @@ pub fn (mut w Walker) mark_markused_consts() {
 
 pub fn (mut w Walker) mark_markused_globals() {
 	for gkey, mut globalfield in w.all_globals {
-		if globalfield.is_markused {
+		if globalfield.is_markused || globalfield.is_exported {
 			w.mark_global_as_used(gkey)
 		}
 	}
@@ -101,6 +120,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
@@ -227,7 +247,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyExpr {
-			// TODO make sure this doesn't happen
+			// TODO: make sure this doesn't happen
 			// panic('Walker: EmptyExpr')
 		}
 		ast.ComptimeType {}
@@ -510,12 +530,34 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	w.expr(node.left)
 	w.or_block(node.or_block)
-	//
+
 	fn_name := node.fkey()
 	if w.used_fns[fn_name] {
 		return
 	}
+	if node.is_method {
+		if node.left_type != 0 {
+			lsym := w.table.sym(node.left_type)
+			// Note: maps and arrays are implemented in `builtin` as concrete types `map` and `array`.
+			// They are not normal generics expanded, to separate structs, parametrized on the type of the element.
+			// All []Type or map[Type]Another types are typedefs to those `map` and `array` types, and all map and array methods
+			// are actually methods on the `builtin` concrete types.
+			match lsym.kind {
+				.array { w.mark_builtin_array_method_as_used(node.name) }
+				.map { w.mark_builtin_map_method_as_used(node.name) }
+				else {}
+			}
+		}
+	}
+
 	w.mark_fn_as_used(fn_name)
+	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
+		&& !node.receiver_concrete_type.has_flag(.generic) {
+		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
+		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
+		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
+		w.used_fns[fkey] = true
+	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
 		if !node.is_method || node.receiver_type == stmt.receiver.typ {

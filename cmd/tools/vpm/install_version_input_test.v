@@ -2,7 +2,7 @@
 import os
 import rand
 import v.vmod
-import test_utils
+import test_utils { cmd_ok }
 
 const vexe = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test_${rand.ulid()}')
@@ -18,6 +18,7 @@ fn testsuite_begin() {
 		exit(0)
 	}
 	test_utils.set_test_env(test_path)
+	eprintln('>> test_path: ${test_path}')
 	// Explicitly disable fail on prompt.
 	os.setenv('VPM_FAIL_ON_PROMPT', '', true)
 	os.mkdir_all(test_path) or {}
@@ -40,8 +41,7 @@ fn test_reinstall_mod_with_version_installation() {
 	// Install version.
 	ident := 'vsl'
 	tag := 'v0.1.47'
-	mut res := os.execute('${vexe} install ${ident}@${tag}')
-	assert res.exit_code == 0, res.str()
+	cmd_ok(@LOCATION, '${vexe} install ${ident}@${tag}')
 	mut manifest := get_vmod(ident)
 	assert manifest.name == ident
 	assert manifest.version == tag.trim_left('v')
@@ -55,14 +55,12 @@ fn test_reinstall_mod_with_version_installation() {
 	decline_test := os.join_path(expect_tests_path, 'decline_reinstall_mod_with_version_installation.expect')
 	manifest_path := os.join_path(install_path, 'v.mod')
 	last_modified := os.file_last_mod_unix(manifest_path)
-	res = os.execute('${expect_exe} ${decline_test} ${expect_args}')
-	assert res.exit_code == 0, res.str()
+	cmd_ok(@LOCATION, '${expect_exe} ${decline_test} ${expect_args}')
 	assert last_modified == os.file_last_mod_unix(manifest_path)
 
 	// Accept.
 	accept_test := os.join_path(expect_tests_path, 'accept_reinstall_mod_with_version_installation.expect')
-	res = os.execute('${expect_exe} ${accept_test} ${expect_args}')
-	assert res.exit_code == 0, res.str()
+	cmd_ok(@LOCATION, '${expect_exe} ${accept_test} ${expect_args}')
 	manifest = get_vmod(ident)
 	assert manifest.name == ident
 	assert manifest.version == new_tag.trim_left('v')

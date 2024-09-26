@@ -50,7 +50,7 @@ pub fn from(input string) !Version {
 
 // build returns a `Version` structure with given `major`, `minor` and `patch` versions.
 pub fn build(major int, minor int, patch int) Version {
-	// TODO Check if versions are greater than zero.
+	// TODO: Check if versions are greater than zero.
 	return Version{major, minor, patch, '', ''}
 }
 

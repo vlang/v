@@ -26,8 +26,8 @@ pub type ContextDesc = C.sgl_context_desc_t
 
 @[typedef]
 pub struct C.sgl_context_desc_t {
-	max_vertices int // default: 64k
-	max_commands int // default: 16k
+	max_vertices int             // default: 64k
+	max_commands int             // default: 16k
 	color_format gfx.PixelFormat // C.sg_pixel_format
 	depth_format gfx.PixelFormat // C.sg_pixel_format
 	sample_count int
@@ -38,10 +38,10 @@ pub type Desc = C.sgl_desc_t
 @[typedef]
 pub struct C.sgl_desc_t {
 pub:
-	max_vertices       int // size for vertex buffer
-	max_commands       int // size of uniform- and command-buffers
-	context_pool_size  int // max number of contexts (including default context), default: 4
-	pipeline_pool_size int // size of internal pipeline pool, default: 64
+	max_vertices       int             // size for vertex buffer
+	max_commands       int             // size of uniform- and command-buffers
+	context_pool_size  int             // max number of contexts (including default context), default: 4
+	pipeline_pool_size int             // size of internal pipeline pool, default: 64
 	color_format       gfx.PixelFormat // C.sg_pixel_format
 	depth_format       gfx.PixelFormat // C.sg_pixel_format
 	sample_count       int

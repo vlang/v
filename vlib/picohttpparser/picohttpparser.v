@@ -53,7 +53,7 @@ fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret P
 		}
 	}
 	// validate
-	if method.len == 0 || path.len == 0 {
+	if method == '' || path == '' {
 		pret.ret = -1
 		pret.err = 'error parsing request: invalid method or path'
 		return
@@ -81,7 +81,7 @@ fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, m
 		buf += pret.ret
 	}
 	// validate
-	if method.len == 0 || path.len == 0 {
+	if method == '' || path == '' {
 		pret.ret = -1
 		pret.err = 'error parsing request: invalid method or path'
 		return
@@ -214,7 +214,7 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 
 			// http://www.mozilla.org/security/announce/2006/mfsa2006-33.html
 			for *buf != `:` {
 				// check if the current character is allowed in an HTTP header
-				if picohttpparser.token_char_map[*buf] == 0 {
+				if token_char_map[*buf] == 0 {
 					$if trace_parse ? {
 						eprintln('invalid character! ${*buf}')
 					}

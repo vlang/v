@@ -1265,7 +1265,7 @@
  */
 #define PSA_ALG_CHACHA20_POLY1305               ((psa_algorithm_t)0x05100500)
 
-/* In the encoding of a AEAD algorithm, the bits corresponding to
+/* In the encoding of an AEAD algorithm, the bits corresponding to
  * PSA_ALG_AEAD_TAG_LENGTH_MASK encode the length of the AEAD tag.
  * The constants for default lengths follow this encoding.
  */
@@ -1400,9 +1400,11 @@
  * This is the signature scheme defined by RFC 8017
  * (PKCS#1: RSA Cryptography Specifications) under the name
  * RSASSA-PSS, with the message generation function MGF1, and with
- * a salt length equal to the length of the hash. The specified
- * hash algorithm is used to hash the input message, to create the
- * salted hash, and for the mask generation.
+ * a salt length equal to the length of the hash, or the largest
+ * possible salt length for the algorithm and key size if that is
+ * smaller than the hash length. The specified hash algorithm is
+ * used to hash the input message, to create the salted hash, and
+ * for the mask generation.
  *
  * \param hash_alg      A hash algorithm (\c PSA_ALG_XXX value such that
  *                      #PSA_ALG_IS_HASH(\p hash_alg) is true).
@@ -2019,6 +2021,20 @@
 #define PSA_ALG_TLS12_PSK_TO_MS_GET_HASH(hkdf_alg)                         \
     (PSA_ALG_CATEGORY_HASH | ((hkdf_alg) & PSA_ALG_HASH_MASK))
 
+/* The TLS 1.2 ECJPAKE-to-PMS KDF. It takes the shared secret K (an EC point
+ * in case of EC J-PAKE) and calculates SHA256(K.X) that the rest of TLS 1.2
+ * will use to derive the session secret, as defined by step 2 of
+ * https://datatracker.ietf.org/doc/html/draft-cragie-tls-ecjpake-01#section-8.7.
+ * Uses PSA_ALG_SHA_256.
+ * This function takes a single input:
+ * #PSA_KEY_DERIVATION_INPUT_SECRET is the shared secret K from EC J-PAKE.
+ * The only supported curve is secp256r1 (the 256-bit curve in
+ * #PSA_ECC_FAMILY_SECP_R1), so the input must be exactly 65 bytes.
+ * The output has to be read as a single chunk of 32 bytes, defined as
+ * PSA_TLS12_ECJPAKE_TO_PMS_DATA_SIZE.
+ */
+#define PSA_ALG_TLS12_ECJPAKE_TO_PMS            ((psa_algorithm_t)0x08000609)
+
 /* This flag indicates whether the key derivation algorithm is suitable for
  * use on low-entropy secrets such as password - these algorithms are also
  * known as key stretching or password hashing schemes. These are also the
@@ -2561,7 +2577,7 @@ static inline int mbedtls_svc_key_id_is_null( mbedtls_svc_key_id_t key )
  *
  * This flag allows the key to be used for a MAC verification operation
  * or for an asymmetric signature verification operation,
- * if otherwise permitted by by the key's type and policy.
+ * if otherwise permitted by the key's type and policy.
  *
  * For a key pair, this concerns the public key.
  */
@@ -2571,7 +2587,7 @@ static inline int mbedtls_svc_key_id_is_null( mbedtls_svc_key_id_t key )
  * hash.
  *
  * This flag allows the key to be used for a key derivation operation or for
- * a key agreement operation, if otherwise permitted by by the key's type and
+ * a key agreement operation, if otherwise permitted by the key's type and
  * policy.
  *
  * If this flag is present on all keys used in calls to
@@ -2587,7 +2603,7 @@ static inline int mbedtls_svc_key_id_is_null( mbedtls_svc_key_id_t key )
  * This flag allows the key to be used:
  *
  * This flag allows the key to be used in a key derivation operation, if
- * otherwise permitted by by the key's type and policy.
+ * otherwise permitted by the key's type and policy.
  *
  * If this flag is present on all keys used in calls to
  * psa_key_derivation_input_key() for a key derivation operation, then it

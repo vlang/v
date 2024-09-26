@@ -46,7 +46,7 @@ pub fn (mut wg WaitGroup) init() {
 // and unblocks any wait() calls if task count becomes zero.
 // add panics if task count drops below zero.
 pub fn (mut wg WaitGroup) add(delta int) {
-	old_nrjobs := int(C.atomic_fetch_add_u32(&wg.task_count, u32(delta)))
+	old_nrjobs := int(C.atomic_fetch_add_u32(voidptr(&wg.task_count), u32(delta)))
 	new_nrjobs := old_nrjobs + delta
 	mut num_waiters := C.atomic_load_u32(&wg.wait_count)
 	if new_nrjobs < 0 {
@@ -79,6 +79,6 @@ pub fn (mut wg WaitGroup) wait() {
 		// no need to wait
 		return
 	}
-	C.atomic_fetch_add_u32(&wg.wait_count, 1)
+	C.atomic_fetch_add_u32(voidptr(&wg.wait_count), 1)
 	wg.sem.wait() // blocks until task_count becomes 0
 }

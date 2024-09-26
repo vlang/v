@@ -1,0 +1,5 @@
+some text
+
+@include abc.txt
+
+some more text

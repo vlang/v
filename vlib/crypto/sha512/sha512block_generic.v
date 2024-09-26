@@ -34,6 +34,7 @@ const _k = [
 	]
 // vfmt on
 
+@[direct_array_access]
 fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_

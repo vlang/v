@@ -1,7 +1,7 @@
 module main
 
 __global (
-	number	int
+	number int
 )
 
 fn init() {
@@ -9,7 +9,7 @@ fn init() {
 }
 
 fn main() {
-	f1 := fn() {
+	f1 := fn () {
 		println(number)
 	}
 	f1()

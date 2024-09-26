@@ -23,6 +23,9 @@ fn (o Object) as_i64() !i64 {
 pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 	// eprintln('>>>>>>> expr: ${typeof(expr)}')
 	match expr {
+		ast.NodeError {
+			// TODO: change this, when ast.Expr has a better default sumtype variant
+		}
 		ast.CallExpr {
 			// println(expr.is_method)
 			// is_method := expr.left.type_name() != 'unknown v.ast.Expr'
@@ -236,31 +239,31 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				match x {
 					Uint {
 						return Int{
-							val: i64(x.val)
+							val:  i64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					Int {
 						return Int{
-							val: i64(x.val)
+							val:  i64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					Float {
 						return Int{
-							val: i64(x.val)
+							val:  i64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					i64 {
 						if expecting in ast.signed_integer_type_idxs {
 							return Int{
-								val: x
+								val:  x
 								size: i8(e.type_to_size(expecting))
 							}
 						} else {
 							return Uint{
-								val: u64(x)
+								val:  u64(x)
 								size: i8(e.type_to_size(expecting))
 							}
 						}
@@ -268,12 +271,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					f64 {
 						if expecting in ast.signed_integer_type_idxs {
 							return Int{
-								val: i64(x)
+								val:  i64(x)
 								size: i8(e.type_to_size(expecting))
 							}
 						} else {
 							return Uint{
-								val: u64(x)
+								val:  u64(x)
 								size: i8(e.type_to_size(expecting))
 							}
 						}
@@ -286,37 +289,37 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				match x {
 					Uint {
 						return Uint{
-							val: u64(x.val)
+							val:  u64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					Int {
 						return Uint{
-							val: u64(x.val)
+							val:  u64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					Float {
 						return Uint{
-							val: u64(x.val)
+							val:  u64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					i64 {
 						return Uint{
-							val: u64(x)
+							val:  u64(x)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					f64 {
 						if expecting in ast.signed_integer_type_idxs {
 							return Int{
-								val: i64(x)
+								val:  i64(x)
 								size: i8(e.type_to_size(expecting))
 							}
 						} else {
 							return Uint{
-								val: u64(x)
+								val:  u64(x)
 								size: i8(e.type_to_size(expecting))
 							}
 						}
@@ -329,25 +332,25 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				match x {
 					Uint {
 						return Float{
-							val: f64(x.val)
+							val:  f64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					Int {
 						return Float{
-							val: f64(x.val)
+							val:  f64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					Float {
 						return Float{
-							val: f64(x.val)
+							val:  f64(x.val)
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
 					f64 {
 						return Float{
-							val: x
+							val:  x
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
@@ -398,9 +401,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			} else if e.table.sym(expr.typ).kind in [.interface_, .sum_type] {
 				if e.pref.is_verbose {
 					util.show_compiler_message('warning:',
-						pos: expr.pos
+						pos:       expr.pos
 						file_path: e.cur_file
-						message: 'sumtype or interface casts return void currently'
+						message:   'sumtype or interface casts return void currently'
 					)
 				}
 			} else {
@@ -501,7 +504,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.StructInit {
 			// eprintln('unhandled struct init at line $expr.pos.line_nr')
-			return 'helo'
+			return ''
 		}
 		ast.SizeOf {
 			return Uint{e.type_to_size(expr.typ), 64}
@@ -573,8 +576,8 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.SpawnExpr,
 		ast.IfGuardExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
-		ast.Nil, ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
-		ast.SqlExpr, ast.TypeNode, ast.TypeOf, ast.LambdaExpr {
+		ast.Nil, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
+		ast.TypeNode, ast.TypeOf, ast.LambdaExpr {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}

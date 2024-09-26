@@ -4,5 +4,5 @@ import json as vjson
 
 const used = true
 
-println(json.used)
+println(used)
 println(vjson.used)

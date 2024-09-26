@@ -1,0 +1,4 @@
+type Int = int
+type MyIndex = struct {
+	Int Int
+}

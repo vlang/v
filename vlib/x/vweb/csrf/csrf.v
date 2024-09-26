@@ -59,8 +59,8 @@ pub fn (mut ctx CsrfContext) set_csrf_token[T](mut user_context T) string {
 // clear the csrf token and cookie header from the context
 pub fn (ctx &CsrfContext) clear_csrf_token[T](mut user_context T) {
 	user_context.set_cookie(http.Cookie{
-		name: config.cookie_name
-		value: ''
+		name:    config.cookie_name
+		value:   ''
 		max_age: 0
 	})
 }
@@ -73,7 +73,7 @@ pub fn (ctx &CsrfContext) csrf_token_input() vweb.RawHtml {
 // middleware returns a handler that you can use with vweb's middleware
 pub fn middleware[T](config CsrfConfig) vweb.MiddlewareOptions[T] {
 	return vweb.MiddlewareOptions[T]{
-		after: false
+		after:   false
 		handler: fn [config] [T](mut ctx T) bool {
 			ctx.config = config
 			if ctx.exempt {
@@ -93,20 +93,20 @@ pub fn set_token(mut ctx vweb.Context, config &CsrfConfig) string {
 	expire_time := time.now().add_seconds(config.max_age)
 	session_id := ctx.get_cookie(config.session_cookie) or { '' }
 
-	token := generate_token(expire_time.unix_time(), session_id, config.nonce_length)
-	cookie := generate_cookie(expire_time.unix_time(), token, config.secret)
+	token := generate_token(expire_time.unix(), session_id, config.nonce_length)
+	cookie := generate_cookie(expire_time.unix(), token, config.secret)
 
 	// the hmac key is set as a cookie and later validated with `app.token` that must
 	// be in an html form
 	ctx.set_cookie(http.Cookie{
-		name: config.cookie_name
-		value: cookie
+		name:      config.cookie_name
+		value:     cookie
 		same_site: config.same_site
 		http_only: true
-		secure: config.secure
-		path: config.cookie_path
-		expires: expire_time
-		max_age: config.max_age
+		secure:    config.secure
+		path:      config.cookie_path
+		expires:   expire_time
+		max_age:   config.max_age
 	})
 
 	return token
@@ -145,7 +145,7 @@ pub fn protect(mut ctx vweb.Context, config &CsrfConfig) bool {
 	// check the timestamp from the csrftoken against the current time
 	// if an attacker would change the timestamp on the cookie, the token or both the
 	// hmac would also change.
-	now := time.now().unix_time()
+	now := time.now().unix()
 	expire_timestamp := data[0].i64()
 	if expire_timestamp < now {
 		// token has expired

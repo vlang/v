@@ -6,7 +6,4 @@ FROM node:12.6-buster-slim
 
 COPY config/fuzzingserver.json /config/fuzzingserver.json
 RUN chmod +775 /config/fuzzingserver.json
-RUN apt-get update && \
-    apt-get install -y \
-    docker \
-    docker-compose
+RUN apt update && apt install -y docker

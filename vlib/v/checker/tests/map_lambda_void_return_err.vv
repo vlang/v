@@ -1,0 +1,2 @@
+arr := ['a', 'b', 'c']
+arr.map(|x| println(x))

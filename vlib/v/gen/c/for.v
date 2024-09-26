@@ -235,7 +235,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		mut cond_var := ''
 		if (node.cond is ast.Ident && !node.cond_type.has_flag(.option))
-			|| node.cond is ast.SelectorExpr {
+			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
@@ -307,7 +307,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		cond_sym := g.table.sym(node.cond_type)
+		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
 		g.writeln('for (int ${idx} = 0; ${idx} != ${info.size}; ++${idx}) {')
 		if node.val_var != '_' {
@@ -333,6 +333,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				} else {
 					g.write(' = ${addr}')
 					g.expr(node.cond)
+					if info.is_fn_ret {
+						g.write('.ret_arr')
+					}
 					g.writeln('[${idx}];')
 				}
 			}
@@ -435,7 +438,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
-		receiver_styp := g.typ(receiver_typ)
+		receiver_styp := g.cc_type(receiver_typ, false)
 		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.info is ast.Struct {
@@ -450,9 +453,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('${t_expr});')
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
-		val_styp := g.typ(node.val_type)
+		val_styp := g.typ(ret_typ.clear_option_and_result())
 		if node.val_is_mut {
-			g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+			if ret_typ.has_flag(.option) {
+				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
+			} else {
+				g.writeln('\t${val_styp} ${val} = (${val_styp})${t_var}.data;')
+			}
 		} else {
 			g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 		}
@@ -463,12 +470,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, val_type)
 
 		g.for_in_stmt(ast.ForInStmt{
-			cond: node.cond
-			cond_type: for_type
-			kind: g.table.sym(for_type).kind
-			stmts: node.stmts
-			val_type: val_type
-			val_var: node.val_var
+			cond:       node.cond
+			cond_type:  for_type
+			kind:       g.table.sym(for_type).kind
+			stmts:      node.stmts
+			val_type:   val_type
+			val_var:    node.val_var
 			val_is_mut: node.val_is_mut
 			val_is_ref: node.val_is_ref
 		})

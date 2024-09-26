@@ -34,7 +34,7 @@ fn (video Video) extract_frames() string {
 
 fn main() {
 	mut video := Video{
-		path: '/path/to/some/mp4'
+		path:    '/path/to/some/mp4'
 		tmp_dir: '/tmp'
 	}
 	video.extract_frames_thread = spawn video.extract_frames()

@@ -58,7 +58,7 @@ fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
 // part of snake's body representation
 struct BodyPart {
 mut:
-	pos Vec = Vec{
+	pos    Vec = Vec{
 		x: block_size
 		y: block_size
 	}
@@ -162,7 +162,7 @@ fn (mut s Snake) grow() {
 		}
 	}
 	s.body << BodyPart{
-		pos: pos
+		pos:    pos
 		facing: head.facing
 	}
 }
@@ -239,13 +239,13 @@ fn (s Snake) draw() {
 // rat representation
 struct Rat {
 mut:
-	pos Vec = Vec{
+	pos      Vec = Vec{
 		x: block_size
 		y: block_size
 	}
 	captured bool
 	color    termui.Color = grey
-	app      &App = unsafe { nil }
+	app      &App         = unsafe { nil }
 }
 
 // randomize spawn the rat in a new spot within the playable field
@@ -270,7 +270,7 @@ mut:
 fn (mut a App) new_game() {
 	mut snake := Snake{
 		body: []BodyPart{len: 1, init: BodyPart{}}
-		app: a
+		app:  a
 	}
 	snake.randomize()
 	mut rat := Rat{
@@ -456,15 +456,21 @@ fn (mut a App) draw_gameover() {
 	a.termui.draw_text(start_x, (a.height / 2) + 3 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
 }
 
+type InitFn = fn (voidptr)
+
+type EventFn = fn (&termui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.termui = termui.init(
-		user_data: app
-		event_fn: event
-		frame_fn: frame
-		init_fn: init
+		user_data:   app
+		event_fn:    EventFn(event)
+		frame_fn:    FrameFn(frame)
+		init_fn:     InitFn(init)
 		hide_cursor: true
-		frame_rate: 10
+		frame_rate:  10
 	)
 	app.termui.run()!
 }

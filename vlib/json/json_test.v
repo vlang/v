@@ -38,10 +38,10 @@ fn test_field_with_default_expr() {
 	data := '[{"net":1},{"net":2,"currencyId":"cjson"}]'
 	prices := json.decode([]Price, data)!
 	assert prices == [Price{
-		net: 1
+		net:         1
 		currency_id: 'cconst'
 	}, Price{
-		net: 2
+		net:         2
 		currency_id: 'cjson'
 	}]
 }
@@ -80,9 +80,9 @@ struct SomeGame {
 fn test_encode_decode_sumtype() {
 	t := time.now()
 	game := SomeGame{
-		title: 'Super Mega Game'
+		title:  'Super Mega Game'
 		player: Human{'Monke'}
-		other: [
+		other:  [
 			Entity(Item{'Pen'}),
 			Item{'Cookie'},
 			Animal.cat,
@@ -95,7 +95,7 @@ fn test_encode_decode_sumtype() {
 	enc := json.encode(game)
 	// eprintln('Encoded Game: $enc')
 
-	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix_time()}}]}'
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix()}}]}'
 
 	dec := json.decode(SomeGame, enc)!
 	// eprintln('Decoded Game: $dec')
@@ -104,7 +104,7 @@ fn test_encode_decode_sumtype() {
 	assert game.player == dec.player
 	assert (game.other[2] as Animal) == .cat
 	assert dec.other[2] == Entity('cat')
-	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
+	assert (game.other[4] as time.Time).unix() == (dec.other[4] as time.Time).unix()
 }
 
 fn bar[T](payload string) !Bar { // ?T doesn't work currently
@@ -155,8 +155,8 @@ fn test_parse_user() {
 
 fn test_encode_decode_time() {
 	user := User2{
-		age: 25
-		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+		age:      25
+		reg_date: time.new(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
 	}
 	s := json.encode(user)
 	// println(s)
@@ -173,12 +173,12 @@ fn (mut u User) foo() string {
 
 fn test_encode_user() {
 	mut usr := User{
-		age: 10
-		nums: [1, 2, 3]
-		last_name: 'Johnson'
+		age:           10
+		nums:          [1, 2, 3]
+		last_name:     'Johnson'
 		is_registered: true
-		typ: 0
-		pets: 'foo'
+		typ:           0
+		pets:          'foo'
 	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
 	out := json.encode(usr)
@@ -265,33 +265,33 @@ fn test_nested_type() {
 	data := Data{
 		countries: [
 			Country{
-				name: 'UK'
+				name:   'UK'
 				cities: [City{'London'}, City{'Manchester'}]
 			},
 			Country{
-				name: 'KU'
+				name:   'KU'
 				cities: [City{'Donlon'}, City{'Termanches'}]
 			},
 		]
-		users: {
+		users:     {
 			'Foo': User{
-				age: 10
-				nums: [1, 2, 3]
-				last_name: 'Johnson'
+				age:           10
+				nums:          [1, 2, 3]
+				last_name:     'Johnson'
 				is_registered: true
-				typ: 0
-				pets: 'little foo'
+				typ:           0
+				pets:          'little foo'
 			}
 			'Boo': User{
-				age: 20
-				nums: [5, 3, 1]
-				last_name: 'Smith'
+				age:           20
+				nums:          [5, 3, 1]
+				last_name:     'Smith'
 				is_registered: false
-				typ: 4
-				pets: 'little boo'
+				typ:           4
+				pets:          'little boo'
 			}
 		}
-		extra: {
+		extra:     {
 			'2': {
 				'n1': 2
 				'n2': 4
@@ -324,7 +324,7 @@ fn test_nested_type() {
 		assert data2.users[key].last_name == user.last_name
 		assert data2.users[key].is_registered == user.is_registered
 		assert data2.users[key].typ == user.typ
-		// assert data2.users[key].pets == user.pets // TODO FIX
+		// assert data2.users[key].pets == user.pets // TODO: FIX
 	}
 	for k, v in data.extra {
 		for k2, v2 in v {
@@ -449,7 +449,7 @@ fn test_pretty() {
 
 struct Foo3 {
 	name string
-	age  int    @[omitempty]
+	age  int @[omitempty]
 }
 
 fn test_omit_empty() {
@@ -527,7 +527,7 @@ fn test_encoding_struct_with_pointers() {
 		association: &Association{
 			price: APrice{}
 		}
-		price: APrice{}
+		price:       APrice{}
 	}
 	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
 }

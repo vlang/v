@@ -154,6 +154,7 @@ fn test_global_shared_map() {
 fn switch2() u64 {
 	mut cnt := u64(0)
 	for {
+		cnt++
 		mtx.@lock()
 		f1, f2 = f2, f1
 		if f1 == 17.0 || f2 == 17.0 {
@@ -161,7 +162,6 @@ fn switch2() u64 {
 			return cnt
 		}
 		mtx.unlock()
-		cnt++
 	}
 	return 0
 }
@@ -185,6 +185,6 @@ fn test_global_mutex() {
 	assert (f1 == 17.0 && f2 == 34.0625) || (f1 == 34.0625 && f2 == 17.0)
 	mtx.runlock()
 	n := t.wait()
-	eprintln('> n: ${n} | f1: ${f1} | ${f2}: ${f2}')
+	eprintln('> n: ${n} | f1: ${f1} | f2: ${f2}')
 	assert n > 0
 }

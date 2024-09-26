@@ -1,7 +1,5 @@
 # web_crawler
-web_crawler is a very simple web crawler.  
-This web crawler fetches news from tuicool.com,
-(a chinese site similar to hacker-news.firebaseio.com).  
+This simple web crawler fetches news from the homepage of HN (https://news.ycombinator.com/).
 
 # Compile and Run
 
@@ -19,4 +17,4 @@ v run web_crawler.v
 This project shows how to use http.fetch() to get http.Response, 
 and then html.parse() to parse the returned html.
 
-It's easy, isn't it?  
+It's easy, isn't it?

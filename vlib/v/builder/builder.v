@@ -20,7 +20,7 @@ pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
 	module_path  string
 pub mut:
-	checker             &checker.Checker = unsafe { nil }
+	checker             &checker.Checker         = unsafe { nil }
 	transformer         &transformer.Transformer = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
@@ -37,13 +37,12 @@ pub mut:
 	//}
 	table     &ast.Table = unsafe { nil }
 	ccoptions CcompilerOptions
-	//
 	// Note: changes in mod `builtin` force invalidation of every other .v file
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
-	crun_cache_keys       []string // target executable + top level source files; filled in by Builder.should_rebuild
-	executable_exists     bool     // if the executable already exists, don't remove new executable after `v run`
+	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
 }
 
 pub fn new_builder(pref_ &pref.Preferences) Builder {
@@ -78,19 +77,19 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		executable_name += '.exe'
 	}
 	return Builder{
-		pref: pref_
-		table: table
-		checker: checker.new_checker(table, pref_)
-		transformer: transformer.new_transformer_with_table(table, pref_)
-		compiled_dir: compiled_dir
-		cached_msvc: msvc
+		pref:              pref_
+		table:             table
+		checker:           checker.new_checker(table, pref_)
+		transformer:       transformer.new_transformer_with_table(table, pref_)
+		compiled_dir:      compiled_dir
+		cached_msvc:       msvc
 		executable_exists: os.is_file(executable_name)
 	}
 }
 
 pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
-	b.parsed_files << parser.parse_text(code, '', b.table, .skip_comments, b.pref)
+	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
+	b.parsed_files << parser.parse_text(code, '', mut b.table, .skip_comments, b.pref)
 	b.parse_imports()
 
 	if b.pref.only_check_syntax {
@@ -109,7 +108,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ! {
 	util.timing_start('PARSE')
 
 	util.timing_start('Builder.front_stages.parse_files')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
 	timers.show('Builder.front_stages.parse_files')
 
 	b.parse_imports()
@@ -131,6 +130,9 @@ pub fn (mut b Builder) middle_stages() ! {
 
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
+	if b.pref.dump_defines != '' {
+		b.dump_defines()
+	}
 	b.print_warnings_and_errors()
 	if b.checker.should_abort {
 		return error('too many errors/warnings/notices')
@@ -141,16 +143,13 @@ pub fn (mut b Builder) middle_stages() ! {
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)
 	util.timing_measure('TRANSFORM')
-	//
+
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
-		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+		markused.mark_used(mut b.table, mut b.pref, b.parsed_files)
 	}
 	if b.pref.show_callgraph {
 		callgraph.show(mut b.table, b.pref, b.parsed_files)
-	}
-	if b.pref.dump_defines != '' {
-		b.dump_defines()
 	}
 }
 
@@ -169,7 +168,7 @@ pub fn (mut b Builder) parse_imports() {
 	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
-	// TODO (joe): decide if this is correct solution.
+	// TODO: (joe): decide if this is correct solution.
 	// in the case of building a module, the actual module files
 	// are passed via cmd line, so they have already been parsed
 	// by this stage. note that if one files from a module was
@@ -222,7 +221,7 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table, b.pref)
+			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
 			for file in parsed_files {
 				mut name := file.mod.name
 				if name == '' {
@@ -315,7 +314,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 		if p.mod.name !in builtins {
 			deps << 'builtin'
 			if b.pref.backend == .c {
-				// TODO JavaScript backend doesn't handle os for now
+				// TODO: JavaScript backend doesn't handle os for now
 				// os import libraries so we exclude anything which could cause a loop
 				// git grep import vlib/os | cut -f2 -d: | cut -f2 -d" " | sort -u
 				// dl, os, os.cmdline, os.filelock, os.notify, strings, strings.textscanner, term.termios, time
@@ -465,15 +464,13 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		}
 	}
 	if b.checker.nr_errors > 0 && b.pref.path.ends_with('.v') && os.is_file(b.pref.path) {
-		for err in b.checker.errors {
-			if err.message.starts_with('unknown ') {
-				// Sometimes users try to `v main.v`, when they have several .v files in their project.
-				// Then, they encounter puzzling errors about missing or unknown types. In this case,
-				// the intended command may have been `v .` instead, so just suggest that:
-				old_cmd := util.bold('v ${b.pref.path}')
-				new_cmd := util.bold('v ${os.dir(b.pref.path)}')
-				eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
-			}
+		if b.checker.errors.any(it.message.starts_with('unknown ')) {
+			// Sometimes users try to `v main.v`, when they have several .v files in their project.
+			// Then, they encounter puzzling errors about missing or unknown types. In this case,
+			// the intended command may have been `v .` instead, so just suggest that:
+			old_cmd := util.bold('v ${b.pref.path}')
+			new_cmd := util.bold('v ${os.dir(b.pref.path)}')
+			eprintln(util.color('notice', 'If the code of your project is in multiple files, try with `${new_cmd}` instead of `${old_cmd}`'))
 		}
 	}
 }
@@ -567,7 +564,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			util.show_compiler_message(kind, err.CompilerMessage)
 		}
 	}
-	//
+
 	if b.pref.is_verbose && b.checker.nr_errors > 1 {
 		println('${b.checker.nr_errors} errors')
 	}
@@ -593,11 +590,12 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{})
+							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{},
+								false)
 							redefines << FunctionRedefinition{
-								fpath: file.path
-								fline: stmt.pos.line_nr
-								f: stmt
+								fpath:   file.path
+								fline:   stmt.pos.line_nr
+								f:       stmt
 								fheader: fheader
 							}
 							redefine_conflicts[fheader]++
@@ -611,9 +609,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				)
 				for redefine in redefines {
 					util.show_compiler_message('conflicting declaration:',
-						message: redefine.fheader
+						message:   redefine.fheader
 						file_path: redefine.fpath
-						pos: redefine.f.pos
+						pos:       redefine.f.pos
 					)
 				}
 				total_conflicts++
@@ -641,9 +639,9 @@ pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors
 
 	return errors.Error{
 		file_path: fpath
-		pos: pos
-		reporter: .builder
-		message: s
+		pos:       pos
+		reporter:  .builder
+		message:   s
 	}
 }
 

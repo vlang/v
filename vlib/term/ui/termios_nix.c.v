@@ -115,7 +115,7 @@ fn (mut ctx Context) termios_setup() ! {
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
-	C.atexit(restore_terminal_state)
+	at_exit(restore_terminal_state) or {}
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
 		mut c := ctx_ptr
@@ -123,8 +123,8 @@ fn (mut ctx Context) termios_setup() ! {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
-				typ: .resized
-				width: c.window_width
+				typ:    .resized
+				width:  c.window_width
 				height: c.window_height
 			}
 			c.paused = false
@@ -147,8 +147,8 @@ fn (mut ctx Context) termios_setup() ! {
 			c.window_height, c.window_width = get_terminal_size()
 
 			mut event := &Event{
-				typ: .resized
-				width: c.window_width
+				typ:    .resized
+				width:  c.window_width
 				height: c.window_height
 			}
 			c.event(event)
@@ -198,7 +198,7 @@ fn supports_truecolor() bool {
 
 fn termios_reset() {
 	// C.TCSANOW ??
-	mut startup := ui.termios_at_startup
+	mut startup := termios_at_startup
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut startup)
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
 	flush_stdout()
@@ -281,10 +281,10 @@ fn single_char(buf string) &Event {
 	ch := buf[0]
 
 	mut event := &Event{
-		typ: .key_down
+		typ:   .key_down
 		ascii: ch
-		code: unsafe { KeyCode(ch) }
-		utf8: ch.ascii_str()
+		code:  unsafe { KeyCode(ch) }
+		utf8:  ch.ascii_str()
 	}
 
 	match ch {
@@ -296,19 +296,19 @@ fn single_char(buf string) &Event {
 		// don't treat tab, enter as ctrl+i, ctrl+j
 		1...8, 11...26 {
 			event = &Event{
-				typ: event.typ
-				ascii: event.ascii
-				utf8: event.utf8
-				code: unsafe { KeyCode(96 | ch) }
+				typ:       event.typ
+				ascii:     event.ascii
+				utf8:      event.utf8
+				code:      unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
 		65...90 {
 			event = &Event{
-				typ: event.typ
-				ascii: event.ascii
-				utf8: event.utf8
-				code: unsafe { KeyCode(32 | ch) }
+				typ:       event.typ
+				ascii:     event.ascii
+				utf8:      event.utf8
+				code:      unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}
@@ -322,10 +322,10 @@ fn multi_char(buf string) (&Event, int) {
 	ch := buf[0]
 
 	mut event := &Event{
-		typ: .key_down
+		typ:   .key_down
 		ascii: ch
-		code: unsafe { KeyCode(ch) }
-		utf8: buf
+		code:  unsafe { KeyCode(ch) }
+		utf8:  buf
 	}
 
 	match ch {
@@ -337,19 +337,19 @@ fn multi_char(buf string) (&Event, int) {
 		// don't treat tab, enter as ctrl+i, ctrl+j
 		1...8, 11...26 {
 			event = &Event{
-				typ: event.typ
-				ascii: event.ascii
-				utf8: event.utf8
-				code: unsafe { KeyCode(96 | ch) }
+				typ:       event.typ
+				ascii:     event.ascii
+				utf8:      event.utf8
+				code:      unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
 		65...90 {
 			event = &Event{
-				typ: event.typ
-				ascii: event.ascii
-				utf8: event.utf8
-				code: unsafe { KeyCode(32 | ch) }
+				typ:       event.typ
+				ascii:     event.ascii
+				utf8:      event.utf8
+				code:      unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}
@@ -394,10 +394,10 @@ fn escape_sequence(buf_ string) (&Event, int) {
 
 	if buf.len == 0 {
 		return &Event{
-			typ: .key_down
+			typ:   .key_down
 			ascii: 27
-			code: .escape
-			utf8: single
+			code:  .escape
+			utf8:  single
 		}, 1
 	}
 
@@ -406,10 +406,10 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		mut modifiers := c.modifiers
 		modifiers.set(.alt)
 		return &Event{
-			typ: c.typ
-			ascii: c.ascii
-			code: c.code
-			utf8: single
+			typ:       c.typ
+			ascii:     c.ascii
+			code:      c.code
+			utf8:      single
 			modifiers: modifiers
 		}, 2
 	}
@@ -449,12 +449,12 @@ fn escape_sequence(buf_ string) (&Event, int) {
 				}
 
 				return &Event{
-					typ: event
-					x: x
-					y: y
-					button: button
+					typ:       event
+					x:         x
+					y:         y
+					button:    button
 					modifiers: modifiers
-					utf8: single
+					utf8:      single
 				}, end
 			}
 			32...63 {
@@ -465,28 +465,28 @@ fn escape_sequence(buf_ string) (&Event, int) {
 				}
 
 				return &Event{
-					typ: event
-					x: x
-					y: y
-					button: button
+					typ:       event
+					x:         x
+					y:         y
+					button:    button
 					modifiers: modifiers
-					utf8: single
+					utf8:      single
 				}, end
 			}
 			64...95 {
 				direction := if typ & 1 == 0 { Direction.down } else { Direction.up }
 				return &Event{
-					typ: .mouse_scroll
-					x: x
-					y: y
+					typ:       .mouse_scroll
+					x:         x
+					y:         y
 					direction: direction
 					modifiers: modifiers
-					utf8: single
+					utf8:      single
 				}, end
 			}
 			else {
 				return &Event{
-					typ: .unknown
+					typ:  .unknown
 					utf8: single
 				}, end
 			}
@@ -563,9 +563,9 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	}
 
 	return &Event{
-		typ: .key_down
-		code: code
-		utf8: single
+		typ:       .key_down
+		code:      code
+		utf8:      single
 		modifiers: modifiers
 	}, end
 }

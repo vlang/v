@@ -1,0 +1,6 @@
+vlib/v/checker/tests/enum_value_used_before_decl_err.vv:2:9: error: `TestEnum.a` should be declared before using it
+    1 | enum TestEnum {
+    2 |     chan = int(TestEnum.a)
+      |            ~~~~~~~~~~~~~~~
+    3 |     a    = 0
+    4 |     b    = 1

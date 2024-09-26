@@ -9,14 +9,14 @@
  * modified is included with the above copyright notice.
  */
 
-/* Minimal support for tile.    */
-
 #if (AO_GNUC_PREREQ(4, 8) || AO_CLANG_PREREQ(3, 4)) \
     && !defined(AO_DISABLE_GCC_ATOMICS)
 
 # include "generic.h"
 
 #else /* AO_DISABLE_GCC_ATOMICS */
+
+  /* Minimal support for tile.  */
 
 # include "../all_atomic_load_store.h"
 

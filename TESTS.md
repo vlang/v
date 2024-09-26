@@ -146,7 +146,7 @@ Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
 
 Note: if that command finds formatting errors, they can be fixed with:
-`VAUTOFIX=1 ./v check-md -hide-warnings file.md`
+`VAUTOFIX=1 ./v check-md file.md` or with `v check-md -fix file.md`.
 
 ## `v test-self`
 
@@ -191,5 +191,5 @@ The VDOC test vdoc_file_test.v now also supports VAUTOFIX, which is
 useful, if you change anything inside cmd/tools/vdoc or vlib/v/doc/,
 or inside the modules that it depends on (like markdown).
 After such changes, just run this command *2 times*, and commit the
-resulting changes in `cmd/tools/vdoc/tests/testdata` as well:
-`VAUTOFIX=1 ./v cmd/tools/vdoc/tests/vdoc_file_test.v`
+resulting changes in `cmd/tools/vdoc/testdata` as well:
+`VAUTOFIX=1 ./v cmd/tools/vdoc/vdoc_file_test.v`

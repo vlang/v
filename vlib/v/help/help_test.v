@@ -31,7 +31,7 @@ fn test_all_topics() {
 	}
 }
 
-fn test_uknown_topic() {
+fn test_unknown_topic() {
 	res := os.execute(vexe + ' help abc')
 	assert res.exit_code == 1, res.output
 	assert res.output.starts_with('error: unknown help topic "abc".')

@@ -1,9 +1,10 @@
-interface SomeInterface{}
+interface SomeInterface {}
 
 struct Foo {
-  bar SomeInterface = unsafe{ nil }
+	bar SomeInterface = unsafe { nil }
 }
+
 fn main() {
-  foo := Foo{}
-  dump(foo)
+	foo := Foo{}
+	dump(foo)
 }

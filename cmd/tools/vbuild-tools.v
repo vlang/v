@@ -11,7 +11,7 @@ import v.util
 // should be compiled (v folder).
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
-const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vvet', 'vwhere']
+const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vsymlink', 'vvet', 'vwhere', 'vcover']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
@@ -19,7 +19,9 @@ const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vvet', 'vwhere']
 const non_packaged_tools = ['gen1m', 'gen_vc', 'fast', 'wyhash']
 
 fn main() {
-	util.ensure_modules_for_all_tools_are_installed('-v' in os.args)
+	if os.getenv('VTEST_SANDBOXED_PACKAGING') == '' {
+		util.ensure_modules_for_all_tools_are_installed('-v' in os.args)
+	}
 	args_string := os.args[1..].join(' ')
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -28,7 +30,7 @@ fn main() {
 	tfolder := os.join_path(vroot, 'cmd', 'tools')
 	main_label := 'Building ${folder} ...'
 	finish_label := 'building ${folder}'
-	//
+
 	mut skips := []string{}
 	for stool in tools_in_subfolders {
 		skips << os.join_path(tfolder, stool).replace('\\', '/')
@@ -47,7 +49,7 @@ fn main() {
 	if session.failed_cmds.len > 0 {
 		exit(1)
 	}
-	//
+
 	mut executables := os.ls(session.vtmp_dir)!
 	executables.sort()
 	for texe in executables {

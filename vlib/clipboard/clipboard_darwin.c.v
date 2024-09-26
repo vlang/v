@@ -13,7 +13,7 @@ pub struct Clipboard {
 	pb             voidptr
 	last_cb_serial i64
 mut:
-	foo int // TODO remove, for mut hack
+	foo int // TODO: remove, for mut hack
 }
 
 fn C.darwin_new_pasteboard() voidptr

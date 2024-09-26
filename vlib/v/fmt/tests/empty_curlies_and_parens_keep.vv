@@ -31,8 +31,6 @@ fn main() {
 	for false {
 	}
 	defer {}
-	defer {
-	}
 	unsafe {}
 	unsafe {
 	}

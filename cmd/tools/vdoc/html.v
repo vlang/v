@@ -2,6 +2,7 @@ module main
 
 import os
 import net.urllib
+import encoding.html
 import strings
 import markdown
 import v.scanner
@@ -17,8 +18,7 @@ const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0
 
 const single_quote = "'"
 const double_quote = '"'
-const no_quotes_replacement = [single_quote, '', double_quote, '']
-const md_script_escape_seq = ['<script>', '`', '</script>', '`']
+const quote_escape_seq = [single_quote, '', double_quote, '']
 
 enum HighlightTokenTyp {
 	unone
@@ -64,7 +64,8 @@ fn (vd VDoc) render_search_index(out Output) {
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
 		js_search_index.write_string('"${title}",\n')
-		js_search_data.write_string('["${data.description}","${data.link}"],\n')
+		description := data.description.replace('\n', '').replace('\r', '') // fix multiline js string bug
+		js_search_data.write_string('["${description}","${data.link}"],\n')
 	}
 	js_search_index.writeln('];\n')
 	js_search_index.write_string('var searchIndex = [\n')
@@ -132,8 +133,8 @@ fn (mut vd VDoc) collect_search_index(out Output) {
 			doc.head.merge_comments_without_examples()
 		}
 		vd.search_module_data << SearchModuleResult{
-			description: trim_doc_node_description(comments)
-			link: vd.get_file_name(mod, out)
+			description: trim_doc_node_description(mod, comments)
+			link:        vd.get_file_name(mod, out)
 		}
 		for _, dn in doc.contents {
 			vd.create_search_results(mod, dn, out)
@@ -151,13 +152,17 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	} else {
 		dn.merge_comments_without_examples()
 	}
-	dn_description := trim_doc_node_description(comments)
+	dn_description := trim_doc_node_description(dn.name, comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' { '${dn.kind} (${dn.parent_name})' } else { '${dn.kind} ' }
+		prefix:      if dn.parent_name != '' {
+			'${dn.kind} (${dn.parent_name})'
+		} else {
+			'${dn.kind} '
+		}
 		description: dn_description
-		badge: mod
-		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
+		badge:       mod
+		link:        vd.get_file_name(mod, out) + '#' + get_node_id(dn)
 	}
 	for child in dn.children {
 		vd.create_search_results(mod, child, out)
@@ -317,7 +322,7 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	mut url := urllib.parse(repo_url) or { return '' }
-	if url.path.len <= 1 || file_name.len == 0 {
+	if url.path.len <= 1 || file_name == '' {
 		return ''
 	}
 	url.path = url.path.trim_right('/') + match url.host {
@@ -443,8 +448,8 @@ fn html_highlight(code string, tb &ast.Table) string {
 			else {
 				if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 					tok_typ = .keyword
-				} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-					|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
+				} else if tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational()
+					|| tok.kind.is_infix() || tok.kind.is_postfix() {
 					tok_typ = .operator
 				}
 			}
@@ -475,7 +480,13 @@ fn html_highlight(code string, tb &ast.Table) string {
 			}
 
 			buf.write_string('<span class="token ${final_tok_typ}">')
-			write_token(tok, tok_typ, mut buf)
+			if tok_typ == .string {
+				// Make sure to escape html in strings. Otherwise it will be rendered in the
+				// html documentation outputs / its style rules will affect the readme.
+				buf.write_string("'${html.escape(tok.lit.str())}'")
+			} else {
+				write_token(tok, tok_typ, mut buf)
+			}
 			buf.write_string('</span>')
 		}
 
@@ -500,20 +511,13 @@ fn html_highlight(code string, tb &ast.Table) string {
 fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
-	comments := dn.merge_comments_without_examples()
-	// Allow README.md to go through unescaped except for script tags
-	escaped_html := if head && is_module_readme(dn) {
-		// Strip markdown [TOC] directives, since we generate our own.
-		comments.replace('[TOC]', '').replace_each(md_script_escape_seq)
-	} else {
-		comments
-	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
 			table: tb
 		}
 	}
-	md_content := markdown.render(escaped_html, mut renderer) or { '' }
+	only_comments_text := dn.merge_comments_without_examples()
+	md_content := markdown.render(only_comments_text, mut renderer) or { '' }
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
@@ -532,19 +536,19 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		hash_link = ' <a href="#${node_id}">#</a>'
 	}
 	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}">')
-	if dn.name.len > 0 {
+	if dn.name != '' {
 		if dn.kind == .const_group {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
 			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
 		}
-		if link.len != 0 {
+		if link != '' {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
 		}
 		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>\n').join('')
+		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
@@ -573,7 +577,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
-	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
+	mut toc_slug := if dn.name == '' || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
 		if dn.children[0].name == '' {
 			toc_slug = slug(dn.name)
@@ -600,10 +604,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-fn no_quotes(s string) string {
-	return s.replace_each(no_quotes_replacement)
-}
-
 struct MdHtmlCodeHighlighter {
 mut:
 	language string
@@ -615,15 +615,19 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
-	// NOTE: markdown.default_html_transformer uses html.escape internally.
-	initial_transformed_text := markdown.default_html_transformer.transform_content(parent,
-		text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
-		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(initial_transformed_text, f.table)
+		if f.language == '' {
+			return html.escape(text)
 		}
+		output := html_highlight(text, f.table)
+		// Reset the language, so that it will not persist between blocks,
+		// and will not be accidentally re-used for the next block, that may be lacking ```language :
+		unsafe {
+			f.language = ''
+		}
+		return output
 	}
-	return initial_transformed_text
+	return text
 }
 
 fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {

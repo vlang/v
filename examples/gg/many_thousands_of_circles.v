@@ -47,10 +47,10 @@ fn frame(mut ctx gg.Context) {
 fn main() {
 	mut ctx := gg.new_context(
 		window_title: 'Many Thousands of Circles'
-		bg_color: gx.black
-		width: 600
-		height: 400
-		frame_fn: frame
+		bg_color:     gx.black
+		width:        600
+		height:       400
+		frame_fn:     frame
 	)
 	ctx.run()
 }

@@ -24,10 +24,10 @@ pub fn merge(ctx context.Context, ctxs ...context.Context) (context.Context, con
 	mut background := context.background()
 	cancel_ctx, cancel := context.with_cancel(mut &background)
 	mut octx := &OneContext{
-		done: chan int{cap: 3}
-		ctx: ctx
-		ctxs: ctxs
-		cancel_fn: cancel
+		done:       chan int{cap: 3}
+		ctx:        ctx
+		ctxs:       ctxs
+		cancel_fn:  cancel
 		cancel_ctx: cancel_ctx
 	}
 	spawn octx.run()
@@ -43,13 +43,13 @@ pub fn (octx OneContext) deadline() ?time.Time {
 
 	for ctx in octx.ctxs {
 		if deadline := ctx.deadline() {
-			if min.unix_time() == 0 || deadline < min {
+			if min.unix() == 0 || deadline < min {
 				min = deadline
 			}
 		}
 	}
 
-	if min.unix_time() == 0 {
+	if min.unix() == 0 {
 		return none
 	}
 
@@ -118,7 +118,7 @@ pub fn (mut octx OneContext) run_two_contexts(mut ctx1 context.Context, mut ctx2
 		c2done := ctx2.done()
 		select {
 			_ := <-octx_cancel_done {
-				octx.cancel(onecontext.canceled)
+				octx.cancel(canceled)
 			}
 			_ := <-c1done {
 				octx.cancel(ctx1.err())
@@ -136,7 +136,7 @@ pub fn (mut octx OneContext) run_multiple_contexts(mut ctx context.Context) {
 		cdone := ctx.done()
 		select {
 			_ := <-octx_cancel_done {
-				octx.cancel(onecontext.canceled)
+				octx.cancel(canceled)
 			}
 			_ := <-cdone {
 				octx.cancel(ctx.err())

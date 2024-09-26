@@ -9,7 +9,7 @@ fn main() {
 		name: 'John'
 	}
 	mut mother := &Person{
-		name: 'Jane'
+		name:      'Jane'
 		relatives: [father]
 	}
 	father.relatives = [mother]

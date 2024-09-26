@@ -33,9 +33,9 @@ fn (node XMLNode) validate(elements map[string]DTDElement, entities map[string]s
 	}
 
 	return XMLNode{
-		name: node.name
+		name:       node.name
 		attributes: node.attributes
-		children: children
+		children:   children
 	}
 }
 
@@ -75,16 +75,16 @@ pub fn (doc XMLDocument) validate() !XMLDocument {
 			new_root := doc.root.validate(elements, entities)!
 
 			// Check the DOCTYPE name matches the root name
-			if doc.doctype.name.len > 0 && doc.doctype.name != new_root.name {
+			if doc.doctype.name != '' && doc.doctype.name != new_root.name {
 				return error('Root element ${new_root.name} does not match DOCTYPE ${doc.doctype.name}')
 			}
 
 			return XMLDocument{
-				version: doc.version
-				encoding: doc.encoding
-				doctype: doc.doctype
-				comments: doc.comments
-				root: new_root
+				version:                 doc.version
+				encoding:                doc.encoding
+				doctype:                 doc.doctype
+				comments:                doc.comments
+				root:                    new_root
 				parsed_reverse_entities: reverse_entities
 			}
 		}

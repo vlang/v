@@ -8,15 +8,20 @@
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
  *
  * Permission is hereby granted to use or copy this program
- * for any purpose,  provided the above notices are retained on all copies.
+ * for any purpose, provided the above notices are retained on all copies.
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
  *
  */
 
-/* TODO: Very incomplete; Add support for sparc64.      */
-/* Non-ancient SPARCs provide compare-and-swap (casa).  */
+#if (AO_GNUC_PREREQ(12, 0) || AO_CLANG_PREREQ(13, 0)) \
+    && !defined(AO_DISABLE_GCC_ATOMICS)
+  /* Probably, it could be enabled for earlier compiler versions as well. */
+
+# include "generic.h"
+
+#else /* AO_DISABLE_GCC_ATOMICS */
 
 #include "../all_atomic_load_store.h"
 
@@ -43,23 +48,17 @@ AO_test_and_set_full(volatile AO_TS_t *addr) {
 /* Returns nonzero if the comparison succeeded. */
 AO_INLINE int
 AO_compare_and_swap_full(volatile AO_t *addr, AO_t old, AO_t new_val) {
-  AO_t ret;
   __asm__ __volatile__ ("membar #StoreLoad | #LoadLoad\n\t"
 #                       if defined(__arch64__)
-                          "casx [%2],%0,%1\n\t"
+                          "casx [%1],%2,%0\n\t"
 #                       else
-                          "cas [%2],%0,%1\n\t" /* 32-bit version */
+                          "cas [%1],%2,%0\n\t" /* 32-bit version */
 #                       endif
                         "membar #StoreLoad | #StoreStore\n\t"
-                        "cmp %0,%1\n\t"
-                        "be,a 0f\n\t"
-                        "mov 1,%0\n\t"/* one insn after branch always executed */
-                        "clr %0\n\t"
-                        "0:\n\t"
-                        : "=r" (ret), "+r" (new_val)
-                        : "r" (addr), "0" (old)
-                        : "memory", "cc");
-  return (int)ret;
+                        : "+r" (new_val)
+                        : "r" (addr), "r" (old)
+                        : "memory");
+  return new_val == old;
 }
 #   define AO_HAVE_compare_and_swap_full
 # endif /* !AO_GENERALIZE_ASM_BOOL_CAS */
@@ -85,3 +84,5 @@ AO_fetch_compare_and_swap_full(volatile AO_t *addr, AO_t old, AO_t new_val) {
 /* TODO: Extend this for SPARC v8 and v9 (V8 also has swap, V9 has CAS, */
 /* there are barriers like membar #LoadStore, CASA (32-bit) and         */
 /* CASXA (64-bit) instructions added in V9).                            */
+
+#endif /* AO_DISABLE_GCC_ATOMICS */

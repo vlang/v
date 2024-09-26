@@ -34,8 +34,8 @@ fn build_tabs(tabs_len int) []string {
 pub fn new_gen(prefs &pref.Preferences) &Gen {
 	unsafe {
 		return &Gen{
-			pref: prefs
-			out: strings.new_builder(1000)
+			pref:   prefs
+			out:    strings.new_builder(1000)
 			indent: -1
 		}
 	}
@@ -63,7 +63,7 @@ pub fn (mut g Gen) gen(file ast.File) {
 	g.stmt_list(g.file.stmts)
 	if g.pref.verbose {
 		gen_time := sw.elapsed()
-		println('gen (v) ${file.name}: ${gen_time.milliseconds()}ms (${gen_time.microseconds()}us)')
+		println('gen (v) ${file.name}: ${gen_time.milliseconds()}ms (${gen_time.microseconds()}µs)')
 	}
 }
 
@@ -107,19 +107,16 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ConstDecl {
-			if stmt.is_public {
-				g.write('pub ')
-			}
-			g.writeln('const (')
-			g.indent++
 			for field in stmt.fields {
+				if stmt.is_public {
+					g.write('pub ')
+				}
+				g.writeln('const ')
 				g.write(field.name)
 				g.write(' = ')
 				g.expr(field.value)
 				g.writeln('')
 			}
-			g.indent--
-			g.writeln(')')
 		}
 		ast.ComptimeStmt {
 			g.write('$')
@@ -537,7 +534,7 @@ fn (mut g Gen) expr(expr ast.Expr) {
 		ast.InitExpr {
 			g.expr(expr.typ)
 			// with field names
-			if expr.fields.len > 0 && expr.fields[0].name.len > 0 {
+			if expr.fields.len > 0 && expr.fields[0].name != '' {
 				g.writeln('{')
 				in_init := g.in_init
 				g.in_init = true
@@ -886,7 +883,7 @@ fn (mut g Gen) attributes(attributes []ast.Attribute) {
 			g.write('if ')
 			g.expr(attribute.comptime_cond)
 		} else {
-			if attribute.name.len > 0 {
+			if attribute.name != '' {
 				g.write(attribute.name)
 				g.write(': ')
 			}
@@ -905,7 +902,7 @@ fn (mut g Gen) fn_type(typ ast.FnType) {
 	}
 	g.write('(')
 	for i, param in typ.params {
-		if param.name.len > 0 {
+		if param.name != '' {
 			g.write(param.name)
 			g.write(' ')
 		}
@@ -991,7 +988,7 @@ fn (mut g Gen) generic_list(exprs []ast.Expr) {
 @[inline]
 fn (mut g Gen) write(str string) {
 	if g.on_newline {
-		g.out.write_string(v.tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 	}
 	g.out.write_string(str)
 	g.on_newline = false
@@ -1000,7 +997,7 @@ fn (mut g Gen) write(str string) {
 @[inline]
 fn (mut g Gen) writeln(str string) {
 	if g.on_newline {
-		g.out.write_string(v.tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 	}
 	g.out.writeln(str)
 	g.on_newline = true

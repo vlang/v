@@ -56,7 +56,10 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	b.out_name_c = out_file
 	b.pref.out_name_c = os.real_path(out_file)
 	b.info('build_c(${out_file})')
-	output2 := gen_c(mut b, v_files)
+	mut output2 := gen_c(mut b, v_files)
+	if b.pref.is_vlines {
+		output2 = c.fix_reset_dbg_line(output2, out_file)
+	}
 	os.write_file(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {
 		b.stats_lines = output2.count('\n') + 1
@@ -73,7 +76,7 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	}
 
 	util.timing_start('C GEN')
-	header, res, out_str, out_fn_start_pos := c.gen(b.parsed_files, b.table, b.pref)
+	header, res, out_str, out_fn_start_pos := c.gen(b.parsed_files, mut b.table, b.pref)
 	util.timing_measure('C GEN')
 
 	if b.pref.parallel_cc {

@@ -18,7 +18,7 @@ pub fn set_verbose(on bool) {
 
 pub fn cprint(omessage string) {
 	mut message := omessage
-	if scripting.term_colors {
+	if term_colors {
 		message = term.cyan(message)
 	}
 	print(message)
@@ -27,7 +27,7 @@ pub fn cprint(omessage string) {
 
 pub fn cprint_strong(omessage string) {
 	mut message := omessage
-	if scripting.term_colors {
+	if term_colors {
 		message = term.bright_green(message)
 	}
 	print(message)
@@ -57,7 +57,7 @@ pub fn verbose_trace_strong(label string, omessage string) {
 	if os.getenv('VERBOSE').len > 0 {
 		slabel := '${time.now().format_ss_milli()} ${label}'
 		mut message := omessage
-		if scripting.term_colors {
+		if term_colors {
 			message = term.bright_green(message)
 		}
 		cprintln('# ${slabel:-43s} : ${message}')
@@ -71,7 +71,7 @@ pub fn verbose_trace_exec_result(x os.Result) {
 		lines := x.output.split_into_lines()
 		for oline in lines {
 			mut line := oline
-			if scripting.term_colors {
+			if term_colors {
 				line = term.bright_green(line)
 			}
 			cprintln('# ${lnum:3d}: ${line}')

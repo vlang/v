@@ -99,12 +99,12 @@ pub fn (sk SymbolKind) str() string {
 @[minify]
 pub struct Doc {
 pub mut:
-	prefs     &pref.Preferences = new_vdoc_preferences()
-	base_path string
-	table     &ast.Table      = ast.new_table()
-	checker   checker.Checker = checker.Checker{
+	prefs               &pref.Preferences = new_vdoc_preferences()
+	base_path           string
+	table               &ast.Table      = ast.new_table()
+	checker             checker.Checker = checker.Checker{
 		table: unsafe { nil }
-		pref: unsafe { nil }
+		pref:  unsafe { nil }
 	}
 	fmt                 fmt.Fmt
 	filename            string
@@ -141,7 +141,7 @@ pub mut:
 	children    []DocNode
 	attrs       map[string]string @[json: attributes]
 	from_scope  bool
-	is_pub      bool              @[json: public]
+	is_pub      bool @[json: public]
 	platform    Platform
 }
 
@@ -151,7 +151,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	// so its preferences should be permissive:
 	mut pref_ := &pref.Preferences{
 		enable_globals: true
-		is_fmt: true
+		is_fmt:         true
 	}
 	pref_.fill_with_defaults()
 	return pref_
@@ -160,17 +160,17 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 // new creates a new instance of a `Doc` struct.
 pub fn new(input_path string) Doc {
 	mut d := Doc{
-		base_path: os.real_path(input_path)
-		table: ast.new_table()
-		head: DocNode{}
-		contents: map[string]DocNode{}
+		base_path:      os.real_path(input_path)
+		table:          ast.new_table()
+		head:           DocNode{}
+		contents:       map[string]DocNode{}
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
-		pref: d.prefs
-		indent: 0
+		pref:     d.prefs
+		indent:   0
 		is_debug: false
-		table: d.table
+		table:    d.table
 	}
 	d.checker = checker.new_checker(d.table, d.prefs)
 	return d
@@ -188,12 +188,12 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 		name = name.all_after(d.orig_mod_name + '.')
 	}
 	mut node := DocNode{
-		name: name
-		content: d.stmt_signature(stmt)
-		pos: stmt.pos
+		name:      name
+		content:   d.stmt_signature(stmt)
+		pos:       stmt.pos
 		file_path: os.join_path(d.base_path, filename)
-		is_pub: d.stmt_pub(stmt)
-		platform: platform_from_filename(filename)
+		is_pub:    d.stmt_pub(stmt)
+		platform:  platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
 		return error('symbol ${node.name} not public')
@@ -201,7 +201,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
 	}
-	if node.name.len == 0 && node.comments.len == 0 && node.content.len == 0 {
+	if node.name == '' && node.comments.len == 0 && node.content.len == 0 {
 		return error('empty stmt')
 	}
 	match mut stmt {
@@ -216,9 +216,9 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 						d.type_to_str(field.typ)
 					}
 					node.children << DocNode{
-						name: field.name.all_after(d.orig_mod_name + '.')
-						kind: .constant
-						pos: field.pos
+						name:        field.name.all_after(d.orig_mod_name + '.')
+						kind:        .constant
+						pos:         field.pos
 						return_type: ret_type
 					}
 				}
@@ -234,13 +234,21 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 						'int'
 					}
 					node.children << DocNode{
-						name: field.name
-						kind: .enum_field
+						name:        field.name
+						kind:        .enum_field
 						parent_name: node.name
-						pos: field.pos
+						pos:         field.pos
 						return_type: ret_type
 					}
 				}
+			}
+			for sa in stmt.attrs {
+				node.attrs[sa.name] = if sa.has_at {
+					'@[${sa.str()}]'
+				} else {
+					'[${sa.str()}]'
+				}
+				node.tags << node.attrs[sa.name]
 			}
 		}
 		ast.InterfaceDecl {
@@ -256,13 +264,21 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 						d.type_to_str(field.typ)
 					}
 					node.children << DocNode{
-						name: field.name
-						kind: .struct_field
+						name:        field.name
+						kind:        .struct_field
 						parent_name: node.name
-						pos: field.pos
+						pos:         field.pos
 						return_type: ret_type
 					}
 				}
+			}
+			for sa in stmt.attrs {
+				node.attrs[sa.name] = if sa.has_at {
+					'@[${sa.str()}]'
+				} else {
+					'[${sa.str()}]'
+				}
+				node.tags << node.attrs[sa.name]
 			}
 		}
 		ast.TypeDecl {
@@ -293,11 +309,11 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			if d.extract_vars {
 				for param in stmt.params {
 					node.children << DocNode{
-						name: param.name
-						kind: .variable
+						name:        param.name
+						kind:        .variable
 						parent_name: node.name
-						pos: param.pos
-						attrs: {
+						pos:         param.pos
+						attrs:       {
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)
@@ -348,13 +364,13 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			}
 			// the previous comments were probably a copyright/license one
 			module_comment := merge_doc_comments(preceding_comments)
-			preceding_comments = []
 			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
 				if module_comment == '' {
 					continue
 				}
 				d.head.comments << preceding_comments
 			}
+			preceding_comments = []
 			continue
 		}
 		if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
@@ -416,11 +432,11 @@ pub fn (mut d Doc) file_ast_with_pos(mut file_ast ast.File, pos int) map[string]
 		}
 		mut vr_data := val as ast.Var
 		l_node := DocNode{
-			name: name
-			pos: vr_data.pos
-			file_path: file_ast.path
-			from_scope: true
-			kind: .variable
+			name:        name
+			pos:         vr_data.pos
+			file_path:   file_ast.path
+			from_scope:  true
+			kind:        .variable
 			return_type: d.expr_typ_to_string(mut vr_data.expr)
 		}
 		contents[l_node.name] = l_node
@@ -437,7 +453,7 @@ pub fn (mut d Doc) generate() ! {
 	} else {
 		os.real_path(os.dir(d.base_path))
 	}
-	d.is_vlib = !d.base_path.contains('vlib')
+	d.is_vlib = d.base_path.contains('vlib')
 	project_files := os.ls(d.base_path) or { return err }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
@@ -453,7 +469,7 @@ pub fn (mut d Doc) generate() ! {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
-		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
+		file_asts << parser.parse_file(file_path, mut d.table, comments_mode, d.prefs)
 	}
 	return d.file_asts(mut file_asts)
 }
@@ -474,9 +490,9 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 			// 	module_name = d.parent_mod_name + '.' + module_name
 			// }
 			d.head = DocNode{
-				name: module_name
+				name:    module_name
 				content: 'module ${module_name}'
-				kind: .none_
+				kind:    .none_
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {
 			continue
@@ -498,8 +514,7 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 			}
 			if d.contents[name].kind != .none_ || node.kind == .none_ {
 				d.contents[name].children << node.children
-				d.contents[name].children.sort_by_name()
-				d.contents[name].children.sort_by_kind()
+				d.contents[name].children.arrange()
 			}
 		}
 	}
@@ -514,7 +529,7 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 }
 
 // generate documents a certain file directory and returns an
-// instance of `Doc` if it is successful. Otherwise, it will  throw an error.
+// instance of `Doc` if it is successful. Otherwise, it will throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
 	if platform == .js {
 		return error('vdoc: Platform `${platform}` is not supported.')

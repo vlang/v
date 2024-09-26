@@ -1,4 +1,3 @@
-import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
@@ -74,18 +73,18 @@ fn main() {
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		fons: unsafe { nil } // &fontstash.Context(0)
+		fons:        unsafe { nil } // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := sapp.Desc{
-		user_data: state
-		init_userdata_cb: init
+		user_data:         state
+		init_userdata_cb:  init
 		frame_userdata_cb: frame
-		window_title: title.str
+		window_title:      title.str
 		html5_canvas_name: title.str
-		width: 600
-		height: 700
-		high_dpi: true
+		width:             600
+		height:            700
+		high_dpi:          true
 	}
 	sapp.run(&desc)
 }
@@ -107,7 +106,8 @@ fn init(mut state AppState) {
 
 fn frame(mut state AppState) {
 	state.render_font()
-	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
+	pass := sapp.create_default_pass(state.pass_action)
+	gfx.begin_pass(&pass)
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()

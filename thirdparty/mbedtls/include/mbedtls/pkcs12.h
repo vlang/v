@@ -94,7 +94,7 @@ int mbedtls_pkcs12_pbe( mbedtls_asn1_buf *pbe_params, int mode,
  *                   no byte order mark and with a null terminator (i.e. the
  *                   last two bytes should be 0x00 0x00).
  * \param pwdlen     length of the password (may be 0).
- * \param salt       Salt buffer to use This may only be \c NULL when
+ * \param salt       Salt buffer to use. This may only be \c NULL when
  *                   \p saltlen is 0.
  * \param saltlen    length of the salt (may be zero)
  * \param mbedtls_md mbedtls_md type to use during the derivation

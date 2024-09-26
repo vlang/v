@@ -79,16 +79,16 @@ fn v_test_vetting(vargs string) ! {
 	}
 	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
 		vet_known_exceptions)
-	//
+
 	fmt_cmd, fmt_args := if is_fix {
 		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
 	} else {
-		'${os.quoted_path(vexe)} fmt -verify', 'fmt -verify'
+		'${os.quoted_path(vexe)} fmt -inprocess -verify', 'fmt -inprocess -verify'
 	}
 	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
 	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }
 	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_list, exceptions)
-	//
+
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')
 		if vet_session.benchmark.nfail > 0 {

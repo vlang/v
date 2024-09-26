@@ -156,8 +156,6 @@ fn init() {
 	}
 }
 
-pub const is_used = true
-
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
 fn ssl_error(ret int, ssl voidptr) !SSLError {
 	res := C.SSL_get_error(ssl, ret)

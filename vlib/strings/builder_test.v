@@ -28,7 +28,7 @@ fn test_sb() {
 	assert res[res.len - 1] == `\n`
 	println('"${res}"')
 	assert res.trim_space() == 'x = 10 y = 20'
-	//
+
 	sb = strings.new_builder(10)
 	sb.write_string('x = ${x} y = ${y}')
 	assert sb.str() == 'x = 10 y = 20'
@@ -165,4 +165,29 @@ fn test_write_decimal() {
 	assert sb_i64_str(-1234567890) == '-1234567890'
 	assert sb_i64_str(9223372036854775807) == '9223372036854775807'
 	assert sb_i64_str(-9223372036854775807) == '-9223372036854775807'
+}
+
+fn test_grow_len() {
+	mut sb := strings.new_builder(10)
+	assert sb.len == 0
+	assert sb.cap == 10
+
+	sb.write_string('0123456789')
+	assert sb.len == 10
+
+	unsafe { sb.grow_len(-5) }
+	assert sb.len == 10
+	assert sb.cap == 10
+
+	unsafe { sb.grow_len(10) }
+	assert sb.len == 20
+	assert sb.cap == 20
+
+	unsafe { sb.ensure_cap(35) }
+	assert sb.len == 20
+	assert sb.cap == 35
+
+	unsafe { sb.grow_len(5) }
+	assert sb.len == 25
+	assert sb.cap == 35
 }

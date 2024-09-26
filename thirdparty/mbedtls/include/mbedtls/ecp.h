@@ -918,7 +918,7 @@ int mbedtls_ecp_tls_write_group( const mbedtls_ecp_group *grp,
  * \note            To prevent timing attacks, this function
  *                  executes the exact same sequence of base-field
  *                  operations for any valid \p m. It avoids any if-branch or
- *                  array index depending on the value of \p m. If also uses
+ *                  array index depending on the value of \p m. It also uses
  *                  \p f_rng to randomize some intermediate results.
  *
  * \param grp       The ECP group to use.

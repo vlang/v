@@ -56,14 +56,15 @@ pub type Primitive = InfixType
 pub struct Null {}
 
 pub enum OperationKind {
-	neq // !=
-	eq // ==
-	gt // >
-	lt // <
-	ge // >=
-	le // <=
-	orm_like // LIKE
-	is_null // IS NULL
+	neq         // !=
+	eq          // ==
+	gt          // >
+	lt          // <
+	ge          // >=
+	le          // <=
+	orm_like    // LIKE
+	orm_ilike   // ILIKE
+	is_null     // IS NULL
 	is_not_null // IS NOT NULL
 }
 
@@ -101,6 +102,7 @@ fn (kind OperationKind) to_str() string {
 		.ge { '>=' }
 		.le { '<=' }
 		.orm_like { 'LIKE' }
+		.orm_ilike { 'ILIKE' }
 		.is_null { 'IS NULL' }
 		.is_not_null { 'IS NOT NULL' }
 	}
@@ -152,7 +154,7 @@ pub:
 	typ         int
 	nullable    bool
 	default_val string
-	attrs       []StructAttribute
+	attrs       []VAttribute
 	is_arr      bool
 }
 
@@ -205,7 +207,8 @@ pub interface Connection {
 // num - Stmt uses nums at prepared statements (? or ?1)
 // qm - Character for prepared statement (qm for question mark, as in sqlite)
 // start_pos - When num is true, it's the start position of the counter
-pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
+pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string,
+	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
 	mut data_fields := []string{}
@@ -318,9 +321,9 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 
 	return str, QueryData{
 		fields: data_fields
-		data: data_data
-		types: data.types
-		kinds: data.kinds
+		data:   data_data
+		types:  data.types
+		kinds:  data.kinds
 		is_and: data.is_and
 	}
 }
@@ -430,7 +433,8 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 // fields - See TableField
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
-pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string, alternative bool) !string {
+pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
+	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table}${q} ('
 
 	if alternative {
@@ -508,12 +512,13 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
 						}
 						if attr.arg.contains('(') {
-							ref_table, ref_field := attr.arg.split_once('(')
-							if !ref_field.ends_with(')') {
-								return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+							if ref_table, ref_field := attr.arg.split_once('(') {
+								if !ref_field.ends_with(')') {
+									return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+								}
+								references_table = ref_table
+								references_field = ref_field[..ref_field.len - 1]
 							}
-							references_table = ref_table
-							references_field = ref_field[..ref_field.len - 1]
 						} else {
 							references_table = attr.arg
 							references_field = 'id'
@@ -588,10 +593,10 @@ fn sql_field_type(field TableField) int {
 	for attr in field.attrs {
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
 			if attr.arg.to_lower() == 'serial' {
-				typ = orm.serial
+				typ = serial
 				break
 			}
-			typ = orm.type_idx[attr.arg]
+			typ = type_idx[attr.arg]
 			break
 		}
 	}
@@ -617,7 +622,7 @@ fn bool_to_primitive(b bool) Primitive {
 }
 
 fn option_bool_to_primitive(b ?bool) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn f32_to_primitive(b f32) Primitive {
@@ -625,7 +630,7 @@ fn f32_to_primitive(b f32) Primitive {
 }
 
 fn option_f32_to_primitive(b ?f32) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn f64_to_primitive(b f64) Primitive {
@@ -633,7 +638,7 @@ fn f64_to_primitive(b f64) Primitive {
 }
 
 fn option_f64_to_primitive(b ?f64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn i8_to_primitive(b i8) Primitive {
@@ -641,7 +646,7 @@ fn i8_to_primitive(b i8) Primitive {
 }
 
 fn option_i8_to_primitive(b ?i8) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn i16_to_primitive(b i16) Primitive {
@@ -649,7 +654,7 @@ fn i16_to_primitive(b i16) Primitive {
 }
 
 fn option_i16_to_primitive(b ?i16) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn int_to_primitive(b int) Primitive {
@@ -657,7 +662,7 @@ fn int_to_primitive(b int) Primitive {
 }
 
 fn option_int_to_primitive(b ?int) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 // int_literal_to_primitive handles int literal value
@@ -666,7 +671,7 @@ fn int_literal_to_primitive(b int) Primitive {
 }
 
 fn option_int_literal_to_primitive(b ?int) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 // float_literal_to_primitive handles float literal value
@@ -675,7 +680,7 @@ fn float_literal_to_primitive(b f64) Primitive {
 }
 
 fn option_float_literal_to_primitive(b ?f64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn i64_to_primitive(b i64) Primitive {
@@ -683,7 +688,7 @@ fn i64_to_primitive(b i64) Primitive {
 }
 
 fn option_i64_to_primitive(b ?i64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u8_to_primitive(b u8) Primitive {
@@ -691,7 +696,7 @@ fn u8_to_primitive(b u8) Primitive {
 }
 
 fn option_u8_to_primitive(b ?u8) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u16_to_primitive(b u16) Primitive {
@@ -699,7 +704,7 @@ fn u16_to_primitive(b u16) Primitive {
 }
 
 fn option_u16_to_primitive(b ?u16) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u32_to_primitive(b u32) Primitive {
@@ -707,7 +712,7 @@ fn u32_to_primitive(b u32) Primitive {
 }
 
 fn option_u32_to_primitive(b ?u32) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn u64_to_primitive(b u64) Primitive {
@@ -715,7 +720,7 @@ fn u64_to_primitive(b u64) Primitive {
 }
 
 fn option_u64_to_primitive(b ?u64) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn string_to_primitive(b string) Primitive {
@@ -723,7 +728,7 @@ fn string_to_primitive(b string) Primitive {
 }
 
 fn option_string_to_primitive(b ?string) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn time_to_primitive(b time.Time) Primitive {
@@ -731,7 +736,7 @@ fn time_to_primitive(b time.Time) Primitive {
 }
 
 fn option_time_to_primitive(b ?time.Time) Primitive {
-	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
+	return if b_ := b { Primitive(b_) } else { null_primitive }
 }
 
 fn infix_to_primitive(b InfixType) Primitive {

@@ -154,7 +154,7 @@ pub fn (mut expr ConstExpression) ref_func(name string) {
 	expr.code << 0xD2 // ref.func
 	expr.call_patches << FunctionCallPatch{
 		name: name
-		pos: expr.code.len
+		pos:  expr.code.len
 	}
 }
 
@@ -164,8 +164,8 @@ pub fn (mut expr ConstExpression) ref_func(name string) {
 pub fn (mut expr ConstExpression) ref_func_import(mod string, name string) {
 	expr.code << 0xD2 // ref.func
 	expr.call_patches << ImportCallPatch{
-		mod: mod
+		mod:  mod
 		name: name
-		pos: expr.code.len
+		pos:  expr.code.len
 	}
 }

@@ -20,7 +20,8 @@ pub const default_entities_reverse = {
 
 @[params]
 pub struct EscapeConfig {
-	reverse_entities map[string]string = xml.default_entities_reverse
+pub:
+	reverse_entities map[string]string = default_entities_reverse
 }
 
 // escape_text replaces all entities in the given string with their respective
@@ -38,7 +39,8 @@ pub fn escape_text(content string, config EscapeConfig) string {
 
 @[params]
 pub struct UnescapeConfig {
-	entities map[string]string = xml.default_entities
+pub:
+	entities map[string]string = default_entities
 }
 
 // unescape_text replaces all entities in the given string with their respective

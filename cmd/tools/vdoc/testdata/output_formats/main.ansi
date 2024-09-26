@@ -1,0 +1,336 @@
+Description
+This is an example of a an .md file, used for adding more rich text
+documentation in a project or module.
+This is a link to the main V site.
+This is a bold text.
+This is a script <script>console.log('hi from README.md');</script> .
+Examples
+Processing command line args
+import os
+
+fn main() {
+    dump(os.args)
+    dump(os.args.len)
+    assert os.args.len > 0
+
+    // Test escape characters like for `&` and `<`
+    mut arr := [1, 2, 3]
+    mut ref := &arr
+    arr << 4
+
+    ch := chan bool{cap: 1}
+    ch <- true
+}
+
+A JWT example (test syntax highlighting)
+import crypto.hmac
+import crypto.sha256
+import encoding.base64
+import json
+import time
+
+struct JwtHeader {
+    alg string
+    typ string
+}
+
+struct JwtPayload {
+    sub  string
+    name string
+    iat  int
+}
+
+fn main() {
+    sw := time.new_stopwatch()
+    secret := 'your-256-bit-secret'
+    token := make_token(secret)
+    ok := auth_verify(secret, token)
+    dt := sw.elapsed().microseconds()
+    println('token: ${token}')
+    println('auth_verify(secret, token): ${ok}')
+    println('Elapsed time: ${dt} uS')
+}
+
+fn make_token(secret string) string {
+    header := base64.url_encode(json.encode(JwtHeader{'HS256', 'JWT'}).bytes())
+    payload := base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
+    signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
+        sha256.sum, sha256.block_size))
+    jwt := '${header}.${payload}.${signature}'
+    return jwt
+}
+
+fn auth_verify(secret string, token string) bool {
+    token_split := token.split('.')
+    signature_mirror := hmac.new(secret.bytes(), '${token_split[0]}.${token_split[1]}'.bytes(),
+        sha256.sum, sha256.block_size)
+    signature_from_token := base64.url_decode(token_split[2])
+    return hmac.equal(signature_from_token, signature_mirror)
+}
+
+Other language specifiers
+#include <iostream>
+#include <map>
+
+std::map<std::string, int> my_map {
+    {"KEY_1", 0},
+    {"KEY_2", 10},
+};
+
+for (const auto &[key, value] : my_map) {
+    std::cout << key << ": " << value << ", ";
+}
+std::cout << "\n";
+
+doc1 := toml.parse_text(<string content>) or { panic(err) }
+doc2 := toml.parse_file(<file path>) or { panic(err) }
+
+Escape html in strings
+const html = '<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <style>
+      body {
+        background: linear-gradient(to right, #274060, #1B2845);
+        color: GhostWhite;
+        font-family: sans-serif;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Your App Content!</h1>
+    <button onclick="callV()">Call V!</button>
+  </body>
+  <script>
+    async function callV() {
+      // Call a V function that takes an argument and returns a value.
+      const res = await window.my_v_func(\'Hello from JS!\');
+      console.log(res);
+    }
+  </script>
+</html>'
+
+Regular markdown list point 1
+List point 2
+List point 3
+
+Numbered markdown list point 1
+List point 2
+List point 3
+
+A code block without a specific language should be rendered verbatim:
+.
+├── static/
+│   ├── css/
+│   │   └── main.css
+│   └── js/
+│       └── main.js
+└── main.v
+
+The s tags here in the code block, should be rendered verbatim, not interpreted as HTML ones:
+h:m:s      // 5:02:33
+m:s.mi<s>  // 2:33.015
+s.mi<s>    // 33.015s
+mi.mc<ms>  // 15.007ms
+mc.ns<ns>  // 7.234us
+ns<ns>     // 234ns
+
+The End.
+[94mmodule[39m [32mmain[39m
+    ## Description
+    
+    This is an example of a an .md file, used for adding more rich text documentation in a project or module.
+    
+    This is a [link](https://vlang.io/) to the main V site.
+    
+    This is a <b>bold text</b>.
+    
+    This is a script `<script>console.log('hi from README.md');</script>` .
+    
+    ## Examples
+    
+    ### Processing command line args
+    
+    ```v
+    import os
+    
+    fn main() {
+    	dump(os.args)
+    	dump(os.args.len)
+    	assert os.args.len > 0
+    
+    	// Test escape characters like for `&` and `<`
+    	mut arr := [1, 2, 3]
+    	mut ref := &arr
+    	arr << 4
+    
+    	ch := chan bool{cap: 1}
+    	ch <- true
+    }
+    ```
+    
+    ### A JWT example (test syntax highlighting)
+    
+    ```v
+    import crypto.hmac
+    import crypto.sha256
+    import encoding.base64
+    import json
+    import time
+    
+    struct JwtHeader {
+    	alg string
+    	typ string
+    }
+    
+    struct JwtPayload {
+    	sub  string
+    	name string
+    	iat  int
+    }
+    
+    fn main() {
+    	sw := time.new_stopwatch()
+    	secret := 'your-256-bit-secret'
+    	token := make_token(secret)
+    	ok := auth_verify(secret, token)
+    	dt := sw.elapsed().microseconds()
+    	println('token: ${token}')
+    	println('auth_verify(secret, token): ${ok}')
+    	println('Elapsed time: ${dt} uS')
+    }
+    
+    fn make_token(secret string) string {
+    	header := base64.url_encode(json.encode(JwtHeader{'HS256', 'JWT'}).bytes())
+    	payload := base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
+    	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
+    		sha256.sum, sha256.block_size))
+    	jwt := '${header}.${payload}.${signature}'
+    	return jwt
+    }
+    
+    fn auth_verify(secret string, token string) bool {
+    	token_split := token.split('.')
+    	signature_mirror := hmac.new(secret.bytes(), '${token_split[0]}.${token_split[1]}'.bytes(),
+    		sha256.sum, sha256.block_size)
+    	signature_from_token := base64.url_decode(token_split[2])
+    	return hmac.equal(signature_from_token, signature_mirror)
+    }
+    ```
+    
+    ### Other language specifiers
+    
+    ```cpp
+    #include <iostream>
+    #include <map>
+    
+    std::map<std::string, int> my_map {
+    	{"KEY_1", 0},
+    	{"KEY_2", 10},
+    };
+    
+    for (const auto &[key, value] : my_map) {
+    	std::cout << key << ": " << value << ", ";
+    }
+    std::cout << "\n";
+    ```
+    
+    ```v ignore
+    doc1 := toml.parse_text(<string content>) or { panic(err) }
+    doc2 := toml.parse_file(<file path>) or { panic(err) }
+    ```
+    
+    ### Escape html in strings
+    
+    ```v
+    const html = '<!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <style>
+          body {
+            background: linear-gradient(to right, #274060, #1B2845);
+            color: GhostWhite;
+            font-family: sans-serif;
+            text-align: center;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Your App Content!</h1>
+        <button onclick="callV()">Call V!</button>
+      </body>
+      <script>
+        async function callV() {
+          // Call a V function that takes an argument and returns a value.
+          const res = await window.my_v_func(\'Hello from JS!\');
+          console.log(res);
+        }
+      </script>
+    </html>'
+    ```
+    
+    - Regular markdown list point 1
+    - List point 2
+    - List point 3
+    
+    1. Numbered markdown list point 1
+    2. List point 2
+    3. List point 3
+    
+    A code block without a specific language should be rendered verbatim:
+    ```
+    .
+    ├── static/
+    │   ├── css/
+    │   │   └── main.css
+    │   └── js/
+    │       └── main.js
+    └── main.v
+    ```
+    
+    The s tags here in the code block, should be rendered verbatim, not interpreted as HTML ones:
+    ```
+    h:m:s      // 5:02:33
+    m:s.mi<s>  // 2:33.015
+    s.mi<s>    // 33.015s
+    mi.mc<ms>  // 15.007ms
+    mc.ns<ns>  // 7.234us
+    ns<ns>     // 234ns
+    ```
+    
+    The End.
+
+[94mconst[39m omega = [94m3[39m [90m// should be first[39m
+[94mconst[39m alpha = [94m5[39m [90m// should be in the middle[39m
+[94mconst[39m beta = [94m2[39m [90m// should be at the end[39m
+[94mfn[39m [36mabc[39m()
+    abc - should be last
+[94mfn[39m [36mdef[39m()
+    def - should be first
+[94mfn[39m [36mxyz[39m()
+    xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link [main v repo](https://github.com/vlang/v)
+[94mfn[39m [32mMyXMLDocument[39m.[36mabc[39m(text [32mstring[39m) ?([32mstring[39m, [32mint[39m)
+    MyXMLDocument.abc does something too... I just do not know what.
+[94mfn[39m [32mMyXMLDocument[39m.[36mfrom_file[39m(path [32mstring[39m) ![32mMyXMLDocument[39m
+    MyXMLDocument.from_text processes the file path, and returns an error
+[94mfn[39m [32mMyXMLDocument[39m.[36mfrom_text[39m(text [32mstring[39m) ?[32mMyXMLDocument[39m
+    MyXMLDocument.from_text processes text and produces none
+[94mstruct[39m [32mMyXMLDocument[39m {
+	path [32mstring[39m
+}
+    MyXMLDocument is here just to test the different combinations of methods/output types
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_from_file[39m(path [32mstring[39m) ![32mMyXMLDocument[39m
+    instance_from_file does stuff with path
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_from_text[39m(text [32mstring[39m) ?[32mMyXMLDocument[39m
+    instance_from_text does stuff with text
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_abc[39m(text [32mstring[39m) ?([32mstring[39m, [32mint[39m)
+    instance_abc does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_void[39m()
+    instance_void does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_int[39m() [32mint[39m
+    instance_int does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_result[39m() !
+    instance_error does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_option[39m() ?
+    instance_option does stuff too

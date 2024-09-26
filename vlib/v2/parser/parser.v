@@ -30,7 +30,7 @@ mut:
 
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		pref: unsafe { prefs }
+		pref:    unsafe { prefs }
 		scanner: scanner.new_scanner(prefs, .normal)
 		// scanner: scanner.new_scanner(prefs, .skip_interpolation)
 	}
@@ -125,13 +125,13 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	}
 	if p.pref.verbose {
 		parse_time := sw.elapsed()
-		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}us)')
+		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}µs)')
 	}
 	return ast.File{
 		attributes: attributes
-		mod: mod
-		name: filename
-		imports: imports
+		mod:        mod
+		name:       filename
+		imports:    imports
 		// decls: decls
 		stmts: top_stmts
 	}
@@ -219,7 +219,7 @@ fn (mut p Parser) stmt() ast.Stmt {
 			p.next()
 			expr := p.expr(.lowest)
 			stmt := ast.AssertStmt{
-				expr: expr
+				expr:  expr
 				extra: if p.tok == .comma {
 					p.next()
 					p.expr(.lowest)
@@ -236,7 +236,7 @@ fn (mut p Parser) stmt() ast.Stmt {
 				label := p.lit()
 				p.expect_semi()
 				return ast.FlowControlStmt{
-					op: op
+					op:    op
 					label: label
 				}
 			} else {
@@ -393,7 +393,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	match p.tok {
 		.char, .key_false, .key_true, .number {
 			lhs = ast.BasicLiteral{
-				kind: p.tok
+				kind:  p.tok
 				value: p.lit()
 			}
 		}
@@ -408,7 +408,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// to currently do this is to check for an ident where the name's first char is a capital, this is not
 			// great at all, and would be the only place in the parser where a capital letter is relied upon, or even
 			// the name at all is relied upon. imo this is context the parser should not need, and we should either
-			// change the varibale capture syntax, or move the position of the capture list, for example:
+			// change the variable capture syntax, or move the position of the capture list, for example:
 			// change syntax: `fn <var_a, var_b> [T] () { ... }`, move position: `fn [T] () { ... } [var_a, var_b]`
 			// personally I think `fn <var_a, var_b> [T] () { ... }` is a great option.
 			mut captured_vars := []ast.Expr{}
@@ -444,8 +444,8 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				return ast.Type(typ)
 			}
 			lhs = ast.FnLiteral{
-				typ: typ
-				stmts: p.block()
+				typ:           typ
+				stmts:         p.block()
 				captured_vars: captured_vars
 			}
 		}
@@ -463,7 +463,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			if p.tok == .lpar {
 				p.next()
 				lhs = ast.KeywordOperator{
-					op: op
+					op:    op
 					exprs: [p.expr_or_type(.lowest)]
 				}
 				p.expect(.rpar)
@@ -479,7 +479,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			op := p.tok()
 			p.expect(.lpar)
 			lhs = ast.KeywordOperator{
-				op: op
+				op:    op
 				exprs: [p.expr(.lowest)]
 			}
 			p.expect(.rpar)
@@ -490,7 +490,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			expr := p.expr(.lowest)
 			p.expect(.comma)
 			lhs = ast.KeywordOperator{
-				op: op
+				op:    op
 				exprs: [expr, p.expr(.lowest)]
 			}
 			p.expect(.rpar)
@@ -498,7 +498,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		.key_go, .key_spawn {
 			op := p.tok()
 			lhs = ast.KeywordOperator{
-				op: op
+				op:    op
 				exprs: [p.expr(.lowest)]
 			}
 		}
@@ -540,9 +540,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 			p.exp_lcbr = exp_lcbr
 			return ast.LockExpr{
-				lock_exprs: lock_exprs
+				lock_exprs:  lock_exprs
 				rlock_exprs: rlock_exprs
-				stmts: p.block()
+				stmts:       p.block()
 			}
 		}
 		.key_struct {
@@ -623,7 +623,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			lhs = ast.MapInitExpr{
 				keys: keys
 				vals: vals
-				pos: pos
+				pos:  pos
 			}
 		}
 		.lsbr {
@@ -688,7 +688,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						} else if exprs2.len == 1 {
 							lhs = ast.Type(ast.ArrayFixedType{
 								elem_type: elem_type
-								len: exprs2[0]
+								len:       exprs2[0]
 							})
 						} else {
 							// TODO: use same error message as typ() `expect(.rsbr)`
@@ -709,9 +709,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 						}
 						p.next()
 						lhs = ast.ArrayInitExpr{
-							typ: lhs
+							typ:  lhs
 							init: init
-							pos: pos
+							pos:  pos
 						}
 					}
 					// `[2]type`
@@ -728,7 +728,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				else {
 					lhs = ast.ArrayInitExpr{
 						exprs: exprs
-						pos: pos
+						pos:   pos
 					}
 					for i := 1; i < exprs_arr.len; i++ {
 						exprs2 := exprs_arr[i]
@@ -737,7 +737,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 							p.error('invalid index expr')
 						}
 						lhs = ast.IndexExpr{
-							lhs: lhs
+							lhs:  lhs
 							expr: exprs2[0]
 						}
 					}
@@ -767,11 +767,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					}
 					p.next()
 					lhs = ast.ArrayInitExpr{
-						typ: lhs
+						typ:  lhs
 						init: init
-						cap: cap
-						len: len
-						pos: pos
+						cap:  cap
+						len:  len
+						pos:  pos
 					}
 				}
 				// `[]type`
@@ -794,7 +794,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					exprs: exprs
 					// NOTE: indicates fixed `!`
 					len: ast.PostfixExpr{
-						op: .not
+						op:   .not
 						expr: ast.empty_expr
 					}
 					pos: pos
@@ -803,7 +803,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			} else {
 				lhs = ast.ArrayInitExpr{
 					exprs: exprs
-					pos: pos
+					pos:   pos
 				}
 			}
 		}
@@ -827,16 +827,16 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				}
 				p.exp_lcbr = exp_lcbr
 				branches << ast.MatchBranch{
-					cond: cond
+					cond:  cond
 					stmts: p.block()
-					pos: branch_pos
+					pos:   branch_pos
 				}
 				p.expect_semi()
 				if p.tok == .key_else {
 					p.next()
 					branches << ast.MatchBranch{
 						stmts: p.block()
-						pos: branch_pos
+						pos:   branch_pos
 					}
 					p.expect_semi()
 				}
@@ -844,9 +844,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// rcbr
 			p.next()
 			lhs = ast.MatchExpr{
-				expr: expr
+				expr:     expr
 				branches: branches
-				pos: match_pos
+				pos:      match_pos
 			}
 		}
 		.key_atomic, .key_mut, .key_shared, .key_static, .key_volatile {
@@ -924,8 +924,8 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			if p.tok.is_prefix() {
 				// NOTE: just use .highest for now, later we might need to define for each op
 				lhs = ast.PrefixExpr{
-					pos: p.pos
-					op: p.tok()
+					pos:  p.pos
+					op:   p.tok()
 					expr: p.expr(.highest)
 				}
 			} else {
@@ -935,17 +935,17 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	}
 
 	// expr chaining
-	// TOOD: make sure there are no cases where we get stuck stuck in this loop
+	// TODO: make sure there are no cases where we get stuck stuck in this loop
 	// for p.tok != .eof {
 	for {
 		// as cast
 		// this could be handled with infix instead
-		// if we choose not to support or chaning
+		// if we choose not to support or chaining
 		if p.tok == .key_as {
 			p.next()
 			lhs = ast.AsCastExpr{
 				expr: lhs
-				typ: p.expect_type()
+				typ:  p.expect_type()
 			}
 		}
 		// call | cast
@@ -960,9 +960,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// fncall()! (Propagate Result) | fncall()? (Propagate Option)
 			if p.tok in [.not, .question] {
 				lhs = ast.CallExpr{
-					lhs: lhs
+					lhs:  lhs
 					args: args
-					pos: pos
+					pos:  pos
 				}
 				// lhs = ast.PostfixExpr{
 				// 	expr: lhs
@@ -974,26 +974,26 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				// definitely a cast
 				if lhs is ast.Type {
 					lhs = ast.CastExpr{
-						typ: lhs
+						typ:  lhs
 						expr: args[0]
-						pos: pos
+						pos:  pos
 					}
 				}
 				// work this out after type checking
 				else {
 					lhs = ast.CallOrCastExpr{
-						lhs: lhs
+						lhs:  lhs
 						expr: args[0]
-						pos: pos
+						pos:  pos
 					}
 				}
 			}
 			// definitely a call (0 args, or more than 1 arg)
 			else {
 				lhs = ast.CallExpr{
-					lhs: lhs
+					lhs:  lhs
 					args: args
-					pos: pos
+					pos:  pos
 				}
 			}
 		}
@@ -1012,8 +1012,8 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				// gated, even if followed by `(` we know it's `arr#[fn_idx]()` and not `fn[int]()`
 				// println('HERE')
 				lhs = ast.IndexExpr{
-					lhs: lhs
-					expr: p.range_expr(p.expr(.lowest))
+					lhs:      lhs
+					expr:     p.range_expr(p.expr(.lowest))
 					is_gated: true
 				}
 				p.expect(.rsbr)
@@ -1041,21 +1041,21 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					// multiple exprs | `fn[GenericStruct[int]]()` nested generic args
 					if exprs.len > 1 || expr is ast.GenericArgs {
 						lhs = ast.GenericArgs{
-							lhs: lhs
+							lhs:  lhs
 							args: exprs
 						}
 					}
 					// `ident[ident]()` this will be determined at a later stage by checking lhs
 					else if expr in [ast.Ident, ast.SelectorExpr] {
 						lhs = ast.GenericArgOrIndexExpr{
-							lhs: lhs
+							lhs:  lhs
 							expr: expr
 						}
 					}
 					// `array[0]()` we know its an index
 					else {
 						lhs = ast.IndexExpr{
-							lhs: lhs
+							lhs:  lhs
 							expr: expr
 						}
 					}
@@ -1067,12 +1067,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					// if p.exp_pt && expr in [ast.GenericArgs, ast.Ident, ast.SelectorExpr] && p.tok in [.comma, .rsbr] {
 					if p.exp_pt && expr in [ast.GenericArgs, ast.Ident, ast.SelectorExpr] {
 						lhs = ast.GenericArgs{
-							lhs: lhs
+							lhs:  lhs
 							args: exprs
 						}
 					} else {
 						lhs = ast.IndexExpr{
-							lhs: lhs
+							lhs:  lhs
 							expr: expr
 						}
 					}
@@ -1096,7 +1096,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		// NOTE: should this require parens?
 		else if p.tok in [.not, .question] {
 			lhs = ast.PostfixExpr{
-				op: p.tok()
+				op:   p.tok()
 				expr: lhs
 			}
 		} else if p.tok == .key_or {
@@ -1104,9 +1104,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			pos := p.pos
 			p.next()
 			lhs = ast.OrExpr{
-				expr: lhs
+				expr:  lhs
 				stmts: p.block()
-				pos: pos
+				pos:   pos
 			}
 		}
 		// range
@@ -1114,7 +1114,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// p.log('ast.RangeExpr')
 			// no need to continue
 			return ast.RangeExpr{
-				op: p.tok()
+				op:    p.tok()
 				start: lhs
 				// if range ever gets used in other places, wont be able to check .rsbr
 				end: if p.tok == .rsbr { ast.empty_expr } else { p.expr(.lowest) }
@@ -1129,7 +1129,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			pos := p.pos
 			op := p.tok()
 			lhs = ast.InfixExpr{
-				op: op
+				op:  op
 				lhs: lhs
 				// `x in y` allow range for this case, eg. `x in 1..10`
 				rhs: if op == .key_in {
@@ -1145,7 +1145,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			}
 		} else if p.tok.is_postfix() {
 			lhs = ast.PostfixExpr{
-				op: p.tok()
+				op:   p.tok()
 				expr: lhs
 			}
 		} else {
@@ -1161,9 +1161,9 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 fn (mut p Parser) range_expr(lhs_expr ast.Expr) ast.Expr {
 	if p.tok in [.dotdot, .ellipsis] {
 		return ast.RangeExpr{
-			op: p.tok()
+			op:    p.tok()
 			start: lhs_expr
-			end: if p.tok == .rsbr { ast.empty_expr } else { p.expr(.lowest) }
+			end:   if p.tok == .rsbr { ast.empty_expr } else { p.expr(.lowest) }
 		}
 	}
 	return lhs_expr
@@ -1313,7 +1313,7 @@ fn (mut p Parser) attributes() []ast.Attribute {
 			// name = 'unsafe'
 			value = ast.Ident{
 				name: 'unsafe'
-				pos: p.pos
+				pos:  p.pos
 			}
 		}
 		// TODO: properly
@@ -1350,8 +1350,8 @@ fn (mut p Parser) attributes() []ast.Attribute {
 			}
 		}
 		attributes << ast.Attribute{
-			name: name
-			value: value
+			name:          name
+			value:         value
 			comptime_cond: comptime_cond
 		}
 		if p.tok == .semicolon {
@@ -1396,7 +1396,7 @@ fn (mut p Parser) asm_stmt() ast.AsmStmt {
 fn (mut p Parser) assign_stmt(lhs []ast.Expr) ast.AssignStmt {
 	return ast.AssignStmt{
 		pos: p.pos
-		op: p.tok()
+		op:  p.tok()
 		lhs: lhs
 		rhs: p.expr_list()
 	}
@@ -1409,13 +1409,13 @@ fn (mut p Parser) comptime_expr() ast.Expr {
 		.key_if {
 			return ast.ComptimeExpr{
 				expr: p.if_expr(true)
-				pos: pos
+				pos:  pos
 			}
 		}
 		else {
 			return ast.ComptimeExpr{
 				expr: p.expr(.lowest)
-				pos: p.pos
+				pos:  p.pos
 			}
 		}
 	}
@@ -1469,9 +1469,9 @@ fn (mut p Parser) for_stmt() ast.ForStmt {
 			// p.expect(.key_in)
 			p.next()
 			init = ast.ForInStmt{
-				key: expr
+				key:   expr
 				value: expr2
-				expr: p.expr(.lowest)
+				expr:  p.expr(.lowest)
 			}
 		} else if p.tok == .lcbr {
 			// `for x in y {`
@@ -1479,7 +1479,7 @@ fn (mut p Parser) for_stmt() ast.ForStmt {
 			if mut expr is ast.InfixExpr && expr.op == .key_in {
 				init = ast.ForInStmt{
 					value: expr.lhs
-					expr: expr.rhs
+					expr:  expr.rhs
 				}
 			}
 			// `for x < y {`
@@ -1519,9 +1519,9 @@ fn (mut p Parser) for_stmt() ast.ForStmt {
 	stmts := p.block()
 	p.expect_semi()
 	return ast.ForStmt{
-		init: init
-		cond: cond
-		post: post
+		init:  init
+		cond:  cond
+		post:  post
 		stmts: stmts
 	}
 }
@@ -1598,9 +1598,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		else_expr = p.if_expr(is_comptime)
 	}
 	return ast.IfExpr{
-		cond: cond
+		cond:      cond
 		else_expr: else_expr
-		stmts: stmts
+		stmts:     stmts
 	}
 }
 
@@ -1637,10 +1637,10 @@ fn (mut p Parser) import_stmt() ast.ImportStmt {
 	}
 	// p.log('ast.ImportStmt: $name as $alias')
 	return ast.ImportStmt{
-		name: name
-		alias: alias
+		name:       name
+		alias:      alias
 		is_aliased: is_aliased
-		symbols: symbols
+		symbols:    symbols
 	}
 }
 
@@ -1663,7 +1663,7 @@ fn (mut p Parser) directive() ast.Directive {
 	}
 	// p.next()
 	return ast.Directive{
-		name: name
+		name:  name
 		value: value
 	}
 }
@@ -1680,7 +1680,7 @@ fn (mut p Parser) const_decl(is_public bool) ast.ConstDecl {
 		p.expect(.assign)
 		value := p.expr(.lowest)
 		fields << ast.FieldInit{
-			name: name
+			name:  name
 			value: value
 		}
 		p.expect(.semicolon)
@@ -1694,7 +1694,7 @@ fn (mut p Parser) const_decl(is_public bool) ast.ConstDecl {
 	}
 	return ast.ConstDecl{
 		is_public: is_public
-		fields: fields
+		fields:    fields
 	}
 }
 
@@ -1728,11 +1728,11 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 		receiver_pos := p.pos
 		receiver = ast.Parameter{
 			name: p.expect_name()
-			typ: p.expect_type()
+			typ:  p.expect_type()
 			// name: receiver_name
 			// typ: receiver_type
 			is_mut: is_mut
-			pos: receiver_pos
+			pos:    receiver_pos
 		}
 		p.expect(.rpar)
 		// operator overload
@@ -1748,8 +1748,8 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 				p.next()
 			}
 			receiver2 := ast.Parameter{
-				name: p.expect_name()
-				typ: p.expect_type()
+				name:   p.expect_name()
+				typ:    p.expect_type()
 				is_mut: is_mut
 			}
 			_ = receiver2
@@ -1802,15 +1802,15 @@ fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl
 	p.expect(.semicolon)
 	return ast.FnDecl{
 		attributes: attributes
-		is_public: is_public
-		is_method: is_method
-		is_static: is_static
-		receiver: receiver
-		name: name
-		language: language
-		typ: typ
-		stmts: stmts
-		pos: pos
+		is_public:  is_public
+		is_method:  is_method
+		is_static:  is_static
+		receiver:   receiver
+		name:       name
+		language:   language
+		typ:        typ
+		stmts:      stmts
+		pos:        pos
 	}
 }
 
@@ -1832,10 +1832,10 @@ fn (mut p Parser) fn_parameters() []ast.Parameter {
 			typ = p.expect_type()
 		}
 		params << ast.Parameter{
-			name: name
-			typ: typ
+			name:   name
+			typ:    typ
 			is_mut: is_mut
-			pos: pos
+			pos:    pos
 		}
 		if p.tok == .comma {
 			p.next()
@@ -1860,7 +1860,7 @@ fn (mut p Parser) fn_arguments() []ast.Expr {
 			// `...varg`
 			.ellipsis {
 				ast.Expr(ast.PrefixExpr{
-					op: p.tok()
+					op:   p.tok()
 					expr: p.expr(.lowest)
 				})
 			}
@@ -1898,7 +1898,7 @@ fn (mut p Parser) fn_arguments() []ast.Expr {
 				p.error('expecting ident for struct config syntax?')
 			}
 			args << ast.FieldInit{
-				name: (expr as ast.Ident).name
+				name:  (expr as ast.Ident).name
 				value: p.expr(.lowest)
 			}
 			if p.tok == .semicolon {
@@ -1946,8 +1946,8 @@ fn (mut p Parser) enum_decl(is_public bool, attributes []ast.Attribute) ast.Enum
 			p.next()
 		}
 		fields << ast.FieldDecl{
-			name: field_name
-			value: value
+			name:       field_name
+			value:      value
 			attributes: field_attributes
 		}
 	}
@@ -1956,10 +1956,10 @@ fn (mut p Parser) enum_decl(is_public bool, attributes []ast.Attribute) ast.Enum
 	p.expect(.semicolon)
 	return ast.EnumDecl{
 		attributes: attributes
-		is_public: is_public
-		name: name
-		as_type: as_type
-		fields: fields
+		is_public:  is_public
+		name:       name
+		as_type:    as_type
+		fields:     fields
 	}
 }
 
@@ -1980,13 +1980,13 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 		if p.tok == .assign {
 			p.next()
 			fields << ast.FieldDecl{
-				name: name
+				name:  name
 				value: p.expr(.lowest)
 			}
 		} else {
 			fields << ast.FieldDecl{
 				name: name
-				typ: p.expect_type()
+				typ:  p.expect_type()
 			}
 		}
 		p.expect(.semicolon)
@@ -2000,7 +2000,7 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 	}
 	return ast.GlobalDecl{
 		attributes: attributes
-		fields: fields
+		fields:     fields
 	}
 }
 
@@ -2032,7 +2032,7 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 			}
 			fields << ast.FieldDecl{
 				name: field_name
-				typ: if p.tok == .lpar { ast.Type(p.fn_type()) } else { p.expect_type() }
+				typ:  if p.tok == .lpar { ast.Type(p.fn_type()) } else { p.expect_type() }
 			}
 		}
 		// embedded interface
@@ -2046,12 +2046,12 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 	p.next()
 	p.expect(.semicolon)
 	return ast.InterfaceDecl{
-		is_public: is_public
-		attributes: attributes
-		name: name
+		is_public:      is_public
+		attributes:     attributes
+		name:           name
 		generic_params: generic_params
-		embedded: embedded
-		fields: fields
+		embedded:       embedded
+		fields:         fields
 	}
 }
 
@@ -2070,23 +2070,23 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 			p.error('v struct decl must have a body')
 		}
 		return ast.StructDecl{
-			is_public: is_public
-			language: language
-			name: name
+			is_public:      is_public
+			language:       language
+			name:           name
 			generic_params: generic_params
-			pos: pos
+			pos:            pos
 		}
 	}
 	embedded, fields := p.struct_decl_fields(language)
 	return ast.StructDecl{
-		attributes: attributes
-		is_public: is_public
-		embedded: embedded
-		language: language
-		name: name
+		attributes:     attributes
+		is_public:      is_public
+		embedded:       embedded
+		language:       language
+		name:           name
 		generic_params: generic_params
-		fields: fields
-		pos: pos
+		fields:         fields
+		pos:            pos
 	}
 }
 
@@ -2141,9 +2141,9 @@ fn (mut p Parser) struct_decl_fields(language ast.Language) ([]ast.Expr, []ast.F
 			p.next()
 		}
 		fields << ast.FieldDecl{
-			name: field_name
-			typ: field_type
-			value: field_value
+			name:       field_name
+			typ:        field_type
+			value:      field_value
 			attributes: field_attributes
 		}
 	}
@@ -2163,10 +2163,10 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		p.expect_semi()
 	}
 	select_expr := ast.SelectExpr{
-		pos: p.pos
-		stmt: stmt
+		pos:   p.pos
+		stmt:  stmt
 		stmts: stmts
-		next: if p.tok != .rcbr { p.select_expr() } else { ast.empty_expr }
+		next:  if p.tok != .rcbr { p.select_expr() } else { ast.empty_expr }
 	}
 	return select_expr
 }
@@ -2186,15 +2186,15 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 			field_name := p.expect_name()
 			p.expect(.colon)
 			fields << ast.FieldInit{
-				name: field_name
+				name:  field_name
 				value: p.expr(.lowest)
 			}
 			p.expect_semi()
 		}
 		p.next()
 		return ast.AssocExpr{
-			typ: typ
-			expr: lx
+			typ:    typ
+			expr:   lx
 			fields: fields
 		}
 	}
@@ -2225,7 +2225,7 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 			p.next()
 		}
 		fields << ast.FieldInit{
-			name: field_name
+			name:  field_name
 			value: value
 		}
 		if p.tok == .semicolon {
@@ -2235,7 +2235,7 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 	}
 	p.next()
 	return ast.InitExpr{
-		typ: typ
+		typ:    typ
 		fields: fields
 	}
 }
@@ -2244,7 +2244,7 @@ fn (mut p Parser) string_literal(kind ast.StringLiteralKind) ast.Expr {
 	value0 := p.lit()
 	if p.tok != .str_dollar {
 		return ast.StringLiteral{
-			kind: kind
+			kind:  kind
 			value: value0
 		}
 	}
@@ -2266,7 +2266,7 @@ fn (mut p Parser) string_literal(kind ast.StringLiteralKind) ast.Expr {
 		}
 	}
 	return ast.StringInterLiteral{
-		kind: kind
+		kind:   kind
 		values: values
 		inters: inters
 	}
@@ -2300,9 +2300,9 @@ fn (mut p Parser) string_inter() ast.StringInter {
 		}
 	}
 	return ast.StringInter{
-		format: format
+		format:      format
 		format_expr: format_expr
-		expr: expr
+		expr:        expr
 	}
 }
 
@@ -2347,11 +2347,11 @@ fn (mut p Parser) type_decl(is_public bool) ast.TypeDecl {
 	if p.tok != .pipe {
 		p.expect(.semicolon)
 		return ast.TypeDecl{
-			is_public: is_public
-			language: language
-			name: name
+			is_public:      is_public
+			language:       language
+			name:           name
 			generic_params: generic_params
-			base_type: typ
+			base_type:      typ
 		}
 	}
 	// sum type `type MyType = int | string`
@@ -2364,18 +2364,18 @@ fn (mut p Parser) type_decl(is_public bool) ast.TypeDecl {
 	p.expect(.semicolon)
 	// TODO: consider separate node for alias / sum type ?
 	return ast.TypeDecl{
-		is_public: is_public
-		language: language
-		name: name
+		is_public:      is_public
+		language:       language
+		name:           name
 		generic_params: generic_params
-		variants: variants
+		variants:       variants
 	}
 }
 
 @[inline]
 fn (mut p Parser) ident() ast.Ident {
 	return ast.Ident{
-		pos: p.pos
+		pos:  p.pos
 		name: p.expect_name()
 	}
 }
@@ -2419,9 +2419,9 @@ fn (mut p Parser) current_position() token.Position {
 	pos := p.pos - p.file.base
 	return token.Position{
 		filename: p.file.name
-		line: p.line
-		offset: pos
-		column: pos - p.file.line_start(p.line) + 1
+		line:     p.line
+		offset:   pos
+		column:   pos - p.file.line_start(p.line) + 1
 	}
 }
 

@@ -4,6 +4,15 @@ import rand
 import crypto.sha1
 import encoding.base64
 import encoding.binary
+import log
+
+const default_logger = setup_default_logger()
+
+fn setup_default_logger() &log.Log {
+	mut l := &log.Log{}
+	l.set_level(.info)
+	return l
+}
 
 // htonl64 converts payload length to header bits
 fn htonl64(payload_len u64) []u8 {

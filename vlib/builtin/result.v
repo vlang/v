@@ -5,10 +5,6 @@ module builtin
 
 // IError holds information about an error instance
 pub interface IError {
-	// >> Hack to allow old style custom error implementations
-	// TODO: remove once deprecation period for `IError` methods has ended
-	msg  string
-	code int // <<
 	msg() string
 	code() int
 }
@@ -40,13 +36,9 @@ pub fn (err IError) str() string {
 			err.msg()
 		}
 		MessageError {
-			err.msg()
+			(*err).str()
 		}
 		else {
-			// >> Hack to allow old style custom error implementations
-			// TODO: remove once deprecation period for `IError` methods has ended
-			// old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
-			// <<
 			'${err.type_name()}: ${err.msg()}'
 		}
 	}
@@ -70,15 +62,20 @@ pub:
 	code int
 }
 
-// msg returns the message of MessageError
-pub fn (err MessageError) msg() string {
+// str returns both the .msg and .code of MessageError, when .code is != 0
+pub fn (err MessageError) str() string {
 	if err.code > 0 {
 		return '${err.msg}; code: ${err.code}'
 	}
 	return err.msg
 }
 
-// code returns the code of MessageError
+// msg returns only the message of MessageError
+pub fn (err MessageError) msg() string {
+	return err.msg
+}
+
+// code returns only the code of MessageError
 pub fn (err MessageError) code() int {
 	return err.code
 }
@@ -109,7 +106,7 @@ pub fn error(message string) IError {
 pub fn error_with_code(message string, code int) IError {
 	trace_error('${message} | code: ${code}')
 	return &MessageError{
-		msg: message
+		msg:  message
 		code: code
 	}
 }

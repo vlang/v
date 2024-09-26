@@ -30,7 +30,11 @@ pub fn (a Character) == (b Character) bool {
 // to_rune creates a V rune, given a Character
 @[inline]
 pub fn (c Character) to_rune() rune {
-	return unsafe { *(&rune(&c)) }
+	$if windows {
+		return unsafe { *(&rune(&c)) } & 0xFFFF
+	} $else {
+		return unsafe { *(&rune(&c)) }
+	}
 }
 
 // from_rune creates a Character, given a V rune
@@ -46,7 +50,7 @@ pub fn from_rune(r rune) Character {
 pub fn length_in_characters(p voidptr) int {
 	mut len := 0
 	pc := &Character(p)
-	for unsafe { pc[len] != wchar.zero } {
+	for unsafe { pc[len] != zero } {
 		len++
 	}
 	return len
@@ -110,7 +114,7 @@ pub fn from_string(s string) &Character {
 		for i, r in srunes {
 			result[i] = from_rune(r)
 		}
-		result[srunes.len] = wchar.zero
+		result[srunes.len] = zero
 		return result
 	}
 }

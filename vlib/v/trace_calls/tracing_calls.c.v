@@ -5,8 +5,6 @@ module trace_calls
 __global g_stack_base = &u8(0)
 __global g_start_time = u64(0)
 
-pub const is_used = 1
-
 @[markused]
 pub fn on_call(fname string) {
 	mut volatile pfbase := unsafe { &u8(0) }
@@ -25,7 +23,11 @@ pub fn on_call(fname string) {
 		pfbase = &fbase
 		ssize = u64(g_stack_base) - u64(pfbase)
 	}
-	C.fprintf(C.stderr, c'> trace %8d %8ld %8d %s\n', tid, ns, ssize, fname.str)
+	$if x64 {
+		C.fprintf(C.stderr, c'> trace %8d %8ld %8ld %s\n', tid, ns, ssize, fname.str)
+	} $else {
+		C.fprintf(C.stderr, c'> trace %8d %8lld %8lld %s\n', tid, ns, ssize, fname.str)
+	}
 	C.fflush(C.stderr)
 }
 
@@ -45,10 +47,12 @@ fn current_time() u64 {
 }
 
 @[markused]
-pub fn on_c_main() {
+pub fn on_c_main(should_trace_c_main bool) {
 	g_start_time = current_time()
+	//                    > trace  2128896   714640    28148 fn
 	C.fprintf(C.stderr, c'#          tid       ns      ssize name\n')
 	C.fflush(C.stderr)
-	on_call('C.main')
-	//                    > trace  2128896   714640    28148 fn
+	if should_trace_c_main {
+		on_call('C.main')
+	}
 }

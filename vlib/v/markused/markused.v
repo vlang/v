@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File) {
+pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
@@ -52,6 +52,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'_option_ok',
 			'_result_ok',
 			'error',
+			'ptr_str', // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
 			// utf8_str_visible_length is used by c/str.v
 			'utf8_str_visible_length',
 			'compare_ints',
@@ -80,6 +81,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			string_idx_str + '.trim',
 			string_idx_str + '.substr',
 			string_idx_str + '.substr_ni',
+			string_idx_str + '.substr_with_check',
 			string_idx_str + '.at',
 			string_idx_str + '.at_with_check',
 			string_idx_str + '.index_kmp',
@@ -134,8 +136,6 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'main.vtest_new_metainfo',
 			'main.vtest_new_filemetainfo',
 			'os.getwd',
-			'os.init_os_args',
-			'os.init_os_args_wide',
 			'v.embed_file.find_index_entry_by_path',
 		]
 	}
@@ -306,6 +306,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 
 	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
+	handle_vweb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
 
 	// handle ORM drivers:
 	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
@@ -327,17 +328,17 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 	}
 
 	mut walker := Walker{
-		table: table
-		files: ast_files
-		all_fns: all_fns
-		all_consts: all_consts
+		table:       table
+		files:       ast_files
+		all_fns:     all_fns
+		all_consts:  all_consts
 		all_globals: all_globals
-		pref: pref_
+		pref:        pref_
 	}
 	// println( all_fns.keys() )
-	walker.mark_markused_fns() // tagged with `[markused]`
-	walker.mark_markused_consts() // tagged with `[markused]`
-	walker.mark_markused_globals() // tagged with `[markused]`
+	walker.mark_markused_fns() // tagged with `@[markused]`
+	walker.mark_markused_consts() // tagged with `@[markused]`
+	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 
@@ -440,14 +441,15 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 	return all_fns, all_consts, all_globals
 }
 
-fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string, context_name string) {
+fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string,
+	context_name string) {
 	// handle vweb magic router methods:
 	result_type_idx := table.find_type_idx(result_name)
 	if result_type_idx != 0 {
 		all_fn_root_names << filter_name
-		typ_vweb_context := ast.Type(table.find_type_idx(context_name)).set_nr_muls(1)
+		typ_vweb_context := ast.idx_to_type(table.find_type_idx(context_name)).set_nr_muls(1)
 		all_fn_root_names << '${int(typ_vweb_context)}.html'
-		for vgt in table.used_vweb_types {
+		for vgt in table.used_veb_types {
 			sym_app := table.sym(vgt)
 			for m in sym_app.methods {
 				mut skip := true

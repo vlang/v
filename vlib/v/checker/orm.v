@@ -72,12 +72,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlExpr{
-			pos: node.pos
-			has_where: true
-			where_expr: ast.None{}
-			typ: field.typ.clear_flag(.option).set_flag(.result)
-			db_expr: node.db_expr
-			table_expr: ast.TypeNode{
+			pos:          node.pos
+			has_where:    true
+			where_expr:   ast.None{}
+			typ:          field.typ.clear_flag(.option).set_flag(.result)
+			db_expr:      node.db_expr
+			table_expr:   ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: foreign_typ
 			}
@@ -89,34 +89,34 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.inside_sql = tmp_inside_sql
 
 		subquery_expr.where_expr = ast.InfixExpr{
-			op: .eq
-			pos: subquery_expr.pos
-			left: ast.Ident{
+			op:          .eq
+			pos:         subquery_expr.pos
+			left:        ast.Ident{
 				language: .v
 				tok_kind: .eq
-				scope: c.fn_scope
-				obj: ast.Var{}
-				mod: 'main'
-				name: 'id'
-				is_mut: false
-				kind: .unresolved
-				info: ast.IdentVar{}
+				scope:    c.fn_scope
+				obj:      ast.Var{}
+				mod:      'main'
+				name:     'id'
+				is_mut:   false
+				kind:     .unresolved
+				info:     ast.IdentVar{}
 			}
-			right: ast.Ident{
+			right:       ast.Ident{
 				language: .c
-				mod: 'main'
+				mod:      'main'
 				tok_kind: .eq
-				obj: ast.Var{}
-				is_mut: false
-				scope: c.fn_scope
-				info: ast.IdentVar{
+				obj:      ast.Var{}
+				is_mut:   false
+				scope:    c.fn_scope
+				info:     ast.IdentVar{
 					typ: ast.int_type
 				}
 			}
-			left_type: ast.int_type
-			right_type: ast.int_type
+			left_type:   ast.int_type
+			right_type:  ast.int_type
 			auto_locked: ''
-			or_block: ast.OrExpr{}
+			or_block:    ast.OrExpr{}
 		}
 
 		if c.table.sym(field.typ).kind == .array {
@@ -190,8 +190,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			'offset')
 	}
 	c.expr(mut node.db_expr)
+	if node.is_insert {
+		node.typ = ast.int_type
+	}
 
 	c.check_orm_or_expr(mut node)
+
+	if node.is_insert {
+		return ast.int_type
+	}
 
 	return node.typ.clear_flag(.result)
 }
@@ -292,13 +299,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlStmtLine{
-			pos: node.pos
-			kind: node.kind
-			table_expr: ast.TypeNode{
+			pos:          node.pos
+			kind:         node.kind
+			table_expr:   ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: foreign_typ
 			}
-			object_var: field.name
+			object_var:   field.name
 			is_generated: true
 		}
 
@@ -444,7 +451,8 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 
 // check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type checks that an expression is compile-time
 // and contains an integer greater than or equal to zero or it is a runtime expression with an integer type.
-fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut expr ast.Expr, sql_keyword string) {
+fn (mut c Checker) check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut expr ast.Expr,
+	sql_keyword string) {
 	comptime_number := c.get_comptime_number_value(mut expr) or {
 		c.check_sql_expr_type_is_int(expr, sql_keyword)
 		return
@@ -536,7 +544,8 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 // check_where_expr_has_no_pointless_exprs checks that an expression has no pointless expressions
 // which don't affect the result. For example, `where 3` is pointless.
 // Also, it checks that the left side of the infix expression is always the structure field.
-fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string, expr &ast.Expr) {
+fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &ast.TypeSymbol, field_names []string,
+	expr &ast.Expr) {
 	// Skip type checking for generated subqueries
 	// that are not linked to scope and vars but only created for cgen.
 	if expr is ast.None {
@@ -619,7 +628,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 
 	if expr.or_expr.kind == .block {
 		c.expected_or_type = return_type.clear_flag(.result)
-		c.stmts_ending_with_expression(mut expr.or_expr.stmts)
+		c.stmts_ending_with_expression(mut expr.or_expr.stmts, c.expected_or_type)
 		c.expected_or_type = ast.void_type
 	}
 }
@@ -627,7 +636,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 // check_db_expr checks the `db_expr` implements `orm.Connection` and has no `option` flag.
 fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 	connection_type_index := c.table.find_type_idx('orm.Connection')
-	connection_typ := ast.Type(connection_type_index)
+	connection_typ := ast.idx_to_type(connection_type_index)
 	db_expr_type := c.expr(mut db_expr)
 
 	// If we didn't find `orm.Connection`, we don't have any imported modules
@@ -669,14 +678,15 @@ fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.T
 	} else if c.table.sym(table_field.typ).kind == .array {
 		return c.table.sym(table_field.typ).array_info().elem_type
 	} else {
-		return ast.Type(0)
+		return ast.no_type
 	}
 }
 
 // get_orm_non_primitive_fields filters the table fields by selecting only
 // non-primitive fields such as arrays and structs.
 fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.StructField {
-	return fields.filter(fn [c] (field ast.StructField) bool {
+	mut res := []ast.StructField{}
+	for field in fields {
 		type_with_no_option_flag := field.typ.clear_flag(.option)
 		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct_
 		is_array := c.table.sym(type_with_no_option_flag).kind == .array
@@ -684,8 +694,11 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct_
 		is_time := c.table.get_type_name(type_with_no_option_flag) == 'time.Time'
 
-		return (is_struct || is_array_with_struct_elements) && !is_time
-	})
+		if (is_struct || is_array_with_struct_elements) && !is_time {
+			res << field
+		}
+	}
+	return res
 }
 
 // walkingdevel: Now I don't think it's a good solution

@@ -26,13 +26,7 @@
 
 #if defined(MBEDTLS_SSL_TLS_C)
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#include <stdlib.h>
-#define mbedtls_calloc    calloc
-#define mbedtls_free      free
-#endif
 
 #include "mbedtls/ssl.h"
 #include "ssl_misc.h"
@@ -388,29 +382,79 @@ static int ssl_parse_inner_plaintext( unsigned char const *content,
 }
 #endif /* MBEDTLS_SSL_DTLS_CONNECTION_ID || MBEDTLS_SSL_PROTO_TLS1_3 */
 
-/* `add_data` must have size 13 Bytes if the CID extension is disabled,
- * and 13 + 1 + CID-length Bytes if the CID extension is enabled. */
+/* The size of the `add_data` structure depends on various
+ * factors, namely
+ *
+ * 1) CID functionality disabled
+ *
+ * additional_data =
+ *    8:                    seq_num +
+ *    1:                       type +
+ *    2:                    version +
+ *    2:  length of inner plaintext +
+ *
+ * size = 13 bytes
+ *
+ * 2) CID functionality based on RFC 9146 enabled
+ *
+ * size = 8 + 1 + 1 + 1 + 2 + 2 + 6 + 2 + CID-length
+ *      = 23 + CID-length
+ *
+ * 3) CID functionality based on legacy CID version
+    according to draft-ietf-tls-dtls-connection-id-05
+ *  https://tools.ietf.org/html/draft-ietf-tls-dtls-connection-id-05
+ *
+ * size = 13 + 1 + CID-length
+ *
+ * More information about the CID usage:
+ *
+ * Per Section 5.3 of draft-ietf-tls-dtls-connection-id-05 the
+ * size of the additional data structure is calculated as:
+ *
+ * additional_data =
+ *    8:                    seq_num +
+ *    1:                  tls12_cid +
+ *    2:     DTLSCipherText.version +
+ *    n:                        cid +
+ *    1:                 cid_length +
+ *    2: length_of_DTLSInnerPlaintext
+ *
+ * Per RFC 9146 the size of the add_data structure is calculated as:
+ *
+ * additional_data =
+ *    8:        seq_num_placeholder +
+ *    1:                  tls12_cid +
+ *    1:                 cid_length +
+ *    1:                  tls12_cid +
+ *    2:     DTLSCiphertext.version +
+ *    2:                      epoch +
+ *    6:            sequence_number +
+ *    n:                        cid +
+ *    2: length_of_DTLSInnerPlaintext
+ *
+ */
 static void ssl_extract_add_data_from_record( unsigned char* add_data,
                                               size_t *add_data_len,
                                               mbedtls_record *rec,
                                               mbedtls_ssl_protocol_version
-                                                tls_version,
+                                              tls_version,
                                               size_t taglen )
 {
-    /* Quoting RFC 5246 (TLS 1.2):
+    /* Several types of ciphers have been defined for use with TLS and DTLS,
+     * and the MAC calculations for those ciphers differ slightly. Further
+     * variants were added when the CID functionality was added with RFC 9146.
+     * This implementations also considers the use of a legacy version of the
+     * CID specification published in draft-ietf-tls-dtls-connection-id-05,
+     * which is used in deployments.
+     *
+     * We will distinguish between the non-CID and the CID cases below.
+     *
+     * --- Non-CID cases ---
+     *
+     * Quoting RFC 5246 (TLS 1.2):
      *
      *    additional_data = seq_num + TLSCompressed.type +
      *                      TLSCompressed.version + TLSCompressed.length;
-     *
-     * For the CID extension, this is extended as follows
-     * (quoting draft-ietf-tls-dtls-connection-id-05,
-     *  https://tools.ietf.org/html/draft-ietf-tls-dtls-connection-id-05):
-     *
-     *       additional_data = seq_num + DTLSPlaintext.type +
-     *                         DTLSPlaintext.version +
-     *                         cid +
-     *                         cid_length +
-     *                         length_of_DTLSInnerPlaintext;
      *
      * For TLS 1.3, the record sequence number is dropped from the AAD
      * and encoded within the nonce of the AEAD operation instead.
@@ -427,10 +471,71 @@ static void ssl_extract_add_data_from_record( unsigned char* add_data,
      *
      *     TLSCiphertext.length = TLSInnerPlaintext.length + taglen.
      *
-     */
+     * --- CID cases ---
+     *
+     * RFC 9146 uses a common pattern when constructing the data
+     * passed into a MAC / AEAD cipher.
+     *
+     * Data concatenation for MACs used with block ciphers with
+     * Encrypt-then-MAC Processing (with CID):
+     *
+     *  data = seq_num_placeholder +
+     *         tls12_cid +
+     *         cid_length +
+     *         tls12_cid +
+     *         DTLSCiphertext.version +
+     *         epoch +
+     *         sequence_number +
+     *         cid +
+     *         DTLSCiphertext.length +
+     *         IV +
+     *         ENC(content + padding + padding_length)
+     *
+     * Data concatenation for MACs used with block ciphers (with CID):
+     *
+     *  data =  seq_num_placeholder +
+     *          tls12_cid +
+     *          cid_length +
+     *          tls12_cid +
+     *          DTLSCiphertext.version +
+     *          epoch +
+     *          sequence_number +
+     *          cid +
+     *          length_of_DTLSInnerPlaintext +
+     *          DTLSInnerPlaintext.content +
+     *          DTLSInnerPlaintext.real_type +
+     *          DTLSInnerPlaintext.zeros
+     *
+     * AEAD ciphers use the following additional data calculation (with CIDs):
+     *
+     *     additional_data = seq_num_placeholder +
+     *                tls12_cid +
+     *                cid_length +
+     *                tls12_cid +
+     *                DTLSCiphertext.version +
+     *                epoch +
+     *                sequence_number +
+     *                cid +
+     *                length_of_DTLSInnerPlaintext
+     *
+     * Section 5.3 of draft-ietf-tls-dtls-connection-id-05 (for legacy CID use)
+     * defines the additional data calculation as follows:
+     *
+     *     additional_data = seq_num +
+     *                tls12_cid +
+     *                DTLSCipherText.version +
+     *                cid +
+     *                cid_length +
+     *                length_of_DTLSInnerPlaintext
+    */
 
     unsigned char *cur = add_data;
     size_t ad_len_field = rec->data_len;
+
+#if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID) && \
+    MBEDTLS_SSL_DTLS_CONNECTION_ID_COMPAT == 0
+    const unsigned char seq_num_placeholder[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+#endif
 
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3)
     if( tls_version == MBEDTLS_SSL_VERSION_TLS1_3 )
@@ -445,25 +550,72 @@ static void ssl_extract_add_data_from_record( unsigned char* add_data,
     {
         ((void) tls_version);
         ((void) taglen);
-        memcpy( cur, rec->ctr, sizeof( rec->ctr ) );
-        cur += sizeof( rec->ctr );
+
+#if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID) && \
+    MBEDTLS_SSL_DTLS_CONNECTION_ID_COMPAT == 0
+        if( rec->cid_len != 0 )
+        {
+            // seq_num_placeholder
+            memcpy( cur, seq_num_placeholder, sizeof(seq_num_placeholder) );
+            cur += sizeof( seq_num_placeholder );
+
+            // tls12_cid type
+            *cur = rec->type;
+            cur++;
+
+            // cid_length
+            *cur = rec->cid_len;
+            cur++;
+        }
+        else
+#endif /* MBEDTLS_SSL_DTLS_CONNECTION_ID */
+        {
+            // epoch + sequence number
+            memcpy( cur, rec->ctr, sizeof( rec->ctr ) );
+            cur += sizeof( rec->ctr );
+        }
     }
 
+    // type
     *cur = rec->type;
     cur++;
 
+    // version
     memcpy( cur, rec->ver, sizeof( rec->ver ) );
     cur += sizeof( rec->ver );
 
-#if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
-    if( rec->cid_len != 0 )
+#if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID) && \
+    MBEDTLS_SSL_DTLS_CONNECTION_ID_COMPAT == 1
+
+    if (rec->cid_len != 0)
     {
-        memcpy( cur, rec->cid, rec->cid_len );
+        // CID
+        memcpy(cur, rec->cid, rec->cid_len);
         cur += rec->cid_len;
 
+        // cid_length
         *cur = rec->cid_len;
         cur++;
 
+        // length of inner plaintext
+        MBEDTLS_PUT_UINT16_BE(ad_len_field, cur, 0);
+        cur += 2;
+    }
+    else
+#elif defined(MBEDTLS_SSL_DTLS_CONNECTION_ID) && \
+    MBEDTLS_SSL_DTLS_CONNECTION_ID_COMPAT == 0
+
+    if( rec->cid_len != 0 )
+    {
+        // epoch + sequence number
+        memcpy(cur, rec->ctr, sizeof(rec->ctr));
+        cur += sizeof(rec->ctr);
+
+        // CID
+        memcpy( cur, rec->cid, rec->cid_len );
+        cur += rec->cid_len;
+
+        // length of inner plaintext
         MBEDTLS_PUT_UINT16_BE( ad_len_field, cur, 0 );
         cur += 2;
     }
@@ -538,7 +690,14 @@ int mbedtls_ssl_encrypt_buf( mbedtls_ssl_context *ssl,
     mbedtls_ssl_mode_t ssl_mode;
     int auth_done = 0;
     unsigned char * data;
-    unsigned char add_data[13 + 1 + MBEDTLS_SSL_CID_OUT_LEN_MAX ];
+    /* For an explanation of the additional data length see
+    * the description of ssl_extract_add_data_from_record().
+    */
+#if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
+    unsigned char add_data[23 + MBEDTLS_SSL_CID_OUT_LEN_MAX];
+#else
+    unsigned char add_data[13];
+#endif
     size_t add_data_len;
     size_t post_avail;
 
@@ -1021,13 +1180,7 @@ int mbedtls_ssl_encrypt_buf( mbedtls_ssl_context *ssl,
             size_t sign_mac_length = 0;
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
-            /*
-             * MAC(MAC_write_key, seq_num +
-             *     TLSCipherText.type +
-             *     TLSCipherText.version +
-             *     length_of( (IV +) ENC(...) ) +
-             *     IV +
-             *     ENC(content + padding + padding_length));
+            /* MAC(MAC_write_key, add_data, IV, ENC(content + padding + padding_length))
              */
 
             if( post_avail < transform->maclen)
@@ -1124,7 +1277,9 @@ int mbedtls_ssl_decrypt_buf( mbedtls_ssl_context const *ssl,
                              mbedtls_ssl_transform *transform,
                              mbedtls_record *rec )
 {
+#if defined(MBEDTLS_SSL_SOME_SUITES_USE_CBC) || defined(MBEDTLS_CIPHER_MODE_AEAD)
     size_t olen;
+#endif /* MBEDTLS_SSL_SOME_SUITES_USE_CBC || MBEDTLS_CIPHER_MODE_AEAD */
     mbedtls_ssl_mode_t ssl_mode;
     int ret;
 
@@ -1133,7 +1288,14 @@ int mbedtls_ssl_decrypt_buf( mbedtls_ssl_context const *ssl,
     size_t padlen = 0, correct = 1;
 #endif
     unsigned char* data;
-    unsigned char add_data[13 + 1 + MBEDTLS_SSL_CID_IN_LEN_MAX ];
+    /* For an explanation of the additional data length see
+    * the description of ssl_extract_add_data_from_record().
+    */
+#if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
+    unsigned char add_data[23 + MBEDTLS_SSL_CID_IN_LEN_MAX];
+#else
+    unsigned char add_data[13];
+#endif
     size_t add_data_len;
 
 #if !defined(MBEDTLS_DEBUG_C)
@@ -1669,15 +1831,15 @@ int mbedtls_ssl_decrypt_buf( mbedtls_ssl_context const *ssl,
 
 #if defined(MBEDTLS_SSL_PROTO_TLS1_2)
         /*
-            * The next two sizes are the minimum and maximum values of
-            * data_len over all padlen values.
-            *
-            * They're independent of padlen, since we previously did
-            * data_len -= padlen.
-            *
-            * Note that max_len + maclen is never more than the buffer
-            * length, as we previously did in_msglen -= maclen too.
-            */
+        * The next two sizes are the minimum and maximum values of
+        * data_len over all padlen values.
+        *
+        * They're independent of padlen, since we previously did
+        * data_len -= padlen.
+        *
+        * Note that max_len + maclen is never more than the buffer
+        * length, as we previously did in_msglen -= maclen too.
+        */
         const size_t max_len = rec->data_len + padlen;
         const size_t min_len = ( max_len > 256 ) ? max_len - 256 : 0;
 
@@ -1801,8 +1963,7 @@ int mbedtls_ssl_fetch_input( mbedtls_ssl_context *ssl, size_t nb_want )
 
     if( ssl->f_recv == NULL && ssl->f_recv_timeout == NULL )
     {
-        MBEDTLS_SSL_DEBUG_MSG( 1, ( "Bad usage of mbedtls_ssl_set_bio() "
-                            "or mbedtls_ssl_set_bio()" ) );
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "Bad usage of mbedtls_ssl_set_bio() " ) );
         return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
     }
 
@@ -1912,7 +2073,7 @@ int mbedtls_ssl_fetch_input( mbedtls_ssl_context *ssl, size_t nb_want )
             MBEDTLS_SSL_DEBUG_MSG( 2, ( "timeout" ) );
             mbedtls_ssl_set_timer( ssl, 0 );
 
-            if( mbedtls_ssl_is_handshake_over( ssl ) == 0 )
+            if( ssl->state != MBEDTLS_SSL_HANDSHAKE_OVER )
             {
                 if( ssl_double_retransmit_timeout( ssl ) != 0 )
                 {
@@ -2017,8 +2178,7 @@ int mbedtls_ssl_flush_output( mbedtls_ssl_context *ssl )
 
     if( ssl->f_send == NULL )
     {
-        MBEDTLS_SSL_DEBUG_MSG( 1, ( "Bad usage of mbedtls_ssl_set_bio() "
-                            "or mbedtls_ssl_set_bio()" ) );
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "Bad usage of mbedtls_ssl_set_bio() " ) );
         return( MBEDTLS_ERR_SSL_BAD_INPUT_DATA );
     }
 
@@ -3487,7 +3647,7 @@ static int ssl_parse_record_header( mbedtls_ssl_context const *ssl,
     {
         /* Shift pointers to account for record header including CID
          * struct {
-         *   ContentType special_type = tls12_cid;
+         *   ContentType outer_type = tls12_cid;
          *   ProtocolVersion version;
          *   uint16 epoch;
          *   uint48 sequence_number;
@@ -3851,8 +4011,8 @@ int mbedtls_ssl_read_record( mbedtls_ssl_context *ssl,
 
             if( ssl_record_is_in_progress( ssl ) == 0 )
             {
+                int dtls_have_buffered = 0;
 #if defined(MBEDTLS_SSL_PROTO_DTLS)
-                int have_buffered = 0;
 
                 /* We only check for buffered messages if the
                  * current datagram is fully consumed. */
@@ -3860,11 +4020,11 @@ int mbedtls_ssl_read_record( mbedtls_ssl_context *ssl,
                     ssl_next_record_is_in_datagram( ssl ) == 0 )
                 {
                     if( ssl_load_buffered_message( ssl ) == 0 )
-                        have_buffered = 1;
+                        dtls_have_buffered = 1;
                 }
 
-                if( have_buffered == 0 )
 #endif /* MBEDTLS_SSL_PROTO_DTLS */
+                if( dtls_have_buffered == 0 )
                 {
                     ret = ssl_get_next_record( ssl );
                     if( ret == MBEDTLS_ERR_SSL_CONTINUE_PROCESSING )
@@ -3938,7 +4098,7 @@ static int ssl_load_buffered_message( mbedtls_ssl_context *ssl )
     if( hs == NULL )
         return( -1 );
 
-    MBEDTLS_SSL_DEBUG_MSG( 2, ( "=> ssl_load_buffered_messsage" ) );
+    MBEDTLS_SSL_DEBUG_MSG( 2, ( "=> ssl_load_buffered_message" ) );
 
     if( ssl->state == MBEDTLS_SSL_CLIENT_CHANGE_CIPHER_SPEC ||
         ssl->state == MBEDTLS_SSL_SERVER_CHANGE_CIPHER_SPEC )
@@ -5288,6 +5448,50 @@ static int ssl_check_ctr_renegotiate( mbedtls_ssl_context *ssl )
 }
 #endif /* MBEDTLS_SSL_RENEGOTIATION */
 
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+
+#if defined(MBEDTLS_SSL_SESSION_TICKETS) && defined(MBEDTLS_SSL_CLI_C)
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_tls13_check_new_session_ticket( mbedtls_ssl_context *ssl )
+{
+
+    if( ( ssl->in_hslen == mbedtls_ssl_hs_hdr_len( ssl ) ) ||
+        ( ssl->in_msg[0] != MBEDTLS_SSL_HS_NEW_SESSION_TICKET ) )
+    {
+        return( 0 );
+    }
+
+    ssl->keep_current_message = 1;
+
+    MBEDTLS_SSL_DEBUG_MSG( 3, ( "NewSessionTicket received" ) );
+    mbedtls_ssl_handshake_set_state( ssl,
+                                     MBEDTLS_SSL_TLS1_3_NEW_SESSION_TICKET );
+
+    return( MBEDTLS_ERR_SSL_WANT_READ );
+}
+#endif /* MBEDTLS_SSL_SESSION_TICKETS && MBEDTLS_SSL_CLI_C */
+
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_tls13_handle_hs_message_post_handshake( mbedtls_ssl_context *ssl )
+{
+
+    MBEDTLS_SSL_DEBUG_MSG( 3, ( "received post-handshake message" ) );
+
+#if defined(MBEDTLS_SSL_SESSION_TICKETS) && defined(MBEDTLS_SSL_CLI_C)
+    if( ssl->conf->endpoint == MBEDTLS_SSL_IS_CLIENT )
+    {
+        int ret = ssl_tls13_check_new_session_ticket( ssl );
+        if( ret != 0 )
+            return( ret );
+    }
+#endif /* MBEDTLS_SSL_SESSION_TICKETS && MBEDTLS_SSL_CLI_C */
+
+    /* Fail in all other cases. */
+    return( MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE );
+}
+#endif /* MBEDTLS_SSL_PROTO_TLS1_3 */
+
+#if defined(MBEDTLS_SSL_PROTO_TLS1_2)
 /* This function is called from mbedtls_ssl_read() when a handshake message is
  * received after the initial handshake. In this context, handshake messages
  * may only be sent for the purpose of initiating renegotiations.
@@ -5298,7 +5502,7 @@ static int ssl_check_ctr_renegotiate( mbedtls_ssl_context *ssl )
  * TLS 1.3 in the future without bloating the logic of mbedtls_ssl_read().
  */
 MBEDTLS_CHECK_RETURN_CRITICAL
-static int ssl_handle_hs_message_post_handshake( mbedtls_ssl_context *ssl )
+static int ssl_tls12_handle_hs_message_post_handshake( mbedtls_ssl_context *ssl )
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
 
@@ -5380,17 +5584,38 @@ static int ssl_handle_hs_message_post_handshake( mbedtls_ssl_context *ssl )
 
         MBEDTLS_SSL_DEBUG_MSG( 3, ( "refusing renegotiation, sending alert" ) );
 
-#if defined(MBEDTLS_SSL_PROTO_TLS1_2)
         if( ( ret = mbedtls_ssl_send_alert_message( ssl,
                          MBEDTLS_SSL_ALERT_LEVEL_WARNING,
                          MBEDTLS_SSL_ALERT_MSG_NO_RENEGOTIATION ) ) != 0 )
         {
             return( ret );
         }
-#endif /* MBEDTLS_SSL_PROTO_TLS1_2 */
     }
 
     return( 0 );
+}
+#endif /* MBEDTLS_SSL_PROTO_TLS1_2 */
+
+MBEDTLS_CHECK_RETURN_CRITICAL
+static int ssl_handle_hs_message_post_handshake( mbedtls_ssl_context *ssl )
+{
+    /* Check protocol version and dispatch accordingly. */
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+    if( ssl->tls_version == MBEDTLS_SSL_VERSION_TLS1_3 )
+    {
+        return( ssl_tls13_handle_hs_message_post_handshake( ssl ) );
+    }
+#endif /* MBEDTLS_SSL_PROTO_TLS1_3 */
+
+#if defined(MBEDTLS_SSL_PROTO_TLS1_2)
+    if( ssl->tls_version <= MBEDTLS_SSL_VERSION_TLS1_2 )
+    {
+        return( ssl_tls12_handle_hs_message_post_handshake( ssl ) );
+    }
+#endif /* MBEDTLS_SSL_PROTO_TLS1_2 */
+
+    /* Should never happen */
+    return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
 }
 
 /*
@@ -5443,7 +5668,7 @@ int mbedtls_ssl_read( mbedtls_ssl_context *ssl, unsigned char *buf, size_t len )
     }
 #endif
 
-    if( mbedtls_ssl_is_handshake_over( ssl ) == 0 )
+    if( ssl->state != MBEDTLS_SSL_HANDSHAKE_OVER )
     {
         ret = mbedtls_ssl_handshake( ssl );
         if( ret != MBEDTLS_ERR_SSL_WAITING_SERVER_HELLO_RENEGO &&
@@ -5699,7 +5924,7 @@ int mbedtls_ssl_write( mbedtls_ssl_context *ssl, const unsigned char *buf, size_
     }
 #endif
 
-    if( mbedtls_ssl_is_handshake_over( ssl ) == 0 )
+    if( ssl->state != MBEDTLS_SSL_HANDSHAKE_OVER )
     {
         if( ( ret = mbedtls_ssl_handshake( ssl ) ) != 0 )
         {

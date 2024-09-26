@@ -1,5 +1,5 @@
 pub struct Heap[T] {
-	mut:
+mut:
 	arr []&T
 }
 

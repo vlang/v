@@ -1,4 +1,4 @@
 fn main() {
-    println(string(true))
-    println(string(false))
+	println(string(true))
+	println(string(false))
 }

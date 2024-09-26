@@ -316,17 +316,17 @@ pub fn (mut rng PRNG) f64_in_range(min f64, max f64) !f64 {
 	return min + rng.f64n(max - min)!
 }
 
-// ulid generates an Unique Lexicographically sortable IDentifier.
+// ulid generates an unique lexicographically sortable identifier.
 // See https://github.com/ulid/spec .
 // Note: ULIDs can leak timing information, if you make them public, because
 // you can infer the rate at which some resource is being created, like
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn (mut rng PRNG) ulid() string {
-	return internal_ulid_at_millisecond(mut rng, u64(time.utc().unix_time_milli()))
+	return internal_ulid_at_millisecond(mut rng, u64(time.utc().unix_milli()))
 }
 
-// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_milli`.
 pub fn (mut rng PRNG) ulid_at_millisecond(unix_time_milli u64) string {
 	return internal_ulid_at_millisecond(mut rng, unix_time_milli)
 }
@@ -338,17 +338,23 @@ pub fn (mut rng PRNG) string_from_set(charset string, len int) string {
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn (mut rng PRNG) string(len int) string {
-	return internal_string_from_set(mut rng, rand.english_letters, len)
+	return internal_string_from_set(mut rng, english_letters, len)
 }
 
 // hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
 pub fn (mut rng PRNG) hex(len int) string {
-	return internal_string_from_set(mut rng, rand.hex_chars, len)
+	return internal_string_from_set(mut rng, hex_chars, len)
 }
 
 // ascii returns a random string of the printable ASCII characters with length `len`.
 pub fn (mut rng PRNG) ascii(len int) string {
-	return internal_string_from_set(mut rng, rand.ascii_chars, len)
+	return internal_string_from_set(mut rng, ascii_chars, len)
+}
+
+// fill_buffer_from_set fills the mutable `buf` with random characters from the given `charset`
+@[inline]
+pub fn (mut rng PRNG) fill_buffer_from_set(charset string, mut buf []u8) {
+	internal_fill_buffer_from_set(mut rng, charset, mut buf)
 }
 
 // bernoulli returns true with a probability p. Note that 0 <= p <= 1.
@@ -655,7 +661,7 @@ const english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const hex_chars = 'abcdef0123456789'
 const ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
-// ulid generates an Unique Lexicographically sortable IDentifier.
+// ulid generates an unique lexicographically sortable identifier.
 // See https://github.com/ulid/spec .
 // Note: ULIDs can leak timing information, if you make them public, because
 // you can infer the rate at which some resource is being created, like
@@ -665,7 +671,7 @@ pub fn ulid() string {
 	return default_rng.ulid()
 }
 
-// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	return default_rng.ulid_at_millisecond(unix_time_milli)
 }
@@ -675,19 +681,25 @@ pub fn string_from_set(charset string, len int) string {
 	return default_rng.string_from_set(charset, len)
 }
 
+// fill_buffer_from_set fills the array `buf` with random characters sampled from the given `charset`
+@[inline]
+pub fn fill_buffer_from_set(charset string, mut buf []u8) {
+	default_rng.fill_buffer_from_set(charset, mut buf)
+}
+
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn string(len int) string {
-	return string_from_set(rand.english_letters, len)
+	return string_from_set(english_letters, len)
 }
 
 // hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
 pub fn hex(len int) string {
-	return string_from_set(rand.hex_chars, len)
+	return string_from_set(hex_chars, len)
 }
 
 // ascii returns a random string of the printable ASCII characters with length `len`.
 pub fn ascii(len int) string {
-	return string_from_set(rand.ascii_chars, len)
+	return string_from_set(ascii_chars, len)
 }
 
 // shuffle randomly permutates the elements in `a`. The range for shuffling is

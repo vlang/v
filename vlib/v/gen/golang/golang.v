@@ -12,9 +12,9 @@ import os
 const bs = '\\'
 
 pub struct Gen {
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table &ast.Table        = unsafe { nil }
-	pref  &pref.Preferences = unsafe { nil }
+	table &ast.Table = unsafe { nil }
 	// is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -45,12 +45,12 @@ pub mut:
 	nlines             int
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
-		pref: pref_
+		pref:  pref_
 		// is_debug: is_debug
-		out: strings.new_builder(1000)
+		out:         strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
 	for file in files {
@@ -92,7 +92,7 @@ pub fn (mut f Gen) write(s string) {
 }
 
 pub fn (mut f Gen) writeln(s string) {
-	if f.indent > 0 && f.empty_line && s.len > 0 {
+	if f.indent > 0 && f.empty_line && s != '' {
 		f.write_indent()
 	}
 	f.out.writeln(s)
@@ -126,6 +126,7 @@ pub fn (mut f Gen) wrap_long_line(penalty_idx int, add_indent bool) bool {
 
 @[params]
 pub struct RemoveNewLineConfig {
+pub:
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
 
@@ -278,7 +279,7 @@ pub fn (mut f Gen) imports(imports []ast.Import) {
 
 	for imp in imports {
 		if imp.mod !in f.used_imports {
-			// TODO bring back once only unused imports are removed
+			// TODO: bring back once only unused imports are removed
 			// continue
 		}
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
@@ -425,6 +426,7 @@ pub fn (mut f Gen) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}
@@ -903,7 +905,8 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias).replace('fn ', 'func '))
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias, false).replace('fn ',
+		'func '))
 	f.fn_body(node)
 }
 
@@ -1133,7 +1136,7 @@ pub fn (mut f Gen) interface_field(field ast.StructField) {
 
 pub fn (mut f Gen) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias).after('fn '))
+	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias, false).after('fn '))
 	f.writeln('')
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)
@@ -2226,13 +2229,13 @@ pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		f.write('`${node.val}`')
 	} else {
-		unescaped_val := node.val.replace('${golang.bs}${golang.bs}', '\x01').replace_each([
-			"${golang.bs}'",
+		unescaped_val := node.val.replace('${bs}${bs}', '\x01').replace_each([
+			"${bs}'",
 			"'",
-			'${golang.bs}"',
+			'${bs}"',
 			'"',
 		])
-		s := unescaped_val.replace_each(['\x01', '${golang.bs}${golang.bs}', '"', '${golang.bs}"'])
+		s := unescaped_val.replace_each(['\x01', '${bs}${bs}', '"', '${bs}"'])
 		f.write('"${s}"')
 	}
 }
@@ -2244,7 +2247,7 @@ pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val.replace("${golang.bs}'", "'"))
+		f.write(val.replace("${bs}'", "'"))
 		if i >= node.exprs.len {
 			break
 		}

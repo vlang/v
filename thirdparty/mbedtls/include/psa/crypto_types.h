@@ -105,7 +105,7 @@ typedef uint8_t psa_ecc_family_t;
  * Values of this type are generally constructed by macros called
  * `PSA_DH_FAMILY_xxx`.
  *
- * The group identifier is required to create an Diffie-Hellman key using the
+ * The group identifier is required to create a Diffie-Hellman key using the
  * PSA_KEY_TYPE_DH_KEY_PAIR() or PSA_KEY_TYPE_DH_PUBLIC_KEY()
  * macros.
  *
@@ -297,7 +297,7 @@ typedef psa_key_id_t mbedtls_svc_key_id_t;
 
 #else /* MBEDTLS_PSA_CRYPTO_KEY_ID_ENCODES_OWNER */
 /* Implementation-specific: The Mbed Cryptography library can be built as
- * part of a multi-client service that exposes the PSA Cryptograpy API in each
+ * part of a multi-client service that exposes the PSA Cryptography API in each
  * client and encodes the client identity in the key identifier argument of
  * functions such as psa_open_key().
  */

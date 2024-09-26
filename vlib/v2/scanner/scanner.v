@@ -35,8 +35,8 @@ pub mut:
 pub fn new_scanner(prefs &pref.Preferences, mode Mode) &Scanner {
 	unsafe {
 		return &Scanner{
-			pref: prefs
-			mode: mode
+			pref:               prefs
+			mode:               mode
 			skip_interpolation: mode.has(.skip_interpolation)
 		}
 	}
@@ -57,7 +57,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 
 @[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
-	// before whitespace call to keep whitepsaces in string
+	// before whitespace call to keep whitespaces in string
 	// NOTE: before start: simply for a little more efficiency
 	// if !s.skip_interpolation && s.in_str_incomplete {
 	if s.in_str_incomplete {
@@ -131,8 +131,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		for s.offset < s.src.len {
 			c3 := s.src[s.offset]
-			if (c3 >= `a` && c3 <= `z`) || (c3 >= `A` && c3 <= `Z`)
-				|| (c3 >= `0` && c3 <= `9`) || c3 == `_` {
+			if c3.is_alnum() || c3 == `_` {
 				s.offset++
 				continue
 			}

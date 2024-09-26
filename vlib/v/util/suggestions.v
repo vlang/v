@@ -25,7 +25,7 @@ mut:
 // new_suggestion creates a new Suggestion, given a wanted value and a list of possibilities.
 pub fn new_suggestion(wanted string, possibilities []string) Suggestion {
 	mut s := Suggestion{
-		wanted: wanted
+		wanted:  wanted
 		swanted: short_module_name(wanted)
 	}
 	s.add_many(possibilities)
@@ -46,8 +46,8 @@ pub fn (mut s Suggestion) add(val string) {
 	// round to 3 decimal places to avoid float comparison issues
 	similarity := f32(int(strings.dice_coefficient(s.swanted, sval) * 1000)) / 1000
 	s.known << Possibility{
-		value: val
-		svalue: sval
+		value:      val
+		svalue:     sval
 		similarity: similarity
 	}
 }
@@ -71,9 +71,9 @@ pub fn (s Suggestion) say(msg string) string {
 	mut res := msg
 	mut found := false
 	if s.known.len > 0 {
-		top_posibility := s.known.last()
-		if top_posibility.similarity > 0.5 {
-			val := top_posibility.value
+		top_possibility := s.known.last()
+		if top_possibility.similarity > 0.5 {
+			val := top_possibility.value
 			if !val.starts_with('[]') {
 				res += '.\nDid you mean `${highlight_suggestion(val)}`?'
 				found = true

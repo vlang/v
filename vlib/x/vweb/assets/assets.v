@@ -116,10 +116,10 @@ pub fn (mut am AssetManager) add(asset_type AssetType, file_path string, include
 	}
 
 	asset := Asset{
-		kind: asset_type
-		file_path: real_path
+		kind:          asset_type
+		file_path:     real_path
 		last_modified: time.unix(last_modified_unix)
-		include_name: include_name
+		include_name:  include_name
 	}
 
 	match asset_type {
@@ -281,7 +281,7 @@ pub fn minify_css(css string) string {
 
 	for line in lines {
 		trimmed := line.trim_space()
-		if trimmed.len > 0 {
+		if trimmed != '' {
 			sb.write_string(trimmed)
 		}
 	}
@@ -301,7 +301,7 @@ pub fn minify_js(js string) string {
 
 	for line in lines {
 		trimmed := line.trim_space()
-		if trimmed.len > 0 {
+		if trimmed != '' {
 			sb.write_string(trimmed)
 			sb.write_u8(` `)
 		}

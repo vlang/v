@@ -1,0 +1,16 @@
+module main
+
+import arrays
+
+fn foo() ?int {
+	return 12
+}
+
+fn main() {
+	arr := [1, 2, 3, 4, 5, 6, 7, 8, 9]
+	for _ in 0 .. arrays.idx_min(arr) {
+	}
+
+	for _ in 0 .. foo() {
+	}
+}

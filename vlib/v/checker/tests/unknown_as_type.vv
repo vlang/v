@@ -1,6 +1,7 @@
 type Expr = Int | String
 
 struct Int {}
+
 struct String {}
 
 fn foo(e Expr) {
@@ -9,5 +10,4 @@ fn foo(e Expr) {
 }
 
 fn main() {
-
 }

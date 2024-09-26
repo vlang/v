@@ -28,7 +28,7 @@ __global (
 
 fn register_dl_loader(dl_loader &DynamicLibLoader) ! {
 	if dl_loader.key in registered_dl_loaders {
-		return loader.dl_register_issue_err
+		return dl_register_issue_err
 	}
 	registered_dl_loaders[dl_loader.key] = dl_loader
 }
@@ -53,6 +53,7 @@ mut:
 // DynamicLibLoaderConfig is a configuration for DynamicLibLoader.
 @[params]
 pub struct DynamicLibLoaderConfig {
+pub:
 	// flags is the flags for dlopen.
 	flags int = dl.rtld_lazy
 	// key is the key to register the DynamicLibLoader.
@@ -67,7 +68,7 @@ pub struct DynamicLibLoaderConfig {
 fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	mut paths := []string{}
 
-	if conf.env_path.len > 0 {
+	if conf.env_path != '' {
 		if env_path := os.getenv_opt(conf.env_path) {
 			paths << env_path.split(os.path_delimiter)
 		}
@@ -76,11 +77,11 @@ fn new_dynamic_lib_loader(conf DynamicLibLoaderConfig) !&DynamicLibLoader {
 	paths << conf.paths
 
 	if paths.len == 0 {
-		return loader.dl_no_path_issue_err
+		return dl_no_path_issue_err
 	}
 
 	mut dl_loader := &DynamicLibLoader{
-		key: conf.key
+		key:   conf.key
 		flags: conf.flags
 		paths: paths
 	}
@@ -111,7 +112,7 @@ pub fn (mut dl_loader DynamicLibLoader) open() !voidptr {
 		}
 	}
 
-	return loader.dl_open_issue_err
+	return dl_open_issue_err
 }
 
 // close closes the dynamic library.
@@ -123,7 +124,7 @@ pub fn (mut dl_loader DynamicLibLoader) close() ! {
 		}
 	}
 
-	return loader.dl_close_issue_err
+	return dl_close_issue_err
 }
 
 // get_sym gets a symbol from the dynamic library.
@@ -139,7 +140,7 @@ pub fn (mut dl_loader DynamicLibLoader) get_sym(name string) !voidptr {
 	}
 
 	dl_loader.close()!
-	return loader.dl_sym_issue_err
+	return dl_sym_issue_err
 }
 
 // unregister unregisters the DynamicLibLoader.

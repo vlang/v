@@ -15,9 +15,10 @@ pub const max_headers = 50
 
 // Header represents the key-value pairs in an HTTP header
 pub struct Header {
-mut:
+pub mut:
 	// data map[string][]string
-	data    [max_headers]HeaderKV
+	data [max_headers]HeaderKV
+mut:
 	cur_pos int
 	// map of lowercase header keys to their original keys
 	// in order of appearance
@@ -352,6 +353,7 @@ pub fn (mut h Header) free() {
 }
 
 pub struct HeaderConfig {
+pub:
 	key   CommonHeader
 	value string
 }
@@ -490,6 +492,7 @@ pub fn (mut h Header) delete_custom(key string) {
 
 @[params]
 pub struct HeaderCoerceConfig {
+pub:
 	canonicalize bool
 }
 
@@ -505,7 +508,7 @@ pub fn (mut h Header) coerce(flags HeaderCoerceConfig) {
 	if keys.len == new_keys.len {
 		return
 	}
-	mut new_data := [http.max_headers]HeaderKV{}
+	mut new_data := [max_headers]HeaderKV{}
 	mut i := 0
 	for _, key in new_keys {
 		for _, old_key in keys {
@@ -553,6 +556,7 @@ pub fn (h Header) contains(key CommonHeader) bool {
 
 @[params]
 pub struct HeaderQueryConfig {
+pub:
 	exact bool
 }
 
@@ -666,6 +670,7 @@ pub fn (h Header) keys() []string {
 
 @[params]
 pub struct HeaderRenderConfig {
+pub:
 	version      Version
 	coerce       bool
 	canonicalize bool
@@ -731,7 +736,7 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 // join combines two Header structs into a new Header struct
 pub fn (h Header) join(other Header) Header {
 	mut combined := Header{
-		data: h.data // h.data.clone()
+		data:    h.data // h.data.clone()
 		cur_pos: h.cur_pos
 	}
 	for k in other.keys() {
@@ -751,8 +756,8 @@ pub fn (h Header) join(other Header) Header {
 // NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
 fn canonicalize(name string) string {
 	// check if we have a common header
-	if name in http.common_header_map {
-		return http.common_header_map[name].str()
+	if name in common_header_map {
+		return common_header_map[name].str()
 	}
 	return name.split('-').map(it.capitalize()).join('-')
 }
@@ -788,16 +793,16 @@ fn is_valid(header string) ! {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
 			return HeaderKeyError{
-				code: 1
-				header: header
+				code:         1
+				header:       header
 				invalid_char: c
 			}
 		}
 	}
 	if header.len == 0 {
 		return HeaderKeyError{
-			code: 2
-			header: header
+			code:         2
+			header:       header
 			invalid_char: 0
 		}
 	}

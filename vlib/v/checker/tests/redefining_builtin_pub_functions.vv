@@ -1,5 +1,5 @@
 fn exit(x string) {
-	println('my exit: $x')
+	println('my exit: ${x}')
 }
 
 fn print_backtrace() {

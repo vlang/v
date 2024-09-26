@@ -1,7 +1,7 @@
 module trace_calls
 
 pub struct C.timespec {
-mut:
+pub mut:
 	tv_sec  i64
 	tv_nsec i64
 }

@@ -83,7 +83,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
 					} else if
-						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
+						(next_tok.kind in [.lcbr, .rpar, .eof, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
 						&& next_tok.lit !in highlight_builtin_types)
 						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .not, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis, .comma]
 						&& prev.lit !in highlight_builtin_types)
@@ -138,8 +138,8 @@ fn color_highlight(code string, tb &ast.Table) string {
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
-					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
+					} else if tok.kind.is_assign() || tok.is_unary() || tok.kind.is_relational()
+						|| tok.kind.is_infix() || tok.kind.is_postfix() {
 						tok_typ = .operator
 					}
 				}

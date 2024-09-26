@@ -1,5 +1,5 @@
 struct Just[T] {
-  value T
+	value T
 }
 
 struct Nothing {}

@@ -2,7 +2,6 @@
 // This is a small V example that was based off of the fireworks example.
 // Written by Stefan Schroeder in 2021 for the v project examples.
 // See LICENSE for license information.
-import os
 import gg
 import gx
 import math
@@ -31,10 +30,10 @@ const second_hand_color = gx.red
 struct App {
 	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
 	tp + 1 * th, center - tw, tp + 1 * th]
-	hours_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 2 * th,
-	center - tw, tp + 2 * th]
-	hours3_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 3 * th,
-	center - tw, tp + 3 * th]
+	hours_tic   []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
+	tp + 2 * th, center - tw, tp + 2 * th]
+	hours3_tic  []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
+	tp + 3 * th, center - tw, tp + 3 * th]
 
 	hour_hand   []f32 = [f32(329), 161, 350, 140, 371, 161, 371, 413, 329, 413]
 	minute_hand []f32 = [f32(334.25), 40.25, 350, 24.5, 365.75, 40.25, 365.75, 427, 334.25, 427]
@@ -42,7 +41,7 @@ struct App {
 mut:
 	gg        &gg.Context = unsafe { nil }
 	draw_flag bool        = true
-	dpi_scale f32 = 1.0
+	dpi_scale f32         = 1.0
 }
 
 fn on_frame(mut app App) {
@@ -147,24 +146,16 @@ fn on_init(mut app App) {
 
 fn main() {
 	println("Press 'q' to quit.")
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
-
 	mut app := &App{}
-
 	app.gg = gg.new_context(
-		width: design_size
-		height: design_size
+		width:        design_size
+		height:       design_size
 		window_title: 'Clock!'
-		bg_color: gx.white
-		user_data: app
-		frame_fn: on_frame
-		event_fn: on_event
-		init_fn: on_init
-		font_path: font_path
+		bg_color:     gx.white
+		user_data:    app
+		frame_fn:     on_frame
+		event_fn:     on_event
+		init_fn:      on_init
 	)
-
 	app.gg.run()
 }

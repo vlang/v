@@ -83,7 +83,7 @@ cleanup:
     return( ret );
 }
 
-#if defined(MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED)
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
 /*
  * STATE HANDLING: Read CertificateVerify
  */
@@ -213,13 +213,13 @@ static int ssl_tls13_parse_certificate_verify( mbedtls_ssl_context *ssl,
         goto error;
     }
 
-    if( mbedtls_ssl_tls13_get_pk_type_and_md_alg_from_sig_alg(
+    if( mbedtls_ssl_get_pk_type_and_md_alg_from_sig_alg(
                                         algorithm, &sig_alg, &md_alg ) != 0 )
     {
         goto error;
     }
 
-    hash_alg = mbedtls_psa_translate_md( md_alg );
+    hash_alg = mbedtls_hash_info_psa_from_md( md_alg );
     if( hash_alg == 0 )
     {
         goto error;
@@ -285,12 +285,12 @@ error:
     return( MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE );
 
 }
-#endif /* MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED */
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED */
 
 int mbedtls_ssl_tls13_process_certificate_verify( mbedtls_ssl_context *ssl )
 {
 
-#if defined(MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED)
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     unsigned char verify_buffer[SSL_VERIFY_STRUCT_MAX_SIZE];
     size_t verify_buffer_len;
@@ -348,7 +348,7 @@ cleanup:
     ((void) ssl);
     MBEDTLS_SSL_DEBUG_MSG( 1, ( "should never happen" ) );
     return( MBEDTLS_ERR_SSL_INTERNAL_ERROR );
-#endif /* MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED */
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED */
 }
 
 /*
@@ -357,7 +357,7 @@ cleanup:
  *
  */
 
-#if defined(MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED)
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
 #if defined(MBEDTLS_SSL_KEEP_PEER_CERTIFICATE)
 /*
  * Structure of Certificate message:
@@ -398,6 +398,7 @@ int mbedtls_ssl_tls13_parse_certificate( mbedtls_ssl_context *ssl,
     size_t certificate_list_len = 0;
     const unsigned char *p = buf;
     const unsigned char *certificate_list_end;
+    mbedtls_ssl_handshake_params *handshake = ssl->handshake;
 
     MBEDTLS_SSL_CHK_BUF_READ_PTR( p, end, 4 );
     certificate_request_context_len = p[0];
@@ -447,6 +448,7 @@ int mbedtls_ssl_tls13_parse_certificate( mbedtls_ssl_context *ssl,
     while( p < certificate_list_end )
     {
         size_t cert_data_len, extensions_len;
+        const unsigned char *extensions_end;
 
         MBEDTLS_SSL_CHK_BUF_READ_PTR( p, certificate_list_end, 3 );
         cert_data_len = MBEDTLS_GET_UINT24_BE( p, 0 );
@@ -504,7 +506,48 @@ int mbedtls_ssl_tls13_parse_certificate( mbedtls_ssl_context *ssl,
         extensions_len = MBEDTLS_GET_UINT16_BE( p, 0 );
         p += 2;
         MBEDTLS_SSL_CHK_BUF_READ_PTR( p, certificate_list_end, extensions_len );
-        p += extensions_len;
+
+        extensions_end = p + extensions_len;
+        handshake->received_extensions = MBEDTLS_SSL_EXT_MASK_NONE;
+
+        while( p < extensions_end )
+        {
+            unsigned int extension_type;
+            size_t extension_data_len;
+
+            /*
+            * struct {
+            *     ExtensionType extension_type; (2 bytes)
+            *     opaque extension_data<0..2^16-1>;
+            * } Extension;
+            */
+            MBEDTLS_SSL_CHK_BUF_READ_PTR( p, extensions_end, 4 );
+            extension_type = MBEDTLS_GET_UINT16_BE( p, 0 );
+            extension_data_len = MBEDTLS_GET_UINT16_BE( p, 2 );
+            p += 4;
+
+            MBEDTLS_SSL_CHK_BUF_READ_PTR( p, extensions_end, extension_data_len );
+
+            ret = mbedtls_ssl_tls13_check_received_extension(
+                      ssl, MBEDTLS_SSL_HS_CERTIFICATE, extension_type,
+                      MBEDTLS_SSL_TLS1_3_ALLOWED_EXTS_OF_CT );
+            if( ret != 0 )
+                return( ret );
+
+            switch( extension_type )
+            {
+                default:
+                    MBEDTLS_SSL_PRINT_EXT(
+                        3, MBEDTLS_SSL_HS_CERTIFICATE,
+                        extension_type, "( ignored )" );
+                    break;
+            }
+
+            p += extension_data_len;
+        }
+
+        MBEDTLS_SSL_PRINT_EXTS( 3, MBEDTLS_SSL_HS_CERTIFICATE,
+                                handshake->received_extensions );
     }
 
 exit:
@@ -512,7 +555,7 @@ exit:
     if( p != end )
     {
         MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad Certificate message" ) );
-        MBEDTLS_SSL_PEND_FATAL_ALERT( MBEDTLS_SSL_ALERT_MSG_DECODE_ERROR, \
+        MBEDTLS_SSL_PEND_FATAL_ALERT( MBEDTLS_SSL_ALERT_MSG_DECODE_ERROR,
                                       MBEDTLS_ERR_SSL_DECODE_ERROR );
         return( MBEDTLS_ERR_SSL_DECODE_ERROR );
     }
@@ -534,9 +577,9 @@ int mbedtls_ssl_tls13_parse_certificate( mbedtls_ssl_context *ssl,
     return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
 }
 #endif /* MBEDTLS_SSL_KEEP_PEER_CERTIFICATE */
-#endif /* MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED */
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED */
 
-#if defined(MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED)
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
 #if defined(MBEDTLS_SSL_KEEP_PEER_CERTIFICATE)
 /* Validate certificate chain sent by the server. */
 MBEDTLS_CHECK_RETURN_CRITICAL
@@ -727,14 +770,14 @@ static int ssl_tls13_validate_certificate( mbedtls_ssl_context *ssl )
     return( MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE );
 }
 #endif /* MBEDTLS_SSL_KEEP_PEER_CERTIFICATE */
-#endif /* MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED */
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED */
 
 int mbedtls_ssl_tls13_process_certificate( mbedtls_ssl_context *ssl )
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     MBEDTLS_SSL_DEBUG_MSG( 2, ( "=> parse certificate" ) );
 
-#if defined(MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED)
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
     unsigned char *buf;
     size_t buf_len;
 
@@ -752,12 +795,12 @@ int mbedtls_ssl_tls13_process_certificate( mbedtls_ssl_context *ssl )
                                         buf, buf_len );
 
 cleanup:
-#endif /* MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED */
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED */
 
     MBEDTLS_SSL_DEBUG_MSG( 2, ( "<= parse certificate" ) );
     return( ret );
 }
-#if defined(MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED)
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
 /*
  *  enum {
  *        X509(0),
@@ -843,6 +886,9 @@ static int ssl_tls13_write_certificate_body( mbedtls_ssl_context *ssl,
 
     *out_len = p - buf;
 
+    MBEDTLS_SSL_PRINT_EXTS(
+        3, MBEDTLS_SSL_HS_CERTIFICATE, ssl->handshake->sent_extensions );
+
     return( 0 );
 }
 
@@ -906,12 +952,8 @@ int mbedtls_ssl_tls13_check_sig_alg_cert_key_match( uint16_t sig_alg,
         case MBEDTLS_SSL_SIG_RSA:
             switch( sig_alg )
             {
-                case MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA256:
-                    return( key_size <= 3072 );
-
-                case MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA384:
-                    return( key_size <= 7680 );
-
+                case MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA256: /* Intentional fallthrough */
+                case MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA384: /* Intentional fallthrough */
                 case MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA512:
                     return( 1 );
 
@@ -928,42 +970,12 @@ int mbedtls_ssl_tls13_check_sig_alg_cert_key_match( uint16_t sig_alg,
 }
 
 MBEDTLS_CHECK_RETURN_CRITICAL
-static int ssl_tls13_select_sig_alg_for_certificate_verify(
-                                          mbedtls_ssl_context *ssl,
-                                          mbedtls_pk_context *own_key,
-                                          uint16_t *algorithm )
-{
-    uint16_t *sig_alg = ssl->handshake->received_sig_algs;
-
-    *algorithm = MBEDTLS_TLS1_3_SIG_NONE;
-    for( ; *sig_alg != MBEDTLS_TLS1_3_SIG_NONE ; sig_alg++ )
-    {
-        if( mbedtls_ssl_sig_alg_is_offered( ssl, *sig_alg ) &&
-            mbedtls_ssl_tls13_sig_alg_for_cert_verify_is_supported( *sig_alg ) &&
-            mbedtls_ssl_tls13_check_sig_alg_cert_key_match( *sig_alg, own_key ) )
-        {
-            MBEDTLS_SSL_DEBUG_MSG( 3,
-                                   ( "select_sig_alg_for_certificate_verify:"
-                                     "selected signature algorithm %s [%04x]",
-                                     mbedtls_ssl_sig_alg_to_str( *sig_alg ),
-                                     *sig_alg ) );
-            *algorithm = *sig_alg;
-            return( 0 );
-        }
-    }
-    MBEDTLS_SSL_DEBUG_MSG( 2,
-                           ( "select_sig_alg_for_certificate_verify:"
-                             "no suitable signature algorithm found" ) );
-    return( -1 );
-}
-
-MBEDTLS_CHECK_RETURN_CRITICAL
 static int ssl_tls13_write_certificate_verify_body( mbedtls_ssl_context *ssl,
                                                     unsigned char *buf,
                                                     unsigned char *end,
                                                     size_t *out_len )
 {
-    int ret;
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     unsigned char *p = buf;
     mbedtls_pk_context *own_key;
 
@@ -971,14 +983,9 @@ static int ssl_tls13_write_certificate_verify_body( mbedtls_ssl_context *ssl,
     size_t handshake_hash_len;
     unsigned char verify_buffer[ SSL_VERIFY_STRUCT_MAX_SIZE ];
     size_t verify_buffer_len;
-    mbedtls_pk_type_t pk_type = MBEDTLS_PK_NONE;
-    mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
-    psa_algorithm_t psa_algorithm = PSA_ALG_NONE;
-    uint16_t algorithm = MBEDTLS_TLS1_3_SIG_NONE;
+
+    uint16_t *sig_alg = ssl->handshake->received_sig_algs;
     size_t signature_len = 0;
-    unsigned char verify_hash[ MBEDTLS_MD_MAX_SIZE ];
-    size_t verify_hash_len;
-    psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
 
     *out_len = 0;
 
@@ -1011,64 +1018,84 @@ static int ssl_tls13_write_certificate_verify_body( mbedtls_ssl_context *ssl,
      *    opaque signature<0..2^16-1>;
      *  } CertificateVerify;
      */
-    ret = ssl_tls13_select_sig_alg_for_certificate_verify( ssl, own_key,
-                                                           &algorithm );
-    if( ret != 0 )
+    /* Check there is space for the algorithm identifier (2 bytes) and the
+     * signature length (2 bytes).
+     */
+    MBEDTLS_SSL_CHK_BUF_PTR( p, end, 4 );
+
+    for( ; *sig_alg != MBEDTLS_TLS1_3_SIG_NONE ; sig_alg++ )
     {
-        MBEDTLS_SSL_DEBUG_MSG( 1,
-                    ( "signature algorithm not in received or offered list." ) );
+        psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
+        mbedtls_pk_type_t pk_type = MBEDTLS_PK_NONE;
+        mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
+        psa_algorithm_t psa_algorithm = PSA_ALG_NONE;
+        unsigned char verify_hash[PSA_HASH_MAX_SIZE];
+        size_t verify_hash_len;
 
-        MBEDTLS_SSL_DEBUG_MSG( 1, ( "Signature algorithm is %s",
-                                    mbedtls_ssl_sig_alg_to_str( algorithm ) ) );
+        if( !mbedtls_ssl_sig_alg_is_offered( ssl, *sig_alg ) )
+            continue;
 
+        if( !mbedtls_ssl_tls13_sig_alg_for_cert_verify_is_supported( *sig_alg ) )
+            continue;
+
+        if( !mbedtls_ssl_tls13_check_sig_alg_cert_key_match( *sig_alg, own_key ) )
+            continue;
+
+        if( mbedtls_ssl_get_pk_type_and_md_alg_from_sig_alg(
+                                        *sig_alg, &pk_type, &md_alg ) != 0 )
+        {
+             return( MBEDTLS_ERR_SSL_INTERNAL_ERROR  );
+        }
+
+        /* Hash verify buffer with indicated hash function */
+        psa_algorithm = mbedtls_hash_info_psa_from_md( md_alg );
+        status = psa_hash_compute( psa_algorithm,
+                                   verify_buffer,
+                                   verify_buffer_len,
+                                   verify_hash, sizeof( verify_hash ),
+                                   &verify_hash_len );
+        if( status != PSA_SUCCESS )
+            return( psa_ssl_status_to_mbedtls( status ) );
+
+        MBEDTLS_SSL_DEBUG_BUF( 3, "verify hash", verify_hash, verify_hash_len );
+
+        if( ( ret = mbedtls_pk_sign_ext( pk_type, own_key,
+                        md_alg, verify_hash, verify_hash_len,
+                        p + 4, (size_t)( end - ( p + 4 ) ), &signature_len,
+                        ssl->conf->f_rng, ssl->conf->p_rng ) ) != 0 )
+        {
+             MBEDTLS_SSL_DEBUG_MSG( 2, ( "CertificateVerify signature failed with %s",
+                                    mbedtls_ssl_sig_alg_to_str( *sig_alg ) ) );
+             MBEDTLS_SSL_DEBUG_RET( 2, "mbedtls_pk_sign_ext", ret );
+
+             /* The signature failed. This is possible if the private key
+              * was not suitable for the signature operation as purposely we
+              * did not check its suitability completely. Let's try with
+              * another signature algorithm.
+              */
+             continue;
+        }
+
+        MBEDTLS_SSL_DEBUG_MSG( 2, ( "CertificateVerify signature with %s",
+                                    mbedtls_ssl_sig_alg_to_str( *sig_alg ) ) );
+
+        break;
+    }
+
+    if( *sig_alg == MBEDTLS_TLS1_3_SIG_NONE )
+    {
+        MBEDTLS_SSL_DEBUG_MSG( 1, ( "no suitable signature algorithm" ) );
         MBEDTLS_SSL_PEND_FATAL_ALERT( MBEDTLS_SSL_ALERT_MSG_HANDSHAKE_FAILURE,
                                       MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE );
         return( MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE );
     }
 
-    MBEDTLS_SSL_DEBUG_MSG( 2, ( "CertificateVerify with %s",
-                                mbedtls_ssl_sig_alg_to_str( algorithm )) );
+    MBEDTLS_PUT_UINT16_BE( *sig_alg, p, 0 );
+    MBEDTLS_PUT_UINT16_BE( signature_len, p, 2 );
 
-    if( mbedtls_ssl_tls13_get_pk_type_and_md_alg_from_sig_alg(
-                                        algorithm, &pk_type, &md_alg ) != 0 )
-    {
-        return( MBEDTLS_ERR_SSL_INTERNAL_ERROR  );
-    }
+    *out_len = 4 + signature_len;
 
-    /* Check there is space for the algorithm identifier (2 bytes) and the
-     * signature length (2 bytes).
-     */
-    MBEDTLS_SSL_CHK_BUF_PTR( p, end, 4 );
-    MBEDTLS_PUT_UINT16_BE( algorithm, p, 0 );
-    p += 2;
-
-    /* Hash verify buffer with indicated hash function */
-    psa_algorithm = mbedtls_psa_translate_md( md_alg );
-    status = psa_hash_compute( psa_algorithm,
-                               verify_buffer,
-                               verify_buffer_len,
-                               verify_hash,sizeof( verify_hash ),
-                               &verify_hash_len );
-    if( status != PSA_SUCCESS )
-        return( psa_ssl_status_to_mbedtls( status ) );
-
-    MBEDTLS_SSL_DEBUG_BUF( 3, "verify hash", verify_hash, verify_hash_len );
-
-    if( ( ret = mbedtls_pk_sign_ext( pk_type, own_key,
-                        md_alg, verify_hash, verify_hash_len,
-                        p + 2, (size_t)( end - ( p + 2 ) ), &signature_len,
-                        ssl->conf->f_rng, ssl->conf->p_rng ) ) != 0 )
-    {
-        MBEDTLS_SSL_DEBUG_RET( 1, "mbedtls_pk_sign", ret );
-        return( ret );
-    }
-
-    MBEDTLS_PUT_UINT16_BE( signature_len, p, 0 );
-    p += 2 + signature_len;
-
-    *out_len = (size_t)( p - buf );
-
-    return( ret );
+    return( 0 );
 }
 
 int mbedtls_ssl_tls13_write_certificate_verify( mbedtls_ssl_context *ssl )
@@ -1097,7 +1124,7 @@ cleanup:
     return( ret );
 }
 
-#endif /* MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED */
+#endif /* MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED */
 
 /*
  *
@@ -1347,6 +1374,39 @@ cleanup:
 
 #endif /* MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE */
 
+/* Early Data Indication Extension
+ *
+ * struct {
+ *   select ( Handshake.msg_type ) {
+ *     ...
+ *     case client_hello:         Empty;
+ *     case encrypted_extensions: Empty;
+ *   };
+ * } EarlyDataIndication;
+ */
+#if defined(MBEDTLS_SSL_EARLY_DATA)
+int mbedtls_ssl_tls13_write_early_data_ext( mbedtls_ssl_context *ssl,
+                                            unsigned char *buf,
+                                            const unsigned char *end,
+                                            size_t *out_len )
+{
+    unsigned char *p = buf;
+    *out_len = 0;
+    ((void) ssl);
+
+    MBEDTLS_SSL_CHK_BUF_PTR( p, end, 4 );
+
+    MBEDTLS_PUT_UINT16_BE( MBEDTLS_TLS_EXT_EARLY_DATA, p, 0 );
+    MBEDTLS_PUT_UINT16_BE( 0, p, 2 );
+
+    *out_len = 4;
+
+    mbedtls_ssl_tls13_set_hs_sent_ext_mask( ssl, MBEDTLS_TLS_EXT_EARLY_DATA );
+
+    return( 0 );
+}
+#endif /* MBEDTLS_SSL_EARLY_DATA */
+
 /* Reset SSL context and update hash for handling HRR.
  *
  * Replace Transcript-Hash(X) by
@@ -1361,7 +1421,7 @@ cleanup:
 int mbedtls_ssl_reset_transcript_for_hrr( mbedtls_ssl_context *ssl )
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
-    unsigned char hash_transcript[ MBEDTLS_MD_MAX_SIZE + 4 ];
+    unsigned char hash_transcript[PSA_HASH_MAX_SIZE + 4];
     size_t hash_len;
     const mbedtls_ssl_ciphersuite_t *ciphersuite_info;
     uint16_t cipher_suite = ssl->session_negotiate->ciphersuite;
@@ -1371,7 +1431,7 @@ int mbedtls_ssl_reset_transcript_for_hrr( mbedtls_ssl_context *ssl )
 
     ret = mbedtls_ssl_get_handshake_transcript( ssl, ciphersuite_info->mac,
                                                 hash_transcript + 4,
-                                                MBEDTLS_MD_MAX_SIZE,
+                                                PSA_HASH_MAX_SIZE,
                                                 &hash_len );
     if( ret != 0 )
     {
@@ -1386,9 +1446,9 @@ int mbedtls_ssl_reset_transcript_for_hrr( mbedtls_ssl_context *ssl )
 
     hash_len += 4;
 
+#if defined(MBEDTLS_HAS_ALG_SHA_256_VIA_MD_OR_PSA_BASED_ON_USE_PSA)
     if( ciphersuite_info->mac == MBEDTLS_MD_SHA256 )
     {
-#if defined(MBEDTLS_SHA256_C)
         MBEDTLS_SSL_DEBUG_BUF( 4, "Truncated SHA-256 handshake transcript",
                                hash_transcript, hash_len );
 
@@ -1398,11 +1458,11 @@ int mbedtls_ssl_reset_transcript_for_hrr( mbedtls_ssl_context *ssl )
 #else
         mbedtls_sha256_starts( &ssl->handshake->fin_sha256, 0 );
 #endif
-#endif /* MBEDTLS_SHA256_C */
     }
-    else if( ciphersuite_info->mac == MBEDTLS_MD_SHA384 )
+#endif /* MBEDTLS_HAS_ALG_SHA_256_VIA_MD_OR_PSA_BASED_ON_USE_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_384_VIA_MD_OR_PSA_BASED_ON_USE_PSA)
+    if( ciphersuite_info->mac == MBEDTLS_MD_SHA384 )
     {
-#if defined(MBEDTLS_SHA384_C)
         MBEDTLS_SSL_DEBUG_BUF( 4, "Truncated SHA-384 handshake transcript",
                                hash_transcript, hash_len );
 
@@ -1410,14 +1470,13 @@ int mbedtls_ssl_reset_transcript_for_hrr( mbedtls_ssl_context *ssl )
         psa_hash_abort( &ssl->handshake->fin_sha384_psa );
         psa_hash_setup( &ssl->handshake->fin_sha384_psa, PSA_ALG_SHA_384 );
 #else
-        mbedtls_sha512_starts( &ssl->handshake->fin_sha512, 1 );
+        mbedtls_sha512_starts( &ssl->handshake->fin_sha384, 1 );
 #endif
-#endif /* MBEDTLS_SHA384_C */
     }
-
-#if defined(MBEDTLS_SHA256_C) || defined(MBEDTLS_SHA384_C)
+#endif /* MBEDTLS_HAS_ALG_SHA_384_VIA_MD_OR_PSA_BASED_ON_USE_PSA */
+#if defined(MBEDTLS_HAS_ALG_SHA_256_VIA_MD_OR_PSA_BASED_ON_USE_PSA) || defined(MBEDTLS_HAS_ALG_SHA_384_VIA_MD_OR_PSA_BASED_ON_USE_PSA)
     ssl->handshake->update_checksum( ssl, hash_transcript, hash_len );
-#endif /* MBEDTLS_SHA256_C || MBEDTLS_SHA384_C */
+#endif /* MBEDTLS_HAS_ALG_SHA_256_VIA_MD_OR_PSA_BASED_ON_USE_PSA || MBEDTLS_HAS_ALG_SHA_384_VIA_MD_OR_PSA_BASED_ON_USE_PSA */
 
     return( ret );
 }
@@ -1505,4 +1564,61 @@ int mbedtls_ssl_tls13_generate_and_write_ecdh_key_exchange(
 }
 #endif /* MBEDTLS_ECDH_C */
 
+/* RFC 8446 section 4.2
+ *
+ * If an implementation receives an extension which it recognizes and which is
+ * not specified for the message in which it appears, it MUST abort the handshake
+ * with an "illegal_parameter" alert.
+ *
+ */
+int mbedtls_ssl_tls13_check_received_extension(
+        mbedtls_ssl_context *ssl,
+        int hs_msg_type,
+        unsigned int received_extension_type,
+        uint32_t hs_msg_allowed_extensions_mask )
+{
+    uint32_t extension_mask = mbedtls_ssl_get_extension_mask(
+                                  received_extension_type );
+
+    MBEDTLS_SSL_PRINT_EXT(
+        3, hs_msg_type, received_extension_type, "received" );
+
+    if( ( extension_mask & hs_msg_allowed_extensions_mask ) == 0 )
+    {
+        MBEDTLS_SSL_PRINT_EXT(
+            3, hs_msg_type, received_extension_type, "is illegal" );
+        MBEDTLS_SSL_PEND_FATAL_ALERT(
+            MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER,
+            MBEDTLS_ERR_SSL_ILLEGAL_PARAMETER );
+        return( MBEDTLS_ERR_SSL_ILLEGAL_PARAMETER );
+    }
+
+    ssl->handshake->received_extensions |= extension_mask;
+    /*
+     * If it is a message containing extension responses, check that we
+     * previously sent the extension.
+     */
+    switch( hs_msg_type )
+    {
+        case MBEDTLS_SSL_HS_SERVER_HELLO:
+        case MBEDTLS_SSL_TLS1_3_HS_HELLO_RETRY_REQUEST:
+        case MBEDTLS_SSL_HS_ENCRYPTED_EXTENSIONS:
+        case MBEDTLS_SSL_HS_CERTIFICATE:
+            /* Check if the received extension is sent by peer message.*/
+            if( ( ssl->handshake->sent_extensions & extension_mask ) != 0 )
+                return( 0 );
+            break;
+        default:
+            return( 0 );
+    }
+
+    MBEDTLS_SSL_PRINT_EXT(
+            3, hs_msg_type, received_extension_type, "is unsupported" );
+    MBEDTLS_SSL_PEND_FATAL_ALERT(
+        MBEDTLS_SSL_ALERT_MSG_UNSUPPORTED_EXT,
+        MBEDTLS_ERR_SSL_UNSUPPORTED_EXTENSION );
+    return( MBEDTLS_ERR_SSL_UNSUPPORTED_EXTENSION );
+}
+
 #endif /* MBEDTLS_SSL_TLS_C && MBEDTLS_SSL_PROTO_TLS1_3 */
+

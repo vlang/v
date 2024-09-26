@@ -16,7 +16,8 @@ struct SystemDll {
 	full_path string
 }
 
-fn C.SearchPathA(lp_path &char, lp_file_name &char, lp_extension &char, n_buffer_length u32, lp_buffer &char, lp_file_part &&char) u32
+fn C.SearchPathA(lp_path &char, lp_file_name &char, lp_extension &char, n_buffer_length u32, lp_buffer &char,
+	lp_file_part &&char) u32
 fn C.GetLastError() u32
 
 fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
@@ -24,7 +25,7 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 		full_path := os.join_path(path, dll)
 		if os.exists(full_path) {
 			return SystemDll{
-				name: dll
+				name:      dll
 				full_path: full_path
 			}
 		}
@@ -43,12 +44,12 @@ fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
 			full_path := cstring_to_vstring(buffer)
 			free(buffer)
 			return SystemDll{
-				name: dll
+				name:      dll
 				full_path: full_path
 			}
 		}
 	} $else {
-		// todo look into librarys dirs
+		// TODO: look into librarys dirs
 		return SystemDll{
 			name: dll
 		}
@@ -63,7 +64,7 @@ mut:
 
 fn (di DllIndex) to_import() PeDllImport {
 	return PeDllImport{
-		name: di.dllname
+		name:      di.dllname
 		functions: maps.filter(di.exports, fn (_ string, val bool) bool {
 			return val
 		}).keys()
@@ -99,12 +100,12 @@ fn get_dllexports(mut file os.File) !map[string]bool {
 			if optional_header.magic != u16(PeMagic.pe32plus) {
 				return error('wrong magic bytes: `${optional_header.magic.hex()}`, want: `${u16(PeMagic.pe32plus).hex()}`')
 			}
-			if optional_header.number_of_rva_and_sizes <= native.pe_export_data_dir_index {
+			if optional_header.number_of_rva_and_sizes <= pe_export_data_dir_index {
 				return map[string]bool{} // no exports in this file
 			}
 
 			sec_hdroffset = opt_hdroffset + u32(pe_opt_hdr_size)
-			read_pe_data_dir(mut file, opt_hdroffset + pe32_plus_opt_hdr_size, native.pe_export_data_dir_index)!
+			read_pe_data_dir(mut file, opt_hdroffset + pe32_plus_opt_hdr_size, pe_export_data_dir_index)!
 		}
 		u16(PeMachine.i386) {
 			return error('32-bit (i386) dlls not supported yet')
@@ -137,8 +138,8 @@ fn parse_export_section(mut file os.File, export_data_dir PeDataDir, section_hea
 	mut name_ptr := export_directory.name_ptr_rva - ref
 	mut buf := []u8{}
 	for _ in 0 .. export_directory.number_of_name_ptrs {
-		ptr := binary.little_endian_u32(file.read_bytes_at(native.pe_dword_size, name_ptr))
-		name_ptr += native.pe_dword_size
+		ptr := binary.little_endian_u32(file.read_bytes_at(pe_dword_size, name_ptr))
+		name_ptr += pe_dword_size
 
 		mut j := u32(0)
 		buf.clear()
@@ -168,7 +169,7 @@ fn read_dos_header(mut file os.File) !DosHeaderRead {
 	}
 
 	return DosHeaderRead{
-		magic: binary.little_endian_u16(buf)
+		magic:  binary.little_endian_u16(buf)
 		lfanew: binary.little_endian_u32(buf[dos_header_lfanew_offset..])
 	}
 }
@@ -186,8 +187,8 @@ fn read_pe_header(mut file os.File, offset u64) !PeHeaderRead {
 	}
 
 	return PeHeaderRead{
-		magic: binary.little_endian_u16(buf)
-		machine: binary.little_endian_u16(buf[pe_header_machine_offset..])
+		magic:              binary.little_endian_u16(buf)
+		machine:            binary.little_endian_u16(buf[pe_header_machine_offset..])
 		number_of_sections: binary.little_endian_u16(buf[pe_number_of_sections_offset..])
 	}
 }
@@ -204,7 +205,7 @@ fn read_pe32plus_optional_header(mut file os.File, offset u64) !Pe32PlusOptional
 	}
 
 	return Pe32PlusOptionalHeaderRead{
-		magic: binary.little_endian_u16(buf)
+		magic:                   binary.little_endian_u16(buf)
 		number_of_rva_and_sizes: binary.little_endian_u32(buf[pe32_plus_optional_header_offsetof(.number_of_rva_and_sizes)..])
 	}
 }
@@ -228,8 +229,8 @@ fn read_pe_section_header(mut file os.File, offset u64) !PeSectionHeaderRead {
 	}
 
 	return PeSectionHeaderRead{
-		virtual_address: binary.little_endian_u32(buf[pe_section_header_offsetof(.virtual_address)..])
-		size_of_raw_data: binary.little_endian_u32(buf[pe_section_header_offsetof(.size_of_raw_data)..20])
+		virtual_address:     binary.little_endian_u32(buf[pe_section_header_offsetof(.virtual_address)..])
+		size_of_raw_data:    binary.little_endian_u32(buf[pe_section_header_offsetof(.size_of_raw_data)..20])
 		pointer_to_raw_data: binary.little_endian_u32(buf[pe_section_header_offsetof(.pointer_to_raw_data)..24])
 	}
 }
@@ -240,13 +241,13 @@ struct PeExportDirectoryRead {
 }
 
 fn read_pe_export_directory(mut file os.File, offset u64) !PeExportDirectoryRead {
-	buf := file.read_bytes_at(native.pe_export_directory_size, offset)
-	if buf.len != native.pe_export_directory_size {
-		return error('error reading export directory (${native.pe_export_directory_size} bytes)')
+	buf := file.read_bytes_at(pe_export_directory_size, offset)
+	if buf.len != pe_export_directory_size {
+		return error('error reading export directory (${pe_export_directory_size} bytes)')
 	}
 
 	return PeExportDirectoryRead{
 		number_of_name_ptrs: binary.little_endian_u32(buf[24..28])
-		name_ptr_rva: binary.little_endian_u32(buf[32..36])
+		name_ptr_rva:        binary.little_endian_u32(buf[32..36])
 	}
 }

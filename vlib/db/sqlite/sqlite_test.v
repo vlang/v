@@ -4,7 +4,7 @@ type Connection = sqlite.DB
 
 struct User {
 pub:
-	id   int    @[primary; sql: serial]
+	id   int @[primary; sql: serial]
 	name string
 }
 
@@ -94,4 +94,23 @@ fn test_can_access_sqlite_result_consts() {
 fn test_alias_db() {
 	create_host(sqlite.connect(':memory:')!)!
 	assert true
+}
+
+fn test_exec_param_many() {
+	$if !linux {
+		return
+	}
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	assert db.is_open
+	db.exec('drop table if exists users')!
+	db.exec("create table users (id integer primary key, name text default '' unique);")!
+	db.exec("insert into users (name) values ('Sam')")!
+	db.exec_param_many('insert into users (id, name) values (?, ?)', [
+		'60',
+		'Sam',
+	]) or {
+		assert err.code() == 19 // constraint failure
+		return
+	}
+	assert false
 }

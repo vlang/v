@@ -1,0 +1,7 @@
+import veb
+import vweb
+
+fn main() {
+	$veb.html('./templates/empty.html')
+	$vweb.html('./templates/empty.html')
+}

@@ -40,7 +40,7 @@ pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 @[manualfree]
 pub fn (mut b Builder) write_rune(r rune) {
 	mut buffer := [5]u8{}
-	res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
+	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
 	if res.len == 0 {
 		return
 	}
@@ -51,7 +51,7 @@ pub fn (mut b Builder) write_rune(r rune) {
 pub fn (mut b Builder) write_runes(runes []rune) {
 	mut buffer := [5]u8{}
 	for r in runes {
-		res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
+		res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
 		if res.len == 0 {
 			continue
 		}
@@ -65,11 +65,13 @@ pub fn (mut b Builder) clear() {
 }
 
 // write_u8 appends a single `data` byte to the accumulated buffer
+@[inline]
 pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
+@[inline]
 pub fn (mut b Builder) write_byte(data u8) {
 	b << data
 }
@@ -141,11 +143,12 @@ pub fn (mut b Builder) write_string(s string) {
 	// b.buf << []u8(s)  // TODO
 }
 
-// writeln appends the string `s`+`\n` to the buffer
+// writeln_string appends the string `s`+`\n` to the buffer
+@[deprecated: 'use writeln() instead']
+@[deprecated_after: '2024-03-21']
 @[inline]
 pub fn (mut b Builder) writeln_string(s string) {
-	b.write_string(s)
-	b.write_string('\n')
+	b.writeln(s)
 }
 
 // go_back discards the last `n` bytes from the buffer
@@ -153,8 +156,9 @@ pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }
 
+// spart returns a part of the buffer as a string
 @[inline]
-fn (b &Builder) spart(start_pos int, n int) string {
+pub fn (b &Builder) spart(start_pos int, n int) string {
 	unsafe {
 		mut x := malloc_noscan(n + 1)
 		vmemcpy(x, &u8(b.data) + start_pos, n)
@@ -193,7 +197,7 @@ pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
 	// }
-	if s.len > 0 {
+	if s != '' {
 		unsafe { b.push_many(s.str, s.len) }
 	}
 	// b.buf << []u8(s)  // TODO
@@ -249,6 +253,20 @@ pub fn (mut b Builder) ensure_cap(n int) {
 		b.data = new_data
 		b.offset = 0
 		b.cap = n
+	}
+}
+
+// grow_len grows the length of the buffer by `n` bytes if necessary
+@[unsafe]
+pub fn (mut b Builder) grow_len(n int) {
+	if n <= 0 {
+		return
+	}
+
+	new_len := b.len + n
+	b.ensure_cap(new_len)
+	unsafe {
+		b.len = new_len
 	}
 }
 

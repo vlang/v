@@ -122,8 +122,8 @@ mut:
 fn (m Manu) str() string {
 	return unsafe {
 		string{
-			str: &u8(&m)
-			len: 24
+			str:    &u8(&m)
+			len:    24
 			is_lit: 1
 		}
 	}
@@ -217,7 +217,7 @@ fn test_asm_generic() {
 	u := u64(49)
 	assert generic_asm(u) == 14
 	assert u == 63
-	//
+
 	i := i32(123)
 	assert generic_asm(i) == 14
 	assert i == 137
@@ -234,4 +234,22 @@ fn generic_asm[T](var &T) T {
 		}
 	}
 	return ret
+}
+
+fn test_lock_prefix() {
+	mut rv := u64(123)
+	mut atom := u64(0)
+	cmp := u64(1)
+	xchg := u64(1)
+
+	asm amd64 {
+		lock cmpxchgq '%1', '%2'
+		; =a (rv)
+		  +m (atom)
+		; q (xchg)
+		  0 (cmp)
+		; memory
+	}
+	assert rv == 0
+	assert atom == 0
 }

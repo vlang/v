@@ -112,14 +112,14 @@ fn main() {
 
 	// declare the bitmap struct
 	mut bmp := ttf.BitMap{
-		tf: &ttf_font
-		buf: malloc(bmp_size)
+		tf:       &ttf_font
+		buf:      malloc(bmp_size)
 		buf_size: bmp_size
-		width: bmp_width
-		height: bmp_height
-		bp: bmp_layers
-		color: 0x000000_FF // RGBA black
-		scale: scale
+		width:    bmp_width
+		height:   bmp_height
+		bp:       bmp_layers
+		color:    0x000000_FF // RGBA black
+		scale:    scale
 	}
 	bmp.init_filler()
 	bmp.clear()
@@ -187,14 +187,14 @@ But Vwill prevail for sure, V is the way!!
 "
 	// declare the bitmap struct
 	mut bmp := ttf.BitMap{
-		tf: &ttf_font
-		buf: malloc(bmp_size)
+		tf:       &ttf_font
+		buf:      malloc(bmp_size)
 		buf_size: bmp_size
-		width: bmp_width
-		height: bmp_height
-		bp: bmp_layers
-		color: 0x000000_FF // RGBA black
-		scale: scale
+		width:    bmp_width
+		height:   bmp_height
+		bp:       bmp_layers
+		color:    0x000000_FF // RGBA black
+		scale:    scale
 	}
 	bmp.init_filler()
 	bmp.clear()
@@ -210,10 +210,10 @@ A text block is defined from a `Text_block` struct:
 
 ```v
 struct Text_block {
-	x         int  // x position of the left high corner
-	y         int  // y position of the left high corner
-	w         int  // width of the text block
-	h         int  // height of the text block
+	x         int // x position of the left high corner
+	y         int // y position of the left high corner
+	w         int // width of the text block
+	h         int // height of the text block
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 ```
@@ -295,14 +295,14 @@ fn main() {
 	mut app := &App_data{}
 
 	app.gg = gg.new_context(
-		width: win_width
-		height: win_height
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Test TTF module'
-		user_data: app
-		bg_color: bg_color
-		frame_fn: draw_frame
-		init_fn: my_init
+		window_title:  'Test TTF module'
+		user_data:     app
+		bg_color:      bg_color
+		frame_fn:      draw_frame
+		init_fn:       my_init
 	)
 
 	// load TTF fonts
@@ -318,10 +318,10 @@ fn main() {
 	// TTF render 0 Frame counter
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
-			tf: &app.tf[0]
-			buf: unsafe { malloc(32000000) }
+			tf:       &app.tf[0]
+			buf:      unsafe { malloc(32000000) }
 			buf_size: (32000000)
-			color: 0xFF0000FF
+			color:    0xFF0000FF
 			// style: .raw
 		}
 	}

@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+//@[deprecated: '`vweb` is deprecated `veb`. Please use `veb` instead.']
 module vweb
 
 import os
@@ -30,35 +31,35 @@ pub const headers_close = http.new_custom_header_from_map({
 
 pub const http_302 = http.new_response(
 	status: .found
-	body: '302 Found'
+	body:   '302 Found'
 	header: headers_close
 )
 pub const http_303 = http.new_response(
 	status: .see_other
-	body: '303 See Other'
+	body:   '303 See Other'
 	header: headers_close
 )
 pub const http_400 = http.new_response(
 	status: .bad_request
-	body: '400 Bad Request'
+	body:   '400 Bad Request'
 	header: http.new_header(
-		key: .content_type
+		key:   .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 pub const http_404 = http.new_response(
 	status: .not_found
-	body: '404 Not Found'
+	body:   '404 Not Found'
 	header: http.new_header(
-		key: .content_type
+		key:   .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
 pub const http_500 = http.new_response(
 	status: .internal_server_error
-	body: '500 Internal Server Error'
+	body:   '500 Internal Server Error'
 	header: http.new_header(
-		key: .content_type
+		key:   .content_type
 		value: 'text/plain'
 	).join(headers_close)
 )
@@ -142,6 +143,9 @@ pub const mime_types = {
 	'.3gp':    'video/3gpp'
 	'.3g2':    'video/3gpp2'
 	'.7z':     'application/x-7z-compressed'
+	'.m3u8':   'application/vnd.apple.mpegurl'
+	'.vsh':    'text/x-vlang'
+	'.v':      'text/x-vlang'
 }
 pub const max_http_post_size = 1024 * 1024
 pub const default_port = 8080
@@ -150,14 +154,13 @@ pub const default_port = 8080
 // It has fields for the query, form, files.
 pub struct Context {
 mut:
-	content_type string = 'text/plain'
-	status       string = '200 OK'
+	content_type string          = 'text/plain'
+	status       string          = '200 OK'
 	ctx          context.Context = context.EmptyContext{}
-pub:
+pub mut:
 	// HTTP Request
 	req http.Request
-	// TODO Response
-pub mut:
+	// TODO: Response
 	done bool
 	// time.ticks() from start of vweb connection handle.
 	// You can use it to determine how much time is spent on your request.
@@ -204,12 +207,22 @@ pub fn (ctx Context) init_server() {
 	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
 }
 
+// before_accept_loop is called once the vweb app is started, and listening, but before the loop that accepts
+// incoming request connections.
+// It will be called in the main thread, that runs vweb.run/2 or vweb.run_at/2.
+// It allows you to be notified about the successful start of your app, and to synchronise your other threads
+// with the webserver start, without error prone and slow pooling or time.sleep waiting.
 // Defining this method is optional.
-// This method is called before every request (aka middleware).
-// You can use it for checking user session cookies or to add headers.
+pub fn (ctx &Context) before_accept_loop() {
+}
+
+// before_request is called once before each request is routed.
+// It will be called in one of multiple threads in a pool, serving requests,
+// the same one, in which the matching route method will be executed right after it.
+// Defining this method is optional.
 pub fn (ctx Context) before_request() {}
 
-// TODO - test
+// TODO: test
 // vweb intern function
 @[manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
@@ -217,7 +230,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 		return false
 	}
 	ctx.done = true
-	//
+
 	mut resp := http.Response{
 		body: res
 	}
@@ -228,11 +241,11 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	// build the header after the potential modification of resp.body from above
 	header := http.new_header_from_map({
-		http.CommonHeader.content_type:   mimetype
-		http.CommonHeader.content_length: resp.body.len.str()
+		.content_type:   mimetype
+		.content_length: resp.body.len.str()
 	}).join(ctx.header)
-	resp.header = header.join(vweb.headers_close)
-	//
+	resp.header = header.join(headers_close)
+
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
 	// send_string(mut ctx.conn, resp.bytestr()) or { return false }
@@ -266,7 +279,7 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	return Result{}
 }
 
-// TODO - test
+// TODO: test
 // Response with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
 	if !os.exists(f_path) {
@@ -279,7 +292,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		ctx.server_error(500)
 		return Result{}
 	}
-	content_type := vweb.mime_types[ext]
+	content_type := mime_types[ext]
 	if content_type.len == 0 {
 		eprintln('[vweb] no MIME type found for extension ${ext}')
 		ctx.server_error(500)
@@ -296,7 +309,7 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
-// TODO - test
+// TODO: test
 // Response a server error
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
@@ -305,12 +318,13 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	if ctx.done {
 		return Result{}
 	}
-	send_string(mut ctx.conn, vweb.http_500.bytestr()) or {}
+	send_string(mut ctx.conn, http_500.bytestr()) or {}
 	return Result{}
 }
 
 @[params]
 pub struct RedirectParams {
+pub:
 	status_code int = 302
 }
 
@@ -320,9 +334,9 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 		return Result{}
 	}
 	ctx.done = true
-	mut resp := vweb.http_302
+	mut resp := http_302
 	if params.status_code == 303 {
-		resp = vweb.http_303
+		resp = http_303
 	}
 	resp.header = resp.header.join(ctx.header)
 	resp.header.add(.location, url)
@@ -332,16 +346,16 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 
 // Send an not_found response
 pub fn (mut ctx Context) not_found() Result {
-	// TODO add a [must_be_returned] attribute, so that the caller is forced to use `return app.not_found()`
+	// TODO: add a [must_be_returned] attribute, so that the caller is forced to use `return app.not_found()`
 	if ctx.done {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, vweb.http_404.bytestr()) or {}
+	send_string(mut ctx.conn, http_404.bytestr()) or {}
 	return Result{}
 }
 
-// TODO - test
+// TODO: test
 // Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
@@ -357,12 +371,12 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
-// TODO - test
+// TODO: test
 // Sets a cookie with a `expire_date`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	cookie := http.Cookie{
-		name: key
-		value: val
+		name:    key
+		value:   val
 		expires: expire_date
 	}
 	ctx.set_cookie(cookie)
@@ -377,7 +391,7 @@ pub fn (ctx &Context) get_cookie(key string) !string {
 	//}
 }
 
-// TODO - test
+// TODO: test
 // Sets the response status
 pub fn (mut ctx Context) set_status(code int, desc string) {
 	if code < 100 || code > 599 {
@@ -387,13 +401,13 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	}
 }
 
-// TODO - test
+// TODO: test
 // Adds an header to the response with key and val
 pub fn (mut ctx Context) add_header(key string, val string) {
 	ctx.header.add_custom(key, val) or {}
 }
 
-// TODO - test
+// TODO: test
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
@@ -452,11 +466,11 @@ fn generate_routes[T](app &T) !map[string]Route {
 		}
 
 		routes[method.name] = Route{
-			methods: http_methods
-			path: route_path
+			methods:    http_methods
+			path:       route_path
 			path_words: route_path.split('/').filter(it != '')
 			middleware: middleware
-			host: host
+			host:       host
 		}
 	}
 	return routes
@@ -488,7 +502,7 @@ pub fn controller[T](path string, global_app &T) &ControllerPath {
 	// generate struct with closure so the generic type is encapsulated in the closure
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
-		path: path
+		path:    path
 		handler: fn [global_app, path, routes] [T](ctx Context, mut url urllib.URL, host string, tid int) {
 			// request_app is freed in `handle_route`
 			mut request_app := new_request_app[T](global_app, ctx, tid)
@@ -513,6 +527,7 @@ pub fn run[T](global_app &T, port int) {
 
 @[params]
 pub struct RunParams {
+pub:
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	host                 string
 	port                 int  = 8080
@@ -536,15 +551,17 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
 	}
 
+	routes := generate_routes(global_app)!
+	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
+
 	listen_address := '${params.host}:${params.port}'
 	mut l := net.listen_tcp(params.family, listen_address) or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
-	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: $params')
-
-	routes := generate_routes(global_app)!
-	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
+	$if trace_listen ? {
+		eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: ${params}')
+	}
 
 	if params.show_startup_message {
 		if params.startup_message == '' {
@@ -565,6 +582,10 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 	flush_stdout()
 
+	unsafe {
+		global_app.before_accept_loop()
+	}
+
 	// Forever accept every connection that comes, and
 	// pass it through the channel, to the thread pool:
 	for {
@@ -574,10 +595,10 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			continue
 		}
 		ch <- &RequestParams{
-			connection: connection
-			global_app: unsafe { global_app }
+			connection:  connection
+			global_app:  unsafe { global_app }
 			controllers: controllers_sorted
-			routes: &routes
+			routes:      &routes
 		}
 	}
 }
@@ -650,7 +671,8 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 }
 
 @[manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route, tid int) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route,
+	tid int) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -674,7 +696,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 	// Request parse
 	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
-		if '${err}' != 'none' {
+		if err !is io.Eof {
 			eprintln('[vweb] tid: ${tid:03d}, error parsing request: ${err}')
 		}
 		return
@@ -697,7 +719,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 	// Form parse
 	form, files := parse_form_from_request(req) or {
 		// Bad request
-		conn.write(vweb.http_400.bytes()) or {}
+		conn.write(http_400.bytes()) or {}
 		return
 	}
 
@@ -707,13 +729,13 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 
 	// Create Context with request data
 	ctx := Context{
-		ctx: context.background()
-		req: req
+		ctx:            context.background()
+		req:            req
 		page_gen_start: page_gen_start
-		conn: conn
-		query: query
-		form: form
-		files: files
+		conn:           conn
+		query:          query
+		form:           form
+		files:          files
 	}
 
 	// match controller paths
@@ -963,7 +985,7 @@ fn serve_if_static[T](mut app T, url urllib.URL, host string) bool {
 		return false
 	}
 	data := os.read_file(static_file) or {
-		send_string(mut app.conn, vweb.http_404.bytestr()) or {}
+		send_string(mut app.conn, http_404.bytestr()) or {}
 		return true
 	}
 	app.send_response_to_client(mime_type, data)
@@ -983,7 +1005,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use host_serve_static directly to add non-standard mime types.
-				if ext in vweb.mime_types {
+				if ext in mime_types {
 					ctx.host_serve_static(host, mount_path.trim_right('/') + '/' + file,
 						full_path)
 				}
@@ -1026,7 +1048,7 @@ pub fn (mut ctx Context) host_handle_static(host string, directory_path string, 
 	return true
 }
 
-// TODO - test
+// TODO: test
 // mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://server/mount_path
 // For example: suppose you have called .mount_static_folder_at('/var/share/myassets', '/assets'),
 // and you have a file /var/share/myassets/main.css .
@@ -1035,13 +1057,13 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 	return ctx.host_mount_static_folder_at('', directory_path, mount_path)
 }
 
-// TODO - test
+// TODO: test
 // host_mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://host/mount_path
 // For example: suppose you have called .host_mount_static_folder_at('localhost', '/var/share/myassets', '/assets'),
 // and you have a file /var/share/myassets/main.css .
 // => That file will be available at URL: http://localhost/assets/main.css .
 pub fn (mut ctx Context) host_mount_static_folder_at(host string, directory_path string, mount_path string) bool {
-	if ctx.done || mount_path.len < 1 || mount_path[0] != `/` || !os.exists(directory_path) {
+	if ctx.done || mount_path == '' || mount_path[0] != `/` || !os.exists(directory_path) {
 		return false
 	}
 	dir_path := directory_path.trim_right('/')
@@ -1051,14 +1073,14 @@ pub fn (mut ctx Context) host_mount_static_folder_at(host string, directory_path
 	return true
 }
 
-// TODO - test
+// TODO: test
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.host_serve_static('', url, file_path)
 }
 
-// TODO - test
+// TODO: test
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file
 // `mime_type` is the file type, `host` is the host to serve the file from
@@ -1066,7 +1088,7 @@ pub fn (mut ctx Context) host_serve_static(host string, url string, file_path st
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
-	ctx.static_mime_types[url] = vweb.mime_types[ext]
+	ctx.static_mime_types[url] = mime_types[ext]
 	ctx.static_hosts[url] = host
 }
 
@@ -1095,6 +1117,7 @@ pub fn (ctx &Context) ip() string {
 pub fn (mut ctx Context) error(s string) {
 	eprintln('[vweb] Context.error: ${s}')
 	ctx.form_error = s
+	// ctx.set_cookie(name: 'veb.error', value: s)
 }
 
 // Returns an empty result
@@ -1198,8 +1221,9 @@ fn (mut w Worker[T]) process_incoming_requests() {
 
 @[params]
 pub struct PoolParams[T] {
+pub:
 	handler    fn () T = unsafe { nil } @[required]
-	nr_workers int = runtime.nr_jobs()
+	nr_workers int     = runtime.nr_jobs()
 }
 
 // database_pool creates a pool of database connections

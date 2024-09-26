@@ -26,10 +26,10 @@ pub fn parse_rfc3339(s string) !Time {
 	// Check if sn is date only
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
 		year, month, day := parse_iso8601_date(sn)!
-		t = new_time(Time{
-			year: year
+		t = new(Time{
+			year:  year
 			month: month
-			day: day
+			day:   day
 		})
 		return t
 	}
@@ -37,10 +37,10 @@ pub fn parse_rfc3339(s string) !Time {
 	if !parts[0].contains('-') && parts[0].contains(':') {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])!
-		t = new_time(Time{
-			hour: hour_
-			minute: minute_
-			second: second_
+		t = new(Time{
+			hour:       hour_
+			minute:     minute_
+			second:     second_
 			nanosecond: nanosecond_
 		})
 		if is_local_time {
@@ -80,7 +80,7 @@ pub fn parse(s string) !Time {
 	hour_ := hms[0][1..]
 	minute_ := hms[1]
 	second_ := hms[2]
-	//
+
 	iyear := strconv.atoi(ymd[0]) or {
 		return error_invalid_time(0, 'invalid year format: ${ymd[0]}')
 	}
@@ -119,11 +119,11 @@ pub fn parse(s string) !Time {
 	if isecond > 59 || isecond < 0 {
 		return error_invalid_time(8, 'seconds must be between 0 and 60')
 	}
-	res := new_time(Time{
-		year: iyear
-		month: imonth
-		day: iday
-		hour: ihour
+	res := new(Time{
+		year:   iyear
+		month:  imonth
+		day:    iday
+		hour:   ihour
 		minute: iminute
 		second: isecond
 	})
@@ -131,24 +131,32 @@ pub fn parse(s string) !Time {
 }
 
 // parse_format parses the string `s`, as a custom `format`, containing the following specifiers:
-// YYYY - 4 digit year, 0000..9999
-// YY - 2 digit year, 00..99
-// M - month, 1..12
-// MM - month, 2 digits, 01..12
-// MMM - month, three letters, Jan..Dec
-// MMMM - name of month
-// D - day of the month, 1..31
-// DD - day of the month, 01..31
-// H - hour, 0..23
-// HH - hour, 00..23
-// h - hour, 0..23
-// hh - hour, 0..23
-// k - hour, 0..23
-// kk - hour, 0..23
-// m - minute, 0..59
-// mm - minute, 0..59
-// s - second, 0..59
-// ss - second, 0..59
+//
+// |Category| Format | Description |
+// |:-----  | :----- | :---------- |
+// |Year    | YYYY   | 4 digit year, 0000..9999 |
+// |        | YY     | 2 digit year, 00..99 |
+// |Month   | M      | month, 1..12 |
+// |        | MM     | month, 2 digits, 01..12 |
+// |        | MMM    | month, three letters, Jan..Dec |
+// |        | MMMM   | name of month |
+// |Day     | D      | day of the month, 1..31 |
+// |        | DD     | day of the month, 01..31 |
+// |        | d      | day of week, 0..6 |
+// |        | c      | day of week, 1..7 |
+// |        | dd     | day of week, Su..Sa |
+// |        | ddd    | day of week, Sun..Sat |
+// |        | dddd   | day of week, Sunday..Saturday |
+// |Hour    | H      | hour, 0..23 |
+// |        | HH     | hour, 00..23 |
+// |        | h      | hour, 0..23 |
+// |        | hh     | hour, 0..23 |
+// |        | k      | hour, 0..23 |
+// |        | kk     | hour, 0..23 |
+// |Minute  | m      | minute, 0..59 |
+// |        | mm     | minute, 0..59 |
+// |Second  | s      | second, 0..59 |
+// |        | ss     | second, 0..59 |
 pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
@@ -176,13 +184,13 @@ pub fn parse_iso8601(s string) !Time {
 	if parts.len == 2 {
 		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
 	}
-	mut t := new_time(
-		year: year
-		month: month
-		day: day
-		hour: hour_
-		minute: minute_
-		second: second_
+	mut t := new(
+		year:       year
+		month:      month
+		day:        day
+		hour:       hour_
+		minute:     minute_
+		second:     second_
 		nanosecond: nanosecond_
 	)
 	if is_local_time {

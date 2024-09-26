@@ -52,6 +52,7 @@ mut:
 
 @[params]
 pub struct ReaderConfig {
+pub:
 	delimiter u8 = `,`
 	comment   u8 = `#`
 }
@@ -60,9 +61,9 @@ pub struct ReaderConfig {
 // optionally, a custom delimiter.
 pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		data: data
+		data:      data
 		delimiter: config.delimiter
-		comment: config.comment
+		comment:   config.comment
 	}
 }
 

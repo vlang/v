@@ -12,7 +12,12 @@ pub mut:
 
 pub struct App {
 pub mut:
-	db sqlite.DB
+	db      sqlite.DB
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
 }
 
 struct Article {
@@ -27,7 +32,9 @@ fn test_a_vweb_application_compiles() {
 		exit(0)
 	}()
 	mut app := &App{}
-	vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 10)!
+	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)
+	// app startup time
+	_ := <-app.started
 }
 
 pub fn (mut ctx Context) before_request() {
@@ -43,7 +50,7 @@ pub fn (mut app App) new_article(mut ctx Context) vweb.Result {
 	}
 	article := Article{
 		title: title
-		text: text
+		text:  text
 	}
 	println('posting article')
 	println(article)
@@ -51,7 +58,7 @@ pub fn (mut app App) new_article(mut ctx Context) vweb.Result {
 		insert article into Article
 	} or {}
 
-	return ctx.redirect('/', .see_other)
+	return ctx.redirect('/', typ: .see_other)
 }
 
 pub fn (mut app App) time(mut ctx Context) vweb.Result {
@@ -78,7 +85,7 @@ struct ApiSuccessResponse[T] {
 fn (mut app App) json_success[T](mut ctx Context, result T) {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result:  result
 	}
 
 	ctx.json(response)
@@ -88,7 +95,7 @@ fn (mut app App) json_success[T](mut ctx Context, result T) {
 fn (mut app App) some_helper[T](result T) ApiSuccessResponse[T] {
 	response := ApiSuccessResponse[T]{
 		success: true
-		result: result
+		result:  result
 	}
 	return response
 }

@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `picohttpparser` is V implementation of 
 [picohttpparser](https://github.com/h2o/picohttpparser),

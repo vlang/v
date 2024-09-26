@@ -1,0 +1,12 @@
+struct Node {
+	parent &Node
+	left   &Node
+	right  &Node
+}
+
+type Sumtype = Node | int
+
+fn main() {
+	s := Sumtype{}
+	dump(s)
+}

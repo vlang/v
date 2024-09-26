@@ -13,7 +13,7 @@ struct TestCustomSqlType {
 }
 
 struct TestCustomWrongSqlType {
-	id      int    @[primary; sql: serial]
+	id      int @[primary; sql: serial]
 	custom  string
 	custom1 string @[sql_type: 'VARCHAR']
 	custom2 string @[sql_type: 'money']
@@ -22,7 +22,7 @@ struct TestCustomWrongSqlType {
 
 struct TestTimeType {
 mut:
-	id         int       @[primary; sql: serial]
+	id         int @[primary; sql: serial]
 	username   string
 	created_at time.Time @[sql_type: 'DATETIME']
 	updated_at string    @[sql_type: 'DATETIME']
@@ -36,59 +36,64 @@ struct TestDefaultAttribute {
 }
 
 fn test_mysql_orm() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
 	mut db := mysql.connect(
-		host: '127.0.0.1'
-		port: 3306
+		host:     '127.0.0.1'
+		port:     3306
 		username: 'root'
 		password: ''
-		dbname: 'mysql'
+		dbname:   'mysql'
 	)!
 	defer {
 		db.close()
 	}
 	db.create('Test', [
 		orm.TableField{
-			name: 'id'
-			typ: typeof[int]().idx
+			name:  'id'
+			typ:   typeof[int]().idx
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
-					name: 'sql'
+				VAttribute{
+					name:    'sql'
 					has_arg: true
-					kind: .plain
-					arg: 'serial'
+					kind:    .plain
+					arg:     'serial'
 				},
 			]
 		},
 		orm.TableField{
-			name: 'name'
-			typ: typeof[string]().idx
+			name:  'name'
+			typ:   typeof[string]().idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: typeof[int]().idx
+			typ:  typeof[int]().idx
 		},
 	]) or { panic(err) }
 
 	db.insert('Test', orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
+		data:   [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
 	res := db.@select(orm.SelectConfig{
-		table: 'Test'
+		table:     'Test'
 		has_where: true
-		fields: ['id', 'name', 'age']
-		types: [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		fields:    ['id', 'name', 'age']
+		types:     [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
-		data: [orm.Primitive('Louis'), i64(101)]
-		types: [typeof[string]().idx, typeof[i64]().idx]
+		data:   [orm.Primitive('Louis'), i64(101)]
+		types:  [typeof[string]().idx, typeof[i64]().idx]
 		is_and: [true, true]
-		kinds: [.eq, .eq]
+		kinds:  [.eq, .eq]
 	}) or { panic(err) }
 
 	id := res[0][0]
@@ -174,7 +179,7 @@ fn test_mysql_orm() {
 	}
 
 	model := TestTimeType{
-		username: 'hitalo'
+		username:   'hitalo'
 		created_at: today
 		updated_at: today.str()
 		deleted_at: today

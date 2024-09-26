@@ -60,9 +60,9 @@ mut:
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {
 	return &Checker{
-		pref: unsafe { prefs }
+		pref:     unsafe { prefs }
 		file_set: unsafe { file_set }
-		env: unsafe { env }
+		env:      unsafe { env }
 	}
 }
 
@@ -159,7 +159,7 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 	if c.pref.verbose {
 		check_time := sw.elapsed()
-		println('type check ${file.name}: ${check_time.milliseconds()}ms (${check_time.microseconds()}us)')
+		println('type check ${file.name}: ${check_time.milliseconds()}ms (${check_time.microseconds()}µs)')
 	}
 }
 
@@ -235,13 +235,13 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			for field in decl.fields {
 				// c.log('const decl: $field.name')
 				obj := Const{
-					mod: c.mod
+					mod:  c.mod
 					name: field.name
 					// typ: c.expr(field.value)
 				}
 				c.scope.insert(obj.name, obj)
-				// TODO: check if constains references to other consts and only
-				// delay those. or keep dererring until type is known othewise error
+				// TODO: check if contains references to other consts and only
+				// delay those. or keep deferring until type is known otherwise error
 				// work out best way to do this, and use same approach for everything
 				c.later(fn [mut c, field] () {
 					// c.log('updating const $field.name type')
@@ -266,8 +266,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// as_type := decl.as_type !is ast.EmptyExpr { c.expr(decl.as_type) } else { Type(int_) }
 			obj := Enum{
 				is_flag: decl.attributes.has('flag')
-				name: decl.name
-				fields: fields
+				name:    decl.name
+				fields:  fields
 			}
 			c.scope.insert(obj.name, Type(obj))
 		}
@@ -311,7 +311,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				for field in interface_decl.fields {
 					fields << Field{
 						name: field.name
-						typ: c.expr(field.typ)
+						typ:  c.expr(field.typ)
 					}
 				}
 				if mut id := scope.lookup(interface_decl.name) {
@@ -333,7 +333,7 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				for field in struct_decl.fields {
 					fields << Field{
 						name: field.name
-						typ: c.expr(field.typ)
+						typ:  c.expr(field.typ)
 					}
 				}
 				mut embedded := []Struct{}
@@ -491,9 +491,9 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					}
 					// sum type, check variants
 					if (expected_type is SumType && elem_type !in expected_type.variants)
-						&& elem_type != first_elem_type // everyting else
+						&& elem_type != first_elem_type // everything else
 					  {
-						// TOOD: add generl method for promotion/coersion
+						// TODO: add general method for promotion/coercion
 						c.error_with_pos('expecting element of type: ${first_elem_type.name()}, got ${elem_type.name()}',
 							expr.pos)
 					}
@@ -501,7 +501,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				c.expected_type = expected_type_prev
 				return if is_fixed {
 					ArrayFixed{
-						len: expr.exprs.len
+						len:       expr.exprs.len
 						elem_type: first_elem_type
 					}
 				} else {
@@ -555,7 +555,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(c.resolve_call_or_cast_expr(expr))
 		}
 		ast.CallExpr {
-			// TOOD/FIXME: proper
+			// TODO/FIXME:
 			// we need a way to handle C.stat|sigaction() / C.stat|sigaction{}
 			// multiple items with same name inside scope lookup.
 			if expr.lhs is ast.SelectorExpr {
@@ -616,7 +616,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 
 			return Struct{
-				name: name
+				name:           name
 				generic_params: args
 			}
 		}
@@ -723,7 +723,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 		}
 		ast.MapInitExpr {
-			// TOOD: type check keys/vals
+			// TODO: type check keys/vals
 			// `map[type]type{}`
 			if expr.typ !is ast.EmptyExpr {
 				typ := c.expr(expr.typ)
@@ -739,7 +739,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			key0_type := c.expr(expr.keys[0])
 			value0_type := c.expr(expr.vals[0])
 			return Map{
-				key_type: key0_type
+				key_type:   key0_type
 				value_type: value0_type
 			}
 		}
@@ -890,7 +890,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 				}
 				ast.MapType {
 					return Map{
-						key_type: c.expr(expr.key_type)
+						key_type:   c.expr(expr.key_type)
 						value_type: c.expr(expr.value_type)
 					}
 				}
@@ -946,7 +946,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		}
 		else {}
 	}
-	// TOODO: remove (add all variants)
+	// TODO: remove (add all variants)
 	c.log('expr: unhandled ${expr.type_name()}')
 	return int_
 }
@@ -980,7 +980,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 				}
 				obj := Global{
 					name: field.name
-					typ: field_type
+					typ:  field_type
 				}
 				c.scope.insert(field.name, obj)
 			}
@@ -1057,8 +1057,8 @@ fn (mut c Checker) stmt_list(stmts []ast.Stmt) {
 
 fn (mut c Checker) later(func fn (), kind DeferredKind) {
 	c.deferred << Deferred{
-		kind: kind
-		func: func
+		kind:  kind
+		func:  func
 		scope: c.scope
 	}
 }
@@ -1254,7 +1254,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	mut typ := Type(c.fn_type(decl.typ, FnTypeAttribute.from_ast_attributes(decl.attributes)))
 	obj := Fn{
 		name: decl.name
-		typ: typ
+		typ:  typ
 	}
 	// TODO:
 	if decl.is_method {
@@ -1289,7 +1289,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		// type_name := if base_type is Interface { receiver_type.name() } else { base_type.name() }
 		// c.env.methods[type_name] << &obj
 		// c.env.methods[receiver_type.base_type().name()] << &obj
-		c.env.methods[method_owner_type.name()] << &obj
+		unsafe { c.env.methods[method_owner_type.name()] << &obj }
 		c.log('registering method: ${decl.name} for ${receiver_type.name()} - ${method_owner_type.name()} - ${receiver_base_type.name()}')
 		c.scope.insert(decl.receiver.name, c.expr(decl.receiver.typ))
 	} else {
@@ -1473,13 +1473,13 @@ fn (mut c Checker) resolve_generic_arg_or_index_expr(expr ast.GenericArgOrIndexE
 	// expr_type := c.expr(expr.expr)
 	if lhs_type is FnType {
 		return ast.GenericArgs{
-			lhs: expr.lhs
+			lhs:  expr.lhs
 			args: [expr.expr]
 		}
 	} else {
 		// c.unwrap_lhs_expr(ast.IndexExpr{lhs: expr.lhs, expr: expr.expr})
 		return ast.IndexExpr{
-			lhs: expr.lhs
+			lhs:  expr.lhs
 			expr: expr.expr
 		}
 	}
@@ -1490,16 +1490,16 @@ fn (mut c Checker) resolve_call_or_cast_expr(expr ast.CallOrCastExpr) ast.Expr {
 	// expr_type := c.expr(expr.expr)
 	if lhs_type is FnType {
 		return ast.CallExpr{
-			lhs: expr.lhs
+			lhs:  expr.lhs
 			args: [expr.expr]
-			pos: expr.pos
+			pos:  expr.pos
 		}
 	} else {
 		// c.log(expr)
 		return ast.CastExpr{
-			typ: expr.lhs
+			typ:  expr.lhs
 			expr: expr.expr
-			pos: expr.pos
+			pos:  expr.pos
 		}
 	}
 }
@@ -1590,7 +1590,7 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		if existing := type_map[name] {
 			// TODO: might need custom eq methods
 			if existing != typ && typ !is NamedType {
-				return error('${name} was previouly used as ${existing.name()}, got ${typ.name()}')
+				return error('${name} was previously used as ${existing.name()}, got ${typ.name()}')
 			}
 		}
 		type_map[name] = typ
@@ -1681,7 +1681,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	// TODO: time.StopWatch has a fields and methods with the same name
 	// and field was being returned instead of the methods. we could set a precedence
 	// however what if the field is a fn type? (i guess one or the other could still habve priority)
-	// TOOD: talk to alex and spy about this
+	// TODO: talk to alex and spy about this
 	if expr.lhs is ast.SelectorExpr {
 		// POO POO
 		// if expr.lhs.lhs is ast.Ident {
@@ -1693,7 +1693,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// c.log('#### ${expr.lhs.rhs.name}')
 			fn_ = FnType{
 				return_type: Type(Alias{
-					name: 'Duration'
+					name:      'Duration'
 					base_type: i64_
 				})
 			}
@@ -1756,7 +1756,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// eprintln('========================')
 			// if expr.lhs is ast.Ident {
 			// 	if expr.lhs.name == 'generic_fn_d' {
-			// 		panic('.')	
+			// 		panic('.')
 			// 	}
 			// }
 			// dump(generic_type_map)
@@ -1770,8 +1770,8 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		}
 
 		// TODO: is this best place for this?
-		// why is it not beeing used any more? check if we are somehow skipping its uses
-		// need to find a better way to do this, this only happens becasue there are
+		// why is it not being used any more? check if we are somehow skipping its uses
+		// need to find a better way to do this, this only happens because there are
 		// compiler magic, call_expr & selector expr both end up needing information which
 		// the other one has
 		if lhs_expr is ast.SelectorExpr {
@@ -1872,7 +1872,7 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 		params << Parameter{
 			name: param.name
 			// typ: c.expr(param.typ)
-			typ: param_type
+			typ:    param_type
 			is_mut: param.is_mut
 		}
 		c.scope.insert(param.name, param_type)
@@ -1888,11 +1888,11 @@ fn (mut c Checker) fn_type(fn_type ast.FnType, attributes FnTypeAttribute) FnTyp
 
 	mut typ := FnType{
 		generic_params: generic_params
-		params: params
+		params:         params
 		// return_type: return_type
 		return_type: c.expr(fn_type.return_type)
 		is_variadic: is_variadic
-		attributes: attributes
+		attributes:  attributes
 		// scope: c.scope
 	}
 	if generic_params.len > 0 {

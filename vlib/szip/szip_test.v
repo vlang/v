@@ -1,4 +1,4 @@
-import szip
+import compress.szip
 import os
 
 const test_out_zip = 'v_test_zip.zip'

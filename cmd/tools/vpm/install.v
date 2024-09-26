@@ -91,7 +91,7 @@ fn install_modules(modules []Module) {
 				errors++
 			}
 		}
-		println('Installed `${m.name}`.')
+		println('Installed `${m.name}` in ${m.install_path_fmted} .')
 	}
 	if errors > 0 {
 		exit(1)
@@ -166,10 +166,6 @@ fn (m Module) confirm_install() bool {
 
 fn (m Module) remove() ! {
 	verbose_println('Removing `${m.name}` from `${m.install_path_fmted}`...')
-	$if windows {
-		os.execute_opt('rd /s /q ${m.install_path}')!
-	} $else {
-		os.rmdir_all(m.install_path)!
-	}
+	rmdir_all(m.install_path)!
 	verbose_println('Removed `${m.name}`.')
 }

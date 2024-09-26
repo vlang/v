@@ -4,8 +4,16 @@
 module parser
 
 import v.ast
-import v.vet
 import v.token
+
+const max_expr_level = 100
+
+@[inline]
+fn (mut p Parser) check_expr_level() ! {
+	if p.expr_level > max_expr_level {
+		return error('expr level > ${max_expr_level}')
+	}
+}
 
 fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
@@ -18,6 +26,11 @@ fn (mut p Parser) expr(precedence int) ast.Expr {
 
 fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr(${precedence})')
+	p.expr_level++
+	defer {
+		p.expr_level--
+	}
+	p.check_expr_level()!
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
@@ -52,6 +65,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.tok.pos())
 			} else if p.tok.kind == .question && p.peek_tok.kind == .amp {
 				node = p.prefix_expr()
+			} else if p.inside_for_expr && p.tok.kind == .name && p.tok.lit[0].is_capital()
+				&& p.peek_tok.kind == .lcbr && p.peek_token(2).kind in [.rcbr, .name] {
+				node = p.struct_init(p.mod + '.' + p.tok.lit, .normal, false)
 			} else {
 				if p.inside_comptime_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
@@ -155,8 +171,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			comments << p.eat_comments()
 			p.check(.rpar)
 			node = ast.ParExpr{
-				expr: node
-				pos: pos.extend(p.prev_tok.pos())
+				expr:     node
+				pos:      pos.extend(p.prev_tok.pos())
 				comments: comments
 			}
 		}
@@ -177,7 +193,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			pos.update_last_line(p.prev_tok.line_nr)
 			node = ast.UnsafeExpr{
 				expr: e
-				pos: pos
+				pos:  pos
 			}
 			p.inside_unsafe = false
 		}
@@ -210,16 +226,16 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					expr := p.expr(0)
 					p.check(.rpar)
 					node = ast.CastExpr{
-						typ: typ
+						typ:     typ
 						typname: typname
-						expr: expr
-						pos: pos
+						expr:    expr
+						pos:     pos
 					}
 				} else {
-					node = p.array_init(false)
+					node = p.array_init(false, ast.void_type)
 				}
 			} else {
-				node = p.array_init(false)
+				node = p.array_init(false, ast.void_type)
 			}
 		}
 		.key_none {
@@ -241,21 +257,23 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				p.check(.rpar)
 				node = ast.TypeOf{
 					is_type: true
-					typ: typ
-					pos: type_pos.extend(p.tok.pos())
+					typ:     typ
+					pos:     type_pos.extend(p.tok.pos())
 				}
 			} else {
 				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
 				if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
-					p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
-						spos)
+					if !p.inside_unsafe {
+						p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+							spos)
+					}
 				}
 				node = ast.TypeOf{
 					is_type: false
-					expr: expr
-					pos: spos.extend(p.tok.pos())
+					expr:    expr
+					pos:     spos.extend(p.tok.pos())
 				}
 			}
 		}
@@ -275,14 +293,14 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				if is_reftype {
 					node = ast.IsRefType{
 						is_type: true
-						typ: typ
-						pos: type_pos
+						typ:     typ
+						pos:     type_pos
 					}
 				} else {
 					node = ast.SizeOf{
 						is_type: true
-						typ: typ
-						pos: type_pos
+						typ:     typ
+						pos:     type_pos
 					}
 				}
 			} else {
@@ -305,14 +323,14 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					if is_reftype {
 						node = ast.IsRefType{
 							is_type: false
-							expr: expr
-							pos: pos
+							expr:    expr
+							pos:     pos
 						}
 					} else {
 						node = ast.SizeOf{
 							is_type: false
-							expr: expr
-							pos: pos
+							expr:    expr
+							pos:     pos
 						}
 					}
 				} else {
@@ -326,16 +344,16 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					if is_reftype {
 						node = ast.IsRefType{
 							guessed_type: true
-							is_type: true
-							typ: arg_type
-							pos: pos
+							is_type:      true
+							typ:          arg_type
+							pos:          pos
 						}
 					} else {
 						node = ast.SizeOf{
 							guessed_type: true
-							is_type: true
-							typ: arg_type
-							pos: pos
+							is_type:      true
+							typ:          arg_type
+							pos:          pos
 						}
 					}
 				}
@@ -355,7 +373,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			pos.update_last_line(p.prev_tok.line_nr)
 			node = ast.DumpExpr{
 				expr: expr
-				pos: spos.extend(pos)
+				pos:  spos.extend(pos)
 			}
 		}
 		.key_offsetof {
@@ -372,8 +390,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			p.check(.rpar)
 			node = ast.OffsetOf{
 				struct_type: st
-				field: field
-				pos: pos
+				field:       field
+				pos:         pos
 			}
 		}
 		.key_likely, .key_unlikely {
@@ -384,8 +402,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			expr := p.expr(0)
 			p.check(.rpar)
 			node = ast.Likely{
-				expr: expr
-				pos: lpos
+				expr:      expr
+				pos:       lpos
 				is_likely: is_likely
 			}
 		}
@@ -416,7 +434,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					args := p.call_args()
 					p.check(.rpar)
 					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+					mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 					mut or_pos := p.tok.pos()
 					if p.tok.kind == .key_orelse {
 						// `foo() or {}``
@@ -435,16 +453,16 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					}
 
 					node = ast.CallExpr{
-						name: 'anon'
-						left: node
-						args: args
-						pos: pos
+						name:     'anon'
+						left:     node
+						args:     args
+						pos:      pos
 						or_block: ast.OrExpr{
 							stmts: or_stmts
-							kind: or_kind
-							pos: or_pos
+							kind:  or_kind
+							pos:   or_pos
 						}
-						scope: p.scope
+						scope:    p.scope
 					}
 				}
 				return node
@@ -460,9 +478,19 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		else {
 			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
-				// Anonymous struct
-				p.next()
-				return p.struct_init('', .anon, false)
+				if p.expecting_type && p.inside_call_args {
+					// Anonymous struct	for json.decode
+					tok_pos := p.tok.pos()
+					return ast.TypeNode{
+						stmt: p.struct_decl(true)
+						pos:  tok_pos
+						typ:  ast.void_type
+					}
+				} else {
+					// Anonymous struct
+					p.next()
+					return p.struct_init('', .anon, false)
+				}
 			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
@@ -528,9 +556,9 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				args := p.call_args()
 				p.check(.rpar)
 				node = ast.CallExpr{
-					left: node
-					args: args
-					pos: pos
+					left:  node
+					args:  args
+					pos:   pos
 					scope: p.scope
 				}
 				p.is_stmt_ident = is_stmt_ident
@@ -543,8 +571,8 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				typ := p.parse_type()
 				node = ast.AsCast{
 					expr: node
-					typ: typ
-					pos: pos
+					typ:  typ
+					pos:  pos
 				}
 			} else {
 				return node
@@ -560,10 +588,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				node.recursive_arraymap_set_is_setter()
 			}
 			node = ast.InfixExpr{
-				left: node
-				right: right
-				op: tok.kind
-				pos: pos
+				left:    node
+				right:   right
+				op:      tok.kind
+				pos:     pos
 				is_stmt: true
 			}
 		} else if p.tok.kind.is_infix() && !(p.tok.kind in [.minus, .amp, .mul]
@@ -579,8 +607,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
-						p.tok.pos())
+					if !p.pref.translated && !p.is_translated {
+						p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
+							p.tok.pos())
+					}
 				}
 			}
 
@@ -613,18 +643,18 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
-			is_c2v_prefix := p.peek_tok.kind == .dollar
+			is_c2v_prefix := p.peek_tok.kind == .dollar && p.peek_tok.is_next_to(p.tok)
 			node = ast.PostfixExpr{
-				op: p.tok.kind
-				expr: node
-				pos: p.tok.pos()
+				op:            p.tok.kind
+				expr:          node
+				pos:           p.tok.pos()
 				is_c2v_prefix: is_c2v_prefix
 			}
 			if is_c2v_prefix {
 				p.next()
 			}
 			p.next()
-			// return node // TODO bring back, only allow ++/-- in exprs in translated code
+			// return node // TODO: bring back, only allow ++/-- in exprs in translated code
 		} else {
 			return node
 		}
@@ -681,10 +711,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.inside_in_array = false
 	}
 	p.expecting_type = prev_expecting_type
-	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && right.exprs.len == 1 {
-		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt,
-			.default)
-	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	mut or_pos := p.tok.pos()
@@ -702,23 +728,23 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InfixExpr{
-		left: left
-		right: right
-		op: op
-		pos: pos
-		is_stmt: p.is_stmt_ident
+		left:               left
+		right:              right
+		op:                 op
+		pos:                pos
+		is_stmt:            p.is_stmt_ident
 		before_op_comments: before_op_comments
-		after_op_comments: after_op_comments
-		or_block: ast.OrExpr{
+		after_op_comments:  after_op_comments
+		or_block:           ast.OrExpr{
 			stmts: or_stmts
-			kind: or_kind
-			pos: or_pos
+			kind:  or_kind
+			pos:   or_pos
 		}
 	}
 }
 
 fn (p &Parser) fileis(s string) bool {
-	return p.file_name.contains(s)
+	return p.file_path.contains(s)
 }
 
 fn (mut p Parser) prefix_expr() ast.Expr {
@@ -796,20 +822,24 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.PrefixExpr{
-		op: op
-		right: right
-		pos: pos
+		op:       op
+		right:    right
+		pos:      pos
 		or_block: ast.OrExpr{
 			stmts: or_stmts
-			kind: or_kind
-			pos: or_pos
+			kind:  or_kind
+			pos:   or_pos
 		}
 	}
 }
 
 fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Pos) {
 	cast_expr.typ = cast_expr.typ.ref()
-	cast_expr.typname = p.table.sym(cast_expr.typ).name
+	cast_expr.typname = if cast_expr.typ == 0 {
+		p.table.sym(cast_expr.typ).name
+	} else {
+		'unknown type name'
+	}
 	cast_expr.pos = pos.extend(cast_expr.pos)
 }
 
@@ -840,11 +870,17 @@ fn (mut p Parser) process_custom_orm_operators() {
 	}
 
 	is_like_operator := p.tok.kind == .name && p.tok.lit == 'like'
+	is_ilike_operator := p.tok.kind == .name && p.tok.lit == 'ilike'
 
 	if is_like_operator {
 		p.tok = token.Token{
 			...p.tok
 			kind: .key_like
+		}
+	} else if is_ilike_operator {
+		p.tok = token.Token{
+			...p.tok
+			kind: .key_ilike
 		}
 	}
 }
@@ -881,12 +917,12 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 			params << ident
 
 			p.scope.register(ast.Var{
-				name: ident.name
-				is_mut: ident.is_mut
+				name:         ident.name
+				is_mut:       ident.is_mut
 				is_stack_obj: true
-				pos: ident.pos
-				is_used: true
-				is_arg: true
+				pos:          ident.pos
+				is_used:      true
+				is_arg:       true
 			})
 
 			if p.tok.kind == .pipe {
@@ -900,11 +936,11 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	e := p.expr(0)
 	pos_end := p.tok.pos()
 	return ast.LambdaExpr{
-		pos: pos.extend(e.pos())
+		pos:      pos.extend(e.pos())
 		pos_expr: pos_expr
-		pos_end: pos_end
-		params: params
-		expr: e
-		scope: p.scope
+		pos_end:  pos_end
+		params:   params
+		expr:     e
+		scope:    p.scope
 	}
 }

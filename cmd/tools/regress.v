@@ -41,7 +41,7 @@ fn main() {
   To find when a feature was implemented (feature.v should succeed on master):
      ./v run cmd/tools/regress.v --old a7019ac --command "! ./v run /abs/path/to/feature.v"')
 	fp.skip_executable()
-	//
+
 	context.new_commit = fp.string('new', `n`, 'master', 'The new commit, by default: master.')
 	context.old_commit = fp.string('old', `o`, '', 'A known old commit, required (for it, COMMAND should exit with 0).')
 	context.command = fp.string('command', `c`, '', 'A command to execute. Should exit with 0 for the *old* commits.')

@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `szip` is a thin wrapper around [miniz.h](https://github.com/richgel999/miniz),
 which in turn is "Single C source file zlib-replacement library,

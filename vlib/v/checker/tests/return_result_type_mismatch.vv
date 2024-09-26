@@ -10,5 +10,5 @@ fn bar(a int) ?int {
 
 fn main() {
 	x := bar(1)?
-	println('$x')
+	println('${x}')
 }

@@ -17,7 +17,7 @@ pub:
 // other XML nodes, CDATA, plain text, or comments.
 pub struct XMLNode {
 pub:
-	name       string            @[required]
+	name       string @[required]
 	attributes map[string]string
 	children   []XMLNodeContents
 }
@@ -37,22 +37,26 @@ pub:
 pub type DTDListItem = DTDElement | DTDEntity
 
 pub struct DTDEntity {
+pub:
 	name  string @[required]
 	value string @[required]
 }
 
 pub struct DTDElement {
+pub:
 	name       string   @[required]
 	definition []string @[required]
 }
 
 pub struct DocumentTypeDefinition {
+pub:
 	name string
 	list []DTDListItem
 }
 
 pub struct DocumentType {
-	name string  @[required]
+pub:
+	name string @[required]
 	dtd  DTDInfo
 }
 
@@ -65,7 +69,7 @@ pub:
 	encoding string       = 'UTF-8'
 	doctype  DocumentType = DocumentType{
 		name: ''
-		dtd: ''
+		dtd:  ''
 	}
 	comments []XMLComment
 }

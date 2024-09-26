@@ -24,12 +24,12 @@ const limit_thickness = 3
 
 const text_cfg = gx.TextCfg{
 	align: .left
-	size: text_size
+	size:  text_size
 	color: gx.rgb(0, 0, 0)
 }
 const over_cfg = gx.TextCfg{
 	align: .left
-	size: text_size
+	size:  text_size
 	color: gx.white
 }
 
@@ -160,14 +160,14 @@ fn main() {
 	}
 
 	game.gg = gg.new_context(
-		bg_color: gx.white
-		width: win_width
-		height: win_height
-		create_window: true
-		window_title: 'V Tetris' //
-		user_data: game
-		frame_fn: frame
-		event_fn: on_event
+		bg_color:          gx.white
+		width:             win_width
+		height:            win_height
+		create_window:     true
+		window_title:      'V Tetris' //
+		user_data:         game
+		frame_fn:          frame
+		event_fn:          on_event
 		html5_canvas_name: 'canvas'
 	)
 	game.init_game()
@@ -320,7 +320,7 @@ fn (mut g Game) get_tetro() {
 	// g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
-// TODO mut
+// TODO: mut
 fn (mut g Game) drop_tetro() {
 	for i in 0 .. tetro_size {
 		tetro := g.tetro[i]

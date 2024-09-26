@@ -741,10 +741,10 @@ fn test_eq() {
 	assert [5, 6, 7] != [6, 7]
 	assert [`a`, `b`] == [`a`, `b`]
 	assert [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}] == [User{
-		age: 22
+		age:  22
 		name: 'bob'
 	}]
 	assert [{
@@ -925,7 +925,7 @@ fn test_i64_sort() {
 fn test_sort_index_expr() {
 	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)],
 		[i64(0)], [i64(27)]]
-	// TODO This currently gives "indexing pointer" error without unsafe
+	// TODO: This currently gives "indexing pointer" error without unsafe
 	unsafe {
 		f.sort(a[0] < b[0])
 	}
@@ -1279,7 +1279,7 @@ fn test_push_arr_string_free() {
 	lines << s
 	// make sure the data in the array is valid after freeing the string
 	unsafe { s.free() }
-	//
+
 	println(lines)
 	assert lines.len == 2
 	assert lines[0] == 'hi'
@@ -1383,7 +1383,7 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1391,14 +1391,14 @@ fn test_struct_array_of_multi_type_in() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1411,7 +1411,7 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv:   {
 			'aaa': '111'
 		}
 	}
@@ -1419,14 +1419,14 @@ fn test_struct_array_of_multi_type_index() {
 		Person{
 			name: 'ivan'
 			nums: [1, 2, 3]
-			kv: {
+			kv:   {
 				'aaa': '111'
 			}
 		},
 		Person{
 			name: 'bob'
 			nums: [2]
-			kv: {
+			kv:   {
 				'bbb': '222'
 			}
 		},
@@ -1510,7 +1510,7 @@ struct Numbers {
 fn test_array_of_multi_filter() {
 	arr := [1, 2, 3, 4, 5]
 	nums := Numbers{
-		odds: arr.filter(it % 2 == 1)
+		odds:  arr.filter(it % 2 == 1)
 		evens: arr.filter(it % 2 == 0)
 	}
 	println(nums)
@@ -1521,7 +1521,7 @@ fn test_array_of_multi_filter() {
 fn test_array_of_multi_map() {
 	arr := [1, 3, 5]
 	nums := Numbers{
-		odds: arr.map(it + 2)
+		odds:  arr.map(it + 2)
 		evens: arr.map(it * 2)
 	}
 	println(nums)

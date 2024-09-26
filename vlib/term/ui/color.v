@@ -30,9 +30,9 @@ fn init_color_table() []u32 {
 	color_table_[15] = 0xffffff
 	// color palette
 	for i in 0 .. 216 {
-		r := ui.value_range[(i / 36) % 6]
-		g := ui.value_range[(i / 6) % 6]
-		b := ui.value_range[i % 6]
+		r := value_range[(i / 36) % 6]
+		g := value_range[(i / 6) % 6]
+		b := value_range[i % 6]
 		color_table_[i + 16] = ((u32(r) << 16) & 0xffffff) + ((u32(g) << 8) & 0xffff) +
 			(u32(b) & 0xff)
 	}
@@ -71,7 +71,7 @@ fn lookup_rgb(r int, g int, b int) int {
 	color := (u32(r) << 16) + (u32(g) << 8) + u32(b)
 	// lookup extended colors only, coz non-extended can be changed by users.
 	for i in 16 .. 256 {
-		if ui.color_table[i] == color {
+		if color_table[i] == color {
 			return i
 		}
 	}

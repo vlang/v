@@ -1,7 +1,6 @@
 module anim
 
 import benchmark
-import sim
 import sim.img
 
 fn pixels_worker(mut app App) {

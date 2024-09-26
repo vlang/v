@@ -1,5 +1,4 @@
 import os
-import rand
 import term
 import v.util.diff
 import v.util.vtest
@@ -88,7 +87,7 @@ fn test_all() {
 	global_run_dir := '${checker_dir}/globals_run'
 	run_dir := '${checker_dir}/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
-	//
+
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
@@ -100,7 +99,7 @@ fn test_all() {
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
 	mut tasks := Tasks{
-		vexe: vexe
+		vexe:  vexe
 		label: 'all tests'
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
@@ -116,12 +115,12 @@ fn test_all() {
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.run()
-	//
+
 	if os.user_os() == 'linux' {
 		mut skip_unused_tasks := Tasks{
-			vexe: vexe
+			vexe:          vexe
 			parallel_jobs: 1
-			label: '-skip-unused tests'
+			label:         '-skip-unused tests'
 		}
 		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
 			false)
@@ -129,15 +128,15 @@ fn test_all() {
 			'.skip_unused.run.out', skip_unused_dir_tests, false)
 		skip_unused_tasks.run()
 	}
-	//
+
 	if github_job == 'ubuntu-tcc' {
 		// This is done with tcc only, because the error output is compiler specific.
 		// Note: the tasks should be run serially, since they depend on
 		// setting and using environment variables.
 		mut cte_tasks := Tasks{
-			vexe: vexe
+			vexe:          vexe
 			parallel_jobs: 1
-			label: 'comptime env tests'
+			label:         'comptime env tests'
 		}
 		cte_dir := '${checker_dir}/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
@@ -149,9 +148,9 @@ fn test_all() {
 		cte_tasks.run()
 	}
 	mut ct_tasks := Tasks{
-		vexe: vexe
+		vexe:          vexe
 		parallel_jobs: 1
-		label: 'comptime define tests'
+		label:         'comptime define tests'
 	}
 	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
 		'custom_comptime_define_error.vv',
@@ -183,23 +182,25 @@ fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, t
 	tasks.add('', checker_dir, voptions, result_extension, tests, false)
 }
 
-fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string,
+	is_module bool) {
 	tasks.add_evars('', custom_vexe, dir, voptions, result_extension, tests, is_module)
 }
 
-fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string,
+	tests []string, is_module bool) {
 	max_ntries := get_max_ntries()
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
-			evars: evars
-			vexe: if custom_vexe != '' { custom_vexe } else { tasks.vexe }
-			dir: dir
-			voptions: voptions
+			evars:            evars
+			vexe:             if custom_vexe != '' { custom_vexe } else { tasks.vexe }
+			dir:              dir
+			voptions:         voptions
 			result_extension: result_extension
-			path: path
-			is_module: is_module
-			max_ntries: max_ntries
+			path:             path
+			is_module:        is_module
+			max_ntries:       max_ntries
 		}
 	}
 }
@@ -238,6 +239,7 @@ fn (mut tasks Tasks) run() {
 		// cleaner error message, than a generic C error, but without the explanation.
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
@@ -245,6 +247,7 @@ fn (mut tasks Tasks) run() {
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 	}
 	$if windows {
 		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
@@ -409,10 +412,10 @@ fn chunka(s []u8, chunk_size int) string {
 
 fn diff_content(expected string, found string) {
 	println(term.bold(term.yellow('diff: ')))
-	if diff_cmd := diff.find_working_diff_command() {
-		println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+	if diff_ := diff.compare_text(expected, found) {
+		println(diff_)
 	} else {
-		println('>>>> could not find a working diff command; dumping bytes instead...')
+		println('>>>> `${err}`; dumping bytes instead...')
 		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
 		println('   found bytes:\n${chunka(found.bytes(), 25)}')
 		println('============')

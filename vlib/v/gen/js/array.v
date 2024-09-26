@@ -50,8 +50,8 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 		fn_builder.writeln('\treturn new int(-1);')
 		fn_builder.writeln('}')
 		g.definitions.writeln(fn_builder.str())
-		left_sym.register_method(&ast.Fn{
-			name: 'index'
+		left_sym.register_method(ast.Fn{
+			name:   'index'
 			params: [ast.Param{
 				typ: unwrap_left_type
 			}, ast.Param{
@@ -199,8 +199,8 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		fn_builder.writeln('\treturn new bool(false);')
 		fn_builder.writeln('}')
 		g.definitions.writeln(fn_builder.str())
-		left_sym.register_method(&ast.Fn{
-			name: 'contains'
+		left_sym.register_method(ast.Fn{
+			name:   'contains'
 			params: [ast.Param{
 				typ: unwrap_left_type
 			}, ast.Param{

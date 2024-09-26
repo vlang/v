@@ -8,56 +8,56 @@ fn test_valid_parsing() {
 
 	expected := xml.XMLDocument{
 		root: xml.XMLNode{
-			name: 'sst'
+			name:       'sst'
 			attributes: {
 				'count':       '5'
 				'uniqueCount': '5'
 			}
-			children: [
+			children:   [
 				xml.XMLNode{
-					name: 'si'
+					name:     'si'
 					children: [
 						xml.XMLNode{
-							name: 't'
+							name:       't'
 							attributes: {
 								'a': '1'
 							}
-							children: ['Item 1']
+							children:   ['Item 1']
 						},
 					]
 				},
 				xml.XMLNode{
-					name: 'si'
+					name:     'si'
 					children: [
 						xml.XMLNode{
-							name: 't'
+							name:     't'
 							children: ['Item 2']
 						},
 					]
 				},
 				xml.XMLNode{
-					name: 'si'
+					name:     'si'
 					children: [
 						xml.XMLNode{
-							name: 't'
+							name:     't'
 							children: ['Item 3']
 						},
 					]
 				},
 				xml.XMLNode{
-					name: 'si'
+					name:     'si'
 					children: [
 						xml.XMLNode{
-							name: 't'
+							name:     't'
 							children: ['Item 4']
 						},
 					]
 				},
 				xml.XMLNode{
-					name: 'si'
+					name:     'si'
 					children: [
 						xml.XMLNode{
-							name: 't'
+							name:     't'
 							children: ['Item 5']
 						},
 					]

@@ -53,3 +53,8 @@ pub fn info(s string) {
 pub fn debug(s string) {
 	default_logger.debug(s)
 }
+
+// set_always_flush called with true, will make the log flush after every single .fatal(), .error(), .warn(), .info(), .debug() call.
+pub fn set_always_flush(should_flush_on_every_message bool) {
+	default_logger.set_always_flush(should_flush_on_every_message)
+}

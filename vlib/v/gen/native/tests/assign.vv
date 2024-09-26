@@ -43,5 +43,5 @@ type Integer = int
 fn test_alias(a Integer, b Integer) {
 	e := a + b
 	assert e == a + b
-	println(e)
+	println(int(e))
 }

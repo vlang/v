@@ -41,10 +41,10 @@ fn main() {
 	timeout := os.args[2].int()
 	assert timeout > 0
 	spawn exit_after_timeout(timeout)
-	//
+
 	mut app := &ServerApp{
-		port: http_port
-		timeout: timeout
+		port:          http_port
+		timeout:       timeout
 		global_config: Config{
 			max_ping: 50
 		}
@@ -112,6 +112,11 @@ pub fn (mut app ServerApp) file_echo(mut ctx ServerContext) vweb.Result {
 	}
 
 	return ctx.text(ctx.files['file'][0].data)
+}
+
+@['/query_echo']
+pub fn (mut app ServerApp) query_echo(mut ctx ServerContext, a string, b int) vweb.Result {
+	return ctx.text('a: x${a}x | b: x${b}x')
 }
 
 // Make sure [post] works without the path

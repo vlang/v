@@ -13,6 +13,7 @@ fn test_default_log_instance() {
 	println('^^^ there should be `debug now` shown above')
 	log.set_level(log.level_from_tag('INFO') or { log.Level.disabled })
 	log.info('info again')
+	log.debug('no output for debug')
 	log.set_level(log.level_from_tag('') or { log.Level.disabled })
 	log.error('no output anymore')
 	println('^^^ there should be no `no output anymore` shown above')

@@ -13,7 +13,14 @@ const exit_after = time.second * 10
 
 const tmp_file = os.join_path(os.vtmp_dir(), 'vweb_large_payload.txt')
 
-pub struct App {}
+pub struct App {
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
+}
 
 pub fn (mut app App) index(mut ctx Context) vweb.Result {
 	return ctx.text('Hello V!')
@@ -34,20 +41,15 @@ pub struct Context {
 
 fn testsuite_begin() {
 	spawn fn () {
-		mut app := &App{}
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
-			panic('could not start vweb app')
-		}
-	}()
-
-	// app startup time
-	time.sleep(time.millisecond * 500)
-
-	spawn fn () {
 		time.sleep(exit_after)
 		assert true == false, 'timeout reached!'
 		exit(1)
 	}()
+
+	mut app := &App{}
+	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	// app startup time
+	_ := <-app.started
 }
 
 fn test_large_request_body() {
@@ -65,13 +67,13 @@ fn test_large_request_body() {
 
 fn test_large_request_header() {
 	// same test as test_large_request_body, but then with a large header,
-	// which is parsed seperately
+	// which is parsed separately
 	mut buf := []u8{len: vweb.max_read * 2, init: `a`}
 
 	str := buf.bytestr()
 	// make 1 header longer than vwebs max read limit
 	mut x := http.fetch(http.FetchConfig{
-		url: localserver
+		url:    localserver
 		header: http.new_custom_header_from_map({
 			'X-Overflow-Header': str
 		})!
@@ -84,11 +86,11 @@ fn test_bigger_content_length() {
 	data := '123456789'
 	mut x := http.fetch(http.FetchConfig{
 		method: .post
-		url: '${localserver}/post_request'
+		url:    '${localserver}/post_request'
 		header: http.new_header_from_map({
 			.content_length: '10'
 		})
-		data: data
+		data:   data
 	})!
 
 	// Content-length is larger than the data sent, so the request should timeout
@@ -99,11 +101,11 @@ fn test_smaller_content_length() {
 	data := '123456789'
 	mut x := http.fetch(http.FetchConfig{
 		method: .post
-		url: '${localserver}/post_request'
+		url:    '${localserver}/post_request'
 		header: http.new_header_from_map({
 			.content_length: '5'
 		})
-		data: data
+		data:   data
 	})!
 
 	assert x.status() == .bad_request

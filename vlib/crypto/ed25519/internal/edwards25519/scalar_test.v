@@ -8,7 +8,7 @@ import math.big
 const github_job = os.getenv('GITHUB_JOB')
 
 fn testsuite_begin() {
-	if edwards25519.github_job != '' {
+	if github_job != '' {
 		// ensure that the CI does not run flaky tests:
 		rand.seed([u32(0xffff24), 0xabcd])
 	}
@@ -108,8 +108,8 @@ fn test_scalar_set_canonical_bytes_on_noncanonical_value() {
 	b[31] += 1
 
 	mut s := sc_one
-	out := s.set_canonical_bytes(b[..]) or { edwards25519.sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
-	assert out == edwards25519.sc_error
+	out := s.set_canonical_bytes(b[..]) or { sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
+	assert out == sc_error
 	assert s == sc_one
 }
 

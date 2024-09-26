@@ -17,7 +17,7 @@ const addr_ip_any = [4]u8{init: u8(0)}
 pub fn new_ip6(port u16, addr [16]u8) Addr {
 	n_port := conv.hton16(port)
 	a := Addr{
-		f: u8(AddrFamily.ip6)
+		f:    u8(AddrFamily.ip6)
 		addr: AddrData{
 			Ip6: Ip6{
 				port: n_port
@@ -32,7 +32,7 @@ pub fn new_ip6(port u16, addr [16]u8) Addr {
 pub fn new_ip(port u16, addr [4]u8) Addr {
 	n_port := conv.hton16(port)
 	a := Addr{
-		f: u8(AddrFamily.ip)
+		f:    u8(AddrFamily.ip)
 		addr: AddrData{
 			Ip: Ip{
 				port: n_port
@@ -60,12 +60,34 @@ pub fn (a Addr) family() AddrFamily {
 	return unsafe { AddrFamily(a.f) }
 }
 
+// port returns the ip or ip6 port of the given address `a`
+pub fn (a Addr) port() !u16 {
+	match unsafe { AddrFamily(a.f) } {
+		.ip {
+			unsafe {
+				return conv.ntoh16(a.addr.Ip.port)
+			}
+		}
+		.ip6 {
+			unsafe {
+				return conv.ntoh16(a.addr.Ip6.port)
+			}
+		}
+		.unix {
+			return error('unix addr has no port')
+		}
+		.unspec {
+			return error('cannot find port for unspec addr family')
+		}
+	}
+}
+
 const max_ip_len = 24
 const max_ip6_len = 46
 
 // str returns a string representation of `a`
 pub fn (a Ip) str() string {
-	buf := [net.max_ip_len]char{}
+	buf := [max_ip_len]char{}
 
 	res := &char(C.inet_ntop(.ip, &a.addr, &buf[0], buf.len))
 
@@ -80,7 +102,7 @@ pub fn (a Ip) str() string {
 
 // str returns a string representation of `a`
 pub fn (a Ip6) str() string {
-	buf := [net.max_ip6_len]char{}
+	buf := [max_ip6_len]char{}
 
 	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
 
@@ -99,13 +121,13 @@ const aoffset = __offsetof(Addr, addr)
 pub fn (a Addr) len() u32 {
 	match a.family() {
 		.ip {
-			return sizeof(Ip) + net.aoffset
+			return sizeof(Ip) + aoffset
 		}
 		.ip6 {
-			return sizeof(Ip6) + net.aoffset
+			return sizeof(Ip6) + aoffset
 		}
 		.unix {
-			return sizeof(Unix) + net.aoffset
+			return sizeof(Unix) + aoffset
 		}
 		else {
 			panic('Unknown address family')
@@ -133,7 +155,7 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 
 			return [
 				Addr{
-					f: u8(AddrFamily.unix)
+					f:    u8(AddrFamily.unix)
 					addr: AddrData{
 						Unix: resolved
 					}
@@ -168,10 +190,10 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	if addr[0] == `:` {
 		match family {
 			.ip6 {
-				return [new_ip6(port, net.addr_ip6_any)]
+				return [new_ip6(port, addr_ip6_any)]
 			}
 			.ip, .unspec {
-				return [new_ip(port, net.addr_ip_any)]
+				return [new_ip(port, addr_ip_any)]
 			}
 			else {}
 		}

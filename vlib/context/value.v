@@ -28,8 +28,8 @@ mut:
 pub fn with_value(parent Context, key Key, value Any) Context {
 	return &ValueContext{
 		context: parent
-		key: key
-		value: value
+		key:     key
+		value:   value
 	}
 }
 

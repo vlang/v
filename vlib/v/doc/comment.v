@@ -14,12 +14,12 @@ pub mut:
 // is_example returns true if the contents of this comment is an inline doc example.
 // The current convention is '// Example: <content>'
 pub fn (dc DocComment) is_example() bool {
-	return dc.text.trim_space().starts_with(doc.example_pattern)
+	return dc.text.trim_space().starts_with(example_pattern)
 }
 
 // example returns the content of the inline example body
 pub fn (dc DocComment) example() string {
-	return dc.text.all_after(doc.example_pattern)
+	return dc.text.all_after(example_pattern)
 }
 
 // is_multi_line_example returns true if an example line has no inline code

@@ -48,7 +48,8 @@ pub mut:
 	pattern [][]string
 }
 
-fn (mut s Solution) find_pattern(adj map[string][]string, mut visited map[string]bool, node string, target string, mut path []string) {
+fn (mut s Solution) find_pattern(adj map[string][]string, mut visited map[string]bool, node string, target string,
+	mut path []string) {
 	path << node
 	visited[node] = true
 	if node == target {

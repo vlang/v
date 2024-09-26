@@ -9,6 +9,7 @@ pub type Any = Null
 	| f32
 	| f64
 	| i16
+	| i32
 	| i64
 	| i8
 	| int

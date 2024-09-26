@@ -1,0 +1,21 @@
+vlib/v/checker/tests/implements_keyword.vv:5:1: error: `CustomError` doesn't implement method `print_error` of interface `MyError`
+    3 | }
+    4 |
+    5 | struct CustomError implements MyError {
+      | ~~~~~~~~~~~~~~~~~~
+    6 | }
+    7 |
+vlib/v/checker/tests/implements_keyword.vv:15:1: error: `CustomError2` doesn't implement method `print_error` of interface `MyError`
+   13 | }
+   14 |
+   15 | struct CustomError2 implements MyError, MyError2 {
+      | ~~~~~~~~~~~~~~~~~~~
+   16 | }
+   17 |
+vlib/v/checker/tests/implements_keyword.vv:15:1: error: `CustomError2` doesn't implement method `print_error2` of interface `MyError2`
+   13 | }
+   14 |
+   15 | struct CustomError2 implements MyError, MyError2 {
+      | ~~~~~~~~~~~~~~~~~~~
+   16 | }
+   17 |

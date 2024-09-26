@@ -5,18 +5,18 @@ module os
 #include <android/native_activity.h>
 
 pub enum AssetMode {
-	buffer    = C.AASSET_MODE_BUFFER // Caller plans to ask for a read-only buffer with all data.
-	random    = C.AASSET_MODE_RANDOM // Read chunks, and seek forward and backward.
+	buffer    = C.AASSET_MODE_BUFFER    // Caller plans to ask for a read-only buffer with all data.
+	random    = C.AASSET_MODE_RANDOM    // Read chunks, and seek forward and backward.
 	streaming = C.AASSET_MODE_STREAMING // Read sequentially, with an occasional forward seek.
-	unknown   = C.AASSET_MODE_UNKNOWN // No specific information about how data will be accessed.
+	unknown   = C.AASSET_MODE_UNKNOWN   // No specific information about how data will be accessed.
 }
 
 // See https://developer.android.com/ndk/reference/struct/a-native-activity for more info.
 pub struct C.ANativeActivity {
 pub:
 	assetManager     &AssetManager = unsafe { nil } // Pointer to the Asset Manager instance for the application.
-	clazz            voidptr       // (jobject) The NativeActivity object handle.
-	env              voidptr       // (JNIEnv *) JNI context for the main thread of the app.
+	clazz            voidptr // (jobject) The NativeActivity object handle.
+	env              voidptr // (JNIEnv *) JNI context for the main thread of the app.
 	externalDataPath &char   // Path to this application's external (removable/mountable) data directory.
 	instance         voidptr // This is the native instance of the application.
 	internalDataPath &char   // Path to this application's internal data directory.

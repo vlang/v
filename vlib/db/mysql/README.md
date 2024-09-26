@@ -43,7 +43,7 @@ import db.mysql
 // Create connection
 mut connection := mysql.Connection{
 	username: 'root'
-	dbname: 'mysql'
+	dbname:   'mysql'
 }
 // Connect to server
 connection.connect()?

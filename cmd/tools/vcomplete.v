@@ -79,7 +79,7 @@ const auto_complete_commands = [
 	'ast',
 	'doc',
 	'vet',
-	// tools in one .v file
+	// tools in one .v file or folder (typically has a "v" prefix)
 	'bin2v',
 	'bug',
 	'build-examples',
@@ -89,15 +89,19 @@ const auto_complete_commands = [
 	'check-md',
 	'complete',
 	'compress',
+	'cover',
 	'create',
 	'doctor',
+	'download',
 	'fmt',
 	'gret',
 	'ls',
+	'retry',
 	'repl',
 	'repeat',
 	'self',
 	'setup-freetype',
+	'scan',
 	'shader',
 	'symlink',
 	'test-all',
@@ -109,6 +113,7 @@ const auto_complete_commands = [
 	'tracev',
 	'up',
 	'watch',
+	'where',
 	'wipe-cache',
 	// commands
 	'help',
@@ -196,6 +201,22 @@ const auto_complete_flags = [
 	'-version',
 	'--version',
 ]
+const auto_complete_flags_cover = [
+	'--help',
+	'-h',
+	'--verbose',
+	'-v',
+	'--hotspots',
+	'-H',
+	'--percentages',
+	'-P',
+	'--show_test_files',
+	'-S',
+	'--absolute',
+	'-A',
+	'--filter',
+	'-f',
+]
 const auto_complete_flags_doc = [
 	'-all',
 	'-f',
@@ -215,6 +236,22 @@ const auto_complete_flags_doc = [
 	'-s',
 	'-l',
 ]
+const auto_complete_flags_download = [
+	'--help',
+	'-h',
+	'--target-folder',
+	'-t',
+	'--sha1',
+	'-1',
+	'--sha256',
+	'-2',
+	'--continue',
+	'-c',
+	'--retries',
+	'-r',
+	'--delay',
+	'-d',
+]
 const auto_complete_flags_fmt = [
 	'-c',
 	'-diff',
@@ -232,6 +269,16 @@ const auto_complete_flags_bin2v = [
 	'--prefix',
 	'-w',
 	'--write',
+]
+const auto_complete_flags_retry = [
+	'--help',
+	'-h',
+	'--timeout',
+	'-t',
+	'--delay',
+	'-d',
+	'--retries',
+	'-r',
 ]
 const auto_complete_flags_shader = [
 	'--help',
@@ -271,6 +318,11 @@ const auto_complete_flags_bump = [
 ]
 const auto_complete_flags_self = [
 	'-prod',
+]
+const auto_complete_flags_where = [
+	'-h',
+	'-f',
+	'-v',
 ]
 const auto_complete_flags_repeat = [
 	'--help',
@@ -316,7 +368,7 @@ fn auto_complete(args []string) {
 	if args.len <= 1 || args[0] != 'complete' {
 		if args.len == 1 {
 			shell_path := os.getenv('SHELL')
-			if shell_path.len > 0 {
+			if shell_path != '' {
 				shell_name := os.file_name(shell_path).to_lower()
 				if shell_name in auto_complete_shells {
 					println(setup_for_shell(shell_name))
@@ -452,14 +504,32 @@ fn auto_complete_request(args []string) []string {
 				'bin2v' { // 'v bin2v -<tab>'
 					list = get_flags(auto_complete_flags_bin2v, part)
 				}
+				'bump' { // 'v bump -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_bump, part)
+				}
 				'build' { // 'v build -<tab>' -> flags.
 					list = get_flags(auto_complete_flags, part)
+				}
+				'cover' { // 'v cover -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_cover, part)
 				}
 				'doc' { // 'v doc -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_doc, part)
 				}
+				'download' { // 'v download -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_download, part)
+				}
 				'fmt' { // 'v fmt -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_fmt, part)
+				}
+				'missdoc' { // 'v missdoc -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_missdoc, part)
+				}
+				'retry' { // 'v retry -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_retry, part)
+				}
+				'repeat' { // 'v repeat -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_repeat, part)
 				}
 				'self' { // 'v self -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_self, part)
@@ -467,14 +537,8 @@ fn auto_complete_request(args []string) []string {
 				'shader' { // 'v shader -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_shader, part)
 				}
-				'missdoc' { // 'v missdoc -<tab>' -> flags.
-					list = get_flags(auto_complete_flags_missdoc, part)
-				}
-				'bump' { // 'v bump -<tab>' -> flags.
-					list = get_flags(auto_complete_flags_bump, part)
-				}
-				'repeat' { // 'v repeat -<tab>' -> flags.
-					list = get_flags(auto_complete_flags_repeat, part)
+				'where' { // 'v where -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_where, part)
 				}
 				else {
 					for flag in auto_complete_flags {
@@ -525,7 +589,7 @@ fn auto_complete_request(args []string) []string {
 				add_sep := if part == '~' { os.path_separator } else { '' }
 				part = part.replace_once('~', os.home_dir().trim_right(os.path_separator)) + add_sep
 			}
-			is_abs_path := part.starts_with(os.path_separator) // TODO Windows support for drive prefixes
+			is_abs_path := part.starts_with(os.path_separator) // TODO: Windows support for drive prefixes
 			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
 				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part

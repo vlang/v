@@ -1,7 +1,7 @@
 @[has_globals]
 module builtin
 
-type FnExitCb = fn ()
+pub type FnExitCb = fn ()
 
 fn C.atexit(f FnExitCb) int
 fn C.strerror(int) &char
@@ -12,7 +12,7 @@ fn vhalt() {
 }
 
 @[markused]
-fn v_segmentation_fault_handler(signal_number int) {
+fn v_segmentation_fault_handler(signal_number i32) {
 	$if freestanding {
 		eprintln('signal 11: segmentation fault')
 	} $else {
@@ -30,6 +30,23 @@ fn v_segmentation_fault_handler(signal_number int) {
 @[noreturn]
 pub fn exit(code int) {
 	C.exit(code)
+}
+
+// at_exit registers a fn callback, that will be called at normal process termination.
+// It returns an error, if the registration was not successful.
+// The registered callback functions, will be called either via exit/1,
+// or via return from the main program, in the reverse order of their registration.
+// The same fn may be registered multiple times.
+// Each callback fn will called once for each registration.
+pub fn at_exit(cb FnExitCb) ! {
+	$if freestanding {
+		return error('at_exit not implemented with -freestanding')
+	} $else {
+		res := C.atexit(cb)
+		if res != 0 {
+			return error_with_code('at_exit failed', res)
+		}
+	}
 }
 
 // panic_debug private function that V uses for panics, -cg/-g is passed
@@ -99,12 +116,14 @@ pub fn panic_result_not_set(s string) {
 // It also shows a backtrace on most platforms.
 @[noreturn]
 pub fn panic(s string) {
+	// Note: be careful to not use string interpolation here:
 	$if freestanding {
 		bare_panic(s)
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: ${@VCURRENTHASH}')
+		eprint('v hash: ')
+		eprintln(@VCURRENTHASH)
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -138,13 +157,13 @@ pub fn panic(s string) {
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {
-		err_msg = 'error ${errnum}'
+		err_msg = 'error ' + errnum.str()
 	} $else {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
 			err_msg = string{
-				str: &u8(c_msg)
-				len: unsafe { C.strlen(c_msg) }
+				str:    &u8(c_msg)
+				len:    unsafe { C.strlen(c_msg) }
 				is_lit: 1
 			}
 		}
@@ -162,6 +181,10 @@ pub fn panic_error_number(basestr string, errnum int) {
 pub fn eprintln(s string) {
 	if s.str == 0 {
 		eprintln('eprintln(NIL)')
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		return
 	}
 	$if freestanding {
@@ -186,6 +209,10 @@ pub fn eprintln(s string) {
 pub fn eprint(s string) {
 	if s.str == 0 {
 		eprint('eprint(NIL)')
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		return
 	}
 	$if freestanding {
@@ -223,9 +250,37 @@ pub fn flush_stderr() {
 	}
 }
 
+// unbuffer_stdout will turn off the default buffering done for stdout.
+// It will affect all consequent print and println calls, effectively making them behave like
+// eprint and eprintln do. It is useful for programs, that want to produce progress bars, without
+// cluttering your code with a flush_stdout() call after every print() call. It is also useful for
+// programs (sensors), that produce small chunks of output, that you want to be able to process
+// immediately.
+// Note 1: if used, *it should be called at the start of your program*, before using
+// print or println().
+// Note 2: most libc implementations, have logic that use line buffering for stdout, when the output
+// stream is connected to an interactive device, like a terminal, and otherwise fully buffer it,
+// which is good for the output performance for programs that can produce a lot of output (like
+// filters, or cat etc), but bad for latency. Normally, it is usually what you want, so it is the
+// default for V programs too.
+// See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
+// See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
+pub fn unbuffer_stdout() {
+	$if freestanding {
+		not_implemented := 'unbuffer_stdout is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		unsafe { C.setbuf(C.stdout, 0) }
+	}
+}
+
 // print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 @[manualfree]
 pub fn print(s string) {
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+		return
+	}
 	$if android && !termux {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 	} $else $if ios {
@@ -243,6 +298,13 @@ pub fn print(s string) {
 pub fn println(s string) {
 	if s.str == 0 {
 		println('println(NIL)')
+		return
+	}
+	$if noprintln ? {
+		return
+	}
+	$if builtin_print_use_fprintf ? {
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	}
 	$if android && !termux {
@@ -322,16 +384,9 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -365,16 +420,9 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_noscan(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -424,16 +472,9 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
+	vplayground_mlimit(n)
 	if n < 0 {
 		panic('malloc_uncollectable(${n} < 0)')
-	}
-	$if vplayground ? {
-		if n > 10000 {
-			panic('allocating more than 10 KB at once is not allowed in the V playground')
-		}
-		if total_m > 50 * 1024 * 1024 {
-			panic('allocating more than 50 MB is not allowed in the V playground')
-		}
 	}
 	mut res := &u8(0)
 	$if prealloc {
@@ -460,7 +501,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
-// previously allocated with `malloc`, `v_calloc` or `vcalloc`.
+// previously allocated with `malloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 @[unsafe]
 pub fn v_realloc(b &u8, n isize) &u8 {
@@ -487,7 +528,7 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 
 // realloc_data resizes the memory block pointed by `old_data` to `new_size`
 // bytes. `old_data` must be a pointer to an existing memory block, previously
-// allocated with `malloc`, `v_calloc` or `vcalloc`, of size `old_data`.
+// allocated with `malloc` or `vcalloc`, of size `old_data`.
 // realloc_data returns a pointer to the new location of the block.
 // Note: if you know the old data size, it is preferable to call `realloc_data`,
 // instead of `v_realloc`, at least during development, because `realloc_data`
@@ -533,7 +574,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
-// Unlike `v_calloc` vcalloc checks for negative values given in `n`.
+// vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
@@ -560,14 +601,10 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
 	}
+	vplayground_mlimit(n)
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
-		$if vplayground ? {
-			if n > 10000 {
-				panic('allocating more than 10 KB is not allowed in the playground')
-			}
-		}
 		if n < 0 {
 			panic('calloc_noscan(${n} < 0)')
 		}
@@ -603,7 +640,6 @@ pub fn free(ptr voidptr) {
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
-
 @[unsafe]
 pub fn memdup(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
@@ -693,10 +729,38 @@ fn v_fixed_index(i int, len int) int {
 
 // NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
 // They are used internally by V's builtin; for user code, it is much
-// more convenient to just use `os.args` instead.
+// more convenient to just use `os.args` or call `arguments()` instead.
 
 @[markused]
 __global g_main_argc = int(0)
 
 @[markused]
 __global g_main_argv = unsafe { nil }
+
+// arguments returns the command line arguments, used for starting the current program as a V array of strings.
+// The first string in the array (index 0), is the name of the program, used for invoking the program.
+// The second string in the array (index 1), if it exists, is the first argument to the program, etc.
+// For example, if you started your program as `myprogram -option`, then arguments() will return ['myprogram', '-option'].
+// Note: if you `v run file.v abc def`, then arguments() will return ['file', 'abc', 'def'], or ['file.exe', 'abc', 'def'] (on Windows).
+pub fn arguments() []string {
+	argv := &&u8(g_main_argv)
+	mut res := []string{cap: g_main_argc}
+	for i in 0 .. g_main_argc {
+		$if windows {
+			res << unsafe { string_from_wide(&u16(argv[i])) }
+		} $else {
+			res << unsafe { tos_clone(argv[i]) }
+		}
+	}
+	return res
+}
+
+@[if vplayground ?]
+fn vplayground_mlimit(n isize) {
+	if n > 10000 {
+		panic('allocating more than 10 KB at once is not allowed in the V playground')
+	}
+	if total_m > 50 * 1024 * 1024 {
+		panic('allocating more than 50 MB is not allowed in the V playground')
+	}
+}

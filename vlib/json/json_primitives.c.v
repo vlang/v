@@ -8,8 +8,6 @@ module json
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 
-pub const used = 1
-
 pub struct C.cJSON {
 	valueint    int
 	valuedouble f64

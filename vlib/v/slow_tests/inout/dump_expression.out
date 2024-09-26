@@ -12,6 +12,8 @@
         output_target: console
         time_format: tf_ss_micro
         custom_time_format: 'MMMM Do YY N kk:mm:ss A'
+        short_tag: false
+        always_flush: false
         output_file_name: ''
     })
 }

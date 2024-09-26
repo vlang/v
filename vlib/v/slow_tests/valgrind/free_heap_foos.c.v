@@ -31,13 +31,13 @@ fn create_some_foos() {
 
 fn main() {
 	create_some_foos()
-	if C._VAUTOFREE == 1 {
+	$if autofree {
 		assert frees.len == 2
 		assert frees[0] == 222
 		assert frees[1] == 111
 	}
 	create_some_foos()
-	if C._VAUTOFREE == 1 {
+	$if autofree {
 		assert frees.len == 4
 		assert frees[0] == 222
 		assert frees[1] == 111

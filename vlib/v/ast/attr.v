@@ -6,14 +6,14 @@ module ast
 import v.token
 
 pub enum AttrKind {
-	plain // [name]
-	string // ['name']
-	number // [123]
-	bool // [true] || [false]
+	plain           // [name]
+	string          // ['name']
+	number          // [123]
+	bool            // [true] || [false]
 	comptime_define // [if name]
 }
 
-// e.g. `[unsafe]`
+// e.g. `@[unsafe]`
 @[minify]
 pub struct Attr {
 pub:

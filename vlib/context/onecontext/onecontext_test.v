@@ -95,7 +95,7 @@ fn test_merge_deadline_context_1() {
 	mut ctx, _ := merge(ctx1, ctx2)
 
 	if deadline := ctx.deadline() {
-		assert deadline.unix_time() != 0
+		assert deadline.unix() != 0
 	} else {
 		assert false
 	}
@@ -111,7 +111,7 @@ fn test_merge_deadline_context_2() {
 	mut ctx, _ := merge(ctx1, ctx2)
 
 	if deadline := ctx.deadline() {
-		assert deadline.unix_time() != 0
+		assert deadline.unix() != 0
 	} else {
 		assert false
 	}

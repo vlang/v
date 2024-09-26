@@ -30,13 +30,14 @@ fn (mut g Gen) gen_free_methods() {
 fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
 	mut fn_name := styp_to_free_fn_name(styp)
-	deref_typ := typ.set_nr_muls(0)
+	deref_typ := if typ.has_flag(.option) { typ } else { typ.set_nr_muls(0) }
 	if deref_typ in g.generated_free_methods {
 		return fn_name
 	}
 	g.generated_free_methods[deref_typ] = true
 
-	mut sym := g.table.sym(g.unwrap_generic(typ))
+	objtyp := g.unwrap_generic(typ)
+	mut sym := g.table.sym(objtyp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
@@ -48,13 +49,13 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 
 	match mut sym.info {
 		ast.Struct {
-			g.gen_free_for_struct(sym.info, styp, fn_name)
+			g.gen_free_for_struct(objtyp, sym.info, styp, fn_name)
 		}
 		ast.Array {
 			g.gen_free_for_array(sym.info, styp, fn_name)
 		}
 		ast.Map {
-			g.gen_free_for_map(sym.info, styp, fn_name)
+			g.gen_free_for_map(objtyp, sym.info, styp, fn_name)
 		}
 		else {
 			println(g.table.type_str(typ))
@@ -66,7 +67,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	return fn_name
 }
 
-fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
@@ -80,8 +81,10 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 		if sym.kind !in [.string, .array, .map, .struct_] {
 			continue
 		}
-		mut field_styp := g.typ(field.typ).replace('*', '')
+		mut field_styp := g.typ(field.typ.set_nr_muls(0).clear_flag(.option)).replace('*',
+			'')
 		is_shared := field_styp.starts_with('__shared')
+		is_struct_option := typ.has_flag(.option)
 		if is_shared {
 			field_styp = field_styp.all_after('__shared__')
 		}
@@ -90,10 +93,34 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 		} else {
 			g.gen_free_method(field.typ)
 		}
+		is_field_option := field.typ.has_flag(.option)
+		expects_opt := field_styp_fn_name.starts_with('_option_')
 		if is_shared {
 			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}->val));')
+		} else if is_struct_option {
+			opt_styp := g.base_type(typ)
+			prefix := if field.typ.is_ptr() { '' } else { '&' }
+			if is_field_option {
+				opt_field_styp := if expects_opt { g.typ(field.typ) } else { g.base_type(field.typ) }
+				suffix := if expects_opt { '' } else { '.data' }
+
+				fn_builder.writeln('\tif (((${opt_styp}*)&it->data)->${field_name}.state != 2) {')
+				fn_builder.writeln('\t\t${field_styp_fn_name}((${opt_field_styp}*)${prefix}((${opt_styp}*)&it->data)->${field_name}${suffix});')
+				fn_builder.writeln('\t}')
+			} else {
+				fn_builder.writeln('\t${field_styp_fn_name}(${prefix}((${opt_styp}*)&it->data)->${field_name});')
+			}
 		} else {
-			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
+			if is_field_option {
+				opt_field_styp := if expects_opt { g.typ(field.typ) } else { g.base_type(field.typ) }
+				suffix := if expects_opt { '' } else { '.data' }
+
+				fn_builder.writeln('\tif (it->${field_name}.state != 2) {')
+				fn_builder.writeln('\t\t${field_styp_fn_name}((${opt_field_styp}*)&(it->${field_name}${suffix}));')
+				fn_builder.writeln('\t}')
+			} else {
+				fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
+			}
 		}
 	}
 	fn_builder.writeln('}')
@@ -124,7 +151,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 	fn_builder.writeln('}')
 }
 
-fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_map(typ ast.Type, info ast.Map, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
@@ -132,7 +159,13 @@ fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
 	}
 	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 
-	fn_builder.writeln('\tmap_free(it);')
+	if typ.has_flag(.option) {
+		fn_builder.writeln('\tif (it->state != 2) {')
+		fn_builder.writeln('\t\tmap_free((map*)&it->data);')
+		fn_builder.writeln('\t}')
+	} else {
+		fn_builder.writeln('\tmap_free(it);')
+	}
 	fn_builder.writeln('}')
 }
 

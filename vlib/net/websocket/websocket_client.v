@@ -24,8 +24,8 @@ pub struct Client {
 	is_server bool
 mut:
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
-	flags             []Flag       // flags used in handshake
-	fragments         []Fragment   // current fragments
+	flags             []Flag                // flags used in handshake
+	fragments         []Fragment            // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
@@ -37,15 +37,13 @@ pub:
 	read_timeout  i64
 	write_timeout i64
 pub mut:
-	header            http.Header  // headers that will be passed when connecting
+	header            http.Header // headers that will be passed when connecting
 	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
-	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool // set to true of callbacks can panic
+	nonce_size        int          = 16             // size of nounce used for masking
+	panic_on_callback bool               // set to true of callbacks can panic
 	client_state      shared ClientState // current state of connection
 	// logger used to log messages
-	logger &log.Logger = &log.Logger(&log.Log{
-	level: .info
-})
+	logger        &log.Logger = default_logger
 	resource_name string // name of current resource
 	last_pong_ut  i64    // last time in unix time we got a pong message
 }
@@ -84,29 +82,28 @@ pub enum OPCode {
 
 @[params]
 pub struct ClientOpt {
-	read_timeout  i64 = 30 * time.second
-	write_timeout i64 = 30 * time.second
-	logger        &log.Logger = &log.Logger(&log.Log{
-	level: .info
-})
+pub:
+	read_timeout  i64         = 30 * time.second
+	write_timeout i64         = 30 * time.second
+	logger        &log.Logger = default_logger
 }
 
 // new_client instance a new websocket client
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{
-		conn: unsafe { nil }
-		is_server: false
-		ssl_conn: ssl.new_ssl_conn()!
-		is_ssl: address.starts_with('wss')
-		logger: opt.logger
-		uri: uri
-		client_state: ClientState{
+		conn:          unsafe { nil }
+		is_server:     false
+		ssl_conn:      ssl.new_ssl_conn()!
+		is_ssl:        address.starts_with('wss')
+		logger:        opt.logger
+		uri:           uri
+		client_state:  ClientState{
 			state: .closed
 		}
-		id: rand.uuid_v4()
-		header: http.new_header()
-		read_timeout: opt.read_timeout
+		id:            rand.uuid_v4()
+		header:        http.new_header()
+		read_timeout:  opt.read_timeout
 		write_timeout: opt.write_timeout
 	}
 }
@@ -136,12 +133,15 @@ pub fn (mut ws Client) listen() ! {
 	}
 	for ws.get_state() == .open {
 		msg := ws.read_next_message() or {
-			if ws.get_state() in [.closed, .closing] {
+			if err.code() == net.error_eintr { // Check for EINTR and retry
+				continue
+			} else if ws.get_state() in [.closed, .closing] {
 				return
+			} else {
+				ws.debug_log('failed to read next message: ${err}')
+				ws.send_error_event('failed to read next message: ${err}')
+				return err
 			}
-			ws.debug_log('failed to read next message: ${err}')
-			ws.send_error_event('failed to read next message: ${err}')
-			return err
 		}
 		if ws.get_state() in [.closed, .closing] {
 			return
@@ -174,7 +174,7 @@ pub fn (mut ws Client) listen() ! {
 			}
 			.pong {
 				ws.debug_log('read: pong')
-				ws.last_pong_ut = time.now().unix
+				ws.last_pong_ut = time.now().unix()
 				ws.send_message_event(msg)
 				if msg.payload.len > 0 {
 					unsafe { msg.free() }
@@ -371,7 +371,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
 	mut control_frame := []u8{len: frame_len}
-	mut masking_key := if !ws.is_server { create_masking_key() } else { websocket.empty_bytearr }
+	mut masking_key := if !ws.is_server { create_masking_key() } else { empty_bytearr }
 	defer {
 		unsafe {
 			control_frame.free()
@@ -440,10 +440,10 @@ fn parse_uri(url string) !&Uri {
 	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
-		url: url
-		hostname: u.hostname()
-		port: port
-		resource: v[0]
+		url:         url
+		hostname:    u.hostname()
+		port:        port
+		resource:    v[0]
 		querystring: querystring
 	}
 }

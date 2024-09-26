@@ -38,8 +38,8 @@ fn formatted_string_interpolation() {
 }
 
 /*
-excape_dollar_in_string()
-fn excape_dollar_in_string() {
+escape_dollar_in_string()
+fn escape_dollar_in_string() {
 	i := 42
 	test_fn('($i)', '(42)')
 	println('(\$i)'.contains('i') && !'(\$i)'.contains('42'))

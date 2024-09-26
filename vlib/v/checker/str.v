@@ -45,6 +45,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
 		mut ftyp := c.expr(mut expr)
+		ftyp = c.check_expr_option_or_result_call(expr, ftyp)
 		if c.comptime.is_comptime_var(expr) {
 			ctyp := c.comptime.get_comptime_var_type(expr)
 			if ctyp != ast.void_type {
@@ -95,8 +96,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			}
 			if ((typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`, `b`])
 				|| (typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`, `b`])
-				|| (typ.is_int_literal()
-				&& fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`, `b`])
+				|| (typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `b`])
 				|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
 				|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
 				|| (typ.is_string() && fmt !in [`s`, `S`, `r`, `R`])
@@ -120,6 +120,9 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		}
 	}
 	c.inside_interface_deref = inside_interface_deref_save
+	if c.pref.warn_about_allocs {
+		c.warn_alloc('string interpolation', node.pos)
+	}
 	return ast.string_type
 }
 
@@ -156,13 +159,13 @@ fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 								first_digit := node.val[idx - 5] - 48
 								second_digit := node.val[idx - 4] - 48
 								if first_digit > 1 {
-									c.error(checker.unicode_lit_overflow_message, end_pos)
+									c.error(unicode_lit_overflow_message, end_pos)
 								} else if first_digit == 1 && second_digit > 0 {
-									c.error(checker.unicode_lit_overflow_message, end_pos)
+									c.error(unicode_lit_overflow_message, end_pos)
 								}
 							}
 							else {
-								c.error(checker.unicode_lit_overflow_message, end_pos)
+								c.error(unicode_lit_overflow_message, end_pos)
 							}
 						}
 						idx++
@@ -198,11 +201,11 @@ fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 	lit := node.val.replace('_', '').all_after('-').to_upper()
 	is_neg := node.val.starts_with('-')
 	if lit.len > 2 && lit[0] == `0` && lit[1] in [`B`, `X`, `O`] {
-		if lohi := checker.iencoding_map[lit[1]] {
+		if lohi := iencoding_map[lit[1]] {
 			c.check_num_literal(lohi, is_neg, lit[2..]) or { c.num_lit_overflow_error(node) }
 		}
 	} else {
-		lohi := checker.iencoding_map[`_`]
+		lohi := iencoding_map[`_`]
 		c.check_num_literal(lohi, is_neg, lit) or { c.num_lit_overflow_error(node) }
 	}
 	return ast.int_literal_type

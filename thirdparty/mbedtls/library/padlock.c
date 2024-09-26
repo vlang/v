@@ -82,7 +82,11 @@ int mbedtls_padlock_xcryptecb( mbedtls_aes_context *ctx,
     uint32_t *ctrl;
     unsigned char buf[256];
 
-    rk  = ctx->rk;
+    rk = ctx->buf + ctx->rk_offset;
+
+    if( ( (long) rk & 15 ) != 0 )
+        return( MBEDTLS_ERR_PADLOCK_DATA_MISALIGNED );
+
     blk = MBEDTLS_PADLOCK_ALIGN16( buf );
     memcpy( blk, input, 16 );
 
@@ -125,11 +129,13 @@ int mbedtls_padlock_xcryptcbc( mbedtls_aes_context *ctx,
     uint32_t *ctrl;
     unsigned char buf[256];
 
+    rk = ctx->buf + ctx->rk_offset;
+
     if( ( (long) input  & 15 ) != 0 ||
-        ( (long) output & 15 ) != 0 )
+        ( (long) output & 15 ) != 0 ||
+        ( (long) rk & 15 ) != 0 )
         return( MBEDTLS_ERR_PADLOCK_DATA_MISALIGNED );
 
-    rk = ctx->rk;
     iw = MBEDTLS_PADLOCK_ALIGN16( buf );
     memcpy( iw, iv, 16 );
 
