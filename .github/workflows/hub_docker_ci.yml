@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - '[0-9].[0-9]+.[0-9]+'   # trigger on new release tag
-      - 'weekly.*'              # trigger on weekly tag
+      - '[0-9].[0-9]+.[0-9]+' # trigger on new release tag
+      - 'weekly.*' # trigger on weekly tag
 
 jobs:
   publish-new-docker-images:
