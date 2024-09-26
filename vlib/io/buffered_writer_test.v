@@ -1,6 +1,10 @@
 import io
 import rand
 
+fn small_amount() int {
+	return int(rand.u8()) + 1
+}
+
 struct ArrayWriter {
 pub mut:
 	result []u8
@@ -56,7 +60,7 @@ fn test_write() {
 	written := write_random_data(mut aw, mut bw, 65536)!
 
 	// now exceed buffer capacity by a little
-	little := rand.u8()
+	little := small_amount()
 	excess := bw.available() + little
 	excess_data := rand.bytes(excess)!
 	w := bw.write(excess_data)!
@@ -70,7 +74,7 @@ fn test_write_big() {
 	max := 65536
 	mut bw := io.new_buffered_writer(writer: aw, cap: max)!
 
-	more_than_max := max + rand.u8()
+	more_than_max := max + small_amount()
 	big_source := rand.bytes(more_than_max)!
 	w := bw.write(big_source)!
 	assert w == more_than_max
