@@ -141,6 +141,16 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 						}
 					}
 				}
+			} else if !method.return_type.has_option_or_result() {
+				ret_sym := c.table.sym(method.return_type)
+				if ret_sym.info is ast.ArrayFixed && !ret_sym.info.is_fn_ret {
+					c.cast_to_fixed_array_ret(method.return_type, ret_sym)
+				} else if ret_sym.info is ast.Alias {
+					parent_sym := c.table.sym(ret_sym.info.parent_type)
+					if parent_sym.info is ast.ArrayFixed && !parent_sym.info.is_fn_ret {
+						c.cast_to_fixed_array_ret(ret_sym.info.parent_type, parent_sym)
+					}
+				}
 			}
 			for j, param in method.params {
 				if j == 0 && is_js {
