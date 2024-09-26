@@ -8039,10 +8039,9 @@ pub fn (mut g Gen) ret_typ(typ ast.Type) string {
 		if ret_sym.info is ast.ArrayFixed && !ret_sym.info.is_fn_ret {
 			ret_styp = '_v_${ret_styp}'
 		} else if ret_sym.info is ast.Alias {
-			unalias_typ := g.table.unaliased_type(typ)
-			unalias_sym := g.table.sym(unalias_typ)
+			unalias_sym := g.table.sym(ret_sym.info.parent_type)
 			if unalias_sym.info is ast.ArrayFixed && !unalias_sym.info.is_fn_ret {
-				ret_styp = '_v_${g.typ(unalias_typ)}'
+				ret_styp = '_v_${g.typ(ret_sym.info.parent_type)}'
 			}
 		}
 	}
