@@ -957,14 +957,13 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 }
 
 fn (mut c Checker) check_duplicated_items(node &ast.ArrayInit) {
-	mut unique_items := []string{}
+	mut unique_items := []string{cap: node.exprs.len}
 	for item in node.exprs {
 		item_str := item.str()
-		// println('>>> ${item_str}')
-		if item.str() !in unique_items {
-			unique_items << item_str
-		} else {
+		if item_str in unique_items {
 			c.note('item `${item_str}` is duplicated in the list', item.pos())
+		} else {
+			unique_items << item_str
 		}
 	}
 }
