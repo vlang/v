@@ -21,7 +21,7 @@ pub fn split_address(addr string) !(string, u16) {
 	// to validate ipv6 address sanity?
 
 	// RFC4038 - allow [::1]:port
-	if address[0] == `[` && address[address.len - 1] == `]` {
+	if address.len > 0 && address[0] == `[` && address[address.len - 1] == `]` {
 		address = address[1..address.len - 1]
 	}
 
