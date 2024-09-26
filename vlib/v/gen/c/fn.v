@@ -2607,8 +2607,9 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						}
 					}
 				} else {
-					if args.len == 1
-						&& g.table.type_to_str(arr_info.elem_type) == g.table.type_to_str(varg_type) {
+					// passing variadic arg to another call which expects same array type
+					if args.len == 1 && args[arg_nr].typ.has_flag(.variadic)
+						&& args[arg_nr].typ == varg_type {
 						g.ref_or_deref_arg(args[arg_nr], arr_info.elem_type, node.language,
 							false)
 					} else {
