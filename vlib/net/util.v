@@ -1,11 +1,12 @@
 module net
 
-const socket_max_port = u16(0xFFFF)
-
-// validate_port checks whether a port is valid
-// and returns the port or an error
+// validate_port checks whether a port is valid and returns the port or an error.
+// The valid ports numbers are between 0 and 0xFFFF.
+// For TCP, port number 0 is reserved and cannot be used, while for UDP, the source port
+// is optional and a value of zero means no port.
+// See also https://en.wikipedia.org/wiki/Port_%28computer_networking%29 .
 pub fn validate_port(port int) !u16 {
-	if port <= socket_max_port {
+	if port >= 0 && port <= 0xFFFF {
 		return u16(port)
 	} else {
 		return err_port_out_of_range
