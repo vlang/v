@@ -1743,6 +1743,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR(${rec_cc_type}, ')
 				cast_n++
+			} else if node.left is ast.Ident && g.table.is_interface_smartcast(node.left.obj) {
+				g.write('ADDR(${rec_cc_type}, ')
+				cast_n++
 			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
 				&& g.typ(left_type) == g.typ(node.receiver_type)) {
 				g.write('&')
