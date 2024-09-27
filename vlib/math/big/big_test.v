@@ -151,6 +151,14 @@ const add_test_data = [
 	AddTest{ 100, -2, 98},
 	AddTest{ -100, -2, -102},
 	AddTest{ -2, -100, -102},
+	//
+	AddTest{ 1, 200, 201},
+	AddTest{ -200, -1, -201},
+	AddTest{ 2, 100, 102},
+	AddTest{ -100, -2, -102},
+	AddTest{ 100, -2, 98},
+	AddTest{ 2, -100, -98},
+	//
 	AddTest{ 2, 3, 5 },
 	AddTest{ 1024, 1024, 2048 },
 	AddTest{ 1024, 1024, 2048 },
@@ -180,6 +188,13 @@ const sub_test_data = [
 	SubTest{ -100, 100, -200},
 	SubTest{ 100, -100, 200},
 	SubTest{ -100, -100, 0},
+	//
+	SubTest{ 1, 200, -199},
+	SubTest{ -200, -1, -199},
+	SubTest{ 2, 100, -98},
+	SubTest{ -100, -2, -98},
+	SubTest{ 100, -2, 102},
+	SubTest{ 2, -100, 102},	
 	//
 	SubTest{ 2, 3, -1 },
 	SubTest{ 3, 2, 1 },
@@ -578,7 +593,7 @@ fn test_is_odd() {
 
 fn test_addition() {
 	for t in add_test_data {
-		assert t.augend.parse() + t.addend.parse() == t.sum.parse()
+		assert t.augend.parse() + t.addend.parse() == t.sum.parse(), 't.augend: ${t.augend}  + t.addend: ${t.addend}'
 	}
 }
 

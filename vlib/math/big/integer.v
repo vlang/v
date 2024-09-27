@@ -309,7 +309,12 @@ pub fn (augend Integer) + (addend Integer) Integer {
 		return addend.subtract(augend)
 	}
 	// Unequal signs, left is positive:
-	return augend.subtract(addend)
+	res := augend.subtract(addend)
+	cmp := augend.abs_cmp(addend)
+	if cmp < 0 {
+		return res.neg()
+	}
+	return res
 }
 
 // - returns the difference of the integers `minuend` and `subtrahend`
@@ -325,11 +330,7 @@ pub fn (minuend Integer) - (subtrahend Integer) Integer {
 	if minuend.signum == subtrahend.signum {
 		return minuend.subtract(subtrahend)
 	}
-	// Unequal signs, left is negative:
-	if minuend.signum == -1 {
-		return minuend.add(subtrahend)
-	}
-	// Unequal signs, left is positive:
+	// Unequal signs:
 	return minuend.add(subtrahend)
 }
 
