@@ -191,6 +191,24 @@ fn test_prepend_many() {
 	assert a == [5, 6, 1, 2, 3, 4]
 }
 
+type Strings = []string
+
+fn test_aliases_of_array_insert() {
+	mut strs := Strings(['hi'])
+	strs.insert(0, '22')
+	assert strs == ['22', 'hi']
+	strs.insert(1, ['11'])
+	assert strs == ['22', '11', 'hi']
+}
+
+fn test_aliases_of_array_prepend() {
+	mut strs := Strings(['hi'])
+	strs.prepend('22')
+	assert strs == ['22', 'hi']
+	strs.prepend(['44', '33'])
+	assert strs == ['44', '33', '22', 'hi']
+}
+
 fn test_strings() {
 	a := ['a', 'b', 'c']
 	assert a.str() == "['a', 'b', 'c']"
