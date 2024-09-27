@@ -1,0 +1,36 @@
+vlib/v/checker/tests/array_sorted_with_compare_err.vv:15:24: error: sorted_with_compare callback function parameter `a` with type `string` should be `&string`
+   13 | }
+   14 | 
+   15 | fn sort_by_file_base(a string, b string) int {
+      |                        ~~~~~~
+   16 |     return int(a > b)
+   17 | }
+vlib/v/checker/tests/array_sorted_with_compare_err.vv:15:34: error: sorted_with_compare callback function parameter `b` with type `string` should be `&string`
+   13 | }
+   14 | 
+   15 | fn sort_by_file_base(a string, b string) int {
+      |                                  ~~~~~~
+   16 |     return int(a > b)
+   17 | }
+vlib/v/checker/tests/array_sorted_with_compare_err.vv:4:37: error: cannot use `fn (string, string) int` as `fn (voidptr, voidptr) int` in argument 1 to `[]string.sorted_with_compare`
+    2 |     names := ['aaa', 'bbb', 'ccc']
+    3 | 
+    4 |     name1 := names.sorted_with_compare(sort_by_file_base)
+      |                                        ~~~~~~~~~~~~~~~~~
+    5 |     println(name1)
+    6 |
+Details: expected argument 1 to be a pointer, but the passed argument 1 is NOT a pointer
+vlib/v/checker/tests/array_sorted_with_compare_err.vv:7:37: error: cannot use `int literal` as `fn (voidptr, voidptr) int` in argument 1 to `[]string.sorted_with_compare`
+    5 |     println(name1)
+    6 | 
+    7 |     name2 := names.sorted_with_compare(22)
+      |                                        ~~
+    8 |     println(name2)
+    9 |
+vlib/v/checker/tests/array_sorted_with_compare_err.vv:10:17: error: `.sorted_with_compare()` expected 1 argument, but got 2
+    8 |     println(name2)
+    9 | 
+   10 |     name3 := names.sorted_with_compare(sort_by_file_base, 22)
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   11 |     println(name3)
+   12 |

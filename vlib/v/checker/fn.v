@@ -2549,27 +2549,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 			}
 		}
-		if left_sym.info is ast.Array && method_name in ['sort_with_compare', 'sorted_with_compare'] {
-			elem_typ := left_sym.info.elem_type
-			arg_sym := c.table.sym(arg.typ)
-			if arg_sym.kind == .function {
-				func_info := arg_sym.info as ast.FnType
-				if func_info.func.params.len == 2 {
-					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
-						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
-							func_info.func.params[0].type_pos)
-					}
-					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
-						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
-							func_info.func.params[1].type_pos)
-					}
-				}
-			}
-		}
 		// Handle expected interface
 		if final_arg_sym.kind == .interface_ {
 			if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
@@ -3184,9 +3163,48 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			// position of `it` doesn't matter
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
-	} else if node.args.len == 1 && method_name == 'sorted_with_compare' {
-		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
-			c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if node.args.len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+		} else {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+			}
+			arg_type := c.expr(mut node.args[0].expr)
+			arg_sym := c.table.sym(arg_type)
+			if arg_sym.kind == .function {
+				func_info := arg_sym.info as ast.FnType
+				if func_info.func.params.len == 2 {
+					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[0].type_pos)
+					}
+					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[1].type_pos)
+					}
+				}
+			}
+			node.args[0].typ = arg_type
+			if method := c.table.find_method(left_sym, method_name) {
+				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
+					node.args[0]) or {
+					c.error('${err.msg()} in argument 1 to `${left_sym.name}.${method_name}`',
+						node.args[0].pos)
+				}
+			}
+			if method_name == 'sort_with_compare' {
+				node.return_type = ast.void_type
+				node.receiver_type = node.left_type.ref()
+			} else {
+				node.return_type = node.left_type
+				node.receiver_type = node.left_type
+			}
 		}
 	} else if method_name == 'sort' || method_name == 'sorted' {
 		if method_name == 'sort' {
@@ -3300,8 +3318,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.ensure_same_array_return_type(mut node, left_type)
 	} else if method_name == 'sorted' {
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name == 'sorted_with_compare' {
-		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if method_name == 'sorted_with_compare' {
+			c.ensure_same_array_return_type(mut node, left_type)
+		}
 		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
 		// error: incompatible function pointer types passing
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
