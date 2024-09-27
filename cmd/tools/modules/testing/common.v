@@ -247,6 +247,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
 			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v' // requires OpenSSL
 			$if tinyc {
 				skip_files << 'examples/database/orm.v' // try fix it
 			}
@@ -277,10 +278,12 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		}
 		if github_job == 'ubuntu-docker-musl' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 		}
 		if github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
+			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
 			// Fails compilation with: `/usr/bin/ld: /lib/x86_64-linux-gnu/libpthread.so.0: error adding symbols: DSO missing from command line`
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
