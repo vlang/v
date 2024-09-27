@@ -3190,6 +3190,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					}
 				}
 			}
+			node.args[0].typ = arg_type
 			if method := c.table.find_method(left_sym, method_name) {
 				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
 					node.args[0]) or {
@@ -3317,8 +3318,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.ensure_same_array_return_type(mut node, left_type)
 	} else if method_name == 'sorted' {
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name == 'sorted_with_compare' {
-		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if method_name == 'sorted_with_compare' {
+			c.ensure_same_array_return_type(mut node, left_type)
+		}
 		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
 		// error: incompatible function pointer types passing
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
