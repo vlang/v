@@ -2,6 +2,8 @@ module iconv
 
 // Module iconv provides functions convert between vstring(UTF8) to/from different encodings.
 
+#include <iconv.h>
+
 fn C.iconv_open(tocode &u8, fromcode &u8) int
 fn C.iconv_close(cd int) int
 fn C.iconv(cd int, inbuf &&u8, inbytesleft &usize, outbuf &&u8, outbytesleft &usize) usize
