@@ -1,6 +1,6 @@
 module iconv
 
-// Module iconv provides functions conversion between vstring(UTF8) to/from difference encodings.
+// Module iconv provides functions convert between vstring(UTF8) to/from different encodings.
 
 fn C.iconv_open(tocode &u8, fromcode &u8) int
 fn C.iconv_close(cd int) int
