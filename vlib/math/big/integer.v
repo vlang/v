@@ -300,11 +300,16 @@ pub fn (augend Integer) + (addend Integer) Integer {
 		return augend.clone()
 	}
 	// Non-zero cases
-	return if augend.signum == addend.signum {
-		augend.add(addend)
-	} else { // Unequal signs
-		augend.subtract(addend)
+	if augend.signum == addend.signum {
+		return augend.add(addend)
 	}
+	// Unequal signs, left is negative:
+	if augend.signum == -1 {
+		// -1 + 5 == 5 - 1
+		return addend.subtract(augend)
+	}
+	// Unequal signs, left is positive:
+	return augend.subtract(addend)
 }
 
 // - returns the difference of the integers `minuend` and `subtrahend`
@@ -317,11 +322,15 @@ pub fn (minuend Integer) - (subtrahend Integer) Integer {
 		return minuend.clone()
 	}
 	// Non-zero cases
-	return if minuend.signum == subtrahend.signum {
-		minuend.subtract(subtrahend)
-	} else {
-		minuend.add(subtrahend)
+	if minuend.signum == subtrahend.signum {
+		return minuend.subtract(subtrahend)
 	}
+	// Unequal signs, left is negative:
+	if minuend.signum == -1 {
+		return minuend.add(subtrahend)
+	}
+	// Unequal signs, left is positive:
+	return minuend.add(subtrahend)
 }
 
 fn (integer Integer) add(addend Integer) Integer {
