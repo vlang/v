@@ -3165,7 +3165,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
 		if node.args.len != 1 {
-			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}', node.pos)
+			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+				node.pos)
 		} else {
 			if mut node.args[0].expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
