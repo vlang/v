@@ -879,7 +879,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.final_sym(node.args[1].typ)
 	is_arg2_array := arg2_sym.kind == .array
-		&& node.args[1].typ.clear_flag(.variadic) == g.table.unaliased_type(node.left_type)
+		&& node.args[1].typ.clear_flag(.variadic) in [node.left_type, g.table.unaliased_type(node.left_type)]
 	noscan := g.check_noscan(left_info.elem_type)
 	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg2_array {
@@ -916,7 +916,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	elem_type_str := g.typ(left_info.elem_type)
 	arg_sym := g.table.final_sym(node.args[0].typ)
 	is_arg_array := arg_sym.kind == .array
-		&& node.args[0].typ == g.table.unaliased_type(node.left_type)
+		&& node.args[0].typ in [node.left_type, g.table.unaliased_type(node.left_type)]
 	noscan := g.check_noscan(left_info.elem_type)
 	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg_array {
