@@ -1563,6 +1563,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.call_args(node)
 		}
 		g.write(')')
+		if !node.return_type.has_option_or_result() {
+			if g.table.final_sym(node.return_type).kind == .array_fixed {
+				g.write('.ret_arr')
+			}
+		}
 		return
 	}
 	left_sym := g.table.sym(left_type)
