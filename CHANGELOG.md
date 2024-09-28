@@ -1,4 +1,6 @@
 ## V 0.4.8
+*28 Sep 2024*
+
 #### Improvements in the language
 - A new `implements` keyword for explicit interface implementation
 - Allow multi return as fn argument (#21991)
@@ -8,7 +10,7 @@
 - Comptime support for traversing the method parameters with `$for param in method.params {` (#22229)
 - Show missing variants in the sum type error
 - A much better and detailed unmatched fn arg error
-- Add support for `@LOCATION`, for more convenient logging/tracing, without needing to combine `@FILE`, `@LINE` at runtime (#19488)
+- Add support for `@BUILD_DATE`, `@BUILD_TIME` and `@BUILD_TIMESTAMP`, all using v.util.get_build_time(), and overridable through SOURCE_DATE_EPOCH (#22213)
 
 #### Breaking changes
 - Deprecate `x.vweb` and `vweb` in favor of `veb`, a faster, easier, and more stable framework.
@@ -67,7 +69,6 @@
 - builder: allow for `v -dump-defines - -check cmd/v`, which is faster, because it can skip code generation
 - Reduce allocations for the most common cases (#22142)
 - transformer: add support for instrumenting the V compiler with `-d trace_transformer`
-- all: add support for `@BUILD_DATE`, `@BUILD_TIME` and `@BUILD_TIMESTAMP`, all using v.util.get_build_time(), and overridable through SOURCE_DATE_EPOCH (#22213)
 
 #### Standard library
 - encoding.base58: fix notice for slice creation (#21935)
@@ -272,7 +273,6 @@
 - examples,os: add an os.asset module, use it to simplify code in examples/, by removing `$if android {` checks (#22281)
 - add a consistent background to flappylearning, shown when the height of the view is very high (on Android)
 
-*28 Sep 2024*
 
 ## V 0.4.7
 *26 Jul 2024*
@@ -1480,6 +1480,7 @@
 - Recognize or blocks in call args (#19690)
 
 #### Tools
+- all: add support for `@LOCATION`, for more convenient logging/tracing, without needing to combine `@FILE`, `@LINE` at runtime (#19488)
 - benchmark: add new methods b.record_measure/1 and b.all_recorded_measures/0 (#19561)
 - ci: update c2v workflow, translate doom on macOS (#19562)
 - strings: add Bulder.write_decimal/1 method (write a decimal number, without additional allocations) (#19625)
