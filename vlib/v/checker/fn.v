@@ -118,6 +118,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			node.return_type_pos)
 	}
 	if node.return_type != ast.void_type {
+		if node.language == .v && node.return_type.clear_option_and_result() == ast.any_type {
+			c.error('cannot use type `any` here', node.return_type_pos)
+		}
 		if ct_attr_idx := node.attrs.find_comptime_define() {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
 			c.error('only functions that do NOT return values can have `[if ${sexpr}]` tags',
