@@ -5,6 +5,7 @@ module iconv
 // Idear from https://github.com/win-iconv/win-iconv
 
 fn C.GetACP() int
+fn C.GetOEMCP() int
 fn C.WideCharToMultiByte(codepage u32, dwflags u32, src &u8, src_len int, dst &u8, dst_len int, default_char &u8, used_default_char &bool) int
 fn C.MultiByteToWideChar(codepage u32, dwflags u32, src &u8, src_len int, dst &u8, dst_len int) int
 
@@ -473,6 +474,9 @@ fn name_to_codepage(name string) int {
 	if name == '' || name == 'CP_ACP' {
 		return C.GetACP()
 	}
+	if name == 'CP_OEMCP' {
+		return C.GetOEMCP()
+	}
 	if name.len < 2 {
 		return -1
 	}
@@ -529,21 +533,4 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) []u8 {
 		0, 0)
 	unsafe { unicode.free() }
 	return dst
-}
-
-// vstring_to_encoding convert vstring `str` to `tocode` encoding string
-pub fn vstring_to_encoding(tocode string, str string) []u8 {
-	return conv(tocode, 'UTF-8', str.str, str.len)
-}
-
-// encoding_to_vstring convert `fromcode` encoding string to vstring
-pub fn encoding_to_vstring(fromcode string, str []u8) string {
-	dst := conv('UTF-8', fromcode, str.data, str.len)
-	defer {
-		unsafe { dst.free() }
-	}
-	if dst.len == 0 {
-		return ''
-	}
-	return unsafe { cstring_to_vstring(dst.data) }
 }
