@@ -18,9 +18,6 @@ import strings
 const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
 	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
 
-const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32',
-	'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread', 'array']
-
 @[minify]
 pub struct Parser {
 pub:
@@ -4109,7 +4106,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_exported: is_exported
 		}
 		fields << field
-		if name !in reserved_type_names {
+		if name !in ast.global_reserved_type_names {
 			p.table.global_scope.register(field)
 		}
 		comments = []
