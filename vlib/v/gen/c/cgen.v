@@ -3711,10 +3711,20 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if g.is_option_auto_heap {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
+				mut has_slice_call := false
 				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
-					g.write(node.op.str())
+					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
+						&& node.right.index is ast.RangeExpr
+					if has_slice_call {
+						g.write('ADDR(${g.typ(node.right_type)}, ')
+					} else {
+						g.write(node.op.str())
+					}
 				}
 				g.expr(node.right)
+				if has_slice_call {
+					g.write(')')
+				}
 				if g.is_option_auto_heap {
 					g.write('.data')
 				}
