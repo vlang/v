@@ -1,0 +1,1 @@
+Array_int* pointer_to_slice = ADDR(Array_int, array_slice((*(new_data)), 1, 2));
