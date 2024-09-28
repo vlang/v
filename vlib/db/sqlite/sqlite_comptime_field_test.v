@@ -13,7 +13,7 @@ fn records_by_field[T](db sqlite.DB, fieldname string, value string) ![]T {
 	$for field in T.fields {
 		if field.name == fieldname {
 			entries := sql db {
-				select from Blog where language == value
+				select from Blog where field.name == value
 			} or { return err }
 			return entries
 		}
