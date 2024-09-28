@@ -8,6 +8,7 @@
 - Comptime support for traversing the method parameters with `$for param in method.params {` (#22229)
 - Show missing variants in the sum type error
 - A much better and detailed unmatched fn arg error
+- Add support for `@LOCATION`, for more convenient logging/tracing, without needing to combine `@FILE`, `@LINE` at runtime (#19488)
 
 #### Breaking changes
 - Deprecate `x.vweb` and `vweb` in favor of `veb`, a faster, easier, and more stable framework.
@@ -92,9 +93,11 @@
 - flag: add custom value descriptions for bool, int, and float flags too (#22032)
 - flag: fix assigning to `@[tail]` field when no fields has been matched yet in `flag.parse[T]()` (#22043)
 - crypto: add a crypto.pbkdf2 module (#22047)
+- hash: add more methods to the hash.Hash interface, to match the ones in Go (#22001)
 - arrays: simplify arrays.sum and arrays.reduce (#22076)
 - x.json2: support @[skip] as well (#22077)
 - builtin,thirdparty: fix compilation of libgc with `-cc msvc -gc boehm` (thanks to @Ekopalypse)
+- stbi: change Image.data from voidptr to &u8, to reduce casts (#21977)
 - time: update parse_format comment description in parse.c.v (#22104)
 - vlib: add an `arrays.parallel` module, containing `parallel.run/3` and `parallel.amap/3` implementations (#22090)
 - builtin: support `-d builtin_print_use_fprintf`, make the C fn declarations stricter (#22137)
@@ -225,7 +228,7 @@
 - Add diagnostic in `v repeat` for invalid combinations of -r, -i and -a flags
 - Fix `v doc` truncating code blocks, that lack a specific language (fix #22017)
 - v.util: add get_build_time/0, supporting https://reproducible-builds.org/docs/source-date-epoch/
-- Fix `v doc` not converting <s> in plain code blocks into encoded html entities in its .html output
+- Fix `v doc` not converting `<s>` in plain code blocks into encoded html entities in its .html output
 - ci: run `npx prettier --write **.yml`; ensure it is run on all .yml files, not just the ones in the .github/workflows/ folder
 - docs: add implements keyword for explicit interface implementations (#22214)
 - Make fast_job.v more robust (setup a custom PATH) and informative on fast.v failures (compile it with -g)
@@ -1477,7 +1480,6 @@
 - Recognize or blocks in call args (#19690)
 
 #### Tools
-- all: add support for `@LOCATION`, for more convenient logging/tracing, without needing to combine `@FILE`, `@LINE` at runtime (#19488)
 - benchmark: add new methods b.record_measure/1 and b.all_recorded_measures/0 (#19561)
 - ci: update c2v workflow, translate doom on macOS (#19562)
 - strings: add Bulder.write_decimal/1 method (write a decimal number, without additional allocations) (#19625)

@@ -165,11 +165,11 @@ fn (mut app App) process_line(text string) ! {
 		category = .checker
 	} else if is_examples(text) {
 		category = .examples
-		//println("Skipping line (example) $text")
-		//return
+		// println("Skipping line (example) $text")
+		// return
 	} else if is_skip(text) {
 		// Always skip cleanups, typos etc
-		println("Skipping line (cleanup/typo)\n$text\n")
+		println('Skipping line (cleanup/typo)\n${text}\n')
 		if delete_skipped {
 			delete_processed_line_from_log(text)!
 		}
@@ -205,10 +205,10 @@ fn (mut app App) process_line(text string) ! {
 		delete_processed_line_from_log(text)!
 		return
 	} else {
-		println("Skipping line\n$text\n")
-		if delete_skipped {
-			delete_processed_line_from_log(text)!
-		}
+		println('Skipping line (unknown category)\n${text}\n')
+		// if delete_skipped {
+		// delete_processed_line_from_log(text)!
+		//}
 		return
 	}
 	println('process_line: cat=${category} "${text}"')
@@ -398,6 +398,9 @@ const stdlib_strings = [
 	'log:',
 	'flag:',
 	'regex:',
+	'tmpl:',
+	'hash:',
+	'stbi:',
 ]
 
 fn is_stdlib(text string) bool {
@@ -418,6 +421,7 @@ fn is_orm(text string) bool {
 
 const cgen_strings = [
 	'cgen:',
+	'cgen,',
 	'v.gen.c:',
 ]
 
