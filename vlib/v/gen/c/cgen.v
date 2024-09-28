@@ -7347,7 +7347,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		.struct_ {
 			mut has_none_zero := false
 			info := sym.info as ast.Struct
-			mut init_str := if info.is_anon && !g.inside_global_decl {
+			mut init_str := if (info.is_anon && !g.inside_global_decl)
+				|| g.pref.ccompiler_type == .tinyc {
 				'(${g.typ(typ)}){'
 			} else {
 				'{'
