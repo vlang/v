@@ -1,0 +1,10 @@
+@[has_globals]
+module main
+
+__global (
+	array [16]int
+)
+
+fn main() {
+	assert array.len == 16
+}

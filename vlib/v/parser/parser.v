@@ -18,6 +18,9 @@ import strings
 const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
 	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
 
+const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32',
+	'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread', 'array']
+
 @[minify]
 pub struct Parser {
 pub:
@@ -4059,6 +4062,11 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 		pos := p.tok.pos()
 		name := p.check_name()
+
+		if name in reserved_type_names {
+			p.error_with_pos('invalid use of reserved type `${name}` as a global name',
+				pos)
+		}
 		has_expr := p.tok.kind == .assign
 		mut expr := ast.empty_expr
 		mut typ := ast.void_type
