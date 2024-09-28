@@ -2018,44 +2018,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('`void` type has no methods', node.left.pos())
 		return ast.void_type
 	}
-	if final_left_sym.kind == .array {
-		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
-			|| (left_sym.kind == .alias && !left_sym.has_method(method_name))) {
-			return c.array_builtin_method_call(mut node, left_type)
-		} else if method_name in ['insert', 'prepend'] {
-			if method_name == 'insert' {
-				if node.args.len != 2 {
-					c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
-						node.pos)
-					return ast.void_type
-				} else {
-					arg_type := c.expr(mut node.args[0].expr)
-					if arg_type !in [ast.int_type, ast.int_literal_type] {
-						c.error('the first argument of `array.insert()` should be integer',
-							node.args[0].expr.pos())
-						return ast.void_type
-					}
-				}
-			} else {
-				if node.args.len != 1 {
-					c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
-						node.pos)
-					return ast.void_type
-				}
-			}
-			info := final_left_sym.info as ast.Array
-			mut arg_expr := if method_name == 'insert' {
-				node.args[1].expr
-			} else {
-				node.args[0].expr
-			}
-			arg_type := c.expr(mut arg_expr)
-			arg_sym := c.table.sym(arg_type)
-			if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-				c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
-					arg_expr.pos())
-			}
-		}
+	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
@@ -3166,6 +3131,52 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			// position of `it` doesn't matter
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
+	} else if method_name in ['insert', 'prepend'] {
+		if method_name == 'insert' {
+			if node.args.len != 2 {
+				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+					node.pos)
+				return ast.void_type
+			} else {
+				arg_type := c.expr(mut node.args[0].expr)
+				if arg_type !in [ast.int_type, ast.int_literal_type] {
+					c.error('the first argument of `array.insert()` should be integer',
+						node.args[0].expr.pos())
+					return ast.void_type
+				}
+			}
+		} else {
+			if node.args.len != 1 {
+				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+					node.pos)
+				return ast.void_type
+			}
+		}
+		info := left_sym.info as ast.Array
+		mut arg_expr := if method_name == 'insert' {
+			node.args[1].expr
+		} else {
+			node.args[0].expr
+		}
+		arg_type := c.expr(mut arg_expr)
+		arg_sym := c.table.sym(arg_type)
+		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
+			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.receiver_type = ast.array_type.ref()
+		node.return_type = ast.void_type
+		if method := c.table.find_method(left_sym, method_name) {
+			for i, arg in node.args {
+				c.check_expected_call_arg(arg.typ, method.params[i + 1].typ, node.language,
+					arg) or {
+					c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
+						node.args[i].pos)
+				}
+			}
+		}
 	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
 		if node.args.len != 1 {
 			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
@@ -3209,7 +3220,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				node.receiver_type = node.left_type
 			}
 		}
-	} else if method_name == 'sort' || method_name == 'sorted' {
+	} else if method_name in ['sort', 'sorted'] {
 		if method_name == 'sort' {
 			if node.left is ast.CallExpr {
 				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
