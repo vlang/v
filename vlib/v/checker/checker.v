@@ -33,6 +33,9 @@ pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map'
 	'pop', 'delete']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
+pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
+	'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread',
+	'array']
 pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
 	'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
 pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
@@ -2302,6 +2305,11 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 	}
 	for mut field in node.fields {
 		c.check_valid_snake_case(field.name, 'global name', field.pos)
+
+		if field.name in global_reserved_type_names {
+			c.error('invalid use of reserved type `${field.name}` as a global name', field.pos)
+		}
+
 		if field.name in c.global_names {
 			c.error('duplicate global `${field.name}`', field.pos)
 		}

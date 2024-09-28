@@ -4062,11 +4062,6 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 		pos := p.tok.pos()
 		name := p.check_name()
-
-		if name in reserved_type_names {
-			p.error_with_pos('invalid use of reserved type `${name}` as a global name',
-				pos)
-		}
 		has_expr := p.tok.kind == .assign
 		mut expr := ast.empty_expr
 		mut typ := ast.void_type
@@ -4114,7 +4109,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_exported: is_exported
 		}
 		fields << field
-		p.table.global_scope.register(field)
+		if name !in reserved_type_names {
+			p.table.global_scope.register(field)
+		}
 		comments = []
 		if !is_block {
 			break

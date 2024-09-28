@@ -6,5 +6,4 @@ __global (
 )
 
 fn main() {
-	assert array.len == 16
 }
