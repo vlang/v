@@ -280,6 +280,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			skip_files << 'vlib/crypto/ecdsa/ecdsa_test.v'
 			skip_files << 'vlib/x/ttf/ttf_test.v'
+			skip_files << 'vlib/encoding/iconv/iconv_test.v' // needs libiconv to be installed
 		}
 		if github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'

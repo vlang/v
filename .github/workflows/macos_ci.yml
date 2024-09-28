@@ -63,6 +63,8 @@ jobs:
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Install iconv for encoding.iconv
+        run: brew install libiconv
       - name: Test pure V math module
         run: v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
