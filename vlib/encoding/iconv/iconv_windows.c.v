@@ -26,6 +26,7 @@ const codepage_alias = [
     Codepage_Alias{1200, 'UCS2LE'},
     Codepage_Alias{1200, 'UCS-2LE'},
     Codepage_Alias{1200, 'UCS-2-INTERNAL'},
+    Codepage_Alias{1200, 'UNICODE'},	// for iconv 
 
     Codepage_Alias{1201, 'CP1201'},
     Codepage_Alias{1201, 'UTF16BE'},
@@ -505,8 +506,8 @@ fn name_to_codepage(name string) int {
 }
 
 // conv convert `fromcode` encoding string to `tocode` encoding string
-fn conv(tocode string, fromcode string, src &u8, src_len int) []u8 {
-	if isnil(src) || src_len <= 0 {
+fn conv(tocode string, fromcode string, mut src []u8) []u8 {
+	if src.len == 0 {
 		return []u8{}
 	}
 	src_codepage := name_to_codepage(fromcode)
@@ -516,21 +517,48 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) []u8 {
 	}
 	if src_codepage == dst_codepage {
 		// clone src
-		mut dst_buf := []u8{len: src_len}
-		unsafe { vmemcpy(dst_buf.data, src, src_len) }
+		mut dst_buf := []u8{len: src.len}
+		unsafe { vmemcpy(dst_buf.data, src.data, src.len) }
 		return dst_buf
 	}
-	// src codepage => Unicode
-	unicode_len := C.MultiByteToWideChar(src_codepage, 0, src, src_len, 0, 0)
-	mut unicode := []u8{len: unicode_len}
-	C.MultiByteToWideChar(src_codepage, 0, src, src_len, unicode.data, unicode.len)
 
+	// Because MultiByteToWideChar need a tail zero to detect the end of string
+	// add tail zero
+	src << [u8(0), 0, 0, 0]
+	mut unicode := []u8{}
+	// src codepage => Unicode
+	if src_codepage != 1200 { // UNICODE/UTF16
+		char_num := C.MultiByteToWideChar(src_codepage, 0, src.data, -1, 0, 0)
+		unicode.grow_len(char_num * 2) // every char take 2 bytes
+		C.MultiByteToWideChar(src_codepage, 0, src.data, -1, unicode.data, unicode.len)
+	} else {
+		unicode = src.clone()
+	}
+	defer {
+		unsafe { unicode.free() }
+	}
+
+	if unicode.len == 0 {
+		return []u8{}
+	}
+	unicode.pop()
+
+	mut dst := []u8{}
 	// Unicode => dst codepage
-	dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, 0, 0,
-		0, 0)
-	mut dst := []u8{len: dst_len}
-	C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data, dst.len,
-		0, 0)
-	unsafe { unicode.free() }
+	if dst_codepage != 1200 { // UNICODE/UTF16
+		dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, -1, 0, 0, 0, 0)
+		dst.grow_len(dst_len)
+		C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data, dst.len,
+			0, 0)
+	} else {
+		dst = unicode.clone()
+	}
+
+	if dst.len == 0 {
+		unsafe { dst.free() }
+		return []u8{}
+	}
+	// remove tail zero
+	dst.pop()
 	return dst
 }
