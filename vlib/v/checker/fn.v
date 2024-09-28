@@ -1282,7 +1282,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expected_type = expected_type
 			}
 			typ := if already_checked && mut call_arg.expr is ast.CallExpr {
-				call_arg.expr.return_type
+				node.args[i].typ
 			} else {
 				c.expr(mut call_arg.expr)
 			}
