@@ -809,7 +809,11 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 			data << expr
 		}
 		ast.SelectorExpr {
-			data << expr
+			if g.comptime.is_comptime_selector_field_name(expr, 'name') {
+				fields << g.comptime.comptime_for_field_value.name
+			} else {
+				data << expr
+			}
 		}
 		ast.BoolLiteral {
 			data << expr
