@@ -1,6 +1,6 @@
 module iconv
 
-// Module iconv provides functions convert between vstring(UTF8) to/from different encodings.
+// Module iconv provides functions to convert between vstring(UTF8) and other encodings.
 
 // vstring_to_encoding convert V string `str` to `tocode` encoding string
 // tips: use `iconv --list` check for supported encodings
