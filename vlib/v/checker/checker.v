@@ -3191,6 +3191,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		return to_type
 	}
 
+	type_str := c.table.type_to_str(to_type)
+	type_rm_ptr := type_str.replace('&', '')
+	if type_rm_ptr.len == 1 && type_rm_ptr.starts_with_capital() {
+		c.error('unknown type `${to_sym.name}`', node.pos)
+	}
+
 	if to_sym.language != .c {
 		c.ensure_type_exists(to_type, node.pos)
 
