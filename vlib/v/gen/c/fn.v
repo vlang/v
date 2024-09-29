@@ -1572,22 +1572,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
-	if left_sym.kind == .array || (final_left_sym.kind == .array
-		&& node.name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'insert', 'prepend']) {
+	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
 		if g.gen_array_method_call(node, left_type) {
 			return
 		}
-	} else if left_sym.kind == .array_fixed && node.name == 'wait' {
-		g.gen_fixed_array_wait(node)
-		return
 	}
-
-	if final_left_sym.kind == .map {
+	if final_left_sym.kind == .map && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
 		if g.gen_map_method_call(node, left_type, final_left_sym) {
 			return
 		}
 	}
-
+	if left_sym.kind == .array_fixed && node.name == 'wait' {
+		g.gen_fixed_array_wait(node)
+		return
+	}
 	if left_sym.kind in [.sum_type, .interface_] {
 		prefix_name := if left_sym.kind == .sum_type { 'sumtype' } else { 'interface' }
 		match node.name {
@@ -1627,12 +1625,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
-		if node.name in ['last', 'first', 'pop'] {
-			return_type_str := g.typ(node.return_type)
-			cast_n++
-			g.write('(*(${return_type_str}*)')
-		}
+		&& node.name in ['last', 'first', 'pop'] {
+		return_type_str := g.typ(node.return_type)
+		cast_n++
+		g.write('(*(${return_type_str}*)')
 	}
 	mut name := util.no_dots('${receiver_type_name}_${node.name}')
 	mut array_depth := -1
