@@ -311,6 +311,9 @@ hr {
 .doc-nav > .content a:hover {
 	text-decoration: underline;
 }
+.doc-nav .search {
+	overflow: scroll;
+}
 .doc-nav .search.hidden {
 	display: none;
 }
