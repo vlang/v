@@ -3,6 +3,7 @@ module iconv
 // Module iconv provides functions convert between vstring(UTF8) to/from different encodings.
 
 #include <iconv.h>
+#flag darwin -liconv
 
 fn C.iconv_open(tocode &u8, fromcode &u8) voidptr
 fn C.iconv_close(cd voidptr) int
