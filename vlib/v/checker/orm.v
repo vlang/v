@@ -566,7 +566,8 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 			|| expr.left is ast.PrefixExpr {
 			c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names,
 				expr.left)
-		} else {
+		} else if !(expr.left is ast.SelectorExpr
+			&& c.comptime.is_comptime_selector_field_name(expr.left, 'name')) {
 			c.orm_error(has_no_field_error, expr.left.pos())
 		}
 
