@@ -1002,13 +1002,11 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.write(', ')
 			g.expr(node.args[0].expr)
 			g.write(')')
-			return true
 		}
 		'free', 'clear' {
 			g.write('map_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
-			return true
 		}
 		'delete' {
 			left_info := left_sym.info as ast.Map
@@ -1018,58 +1016,53 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.write(', &(${elem_type_str}[]){')
 			g.expr(node.args[0].expr)
 			g.write('})')
-			return true
 		}
-		else {}
+		else {
+			return false
+		}
 	}
-	return false
+	return true
 }
 
-fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool {
+fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
+	mut noscan := ''
+	array_info := left_sym.info as ast.Array
+	if node.name in ['pop', 'push', 'push_many', 'reverse', 'grow_cap', 'grow_len'] {
+		noscan = g.check_noscan(array_info.elem_type)
+	}
 	match node.name {
 		'filter' {
 			g.gen_array_filter(node)
-			return true
 		}
 		'sort' {
 			g.gen_array_sort(node)
-			return true
 		}
 		'sorted' {
 			g.gen_array_sorted(node)
-			return true
 		}
 		'insert' {
 			g.gen_array_insert(node)
-			return true
 		}
 		'map' {
 			g.gen_array_map(node)
-			return true
 		}
 		'prepend' {
 			g.gen_array_prepend(node)
-			return true
 		}
 		'contains' {
 			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)
-			return true
 		}
 		'index' {
 			g.gen_array_index(node)
-			return true
 		}
 		'wait' {
 			g.gen_array_wait(node)
-			return true
 		}
 		'any' {
 			g.gen_array_any(node)
-			return true
 		}
 		'all' {
 			g.gen_array_all(node)
-			return true
 		}
 		'delete', 'drop', 'delete_last' {
 			g.write('array_${node.name}(')
@@ -1079,11 +1072,69 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool
 				g.expr(node.args[0].expr)
 			}
 			g.write(')')
-			return true
 		}
-		else {}
+		'first', 'last', 'pop' {
+			return_type_str := g.typ(node.return_type)
+			g.write('(*(${return_type_str}*)array_${node.name}${noscan}(')
+			if node.name == 'pop' {
+				g.gen_arg_from_type(left_type, node.left)
+			} else {
+				if node.left_type.is_ptr() {
+					g.write('(')
+					g.write('*'.repeat(node.left_type.nr_muls()))
+					g.expr(node.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
+				if left_type.has_flag(.shared_f) {
+					g.write('.val')
+				}
+			}
+			g.write('))')
+		}
+		'clone', 'repeat' {
+			array_depth := g.get_array_depth(array_info.elem_type)
+			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }
+			mut is_range_slice := false
+			if node.left is ast.IndexExpr {
+				if node.left.index is ast.RangeExpr {
+					if node.name == 'clone' {
+						is_range_slice = true
+					}
+				}
+			}
+			to_static := if is_range_slice { '_static' } else { '' }
+			g.write('array_${node.name}${to_static}${to_depth}(')
+			if node.name == 'clone' {
+				if is_range_slice {
+					if node.left_type.is_ptr() {
+						g.write('*'.repeat(node.left_type.nr_muls()))
+					}
+					g.expr(node.left)
+				} else {
+					g.gen_arg_from_type(left_type, node.left)
+				}
+			} else {
+				if node.left_type.is_ptr() {
+					g.write('*'.repeat(node.left_type.nr_muls()))
+				}
+				g.expr(node.left)
+			}
+			if node.name == 'repeat' {
+				g.write(', ')
+				g.expr(node.args[0].expr)
+			}
+			if array_depth >= 0 {
+				g.write(', ${array_depth}')
+			}
+			g.write(')')
+		}
+		else {
+			return false
+		}
 	}
-	return false
+	return true
 }
 
 fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
@@ -1573,7 +1624,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
-		if g.gen_array_method_call(node, left_type) {
+		if g.gen_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
 	}
@@ -1624,27 +1675,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
-	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['last', 'first', 'pop'] {
-		return_type_str := g.typ(node.return_type)
-		cast_n++
-		g.write('(*(${return_type_str}*)')
-	}
 	mut name := util.no_dots('${receiver_type_name}_${node.name}')
-	mut array_depth := -1
-	mut noscan := ''
-	if left_sym.info is ast.Array {
-		needs_depth := node.name in ['clone', 'repeat']
-		if needs_depth {
-			array_depth = g.get_array_depth(left_sym.info.elem_type)
-		}
-		maybe_noscan := needs_depth
-			|| node.name in ['pop', 'push', 'push_many', 'reverse', 'grow_cap', 'grow_len']
-		if maybe_noscan {
-			info := left_sym.info as ast.Array
-			noscan = g.check_noscan(info.elem_type)
-		}
-	} else if left_sym.kind == .chan && node.name in ['close', 'try_pop', 'try_push'] {
+	if left_sym.kind == .chan && node.name in ['close', 'try_pop', 'try_push'] {
 		name = 'sync__Channel_${node.name}'
 	} else if final_left_sym.kind == .map && node.name in ['keys', 'values'] {
 		name = 'map_${node.name}'
@@ -1658,24 +1690,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			panic('cgen: obf name "${key}" not found, this should never happen')
 		}
 	}
-	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
-	// if so, then instead of calling array_clone(&array_slice(...))
-	// call array_clone_static(array_slice(...))
-	mut is_range_slice := false
-	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
-		if node.left is ast.IndexExpr {
-			idx := node.left.index
-			if idx is ast.RangeExpr {
-				// expr is arr[range].clone()
-				// use array_clone_static instead of array_clone
-				if node.name == 'clone' {
-					name = util.no_dots('${receiver_type_name}_${node.name}_static')
-				}
-				is_range_slice = true
-			}
-		}
-	}
-
 	if node.concrete_types.len > 0 {
 		mut rec_len := 0
 		if node.left_type.has_flag(.generic) {
@@ -1703,7 +1717,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			name = g.generic_fn_name(concrete_types, name)
 		}
 	}
-	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
 		if left_type.is_int_valptr() {
@@ -1717,22 +1730,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_expr_to_string(node.left, left_type)
 		return
 	} else {
-		if left_sym.kind == .array {
-			if array_depth >= 0 {
-				name = name + '_to_depth'
-			}
-			g.write('${name}${noscan}(')
+		if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
+			g.gen_trace_call(node, name)
+			g.write('(')
 		} else {
-			if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
-				g.gen_trace_call(node, name)
-				g.write('(')
-			} else {
-				g.write('${name}(')
-			}
+			g.write('${name}(')
 		}
 	}
-	is_array_method_first_last_repeat := final_left_sym.kind == .array
-		&& node.name in ['first', 'last', 'repeat']
 	is_interface := left_sym.kind == .interface_
 		&& g.table.sym(node.receiver_type).kind == .interface_
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
@@ -1740,29 +1744,21 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
-		if !is_range_slice {
-			if !node.left.is_lvalue() {
-				g.write('ADDR(${rec_cc_type}, ')
-				cast_n++
-			} else if node.left is ast.Ident && g.table.is_interface_smartcast(node.left.obj) {
-				g.write('ADDR(${rec_cc_type}, ')
-				cast_n++
-			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
-				&& g.typ(left_type) == g.typ(node.receiver_type)) {
-				g.write('&')
-			}
-		} else {
-			if node.name != 'clone' && !left_type.is_ptr() {
-				g.write('ADDR(${rec_cc_type}, ')
-				cast_n++
-			}
+		if !node.left.is_lvalue() {
+			g.write('ADDR(${rec_cc_type}, ')
+			cast_n++
+		} else if node.left is ast.Ident && g.table.is_interface_smartcast(node.left.obj) {
+			g.write('ADDR(${rec_cc_type}, ')
+			cast_n++
+		} else if !(left_type.has_flag(.shared_f) && g.typ(left_type) == g.typ(node.receiver_type)) {
+			g.write('&')
 		}
 	} else if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_types.len == 0 {
 		if !left_type.has_flag(.shared_f) {
 			g.write('*'.repeat(left_type.nr_muls()))
 		}
-	} else if !is_range_slice && node.from_embed_types.len == 0 && node.name != 'str' {
+	} else if node.from_embed_types.len == 0 && node.name != 'str' {
 		diff := left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
@@ -1779,15 +1775,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		mut is_array := left_sym.kind == .array
-		if !is_array && left_sym.kind == .alias {
-			unaliased_type := g.table.unaliased_type(left_type)
-			unaliased_sym := g.table.sym(unaliased_type)
-			is_array = unaliased_sym.kind == .array
-		}
-		if is_array && node.left.is_auto_deref_var() && is_array_method_first_last_repeat {
-			g.write('*')
-		}
 		if node.left is ast.MapInit {
 			g.write('(map[]){')
 			g.expr(node.left)
@@ -1865,8 +1852,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write(embed_name)
 			}
 		}
-		if left_type.has_flag(.shared_f) && (g.typ(left_type) != g.typ(node.receiver_type)
-			|| is_array_method_first_last_repeat) {
+		if left_type.has_flag(.shared_f) && g.typ(left_type) != g.typ(node.receiver_type) {
 			g.write('->val')
 		}
 	}
@@ -1879,9 +1865,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(', ')
 	}
 	g.call_args(node)
-	if array_depth >= 0 {
-		g.write(', ${array_depth}')
-	}
 	g.write(')')
 	if node.return_type != 0 && !node.return_type.has_option_or_result()
 		&& g.table.final_sym(node.return_type).kind == .array_fixed {
