@@ -4106,7 +4106,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_exported: is_exported
 		}
 		fields << field
-		p.table.global_scope.register(field)
+		if name !in ast.global_reserved_type_names {
+			p.table.global_scope.register(field)
+		}
 		comments = []
 		if !is_block {
 			break
