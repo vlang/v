@@ -1690,6 +1690,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			panic('cgen: obf name "${key}" not found, this should never happen')
 		}
 	}
+	mut is_range_slice := false
+	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
+		if node.left is ast.IndexExpr {
+			idx := node.left.index
+			if idx is ast.RangeExpr {
+				is_range_slice = true
+			}
+		}
+	}
 	if node.concrete_types.len > 0 {
 		mut rec_len := 0
 		if node.left_type.has_flag(.generic) {
@@ -1744,21 +1753,26 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
-		if !node.left.is_lvalue() {
-			g.write('ADDR(${rec_cc_type}, ')
-			cast_n++
-		} else if node.left is ast.Ident && g.table.is_interface_smartcast(node.left.obj) {
-			g.write('ADDR(${rec_cc_type}, ')
-			cast_n++
-		} else if !(left_type.has_flag(.shared_f) && g.typ(left_type) == g.typ(node.receiver_type)) {
-			g.write('&')
+		if !is_range_slice {
+			if !node.left.is_lvalue() {
+				g.write('ADDR(${rec_cc_type}, ')
+				cast_n++
+			} else if !(left_type.has_flag(.shared_f)
+				&& g.typ(left_type) == g.typ(node.receiver_type)) {
+				g.write('&')
+			}
+		} else {
+			if !left_type.is_ptr() {
+				g.write('ADDR(${rec_cc_type}, ')
+				cast_n++
+			}
 		}
 	} else if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_types.len == 0 {
 		if !left_type.has_flag(.shared_f) {
 			g.write('*'.repeat(left_type.nr_muls()))
 		}
-	} else if node.from_embed_types.len == 0 && node.name != 'str' {
+	} else if !is_range_slice && node.from_embed_types.len == 0 && node.name != 'str' {
 		diff := left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
