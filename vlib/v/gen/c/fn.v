@@ -987,6 +987,11 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 	} else {
 		if node_type.is_ptr() {
 			g.expr(node)
+		} else if !node.is_lvalue()
+			|| (node is ast.Ident && g.table.is_interface_smartcast(node.obj)) {
+			g.write('ADDR(${g.typ(node_type)}, ')
+			g.expr(node)
+			g.write(')')
 		} else {
 			g.write('&')
 			g.expr(node)
