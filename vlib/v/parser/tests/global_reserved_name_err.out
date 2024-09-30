@@ -1,0 +1,7 @@
+vlib/v/parser/tests/global_reserved_name_err.vv:5:2: error: invalid use of reserved type `array` as a global name
+    3 | 
+    4 | __global (
+    5 |     array [16]int
+      |     ~~~~~
+    6 | )
+    7 |

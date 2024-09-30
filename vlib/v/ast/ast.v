@@ -10,6 +10,11 @@ import v.util
 import v.pref
 import sync.stdatomic
 
+// V type names that cannot be used as global var name
+pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
+	'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread',
+	'array']
+
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 // pub const int_type_name = $if amd64 || arm64 {

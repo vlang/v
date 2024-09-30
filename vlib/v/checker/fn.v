@@ -118,6 +118,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			node.return_type_pos)
 	}
 	if node.return_type != ast.void_type {
+		if node.language == .v && node.return_type.clear_option_and_result() == ast.any_type {
+			c.error('cannot use type `any` here', node.return_type_pos)
+		}
 		if ct_attr_idx := node.attrs.find_comptime_define() {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()
 			c.error('only functions that do NOT return values can have `[if ${sexpr}]` tags',
@@ -1282,7 +1285,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expected_type = expected_type
 			}
 			typ := if already_checked && mut call_arg.expr is ast.CallExpr {
-				call_arg.expr.return_type
+				node.args[i].typ
 			} else {
 				c.expr(mut call_arg.expr)
 			}
@@ -2015,44 +2018,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('`void` type has no methods', node.left.pos())
 		return ast.void_type
 	}
-	if final_left_sym.kind == .array {
-		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
-			|| (left_sym.kind == .alias && !left_sym.has_method(method_name))) {
-			return c.array_builtin_method_call(mut node, left_type)
-		} else if method_name in ['insert', 'prepend'] {
-			if method_name == 'insert' {
-				if node.args.len != 2 {
-					c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
-						node.pos)
-					return ast.void_type
-				} else {
-					arg_type := c.expr(mut node.args[0].expr)
-					if arg_type !in [ast.int_type, ast.int_literal_type] {
-						c.error('the first argument of `array.insert()` should be integer',
-							node.args[0].expr.pos())
-						return ast.void_type
-					}
-				}
-			} else {
-				if node.args.len != 1 {
-					c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
-						node.pos)
-					return ast.void_type
-				}
-			}
-			info := final_left_sym.info as ast.Array
-			mut arg_expr := if method_name == 'insert' {
-				node.args[1].expr
-			} else {
-				node.args[0].expr
-			}
-			arg_type := c.expr(mut arg_expr)
-			arg_sym := c.table.sym(arg_type)
-			if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-				c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
-					arg_expr.pos())
-			}
-		}
+	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
@@ -2545,27 +2513,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						got_arg_typ = got_utyp
 					} else {
 						continue
-					}
-				}
-			}
-		}
-		if left_sym.info is ast.Array && method_name in ['sort_with_compare', 'sorted_with_compare'] {
-			elem_typ := left_sym.info.elem_type
-			arg_sym := c.table.sym(arg.typ)
-			if arg_sym.kind == .function {
-				func_info := arg_sym.info as ast.FnType
-				if func_info.func.params.len == 2 {
-					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
-						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
-							func_info.func.params[0].type_pos)
-					}
-					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
-						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
-							func_info.func.params[1].type_pos)
 					}
 				}
 			}
@@ -3184,11 +3131,96 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			// position of `it` doesn't matter
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
-	} else if node.args.len == 1 && method_name == 'sorted_with_compare' {
-		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
-			c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+	} else if method_name in ['insert', 'prepend'] {
+		if method_name == 'insert' {
+			if node.args.len != 2 {
+				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+					node.pos)
+				return ast.void_type
+			} else {
+				arg_type := c.expr(mut node.args[0].expr)
+				if arg_type !in [ast.int_type, ast.int_literal_type] {
+					c.error('the first argument of `array.insert()` should be integer',
+						node.args[0].expr.pos())
+					return ast.void_type
+				}
+			}
+		} else {
+			if node.args.len != 1 {
+				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+					node.pos)
+				return ast.void_type
+			}
 		}
-	} else if method_name == 'sort' || method_name == 'sorted' {
+		info := left_sym.info as ast.Array
+		mut arg_expr := if method_name == 'insert' {
+			node.args[1].expr
+		} else {
+			node.args[0].expr
+		}
+		arg_type := c.expr(mut arg_expr)
+		arg_sym := c.table.sym(arg_type)
+		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
+			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.receiver_type = ast.array_type.ref()
+		node.return_type = ast.void_type
+		if method := c.table.find_method(left_sym, method_name) {
+			for i, arg in node.args {
+				c.check_expected_call_arg(arg.typ, method.params[i + 1].typ, node.language,
+					arg) or {
+					c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
+						node.args[i].pos)
+				}
+			}
+		}
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if node.args.len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+		} else {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+			}
+			arg_type := c.expr(mut node.args[0].expr)
+			arg_sym := c.table.sym(arg_type)
+			if arg_sym.kind == .function {
+				func_info := arg_sym.info as ast.FnType
+				if func_info.func.params.len == 2 {
+					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[0].type_pos)
+					}
+					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[1].type_pos)
+					}
+				}
+			}
+			node.args[0].typ = arg_type
+			if method := c.table.find_method(left_sym, method_name) {
+				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
+					node.args[0]) or {
+					c.error('${err.msg()} in argument 1 to `${left_sym.name}.${method_name}`',
+						node.args[0].pos)
+				}
+			}
+			if method_name == 'sort_with_compare' {
+				node.return_type = ast.void_type
+				node.receiver_type = node.left_type.ref()
+			} else {
+				node.return_type = node.left_type
+				node.receiver_type = node.left_type
+			}
+		}
+	} else if method_name in ['sort', 'sorted'] {
 		if method_name == 'sort' {
 			if node.left is ast.CallExpr {
 				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
@@ -3300,8 +3332,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.ensure_same_array_return_type(mut node, left_type)
 	} else if method_name == 'sorted' {
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name == 'sorted_with_compare' {
-		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if method_name == 'sorted_with_compare' {
+			c.ensure_same_array_return_type(mut node, left_type)
+		}
 		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
 		// error: incompatible function pointer types passing
 		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')

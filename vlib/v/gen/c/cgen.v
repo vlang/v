@@ -20,13 +20,13 @@ import sync.pool
 // in C++, or have special meaning in V, thus need escaping too. `small`
 // should not be needed, but see:
 // https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
-const c_reserved = ['array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class', 'complex',
-	'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit',
-	'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link',
-	'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return', 'short',
-	'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'union',
-	'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small', 'stdout', 'stdin',
-	'stderr', 'far', 'near', 'huge', 'requires']
+const c_reserved = ['asm', 'array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class',
+	'complex', 'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error',
+	'exit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int',
+	'link', 'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return',
+	'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
+	'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small', 'stdout',
+	'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
 const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 // same order as in token.Kind
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -3711,10 +3711,20 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if g.is_option_auto_heap {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
+				mut has_slice_call := false
 				if !g.is_option_auto_heap && !(g.is_amp && node.right.is_auto_deref_var()) {
-					g.write(node.op.str())
+					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
+						&& node.right.index is ast.RangeExpr
+					if has_slice_call {
+						g.write('ADDR(${g.typ(node.right_type)}, ')
+					} else {
+						g.write(node.op.str())
+					}
 				}
 				g.expr(node.right)
+				if has_slice_call {
+					g.write(')')
+				}
 				if g.is_option_auto_heap {
 					g.write('.data')
 				}

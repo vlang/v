@@ -1389,6 +1389,12 @@ pub fn (t &Table) is_interface_var(var ScopeObject) bool {
 		&& t.sym(var.smartcasts.last()).kind != .interface_
 }
 
+@[inline]
+pub fn (t &Table) is_interface_smartcast(var ScopeObject) bool {
+	return var is Var && var.orig_type != 0 && t.sym(var.orig_type).kind == .interface_
+		&& var.smartcasts.len > 0
+}
+
 // only used for debugging V compiler type bugs
 pub fn (t &Table) known_type_names() []string {
 	mut res := []string{cap: t.type_idxs.len}
