@@ -1017,6 +1017,11 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.expr(node.args[0].expr)
 			g.write('})')
 		}
+		'keys', 'values' {
+			g.write('map_${node.name}(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(')')
+		}
 		else {
 			return false
 		}
@@ -1678,8 +1683,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut name := util.no_dots('${receiver_type_name}_${node.name}')
 	if left_sym.kind == .chan && node.name in ['close', 'try_pop', 'try_push'] {
 		name = 'sync__Channel_${node.name}'
-	} else if final_left_sym.kind == .map && node.name in ['keys', 'values'] {
-		name = 'map_${node.name}'
 	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& node.name != 'str' {
