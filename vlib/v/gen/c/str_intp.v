@@ -191,7 +191,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
-			if g.comptime.is_comptime_var(expr) {
+			if g.comptime.get_ct_type_var(expr) == .smartcast {
 				exp_typ = g.comptime.get_comptime_var_type(expr)
 			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
