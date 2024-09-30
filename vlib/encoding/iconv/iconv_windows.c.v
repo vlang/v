@@ -15,6 +15,7 @@ struct Codepage_Alias {
 }
 
 const codepage_alias = [
+	// NOTE! name field string MUST in uppercase!
 	// vfmt off
 	Codepage_Alias{65001, 'CP65001'},
     Codepage_Alias{65001, 'UTF8'},
@@ -33,7 +34,7 @@ const codepage_alias = [
     Codepage_Alias{1201, 'UTF-16BE'},
     Codepage_Alias{1201, 'UCS2BE'},
     Codepage_Alias{1201, 'UCS-2BE'},
-    Codepage_Alias{1201, 'unicodeFFFE'},
+    Codepage_Alias{1201, 'UNICODEFFFE'},
 
     Codepage_Alias{12000, 'CP12000'},
     Codepage_Alias{12000, 'UTF32LE'},
@@ -283,31 +284,31 @@ const codepage_alias = [
     // 709 		Arabic (ASMO-449+, BCON V4) 
     // 710 		Arabic - Transparent Arabic 
     Codepage_Alias{720, 'DOS-720'}, // Arabic (Transparent ASMO); Arabic (DOS) 
-    Codepage_Alias{737, 'ibm737'}, // OEM Greek (formerly 437G); Greek (DOS) 
-    Codepage_Alias{775, 'ibm775'}, // OEM Baltic; Baltic (DOS) 
-    Codepage_Alias{850, 'ibm850'}, // OEM Multilingual Latin 1; Western European (DOS) 
-    Codepage_Alias{852, 'ibm852'}, // OEM Latin 2; Central European (DOS) 
+    Codepage_Alias{737, 'IBM737'}, // OEM Greek (formerly 437G); Greek (DOS) 
+    Codepage_Alias{775, 'IBM775'}, // OEM Baltic; Baltic (DOS) 
+    Codepage_Alias{850, 'IBM850'}, // OEM Multilingual Latin 1; Western European (DOS) 
+    Codepage_Alias{852, 'IBM852'}, // OEM Latin 2; Central European (DOS) 
     Codepage_Alias{855, 'IBM855'}, // OEM Cyrillic (primarily Russian) 
-    Codepage_Alias{857, 'ibm857'}, // OEM Turkish; Turkish (DOS) 
+    Codepage_Alias{857, 'IBM857'}, // OEM Turkish; Turkish (DOS) 
     Codepage_Alias{858, 'IBM00858'}, // OEM Multilingual Latin 1 + Euro symbol 
     Codepage_Alias{860, 'IBM860'}, // OEM Portuguese; Portuguese (DOS) 
-    Codepage_Alias{861, 'ibm861'}, // OEM Icelandic; Icelandic (DOS) 
+    Codepage_Alias{861, 'IBM861'}, // OEM Icelandic; Icelandic (DOS) 
     Codepage_Alias{862, 'DOS-862'}, // OEM Hebrew; Hebrew (DOS) 
     Codepage_Alias{863, 'IBM863'}, // OEM French Canadian; French Canadian (DOS) 
     Codepage_Alias{864, 'IBM864'}, // OEM Arabic; Arabic (864) 
     Codepage_Alias{865, 'IBM865'}, // OEM Nordic; Nordic (DOS) 
-    Codepage_Alias{866, 'cp866'}, // OEM Russian; Cyrillic (DOS) 
-    Codepage_Alias{869, 'ibm869'}, // OEM Modern Greek; Greek, Modern (DOS) 
+    Codepage_Alias{866, 'CP866'}, // OEM Russian; Cyrillic (DOS) 
+    Codepage_Alias{869, 'IBM869'}, // OEM Modern Greek; Greek, Modern (DOS) 
     Codepage_Alias{870, 'IBM870'}, // IBM EBCDIC Multilingual/ROECE (Latin 2); IBM EBCDIC Multilingual Latin 2 
-    Codepage_Alias{874, 'windows-874'}, // ANSI/OEM Thai (same as 28605, ISO 8859-15); Thai (Windows) 
-    Codepage_Alias{875, 'cp875'}, // IBM EBCDIC Greek Modern 
-    Codepage_Alias{932, 'shift_jis'}, // ANSI/OEM Japanese; Japanese (Shift-JIS) 
-    Codepage_Alias{932, 'shift-jis'}, // alternative name for it 
-    Codepage_Alias{936, 'gb2312'}, // ANSI/OEM Simplified Chinese (PRC, Singapore); Chinese Simplified (GB2312) 
-    Codepage_Alias{949, 'ks_c_5601-1987'}, // ANSI/OEM Korean (Unified Hangul Code) 
-    Codepage_Alias{950, 'big5'}, // ANSI/OEM Traditional Chinese (Taiwan; Hong Kong SAR, PRC); Chinese Traditional (Big5) 
-    Codepage_Alias{950, 'big5hkscs'}, // ANSI/OEM Traditional Chinese (Hong Kong SAR); Chinese Traditional (Big5-HKSCS) 
-    Codepage_Alias{950, 'big5-hkscs'}, // alternative name for it 
+    Codepage_Alias{874, 'WINDOWS-874'}, // ANSI/OEM Thai (same as 28605, ISO 8859-15); Thai (Windows) 
+    Codepage_Alias{875, 'CP875'}, // IBM EBCDIC Greek Modern 
+    Codepage_Alias{932, 'SHIFT_JIS'}, // ANSI/OEM Japanese; Japanese (Shift-JIS) 
+    Codepage_Alias{932, 'SHIFT-JIS'}, // alternative name for it 
+    Codepage_Alias{936, 'GB2312'}, // ANSI/OEM Simplified Chinese (PRC, Singapore); Chinese Simplified (GB2312) 
+    Codepage_Alias{949, 'KS_C_5601-1987'}, // ANSI/OEM Korean (Unified Hangul Code) 
+    Codepage_Alias{950, 'BIG5'}, // ANSI/OEM Traditional Chinese (Taiwan; Hong Kong SAR, PRC); Chinese Traditional (Big5) 
+    Codepage_Alias{950, 'BIG5HKSCS'}, // ANSI/OEM Traditional Chinese (Hong Kong SAR); Chinese Traditional (Big5-HKSCS) 
+    Codepage_Alias{950, 'BIG5-HKSCS'}, // alternative name for it 
     Codepage_Alias{1026, 'IBM1026'}, // IBM EBCDIC Turkish (Latin 5) 
     Codepage_Alias{1047, 'IBM01047'}, // IBM EBCDIC Latin 1/Open System 
     Codepage_Alias{1140, 'IBM01140'}, // IBM EBCDIC US-Canada (037 + Euro symbol); IBM EBCDIC (US-Canada-Euro) 
@@ -320,49 +321,49 @@ const codepage_alias = [
     Codepage_Alias{1147, 'IBM01147'}, // IBM EBCDIC France (20297 + Euro symbol); IBM EBCDIC (France-Euro) 
     Codepage_Alias{1148, 'IBM01148'}, // IBM EBCDIC International (500 + Euro symbol); IBM EBCDIC (International-Euro) 
     Codepage_Alias{1149, 'IBM01149'}, // IBM EBCDIC Icelandic (20871 + Euro symbol); IBM EBCDIC (Icelandic-Euro) 
-    Codepage_Alias{1200, 'utf-16'}, // Unicode UTF-16, little endian byte order (BMP of ISO 10646); available only to managed applications 
-    Codepage_Alias{1201, 'unicodeFFFE'}, // Unicode UTF-16, big endian byte order; available only to managed applications 
-    Codepage_Alias{1250, 'windows-1250'}, // ANSI Central European; Central European (Windows) 
-    Codepage_Alias{1251, 'windows-1251'}, // ANSI Cyrillic; Cyrillic (Windows) 
-    Codepage_Alias{1252, 'windows-1252'}, // ANSI Latin 1; Western European (Windows) 
-    Codepage_Alias{1253, 'windows-1253'}, // ANSI Greek; Greek (Windows) 
-    Codepage_Alias{1254, 'windows-1254'}, // ANSI Turkish; Turkish (Windows) 
-    Codepage_Alias{1255, 'windows-1255'}, // ANSI Hebrew; Hebrew (Windows) 
-    Codepage_Alias{1256, 'windows-1256'}, // ANSI Arabic; Arabic (Windows) 
-    Codepage_Alias{1257, 'windows-1257'}, // ANSI Baltic; Baltic (Windows) 
-    Codepage_Alias{1258, 'windows-1258'}, // ANSI/OEM Vietnamese; Vietnamese (Windows) 
-    Codepage_Alias{1361, 'Johab'}, // Korean (Johab) 
-    Codepage_Alias{10000, 'macintosh'}, // MAC Roman; Western European (Mac) 
-    Codepage_Alias{10001, 'x-mac-japanese'}, // Japanese (Mac) 
-    Codepage_Alias{10002, 'x-mac-chinesetrad'}, // MAC Traditional Chinese (Big5); Chinese Traditional (Mac) 
-    Codepage_Alias{10003, 'x-mac-korean'}, // Korean (Mac) 
-    Codepage_Alias{10004, 'x-mac-arabic'}, // Arabic (Mac) 
-    Codepage_Alias{10005, 'x-mac-hebrew'}, // Hebrew (Mac) 
-    Codepage_Alias{10006, 'x-mac-greek'}, // Greek (Mac) 
-    Codepage_Alias{10007, 'x-mac-cyrillic'}, // Cyrillic (Mac) 
-    Codepage_Alias{10008, 'x-mac-chinesesimp'}, // MAC Simplified Chinese (GB 2312); Chinese Simplified (Mac) 
-    Codepage_Alias{10010, 'x-mac-romanian'}, // Romanian (Mac) 
-    Codepage_Alias{10017, 'x-mac-ukrainian'}, // Ukrainian (Mac) 
-    Codepage_Alias{10021, 'x-mac-thai'}, // Thai (Mac) 
-    Codepage_Alias{10029, 'x-mac-ce'}, // MAC Latin 2; Central European (Mac) 
-    Codepage_Alias{10079, 'x-mac-icelandic'}, // Icelandic (Mac) 
-    Codepage_Alias{10081, 'x-mac-turkish'}, // Turkish (Mac) 
-    Codepage_Alias{10082, 'x-mac-croatian'}, // Croatian (Mac) 
-    Codepage_Alias{12000, 'utf-32'}, // Unicode UTF-32, little endian byte order; available only to managed applications 
-    Codepage_Alias{12001, 'utf-32BE'}, // Unicode UTF-32, big endian byte order; available only to managed applications 
-	Codepage_Alias{20000, 'x-Chinese_CNS'}, // CNS Taiwan; Chinese Traditional (CNS) 
-    Codepage_Alias{20001, 'x-cp20001'}, // TCA Taiwan 
-    Codepage_Alias{20002, 'x_Chinese-Eten'}, // Eten Taiwan; Chinese Traditional (Eten) 
-    Codepage_Alias{20003, 'x-cp20003'}, // IBM5550 Taiwan 
-    Codepage_Alias{20004, 'x-cp20004'}, // TeleText Taiwan 
-    Codepage_Alias{20005, 'x-cp20005'}, // Wang Taiwan 
-    Codepage_Alias{20105, 'x-IA5'}, // IA5 (IRV International Alphabet No. 5, 7-bit); Western European (IA5) 
-    Codepage_Alias{20106, 'x-IA5-German'}, // IA5 German (7-bit) 
-    Codepage_Alias{20107, 'x-IA5-Swedish'}, // IA5 Swedish (7-bit) 
-    Codepage_Alias{20108, 'x-IA5-Norwegian'}, // IA5 Norwegian (7-bit) 
-    Codepage_Alias{20127, 'us-ascii'}, // US-ASCII (7-bit) 
-    Codepage_Alias{20261, 'x-cp20261'}, // T.61 
-    Codepage_Alias{20269, 'x-cp20269'}, // ISO 6937 Non-Spacing Accent 
+    Codepage_Alias{1200, 'UTF-16'}, // Unicode UTF-16, little endian byte order (BMP of ISO 10646); available only to managed applications 
+    Codepage_Alias{1201, 'UNICODEFFFE'}, // Unicode UTF-16, big endian byte order; available only to managed applications 
+    Codepage_Alias{1250, 'WINDOWS-1250'}, // ANSI Central European; Central European (Windows) 
+    Codepage_Alias{1251, 'WINDOWS-1251'}, // ANSI Cyrillic; Cyrillic (Windows) 
+    Codepage_Alias{1252, 'WINDOWS-1252'}, // ANSI Latin 1; Western European (Windows) 
+    Codepage_Alias{1253, 'WINDOWS-1253'}, // ANSI Greek; Greek (Windows) 
+    Codepage_Alias{1254, 'WINDOWS-1254'}, // ANSI Turkish; Turkish (Windows) 
+    Codepage_Alias{1255, 'WINDOWS-1255'}, // ANSI Hebrew; Hebrew (Windows) 
+    Codepage_Alias{1256, 'WINDOWS-1256'}, // ANSI Arabic; Arabic (Windows) 
+    Codepage_Alias{1257, 'WINDOWS-1257'}, // ANSI Baltic; Baltic (Windows) 
+    Codepage_Alias{1258, 'WINDOWS-1258'}, // ANSI/OEM Vietnamese; Vietnamese (Windows) 
+    Codepage_Alias{1361, 'JOHAB'}, // Korean (Johab) 
+    Codepage_Alias{10000, 'MACINTOSH'}, // MAC Roman; Western European (Mac) 
+    Codepage_Alias{10001, 'X-MAC-JAPANESE'}, // Japanese (Mac) 
+    Codepage_Alias{10002, 'X-MAC-CHINESETRAD'}, // MAC Traditional Chinese (Big5); Chinese Traditional (Mac) 
+    Codepage_Alias{10003, 'X-MAC-KOREAN'}, // Korean (Mac) 
+    Codepage_Alias{10004, 'X-MAC-ARABIC'}, // Arabic (Mac) 
+    Codepage_Alias{10005, 'X-MAC-HEBREW'}, // Hebrew (Mac) 
+    Codepage_Alias{10006, 'X-MAC-GREEK'}, // Greek (Mac) 
+    Codepage_Alias{10007, 'X-MAC-CYRILLIC'}, // Cyrillic (Mac) 
+    Codepage_Alias{10008, 'X-MAC-CHINESESIMP'}, // MAC Simplified Chinese (GB 2312); Chinese Simplified (Mac) 
+    Codepage_Alias{10010, 'X-MAC-ROMANIAN'}, // Romanian (Mac) 
+    Codepage_Alias{10017, 'X-MAC-UKRAINIAN'}, // Ukrainian (Mac) 
+    Codepage_Alias{10021, 'X-MAC-THAI'}, // Thai (Mac) 
+    Codepage_Alias{10029, 'X-MAC-CE'}, // MAC Latin 2; Central European (Mac) 
+    Codepage_Alias{10079, 'X-MAC-ICELANDIC'}, // Icelandic (Mac) 
+    Codepage_Alias{10081, 'X-MAC-TURKISH'}, // Turkish (Mac) 
+    Codepage_Alias{10082, 'X-MAC-CROATIAN'}, // Croatian (Mac) 
+    Codepage_Alias{12000, 'UTF-32'}, // Unicode UTF-32, little endian byte order; available only to managed applications 
+    Codepage_Alias{12001, 'UTF-32BE'}, // Unicode UTF-32, big endian byte order; available only to managed applications 
+	Codepage_Alias{20000, 'X-CHINESE_CNS'}, // CNS Taiwan; Chinese Traditional (CNS) 
+    Codepage_Alias{20001, 'X-CP20001'}, // TCA Taiwan 
+    Codepage_Alias{20002, 'X_CHINESE-ETEN'}, // Eten Taiwan; Chinese Traditional (Eten) 
+    Codepage_Alias{20003, 'X-CP20003'}, // IBM5550 Taiwan 
+    Codepage_Alias{20004, 'X-CP20004'}, // TeleText Taiwan 
+    Codepage_Alias{20005, 'X-CP20005'}, // Wang Taiwan 
+    Codepage_Alias{20105, 'X-IA5'}, // IA5 (IRV International Alphabet No. 5, 7-bit); Western European (IA5) 
+    Codepage_Alias{20106, 'X-IA5-GERMAN'}, // IA5 German (7-bit) 
+    Codepage_Alias{20107, 'X-IA5-SWEDISH'}, // IA5 Swedish (7-bit) 
+    Codepage_Alias{20108, 'X-IA5-NORWEGIAN'}, // IA5 Norwegian (7-bit) 
+    Codepage_Alias{20127, 'US-ASCII'}, // US-ASCII (7-bit) 
+    Codepage_Alias{20261, 'X-CP20261'}, // T.61 
+    Codepage_Alias{20269, 'X-CP20269'}, // ISO 6937 Non-Spacing Accent 
     Codepage_Alias{20273, 'IBM273'}, // IBM EBCDIC Germany 
     Codepage_Alias{20277, 'IBM277'}, // IBM EBCDIC Denmark-Norway 
     Codepage_Alias{20278, 'IBM278'}, // IBM EBCDIC Finland-Sweden 
@@ -374,74 +375,74 @@ const codepage_alias = [
     Codepage_Alias{20420, 'IBM420'}, // IBM EBCDIC Arabic 
     Codepage_Alias{20423, 'IBM423'}, // IBM EBCDIC Greek 
     Codepage_Alias{20424, 'IBM424'}, // IBM EBCDIC Hebrew 
-    Codepage_Alias{20833, 'x-EBCDIC-KoreanExtended'}, // IBM EBCDIC Korean Extended 
-    Codepage_Alias{20838, 'IBM-Thai'}, // IBM EBCDIC Thai 
-    Codepage_Alias{20866, 'koi8-r'}, // Russian (KOI8-R); Cyrillic (KOI8-R) 
+    Codepage_Alias{20833, 'X-EBCDIC-KOREANEXTENDED'}, // IBM EBCDIC Korean Extended 
+    Codepage_Alias{20838, 'IBM-THAI'}, // IBM EBCDIC Thai 
+    Codepage_Alias{20866, 'KOI8-R'}, // Russian (KOI8-R); Cyrillic (KOI8-R) 
     Codepage_Alias{20871, 'IBM871'}, // IBM EBCDIC Icelandic 
     Codepage_Alias{20880, 'IBM880'}, // IBM EBCDIC Cyrillic Russian 
     Codepage_Alias{20905, 'IBM905'}, // IBM EBCDIC Turkish 
     Codepage_Alias{20924, 'IBM00924'}, // IBM EBCDIC Latin 1/Open System (1047 + Euro symbol) 
     Codepage_Alias{20932, 'EUC-JP'}, // Japanese (JIS 0208-1990 and 0121-1990) 
-    Codepage_Alias{20936, 'x-cp20936'}, // Simplified Chinese (GB2312); Chinese Simplified (GB2312-80) 
-    Codepage_Alias{20949, 'x-cp20949'}, // Korean Wansung 
-    Codepage_Alias{21025, 'cp1025'}, // IBM EBCDIC Cyrillic Serbian-Bulgarian 
+    Codepage_Alias{20936, 'X-CP20936'}, // Simplified Chinese (GB2312); Chinese Simplified (GB2312-80) 
+    Codepage_Alias{20949, 'X-CP20949'}, // Korean Wansung 
+    Codepage_Alias{21025, 'CP1025'}, // IBM EBCDIC Cyrillic Serbian-Bulgarian 
     // 21027 		(deprecated) 
-    Codepage_Alias{21866, 'koi8-u'}, // Ukrainian (KOI8-U); Cyrillic (KOI8-U) 
-    Codepage_Alias{28591, 'iso-8859-1'}, // ISO 8859-1 Latin 1; Western European (ISO) 
-    Codepage_Alias{28591, 'iso8859-1'}, // ISO 8859-1 Latin 1; Western European (ISO) 
-    Codepage_Alias{28591, 'iso_8859-1'},
-    Codepage_Alias{28591, 'iso_8859_1'},
-    Codepage_Alias{28592, 'iso-8859-2'}, // ISO 8859-2 Central European; Central European (ISO) 
-    Codepage_Alias{28592, 'iso8859-2'}, // ISO 8859-2 Central European; Central European (ISO) 
-    Codepage_Alias{28592, 'iso_8859-2'},
-    Codepage_Alias{28592, 'iso_8859_2'},
-    Codepage_Alias{28593, 'iso-8859-3'}, // ISO 8859-3 Latin 3 
-    Codepage_Alias{28593, 'iso8859-3'}, // ISO 8859-3 Latin 3 
-    Codepage_Alias{28593, 'iso_8859-3'},
-    Codepage_Alias{28593, 'iso_8859_3'},
-    Codepage_Alias{28594, 'iso-8859-4'}, // ISO 8859-4 Baltic 
-    Codepage_Alias{28594, 'iso8859-4'}, // ISO 8859-4 Baltic 
-    Codepage_Alias{28594, 'iso_8859-4'},
-    Codepage_Alias{28594, 'iso_8859_4'},
-    Codepage_Alias{28595, 'iso-8859-5'}, // ISO 8859-5 Cyrillic 
-    Codepage_Alias{28595, 'iso8859-5'}, // ISO 8859-5 Cyrillic 
-    Codepage_Alias{28595, 'iso_8859-5'},
-    Codepage_Alias{28595, 'iso_8859_5'},
-    Codepage_Alias{28596, 'iso-8859-6'}, // ISO 8859-6 Arabic 
-    Codepage_Alias{28596, 'iso8859-6'}, // ISO 8859-6 Arabic 
-    Codepage_Alias{28596, 'iso_8859-6'},
-    Codepage_Alias{28596, 'iso_8859_6'},
-    Codepage_Alias{28597, 'iso-8859-7'}, // ISO 8859-7 Greek 
-    Codepage_Alias{28597, 'iso8859-7'}, // ISO 8859-7 Greek 
-    Codepage_Alias{28597, 'iso_8859-7'},
-    Codepage_Alias{28597, 'iso_8859_7'},
-    Codepage_Alias{28598, 'iso-8859-8'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Visual) 
-    Codepage_Alias{28598, 'iso8859-8'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Visual) 
-    Codepage_Alias{28598, 'iso_8859-8'},
-    Codepage_Alias{28598, 'iso_8859_8'},
-    Codepage_Alias{28599, 'iso-8859-9'}, // ISO 8859-9 Turkish 
-    Codepage_Alias{28599, 'iso8859-9'}, // ISO 8859-9 Turkish 
-    Codepage_Alias{28599, 'iso_8859-9'},
-    Codepage_Alias{28599, 'iso_8859_9'},
-    Codepage_Alias{28603, 'iso-8859-13'}, // ISO 8859-13 Estonian 
-    Codepage_Alias{28603, 'iso8859-13'}, // ISO 8859-13 Estonian 
-    Codepage_Alias{28603, 'iso_8859-13'},
-    Codepage_Alias{28603, 'iso_8859_13'},
-    Codepage_Alias{28605, 'iso-8859-15'}, // ISO 8859-15 Latin 9 
-    Codepage_Alias{28605, 'iso8859-15'}, // ISO 8859-15 Latin 9 
-    Codepage_Alias{28605, 'iso_8859-15'},
-    Codepage_Alias{28605, 'iso_8859_15'},
-    Codepage_Alias{29001, 'x-Europa'}, // Europa 3 
-    Codepage_Alias{38598, 'iso-8859-8-i'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Logical) 
-    Codepage_Alias{38598, 'iso8859-8-i'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Logical) 
-    Codepage_Alias{38598, 'iso_8859-8-i'},
-    Codepage_Alias{38598, 'iso_8859_8-i'},
-    Codepage_Alias{50220, 'iso-2022-jp'}, // ISO 2022 Japanese with no halfwidth Katakana; Japanese (JIS) 
-    Codepage_Alias{50221, 'csISO2022JP'}, // ISO 2022 Japanese with halfwidth Katakana; Japanese (JIS-Allow 1 byte Kana) 
-    Codepage_Alias{50222, 'iso-2022-jp'}, // ISO 2022 Japanese JIS X 0201-1989; Japanese (JIS-Allow 1 byte Kana - SO/SI) 
-    Codepage_Alias{50225, 'iso-2022-kr'}, // ISO 2022 Korean 
-    Codepage_Alias{50225, 'iso2022-kr'}, // ISO 2022 Korean 
-    Codepage_Alias{50227, 'x-cp50227'}, // ISO 2022 Simplified Chinese; Chinese Simplified (ISO 2022) 
+    Codepage_Alias{21866, 'KOI8-U'}, // Ukrainian (KOI8-U); Cyrillic (KOI8-U) 
+    Codepage_Alias{28591, 'ISO-8859-1'}, // ISO 8859-1 Latin 1; Western European (ISO) 
+    Codepage_Alias{28591, 'ISO8859-1'}, // ISO 8859-1 Latin 1; Western European (ISO) 
+    Codepage_Alias{28591, 'ISO_8859-1'},
+    Codepage_Alias{28591, 'ISO_8859_1'},
+    Codepage_Alias{28592, 'ISO-8859-2'}, // ISO 8859-2 Central European; Central European (ISO) 
+    Codepage_Alias{28592, 'ISO8859-2'}, // ISO 8859-2 Central European; Central European (ISO) 
+    Codepage_Alias{28592, 'ISO_8859-2'},
+    Codepage_Alias{28592, 'ISO_8859_2'},
+    Codepage_Alias{28593, 'ISO-8859-3'}, // ISO 8859-3 Latin 3 
+    Codepage_Alias{28593, 'ISO8859-3'}, // ISO 8859-3 Latin 3 
+    Codepage_Alias{28593, 'ISO_8859-3'},
+    Codepage_Alias{28593, 'ISO_8859_3'},
+    Codepage_Alias{28594, 'ISO-8859-4'}, // ISO 8859-4 Baltic 
+    Codepage_Alias{28594, 'ISO8859-4'}, // ISO 8859-4 Baltic 
+    Codepage_Alias{28594, 'ISO_8859-4'},
+    Codepage_Alias{28594, 'ISO_8859_4'},
+    Codepage_Alias{28595, 'ISO-8859-5'}, // ISO 8859-5 Cyrillic 
+    Codepage_Alias{28595, 'ISO8859-5'}, // ISO 8859-5 Cyrillic 
+    Codepage_Alias{28595, 'ISO_8859-5'},
+    Codepage_Alias{28595, 'ISO_8859_5'},
+    Codepage_Alias{28596, 'ISO-8859-6'}, // ISO 8859-6 Arabic 
+    Codepage_Alias{28596, 'ISO8859-6'}, // ISO 8859-6 Arabic 
+    Codepage_Alias{28596, 'ISO_8859-6'},
+    Codepage_Alias{28596, 'ISO_8859_6'},
+    Codepage_Alias{28597, 'ISO-8859-7'}, // ISO 8859-7 Greek 
+    Codepage_Alias{28597, 'ISO8859-7'}, // ISO 8859-7 Greek 
+    Codepage_Alias{28597, 'ISO_8859-7'},
+    Codepage_Alias{28597, 'ISO_8859_7'},
+    Codepage_Alias{28598, 'ISO-8859-8'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Visual) 
+    Codepage_Alias{28598, 'ISO8859-8'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Visual) 
+    Codepage_Alias{28598, 'ISO_8859-8'},
+    Codepage_Alias{28598, 'ISO_8859_8'},
+    Codepage_Alias{28599, 'ISO-8859-9'}, // ISO 8859-9 Turkish 
+    Codepage_Alias{28599, 'ISO8859-9'}, // ISO 8859-9 Turkish 
+    Codepage_Alias{28599, 'ISO_8859-9'},
+    Codepage_Alias{28599, 'ISO_8859_9'},
+    Codepage_Alias{28603, 'ISO-8859-13'}, // ISO 8859-13 Estonian 
+    Codepage_Alias{28603, 'ISO8859-13'}, // ISO 8859-13 Estonian 
+    Codepage_Alias{28603, 'ISO_8859-13'},
+    Codepage_Alias{28603, 'ISO_8859_13'},
+    Codepage_Alias{28605, 'ISO-8859-15'}, // ISO 8859-15 Latin 9 
+    Codepage_Alias{28605, 'ISO8859-15'}, // ISO 8859-15 Latin 9 
+    Codepage_Alias{28605, 'ISO_8859-15'},
+    Codepage_Alias{28605, 'ISO_8859_15'},
+    Codepage_Alias{29001, 'X-EUROPA'}, // Europa 3 
+    Codepage_Alias{38598, 'ISO-8859-8-I'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Logical) 
+    Codepage_Alias{38598, 'ISO8859-8-I'}, // ISO 8859-8 Hebrew; Hebrew (ISO-Logical) 
+    Codepage_Alias{38598, 'ISO_8859-8-I'},
+    Codepage_Alias{38598, 'ISO_8859_8-I'},
+    Codepage_Alias{50220, 'ISO-2022-JP'}, // ISO 2022 Japanese with no halfwidth Katakana; Japanese (JIS) 
+    Codepage_Alias{50221, 'CSISO2022JP'}, // ISO 2022 Japanese with halfwidth Katakana; Japanese (JIS-Allow 1 byte Kana) 
+    Codepage_Alias{50222, 'ISO-2022-JP'}, // ISO 2022 Japanese JIS X 0201-1989; Japanese (JIS-Allow 1 byte Kana - SO/SI) 
+    Codepage_Alias{50225, 'ISO-2022-KR'}, // ISO 2022 Korean 
+    Codepage_Alias{50225, 'ISO2022-KR'}, // ISO 2022 Korean 
+    Codepage_Alias{50227, 'X-CP50227'}, // ISO 2022 Simplified Chinese; Chinese Simplified (ISO 2022) 
     // 50229 		ISO 2022 Traditional Chinese 
     // 50930 		EBCDIC Japanese (Katakana) Extended 
     // 50931 		EBCDIC US-Canada and Japanese 
@@ -450,55 +451,55 @@ const codepage_alias = [
     // 50936 		EBCDIC Simplified Chinese 
     // 50937 		EBCDIC US-Canada and Traditional Chinese 
     // 50939 		EBCDIC Japanese (Latin) Extended and Japanese 
-    Codepage_Alias{51932, 'euc-jp'}, // EUC Japanese 
+    Codepage_Alias{51932, 'EUC-JP'}, // EUC Japanese 
     Codepage_Alias{51936, 'EUC-CN'}, // EUC Simplified Chinese; Chinese Simplified (EUC) 
-    Codepage_Alias{51949, 'euc-kr'}, // EUC Korean 
+    Codepage_Alias{51949, 'EUC-KR'}, // EUC Korean 
     // 51950 		EUC Traditional Chinese 
-    Codepage_Alias{52936, 'hz-gb-2312'}, // HZ-GB2312 Simplified Chinese; Chinese Simplified (HZ) 
+    Codepage_Alias{52936, 'HZ-GB-2312'}, // HZ-GB2312 Simplified Chinese; Chinese Simplified (HZ) 
     Codepage_Alias{54936, 'GB18030'}, // Windows XP and later: GB18030 Simplified Chinese (4 byte); Chinese Simplified (GB18030) 
-    Codepage_Alias{57002, 'x-iscii-de'}, // ISCII Devanagari 
-    Codepage_Alias{57003, 'x-iscii-be'}, // ISCII Bengali 
-    Codepage_Alias{57004, 'x-iscii-ta'}, // ISCII Tamil 
-    Codepage_Alias{57005, 'x-iscii-te'}, // ISCII Telugu 
-    Codepage_Alias{57006, 'x-iscii-as'}, // ISCII Assamese 
-    Codepage_Alias{57007, 'x-iscii-or'}, // ISCII Oriya 
-    Codepage_Alias{57008, 'x-iscii-ka'}, // ISCII Kannada 
-    Codepage_Alias{57009, 'x-iscii-ma'}, // ISCII Malayalam 
-    Codepage_Alias{57010, 'x-iscii-gu'}, // ISCII Gujarati 
-    Codepage_Alias{57011, 'x-iscii-pa'}, // ISCII Punjabi 
-    Codepage_Alias{65000, 'utf-7'}, // Unicode (UTF-7) 
-    Codepage_Alias{65001, 'utf-8'}, // Unicode (UTF-8) 
+    Codepage_Alias{57002, 'X-ISCII-DE'}, // ISCII Devanagari 
+    Codepage_Alias{57003, 'X-ISCII-BE'}, // ISCII Bengali 
+    Codepage_Alias{57004, 'X-ISCII-TA'}, // ISCII Tamil 
+    Codepage_Alias{57005, 'X-ISCII-TE'}, // ISCII Telugu 
+    Codepage_Alias{57006, 'X-ISCII-AS'}, // ISCII Assamese 
+    Codepage_Alias{57007, 'X-ISCII-OR'}, // ISCII Oriya 
+    Codepage_Alias{57008, 'X-ISCII-KA'}, // ISCII Kannada 
+    Codepage_Alias{57009, 'X-ISCII-MA'}, // ISCII Malayalam 
+    Codepage_Alias{57010, 'X-ISCII-GU'}, // ISCII Gujarati 
+    Codepage_Alias{57011, 'X-ISCII-PA'}, // ISCII Punjabi 
+    Codepage_Alias{65000, 'UTF-7'}, // Unicode (UTF-7) 
+    Codepage_Alias{65001, 'UTF-8'}, // Unicode (UTF-8) 
 	// vfmt on
 ]
 
 fn name_to_codepage(name string) int {
-	if name == '' || name == 'CP_ACP' {
+	name_upper := name.to_upper()
+	if name_upper == '' || name_upper == 'CP_ACP' {
 		return C.GetACP()
 	}
-	if name == 'CP_OEMCP' {
+	if name_upper == 'CP_OEMCP' {
 		return C.GetOEMCP()
 	}
-	if name.len < 2 {
+	if name_upper.len < 2 {
 		return -1
 	}
-	name_lower := name.to_lower()
-	if name_lower == 'wchar_t' {
+	if name_upper == 'WCHAR_T' {
 		return 1200
 	}
 	// CP123
-	if name_lower.starts_with('cp') {
-		return name_lower[2..].int()
+	if name_upper.starts_with('CP') {
+		return name_upper[2..].int()
 	}
-	if name_lower.is_int() {
-		return name_lower.int()
+	if name_upper.is_int() {
+		return name_upper.int()
 	}
 	// XX123 for debug
-	if name_lower.starts_with('xx') {
-		return name_lower[2..].int()
+	if name_upper.starts_with('xx') {
+		return name_upper[2..].int()
 	}
 
 	for x in codepage_alias {
-		if x.name.to_lower() == name_lower {
+		if x.name == name_upper {
 			return x.codepage
 		}
 	}
@@ -506,59 +507,57 @@ fn name_to_codepage(name string) int {
 }
 
 // conv convert `fromcode` encoding string to `tocode` encoding string
-fn conv(tocode string, fromcode string, mut src []u8) []u8 {
-	if src.len == 0 {
-		return []u8{}
+fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
+	if src_len <= 0 {
+		return error('src length error')
 	}
 	src_codepage := name_to_codepage(fromcode)
 	dst_codepage := name_to_codepage(tocode)
-	if dst_codepage <= 0 || src_codepage <= 0 {
-		return []u8{}
+	if src_codepage <= 0 {
+		return error('fromcode ${fromcode} does not exist')
 	}
+	if dst_codepage <= 0 {
+		return error('tocode ${tocode} does not exist')
+	}
+
 	if src_codepage == dst_codepage {
 		// clone src
-		mut dst_buf := []u8{len: src.len}
-		unsafe { vmemcpy(dst_buf.data, src.data, src.len) }
+		mut dst_buf := []u8{len: src_len}
+		unsafe { vmemcpy(dst_buf.data, src, src_len) }
 		return dst_buf
 	}
 
-	// Because MultiByteToWideChar need a tail zero to detect the end of string
-	// add tail zero
-	src << [u8(0), 0, 0, 0]
 	mut unicode := []u8{}
 	// src codepage => Unicode
 	if src_codepage != 1200 { // UNICODE/UTF16
-		char_num := C.MultiByteToWideChar(src_codepage, 0, src.data, -1, 0, 0)
-		unicode.grow_len(char_num * 2) // every char take 2 bytes
-		C.MultiByteToWideChar(src_codepage, 0, src.data, -1, unicode.data, unicode.len)
+		char_num := C.MultiByteToWideChar(src_codepage, 0, src, src_len, 0, 0)
+		if char_num == 0 {
+			return error('MultiByteToWideChar fail: src contain zero ${fromcode} character')
+		}
+		unsafe { unicode.grow_len(char_num * 2) } // every char take 2 bytes
+		C.MultiByteToWideChar(src_codepage, 0, src, src_len, unicode.data, unicode.len)
 	} else {
-		unicode = src.clone()
+		// src already in Unicode encoding, just clone src
+		unsafe {
+			unicode.grow_len(src_len)
+			vmemcpy(unicode.data, src, src_len)
+		}
 	}
-	defer {
-		unsafe { unicode.free() }
-	}
-
-	if unicode.len == 0 {
-		return []u8{}
-	}
-	unicode.pop()
 
 	mut dst := []u8{}
 	// Unicode => dst codepage
 	if dst_codepage != 1200 { // UNICODE/UTF16
-		dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, -1, 0, 0, 0, 0)
-		dst.grow_len(dst_len)
+		dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len / 2,
+			0, 0, 0, 0)
+		if dst_len == 0 {
+			return error('WideCharToMultiByte fail: src contain zero unicode character')
+		}
+		unsafe { dst.grow_len(dst_len) }
 		C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data, dst.len,
 			0, 0)
+		return dst
 	} else {
-		dst = unicode.clone()
+		// dst codepage is Unicode, just return unicode
+		return unicode
 	}
-
-	if dst.len == 0 {
-		unsafe { dst.free() }
-		return []u8{}
-	}
-	// remove tail zero
-	dst.pop()
-	return dst
 }
