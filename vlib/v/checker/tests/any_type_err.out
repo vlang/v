@@ -1,4 +1,4 @@
-vlib/v/checker/tests/any_type_err.vv:3:16: error: cannot use type `any` here
+vlib/v/checker/tests/any_type_err.vv:3:16: error: unknown aliased type `any`
     1 | // Any types should error, while parametrically polymorphic should not.
     2 | 
     3 | type AnyType = any
@@ -19,6 +19,13 @@ vlib/v/checker/tests/any_type_err.vv:5:27: error: cannot use type `any` here
       |                           ~~~
     6 | 
     7 | type PolyType = T
+vlib/v/checker/tests/any_type_err.vv:7:17: error: unknown aliased type `T`
+    5 | type AnyPolySumType = T | any
+    6 | 
+    7 | type PolyType = T
+      |                 ^
+    8 | type PolySumType = T | string
+    9 |
 vlib/v/checker/tests/any_type_err.vv:11:6: error: cannot use type `any` here
     9 | 
    10 | struct AnyStructField[T] {
