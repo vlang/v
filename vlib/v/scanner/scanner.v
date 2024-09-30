@@ -935,7 +935,8 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				if !token.is_key(name) {
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
-						s.add_error_detail('available compile time variables: ${token.valid_at_tokens.join(', ')}')
+						comptime_vars := token.valid_at_tokens.join(', ')
+						s.add_error_detail('available compile time variables: ${comptime_vars}'.wrap(width: 90))
 					}
 					s.error('@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)')
 				} else {

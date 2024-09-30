@@ -4,6 +4,7 @@
 module builtin
 
 import strconv
+import strings
 
 /*
 Note: A V string should be/is immutable from the point of view of
@@ -2819,4 +2820,38 @@ pub fn (s string) snake_to_camel() string {
 		b[i] = 0
 	}
 	return unsafe { tos(b, i) }
+}
+
+@[params]
+pub struct WrapConfig {
+pub:
+	width int    = 80
+	end   string = '\n'
+}
+
+// wrap wraps the given string within `width` in characters.
+pub fn (s string) wrap(config WrapConfig) string {
+	if config.width <= 0 {
+		return ''
+	}
+	words := s.fields()
+	if words.len == 0 {
+		return ''
+	}
+	mut sb := strings.new_builder(50)
+	sb.write_string(words[0])
+	mut space_left := config.width - words[0].len
+	for i := 0; i < words.len; i += 1 {
+		word := words[i]
+		if word.len + 1 > space_left {
+			sb.write_string(config.end)
+			sb.write_string(word)
+			space_left = config.width - word.len
+		} else {
+			sb.write_string(' ')
+			sb.write_string(word)
+			space_left -= 1 + word.len
+		}
+	}
+	return sb.str()
 }
