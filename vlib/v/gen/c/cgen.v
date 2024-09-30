@@ -5953,9 +5953,10 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 			ast.StringLiteral {
 				val := g.expr_string(field.expr)
+				typ := if field.expr.language == .c { 'char*' } else { 'string' }
 				g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 					mod:   field.mod
-					def:   'string ${const_name}; // a string literal, inited later'
+					def:   '${typ} ${const_name}; // a string literal, inited later'
 					init:  '\t${const_name} = ${val};'
 					order: -1
 				}
