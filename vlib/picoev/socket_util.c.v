@@ -93,7 +93,7 @@ fn fatal_socket_error(fd int) bool {
 // listen creates a listening tcp socket and returns its file descriptor
 fn listen(config Config) !int {
 	// not using the `net` modules sockets, because not all socket options are defined
-	socket := new_tcp_socket(config.family)
+	mut socket := net.new_tcp_socket(config.family) or { return error('Failed to create socket') }
 	fd := socket.handle
 	if fd == -1 {
 		return error('Failed to create socket')
@@ -105,15 +105,14 @@ fn listen(config Config) !int {
 
 	if config.family == .ip6 {
 		// set socket to dualstack so connections to both ipv4 and ipv6 addresses can be accepted
-		socket.set_dualstack(options.dualstack)!
+		socket.set_dualstack(true)!
 	}
 
 	$if linux {
 		// epoll socket options
-		socket.set_default_options()!
 		socket.set_option_bool(.reuse_port, true)!
 		socket.set_option_bool(.tcp_quickack, true)!
-		socket.set_option_int(.tcp_defer_accept, &config.timeout_secs)!
+		socket.set_option_int(.tcp_defer_accept, config.timeout_secs)!
 		queue_len := max_queue
 		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)))!
 	}
@@ -121,7 +120,7 @@ fn listen(config Config) !int {
 	// addr settings
 	saddr := '${config.host}:${config.port}'
 
-	socket.bind(saddr) or { eprintln('binding to ${saddr} failed4') }
+	socket.bind(saddr) or { panic('binding to ${saddr} failed, already in use?') }
 	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
 
 	setup_sock(fd) or {

@@ -23,6 +23,7 @@ pub enum SocketOption {
 	tcp_quickack     = C.TCP_QUICKACK
 	tcp_defer_accept = C.TCP_DEFER_ACCEPT
 	tcp_fastopen     = C.TCP_FASTOPEN
+	reuse_port       = C.SO_REUSEPORT
 }
 
 pub const opts_bool = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]

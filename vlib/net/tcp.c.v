@@ -516,7 +516,7 @@ struct TcpSocket {
 // This is a workaround for issue https://github.com/vlang/v/issues/20858
 // `noline` ensure that in `-prod` mode(CFLAG = `-O3 -flto`), gcc does not generate wrong instruction sequence
 @[noinline]
-fn new_tcp_socket(family AddrFamily) !TcpSocket {
+pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	handle := $if is_coroutine ? {
 		socket_error(C.photon_socket(family, SocketType.tcp, 0))!
 	} $else {
