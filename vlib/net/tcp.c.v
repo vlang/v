@@ -5,6 +5,7 @@ import strings
 
 pub const tcp_default_read_timeout = 30 * time.second
 pub const tcp_default_write_timeout = 30 * time.second
+pub const int_size = sizeof(int)
 
 // TCPDialer is a concrete instance of the Dialer interface,
 // for creating tcp connections.
@@ -355,7 +356,7 @@ pub:
 }
 
 pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
-	if family != .ip && family != .ip6 {
+	if family !in [.ip, .ip6] {
 		return error('listen_tcp only supports ip and ip6')
 	}
 	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
@@ -571,7 +572,7 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 }
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
-	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+	socket_error(C.setsockopt(s.handle, level, opt, &value, int_size))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {

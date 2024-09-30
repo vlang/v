@@ -43,12 +43,6 @@ fn close_socket(fd int) {
 
 @[inline]
 fn setup_sock(fd int) ! {
-	flag := 1
-
-	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
-		return error('setup_sock.setup_sock failed')
-	}
-
 	$if freebsd {
 		if C.fcntl(fd, C.F_SETFL, C.SOCK_NONBLOCK) != 0 {
 			return error('fcntl failed')
@@ -99,7 +93,8 @@ fn fatal_socket_error(fd int) bool {
 // listen creates a listening tcp socket and returns its file descriptor
 fn listen(config Config) !int {
 	// not using the `net` modules sockets, because not all socket options are defined
-	fd := C.socket(config.family, net.SocketType.tcp, 0)
+	socket := new_tcp_socket(config.family)
+	fd := socket.handle
 	if fd == -1 {
 		return error('Failed to create socket')
 	}
@@ -108,34 +103,25 @@ fn listen(config Config) !int {
 		eprintln('listen: ${fd}')
 	}
 
-	// Setting flags for socket
-	flag := 1
-	flag_zero := 0
-	net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)))!
-
 	if config.family == .ip6 {
-		// set socket to dualstack so connections to both ipv4 and ipv6 addresses
-		// can be accepted
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)))!
+		// set socket to dualstack so connections to both ipv4 and ipv6 addresses can be accepted
+		socket.set_dualstack(options.dualstack)!
 	}
 
 	$if linux {
 		// epoll socket options
-		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)))!
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
-			sizeof(int)))!
+		socket.set_default_options()!
+		socket.set_option_bool(.reuse_port, true)!
+		socket.set_option_bool(.tcp_quickack, true)!
+		socket.set_option_int(.tcp_defer_accept, &config.timeout_secs)!
 		queue_len := max_queue
 		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)))!
 	}
 
 	// addr settings
 	saddr := '${config.host}:${config.port}'
-	addrs := net.resolve_addrs(saddr, config.family, .tcp) or { panic(err) }
-	addr := addrs[0]
-	alen := addr.len()
 
-	net.socket_error_message(C.bind(fd, voidptr(&addr), alen), 'binding to ${saddr} failed')!
+	socket.bind(saddr) or { eprintln('binding to ${saddr} failed4') }
 	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
 
 	setup_sock(fd) or {

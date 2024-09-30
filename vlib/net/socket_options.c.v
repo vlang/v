@@ -19,6 +19,10 @@ pub enum SocketOption {
 	send_timeout     = C.SO_SNDTIMEO
 	socket_type      = C.SO_TYPE
 	ipv6_only        = C.IPV6_V6ONLY
+	ip_proto_ipv6    = C.IPPROTO_IPV6
+	tcp_quickack     = C.TCP_QUICKACK
+	tcp_defer_accept = C.TCP_DEFER_ACCEPT
+	tcp_fastopen     = C.TCP_FASTOPEN
 }
 
 pub const opts_bool = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]
