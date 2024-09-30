@@ -15,17 +15,30 @@ pub fn validate_port(port int) !u16 {
 
 // split_address splits an address into its host name and its port
 pub fn split_address(addr string) !(string, u16) {
-	port := addr.all_after_last(':').int()
-	mut address := addr.all_before_last(':')
-
-	// TODO(emily): Maybe do some more checking here
-	// to validate ipv6 address sanity?
-
-	// RFC4038 - allow [::1]:port
-	if address.len > 0 && address[0] == `[` && address[address.len - 1] == `]` {
-		address = address[1..address.len - 1]
+	if _ := addr.index(']') {
+		// ipv6 brackets
+		address := addr.all_after('[').all_before_last(']')
+		port := addr.all_after_last(']:').int()
+		p := validate_port(port)!
+		return address, p
+	} else if _ := addr.index('::') {
+		// ipv6 host only ::1
+		if addr.all_before_last('::') == '' {
+			return addr, 0
+		} else {
+			// addr:port
+			address := addr.all_before_last(':')
+			port := addr.all_after_last(':').int()
+			p := validate_port(port)!
+			return address, p
+		}
+	} else if _ := addr.index(':') {
+		// addr:port
+		address := addr.all_before_last(':')
+		p := validate_port(addr.all_after_last(':').int())!
+		return address, p
+	} else {
+		// addr only
+		return addr, 0
 	}
-
-	p := validate_port(port)!
-	return address, p
 }
