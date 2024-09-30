@@ -1743,7 +1743,7 @@ pub fn (mut s Scanner) add_error_detail(msg string) {
 }
 
 pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
-	s.add_error_detail(util.formatted_error('\ndetails:', msg, s.file_path, pos))
+	s.add_error_detail('\n' + util.formatted_error('details:', msg, s.file_path, pos))
 }
 
 fn (mut s Scanner) eat_details() string {
