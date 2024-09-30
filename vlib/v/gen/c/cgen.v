@@ -7353,8 +7353,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				'{'
 			}
 			$if windows {
-				if g.pref.ccompiler_type == .tinyc && !typ.has_flag(.shared_f)
-					&& g.inside_global_decl {
+				if !typ.has_flag(.shared_f) && g.inside_global_decl {
 					init_str = '(${g.typ(typ)}){'
 				}
 			}
