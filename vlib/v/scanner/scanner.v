@@ -933,12 +933,11 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {
-					mut at_error_msg := '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)'
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
-						at_error_msg += '\nAvailable compile time variables:\n${token.valid_at_tokens}'
+						s.add_error_detail('available compile time variables: ${token.valid_at_tokens.join(', ')}')
 					}
-					s.error(at_error_msg)
+					s.error('@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)')
 				} else {
 					// s.note('@keyword is being deprecated and then removed from V. Use `keyword_` or a different name (e.g. `typ` instead of `type`)')
 				}
@@ -1747,7 +1746,7 @@ pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
 fn (mut s Scanner) eat_details() string {
 	mut details := ''
 	if s.error_details.len > 0 {
-		details = '\n' + s.error_details.join('\n')
+		details = s.error_details.join('\n')
 		s.error_details = []
 	}
 	return details
