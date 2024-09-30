@@ -36,22 +36,24 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	dst.trim(dst.len - int(dst_left))
 
 	if tocode.to_upper() == 'UTF16' {
-		// To compatible with Windows(Little Endian default), remove the first FFFE(BOM)
+		// To compatible with Windows(Little Endian default), remove the first FFFE/FEFF(BOM)
 		if dst.len <= 2 {
 			return dst // error('convert to UTF16 length too short? no BOM?')
 		}
-		if dst[0] == u8(0xFF) && dst[1] == u8(0xFE) {
+		if (dst[0] == u8(0xFF) && dst[1] == u8(0xFE)) || (dst[0] == u8(0xFE) && dst[1] == u8(0xFF)) {
 			dst.delete_many(0, 2)
 		}
 	}
 
 	if tocode.to_upper() == 'UTF32' {
-		// remove the first FFFE0000(BOM)
-		// TODO: It seems Windows does not support UTF32
+		// remove the first FFFE0000/0000FEFF(BOM)
+		// NOTE: It seems Windows does not support UTF32
 		if dst.len <= 4 {
 			return dst // error('convert to UTF32 length too short? no BOM?')
 		}
-		if dst[0] == u8(0xFF) && dst[1] == u8(0xFE) && dst[2] == u8(0x00) && dst[3] == u8(0x00) {
+		if (dst[0] == u8(0xFF) && dst[1] == u8(0xFE) && dst[2] == u8(0x00) && dst[3] == u8(0x00))
+			|| (dst[0] == u8(0x00) && dst[1] == u8(0x00) && dst[2] == u8(0xFE)
+			&& dst[3] == u8(0xFF)) {
 			dst.delete_many(0, 4)
 		}
 	}
