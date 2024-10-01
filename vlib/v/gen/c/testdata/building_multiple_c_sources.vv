@@ -1,0 +1,5 @@
+import multiple_c_cources
+
+fn main() {
+	multiple_c_cources.call_c_functions()
+}

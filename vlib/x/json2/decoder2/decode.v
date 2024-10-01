@@ -25,33 +25,31 @@ pub enum ValueKind {
 	boolean
 }
 
-// check_json
+// check_json checks if the JSON string is valid.
 fn check_json(val string) ! {
 	if val == '' {
 		return error('empty string')
 	}
 }
 
-// decode
+// decode decodes a JSON string into a specified type.
 pub fn decode[T](val string) !T {
 	check_json(val)!
 
 	mut nodes := []Node{}
-
 	mut decoder := Decoder{
 		json: val
 	}
 
-	// TODO needs performance improvements
+	// TODO: needs performance improvements
 	decoder.fulfill_nodes(mut nodes)
 
 	mut result := T{}
-
 	decoder.decode_value(nodes, &result)
 	return result
 }
 
-// decode_value
+// decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](nodes []Node, val &T) {
 	$if val is $option {
 	} $else $if T is string {
@@ -76,32 +74,23 @@ fn (mut decoder Decoder) decode_value[T](nodes []Node, val &T) {
 	}
 }
 
+// get_value_kind returns the kind of a JSON value.
 fn get_value_kind(value rune) ValueKind {
-	mut value_kind := ValueKind.unknown
-
-	if value == `"` {
-		value_kind = .string_
-	} else if value == `t` || value == `f` {
-		value_kind = .boolean
-	} else if value == `{` {
-		value_kind = .object
-	} else if value == `[` {
-		value_kind = .array
-	} else if value >= `0` && value <= `9` {
-		value_kind = .number
+	return match value {
+		`"` { .string_ }
+		`t`, `f` { .boolean }
+		`{` { .object }
+		`[` { .array }
+		`0`...`9` { .number }
+		else { .unknown }
 	}
-	return value_kind
 }
 
-// decode_optional_value_in_actual_node
+// decode_optional_value_in_actual_node decodes an optional value in a node.
 fn (mut decoder Decoder) decode_optional_value_in_actual_node[T](node Node, val ?T) T {
 	start := (node.key_pos + node.key_len) + 3
 	mut end := start
-	for {
-		if decoder.json[end] == `,` || decoder.json[end] == `}` {
-			break
-		}
-
+	for decoder.json[end] != `,` && decoder.json[end] != `}` {
 		end++
 	}
 	mut value_kind := get_value_kind(decoder.json[start])
@@ -127,7 +116,7 @@ fn (mut decoder Decoder) decode_optional_value_in_actual_node[T](node Node, val 
 	return T{}
 }
 
-// decode_struct
+// decode_struct decodes a struct from the JSON nodes.
 fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 	$for field in T.fields {
 		for i := 0; i < nodes.len; i++ {
@@ -140,15 +129,10 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 				} {
 					start := (node.key_pos + node.key_len) + 3
 					mut end := start
-					for {
-						if decoder.json[end] == `,` || decoder.json[end] == `}` {
-							break
-						}
-
+					for decoder.json[end] != `,` && decoder.json[end] != `}` {
 						end++
 					}
-
-					mut value_kind := get_value_kind(decoder.json[start])
+					value_kind := get_value_kind(decoder.json[start])
 					$if field.indirections != 0 {
 						// REVIEW Needs clone?
 						$if field.indirections == 1 {
@@ -257,10 +241,10 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						} else {
 						}
 					} $else $if field.typ is string {
-						if value_kind == .string_ {
-							value.$(field.name) = decoder.json[start + 1..end - 1]
+						value.$(field.name) = if value_kind == .string_ {
+							decoder.json[start + 1..end - 1]
 						} else {
-							value.$(field.name) = decoder.json[start..end]
+							decoder.json[start..end]
 						}
 					} $else $if field.typ in [$int, $float] {
 						$if field.typ is i8 {
@@ -287,11 +271,7 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 							value.$(field.name) = decoder.json[start..end].f64()
 						}
 					} $else $if field.typ is bool {
-						if decoder.json[start] == `t` {
-							value.$(field.name) = true
-						} else if decoder.json[start] == `f` {
-							value.$(field.name) = false
-						}
+						value.$(field.name) = decoder.json[start] == `t`
 					} $else $if field.typ is time.Time {
 						if value_kind == .string_ {
 							value.$(field.name) = time.parse_rfc3339(decoder.json[start + 1..end - 1]) or {
@@ -300,7 +280,7 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						}
 					} $else $if field.typ is $struct {
 						if node.children != none {
-							decoder.decode_value(node.children or { panic('It will never happens') },
+							decoder.decode_value(node.children or { panic('It will never happen') },
 								value.$(field.name))
 						}
 					} $else $if field.typ is $array {
@@ -308,12 +288,9 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 							// TODO
 						}
 					} $else $if field.typ is $map {
-						if value_kind == .object {
-							if node.children != none {
-								decoder.decode_map(node.children or {
-									panic('It will never happens')
-								}, mut value.$(field.name))
-							}
+						if value_kind == .object && node.children != none {
+							decoder.decode_map(node.children or { panic('It will never happen') }, mut
+								value.$(field.name))
 						}
 					} $else $if field.typ is $enum {
 						value.$(field.name) = decoder.json[start..end].int()
@@ -365,79 +342,75 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 				}
 			}
 		}
-		// }
 	}
 }
 
-// fn (mut decoder Decoder) decode_map[K, V](nodes []Node, mut val map[K]V) {
+// decode_map decodes a map from the JSON nodes.
 fn (mut decoder Decoder) decode_map[T](nodes []Node, mut val T) {
 	for i := 0; i < nodes.len; i++ {
 		mut node := nodes[i]
 
 		start := (node.key_pos + node.key_len) + 3
 		mut end := start
-
-		for {
-			if decoder.json[end] == `,` || decoder.json[end] == `}` {
-				break
-			}
-
+		for decoder.json[end] != `,` && decoder.json[end] != `}` {
 			end++
 		}
-
-		mut value_kind := get_value_kind(decoder.json[start])
-
-		if value_kind == .string_ {
-			val[decoder.json[node.key_pos..node.key_pos + node.key_len]] = decoder.json[start + 1..end - 1]
+		value_kind := get_value_kind(decoder.json[start])
+		val[decoder.json[node.key_pos..node.key_pos + node.key_len]] = if value_kind == .string_ {
+			decoder.json[start + 1..end - 1]
 		} else {
-			val[decoder.json[node.key_pos..node.key_pos + node.key_len]] = decoder.json[start..end]
+			decoder.json[start..end]
 		}
 	}
 }
 
-// fulfill_nodes
+// fulfill_nodes fills the nodes from the JSON string.
 fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 	mut inside_string := false
 	mut inside_key := false
-
 	mut actual_key_len := 0
+
 	for decoder.idx < decoder.json.len {
 		letter := decoder.json[decoder.idx]
-		if letter == ` ` && !inside_string {
-		} else if letter == `\"` {
-			if decoder.json[decoder.idx - 1] == `{` || decoder.json[decoder.idx - 2] == `,` {
-				inside_key = true
-			} else if decoder.json[decoder.idx + 1] == `:` {
-				if decoder.json[decoder.idx + 3] == `{` {
-					mut children := []Node{}
-					key_pos := decoder.idx - actual_key_len
-					key_len := actual_key_len
-
-					decoder.idx += 3
-					decoder.fulfill_nodes(mut children)
-
-					nodes << Node{
-						key_pos:  key_pos
-						key_len:  key_len
-						children: children
-					}
-				} else {
-					nodes << Node{
-						key_pos: decoder.idx - actual_key_len
-						key_len: actual_key_len
-					}
+		match letter {
+			` ` {
+				if !inside_string {
 				}
-
-				inside_key = false
 			}
-			inside_string = !inside_string
-			decoder.idx++
-			continue
-		} else if letter == `:` {
-			actual_key_len = 0
-		} else if letter == `,` || letter == `:` || letter == `{` || letter == `}` || letter == `[`
-			|| letter == `]` {
-		} else {
+			`\"` {
+				if decoder.json[decoder.idx - 1] == `{` || decoder.json[decoder.idx - 2] == `,` {
+					inside_key = true
+				} else if decoder.json[decoder.idx + 1] == `:` {
+					if decoder.json[decoder.idx + 3] == `{` {
+						mut children := []Node{}
+						key_pos := decoder.idx - actual_key_len
+						key_len := actual_key_len
+
+						decoder.idx += 3
+						decoder.fulfill_nodes(mut children)
+
+						nodes << Node{
+							key_pos:  key_pos
+							key_len:  key_len
+							children: children
+						}
+					} else {
+						nodes << Node{
+							key_pos: decoder.idx - actual_key_len
+							key_len: actual_key_len
+						}
+					}
+					inside_key = false
+				}
+				inside_string = !inside_string
+				decoder.idx++
+				continue
+			}
+			`:` {
+				actual_key_len = 0
+			}
+			`,`, `{`, `}`, `[`, `]` {}
+			else {}
 		}
 		if inside_key {
 			actual_key_len++

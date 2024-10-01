@@ -533,7 +533,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		c.error('cannot make an alias of Result type', node.type_pos)
 	}
 	match parent_typ_sym.kind {
-		.placeholder, .int_literal, .float_literal {
+		.placeholder, .int_literal, .float_literal, .any {
 			c.error('unknown aliased type `${parent_typ_sym.name}`', node.type_pos)
 		}
 		.alias {
