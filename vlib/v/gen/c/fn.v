@@ -1008,11 +1008,6 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.expr(node.args[0].expr)
 			g.write(')')
 		}
-		'free', 'clear' {
-			g.write('map_${node.name}(')
-			g.gen_arg_from_type(left_type, node.left)
-			g.write(')')
-		}
 		'delete' {
 			left_info := left_sym.info as ast.Map
 			elem_type_str := g.typ(left_info.key_type)
@@ -1022,7 +1017,7 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 			g.expr(node.args[0].expr)
 			g.write('})')
 		}
-		'keys', 'values' {
+		'free', 'clear', 'keys', 'values' {
 			g.write('map_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
@@ -1035,11 +1030,6 @@ fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_s
 }
 
 fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
-	mut noscan := ''
-	array_info := left_sym.info as ast.Array
-	if node.name in ['pop', 'push', 'push_many', 'reverse', 'grow_cap', 'grow_len'] {
-		noscan = g.check_noscan(array_info.elem_type)
-	}
 	match node.name {
 		'filter' {
 			g.gen_array_filter(node)
@@ -1084,6 +1074,11 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			g.write(')')
 		}
 		'first', 'last', 'pop' {
+			mut noscan := ''
+			array_info := left_sym.info as ast.Array
+			if node.name == 'pop' {
+				noscan = g.check_noscan(array_info.elem_type)
+			}
 			return_type_str := g.typ(node.return_type)
 			g.write('(*(${return_type_str}*)array_${node.name}${noscan}(')
 			if node.name == 'pop' {
@@ -1104,6 +1099,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 			g.write('))')
 		}
 		'clone', 'repeat' {
+			array_info := left_sym.info as ast.Array
 			array_depth := g.get_array_depth(array_info.elem_type)
 			to_depth := if array_depth >= 0 { '_to_depth' } else { '' }
 			mut is_range_slice := false
@@ -1785,12 +1781,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	} else if !is_range_slice && node.from_embed_types.len == 0 && node.name != 'str' {
 		diff := left_type.nr_muls() - node.receiver_type.nr_muls()
-		if diff < 0 {
-			// TODO
-			// g.write('&')
-		} else if diff > 0 {
-			g.write('/*diff=${diff}*/')
-			g.write([]u8{len: diff, init: `*`}.bytestr())
+		if diff > 0 {
+			g.write('*'.repeat(diff))
 		}
 	}
 
