@@ -3,6 +3,8 @@ module multiple_c_cources
 #flag @VMODROOT/file1.c
 #flag @VMODROOT/file2.c
 
+#include "@VMODROOT/common.h"
+
 fn C.f1() int
 fn C.f2() int
 
