@@ -212,10 +212,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
 		if sym.kind != .function {
-			if str_method_expects_ptr && !is_ptr {
-				if !sym.is_c_struct() {
-					g.write('&')
-				}
+			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {
+				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
 			} else {
