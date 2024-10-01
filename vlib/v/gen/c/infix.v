@@ -840,11 +840,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		tmp_var := g.new_tmp_var()
 		array_info := left.unaliased_sym.info as ast.Array
 		noscan := g.check_noscan(array_info.elem_type)
-		left_dims := g.table.sym(node.left_type).nr_dims()
-		right_dims := g.table.sym(node.right_type).nr_dims()
 		if (right.unaliased_sym.kind == .array
 			|| (right.unaliased_sym.kind == .struct_ && right.unaliased_sym.name == 'array'))
-			&& left_dims == right_dims && array_info.elem_type != right.typ
+			&& left.sym.nr_dims() == right.sym.nr_dims() && array_info.elem_type != right.typ
 			&& !(right.sym.kind == .alias
 			&& g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false)) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
