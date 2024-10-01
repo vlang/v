@@ -6247,7 +6247,7 @@ fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name st
 	cname := g.c_const_name(name)
 	mut init := strings.new_builder(100)
 	for i, elem_expr in expr.exprs {
-		if elem_expr is ast.ArrayInit {
+		if elem_expr is ast.ArrayInit && elem_expr.is_fixed {
 			elem_typ := g.typ(elem_expr.typ)
 			init.writeln(g.expr_string_surround('\tmemcpy(${cname}[${i}], (${elem_typ})',
 				elem_expr, ', sizeof(${elem_typ}));'))
