@@ -21,7 +21,7 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 		return error('please use UTF16LE/UTF16BE/UTF32LE/UTF32BE instead')
 	}
 	mut dst := conv('UTF-8', fromcode, bytes.data, bytes.len)!
-	dst << [u8(0)] // Windows: add tail zero, to build a vstring
+	dst << 0 // add a tail zero, to build a vstring
 	return unsafe { cstring_to_vstring(dst.data) }
 }
 
