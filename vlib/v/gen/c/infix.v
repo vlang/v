@@ -842,7 +842,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		noscan := g.check_noscan(array_info.elem_type)
 		if (right.unaliased_sym.kind == .array
 			|| (right.unaliased_sym.kind == .struct_ && right.unaliased_sym.name == 'array'))
-			&& array_info.elem_type != right.typ && !(right.sym.kind == .alias
+			&& left.sym.nr_dims() == right.sym.nr_dims() && array_info.elem_type != right.typ
+			&& !(right.sym.kind == .alias
 			&& g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false)) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
