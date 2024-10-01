@@ -692,30 +692,30 @@ fn (mut a array) push(val voidptr) {
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 @[unsafe]
-pub fn (mut a3 array) push_many(val voidptr, size int) {
+pub fn (mut a array) push_many(val voidptr, size int) {
 	if size <= 0 || val == unsafe { nil } {
 		return
 	}
-	new_len := i64(a3.len) + i64(size)
+	new_len := i64(a.len) + i64(size)
 	if new_len > max_int {
 		// string interpolation also uses <<; avoid it, use a fixed string for the panic
 		panic('array.push_many: new len exceeds max_int')
 	}
-	if new_len >= a3.cap {
-		a3.ensure_cap(int(new_len))
+	if new_len >= a.cap {
+		a.ensure_cap(int(new_len))
 	}
-	if a3.data == val && a3.data != 0 {
+	if a.data == val && a.data != 0 {
 		// handle `arr << arr`
-		copy := a3.clone()
+		copy := a.clone()
 		unsafe {
-			vmemcpy(&u8(a3.data) + u64(a3.element_size) * u64(a3.len), copy.data, u64(a3.element_size) * u64(size))
+			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), copy.data, u64(a.element_size) * u64(size))
 		}
 	} else {
-		if a3.data != 0 && val != 0 {
-			unsafe { vmemcpy(&u8(a3.data) + u64(a3.element_size) * u64(a3.len), val, u64(a3.element_size) * u64(size)) }
+		if a.data != 0 && val != 0 {
+			unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, u64(a.element_size) * u64(size)) }
 		}
 	}
-	a3.len = int(new_len)
+	a.len = int(new_len)
 }
 
 // reverse_in_place reverses existing array data, modifying original array.
