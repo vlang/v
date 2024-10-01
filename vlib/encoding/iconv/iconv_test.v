@@ -123,3 +123,32 @@ fn test_encoding_to_vstring_endian() {
 		}
 	}
 }
+
+fn test_create_utf_string_with_bom() {
+	assert iconv.create_utf_string_with_bom([u8(97), 98, 99], .utf8) == [u8(0xEF), 0xBB, 0xBF,
+		97, 98, 99]
+	assert iconv.create_utf_string_with_bom([u8(97), 0, 98, 0, 99, 0], .utf16le) == [
+		u8(0xFF),
+		0xFE,
+		97,
+		0,
+		98,
+		0,
+		99,
+		0,
+	]
+	assert iconv.create_utf_string_with_bom([u8(0), 97, 0, 98, 0, 99], .utf16be) == [
+		u8(0xFE),
+		0xFF,
+		0,
+		97,
+		0,
+		98,
+		0,
+		99,
+	]
+	assert iconv.create_utf_string_with_bom([u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0],
+		.utf32le) == [u8(0xFF), 0xFE, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
+	assert iconv.create_utf_string_with_bom([u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99],
+		.utf32be) == [u8(0), 0, 0xFE, 0xFF, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99]
+}
