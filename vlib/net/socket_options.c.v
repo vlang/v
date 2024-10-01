@@ -1,5 +1,19 @@
 module net
 
+#include <errno.h>
+$if windows {
+	#include <winsock2.h>
+	#include <ws2tcpip.h>
+} $else $if freebsd || macos {
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <netinet/tcp.h>
+} $else {
+	#include <netinet/tcp.h>
+	#include <sys/resource.h>
+}
+
 pub enum SocketOption {
 	// TODO: SO_ACCEPT_CONN is not here because windows doesn't support it
 	// and there is no easy way to define it
@@ -20,10 +34,10 @@ pub enum SocketOption {
 	socket_type      = C.SO_TYPE
 	ipv6_only        = C.IPV6_V6ONLY
 	ip_proto_ipv6    = C.IPPROTO_IPV6
-	// reuse_port       = C.SO_REUSEPORT // TODO make it work in windows
-	// tcp_fastopen     = C.TCP_FASTOPEN // TODO make it work in windows
-	// tcp_quickack     = C.TCP_QUICKACK // TODO make it work in os != linux
-	// tcp_defer_accept = C.TCP_DEFER_ACCEPT // TODO make it work in windows
+	reuse_port       = C.SO_REUSEPORT // TODO make it work in windows
+	tcp_fastopen     = C.TCP_FASTOPEN // TODO make it work in windows
+	tcp_quickack     = C.TCP_QUICKACK // TODO make it work in os != linux
+	tcp_defer_accept = C.TCP_DEFER_ACCEPT // TODO make it work in windows
 }
 
 pub const opts_bool = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]
