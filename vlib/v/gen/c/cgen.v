@@ -7353,6 +7353,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			} else {
 				'{'
 			}
+			$if windows {
+				if !typ.has_flag(.shared_f) && g.inside_global_decl {
+					init_str = '(${g.typ(typ)}){'
+				}
+			}
 			if sym.language in [.c, .v] {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
