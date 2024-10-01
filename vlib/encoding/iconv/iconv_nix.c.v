@@ -35,7 +35,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	// resize dst buf to real length
 	dst.trim(dst.len - int(dst_left))
 
-	if tocode.to_upper() == 'UTF16' {
+	if tocode.to_upper() == 'UTF16' || tocode.to_upper() == 'UTF-16' {
 		// To compatible with Windows(Little Endian default), remove the first FFFE/FEFF(BOM)
 		if dst.len <= 2 {
 			return dst // error('convert to UTF16 length too short? no BOM?')
@@ -45,7 +45,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 		}
 	}
 
-	if tocode.to_upper() == 'UTF32' {
+	if tocode.to_upper() == 'UTF32' || tocode.to_upper() == 'UTF-32' {
 		// remove the first FFFE0000/0000FEFF(BOM)
 		// NOTE: It seems Windows does not support UTF32
 		if dst.len <= 4 {
