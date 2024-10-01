@@ -479,7 +479,7 @@ fn name_to_codepage(name string) int {
 	}
 
 	name_upper := name.to_upper()
-	if name_upper == '' || name_upper == 'CP_ACP' {
+	if name_upper == '' || name_upper == 'CP_ACP' || name_upper == 'ANSI' {
 		return C.GetACP()
 	}
 	if name_upper == 'CP_OEMCP' {
