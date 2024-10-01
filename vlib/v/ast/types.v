@@ -441,6 +441,28 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: ${ts.language}'
 }
 
+pub fn (ts TypeSymbol) nr_dims() int {
+	match ts.info {
+		Alias {
+			parent_sym := global_table.sym(ts.info.parent_type)
+			if parent_sym.info is Array {
+				return parent_sym.info.nr_dims
+			}
+			return 0
+		}
+		Array {
+			elem_sym := global_table.sym(ts.info.elem_type)
+			if elem_sym.info is Alias {
+				return ts.info.nr_dims + elem_sym.nr_dims()
+			}
+			return ts.info.nr_dims
+		}
+		else {
+			return 0
+		}
+	}
+}
+
 // str returns a string representation of the type.
 pub fn (t Type) str() string {
 	return 'ast.Type(0x${t.hex()} = ${u32(t)})'
