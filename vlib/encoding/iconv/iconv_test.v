@@ -41,21 +41,10 @@ fn test_encoding_to_vstring() {
 }
 
 fn test_vstring_to_encoding_endian() {
-	$if little_endian {
-		if abc_utf16 := iconv.vstring_to_encoding('abc', 'UTF16') {
-			assert abc_utf16 == [u8(97), 0, 98, 0, 99, 0]
-		} else {
-			// some platforms do not support UTF16, skip
-			assert true
-		}
-
-		if abc_utf32 := iconv.vstring_to_encoding('abc', 'UTF32') {
-			assert abc_utf32 == [u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
-		} else {
-			// some platforms do not support UTF32, such as windows, skip
-			assert true
-		}
-	} $else {
+	$if big_endian || macos {
+		// The macOS version uses GNU libiconv which always outputs big-endian data no matter what.
+		// Ubuntu version is almost certainly the one provided by glibc instead, which uses native endianness.
+		// https://unix.stackexchange.com/questions/599582/how-iconv-and-od-handle-endianness
 		if abc_utf16 := iconv.vstring_to_encoding('abc', 'UTF16') {
 			assert abc_utf16 == [u8(0), 97, 0, 98, 0, 99]
 		} else {
@@ -69,18 +58,35 @@ fn test_vstring_to_encoding_endian() {
 			// some platforms do not support UTF32, skip
 			assert true
 		}
+	} $else {
+		if abc_utf16 := iconv.vstring_to_encoding('abc', 'UTF16') {
+			assert abc_utf16 == [u8(97), 0, 98, 0, 99, 0]
+		} else {
+			// some platforms do not support UTF16, skip
+			assert true
+		}
+
+		if abc_utf32 := iconv.vstring_to_encoding('abc', 'UTF32') {
+			assert abc_utf32 == [u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
+		} else {
+			// some platforms do not support UTF32, such as windows, skip
+			assert true
+		}
 	}
 }
 
 fn test_encoding_to_vstring_endian() {
-	$if little_endian {
-		if abc_utf16 := iconv.encoding_to_vstring([u8(97), 0, 98, 0, 99, 0], 'UTF16') {
+	$if big_endian || macos {
+		// The macOS version uses GNU libiconv which always outputs big-endian data no matter what.
+		// Ubuntu version is almost certainly the one provided by glibc instead, which uses native endianness.
+		// https://unix.stackexchange.com/questions/599582/how-iconv-and-od-handle-endianness
+		if abc_utf16 := iconv.encoding_to_vstring([u8(0), 97, 0, 98, 0, 99], 'UTF16') {
 			assert abc_utf16 == 'abc'
 		} else {
 			// some platforms do not support UTF16, skip
 			assert true
 		}
-		if abc_utf32 := iconv.encoding_to_vstring([u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0],
+		if abc_utf32 := iconv.encoding_to_vstring([u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99],
 			'UTF32')
 		{
 			assert abc_utf32 == 'abc'
@@ -89,13 +95,13 @@ fn test_encoding_to_vstring_endian() {
 			assert true
 		}
 	} $else {
-		if abc_utf16 := iconv.encoding_to_vstring([u8(0), 97, 0, 98, 0, 99], 'UTF16') {
+		if abc_utf16 := iconv.encoding_to_vstring([u8(97), 0, 98, 0, 99, 0], 'UTF16') {
 			assert abc_utf16 == 'abc'
 		} else {
 			// some platforms do not support UTF16, skip
 			assert true
 		}
-		if abc_utf32 := iconv.encoding_to_vstring([u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99],
+		if abc_utf32 := iconv.encoding_to_vstring([u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0],
 			'UTF32')
 		{
 			assert abc_utf32 == 'abc'
