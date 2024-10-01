@@ -21,7 +21,7 @@ pub enum SocketOption {
 	ipv6_only        = C.IPV6_V6ONLY
 	ip_proto_ipv6    = C.IPPROTO_IPV6
 	//tcp_quickack     = C.TCP_QUICKACK // TODO make it work in os != linux
-	tcp_defer_accept = C.TCP_DEFER_ACCEPT
+	//tcp_defer_accept = C.TCP_DEFER_ACCEPT // TODO make it work in windows
 	tcp_fastopen     = C.TCP_FASTOPEN
 	reuse_port       = C.SO_REUSEPORT
 }
