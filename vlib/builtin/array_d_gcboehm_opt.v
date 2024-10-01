@@ -272,29 +272,29 @@ fn (mut a array) push_noscan(val voidptr) {
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 @[unsafe]
-fn (mut a3 array) push_many_noscan(val voidptr, size int) {
+fn (mut a array) push_many_noscan(val voidptr, size int) {
 	if size == 0 || val == unsafe { nil } {
 		return
 	}
-	new_len := i64(a3.len) + i64(size)
+	new_len := i64(a.len) + i64(size)
 	if new_len > max_int {
 		// string interpolation also uses <<; avoid it, use a fixed string for the panic
 		panic('array.push_many_noscan: new len exceeds max_int')
 	}
-	if a3.data == val && a3.data != 0 {
+	if a.data == val && a.data != 0 {
 		// handle `arr << arr`
-		copy := a3.clone()
-		a3.ensure_cap_noscan(a3.len + size)
+		copy := a.clone()
+		a.ensure_cap_noscan(a.len + size)
 		unsafe {
-			vmemcpy(a3.get_unsafe(a3.len), copy.data, u64(a3.element_size) * u64(size))
+			vmemcpy(a.get_unsafe(a.len), copy.data, u64(a.element_size) * u64(size))
 		}
 	} else {
-		a3.ensure_cap_noscan(a3.len + size)
-		if a3.data != 0 && val != 0 {
-			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, u64(a3.element_size) * u64(size)) }
+		a.ensure_cap_noscan(a.len + size)
+		if a.data != 0 && val != 0 {
+			unsafe { vmemcpy(a.get_unsafe(a.len), val, u64(a.element_size) * u64(size)) }
 		}
 	}
-	a3.len = int(new_len)
+	a.len = int(new_len)
 }
 
 // reverse returns a new array with the elements of the original array in reverse order.
