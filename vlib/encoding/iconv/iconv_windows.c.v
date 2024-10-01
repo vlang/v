@@ -473,6 +473,11 @@ const codepage_alias = [
 ]
 
 fn name_to_codepage(name string) int {
+	// performance hack
+	if name == 'UTF-8' {
+		return 65001
+	}
+
 	name_upper := name.to_upper()
 	if name_upper == '' || name_upper == 'CP_ACP' {
 		return C.GetACP()
@@ -508,7 +513,7 @@ fn name_to_codepage(name string) int {
 
 // conv convert `fromcode` encoding string to `tocode` encoding string
 fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
-	if src_len <= 0 {
+	if src_len < 0 {
 		return error('src length error')
 	}
 	src_codepage := name_to_codepage(fromcode)

@@ -1,6 +1,12 @@
 import encoding.iconv
 
 fn test_vstring_to_encoding() {
+	if empty_utf8 := iconv.vstring_to_encoding('', 'UTF8') {
+		assert empty_utf8 == []
+	} else {
+		panic('${@MOD}.${@FN}: platform does not support UTF8 encoding')
+	}
+
 	if abc_utf8 := iconv.vstring_to_encoding('abc', 'UTF8') {
 		assert abc_utf8 == [u8(97), 98, 99]
 	} else {
@@ -20,6 +26,12 @@ fn test_vstring_to_encoding() {
 }
 
 fn test_encoding_to_vstring() {
+	if empty_utf8 := iconv.encoding_to_vstring([], 'UTF8') {
+		assert empty_utf8 == ''
+	} else {
+		panic('${@MOD}.${@FN}: platform does not support UTF8 encoding')
+	}
+
 	if abc_utf8 := iconv.encoding_to_vstring([u8(97), 98, 99], 'UTF8') {
 		assert abc_utf8 == 'abc'
 	} else {

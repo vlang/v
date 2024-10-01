@@ -11,7 +11,7 @@ fn C.iconv(cd voidptr, inbuf &&u8, inbytesleft &usize, outbuf &&u8, outbytesleft
 
 // conv convert `fromcode` encoding string to `tocode` encoding string
 fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
-	if src_len <= 0 {
+	if src_len < 0 {
 		return error('src length error')
 	}
 
