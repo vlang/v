@@ -191,7 +191,9 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
-			if expr.obj is ast.Var {
+			if g.comptime.get_ct_type_var(expr) == .smartcast {
+				exp_typ = g.comptime.get_comptime_var_type(expr)
+			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
 					cast_sym := g.table.sym(exp_typ)
