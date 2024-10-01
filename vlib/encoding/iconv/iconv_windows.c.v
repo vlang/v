@@ -511,7 +511,135 @@ fn name_to_codepage(name string) int {
 	return -1
 }
 
+@[inline]
+fn reverse_u16(src u16) u16 {
+	return u16(src >> 8 | src << 8)
+}
+
+@[inline]
+fn reverse_u32(src u32) u32 {
+	return u32(src >> 24 | ((src >> 8) & 0x0000_FF00) | ((src << 8) & 0x00FF_0000) | src << 24)
+}
+
+// https://www.cnblogs.com/findumars/p/6376034.html
+@[direct_array_access]
+fn utf32_to_utf16(src &u8, src_len int, is_src_little_endian bool, is_dst_little_endian bool) ![]u8 {
+	mut dst := []u8{len: src_len}
+	mut sptr := unsafe { &u32(src) }
+	mut dptr := &u16(dst.data)
+	mut src_idx := 0
+	mut dst_idx := 0
+	mut c := u32(0)
+	mut t := u16(0)
+	for {
+		if src_idx == src_len / 4 {
+			break
+		}
+		unsafe {
+			c = sptr[src_idx]
+		}
+		if !is_src_little_endian {
+			c = reverse_u32(c)
+		}
+		src_idx++
+		if c <= 0xFFFF {
+			t = u16(c)
+			if !is_dst_little_endian {
+				t = reverse_u16(t)
+			}
+			unsafe {
+				dptr[dst_idx] = t
+			}
+			dst_idx++
+		} else if c <= 0xEFFFF {
+			t = u16((0xD800 + (c >> 10) - 0x40)) // high
+
+			if !is_dst_little_endian {
+				t = reverse_u16(t)
+			}
+			unsafe {
+				dptr[dst_idx] = t
+			}
+			dst_idx++
+			t = u16(0xDC00 + (c & 0x03FF)) // low
+			if !is_dst_little_endian {
+				t = reverse_u16(t)
+			}
+			unsafe {
+				dptr[dst_idx] = t
+			}
+			dst_idx++
+		} else {
+			return error('invalid utf32le encoding')
+		}
+	}
+	dst.trim(dst_idx * 2)
+	return dst
+}
+
+// https://www.cnblogs.com/findumars/p/6376034.html
+@[direct_array_access]
+fn utf16_to_utf32(src &u8, src_len int, is_src_little_endian bool, is_dst_little_endian bool) ![]u8 {
+	mut dst := []u8{len: src_len * 2}
+	mut sptr := unsafe { &u16(src) }
+	mut dptr := &u32(dst.data)
+	mut w1 := u16(0)
+	mut w2 := u16(0)
+	mut t := u32(0)
+	mut src_idx := 0
+	mut dst_idx := 0
+	for {
+		if src_idx == src_len / 2 {
+			break
+		}
+		unsafe {
+			w1 = sptr[src_idx]
+		}
+		if !is_src_little_endian {
+			w1 = reverse_u16(w1)
+		}
+		src_idx++
+		if w1 >= 0xD800 && w1 <= 0xDFFF {
+			if w1 < 0xDC00 {
+				if src_idx == src_len / 2 {
+					return error('invalid utf16le encoding')
+				}
+				unsafe {
+					w2 = sptr[src_idx]
+				}
+				if !is_src_little_endian {
+					w2 = reverse_u16(w2)
+				}
+				if w2 >= 0xDC00 && w2 <= 0xDFFF {
+					t = (w2 & 0x03FF) + (((w1 & 0x03FF) + 0x40) << 10)
+					if !is_dst_little_endian {
+						t = reverse_u32(t)
+					}
+					unsafe {
+						dptr[dst_idx] = t
+					}
+					dst_idx++
+				}
+			} else {
+				return error('invalid utf16le encoding')
+			}
+		} else {
+			t = w1
+			if !is_dst_little_endian {
+				t = reverse_u32(t)
+			}
+			unsafe {
+				dptr[dst_idx] = t
+			}
+			dst_idx++
+		}
+	}
+	dst.trim(dst_idx * 4)
+	return dst
+}
+
 // conv convert `fromcode` encoding string to `tocode` encoding string
+@[direct_array_access]
 fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	if src_len < 0 {
 		return error('src length error')
@@ -525,6 +653,9 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 		return error('tocode ${tocode} does not exist')
 	}
 
+	println('src_codepage = ${src_codepage}')
+	println('dst_codepage = ${dst_codepage}')
+
 	if src_codepage == dst_codepage {
 		// clone src
 		mut dst_buf := []u8{len: src_len}
@@ -534,35 +665,82 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 
 	mut unicode := []u8{}
 	// src codepage => Unicode
-	if src_codepage != 1200 { // UNICODE/UTF16
-		char_num := C.MultiByteToWideChar(src_codepage, 0, src, src_len, 0, 0)
-		if char_num == 0 {
-			return error('MultiByteToWideChar fail: src contain zero ${fromcode} character')
+	match src_codepage {
+		1200 {
+			// src already in Unicode(UTF-16LE) encoding, just clone src
+			unsafe {
+				unicode.grow_len(src_len)
+				vmemcpy(unicode.data, src, src_len)
+			}
 		}
-		unsafe { unicode.grow_len(char_num * 2) } // every char take 2 bytes
-		C.MultiByteToWideChar(src_codepage, 0, src, src_len, unicode.data, unicode.len)
-	} else {
-		// src already in Unicode encoding, just clone src
-		unsafe {
-			unicode.grow_len(src_len)
-			vmemcpy(unicode.data, src, src_len)
+		1201 {
+			// Windows does not support UTF-16BE
+			// byte swap each 16 bit character element
+			unsafe {
+				unicode.grow_len(src_len)
+				vmemcpy(unicode.data, src, src_len)
+			}
+			mut eptr := &u16(unicode.data)
+			for i in 0 .. src_len / 2 {
+				unsafe {
+					eptr[i] = reverse_u16(eptr[i])
+				}
+			}
+		}
+		12000 {
+			// Windows does not support UTF-32LE
+			unicode = utf32_to_utf16(src, src_len, true, true)!
+		}
+		12001 {
+			// Windows does not support UTF-32BE
+			unicode = utf32_to_utf16(src, src_len, false, true)!
+		}
+		else {
+			char_num := C.MultiByteToWideChar(src_codepage, 0, src, src_len, 0, 0)
+			if char_num == 0 {
+				return error('MultiByteToWideChar fail: src contain zero ${fromcode} character')
+			}
+			unsafe { unicode.grow_len(char_num * 2) } // every char take 2 bytes
+			C.MultiByteToWideChar(src_codepage, 0, src, src_len, unicode.data, unicode.len)
 		}
 	}
 
 	mut dst := []u8{}
 	// Unicode => dst codepage
-	if dst_codepage != 1200 { // UNICODE/UTF16
-		dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len / 2,
-			0, 0, 0, 0)
-		if dst_len == 0 {
-			return error('WideCharToMultiByte fail: src contain zero unicode character')
+	match dst_codepage {
+		1200 {
+			// dst codepage is Unicode, just return unicode
+			return unicode
 		}
-		unsafe { dst.grow_len(dst_len) }
-		C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data, dst.len,
-			0, 0)
-		return dst
-	} else {
-		// dst codepage is Unicode, just return unicode
-		return unicode
+		1201 {
+			// Windows does not support UTF-16BE
+			// byte swap each 16 bit character element
+			mut eptr := &u16(unicode.data)
+			for i in 0 .. unicode.len / 2 {
+				unsafe {
+					eptr[i] = reverse_u16(eptr[i])
+				}
+			}
+			return unicode
+		}
+		12000 {
+			// Windows does not support UTF-32LE
+			dst = utf16_to_utf32(unicode.data, unicode.len, true, true)!
+		}
+		12001 {
+			// Windows does not support UTF-32BE
+			dst = utf16_to_utf32(unicode.data, unicode.len, true, false)!
+		}
+		else {
+			dst_len := C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len / 2,
+				0, 0, 0, 0)
+			if dst_len == 0 {
+				return error('WideCharToMultiByte fail: src contain zero unicode character')
+			}
+			unsafe { dst.grow_len(dst_len) }
+			C.WideCharToMultiByte(dst_codepage, 0, unicode.data, unicode.len, dst.data,
+				dst.len, 0, 0)
+		}
 	}
+	return dst
 }
