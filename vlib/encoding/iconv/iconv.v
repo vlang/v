@@ -129,7 +129,6 @@ pub fn read_file_encoding(path string, encoding string) !string {
 		return error('please use UTF16LE/UTF16BE/UTF32LE/UTF32BE instead')
 	}
 	encoding_bytes := os.read_file_array[u8](path)
-	println(encoding_bytes)
 	encoding_without_bom_bytes := remove_utf_string_with_bom(encoding_bytes, encoding)
 	return encoding_to_vstring(encoding_without_bom_bytes, encoding)!
 }
