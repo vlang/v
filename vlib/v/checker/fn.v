@@ -1,5 +1,6 @@
 module checker
 
+import strings
 import v.ast
 import v.util
 import v.token
@@ -2863,7 +2864,8 @@ struct HaveWantParams {
 }
 
 fn (mut c Checker) fn_call_error_have_want(p HaveWantParams) {
-	mut have_want := '\n\thave ('
+	mut sb := strings.new_builder(20)
+	sb.write_string('have (')
 	// Fetch arg types, they are always 0 at this point
 	// Duplicate logic, but we don't care, since this is an error, so no perf cost
 	mut arg_types := []ast.Type{len: p.args.len}
@@ -2876,30 +2878,32 @@ fn (mut c Checker) fn_call_error_have_want(p HaveWantParams) {
 		if arg_types[i] == 0 { // arg.typ == 0 {
 			// Arguments can have an unknown (invalid) type
 			// This should never happen.
-			have_want += '?'
+			sb.write_string('?')
 		} else {
-			have_want += c.table.type_to_str(arg_types[i]) // arg.typ)
+			sb.write_string(c.table.type_to_str(arg_types[i])) // arg.typ
 		}
 		if i < p.args.len - 1 {
-			have_want += ', '
+			sb.write_string(', ')
 		}
 	}
+	sb.write_string(')')
+	c.add_error_detail(sb.str())
 	// Actual parameters we expect
-	have_want += ')\n\twant ('
+	sb.write_string('         want (')
 	for i, param in p.params {
 		if i == 0 && p.nr_params == p.params.len - 1 {
 			// Skip receiver
 			continue
 		}
-		have_want += c.table.type_to_str(param.typ)
+		sb.write_string(c.table.type_to_str(param.typ))
 		if i < p.params.len - 1 {
-			have_want += ', '
+			sb.write_string(', ')
 		}
 	}
-	have_want += ')\n'
+	sb.write_string(')')
+	c.add_error_detail(sb.str())
 	args_plural := if p.nr_params == 1 { 'argument' } else { 'arguments' }
-	c.error('expected ${p.nr_params} ${args_plural}, but got ${p.nr_args}${have_want}',
-		p.pos)
+	c.error('expected ${p.nr_params} ${args_plural}, but got ${p.nr_args}', p.pos)
 }
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
