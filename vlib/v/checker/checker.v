@@ -3191,10 +3191,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		return to_type
 	}
 
-	type_str := c.table.type_to_str(to_type)
-	type_rm_ptr := type_str.replace('&', '')
-	if !c.expected_type.has_flag(.generic) && type_rm_ptr.len == 1
-		&& type_rm_ptr.starts_with_capital() {
+	if !c.expected_type.has_flag(.generic) && to_sym.name.len == 1
+		&& to_sym.name.starts_with_capital() {
 		c.error('unknown type `${to_sym.name}`', node.pos)
 	}
 
