@@ -20,18 +20,31 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	mut is_src_swap := false
 	mut is_dst_swap := false
 
-	mut cd := C.iconv_open(tocode.str, fromcode.str)
+	mut src_encoding := fromcode.to_upper()
+	mut dst_encoding := tocode.to_upper()
+	mut cd := C.iconv_open(dst_encoding.str, src_encoding.str)
 	if isize(cd) == -1 {
-		// macos-12 workaround: platform not support UTF16LE, then first UTF16BE, followed by bytes swap
-		if tocode.to_upper() in ['UTF16LE', 'UTF-16LE']! {
-			cd = C.iconv_open(c'UTF16BE', fromcode.str)
-			is_dst_swap = true
-		} else if fromcode.to_upper() in ['UTF16LE', 'UTF-16LE']! {
-			cd = C.iconv_open(tocode.str, c'UTF16BE')
-			is_src_swap = true
-		}
-		if isize(cd) == -1 {
-			return error('can\'t convert from ${fromcode} to ${tocode}')
+		$if macos {
+			// macos-12 workaround: platform not support UTF16LE/UTF16BE, only UTF16, which is big-endian, followed by bytes swap
+			if src_encoding in ['UTF16LE', 'UTF-16LE'] {
+				src_encoding = 'UTF16'
+				is_src_swap = true
+			} else if src_encoding in ['UTF16BE', 'UTF-16BE'] {
+				src_encoding = 'UTF16'
+			}
+
+			if dst_encoding in ['UTF16LE', 'UTF-16LE'] {
+				dst_encoding = 'UTF16'
+				is_dst_swap = true
+			} else if dst_encoding in ['UTF16BE', 'UTF-16BE'] {
+				dst_encoding = 'UTF16'
+			}
+			cd = C.iconv_open(dst_encoding.str, src_encoding.str)
+			if isize(cd) == -1 {
+				return error('macos can\'t convert from ${src_encoding} to ${dst_encoding}')
+			}
+		} $else {
+			return error('platform can\'t convert from ${src_encoding} to ${dst_encoding}')
 		}
 	}
 	defer { C.iconv_close(cd) }
@@ -62,7 +75,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	// resize dst buf to real length
 	dst.trim(dst.len - int(dst_left))
 
-	if tocode.to_upper() in ['UTF16', 'UTF-16']! {
+	if dst_encoding in ['UTF16', 'UTF-16']! {
 		// To compatible with Windows(Little Endian default), remove the first FFFE/FEFF(BOM)
 		if dst.len <= 2 {
 			return dst // error('convert to UTF16 length too short? no BOM?')
@@ -72,7 +85,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 		}
 	}
 
-	if tocode.to_upper() in ['UTF32', 'UTF-32']! {
+	if dst_encoding in ['UTF32', 'UTF-32']! {
 		// remove the first FFFE0000/0000FEFF(BOM)
 		if dst.len <= 4 {
 			return dst // error('convert to UTF32 length too short? no BOM?')
