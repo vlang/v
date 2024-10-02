@@ -131,10 +131,10 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 	}
 	eprintln('${final_filepath} ${final_funcname}')
 	if i.op.len > 0 && i.op != 'call' {
-		mut lvtitle := '    Left value:'
-		mut rvtitle := '    Right value:'
-		mut slvalue := '${i.lvalue}'
-		mut srvalue := '${i.rvalue}'
+		mut lvtitle := '    Left value (len: ${i.lvalue.len}):'
+		mut rvtitle := '    Right value (len: ${i.rvalue.len}):'
+		mut slvalue := '`${i.lvalue}`'
+		mut srvalue := '`${i.rvalue}`'
 		// Do not print duplicate values to avoid confusion. In mosts tests the developer does
 		// `assert foo() == [1, 2, 3]`
 		// There's no need to print "[1, 2, 3]" again (left: [1,2,3,4]  right:[1,2,3])
