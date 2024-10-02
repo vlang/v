@@ -4,6 +4,7 @@
 module scanner
 
 import os
+import strings
 import strconv
 import v.token
 import v.pref
@@ -933,12 +934,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {
-					mut at_error_msg := '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)'
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
-						at_error_msg += '\nAvailable compile time variables:\n${token.valid_at_tokens}'
+						comptime_vars := token.valid_at_tokens.join(', ')
+						s.add_error_detail(wrap('available compile time variables: ${comptime_vars}',
+							width: 90
+						))
 					}
-					s.error(at_error_msg)
+					s.error('@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)')
 				} else {
 					// s.note('@keyword is being deprecated and then removed from V. Use `keyword_` or a different name (e.g. `typ` instead of `type`)')
 				}
@@ -1741,13 +1744,13 @@ pub fn (mut s Scanner) add_error_detail(msg string) {
 }
 
 pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
-	s.add_error_detail(util.formatted_error('details:', msg, s.file_path, pos))
+	s.add_error_detail('\n' + util.formatted_error('details:', msg, s.file_path, pos))
 }
 
 fn (mut s Scanner) eat_details() string {
 	mut details := ''
 	if s.error_details.len > 0 {
-		details = '\n' + s.error_details.join('\n')
+		details = s.error_details.join('\n')
 		s.error_details = []
 	}
 	return details
@@ -1859,4 +1862,38 @@ pub fn new_silent_scanner() &Scanner {
 	return &Scanner{
 		pref: p
 	}
+}
+
+@[params]
+struct WrapConfig {
+pub:
+	width int    = 80
+	end   string = '\n'
+}
+
+// wrap wraps the given string within `width` in characters.
+fn wrap(s string, config WrapConfig) string {
+	if config.width <= 0 {
+		return ''
+	}
+	words := s.fields()
+	if words.len == 0 {
+		return ''
+	}
+	mut sb := strings.new_builder(50)
+	sb.write_string(words[0])
+	mut space_left := config.width - words[0].len
+	for i in 1 .. words.len {
+		word := words[i]
+		if word.len + 1 > space_left {
+			sb.write_string(config.end)
+			sb.write_string(word)
+			space_left = config.width - word.len
+		} else {
+			sb.write_string(' ')
+			sb.write_string(word)
+			space_left -= 1 + word.len
+		}
+	}
+	return sb.str()
 }
