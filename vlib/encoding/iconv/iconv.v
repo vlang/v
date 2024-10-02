@@ -3,6 +3,16 @@ module iconv
 // Module iconv provides functions to convert between vstring(UTF8) and other encodings.
 import os
 
+@[inline]
+fn reverse_u16(src u16) u16 {
+	return u16(src >> 8 | src << 8)
+}
+
+@[inline]
+fn reverse_u32(src u32) u32 {
+	return u32(src >> 24 | ((src >> 8) & 0x0000_FF00) | ((src << 8) & 0x00FF_0000) | src << 24)
+}
+
 // vstring_to_encoding convert V string `str` to `tocode` encoding string
 // tips: use `iconv --list` check for supported encodings
 pub fn vstring_to_encoding(str string, tocode string) ![]u8 {

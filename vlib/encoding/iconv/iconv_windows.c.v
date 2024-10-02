@@ -511,16 +511,6 @@ fn name_to_codepage(name string) int {
 	return -1
 }
 
-@[inline]
-fn reverse_u16(src u16) u16 {
-	return u16(src >> 8 | src << 8)
-}
-
-@[inline]
-fn reverse_u32(src u32) u32 {
-	return u32(src >> 24 | ((src >> 8) & 0x0000_FF00) | ((src << 8) & 0x00FF_0000) | src << 24)
-}
-
 // https://www.cnblogs.com/findumars/p/6376034.html
 @[direct_array_access]
 fn utf32_to_utf16(src &u8, src_len int, is_src_little_endian bool, is_dst_little_endian bool) ![]u8 {
@@ -652,9 +642,6 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	if dst_codepage <= 0 {
 		return error('tocode ${tocode} does not exist')
 	}
-
-	println('src_codepage = ${src_codepage}')
-	println('dst_codepage = ${dst_codepage}')
 
 	if src_codepage == dst_codepage {
 		// clone src
