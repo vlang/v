@@ -3191,6 +3191,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		return to_type
 	}
 
+	if !c.expected_type.has_flag(.generic) && to_sym.name.len == 1
+		&& to_sym.name.starts_with_capital() {
+		c.error('unknown type `${to_sym.name}`', node.pos)
+	}
+
 	if to_sym.language != .c {
 		c.ensure_type_exists(to_type, node.pos)
 
