@@ -589,7 +589,8 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	}
 	mut typ := info.elem_type
 	mut sym := g.table.sym(info.elem_type)
-	if mut sym.info is ast.Alias {
+	is_option := typ.has_flag(.option)
+	if !is_option && mut sym.info is ast.Alias {
 		typ = sym.info.parent_type
 		sym = g.table.sym(typ)
 	}
@@ -628,7 +629,12 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 					g.auto_str_funcs.writeln('\t\t}')
 				}
 			} else {
-				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(it, indent_count);')
+				prefix := if !is_option && sym.is_c_struct() && str_method_expects_ptr {
+					'&'
+				} else {
+					''
+				}
+				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(${prefix}it, indent_count);')
 			}
 		} else if sym.kind in [.f32, .f64] {
 			if sym.kind == .f32 {
@@ -763,19 +769,20 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		key_sym = g.table.sym(key_typ)
 	}
 	key_styp := g.typ(key_typ)
-	key_str_fn_name := key_styp.replace('*', '') + '_str'
+	key_str_fn_name := styp_to_str_fn_name(key_styp)
 	if !key_sym.has_method('str') {
 		g.get_str_fn(key_typ)
 	}
 
 	mut val_typ := info.value_type
 	mut val_sym := g.table.sym(val_typ)
-	if mut val_sym.info is ast.Alias {
+	is_option := val_typ.has_flag(.option)
+	if !is_option && mut val_sym.info is ast.Alias {
 		val_typ = val_sym.info.parent_type
 		val_sym = g.table.sym(val_typ)
 	}
 	val_styp := g.typ(val_typ)
-	mut elem_str_fn_name := val_styp.replace('*', '') + '_str'
+	mut elem_str_fn_name := styp_to_str_fn_name(val_styp)
 
 	mut receiver_is_ptr := false
 	fn_str := val_sym.find_method_with_generic_parent('str') or { ast.Fn{} }
@@ -836,8 +843,12 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		}
 	} else if should_use_indent_func(val_sym.kind) && fn_str.name != 'str' {
-		ptr_str := '*'.repeat(val_typ.nr_muls())
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i), indent_count));')
+		ptr_str := if !is_option && val_sym.is_c_struct() && str_method_expects_ptr {
+			''
+		} else {
+			'*'.repeat(val_typ.nr_muls() + 1)
+		}
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		tmp_val := '*(${val_styp}*)DenseArray_value(&m.key_values, i)'
 		if val_typ.has_flag(.option) {
