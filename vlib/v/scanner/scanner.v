@@ -1883,7 +1883,7 @@ fn wrap(s string, config WrapConfig) string {
 	mut sb := strings.new_builder(50)
 	sb.write_string(words[0])
 	mut space_left := config.width - words[0].len
-	for i in 1..words.len {
+	for i in 1 .. words.len {
 		word := words[i]
 		if word.len + 1 > space_left {
 			sb.write_string(config.end)
