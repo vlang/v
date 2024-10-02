@@ -1,5 +1,7 @@
 module iconv
 
+import os
+
 // Module iconv provides functions convert between vstring(UTF8) to/from different encodings.
 
 #include <iconv.h>
@@ -41,6 +43,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 			}
 			cd = C.iconv_open(dst_encoding.str, src_encoding.str)
 			if isize(cd) == -1 {
+				os.system('/usr/bin/iconv --list') // debug
 				return error('macos can\'t convert from ${src_encoding} to ${dst_encoding}')
 			}
 		} $else {
