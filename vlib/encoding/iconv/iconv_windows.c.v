@@ -560,7 +560,7 @@ fn utf32_to_utf16(src &u8, src_len int, is_src_little_endian bool, is_dst_little
 			}
 			dst_idx++
 		} else {
-			return error('invalid utf32le encoding')
+			return error('invalid UTF-32LE encoding')
 		}
 	}
 	dst.trim(dst_idx * 2)
@@ -592,7 +592,7 @@ fn utf16_to_utf32(src &u8, src_len int, is_src_little_endian bool, is_dst_little
 		if w1 >= 0xD800 && w1 <= 0xDFFF {
 			if w1 < 0xDC00 {
 				if src_idx == src_len / 2 {
-					return error('invalid utf16le encoding')
+					return error('invalid UTF-16LE encoding')
 				}
 				unsafe {
 					w2 = sptr[src_idx]
@@ -611,7 +611,7 @@ fn utf16_to_utf32(src &u8, src_len int, is_src_little_endian bool, is_dst_little
 					dst_idx++
 				}
 			} else {
-				return error('invalid utf16le encoding')
+				return error('invalid UTF-16LE encoding')
 			}
 		} else {
 			t = w1

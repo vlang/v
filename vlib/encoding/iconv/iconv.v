@@ -18,7 +18,7 @@ fn reverse_u32(src u32) u32 {
 pub fn vstring_to_encoding(str string, tocode string) ![]u8 {
 	encoding_name := tocode.to_upper()
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
-		return error('please use UTF16LE/UTF16BE/UTF32LE/UTF32BE instead')
+		return error('please use UTF16-LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
 	return conv(tocode, 'UTF-8', str.str, str.len)
 }
@@ -28,7 +28,7 @@ pub fn vstring_to_encoding(str string, tocode string) ![]u8 {
 pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 	encoding_name := fromcode.to_upper()
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
-		return error('please use UTF16LE/UTF16BE/UTF32LE/UTF32BE instead')
+		return error('please use UTF16-LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
 	mut dst := conv('UTF-8', fromcode, bytes.data, bytes.len)!
 	dst << 0 // add a tail zero, to build a vstring
@@ -50,13 +50,13 @@ pub fn create_utf_string_with_bom(src []u8, utf_type string) []u8 {
 		'UTF16LE', 'UTF-16LE' {
 			clone.prepend([u8(0xFF), 0xFE])
 		}
-		'UTF16BE', 'UFT16-BE' {
+		'UTF16BE', 'UTF-16BE' {
 			clone.prepend([u8(0xFE), 0xFF])
 		}
-		'UTF32LE', 'UFT32-LE' {
+		'UTF32LE', 'UTF-32LE' {
 			clone.prepend([u8(0xFF), 0xFE, 0, 0])
 		}
-		'UTF32BE', 'UFT32-BE' {
+		'UTF32BE', 'UTF-32BE' {
 			clone.prepend([u8(0), 0, 0xFE, 0xFF])
 		}
 		else {}
@@ -88,14 +88,14 @@ pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 				}
 			}
 		}
-		'UTF16BE', 'UFT16-BE' {
+		'UTF16BE', 'UTF-16BE' {
 			if clone.len > 2 {
 				if clone[0] == u8(0xFE) && clone[1] == u8(0xFF) {
 					clone.delete_many(0, 2)
 				}
 			}
 		}
-		'UTF32LE', 'UFT32-LE' {
+		'UTF32LE', 'UTF-32LE' {
 			if clone.len > 4 {
 				if clone[0] == u8(0xFF) && clone[1] == u8(0xFE) && clone[2] == u8(0)
 					&& clone[3] == u8(0) {
@@ -103,7 +103,7 @@ pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 				}
 			}
 		}
-		'UTF32BE', 'UFT32-BE' {
+		'UTF32BE', 'UTF-32BE' {
 			if clone.len > 4 {
 				if clone[0] == u8(0) && clone[1] == u8(0) && clone[2] == u8(0xFE)
 					&& clone[3] == u8(0xFF) {
@@ -121,7 +121,7 @@ pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 pub fn write_file_encoding(path string, text string, encoding string, bom bool) ! {
 	encoding_name := encoding.to_upper()
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
-		return error('please use UTF16LE/UTF16BE/UTF32LE/UTF32BE instead')
+		return error('please use UTF-16LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
 	encoding_bytes := vstring_to_encoding(text, encoding)!
 	if bom && encoding.to_upper().starts_with('UTF') {
@@ -136,7 +136,7 @@ pub fn write_file_encoding(path string, text string, encoding string, bom bool) 
 pub fn read_file_encoding(path string, encoding string) !string {
 	encoding_name := encoding.to_upper()
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
-		return error('please use UTF16LE/UTF16BE/UTF32LE/UTF32BE instead')
+		return error('please use UTF-16LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
 	encoding_bytes := os.read_file_array[u8](path)
 	encoding_without_bom_bytes := remove_utf_string_with_bom(encoding_bytes, encoding)
