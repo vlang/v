@@ -1,4 +1,5 @@
 import encoding.iconv
+import os
 
 fn test_vstring_to_encoding() {
 	empty_utf8 := iconv.vstring_to_encoding('', 'UTF8')!
@@ -67,58 +68,62 @@ fn test_encoding_to_vstring() {
 }
 
 fn test_create_utf_string_with_bom() {
-	assert iconv.create_utf_string_with_bom([u8(97), 98, 99], 'UTF8') == [u8(0xEF), 0xBB, 0xBF,
-		97, 98, 99]
-	assert iconv.create_utf_string_with_bom([u8(97), 0, 98, 0, 99, 0], 'UTF16LE') == [
-		u8(0xFF),
-		0xFE,
-		97,
-		0,
-		98,
-		0,
-		99,
-		0,
-	]
-	assert iconv.create_utf_string_with_bom([u8(0), 97, 0, 98, 0, 99], 'UTF16BE') == [
-		u8(0xFE),
-		0xFF,
-		0,
-		97,
-		0,
-		98,
-		0,
-		99,
-	]
-	assert iconv.create_utf_string_with_bom([u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0],
-		'UTF32LE') == [u8(0xFF), 0xFE, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
-	assert iconv.create_utf_string_with_bom([u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99],
-		'UTF32BE') == [u8(0), 0, 0xFE, 0xFF, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99]
+	// bug ? vfmt create strange format here
+	// vfmt off
+	assert iconv.create_utf_string_with_bom([u8(97), 98, 99], 'UTF8') == [u8(0xEF), 0xBB, 0xBF,	97, 98, 99]
+	assert iconv.create_utf_string_with_bom([u8(97), 0, 98, 0, 99, 0], 'UTF16LE') == [u8(0xFF),	0xFE, 97, 0, 98, 0, 99, 0]
+	assert iconv.create_utf_string_with_bom([u8(0), 97, 0, 98, 0, 99], 'UTF16BE') == [u8(0xFE), 0xFF, 0, 97, 0, 98, 0, 99]
+	assert iconv.create_utf_string_with_bom([u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0], 'UTF32LE') == [u8(0xFF), 0xFE, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
+	assert iconv.create_utf_string_with_bom([u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99], 'UTF32BE') == [u8(0), 0, 0xFE, 0xFF, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99]
+	// vfmt on
 }
 
 fn test_remove_utf_string_with_bom() {
-	assert iconv.remove_utf_string_with_bom([u8(0xEF), 0xBB, 0xBF, 97, 98, 99], 'UTF8') == [
-		u8(97),
-		98,
-		99,
-	]
-	assert iconv.remove_utf_string_with_bom([u8(0xFF), 0xFE, 97, 0, 98, 0, 99, 0], 'UTF16LE') == [
-		u8(97),
-		0,
-		98,
-		0,
-		99,
-		0,
-	]
-	assert iconv.remove_utf_string_with_bom([u8(0xFE), 0xFF, 0, 97, 0, 98, 0, 99], 'UTF16BE') == [
-		u8(0),
-		97,
-		0,
-		98,
-		0,
-		99,
-	]
-	assert iconv.remove_utf_string_with_bom([u8(0xFF), 0xFE, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99,
-		0, 0, 0], 'UTF32LE') == [u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
-	assert iconv.remove_utf_string_with_bom([u8(0), 0, 0xFE, 0xFF, 0, 0, 0, 97, 0, 0, 0, 98, 0,
-		0, 0, 99], 'UTF32BE') == [u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99]
+	// bug ? vfmt create strange format here
+	// vfmt off
+	assert iconv.remove_utf_string_with_bom([u8(0xEF), 0xBB, 0xBF, 97, 98, 99], 'UTF8') == [u8(97), 98, 99]
+	assert iconv.remove_utf_string_with_bom([u8(0xFF), 0xFE, 97, 0, 98, 0, 99, 0], 'UTF16LE') == [u8(97), 0, 98, 0, 99, 0]
+	assert iconv.remove_utf_string_with_bom([u8(0xFE), 0xFF, 0, 97, 0, 98, 0, 99], 'UTF16BE') == [u8(0), 97, 0, 98, 0, 99]
+	assert iconv.remove_utf_string_with_bom([u8(0xFF), 0xFE, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0], 'UTF32LE') == [u8(97), 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0]
+	assert iconv.remove_utf_string_with_bom([u8(0), 0, 0xFE, 0xFF, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99], 'UTF32BE') == [u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99]
+	// vfmt on
+}
+
+fn my_test_read_file_encoding_write_file_encoding(txt string, encoding string, bom bool, bytes []u8) ! {
+	iconv.write_file_encoding('iconv_tmp.txt', txt, encoding, bom)!
+	// read bytes directly from file
+	mut bytes_ref := os.read_file_array[u8]('iconv_tmp.txt')
+	assert bytes_ref == bytes
+	if bom {
+		bytes_ref = iconv.remove_utf_string_with_bom(bytes_ref, encoding)
+	}
+	str_ref := iconv.encoding_to_vstring(bytes_ref, encoding)!
+	assert str_ref.bytes() == txt.bytes()
+	str_conv := iconv.read_file_encoding('iconv_tmp.txt', encoding)!
+	assert str_conv == txt
+	os.rm('iconv_tmp.txt')!
+}
+
+fn test_read_file_encoding_write_file_encoding() ! {
+	// vfmt off
+	// UTF8
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF8',false,[u8(86), 229, 164, 167, 230, 179, 149, 229, 165, 189, 97, 98, 99])!
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF8',true,[u8(0xEF), 0xBB, 0xBF, 86, 229, 164, 167, 230, 179, 149, 229, 165, 189, 97, 98, 99])!
+
+	// UTF16LE
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF16LE',false,[u8(86), 0, 39, 89, 213, 108, 125, 89, 97, 0, 98, 0, 99, 0])!
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF16LE',true,[u8(0xFF), 0xFE, 86, 0, 39, 89, 213, 108, 125, 89, 97, 0, 98, 0, 99, 0])!
+
+	// UTF16BE
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF16BE',false,[u8(0), 86, 89, 39, 108, 213, 89, 125, 0, 97, 0, 98, 0, 99])!
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF16BE',true,[u8(0xFE), 0xFF, 0, 86, 89, 39, 108, 213, 89, 125, 0, 97, 0, 98, 0, 99])!
+
+	// UTF32LE
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF32LE',false,[u8(86), 0, 0, 0, 39, 89, 0, 0, 213, 108, 0, 0, 125, 89, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0])!
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF32LE',true,[u8(0xFF), 0xFE, 0, 0, 86, 0, 0, 0, 39, 89, 0, 0, 213, 108, 0, 0, 125, 89, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99, 0, 0, 0])!
+
+	// UTF32BE
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF32BE',false,[u8(0), 0, 0, 86, 0, 0, 89, 39, 0, 0, 108, 213, 0, 0, 89, 125, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99])!
+	my_test_read_file_encoding_write_file_encoding('V大法好abc','UTF32BE',true,[u8(0), 0, 0xFE, 0xFF, 0, 0, 0, 86, 0, 0, 89, 39, 0, 0, 108, 213, 0, 0, 89, 125, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99])!
+	// vfmt on
 }
