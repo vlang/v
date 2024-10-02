@@ -1640,19 +1640,16 @@ pub fn (mut s Scanner) ident_char() string {
 				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (escape sequence did not refer to a singular rune)',
 					lspos)
 			} else if u.len == 0 {
-				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
-					lspos)
+				s.add_error_detail('use quotes for strings, backticks for characters')
 				s.error_with_pos('invalid empty character literal `${orig}`', lspos)
 			} else {
-				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
-					lspos)
+				s.add_error_detail('use quotes for strings, backticks for characters')
 				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (more than one character)',
 					lspos)
 			}
 		}
 	} else if c.ends_with('\n') {
-		s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
-			lspos)
+		s.add_error_detail('use quotes for strings, backticks for characters')
 		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
 	} else if c.len > len {
 		ch := c[c.len - 1]

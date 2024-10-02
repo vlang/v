@@ -4,10 +4,4 @@ vlib/v/scanner/tests/unknown_escape_sequence_in_ident_char_1_err.vv:2:6: error: 
       |         ^
     3 | `
     4 | }
-Details: 
-vlib/v/scanner/tests/unknown_escape_sequence_in_ident_char_1_err.vv:2:6: details: use quotes for strings, backticks for characters
-    1 | fn main() {
-    2 |     _ = `\
-      |         ^
-    3 | `
-    4 | }
+Details: use quotes for strings, backticks for characters
