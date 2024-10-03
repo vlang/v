@@ -1,6 +1,7 @@
 module decoder2
 
 import time
+import strconv
 
 // Node represents a node in a JSON decoder tree.
 struct Node {
@@ -16,6 +17,13 @@ mut:
 	idx int // idx is the current index of the decoder.
 }
 
+struct Checker {
+	end  int
+	json string // json is the JSON data to be decoded.
+mut:
+	idx int // idx is the current index of the decoder.
+}
+
 pub enum ValueKind {
 	unknown
 	array
@@ -23,40 +31,492 @@ pub enum ValueKind {
 	string_
 	number
 	boolean
+	null
+}
+
+// fn check_if_json_match_optional[?T](val string) ! {
+
+// }
+
+// fn check_if_json_match_pointer[&T](val string) ! {
+
+// }
+
+// check_json checks if the JSON string is valid.
+fn check_if_json_match[T](val string) ! {
+	// check if the JSON string is empty
+	if val == '' {
+		return error('empty string')
+	}
+
+	// check if generic type matches the JSON type
+	value_kind := get_value_kind(val[0])
+
+	$if T is $option {
+		// TODO
+	} $else $if T is $sumtype {
+		// TODO
+	} $else $if T is $alias {
+		// TODO
+	} $else $if T is $string {
+		if value_kind != .string_ {
+			return error('Expected string, but got ${value_kind}')
+		}
+	} $else $if T is time.Time {
+		if value_kind != .string_ {
+			return error('Expected string, but got ${value_kind}')
+		}
+	} $else $if T is $map {
+		if value_kind != .object {
+			return error('Expected object, but got ${value_kind}')
+		}
+	} $else $if T is $array {
+		if value_kind != .array {
+			return error('Expected array, but got ${value_kind}')
+		}
+	} $else $if T is $struct {
+		if value_kind != .object {
+			return error('Expected object, but got ${value_kind}')
+		}
+	} $else $if T in [$enum, $int, $float] {
+		if value_kind != .number {
+			return error('Expected number, but got ${value_kind}')
+		}
+	} $else $if T is bool {
+		if value_kind != .boolean {
+			return error('Expected boolean, but got ${value_kind}')
+		}
+	} $else {
+		return error('cannot encode value with ${value_kind} type')
+	}
+}
+
+fn (mut checker Checker) error(message string) ! {
+	json := if checker.end < checker.idx + 5 {
+		checker.json
+	} else {
+		checker.json[0..checker.idx + 5]
+	}
+
+	mut error_message := '\n'
+	last_new_line := json.last_index_u8(`\n`)
+	if last_new_line != -1 {
+		error_message += json[last_new_line..checker.idx]
+	} else {
+		error_message += json[0..checker.idx]
+	}
+	error_message += [json[checker.idx]].bytestr()
+
+	error_message += '\n'
+
+	if last_new_line != -1 {
+		error_message += ' '.repeat(checker.idx - last_new_line)
+	} else {
+		error_message += ' '.repeat(checker.idx)
+	}
+
+	error_message += '^ ${message}'
+
+	return error(error_message)
 }
 
 // check_json checks if the JSON string is valid.
-fn check_json(val string) ! {
+fn (mut checker Checker) check_json_format(val string) ! {
+	// check if the JSON string is empty
 	if val == '' {
-		return error('empty string')
+		return checker.error('empty string')
+	}
+
+	// check if generic type matches the JSON type
+	value_kind := get_value_kind(val[checker.idx])
+	match value_kind {
+		.unknown {
+			return checker.error('unknown value kind')
+		}
+		.null {
+			// assert false
+			// check if the JSON string is a null value
+			for letter in 'null' {
+				if val[checker.idx] != letter {
+					return checker.error('invalid null value')
+				}
+				checker.idx++
+			}
+		}
+		.object {
+			checker.idx++
+			for val[checker.idx] != `}` {
+				// check if the JSON string is an empty object
+				if checker.end - checker.idx <= 2 {
+					return
+				}
+
+				if val[checker.idx] != `"` {
+					checker.idx++
+				}
+
+				// skip whitespace
+				for val[checker.idx] in [` `, `\t`, `\n`] {
+					if checker.idx >= checker.end - 1 {
+						break
+					}
+					checker.idx++
+				}
+
+				if val[checker.idx] == `}` {
+					return
+				}
+
+				match val[checker.idx] {
+					`"` {
+						// Object key
+						checker.check_json_format(val)!
+
+						for val[checker.idx] != `:` {
+							if checker.idx >= checker.end - 1 {
+								return checker.error('EOF error')
+							}
+							if val[checker.idx] !in [` `, `\t`, `\n`] {
+								return checker.error('invalid value after object key')
+							}
+							checker.idx++
+						}
+					}
+					`[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
+						// skip
+					}
+					`}` {
+						return
+					}
+					`]` {
+						return checker.error('Expecting key. Found closing bracket')
+					}
+					`,` {
+						return checker.error('invalid object key')
+					}
+					`:` {
+						return checker.error('empty object key')
+					}
+					else {
+						return checker.error('`${[val[checker.idx]].bytestr()}` is an invalid object key')
+					}
+				}
+
+				if val[checker.idx] != `:` {
+					return checker.error('Expecting `:` after object key')
+				}
+				// skip `:`
+				checker.idx++
+
+				// skip whitespace
+				for val[checker.idx] in [` `, `\t`, `\n`] {
+					checker.idx++
+				}
+
+				match val[checker.idx] {
+					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
+						for val[checker.idx] != `}` {
+							if checker.idx >= checker.end - 1 {
+								return checker.error('EOF error')
+							}
+							checker.check_json_format(val)!
+							// whitespace
+							for val[checker.idx] in [` `, `\t`, `\n`] {
+								checker.idx++
+							}
+							if val[checker.idx] == `}` {
+								break
+							}
+							if checker.idx >= checker.end - 1 {
+								return checker.error('EOF error: braces are not closed')
+							}
+
+							if val[checker.idx] == `,` {
+								checker.idx++
+								for val[checker.idx] in [` `, `\t`, `\n`] {
+									checker.idx++
+								}
+								if val[checker.idx] != `"` {
+									return checker.error('Expecting object key')
+								} else {
+									break
+								}
+							} else {
+								if val[checker.idx] == `}` {
+									break
+								} else {
+									// return checker.error('`}` after value')
+									return
+								}
+							}
+						}
+					}
+					else {
+						return checker.error('invalid object value')
+					}
+				}
+			}
+			if checker.idx < checker.end - 1 {
+				checker.idx++
+			}
+		}
+		.array {
+			// for val[checker.idx] != `]` {
+
+			// check if the JSON string is an empty array
+			if checker.end >= checker.idx + 2 {
+				checker.idx++
+				if val[checker.idx] == `]` {
+					return
+				}
+			} else {
+				return checker.error('EOF error: There are not enough leght for an array')
+			}
+
+			for val[checker.idx] != `]` {
+				// skip whitespace
+				for val[checker.idx] in [` `, `\t`, `\n`] {
+					if checker.idx >= checker.end - 1 {
+						break
+					}
+					checker.idx++
+				}
+
+				if val[checker.idx] == `]` {
+					return
+				}
+
+				// match val[checker.idx] {
+				// 	`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
+				if checker.idx >= checker.end - 1 {
+					return checker.error('EOF error')
+				}
+
+				checker.check_json_format(val)!
+
+				// whitespace
+				for val[checker.idx] in [` `, `\t`, `\n`] {
+					checker.idx++
+				}
+				if val[checker.idx] == `]` {
+					break
+				}
+				if checker.idx >= checker.end - 1 {
+					return checker.error('EOF error: braces are not closed')
+				}
+
+				if val[checker.idx] == `,` {
+					checker.idx++
+					for val[checker.idx] in [` `, `\t`, `\n`] {
+						checker.idx++
+					}
+					if val[checker.idx] == `]` {
+						return checker.error('Cannot use `,`, before `]`')
+						// return checker.error('Expecting value')
+					}
+					continue
+				} else {
+					if val[checker.idx] == `]` {
+						break
+					} else {
+						return checker.error('`]` after value')
+					}
+				}
+				// }
+				// else {
+				// 	return checker.error('invalid array value')
+				// }
+				// }
+			}
+			// skip `]`
+			if checker.idx < checker.end - 1 {
+				checker.idx++
+			}
+			// }
+		}
+		.string_ {
+			// check if the JSON string is a valid string
+
+			if checker.idx >= checker.end - 1 {
+				return checker.error('EOF error: string not closed')
+			}
+
+			checker.idx++
+
+			if val[checker.idx] == `"` {
+				return
+			}
+
+			// check if the JSON string is a valid escape sequence
+			for val[checker.idx] != `"` && val[checker.idx - 1] != `\\` {
+				if val[checker.idx] == `\\` {
+					if checker.idx + 1 >= checker.end - 1 {
+						return checker.error('invalid escape sequence')
+					}
+					escaped_char := val[checker.idx + 1]
+					match escaped_char {
+						`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {}
+						`u` {
+							// check if the JSON string is a valid unicode escape sequence
+							escaped_char_last_index := checker.idx + 5
+
+							if escaped_char_last_index >= checker.end - 1 {
+								for checker.idx < escaped_char_last_index {
+									match val[checker.idx] {
+										`0`...`9`, `a`...`f`, `A`...`F` {
+											checker.idx++
+										}
+										else {
+											return checker.error('invalid unicode escape sequence')
+										}
+									}
+								}
+								// REVIEW: Should we increment the index here?
+								continue
+							} else {
+								return checker.error('short unicode escape sequence')
+							}
+						}
+						else {
+							return checker.error('unknown escape sequence')
+						}
+					}
+				}
+				checker.idx++
+			}
+			// `"` is the last character
+			if checker.idx < checker.end - 1 {
+				checker.idx++
+			}
+		}
+		.number {
+			// check if the JSON string is a valid float or integer
+			mut is_negative := val[0] == `-`
+			mut has_dot := false
+
+			mut digits_count := 0
+
+			for val[checker.idx] !in [`,`, `}`, `]`] && checker.idx < checker.end - 1 {
+				digits_count++
+
+				// skip whitespace
+				for val[checker.idx] in [` `, `\t`, `\n`] {
+					checker.idx++
+				}
+				if val[checker.idx] == `.` {
+					if has_dot {
+						return checker.error('invalid float. Multiple dots')
+					}
+					has_dot = true
+					checker.idx++
+					continue
+				} else if val[checker.idx] == `-` {
+					if is_negative {
+						return checker.error('invalid float. Multiple negative signs')
+					}
+					checker.idx++
+					continue
+				} else {
+					if val[checker.idx] < `0` || val[checker.idx] > `9` {
+						return checker.error('invalid number')
+					}
+				}
+
+				if digits_count >= 64 {
+					return checker.error('number exeeds 64 digits')
+				}
+
+				checker.idx++
+			}
+		}
+		.boolean {
+			// check if the JSON string is a valid boolean
+			match val[checker.idx] {
+				`t` {
+					for letter in 'rue' {
+						checker.idx++
+						if val[checker.idx] != letter {
+							return checker.error('invalid boolean')
+						}
+					}
+				}
+				`f` {
+					for letter in 'alse' {
+						checker.idx++
+						if val[checker.idx] != letter {
+							return checker.error('invalid boolean')
+						}
+					}
+				}
+				else {
+					return checker.error('invalid boolean')
+				}
+			}
+			if checker.idx < checker.end - 1 {
+				checker.idx++
+			}
+		}
+	}
+
+	// if checker.idx >= checker.end - 1 {
+	// 	return
+	// }
+
+	for checker.idx < checker.end - 1 && val[checker.idx] !in [`,`, `:`, `}`, `]`] {
+		// get trash characters after the value
+		if val[checker.idx] !in [` `, `\t`, `\n`] {
+			last_new_line := val.last_index_u8(`\n`)
+			mut error_message := '\n'
+			if last_new_line != -1 {
+				error_message += val[last_new_line + 1..checker.idx]
+			} else {
+				error_message += val[0..checker.idx]
+			}
+			error_message += [val[checker.idx]].bytestr()
+			error_message += '\n'
+
+			if last_new_line != -1 {
+				error_message += ' '.repeat(checker.idx - last_new_line)
+			} else {
+				error_message += ' '.repeat(checker.idx)
+			}
+			error_message += '^ invalid value. Unexpected character after ${value_kind} end'
+			return error(error_message)
+			// return error('invalid value ${[val[checker.idx]].bytestr()}')
+		} else {
+			// whitespace
+			checker.idx++
+		}
 	}
 }
 
 // decode decodes a JSON string into a specified type.
 pub fn decode[T](val string) !T {
-	check_json(val)!
+	mut checker := Checker{
+		idx:  0
+		end:  val.len
+		json: val
+	}
+	checker.check_json_format(val)!
+	check_if_json_match[T](val)!
 
-	mut nodes := []Node{}
 	mut decoder := Decoder{
 		json: val
 	}
 
-	// TODO: needs performance improvements
-	decoder.fulfill_nodes(mut nodes)
-
 	mut result := T{}
-	decoder.decode_value(nodes, &result)
+	decoder.decode_value(&result)
 	return result
 }
 
 // decode_value decodes a value from the JSON nodes.
-fn (mut decoder Decoder) decode_value[T](nodes []Node, val &T) {
+fn (mut decoder Decoder) decode_value[T](val &T) {
 	$if val is $option {
 	} $else $if T is string {
 	} $else $if T is $sumtype {
 		$for v in val.variants {
 			if val is v {
-				decoder.decode_value(nodes, val)
+				decoder.decode_value(val)
 			}
 		}
 	} $else $if T is $alias {
@@ -64,6 +524,10 @@ fn (mut decoder Decoder) decode_value[T](nodes []Node, val &T) {
 	} $else $if T is $map {
 	} $else $if T is $array {
 	} $else $if T is $struct {
+		mut nodes := []Node{}
+		// TODO: needs performance improvements
+		decoder.fulfill_nodes(mut nodes)
+
 		decoder.decode_struct(nodes, val)
 	} $else $if T is $enum {
 	} $else $if T is $int {
@@ -81,7 +545,8 @@ fn get_value_kind(value rune) ValueKind {
 		`t`, `f` { .boolean }
 		`{` { .object }
 		`[` { .array }
-		`0`...`9` { .number }
+		`0`...`9`, `-` { .number }
+		`n` { .null }
 		else { .unknown }
 	}
 }
@@ -155,8 +620,6 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						value.$(field.name) = decoder.decode_optional_value_in_actual_node(node,
 							value.$(field.name))
 					} $else $if field.typ is $sumtype {
-						// dump(value.$(field.name))
-
 						workaround := value.$(field.name)
 						// z := value.$(field.name)
 
@@ -417,4 +880,65 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 		}
 		decoder.idx++
 	}
+}
+
+fn utf8_byte_length(unicode_value u32) int {
+	if unicode_value <= 0x7F {
+		return 1
+	} else if unicode_value <= 0x7FF {
+		return 2
+	} else if unicode_value <= 0xFFFF {
+		return 3
+	} else {
+		return 4
+	}
+}
+
+fn precalculate_string_decoded_space(encoded string) !int {
+	if encoded.len < 2 || encoded[0] != `"` || encoded[encoded.len - 1] != `"` {
+		return error('Invalid JSON string format')
+	}
+
+	mut space_required := 0
+	mut idx := 1 // Start after the opening quote
+
+	for idx < encoded.len - 1 {
+		current_byte := encoded[idx]
+
+		if current_byte == `\\` {
+			// Escape sequence, handle accordingly
+			idx++
+			if idx >= encoded.len - 1 {
+				return error('Invalid escape sequence at the end of string')
+			}
+			escaped_char := encoded[idx]
+			match escaped_char {
+				// All simple escapes take 1 byte of space
+				`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {
+					space_required++
+				}
+				`u` {
+					// Unicode escape sequence \uXXXX
+					if idx + 4 >= encoded.len - 1 {
+						return error('Invalid unicode escape sequence')
+					}
+					// Extract the hex value from the \uXXXX sequence
+					hex_str := encoded.substr(idx + 1, idx + 5)
+					unicode_value := u32(strconv.parse_int(hex_str, 16, 32)!)
+					// Determine the number of bytes needed for this Unicode character in UTF-8
+					space_required += utf8_byte_length(unicode_value)
+					idx += 4 // Skip the next 4 hex digits
+				}
+				else {
+					return error('Unknown escape sequence')
+				}
+			}
+		} else {
+			// Regular character, just increment space required by 1 byte
+			space_required++
+		}
+		idx++
+	}
+
+	return space_required
 }
