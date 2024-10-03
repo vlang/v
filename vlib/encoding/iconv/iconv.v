@@ -20,12 +20,10 @@ pub fn vstring_to_encoding(str string, tocode string) ![]u8 {
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
 		return error('please use UTF16-LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
-	$if windows {
-		if encoding_name == 'LOCAL' {
+	if encoding_name == 'LOCAL' {
+		$if windows {
 			encoding_name = 'ANSI'
-		}
-	} $else {
-		if encoding_name == 'LOCAL' {
+		} $else {
 			encoding_name = 'UTF-8'
 		}
 	}
@@ -39,12 +37,10 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
 		return error('please use UTF16-LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
-	$if windows {
-		if encoding_name == 'LOCAL' {
+	if encoding_name == 'LOCAL' {
+		$if windows {
 			encoding_name = 'ANSI'
-		}
-	} $else {
-		if encoding_name == 'LOCAL' {
+		} $else {
 			encoding_name = 'UTF-8'
 		}
 	}
@@ -62,12 +58,10 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 pub fn create_utf_string_with_bom(src []u8, utf_type string) []u8 {
 	mut clone := src.clone()
 	mut encoding_name := utf_type.to_upper()
-	$if windows {
-		if encoding_name == 'LOCAL' {
+	if encoding_name == 'LOCAL' {
+		$if windows {
 			encoding_name = 'ANSI'
-		}
-	} $else {
-		if encoding_name == 'LOCAL' {
+		} $else {
 			encoding_name = 'UTF-8'
 		}
 	}
@@ -102,12 +96,10 @@ pub fn create_utf_string_with_bom(src []u8, utf_type string) []u8 {
 pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 	mut clone := src.clone()
 	mut encoding_name := utf_type.to_upper()
-	$if windows {
-		if encoding_name == 'LOCAL' {
+	if encoding_name == 'LOCAL' {
+		$if windows {
 			encoding_name = 'ANSI'
-		}
-	} $else {
-		if encoding_name == 'LOCAL' {
+		} $else {
 			encoding_name = 'UTF-8'
 		}
 	}
