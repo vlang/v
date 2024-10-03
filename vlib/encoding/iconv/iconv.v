@@ -27,7 +27,7 @@ pub fn vstring_to_encoding(str string, tocode string) ![]u8 {
 			encoding_name = 'UTF-8'
 		}
 	}
-	return conv(tocode, 'UTF-8', str.str, str.len)
+	return conv(encoding_name, 'UTF-8', str.str, str.len)
 }
 
 // encoding_to_vstring converts the given `bytes` using `fromcode` encoding, to a V string (encoded with UTF-8)
@@ -44,7 +44,7 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 			encoding_name = 'UTF-8'
 		}
 	}
-	mut dst := conv('UTF-8', fromcode, bytes.data, bytes.len)!
+	mut dst := conv('UTF-8', encoding_name, bytes.data, bytes.len)!
 	dst << 0 // add a tail zero, to build a vstring
 	return unsafe { cstring_to_vstring(dst.data) }
 }
