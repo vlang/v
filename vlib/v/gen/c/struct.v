@@ -451,7 +451,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var)
 			return true
-		} else if final_sym.info is ast.ArrayFixed {
+		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
 			tmp_var := g.new_tmp_var()
 			s := g.go_before_last_stmt()
 			g.empty_line = true
