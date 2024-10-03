@@ -34,14 +34,6 @@ pub enum ValueKind {
 	null
 }
 
-// fn check_if_json_match_optional[?T](val string) ! {
-
-// }
-
-// fn check_if_json_match_pointer[&T](val string) ! {
-
-// }
-
 // check_json checks if the JSON string is valid.
 fn check_if_json_match[T](val string) ! {
 	// check if the JSON string is empty
@@ -261,8 +253,6 @@ fn (mut checker Checker) check_json_format(val string) ! {
 			}
 		}
 		.array {
-			// for val[checker.idx] != `]` {
-
 			// check if the JSON string is an empty array
 			if checker.end >= checker.idx + 2 {
 				checker.idx++
@@ -286,8 +276,6 @@ fn (mut checker Checker) check_json_format(val string) ! {
 					return
 				}
 
-				// match val[checker.idx] {
-				// 	`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
 				if checker.idx >= checker.end - 1 {
 					return checker.error('EOF error')
 				}
@@ -312,7 +300,6 @@ fn (mut checker Checker) check_json_format(val string) ! {
 					}
 					if val[checker.idx] == `]` {
 						return checker.error('Cannot use `,`, before `]`')
-						// return checker.error('Expecting value')
 					}
 					continue
 				} else {
@@ -322,17 +309,11 @@ fn (mut checker Checker) check_json_format(val string) ! {
 						return checker.error('`]` after value')
 					}
 				}
-				// }
-				// else {
-				// 	return checker.error('invalid array value')
-				// }
-				// }
 			}
 			// skip `]`
 			if checker.idx < checker.end - 1 {
 				checker.idx++
 			}
-			// }
 		}
 		.string_ {
 			// check if the JSON string is a valid string
@@ -458,10 +439,6 @@ fn (mut checker Checker) check_json_format(val string) ! {
 		}
 	}
 
-	// if checker.idx >= checker.end - 1 {
-	// 	return
-	// }
-
 	for checker.idx < checker.end - 1 && val[checker.idx] !in [`,`, `:`, `}`, `]`] {
 		// get trash characters after the value
 		if val[checker.idx] !in [` `, `\t`, `\n`] {
@@ -482,7 +459,6 @@ fn (mut checker Checker) check_json_format(val string) ! {
 			}
 			error_message += '^ invalid value. Unexpected character after ${value_kind} end'
 			return error(error_message)
-			// return error('invalid value ${[val[checker.idx]].bytestr()}')
 		} else {
 			// whitespace
 			checker.idx++
