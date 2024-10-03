@@ -667,15 +667,10 @@ pub fn (mut v Builder) cc() {
 			response_file_content = str_args.replace('\\', '\\\\')
 			rspexpr := '@${response_file}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
-			$if windows {
-				// Windows use ANSI encoding for path/filename
-				// NOTE: use 'ANSI' encoding, not 'UTF-8'
-				iconv.write_file_encoding(response_file, response_file_content, 'ANSI',
-					false) or { verror('Unable to write to C response file "${response_file}"') }
-			} $else {
-				os.write_file(response_file, response_file_content) or {
-					verror('Unable to write to C response file "${response_file}"')
-				}
+			// Windows use ANSI encoding for path/filename, but Linux use UTF-8
+			// LOCAL encoding: this is ANSI under Windows, UTF-8 under Linux
+			iconv.write_file_encoding(response_file, response_file_content, 'LOCAL', false) or {
+				verror('Unable to write to C response file "${response_file}"')
 			}
 		}
 		if !v.ccoptions.debug_mode {

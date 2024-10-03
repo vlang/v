@@ -358,8 +358,8 @@ pub fn (mut v Builder) cc_msvc() {
 	v.dump_c_options(a)
 	args := a.join(' ')
 	// write args to a file so that we dont smash createprocess
-	// NOTE: use 'ANSI' encoding, not 'UTF-8'
-	iconv.write_file_encoding(out_name_cmd_line, args, 'ANSI', false) or {
+	// NOTE: use 'ANSI'/'LOCAL' encoding, not 'UTF-8'
+	iconv.write_file_encoding(out_name_cmd_line, args, 'LOCAL', false) or {
 		verror('Unable to write response file to "${out_name_cmd_line}"')
 	}
 	cmd := '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
