@@ -64,6 +64,7 @@ mut:
 	channel_definitions       strings.Builder // channel related code
 	thread_definitions        strings.Builder // thread defines
 	comptime_definitions      strings.Builder // custom defines, given by -d/-define flags on the CLI
+	type_default_vars         strings.Builder // type_default() var declarations
 	cleanup                   strings.Builder
 	cleanups                  map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers                strings.Builder            // all go callsite wrappers
@@ -6374,14 +6375,19 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				}
 			}
 		} else if !g.pref.translated { // don't zero globals from C code
+			g.type_default_vars.clear()
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' && should_init {
 				def_builder.write_string(' = {0}')
 			} else if default_initializer == '{EMPTY_STRUCT_INITIALIZATION}' && should_init {
-				init = '\tmemcpy(${field.name}, (${styp}){${g.type_default(field.typ)}}, sizeof(${styp})); // global'
+				init = '\tmemcpy(${field.name}, (${styp}){${default_initializer}}, sizeof(${styp})); // global'
 			} else {
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {
-					init = '\t${field.name} = *(${styp}*)&((${styp}[]){${g.type_default(field.typ)}}[0]); // global'
+					decls := g.type_default_vars.str()
+					if decls != '' {
+						init = '\t${decls}'
+					}
+					init += '\t${field.name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global'
 				}
 			}
 		}
@@ -7380,6 +7386,40 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 							if field_sym.kind in [.sum_type, .interface_] {
 								expr_str = g.expr_string_with_cast(field.default_expr,
 									field.default_expr_typ, field.typ)
+							} else if field_sym.is_array_fixed() && g.inside_global_decl {
+								array_info := field_sym.array_fixed_info()
+								match field.default_expr {
+									ast.CallExpr {
+										ret_typ := g.typ(field.default_expr.return_type)
+										tmp_var := g.new_tmp_var()
+										g.type_default_vars.writeln('${ret_typ} ${tmp_var} = {0};')
+										g.type_default_vars.writeln('memcpy(${tmp_var}, ${g.expr_string(field.default_expr)}, sizeof(${ret_typ}));')
+										expr_str += '{'
+										for i in 0 .. array_info.size {
+											expr_str += '${tmp_var}[${i}]'
+											if i != array_info.size - 1 {
+												expr_str += ', '
+											}
+										}
+										expr_str += '}'
+									}
+									ast.ArrayInit {
+										ret_typ := g.typ(field.default_expr.typ)
+										tmp_var := g.new_tmp_var()
+										g.type_default_vars.writeln('${ret_typ} ${tmp_var} = ${g.expr_string(field.default_expr)};')
+										expr_str += '{'
+										for i in 0 .. array_info.size {
+											expr_str += '${tmp_var}[${i}]'
+											if i != array_info.size - 1 {
+												expr_str += ', '
+											}
+										}
+										expr_str += '}'
+									}
+									else {
+										expr_str = g.expr_string(field.default_expr)
+									}
+								}
 							} else {
 								expr_str = g.expr_string(field.default_expr)
 							}
