@@ -2735,6 +2735,13 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 			{
 				return t_typ
 			}
+			if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil } {
+				if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_lambda.func.decl.generic_names,
+					c.table.cur_lambda.call_ctx.concrete_types)
+				{
+					return t_typ
+				}
+			}
 		}
 	}
 	return typ
@@ -2971,8 +2978,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		}
 		ast.LambdaExpr {
 			c.inside_lambda = true
+			c.table.cur_lambda = unsafe { &node }
 			defer {
 				c.inside_lambda = false
+				c.table.cur_lambda = unsafe { nil }
 			}
 			return c.lambda_expr(mut node, c.expected_type)
 		}

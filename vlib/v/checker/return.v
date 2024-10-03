@@ -261,9 +261,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				} else {
 					got_type_sym.name
 				}
-				// ignore generic casting expr on lambda in this phase
-				if c.inside_lambda && exp_type.has_flag(.generic)
-					&& node.exprs[expr_idxs[i]] is ast.CastExpr {
+				// ignore generic lambda return in this phase
+				if c.inside_lambda && exp_type.has_flag(.generic) {
 					continue
 				}
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
