@@ -387,6 +387,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		g.inside_cast_in_heap = old_inside_cast_in_heap
 	}
 	sym := g.table.sym(field.typ)
+	final_sym := g.table.final_sym(field.typ)
 	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	if sym.info is ast.Struct {
 		if sym.info.fields.len == 0 {
@@ -449,6 +450,26 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			tmp_var := g.new_tmp_var()
 			g.expr_with_tmp_var(field.default_expr, field.default_expr_typ, field.typ,
 				tmp_var)
+			return true
+		} else if final_sym.info is ast.ArrayFixed {
+			tmp_var := g.new_tmp_var()
+			s := g.go_before_last_stmt()
+			g.empty_line = true
+			styp := g.typ(field.typ)
+			g.writeln('${styp} ${tmp_var} = {0};')
+			g.write('memcpy(&${tmp_var}, &')
+			g.expr(field.default_expr)
+			g.writeln(', sizeof(${styp}));')
+			g.empty_line = false
+			g.write(s)
+			g.write('{')
+			for i in 0 .. final_sym.info.size {
+				g.write('${tmp_var}[${i}]')
+				if i != final_sym.info.size - 1 {
+					g.write(', ')
+				}
+			}
+			g.write('}')
 			return true
 		}
 		g.expr(field.default_expr)
