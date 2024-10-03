@@ -457,7 +457,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.empty_line = true
 			styp := g.typ(field.typ)
 			g.writeln('${styp} ${tmp_var} = {0};')
-			g.write('memcpy(&${tmp_var}, &')
+			g.write('memcpy(${tmp_var}, ')
 			g.expr(field.default_expr)
 			g.writeln(', sizeof(${styp}));')
 			g.empty_line = false
