@@ -44,7 +44,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	inside_interface_deref_save := c.inside_interface_deref
 	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
-		mut ftyp := c.unwrap_generic(c.expr(mut expr))
+		mut ftyp := c.expr(mut expr)
 		ftyp = c.check_expr_option_or_result_call(expr, ftyp)
 		if c.comptime.is_comptime_var(expr) {
 			ctyp := c.comptime.get_comptime_var_type(expr)
