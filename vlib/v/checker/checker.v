@@ -2177,7 +2177,9 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 					}
 				}
 			}
-			c.check_expr_option_or_result_call(node.expr, or_typ)
+			if !c.inside_return {
+				c.check_expr_option_or_result_call(node.expr, or_typ)
+			}
 			// TODO: This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_option_or_result_call(node.expr, ast.void_type)
 		}

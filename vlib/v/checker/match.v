@@ -275,6 +275,9 @@ fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type
 			}
 			c.error('return type mismatch, it should be `${ret_sym.name}`', last_stmt.pos)
 		}
+	} else if expr_type == ast.void_type && ret_type.idx() == ast.void_type_idx
+		&& ret_type.has_option_or_result() {
+		c.error('`${last_stmt.expr}` used as value', last_stmt.pos)
 	}
 }
 
