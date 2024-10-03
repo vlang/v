@@ -20,6 +20,11 @@ fn test_vstring_to_encoding() {
 	abc_utf32be := iconv.vstring_to_encoding('abc', 'UTF-32BE')!
 	assert abc_utf32be == [u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99]
 
+	abc_local := iconv.vstring_to_encoding('abc', 'LOCAL')!
+	// Windows LOCAL: ANSI encoding
+	// Linux LOCAL: UTF-8 encoding
+	assert abc_local == [u8(97), 98, 99]
+
 	if abc_not_exist := iconv.vstring_to_encoding('abc', 'encoding_not_exist') {
 		assert false, 'encoding_not_exist'
 	}
@@ -52,6 +57,11 @@ fn test_encoding_to_vstring() {
 	abc_utf32be := iconv.encoding_to_vstring([u8(0), 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 99],
 		'UTF-32BE')!
 	assert abc_utf32be == 'abc'
+
+	abc_local := iconv.encoding_to_vstring([u8(97), 98, 99], 'LOCAL')!
+	// Windows LOCAL: ANSI encoding
+	// Linux LOCAL: UTF-8 encoding
+	assert abc_local == 'abc'
 
 	if abc_not_exist := iconv.encoding_to_vstring([u8(97), 98, 99], 'encoding_not_exist') {
 		assert false, 'encoding_not_exist'

@@ -16,21 +16,35 @@ fn reverse_u32(src u32) u32 {
 // vstring_to_encoding convert V string `str` to `tocode` encoding string
 // tips: use `iconv --list` check for supported encodings
 pub fn vstring_to_encoding(str string, tocode string) ![]u8 {
-	encoding_name := tocode.to_upper()
+	mut encoding_name := tocode.to_upper()
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
 		return error('please use UTF16-LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
-	return conv(tocode, 'UTF-8', str.str, str.len)
+	if encoding_name == 'LOCAL' {
+		$if windows {
+			encoding_name = 'ANSI'
+		} $else {
+			encoding_name = 'UTF-8'
+		}
+	}
+	return conv(encoding_name, 'UTF-8', str.str, str.len)
 }
 
 // encoding_to_vstring converts the given `bytes` using `fromcode` encoding, to a V string (encoded with UTF-8)
 // tips: use `iconv --list` check for supported encodings
 pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
-	encoding_name := fromcode.to_upper()
+	mut encoding_name := fromcode.to_upper()
 	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
 		return error('please use UTF16-LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
 	}
-	mut dst := conv('UTF-8', fromcode, bytes.data, bytes.len)!
+	if encoding_name == 'LOCAL' {
+		$if windows {
+			encoding_name = 'ANSI'
+		} $else {
+			encoding_name = 'UTF-8'
+		}
+	}
+	mut dst := conv('UTF-8', encoding_name, bytes.data, bytes.len)!
 	dst << 0 // add a tail zero, to build a vstring
 	return unsafe { cstring_to_vstring(dst.data) }
 }
@@ -43,7 +57,15 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 // for utf32be, it will prepend 0x0000FEFF to the `src`
 pub fn create_utf_string_with_bom(src []u8, utf_type string) []u8 {
 	mut clone := src.clone()
-	match utf_type.to_upper() {
+	mut encoding_name := utf_type.to_upper()
+	if encoding_name == 'LOCAL' {
+		$if windows {
+			encoding_name = 'ANSI'
+		} $else {
+			encoding_name = 'UTF-8'
+		}
+	}
+	match encoding_name {
 		'UTF8', 'UTF-8' {
 			clone.prepend([u8(0xEF), 0xBB, 0xBF])
 		}
@@ -73,7 +95,15 @@ pub fn create_utf_string_with_bom(src []u8, utf_type string) []u8 {
 @[direct_array_access]
 pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 	mut clone := src.clone()
-	match utf_type.to_upper() {
+	mut encoding_name := utf_type.to_upper()
+	if encoding_name == 'LOCAL' {
+		$if windows {
+			encoding_name = 'ANSI'
+		} $else {
+			encoding_name = 'UTF-8'
+		}
+	}
+	match encoding_name {
 		'UTF8', 'UTF-8' {
 			if clone.len > 3 {
 				if clone[0] == u8(0xEF) && clone[1] == u8(0xBB) && clone[2] == u8(0xBF) {
@@ -119,10 +149,6 @@ pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 // write_file_encoding write_file convert `text` into `encoding` and writes to a file with the given `path`. If `path` already exists, it will be overwritten.
 // For `encoding` in UTF8/UTF16/UTF32, if `bom` is true, then a BOM header will write to the file.
 pub fn write_file_encoding(path string, text string, encoding string, bom bool) ! {
-	encoding_name := encoding.to_upper()
-	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
-		return error('please use UTF-16LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
-	}
 	encoding_bytes := vstring_to_encoding(text, encoding)!
 	if bom && encoding.to_upper().starts_with('UTF') {
 		encoding_bom_bytes := create_utf_string_with_bom(encoding_bytes, encoding)
@@ -134,10 +160,6 @@ pub fn write_file_encoding(path string, text string, encoding string, bom bool) 
 
 // read_file_encoding reads the file in `path` with `encoding` and returns the contents
 pub fn read_file_encoding(path string, encoding string) !string {
-	encoding_name := encoding.to_upper()
-	if encoding_name in ['UTF16', 'UTF32', 'UTF-16', 'UTF-32']! {
-		return error('please use UTF-16LE/UTF-16BE/UTF-32LE/UTF-32BE instead')
-	}
 	encoding_bytes := os.read_file_array[u8](path)
 	encoding_without_bom_bytes := remove_utf_string_with_bom(encoding_bytes, encoding)
 	return encoding_to_vstring(encoding_without_bom_bytes, encoding)!
