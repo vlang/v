@@ -9,7 +9,6 @@ import v.pref
 import v.util
 import v.vcache
 import term
-import encoding.iconv
 
 const c_std = 'c99'
 const c_std_gnu = 'gnu99'
@@ -667,9 +666,7 @@ pub fn (mut v Builder) cc() {
 			response_file_content = str_args.replace('\\', '\\\\')
 			rspexpr := '@${response_file}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
-			// Windows use ANSI encoding for path/filename, but Linux use UTF-8
-			// LOCAL encoding: this is ANSI under Windows, UTF-8 under Linux
-			iconv.write_file_encoding(response_file, response_file_content, 'LOCAL', false) or {
+			os.write_file(response_file, response_file_content) or {
 				verror('Unable to write to C response file "${response_file}"')
 			}
 		}
