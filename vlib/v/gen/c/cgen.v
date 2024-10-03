@@ -4406,7 +4406,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 				const_def := g.global_const_defs[util.no_dots(field.expr.name)]
 				if const_def.def.starts_with('#define') {
 					g.enum_typedefs.write_string(const_def.def.all_after_last(' '))
-				} else if const_def.def.contains('const') {
+				} else if const_def.def.contains('const ') {
 					g.enum_typedefs.write_string(const_def.def.all_after_last('=').all_before_last(';'))
 				} else {
 					g.enum_typedefs.write_string(expr_str)
