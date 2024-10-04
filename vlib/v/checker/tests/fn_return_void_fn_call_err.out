@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_return_void_fn_call_err.vv:20:4: error: `install_from_github(unit, verbosity)!` used as value
+   18 |     return match source {
+   19 |         'github' {
+   20 |             install_from_github(unit, verbosity)!
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 |         }
+   22 |         else {
