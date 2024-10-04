@@ -355,7 +355,7 @@ pub fn (mut v Builder) cc_msvc() {
 		a << env_ldflags
 	}
 	v.dump_c_options(a)
-	args := a.join(' ')
+	args := '\xEF\xBB\xBF' + a.join(' ')
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "${out_name_cmd_line}"')
