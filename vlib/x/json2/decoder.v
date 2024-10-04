@@ -278,42 +278,7 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 					}
 				} $else $if field.is_array {
 					arr := res[field.name]! as []Any
-					// vfmt off
-					match field.typ {
-						[]bool  { typ.$(field.name) = arr.map(it.bool()) }
-						[]?bool { typ.$(field.name) = arr.map(?bool(it.bool())) }
-						[]f32   { typ.$(field.name) = arr.map(it.f32()) }
-						[]?f32  { typ.$(field.name) = arr.map(?f32(it.f32())) }
-						[]f64   { typ.$(field.name) = arr.map(it.f64()) }
-						[]?f64  { typ.$(field.name) = arr.map(?f64(it.f64())) }
-						[]i8    { typ.$(field.name) = arr.map(it.i8()) }
-						[]?i8   { typ.$(field.name) = arr.map(?i8(it.i8())) }
-						[]i16   { typ.$(field.name) = arr.map(it.i16()) }
-						[]?i16  { typ.$(field.name) = arr.map(?i16(it.i16())) }
-						[]i32   { typ.$(field.name) = arr.map(it.i32()) }
-						[]?i32  { typ.$(field.name) = arr.map(?i32(it.i32())) }
-						[]i64   { typ.$(field.name) = arr.map(it.i64()) }
-						[]?i64  { typ.$(field.name) = arr.map(?i64(it.i64())) }
-						[]int   { typ.$(field.name) = arr.map(it.int()) }
-						[]?int  { typ.$(field.name) = arr.map(?int(it.int())) }
-						[]string  { typ.$(field.name) = arr.map(it.str()) }
-						[]?string { typ.$(field.name) = arr.map(?string(it.str())) }
-						// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
-						[]time.Time { typ.$(field.name) = arr.map(it.to_time() or { time.Time{} }) }
-						[]?time.Time { typ.$(field.name) = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
-						[]Any { typ.$(field.name) = arr }
-						[]?Any { typ.$(field.name) = arr.map(?Any(it)) }
-						[]u8   { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u8  { typ.$(field.name) = arr.map(?u8(it.u64())) }
-						[]u16  { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u16 { typ.$(field.name) = arr.map(?u16(it.u64())) }
-						[]u32  { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u32 { typ.$(field.name) = arr.map(?u32(it.u64())) }
-						[]u64  { typ.$(field.name) = arr.map(it.u64()) }
-						[]?u64 { typ.$(field.name) = arr.map(?u64(it.u64())) }
-						else {}
-					}
-					// vfmt on
+					decode_array_item(mut typ.$(field.name), arr)
 				} $else $if field.is_struct {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 				} $else $if field.is_alias {
@@ -343,6 +308,70 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
+}
+
+fn decode_array_item[T](mut field T, arr []Any) {
+	// vfmt off
+	match typeof[T]().idx {
+		typeof[[]bool]().idx  { field = arr.map(it.bool()) }
+		typeof[[]?bool]().idx { field = arr.map(?bool(it.bool())) }
+		typeof[[]f32]().idx   { field = arr.map(it.f32()) }
+		typeof[[]?f32]().idx  { field = arr.map(?f32(it.f32())) }
+		typeof[[]f64]().idx   { field = arr.map(it.f64()) }
+		typeof[[]?f64]().idx  { field = arr.map(?f64(it.f64())) }
+		typeof[[]i8]().idx    { field = arr.map(it.i8()) }
+		typeof[[]?i8]().idx   { field = arr.map(?i8(it.i8())) }
+		typeof[[]i16]().idx   { field = arr.map(it.i16()) }
+		typeof[[]?i16]().idx  { field = arr.map(?i16(it.i16())) }
+		typeof[[]i32]().idx   { field = arr.map(it.i32()) }
+		typeof[[]?i32]().idx  { field = arr.map(?i32(it.i32())) }
+		typeof[[]i64]().idx   { field = arr.map(it.i64()) }
+		typeof[[]?i64]().idx  { field = arr.map(?i64(it.i64())) }
+		typeof[[]int]().idx   { field = arr.map(it.int()) }
+		typeof[[]?int]().idx  { field = arr.map(?int(it.int())) }
+		typeof[[]string]().idx  { field = arr.map(it.str()) }
+		typeof[[]?string]().idx { field = arr.map(?string(it.str())) }
+		// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
+		typeof[[]time.Time]().idx { field = arr.map(it.to_time() or { time.Time{} }) }
+		typeof[[]?time.Time]().idx { field = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
+		typeof[[]Any]().idx { field = arr.clone() }
+		typeof[[]?Any]().idx { field = arr.map(?Any(it)) }
+		typeof[[]u8]().idx   { field = arr.map(it.u64()) }
+		typeof[[]?u8]().idx  { field = arr.map(?u8(it.u64())) }
+		typeof[[]u16]().idx  { field = arr.map(it.u64()) }
+		typeof[[]?u16]().idx { field = arr.map(?u16(it.u64())) }
+		typeof[[]u32]().idx  { field = arr.map(it.u64()) }
+		typeof[[]?u32]().idx { field = arr.map(?u32(it.u64())) }
+		typeof[[]u64]().idx  { field = arr.map(it.u64()) }
+		typeof[[]?u64]().idx { field = arr.map(?u64(it.u64())) }
+		else {
+			$if T is [][]f32 { field << arr.map(it.as_map().values().map(it.f32())) }
+			$else $if T is [][]?f32 { field << arr.map(it.as_map().values().map(?f32(it.f32()))) }
+			$else $if T is [][]f64  { field << arr.map(it.as_map().values().map(it.f64())) }
+			$else $if T is [][]?f64 { field << arr.map(it.as_map().values().map(?f64(it.f64()))) }
+			$else $if T is [][]i8   { field << arr.map(it.as_map().values().map(it.i8())) }
+			$else $if T is [][]?i8  { field << arr.map(it.as_map().values().map(?i8(it.i8()))) }
+			$else $if T is [][]i16  { field << arr.map(it.as_map().values().map(it.i16())) }
+			$else $if T is [][]?i16 { field << arr.map(it.as_map().values().map(?i16(it.i16()))) }
+			$else $if T is [][]i32  { field << arr.map(it.as_map().values().map(it.i32())) }
+			$else $if T is [][]?i32 { field << arr.map(it.as_map().values().map(?i32(it.i32()))) }
+			$else $if T is [][]i64  { field << arr.map(it.as_map().values().map(it.i64())) }
+			$else $if T is [][]?i64 { field << arr.map(it.as_map().values().map(?i64(it.i64()))) }
+			$else $if T is [][]u8   { field << arr.map(it.as_map().values().map(it.u8())) }
+			$else $if T is [][]?u8  { field << arr.map(it.as_map().values().map(?u8(it.u8()))) }
+			$else $if T is [][]u16  { field << arr.map(it.as_map().values().map(it.u16())) }
+			$else $if T is [][]?u16 { field << arr.map(it.as_map().values().map(?u16(it.u16()))) }
+			$else $if T is [][]u32  { field << arr.map(it.as_map().values().map(it.u32())) }
+			$else $if T is [][]?u32 { field << arr.map(it.as_map().values().map(?u32(it.u32()))) }
+			$else $if T is [][]u64  { field << arr.map(it.as_map().values().map(it.u64())) }
+			$else $if T is [][]?u64 { field << arr.map(it.as_map().values().map(?u64(it.u64()))) }
+			$else $if T is [][]bool { field << arr.map(it.as_map().values().map(it.bool())) }
+			$else $if T is [][]?bool  { field << arr.map(it.as_map().values().map(?bool(it.bool()))) }
+			$else $if T is [][]string  { field << arr.map(it.as_map().values().map(it.string())) }
+			$else $if T is [][]?string { field << arr.map(it.as_map().values().map(?string(it.string()))) }
+		}
+	}
+	// vfmt on
 }
 
 fn decode_map[K, V](_ map[K]V, res map[string]Any) !map[K]V {
