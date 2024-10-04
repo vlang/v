@@ -191,6 +191,8 @@ pub fn utf8_str_visible_length(s string) int {
 pub fn string_to_ansi_not_null_terminated(_str string) []u8 {
 	wstr := _str.to_wide()
 	mut ansi := wide_to_ansi(wstr)
-	ansi.pop() // remove tailing zero
+	if ansi.len > 0 {
+		unsafe { ansi.len-- } // remove tailing zero
+	}
 	return ansi
 }
