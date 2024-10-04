@@ -337,7 +337,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Libs are passed to cl.exe which passes them to the linker
 	a << real_libs.join(' ')
 	a << '/link'
-	a << '/NOLOGO'
+	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	a << '/OUT:"${v.pref.out_name}"'
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
@@ -409,7 +409,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	if all_cflags != ' ' {
 		oargs << all_cflags
 	}
-	oargs << '/NOLOGO'
+	oargs << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	oargs << '/volatile:ms'
 
 	if v.pref.is_prod {
