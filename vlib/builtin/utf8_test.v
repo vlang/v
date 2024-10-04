@@ -76,3 +76,12 @@ fn test_reverse_cyrillic_with_string_from_wide() {
 	z := unsafe { string_from_wide(ws) }
 	assert z == s
 }
+
+fn test_wide_to_ansi() {
+	ws := 'abc'.to_wide()
+	assert wide_to_ansi(ws) == [u8(97), 98, 99, 0]
+}
+
+fn test_string_to_ansi_not_null_terminated() {
+	assert string_to_ansi_not_null_terminated('abc') == [u8(97), 98, 99]
+}

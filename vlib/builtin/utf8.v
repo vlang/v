@@ -184,3 +184,13 @@ pub fn utf8_str_visible_length(s string) int {
 	}
 	return l
 }
+
+// string_to_ansi_not_null_terminated returns an ANSI version of the string `_str`.
+// NOTE: This is most useful for converting a vstring to an ANSI string under Windows.
+// NOTE: The ANSI string return is not null-terminated, then you can use `os.write_file_array` write an ANSI file.
+pub fn string_to_ansi_not_null_terminated(_str string) []u8 {
+	wstr := _str.to_wide()
+	mut ansi := wide_to_ansi(wstr)
+	ansi.pop() // remove tailing zero
+	return ansi
+}
