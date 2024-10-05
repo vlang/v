@@ -1,6 +1,0 @@
-vlib/v/checker/tests/struct_array_field_generic_err.vv:20:7: error: `Callback` type is generic type, must specify the generic type names, e.g. []Callback[T]
-   18 |     v T
-   19 |     prev T
-   20 |     cb []Callback
-      |          ~~~~~~~~
-   21 | }
