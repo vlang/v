@@ -35,6 +35,7 @@ fn decode_struct[T](doc Any, mut typ T) {
 	$for field in T.fields {
 		mut field_name := field.name
 		mut skip := false
+		mut default_value := ''
 		for attr in field.attrs {
 			if attr == 'skip' {
 				skip = true
@@ -43,31 +44,38 @@ fn decode_struct[T](doc Any, mut typ T) {
 			if attr.starts_with('toml:') {
 				field_name = attr.all_after(':').trim_space()
 			}
+			if attr.starts_with('toml_default:') {
+				default_value = attr.all_after(':').trim_space()
+			}
 		}
 		if !skip {
 			value := doc.value(field_name)
 			$if field.is_enum {
-				typ.$(field.name) = value.int()
+				typ.$(field.name) = if value != null { value.int() } else { default_value.int() }
 			} $else $if field.typ is string {
-				typ.$(field.name) = value.string()
+				typ.$(field.name) = if value != null { value.string() } else { default_value }
 			} $else $if field.typ is bool {
-				typ.$(field.name) = value.bool()
+				typ.$(field.name) = if value != null { value.bool() } else { default_value.bool() }
 			} $else $if field.typ is int {
-				typ.$(field.name) = value.int()
+				typ.$(field.name) = if value != null { value.int() } else { default_value.int() }
 			} $else $if field.typ is i64 {
-				typ.$(field.name) = value.i64()
+				typ.$(field.name) = if value != null { value.i64() } else { default_value.i64() }
 			} $else $if field.typ is u64 {
-				typ.$(field.name) = value.u64()
+				typ.$(field.name) = if value != null { value.u64() } else { default_value.u64() }
 			} $else $if field.typ is f32 {
-				typ.$(field.name) = value.f32()
+				typ.$(field.name) = if value != null { value.f32() } else { default_value.f32() }
 			} $else $if field.typ is f64 {
-				typ.$(field.name) = value.f64()
+				typ.$(field.name) = if value != null { value.f64() } else { default_value.f64() }
 			} $else $if field.typ is DateTime {
-				typ.$(field.name) = value.datetime()
+				typ.$(field.name) = if value != null {
+					value.datetime()
+				} else {
+					DateTime{default_value}
+				}
 			} $else $if field.typ is Date {
-				typ.$(field.name) = value.date()
+				typ.$(field.name) = if value != null { value.date() } else { Date{default_value} }
 			} $else $if field.typ is Time {
-				typ.$(field.name) = value.time()
+				typ.$(field.name) = if value != null { value.time() } else { Time{default_value} }
 			} $else $if field.typ is Any {
 				typ.$(field.name) = value
 			} $else $if field.is_array {
