@@ -1776,6 +1776,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 			c.error('duplicate of a module name `${field.name}`', name_pos)
 		}
+		if const_name == '_' {
+			name_pos := token.Pos{
+				...field.pos
+				len: util.no_cur_mod(field.name, c.mod).len
+			}
+			c.error('cannot use `_` as a const name', name_pos)
+		}
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
@@ -2317,7 +2324,7 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if sym.kind == .placeholder {
 			c.error('unknown type `${sym.name}`', field.typ_pos)
 		}
-		if field.has_expr {
+		if field.has_expr && field.name != '_' {
 			if field.expr is ast.AnonFn && field.name == 'main' {
 				c.error('the `main` function is the program entry point, cannot redefine it',
 					field.pos)
@@ -2336,6 +2343,9 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 					panic('internal compiler error - could not find global in scope')
 				}
 				v.typ = ast.mktyp(field.typ)
+			}
+			if field.name == '_' {
+				c.error('cannot use `_` as a global name', field.pos)
 			}
 		}
 		c.global_names << field.name
