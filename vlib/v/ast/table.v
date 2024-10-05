@@ -1925,6 +1925,17 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			nrt += ']'
 			idx := t.type_idxs[nrt]
 			if idx != 0 && t.type_symbols[idx].kind != .placeholder {
+				fields = ts.info.fields.clone()
+				for i in 0 .. fields.len {
+					if fields[i].typ.has_flag(.generic) {
+						// Map[T], []Type[T]
+						if fields[i].typ.has_flag(.generic)
+							&& t.type_kind(fields[i].typ) in [.array, .array_fixed, .map]
+							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
+							t.unwrap_generic_type(fields[i].typ, t_generic_names, t_concrete_types)
+						}
+					}
+				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
 			} else {
 				// fields type translate to concrete type
