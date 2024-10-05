@@ -103,6 +103,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	}
 	// array
 	p.check(.rsbr)
+	name_pos := p.tok.pos()
 	elem_type := p.parse_type()
 	if elem_type.idx() == 0 {
 		// error is set in parse_type
@@ -122,6 +123,19 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
 	if elem_type.has_flag(.generic) {
 		return ast.new_type(idx).set_flag(.generic)
+	} else {
+		sym := p.table.sym(elem_type)
+		match sym.info {
+			ast.Struct, ast.Interface, ast.SumType {
+				if sym.info.is_generic {
+					if p.tok.kind != .lsbr {
+						p.error_with_pos('`${sym.name}` type is generic type, must specify the generic type names, e.g. []${sym.name}[T]',
+							name_pos)
+					}
+				}
+			}
+			else {}
+		}
 	}
 	return ast.new_type(idx)
 }
