@@ -40,6 +40,10 @@ fn (mut o Obv[T]) set(new_value T) T {
 	return o.v
 }
 
+fn oo2[T](init T) ?Obv[T] {
+	return none
+}
+
 fn oo[T](init T) Obv[T] {
 	return Obv[T]{
 		v: init
