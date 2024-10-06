@@ -5010,6 +5010,11 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 					return false
 				}
 			}
+			if fn_info.func.generic_names.len > 0 && !typ.has_flag(.generic) {
+				c.error('`${sym.name}` type is generic fn type, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
+					pos)
+				return false
+			}
 		}
 		.array {
 			if !c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
@@ -5053,6 +5058,12 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
+				return false
+			}
+		}
+		.alias {
+			info := sym.info as ast.Alias
+			if !c.ensure_generic_type_specify_type_names(info.parent_type, pos) {
 				return false
 			}
 		}

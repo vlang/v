@@ -15,10 +15,15 @@ interface IObv[T] {
 	cb   []Callback[T]
 }
 
+struct Test[T] {
+	a T
+}
+
 struct Obv[T] {
 mut:
 	v    T
 	prev T
-	cb2  []Callback
-	a    int
+	cb   []Callback // sumtype
+	cb2  []CBvret2  // alias
+	cb3  []Test     // struct
 }
