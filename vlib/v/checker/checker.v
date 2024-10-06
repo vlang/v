@@ -1782,6 +1782,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				len: util.no_cur_mod(field.name, c.mod).len
 			}
 			c.error('cannot use `_` as a const name', name_pos)
+			return
 		}
 		c.const_names << field.name
 	}
@@ -2313,6 +2314,10 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if field.name in ast.global_reserved_type_names {
 			c.error('invalid use of reserved type `${field.name}` as a global name', field.pos)
 		}
+		if field.name == '_' {
+			c.error('cannot use `_` as a global name', field.pos)
+			return
+		}
 
 		if field.name in c.global_names {
 			c.error('duplicate global `${field.name}`', field.pos)
@@ -2324,7 +2329,7 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if sym.kind == .placeholder {
 			c.error('unknown type `${sym.name}`', field.typ_pos)
 		}
-		if field.has_expr && field.name != '_' {
+		if field.has_expr {
 			if field.expr is ast.AnonFn && field.name == 'main' {
 				c.error('the `main` function is the program entry point, cannot redefine it',
 					field.pos)
@@ -2343,9 +2348,6 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 					panic('internal compiler error - could not find global in scope')
 				}
 				v.typ = ast.mktyp(field.typ)
-			}
-			if field.name == '_' {
-				c.error('cannot use `_` as a global name', field.pos)
 			}
 		}
 		c.global_names << field.name
