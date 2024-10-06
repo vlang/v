@@ -1,7 +1,7 @@
-vlib/v/checker/tests/generics_field_struct_arr_err.vv:20:6: error: `Callback` type is generic sumtype, must specify the generic type names, e.g. Callback[T], Callback[int]
-   18 |     v T
-   19 |     prev T
-   20 |     cb2 []Callback
-      |         ~~~~~~~~~~
-   21 |     a int 
-   22 | }
+vlib/v/checker/tests/generics_field_struct_arr_err.vv:22:7: error: `Callback` type is generic sumtype, must specify the generic type names, e.g. Callback[T], Callback[int]
+   20 |     v    T
+   21 |     prev T
+   22 |     cb2  []Callback
+      |          ~~~~~~~~~~
+   23 |     a    int
+   24 | }
