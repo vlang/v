@@ -133,9 +133,9 @@ fn test_array() {
 
 	assert json.encode(StructType[[]f64]{}) == '{"val":[]}'
 	assert json.encode(StructType[[]f64]{ val: [] }) == '{"val":[]}'
-	assert json.encode(StructType[[]f64]{ val: [f64(0)] }) == '{"val":[0.0]}'
-	assert json.encode(StructType[[]f64]{ val: [f64(1)] }) == '{"val":[1.0]}'
-	assert json.encode(StructType[[]f64]{ val: [f64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0.0,1.0,0.0,2.0,3.0,2.0,5.0,1.0]}'
+	assert json.encode(StructType[[]f64]{ val: [f64(0)] }) == '{"val":[0]}'
+	assert json.encode(StructType[[]f64]{ val: [f64(1)] }) == '{"val":[1]}'
+	assert json.encode(StructType[[]f64]{ val: [f64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
 	assert json.encode(StructType[[]bool]{}) == '{"val":[]}'
 	assert json.encode(StructType[[]bool]{ val: [] }) == '{"val":[]}'
@@ -188,9 +188,9 @@ fn test_option_array() {
 
 	assert json.encode(StructTypeOption[[]f64]{}) == '{}'
 	assert json.encode(StructTypeOption[[]f64]{ val: [] }) == '{"val":[]}'
-	assert json.encode(StructTypeOption[[]f64]{ val: [f64(0)] }) == '{"val":[0.0]}'
-	assert json.encode(StructTypeOption[[]f64]{ val: [f64(1)] }) == '{"val":[1.0]}'
-	assert json.encode(StructTypeOption[[]f64]{ val: [f64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0.0,1.0,0.0,2.0,3.0,2.0,5.0,1.0]}'
+	assert json.encode(StructTypeOption[[]f64]{ val: [f64(0)] }) == '{"val":[0]}'
+	assert json.encode(StructTypeOption[[]f64]{ val: [f64(1)] }) == '{"val":[1]}'
+	assert json.encode(StructTypeOption[[]f64]{ val: [f64(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
 	assert json.encode(StructTypeOption[[]bool]{}) == '{}'
 	assert json.encode(StructTypeOption[[]bool]{ val: [] }) == '{"val":[]}'
