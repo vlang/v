@@ -30,7 +30,7 @@ fn test_simple() {
 	}
 	x := Employee{'Peter', 28, 95000.5, .worker, sub_employee}
 	s := json.encode[Employee](x)
-	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0.0,"title":0}}'
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2,"sub_employee":{"name":"João","age":0,"salary":0,"title":0}}'
 
 	y := json.decode[Employee](s) or {
 		println(err)

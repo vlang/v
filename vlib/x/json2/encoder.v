@@ -4,6 +4,8 @@
 module json2
 
 import time
+import math
+import strconv
 
 // Encoder encodes the an `Any` type into JSON representation.
 // It provides parameters in order to change the end result.
@@ -184,9 +186,12 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is $enum {
 		str_int := int(val).str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
-	} $else $if T is $int || T is $float || T is bool {
+	} $else $if T is $int || T is bool {
 		str_int := val.str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
+	} $else $if T is $float {
+		str_float := encode_number(val)
+		unsafe { buf.push_many(str_float.str, str_float.len) }
 	} $else {
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
@@ -305,8 +310,11 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					} else {
 						unsafe { buf.push_many(false_in_string.str, false_in_string.len) }
 					}
-				} $else $if field.typ in [$float, $int] {
+				} $else $if field.typ is $int {
 					str_value := val.$(field.name).str()
+					unsafe { buf.push_many(str_value.str, str_value.len) }
+				} $else $if field.typ is $float {
+					str_value := encode_number(val.$(field.name))
 					unsafe { buf.push_many(str_value.str, str_value.len) }
 				} $else $if field.is_array {
 					// TODO: replace for `field.typ is $array`
@@ -344,8 +352,11 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						} else {
 							unsafe { buf.push_many(false_in_string.str, false_in_string.len) }
 						}
-					} $else $if field.unaliased_typ in [$float, $int] {
+					} $else $if field.unaliased_typ is $int {
 						str_value := val.$(field.name).str()
+						unsafe { buf.push_many(str_value.str, str_value.len) }
+					} $else $if field.unaliased_typ is $float {
+						str_value := encode_number(val)
 						unsafe { buf.push_many(str_value.str, str_value.len) }
 					} $else $if field.unaliased_typ is $array {
 						// TODO
@@ -580,4 +591,17 @@ fn hex_digit(n int) u8 {
 		return `0` + n
 	}
 	return `a` + (n - 10)
+}
+
+fn encode_number(value f64) string {
+	if math.is_nan(value) || math.is_inf(value, 0) {
+		return 'null'
+	} else if value == f64(int(value)) {
+		return int(value).str()
+	} else {
+		// TODO:cjson Try 15 decimal places of precision to avoid nonsignificant nonzero digits
+		// If not, print with 17 decimal places of precision
+		// strconv.f64_to_str_l try max 18 digits instead.
+		return strconv.f64_to_str_l(value)
+	}
 }
