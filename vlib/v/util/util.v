@@ -165,10 +165,19 @@ pub fn resolve_d_value(compile_values map[string]string, str string) !string {
 	// Next we parse out the default string value
 
 	// advance past the `,` and the opening `'` in second argument, or ... eat whatever is there
-	all_parsed += u8(str[i]).ascii_str()
-	i++
-	all_parsed += u8(str[i]).ascii_str()
-	i++
+	for i < str.len {
+		ch = str[i]
+		if ch in [` `, `,`] {
+			i++
+			all_parsed += u8(ch).ascii_str()
+			continue
+		}
+		if ch == `'` {
+			i++
+			all_parsed += u8(ch).ascii_str()
+		}
+		break
+	}
 	// Rinse, repeat for the expected default value string
 	ch = u8(`.`)
 	mut d_default_value := ''
