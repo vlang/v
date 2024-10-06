@@ -491,13 +491,17 @@ pub fn remove_tail_zeros(s string) string {
 		if i_s < s.len && s[i_s] == `.` {
 			mut i_s1 := i_s + 1
 			mut sum := 0
+			mut i_s2 := i_s1 // last non-zero index after `.`
 			for i_s1 < s.len && s[i_s1] >= `0` && s[i_s1] <= `9` {
 				sum += s[i_s1] - u8(`0`)
+				if s[i_s1] != `0` {
+					i_s2 = i_s1
+				}
 				i_s1++
 			}
 			// decimal part must be copied
 			if sum > 0 {
-				for c_i in i_s .. i_s1 {
+				for c_i in i_s .. i_s2 + 1 {
 					buf[i_d] = s[c_i]
 					i_d++
 				}

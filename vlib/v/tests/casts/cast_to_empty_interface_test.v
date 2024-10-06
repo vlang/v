@@ -22,8 +22,8 @@ fn test_cast_to_empty_interface() {
 	assert ret_strings[1] == 'int               22'
 	assert ret_strings[2] == 'int             8888'
 	assert ret_strings[3] == 'int             9999'
-	assert ret_strings[4] == 'f64               1.110'
-	assert ret_strings[5] == 'f64               2.220'
-	assert ret_strings[6] == 'f64               8.880'
-	assert ret_strings[7] == 'f64               9.990'
+	assert ret_strings[4] == 'f64                1.11'
+	assert ret_strings[5] == 'f64                2.22'
+	assert ret_strings[6] == 'f64                8.88'
+	assert ret_strings[7] == 'f64                9.99'
 }

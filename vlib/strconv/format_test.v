@@ -119,3 +119,10 @@ fn test_sprintf_with_escape() {
 	s := unsafe { strconv.v_sprintf('%d is 100%% awesome', n) }
 	assert s == '69 is 100% awesome'
 }
+
+fn test_remove_tail_zeros() {
+	assert strconv.remove_tail_zeros('1.234000000000') == '1.234'
+	assert strconv.remove_tail_zeros('1.0000000') == '1'
+	assert strconv.remove_tail_zeros('1234') == '1234'
+	assert strconv.remove_tail_zeros('1.00000000007') == '1.00000000007'
+}
