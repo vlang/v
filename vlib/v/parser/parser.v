@@ -1157,6 +1157,10 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.semicolon {
 			return p.semicolon_stmt()
 		}
+		// Allow struct definitions inside functions
+		.key_struct, .key_union {
+			return p.struct_decl(false)
+		}
 		// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)

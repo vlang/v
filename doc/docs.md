@@ -4067,7 +4067,7 @@ Only one `Option` or `Result` is allowed to be returned from a function. It is
 possible to return multiple values and still signal an error.
 
 ```v
-fn multireturn(v int) !(int, int) {
+fn multi_return(v int) !(int, int) {
 	if v < 0 {
 		return error('must be positive')
 	}
