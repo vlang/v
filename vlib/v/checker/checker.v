@@ -1776,6 +1776,14 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 			c.error('duplicate of a module name `${field.name}`', name_pos)
 		}
+		if const_name == '_' {
+			name_pos := token.Pos{
+				...field.pos
+				len: util.no_cur_mod(field.name, c.mod).len
+			}
+			c.error('cannot use `_` as a const name', name_pos)
+			return
+		}
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
@@ -2307,6 +2315,10 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 
 		if field.name in ast.global_reserved_type_names {
 			c.error('invalid use of reserved type `${field.name}` as a global name', field.pos)
+		}
+		if field.name == '_' {
+			c.error('cannot use `_` as a global name', field.pos)
+			return
 		}
 
 		if field.name in c.global_names {
