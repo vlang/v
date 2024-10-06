@@ -16,16 +16,16 @@ val_time = 22:22:22.222
 const toml_all_default_text = '# This TOML can reflect/decode to a struct all with default values'
 
 struct Test {
-	val_string   string        @[toml_default: 'abcd']
-	val_bool     bool          @[toml_default: true]
-	val_int      int           @[toml_default: 123]
-	val_i64      i64           @[toml_default: 1234]
-	val_u64      u64           @[toml_default: 12345]
-	val_f32      f32           @[toml_default: 100.1]
-	val_f64      f64           @[toml_default: 1000.1]
-	val_datetime toml.DateTime @[toml_default: '1980-07-11 21:23:42.123']
-	val_date     toml.Date     @[toml_default: '1977-07-07']
-	val_time     toml.Time     @[toml_default: '11:11:11.111']
+	val_string   string        = 'abcd'
+	val_bool     bool          = true
+	val_int      int           = 123
+	val_i64      i64           = 1234
+	val_u64      u64           = 12345
+	val_f32      f32           = 100.1
+	val_f64      f64           = 1000.1
+	val_datetime toml.DateTime = toml.DateTime{'1980-07-11 21:23:42.123'}
+	val_date     toml.Date     = toml.Date{'1977-07-07'}
+	val_time     toml.Time     = toml.Time{'11:11:11.111'}
 }
 
 fn test_reflect_default_values() {
