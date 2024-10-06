@@ -1,13 +1,12 @@
 struct Node[T] {
 mut:
 	val  T
-	next &Node[T]
+	next &Node[T] = unsafe { nil }
 }
 
 fn make_node[T](val []T) Node[T] {
 	return Node[T]{
-		val:  val[0]
-		next: 0
+		val: val[0]
 	}
 }
 

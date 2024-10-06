@@ -60,14 +60,14 @@ mut:
 }
 
 fn test_stack_circular_elem_auto_str() {
-	mut elem := Circular{0}
+	mut elem := Circular{unsafe { nil }}
 	elem.next = &elem
 	s := '${elem}'.replace('\n', '|')
 	assert s == 'Circular{|    next: &<circular>|}'
 }
 
 fn test_heap_circular_elem_auto_str() {
-	mut elem := &Circular{0}
+	mut elem := &Circular{unsafe { nil }}
 	elem.next = elem
 	s := '${elem}'.replace('\n', '|')
 	assert s == '&Circular{|    next: &<circular>|}'

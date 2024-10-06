@@ -41,7 +41,7 @@ fn test_eval() {
 	vpref := &pref.Preferences{}
 	mut scope := &ast.Scope{
 		start_pos: 0
-		parent: 0
+		parent: unsafe { nil }
 	}
 	mut stmts := []ast.Stmt{}
 	for input in inputs {

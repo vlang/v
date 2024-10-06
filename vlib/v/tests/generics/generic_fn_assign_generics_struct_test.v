@@ -38,7 +38,7 @@ fn new[T]() &Node[T] {
 }
 
 fn (mut n Node[T]) add(val T) {
-	node := &Node[T]{val, 0}
+	node := &Node[T]{val, unsafe { nil }}
 	n.next = node
 }
 

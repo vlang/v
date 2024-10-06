@@ -15,7 +15,7 @@ fn create[T](arr []T) &List[T] {
 	assert arr.len > 0
 	mut n := &ListNode[T]{
 		val:  arr[0]
-		next: 0
+		next: unsafe { nil }
 	}
 	mut l := &List[T]{
 		first: n

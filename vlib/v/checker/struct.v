@@ -760,7 +760,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						&& !got_type.is_any_kind_of_pointer() && !exp_type.has_flag(.option)
 						&& !(init_field.expr is ast.UnsafeExpr && init_field.expr.expr.str() == '0') {
 						if init_field.expr.str() == '0' {
-							c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+							c.error('assigning `0` to a reference field is only allowed in `unsafe` blocks',
 								init_field.pos)
 						} else {
 							c.error('reference field must be initialized with reference',

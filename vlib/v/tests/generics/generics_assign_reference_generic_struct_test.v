@@ -14,8 +14,8 @@ pub fn list_new[T]() List[T] {
 }
 
 pub fn (mut l List[T]) add(value T) {
-	mut node := &ListNode[T]{value, 0}
-	if unsafe { l.head == 0 } {
+	mut node := &ListNode[T]{value, unsafe { nil }}
+	if unsafe { l.head == nil } {
 		l.head = node
 	} else {
 		node.next = l.head

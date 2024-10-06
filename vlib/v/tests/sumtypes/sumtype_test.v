@@ -50,7 +50,7 @@ fn test_sum_type_match() {
 		baz: &IntAndStr{
 			foo: 3
 			bar: 'hello'
-			baz: 0
+			baz: unsafe { nil }
 		}
 	}) == 'This is the string representation of "5_hi_hello"'
 	assert as_string(true) == 'This is the string representation of "true"'
@@ -532,7 +532,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				baz: &IntAndStr{
 					foo: 3
 					bar: 'hello'
-					baz: 0
+					baz: unsafe { nil }
 				}
 			})
 			match bar {
