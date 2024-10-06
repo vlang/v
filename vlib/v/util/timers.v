@@ -115,6 +115,11 @@ pub fn (mut t Timers) message(name string) string {
 }
 
 pub fn (mut t Timers) show(label string) {
+	if v_memory_panic {
+		// Showing timers uses string interpolation, and allocating in this case
+		// will just cause a second panic to be shown; it is better to just not show anything
+		return
+	}
 	if t.should_print {
 		formatted_message := t.message(label)
 		println(formatted_message)

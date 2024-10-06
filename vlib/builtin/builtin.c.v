@@ -391,7 +391,7 @@ fn _memory_panic(fname string, size isize) {
 	// Note: do not use string interpolation here at all, since string interpolation itself allocates
 	eprint(fname)
 	eprint('(')
-	$if freestanding {
+	$if freestanding || vinix {
 		eprint('size') // TODO: use something more informative here
 	} $else {
 		C.fprintf(C.stderr, c'%ld', size)
