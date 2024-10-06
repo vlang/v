@@ -44,8 +44,9 @@ fn decode_struct[T](doc Any, mut typ T) {
 				field_name = attr.all_after(':').trim_space()
 			}
 		}
-		if !skip {
-			value := doc.value(field_name)
+		value := doc.value(field_name)
+		// only set the field's value when value != null and !skip, else field got it's default value
+		if !skip && value != null {
 			$if field.is_enum {
 				typ.$(field.name) = value.int()
 			} $else $if field.typ is string {
