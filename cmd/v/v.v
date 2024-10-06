@@ -71,7 +71,10 @@ fn main() {
 	timers.start('TOTAL')
 	// use at_exit here, instead of defer, since some code paths later do early exit(0) or exit(1), for showing errors, or after `v run`
 	at_exit(fn [mut timers] () {
-		timers.show('TOTAL')
+		if !v_memory_panic {
+			// showing timers uses string interpolation, and allocating in this case will just cause a second panic to be shown
+			timers.show('TOTAL')
+		}
 	})!
 	timers.start('v parsing CLI args')
 	args := os.args[1..]
