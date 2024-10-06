@@ -103,7 +103,6 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	}
 	// array
 	p.check(.rsbr)
-	name_pos := p.tok.pos()
 	elem_type := p.parse_type()
 	if elem_type.idx() == 0 {
 		// error is set in parse_type
