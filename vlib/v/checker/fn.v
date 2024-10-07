@@ -1996,12 +1996,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	final_left_sym := c.table.final_sym(unwrapped_left_type)
 
 	method_name := node.name
-	mut unknown_method_msg := if field := c.table.find_field(left_sym, method_name) {
-		'unknown method `${field.name}` did you mean to access the field with the same name instead?'
-	} else {
-		name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
-		'unknown method or field: `${name}.${method_name}`'
-	}
 	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('Option type cannot be called directly', node.left.pos())
 		return ast.void_type
@@ -2068,12 +2062,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		} else {
 			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
 				node.left.pos())
+			return ast.void_type
 		}
 	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
 			node.left.pos().extend(node.pos))
 		return ast.void_type
 	}
+
+	mut unknown_method_msg := ''
 	mut method := ast.Fn{}
 	mut has_method := false
 	mut is_method_from_embed := false
@@ -2254,6 +2251,15 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if left_type != ast.void_type {
 			suggestion := util.new_suggestion(method_name, left_sym.methods.map(it.name))
+			if unknown_method_msg == '' {
+				if field := c.table.find_field(left_sym, method_name) {
+					unknown_method_msg = 'unknown method `${field.name}` did you mean to access the field with the same name instead?'
+				} else {
+					sname := left_sym.symbol_name_except_generic()
+					name := sname.replace_each(['<', '[', '>', ']'])
+					unknown_method_msg = 'unknown method or field: `${name}.${method_name}`'
+				}
+			}
 			c.error(suggestion.say(unknown_method_msg), node.pos)
 		}
 		return ast.void_type
