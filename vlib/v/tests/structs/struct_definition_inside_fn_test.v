@@ -3,4 +3,6 @@ fn test_struct_definition_inside_fn() {
 		name string
 	}
 	assert App{"make"}.name == "make"
+	app := App{"v"}
+	assert app.name == "v"
 }
