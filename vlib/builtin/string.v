@@ -2829,9 +2829,8 @@ pub:
 	end   string = '\n'
 }
 
-// wrap will wrap the string `s` when each line exceeds the width specified in
-// `width` (default value is 80), and will use `end` (default value is '\n') as
-// a line break.
+// wrap wraps the string `s` when each line exceeds the width specified in `width`
+// (default value is 80), and will use `end` (default value is '\n') as a line break.
 // Example: `assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'`
 pub fn (s string) wrap(config WrapConfig) string {
 	if config.width <= 0 {
