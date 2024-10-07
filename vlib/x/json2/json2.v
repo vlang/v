@@ -316,8 +316,8 @@ pub fn map_from[T](t T) map[string]Any {
 	return m
 }
 
-@[inline]
 // map_from_values convert a array of values to map of Any
+@[inline]
 fn map_from_values[T](t []T) []Any {
 	$if t !is $array {
 		return Any(t)
