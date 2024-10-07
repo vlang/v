@@ -158,7 +158,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
 				continue
 			}
-			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) {
+			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, false) {
 				continue
 			}
 			if field.typ.has_flag(.generic) {
