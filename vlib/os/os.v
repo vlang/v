@@ -811,23 +811,57 @@ fn create_folder_when_it_does_not_exist(path string) {
 	}
 }
 
-// cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
-pub fn cache_dir() string {
-	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
-	// There is a single base directory relative to which user-specific non-essential
-	// (cached) data should be written. This directory is defined by the environment
-	// variable $XDG_CACHE_HOME.
-	// $XDG_CACHE_HOME defines the base directory relative to which user specific
-	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
-	// or empty, a default equal to $HOME/.cache should be used.
-	xdg_cache_home := getenv('XDG_CACHE_HOME')
-	cdir := if xdg_cache_home.len > 0 {
-		xdg_cache_home
+fn xdg_home_folder(ename string, lpath string) string {
+	xdg_folder := getenv(ename)
+	dir := if xdg_folder != '' {
+		xdg_folder
 	} else {
-		join_path_single(home_dir(), '.cache')
+		join_path_single(home_dir(), lpath)
 	}
-	create_folder_when_it_does_not_exist(cdir)
-	return cdir
+	create_folder_when_it_does_not_exist(dir)
+	return dir
+}
+
+// cache_dir returns the path to a *writable* user-specific folder, suitable for writing non-essential data.
+// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
+// There is a single base directory relative to which user-specific non-essential
+// (cached) data should be written. This directory is defined by the environment
+// variable $XDG_CACHE_HOME.
+// $XDG_CACHE_HOME defines the base directory relative to which user specific
+// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
+// or empty, a default equal to $HOME/.cache should be used.
+pub fn cache_dir() string {
+	return xdg_home_folder('XDG_CACHE_HOME', '.cache')
+}
+
+// data_dir returns the path to a *writable* user-specific folder, suitable for writing application data.
+// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
+// There is a single base directory relative to which user-specific data files should be written.
+// This directory is defined by the environment variable $XDG_DATA_HOME.
+// If $XDG_DATA_HOME is either not set or empty, a default equal to $HOME/.local/share should be used.
+pub fn data_dir() string {
+	return xdg_home_folder('XDG_DATA_HOME', '.local/share')
+}
+
+// state_dir returns a *writable* folder user-specific folder, suitable for storing state data,
+// that should persist between (application) restarts, but that is not important or portable
+// enough to the user that it should be stored in os.data_dir() .
+// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
+// $XDG_STATE_HOME defines the base directory relative to which user-specific state files should be stored.
+// If $XDG_STATE_HOME is either not set or empty, a default equal to $HOME/.local/state should be used.
+// It may contain:
+// * actions history (logs, history, recently used files, …)
+// * current state of the application that can be reused on a restart (view, layout, open files, undo history, …)
+pub fn state_dir() string {
+	return xdg_home_folder('XDG_STATE_HOME', '.local/state')
+}
+
+// local_bin_dir returns `$HOME/.local/bin`, which is *guaranteed* to be in the PATH of the current user, for
+// distributions, following the XDG spec from https://specifications.freedesktop.org/basedir-spec/latest/ :
+// > User-specific executable files may be stored in $HOME/.local/bin .
+// > Distributions should ensure this directory shows up in the UNIX $PATH environment variable, at an appropriate place.
+pub fn local_bin_dir() string {
+	return xdg_home_folder('LOCAL_BIN_DIR', '.local/bin') // provides a way to test by setting an env variable
 }
 
 // temp_dir returns the path to a folder, that is suitable for storing temporary files.
