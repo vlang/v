@@ -102,6 +102,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					if ret_type.idx() != expr_type.idx() {
 						if node.expected_type.has_option_or_result()
 							&& c.table.sym(stmt.typ).kind == .struct_
+							&& (c.table.sym(ret_type).kind != .sum_type
+							|| !c.check_types(expr_type, ret_type))
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{
 								expr:      stmt.expr
