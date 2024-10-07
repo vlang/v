@@ -597,7 +597,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 	return none
 }
 
-fn (mut c Checker) verify_vweb_params_for_method(node ast.Fn) (bool, int, int) {
+fn (mut c Checker) verify_vweb_params_for_method(node &ast.Fn) (bool, int, int) {
 	margs := node.params.len - 1 // first arg is the receiver/this
 	// if node.attrs.len == 0 || (node.attrs.len == 1 && node.attrs[0].name == 'post') {
 	if node.attrs.len == 0 {
