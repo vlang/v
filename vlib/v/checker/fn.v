@@ -135,7 +135,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						node.return_type_pos)
 				}
 			}
-			if c.needs_unwrap_generic_type(node.return_type) {
+			if gs.kind == .struct_ && c.needs_unwrap_generic_type(node.return_type) {
 				// resolve generic Array[T], Map[T] generics, avoid recursive generic resolving type
 				if c.ensure_generic_type_specify_type_names(node.return_type, node.return_type_pos) {
 					c.table.unwrap_generic_type_ex(node.return_type, c.table.cur_fn.generic_names,
