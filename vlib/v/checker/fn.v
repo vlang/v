@@ -770,7 +770,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if index := node.name.index('__static__') {
 		// resolve static call T.name()
 		if index > 0 && c.table.cur_fn != unsafe { nil } {
-			fn_name = c.table.resolve_generic_static_type_name(fn_name, c.table.cur_fn.generic_names,
+			fn_name = c.table.convert_generic_static_type_name(fn_name, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
 		}
 	}
@@ -1592,7 +1592,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			})
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
-				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
+				if unwrap_typ := c.table.convert_generic_type(param.typ, func.generic_names,
 					concrete_types)
 				{
 					utyp := c.unwrap_generic(typ)
@@ -1643,9 +1643,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
-		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-			concrete_types)
-		{
+		if typ := c.table.convert_generic_type(func.return_type, func.generic_names, concrete_types) {
 			node.return_type = typ
 			c.register_trace_call(node, func)
 			return typ
@@ -1657,7 +1655,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 	if func.generic_names.len > 0 {
 		if has_generic || node.concrete_types.any(it.has_flag(.generic)) {
-			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
+			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 				node.concrete_types)
 			{
 				if typ.has_flag(.generic) {
@@ -1668,7 +1666,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			return node.return_type
 		} else {
 			if node.concrete_types.len > 0 && !node.concrete_types.any(it.has_flag(.generic)) {
-				if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
+				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 					node.concrete_types)
 				{
 					node.return_type = typ
@@ -1676,7 +1674,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					return typ
 				}
 			}
-			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
+			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 				concrete_types)
 			{
 				if typ.has_flag(.generic) {
@@ -2501,7 +2499,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				concrete_types
 			}
-			if exp_utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
+			if exp_utyp := c.table.convert_generic_type(exp_arg_typ, method.generic_names,
 				method_concrete_types)
 			{
 				exp_arg_typ = exp_utyp
@@ -2512,7 +2510,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len > 0 {
 					got_arg_typ = c.unwrap_generic(got_arg_typ)
 				} else {
-					if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
+					if got_utyp := c.table.convert_generic_type(got_arg_typ, method.generic_names,
 						method_concrete_types)
 					{
 						got_arg_typ = got_utyp
@@ -2630,7 +2628,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
 		&& method.return_type.has_flag(.generic) && method.generic_names.len > 0
 		&& method.generic_names.len == node.concrete_types.len {
-		if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
+		if typ := c.table.convert_generic_type(method.return_type, method.generic_names,
 			concrete_types)
 		{
 			node.return_type = typ

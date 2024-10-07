@@ -3631,15 +3631,15 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
 		/*
-		resolve_generic_to_concrete should not mutate the table.
+		convert_generic_type should not mutate the table.
 		It mutates if the generic type is for example []T and the
 		concrete type is an array type that has not been registered
 		yet. This should have already happened in the checker, since
-		it also calls resolve_generic_to_concrete. g.table is made
+		it also calls convert_generic_type. g.table is made
 		non-mut to make sure no one else can accidentally mutates the table.
 		*/
 		mut muttable := unsafe { &ast.Table(g.table) }
-		if t_typ := muttable.resolve_generic_to_concrete(typ, if unsafe { g.fn_decl != 0 } {
+		if t_typ := muttable.convert_generic_type(typ, if unsafe { g.fn_decl != 0 } {
 			g.fn_decl.generic_names
 		} else {
 			[]string{}

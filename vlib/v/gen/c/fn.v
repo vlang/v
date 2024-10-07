@@ -1251,7 +1251,7 @@ fn (mut g Gen) resolve_fn_return_type(node ast.CallExpr) ast.Type {
 						}
 					}
 				}
-				if gen_type := g.table.resolve_generic_to_concrete(node.return_type_generic,
+				if gen_type := g.table.convert_generic_type(node.return_type_generic,
 					func.generic_names, concrete_types)
 				{
 					if !gen_type.has_flag(.generic) {
@@ -1279,7 +1279,7 @@ fn (mut g Gen) resolve_fn_return_type(node ast.CallExpr) ast.Type {
 						}
 					}
 				}
-				if gen_type := g.table.resolve_generic_to_concrete(node.return_type_generic,
+				if gen_type := g.table.convert_generic_type(node.return_type_generic,
 					func.generic_names, concrete_types)
 				{
 					if !gen_type.has_flag(.generic) {
@@ -1513,12 +1513,12 @@ fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.T
 	return receiver_type_name
 }
 
-fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
+fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
-		unwrapped_rec_type = g.comptime.resolve_generic_expr(node.left, unwrapped_rec_type)
+		unwrapped_rec_type = g.comptime.unwrap_generic_expr(node.left, unwrapped_rec_type)
 	} else { // in non-generic fn
 		sym := g.table.sym(node.receiver_type)
 		match sym.info {
@@ -1526,7 +1526,7 @@ fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymb
 				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
 				// see comment at top of vlib/v/gen/c/utils.v
 				mut muttable := unsafe { &ast.Table(g.table) }
-				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
+				if utyp := muttable.convert_generic_type(node.receiver_type, generic_names,
 					sym.info.concrete_types)
 				{
 					unwrapped_rec_type = utyp
@@ -1580,7 +1580,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
 	left_type := g.unwrap_generic(node.left_type)
-	mut unwrapped_rec_type, typ_sym := g.resolve_receiver_type(node)
+	mut unwrapped_rec_type, typ_sym := g.unwrap_receiver_type(node)
 
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
@@ -1931,7 +1931,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if index := node.name.index('__static__') {
 		// resolve static call T.name()
 		if index > 0 && g.cur_fn != unsafe { nil } {
-			name = g.table.resolve_generic_static_type_name(node.name, g.cur_fn.generic_names,
+			name = g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 		}
 	}
@@ -2417,7 +2417,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				if func.generic_names.len > 0 {
 					for i in 0 .. expected_types.len {
 						mut muttable := unsafe { &ast.Table(g.table) }
-						if utyp := muttable.resolve_generic_to_concrete(node.expected_arg_types[i],
+						if utyp := muttable.convert_generic_type(node.expected_arg_types[i],
 							func.generic_names, node.concrete_types)
 						{
 							expected_types[i] = utyp
@@ -2430,7 +2430,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				if func.generic_names.len > 0 {
 					for i in 0 .. expected_types.len {
 						mut muttable := unsafe { &ast.Table(g.table) }
-						if utyp := muttable.resolve_generic_to_concrete(node.expected_arg_types[i],
+						if utyp := muttable.convert_generic_type(node.expected_arg_types[i],
 							func.generic_names, node.concrete_types)
 						{
 							expected_types[i] = utyp
@@ -2556,8 +2556,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				left_sym := g.table.sym(node.left_type)
 				if fn_def := left_sym.find_method_with_generic_parent(node.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
-					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
-						fn_def.generic_names, node.concrete_types)
+					if utyp := muttable.convert_generic_type(arr_info.elem_type, fn_def.generic_names,
+						node.concrete_types)
 					{
 						arr_info.elem_type = utyp
 					}
@@ -2567,8 +2567,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			} else {
 				if fn_def := g.table.find_fn(node.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
-					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
-						fn_def.generic_names, node.concrete_types)
+					if utyp := muttable.convert_generic_type(arr_info.elem_type, fn_def.generic_names,
+						node.concrete_types)
 					{
 						arr_info.elem_type = utyp
 					}
