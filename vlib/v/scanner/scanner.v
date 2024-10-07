@@ -4,7 +4,6 @@
 module scanner
 
 import os
-import strings
 import strconv
 import v.token
 import v.pref
