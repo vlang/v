@@ -1708,7 +1708,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 								method.return_type = table.unwrap_generic_type(method.return_type,
 									generic_names, t.info.concrete_types)
 							} else {
-								if rt := table.resolve_generic_to_concrete(method.return_type,
+								if rt := table.convert_generic_type(method.return_type,
 									generic_names, t.info.concrete_types)
 								{
 									method.return_type = rt
@@ -1716,8 +1716,8 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 							}
 							method.params = method.params.clone()
 							for mut param in method.params {
-								if pt := table.resolve_generic_to_concrete(param.typ,
-									generic_names, t.info.concrete_types)
+								if pt := table.convert_generic_type(param.typ, generic_names,
+									t.info.concrete_types)
 								{
 									param.typ = pt
 								}

@@ -803,9 +803,9 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 		sym := p.table.sym(typ)
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
-				if p.struct_init_generic_types.len > 0 && sym.info.generic_types.len > 0
-					&& p.struct_init_generic_types != sym.info.generic_types {
-					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
+				if p.init_generic_types.len > 0 && sym.info.generic_types.len > 0
+					&& p.init_generic_types != sym.info.generic_types {
+					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.no_type }
 					// NOTE:
 					// Used here for the wraparound `< >` characters, is not a reserved character in generic syntax,
@@ -835,15 +835,15 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 							...sym
 							name:          sym_name
 							rname:         sym.name
-							generic_types: p.struct_init_generic_types.clone()
+							generic_types: p.init_generic_types.clone()
 						})
 					}
 					typ = ast.new_type(idx)
 				}
 			}
 			ast.FnType {
-				if p.struct_init_generic_types.len > 0 && sym.info.func.generic_names.len > 0 {
-					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
+				if p.init_generic_types.len > 0 && sym.info.func.generic_names.len > 0 {
+					generic_names := p.types_to_names(p.init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.no_type }
 					if generic_names != sym.info.func.generic_names {
 						mut sym_name := sym.name + '<'
@@ -862,16 +862,16 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 							func.name = sym_name
 							func.generic_names = generic_names.clone()
 							if func.return_type.has_flag(.generic) {
-								if to_generic_typ := p.table.resolve_generic_to_concrete(func.return_type,
-									sym.info.func.generic_names, p.struct_init_generic_types)
+								if to_generic_typ := p.table.convert_generic_type(func.return_type,
+									sym.info.func.generic_names, p.init_generic_types)
 								{
 									func.return_type = to_generic_typ
 								}
 							}
 							for i in 0 .. func.params.len {
 								if func.params[i].typ.has_flag(.generic) {
-									if to_generic_typ := p.table.resolve_generic_to_concrete(func.params[i].typ,
-										sym.info.func.generic_names, p.struct_init_generic_types)
+									if to_generic_typ := p.table.convert_generic_type(func.params[i].typ,
+										sym.info.func.generic_names, p.init_generic_types)
 									{
 										func.params[i].typ = to_generic_typ
 									}
@@ -953,7 +953,7 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		bs_cname += '_'
 	}
 	if !is_instance {
-		p.struct_init_generic_types = concrete_types
+		p.init_generic_types = concrete_types
 	}
 	concrete_types_pos := start_pos.extend(p.tok.pos())
 	p.next()

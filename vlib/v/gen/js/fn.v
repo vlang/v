@@ -231,7 +231,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
 				// see comment at top of vlib/v/gen/c/utils.v
 				mut muttable := unsafe { &ast.Table(g.table) }
-				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
+				if utyp := muttable.convert_generic_type(node.receiver_type, generic_names,
 					sym.info.concrete_types)
 				{
 					unwrapped_rec_type = utyp

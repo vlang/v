@@ -1170,7 +1170,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.CallExpr {
 			if val.is_method {
-				unwrapped_rec_type, typ_sym := g.resolve_receiver_type(val)
+				unwrapped_rec_type, typ_sym := g.unwrap_receiver_type(val)
 				left_type := g.unwrap_generic(val.left_type)
 				left_sym := g.table.sym(left_type)
 				final_left_sym := g.table.final_sym(left_type)

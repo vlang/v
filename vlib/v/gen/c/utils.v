@@ -7,18 +7,16 @@ import v.ast
 
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		// NOTE: `resolve_generic_to_concrete` should not mutate the table.
+		// NOTE: `convert_generic_type` should not mutate the table.
 		//
 		// It mutates if the generic type is for example `[]T` and the concrete
 		// type is an array type that has not been registered yet.
 		//
 		// This should have already happened in the checker, since it also calls
-		// `resolve_generic_to_concrete`. `g.table` is made non-mut to make sure
+		// `convert_generic_type`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := g.table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
-				g.cur_concrete_types)
-			{
+			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names, g.cur_concrete_types) {
 				return t_typ
 			}
 		} else if g.inside_struct_init {
@@ -27,9 +25,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 				if sym.info is ast.Struct {
 					if sym.info.generic_types.len > 0 {
 						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-						if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
-							sym.info.concrete_types)
-						{
+						if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
 							return t_typ
 						}
 					}
@@ -41,15 +37,11 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 			if sym.info is ast.Struct {
 				if sym.info.generic_types.len > 0 {
 					generic_names := sym.info.generic_types.map(g.table.sym(it).name)
-					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
-						sym.info.concrete_types)
-					{
+					if t_typ := g.table.convert_generic_type(typ, generic_names, sym.info.concrete_types) {
 						return t_typ
 					}
 
-					if t_typ := g.table.resolve_generic_to_concrete(typ, generic_names,
-						g.cur_concrete_types)
-					{
+					if t_typ := g.table.convert_generic_type(typ, generic_names, g.cur_concrete_types) {
 						return t_typ
 					}
 				}

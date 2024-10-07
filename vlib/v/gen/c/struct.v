@@ -253,7 +253,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 									t_concrete_types << g.cur_concrete_types[index]
 								}
 							} else {
-								if tt := g.table.resolve_generic_to_concrete(t_typ, g.table.cur_fn.generic_names,
+								if tt := g.table.convert_generic_type(t_typ, g.table.cur_fn.generic_names,
 									g.cur_concrete_types)
 								{
 									t_concrete_types << tt
@@ -261,8 +261,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 							}
 						}
 					}
-					if tt := g.table.resolve_generic_to_concrete(sfield.expected_type,
-						t_generic_names, t_concrete_types)
+					if tt := g.table.convert_generic_type(sfield.expected_type, t_generic_names,
+						t_concrete_types)
 					{
 						sfield.expected_type = tt
 					}

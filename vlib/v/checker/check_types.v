@@ -1092,7 +1092,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 							}
 							// resolve lambda with generic return type
 							if arg.expr is ast.LambdaExpr && typ.has_flag(.generic) {
-								typ = c.comptime.resolve_generic_expr(arg.expr.expr, typ)
+								typ = c.comptime.unwrap_generic_expr(arg.expr.expr, typ)
 								if typ.has_flag(.generic) {
 									lambda_ret_gt_name := c.table.type_to_str(typ)
 									idx := func.generic_names.index(lambda_ret_gt_name)

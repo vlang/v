@@ -285,10 +285,10 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 	}
 }
 
-pub fn (mut ct ComptimeInfo) resolve_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Type {
+pub fn (mut ct ComptimeInfo) unwrap_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Type {
 	match expr {
 		ast.ParExpr {
-			return ct.resolve_generic_expr(expr.expr, default_typ)
+			return ct.unwrap_generic_expr(expr.expr, default_typ)
 		}
 		ast.CastExpr {
 			return expr.typ
