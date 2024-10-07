@@ -1828,16 +1828,7 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 			names << t.generic_type_names(sym.info.elem_type)
 		}
 		FnType {
-			mut func := sym.info.func
-			if func.return_type.has_flag(.generic) {
-				names << t.generic_type_names(func.return_type)
-			}
-			func.params = func.params.clone()
-			for mut param in func.params {
-				if param.typ.has_flag(.generic) {
-					generic_names_push_with_filter(mut names, t.generic_type_names(param.typ))
-				}
-			}
+			names << sym.info.func.generic_names
 		}
 		MultiReturn {
 			for ret_type in sym.info.types {
