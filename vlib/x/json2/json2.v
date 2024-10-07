@@ -280,7 +280,6 @@ pub fn map_from[T](t T) map[string]Any {
 				// TODO
 			} $else {
 				// TODO: simplify check of type & improve memory usage when convert
-				m[field.name] = value
 				$if field.typ is string {
 					m[field.name] = value
 				} $else $if field.typ is bool {
