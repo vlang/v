@@ -841,6 +841,48 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					typ = ast.new_type(idx)
 				}
 			}
+			ast.FnType {
+				if p.struct_init_generic_types.len > 0 && sym.info.func.generic_names.len > 0 {
+					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
+						'struct_init_generic_types') or { return ast.no_type }
+					if generic_names != sym.info.func.generic_names {
+						mut sym_name := sym.name + '<'
+						for i, gt in generic_names {
+							sym_name += gt
+							if i != generic_names.len - 1 {
+								sym_name += ','
+							}
+						}
+						sym_name += '>'
+						existing_idx := p.table.type_idxs[sym_name]
+						if existing_idx > 0 {
+							idx = existing_idx
+						} else {
+							mut func := sym.info.func
+							func.name = sym_name
+							func.generic_names = generic_names.clone()
+							if func.return_type.has_flag(.generic) {
+								if to_generic_typ := p.table.resolve_generic_to_concrete(func.return_type,
+									sym.info.func.generic_names, p.struct_init_generic_types)
+								{
+									func.return_type = to_generic_typ
+								}
+							}
+							for i in 0 .. func.params.len {
+								if func.params[i].typ.has_flag(.generic) {
+									if to_generic_typ := p.table.resolve_generic_to_concrete(func.params[i].typ,
+										sym.info.func.generic_names, p.struct_init_generic_types)
+									{
+										func.params[i].typ = to_generic_typ
+									}
+								}
+							}
+							idx = p.table.find_or_register_fn_type(func, false, false)
+						}
+						typ = ast.new_type(idx)
+					}
+				}
+			}
 			else {}
 		}
 		return typ
