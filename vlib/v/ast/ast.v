@@ -1144,7 +1144,7 @@ pub mut:
 	is_setter bool
 	is_map    bool
 	is_array  bool
-	is_farray bool
+	is_farray bool // fixed array
 	is_option bool // IfGuard
 	is_direct bool // Set if the underlying memory can be safely accessed
 	is_gated  bool // #[] gated array
