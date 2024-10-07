@@ -1692,25 +1692,33 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 }
 
 // register_trace_call registers the wrapper funcs for calling funcs for callstack feature
-fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
-	is_traceable := (c.pref.is_callstack || c.pref.is_trace) && c.table.cur_fn != unsafe { nil }
-		&& node.language == .v && c.file.imports.any(it.mod == 'v.debug')
-		&& node.name !in ['v.debug.callstack', 'v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
-	if is_traceable {
-		hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
-		calling_fn := if func.is_method {
-			'${c.table.type_to_str(c.unwrap_generic(node.left_type))}_${fn_name}'
-		} else {
-			fn_name
+fn (mut c Checker) register_trace_call(node &ast.CallExpr, func &ast.Fn) {
+	if !(c.pref.is_callstack || c.pref.is_trace) || c.table.cur_fn == unsafe { nil }
+		|| node.language != .v {
+		return
+	}
+	if node.name in ['v.debug.callstack', 'v.debug.add_after_call', 'v.debug.add_before_call',
+		'v.debug.remove_after_call', 'v.debug.remove_before_call'] {
+		return
+	}
+	if c.file.imports.any(it.mod == 'v.debug') {
+		return
+	}
+	hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
+	calling_fn := if func.is_method {
+		'${c.table.type_to_str(c.unwrap_generic(node.left_type))}_${fn_name}'
+	} else {
+		fn_name
+	}
+	c.table.cur_fn.trace_fns[hash_fn] = ast.FnTrace{
+		name:        calling_fn
+		file:        c.file.path
+		line:        node.pos.line_nr + 1
+		return_type: node.return_type
+		func:        &ast.Fn{
+			...func
 		}
-		c.table.cur_fn.trace_fns[hash_fn] = ast.FnTrace{
-			name:        calling_fn
-			file:        c.file.path
-			line:        node.pos.line_nr + 1
-			return_type: node.return_type
-			func:        &func
-			is_fn_var:   node.is_fn_var
-		}
+		is_fn_var:   node.is_fn_var
 	}
 }
 
