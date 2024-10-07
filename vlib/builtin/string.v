@@ -2840,7 +2840,7 @@ pub fn (s string) wrap(config WrapConfig) string {
 	if words.len == 0 {
 		return ''
 	}
-	mut sb := strings.new_builder(50)
+	mut sb := strings.new_builder(s.len)
 	sb.write_string(words[0])
 	mut space_left := config.width - words[0].len
 	for i in 1 .. words.len {
