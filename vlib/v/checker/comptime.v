@@ -330,13 +330,12 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.error('iterating over `.params` is supported only for functions, and `${sym.name}` is not a function',
 				node.typ_pos)
 			return
-		} else {
-			c.push_new_comptime_info()
-			c.comptime.inside_comptime_for = true
-			c.comptime.comptime_for_method_param_var = node.val_var
-			c.stmts(mut node.stmts)
-			c.pop_comptime_info()
 		}
+		c.push_new_comptime_info()
+		c.comptime.inside_comptime_for = true
+		c.comptime.comptime_for_method_param_var = node.val_var
+		c.stmts(mut node.stmts)
+		c.pop_comptime_info()
 	} else if node.kind == .variants {
 		if c.variant_data_type == 0 {
 			c.variant_data_type = ast.idx_to_type(c.table.find_type_idx('VariantData'))
