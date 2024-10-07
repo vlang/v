@@ -693,7 +693,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	return typ
 }
 
-fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
+fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func &ast.Fn) {
 	c.inside_interface_deref = true
 	c.expected_type = ast.string_type
 	if !(node.language != .js && node.args[0].expr is ast.CallExpr) {
@@ -1751,7 +1751,7 @@ fn (mut c Checker) is_generic_expr(node ast.Expr) bool {
 	}
 }
 
-fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
 		|| c.comptime.comptime_for_field_var != ''
@@ -1900,7 +1900,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 	return comptime_args
 }
 
-fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) []ast.Type {
+fn (mut c Checker) resolve_fn_generic_args(func &ast.Fn, mut node ast.CallExpr) []ast.Type {
 	mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 
 	// dynamic values from comptime and generic parameters

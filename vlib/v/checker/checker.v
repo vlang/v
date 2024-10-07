@@ -3713,7 +3713,7 @@ struct ACFieldMethod {
 	typ  string
 }
 
-fn (mut c Checker) resolve_var_fn(func ast.Fn, mut node ast.Ident, name string) ast.Type {
+fn (mut c Checker) resolve_var_fn(func &ast.Fn, mut node ast.Ident, name string) ast.Type {
 	mut fn_type := ast.new_type(c.table.find_or_register_fn_type(func, false, true))
 	if func.generic_names.len > 0 {
 		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
