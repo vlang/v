@@ -1701,7 +1701,7 @@ fn (mut c Checker) register_trace_call(node &ast.CallExpr, func &ast.Fn) {
 		'v.debug.remove_after_call', 'v.debug.remove_before_call'] {
 		return
 	}
-	if c.file.imports.any(it.mod == 'v.debug') {
+	if !c.file.imports.any(it.mod == 'v.debug') {
 		return
 	}
 	hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
