@@ -1841,6 +1841,10 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 }
 
 pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concrete_types []Type) Type {
+	return t.unwrap_generic_type_ex(typ, generic_names, concrete_types, false)
+}
+
+pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
 	mut needs_unwrap_types := []Type{}
@@ -1850,12 +1854,14 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 	match ts.info {
 		Array {
 			dims, elem_type := t.get_array_dims(ts.info)
-			unwrap_typ := t.unwrap_generic_type(elem_type, generic_names, concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex(elem_type, generic_names, concrete_types,
+				recheck_concrete_types)
 			idx := t.find_or_register_array_with_dims(unwrap_typ, dims)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		ArrayFixed {
-			unwrap_typ := t.unwrap_generic_type(ts.info.elem_type, generic_names, concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex(ts.info.elem_type, generic_names, concrete_types,
+				recheck_concrete_types)
 			idx := t.find_or_register_array_fixed(unwrap_typ, ts.info.size, None{}, false)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
@@ -1865,15 +1871,16 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Thread {
-			unwrap_typ := t.unwrap_generic_type(ts.info.return_type, generic_names, concrete_types)
+			unwrap_typ := t.unwrap_generic_type_ex(ts.info.return_type, generic_names,
+				concrete_types, recheck_concrete_types)
 			idx := t.find_or_register_thread(unwrap_typ)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Map {
-			unwrap_key_type := t.unwrap_generic_type(ts.info.key_type, generic_names,
-				concrete_types)
-			unwrap_value_type := t.unwrap_generic_type(ts.info.value_type, generic_names,
-				concrete_types)
+			unwrap_key_type := t.unwrap_generic_type_ex(ts.info.key_type, generic_names,
+				concrete_types, recheck_concrete_types)
+			unwrap_value_type := t.unwrap_generic_type_ex(ts.info.value_type, generic_names,
+				concrete_types, recheck_concrete_types)
 			idx := t.find_or_register_map(unwrap_key_type, unwrap_value_type)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
@@ -1925,6 +1932,20 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			nrt += ']'
 			idx := t.type_idxs[nrt]
 			if idx != 0 && t.type_symbols[idx].kind != .placeholder {
+				if recheck_concrete_types {
+					fields = ts.info.fields.clone()
+					for i in 0 .. fields.len {
+						if !fields[i].typ.has_flag(.generic) {
+							continue
+						}
+						// Map[T], []Type[T]
+						if t.type_kind(fields[i].typ) in [.array, .array_fixed, .map]
+							&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
+							t.unwrap_generic_type_ex(fields[i].typ, t_generic_names, t_concrete_types,
+								recheck_concrete_types)
+						}
+					}
+				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
 			} else {
 				// fields type translate to concrete type
