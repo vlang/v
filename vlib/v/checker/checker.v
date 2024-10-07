@@ -4976,7 +4976,7 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 	return name
 }
 
-fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) bool {
+fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos, is_container bool) bool {
 	if typ == 0 {
 		c.error('unknown type', pos)
 		return false
@@ -5002,11 +5002,13 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 	match sym.kind {
 		.function {
 			fn_info := sym.info as ast.FnType
-			if !c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos) {
+			if !c.ensure_generic_type_specify_type_names(fn_info.func.return_type, fn_info.func.return_type_pos,
+				is_container) {
 				return false
 			}
 			for param in fn_info.func.params {
-				if !c.ensure_generic_type_specify_type_names(param.typ, param.type_pos) {
+				if !c.ensure_generic_type_specify_type_names(param.typ, param.type_pos,
+					is_container) {
 					return false
 				}
 			}
@@ -5018,28 +5020,29 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 		}
 		.array {
 			if !c.ensure_generic_type_specify_type_names((sym.info as ast.Array).elem_type,
-				pos) {
+				pos, true) {
 				return false
 			}
 		}
 		.array_fixed {
 			if !c.ensure_generic_type_specify_type_names((sym.info as ast.ArrayFixed).elem_type,
-				pos) {
+				pos, true) {
 				return false
 			}
 		}
 		.map {
 			info := sym.info as ast.Map
-			if !c.ensure_generic_type_specify_type_names(info.key_type, pos) {
+			if !c.ensure_generic_type_specify_type_names(info.key_type, pos, true) {
 				return false
 			}
-			if !c.ensure_generic_type_specify_type_names(info.value_type, pos) {
+			if !c.ensure_generic_type_specify_type_names(info.value_type, pos, true) {
 				return false
 			}
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
-			if info.generic_types.len > 0 && info.concrete_types.len == 0 {
+			if info.generic_types.len > 0 && (is_container || !typ.has_flag(.generic))
+				&& info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic sumtype, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
 					pos)
 				return false
@@ -5063,7 +5066,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 		}
 		.alias {
 			info := sym.info as ast.Alias
-			if !c.ensure_generic_type_specify_type_names(info.parent_type, pos) {
+			if !c.ensure_generic_type_specify_type_names(info.parent_type, pos, is_container) {
 				return false
 			}
 		}
