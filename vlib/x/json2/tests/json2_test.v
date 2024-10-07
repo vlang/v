@@ -82,6 +82,22 @@ fn test_struct_with_string_to_map() {
 	assert array_of_map.str() == '[{"val":"true"},{"val":"false"}]'
 }
 
+fn test_struct_with_array_of_arrays_to_map() {
+	array_of_struct := [StructType[[][]bool]{
+		val: [[false, true], [false, true]]
+	}, StructType[[][]bool]{
+		val: [[false, true], [false, true]]
+	}]
+
+	mut array_of_map := []json.Any{}
+
+	for variable in array_of_struct {
+		array_of_map << json.map_from(variable)
+	}
+
+	assert array_of_map.str() == '[{"val":[false,true]},{"val":[true,false]}]'
+}
+
 fn test_struct_with_array_to_map() {
 	array_of_struct := [StructType[[]bool]{
 		val: [false, true]
