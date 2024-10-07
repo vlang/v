@@ -512,6 +512,9 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 						f.free()
 						return
 					}
+					// NOTE: For 'g' and 'G' bf.len1 is the maximum number of significant digits.
+					// Not like 'e' or 'E', which is the number of digits after the decimal point. 
+					bf.len1 --
 					mut f := strconv.format_es(data.d.d_f32, bf)
 					if upper_case {
 						tmp := f
@@ -582,6 +585,9 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 						f.free()
 						return
 					}
+					// NOTE: For 'g' and 'G' bf.len1 is the maximum number of significant digits
+					// Not like 'e' or 'E', which is the number of digits after the decimal point. 
+					bf.len1 --
 					mut f := strconv.format_es(data.d.d_f64, bf)
 					if upper_case {
 						tmp := f
@@ -595,7 +601,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			.si_e32 {
 				$if !nofloat ? {
 					// println("HERE: e32")
-					bf.len1 = 6
 					if use_default_str {
 						mut f := data.d.d_f32.str()
 						if upper_case {
@@ -623,7 +628,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			.si_e64 {
 				$if !nofloat ? {
 					// println("HERE: e64")
-					bf.len1 = 6
 					if use_default_str {
 						mut f := data.d.d_f64.str()
 						if upper_case {

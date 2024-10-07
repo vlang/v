@@ -126,3 +126,22 @@ fn test_remove_tail_zeros() {
 	assert strconv.remove_tail_zeros('1234') == '1234'
 	assert strconv.remove_tail_zeros('1.00000000007') == '1.00000000007'
 }
+
+fn test_g_format() {
+	a := 1234.56789000e10
+	assert '${a:1.0g}' == '1e+13'
+	assert '${a:1.1g}' == '1e+13'
+	assert '${a:1.2g}' == '1.2e+13'
+	assert '${a:1.3g}' == '1.23e+13'
+	assert '${a:1.4g}' == '1.235e+13'
+	assert '${a:1.5g}' == '1.2346e+13'
+	assert '${a:1.6g}' == '1.23457e+13'
+	assert '${a:1.7g}' == '1.234568e+13'
+	assert '${a:1.8g}' == '1.2345679e+13'
+	assert '${a:1.9g}' == '1.23456789e+13'
+	assert '${a:1.10g}' == '1.23456789e+13'
+	assert '${a:1.11g}' == '1.23456789e+13'
+	assert '${a:1.12g}' == '1.23456789e+13'
+
+	// TODO: e format not support due to issue #22429
+}
