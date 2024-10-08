@@ -263,7 +263,7 @@ pub fn map_from[T](t T) map[string]Any {
 				mut top_arr := unsafe { []Any{len: t.$(field.name).len} }
 				for idx, variable in value {
 					$if variable is $array {
-						top_arr[idx] = map_from_values(variable)
+						top_arr[idx] = flatten_array(variable)
 					} $else {
 						top_arr[idx] = variable
 					}
@@ -315,16 +315,16 @@ pub fn map_from[T](t T) map[string]Any {
 	return m
 }
 
-// map_from_values convert a array of values to map of Any
+// flatten_array convert a array of values to array of Any
 @[inline]
-fn map_from_values[T](t []T) []Any {
+fn flatten_array[T](t []T) []Any {
 	$if t !is $array {
 		return Any(t)
 	} $else {
 		mut arr := []Any{}
 		for variable in t {
 			$if variable is $array {
-				arr << map_from_values(variable)
+				arr << flatten_array(variable)
 			} $else {
 				arr << Any(variable)
 			}
