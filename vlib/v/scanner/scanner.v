@@ -4,7 +4,6 @@
 module scanner
 
 import os
-import strings
 import strconv
 import v.token
 import v.pref
@@ -937,7 +936,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
 						comptime_vars := token.valid_at_tokens.join(', ')
-						s.add_error_detail(wrap('available compile time variables: ${comptime_vars}',
+						s.add_error_detail('available compile time variables: ${comptime_vars}'.wrap(
 							width: 90
 						))
 					}
@@ -1859,38 +1858,4 @@ pub fn new_silent_scanner() &Scanner {
 	return &Scanner{
 		pref: p
 	}
-}
-
-@[params]
-struct WrapConfig {
-pub:
-	width int    = 80
-	end   string = '\n'
-}
-
-// wrap wraps the given string within `width` in characters.
-fn wrap(s string, config WrapConfig) string {
-	if config.width <= 0 {
-		return ''
-	}
-	words := s.fields()
-	if words.len == 0 {
-		return ''
-	}
-	mut sb := strings.new_builder(50)
-	sb.write_string(words[0])
-	mut space_left := config.width - words[0].len
-	for i in 1 .. words.len {
-		word := words[i]
-		if word.len + 1 > space_left {
-			sb.write_string(config.end)
-			sb.write_string(word)
-			space_left = config.width - word.len
-		} else {
-			sb.write_string(' ')
-			sb.write_string(word)
-			space_left -= 1 + word.len
-		}
-	}
-	return sb.str()
 }

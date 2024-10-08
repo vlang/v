@@ -1570,3 +1570,10 @@ fn test_snake_to_camel() {
 	assert '_abcd'.snake_to_camel() == 'Abcd'
 	assert '_abcd_'.snake_to_camel() == 'Abcd'
 }
+
+fn test_string_wrap() {
+	assert 'Hello World'.wrap(width: 10) == 'Hello\nWorld'
+	assert 'Hello World'.wrap(width: 10, end: '<linea-break>') == 'Hello<linea-break>World'
+	assert 'The V programming language'.wrap(width: 20, end: '|') == 'The V programming|language'
+	assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'
+}
