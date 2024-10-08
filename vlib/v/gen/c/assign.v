@@ -910,7 +910,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			}
 		} else {
 			g.expr(lx)
-			sym := g.table.sym(node.left_types[i])
+			sym := g.table.final_sym(node.left_types[i])
 			if sym.kind == .array_fixed {
 				g.writeln(';')
 				g.writeln('memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
