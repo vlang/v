@@ -98,6 +98,36 @@ fn test_struct_with_array_to_map() {
 	assert array_of_map.str() == '[{"val":[false,true]},{"val":[true,false]}]'
 }
 
+fn test_struct_with_array_of_arrays_to_map() {
+	array_of_struct := [
+		StructType[[][]bool]{
+			val: [[true, false], [true, false]]
+		},
+		StructType[[][]bool]{
+			val: [[false, true], [false, true]]
+		},
+	]
+	mut array_of_map := []json.Any{}
+	for variable in array_of_struct {
+		array_of_map << json.map_from(variable)
+	}
+	assert array_of_map.str() == '[{"val":[[true,false],[true,false]]},{"val":[[false,true],[false,true]]}]'
+
+	array_of_struct_int := [
+		StructType[[][]int]{
+			val: [[1, 0], [1, 0]]
+		},
+		StructType[[][]int]{
+			val: [[0, 1], [0, 1]]
+		},
+	]
+	mut array_of_map_int := []json.Any{}
+	for variable in array_of_struct_int {
+		array_of_map_int << json.map_from(variable)
+	}
+	assert array_of_map_int.str() == '[{"val":[[1,0],[1,0]]},{"val":[[0,1],[0,1]]}]'
+}
+
 fn test_struct_with_number_to_map() {
 	assert json.map_from(StructType[string]{'3'}).str() == '{"val":"3"}'
 	assert json.map_from(StructType[bool]{true}).str() == '{"val":true}'
