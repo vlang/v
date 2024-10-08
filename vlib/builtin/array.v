@@ -1043,3 +1043,52 @@ pub fn (data voidptr) vbytes(len int) []u8 {
 pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }
+
+@[direct_array_access; unsafe]
+pub fn (data []u8) string_buffer_to_generic[T]() T {
+	mut result := T{}
+
+	$if T in [i8, i16, int, i64] {
+		mut is_negative := false
+		for ch in data {
+			if ch == `-` {
+				is_negative = true
+				continue
+			}
+			digit := T(ch - `0`)
+			result = result * T(10) + digit
+		}
+
+		if is_negative {
+			result = -result
+		}
+	} $else $if T in [u8, u16, u32, u64] {
+		for ch in data {
+			digit := T(ch - `0`)
+			result = result * T(10) + digit
+		}
+	} $else $if T in [f32, f64] {
+		mut decimal_seen := false
+		mut decimal_divider := T(1)
+
+		for ch in data {
+			if ch == `.` {
+				decimal_seen = true
+				continue
+			}
+
+			digit := T(ch - `0`)
+
+			if decimal_seen {
+				decimal_divider *= T(10)
+				result += digit / decimal_divider
+			} else {
+				result = result * T(10) + digit
+			}
+		}
+	} $else {
+		panic('unsupported type ${typeof[T]().name}')
+	}
+
+	return result
+}
