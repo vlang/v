@@ -158,7 +158,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if !c.ensure_type_exists(field.typ, field.type_pos) {
 				continue
 			}
-			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, false) {
+			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos, c.table.final_sym(field.typ).kind in [
+				.array,
+				.array_fixed,
+				.map,
+			], field.typ.has_flag(.generic)) {
 				continue
 			}
 			if field.typ.has_flag(.generic) {
@@ -506,7 +510,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	// register generic struct type when current fn is generic fn
 	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
-		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+		c.table.unwrap_generic_type_ex(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types,
+			true)
 	}
 	if !is_field_zero_struct_init {
 		c.ensure_type_exists(node.typ, node.pos)
