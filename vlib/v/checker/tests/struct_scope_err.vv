@@ -1,0 +1,18 @@
+fn main() {
+
+	struct Foobar {
+		foo int
+		bar int
+	}
+
+	if true {
+		fb := Foobar{5, 6}
+		println(fb.foo)
+		x()
+	}
+}
+
+fn x() {
+	fb := Foobar{7, 8}
+	println(fb.bar)
+}
