@@ -82,7 +82,6 @@ fn test_string_buffer_to_generic_unsigned() {
 	value := u32(0)
 	unsafe { bytes.string_buffer_to_generic[u32](&value) }
 	assert value == 123
-	// assert unsafe { bytes.string_buffer_to_generic[?u32]() } == 123
 }
 
 fn test_string_buffer_to_generic_signed() {
