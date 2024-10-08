@@ -22,7 +22,7 @@ const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-const generic_fn_postprocess_iterations_cutoff_limit = 1000_000
+const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 
 // array_builtin_methods contains a list of all methods on array, that return other typed arrays,
 // i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
@@ -4707,12 +4707,12 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_any_kind_of_pointer() {
-			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
+			c.warn('accessing a pointer map value requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 		mut checked_types := []ast.Type{}
 		if c.is_contains_any_kind_of_pointer(elem_type, mut checked_types) {
-			c.note('accessing map value that contain pointers requires an `or {}` block outside `unsafe`',
+			c.warn('accessing map value that contain pointers requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 	}
@@ -4738,7 +4738,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		} else if is_mut_struct {
 			c.error('type `mut ${typ_sym.name}` does not support slicing', node.pos)
 		} else if !c.inside_unsafe && !is_ok && !c.pref.translated && !c.file.is_translated {
-			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
+			c.error('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
 	if mut node.index is ast.RangeExpr { // [1..2]

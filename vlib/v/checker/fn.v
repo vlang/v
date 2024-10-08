@@ -15,13 +15,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	// record the vweb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
-		typ_vweb_result := c.table.find_type_idx('vweb.Result')
+		typ_vweb_result := c.table.find_type_idx('veb.Result')
 		if node.return_type == typ_vweb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
 			if rec_sym.kind == .struct_ {
 				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
-					// there is no point in the message here, for methods that are not public; since they will not be available as routes anyway
-					c.note('generic method routes of vweb will be skipped', node.pos)
+					// there is no point in the message here, for methods
+					// that are not public; since they will not be available as routes anyway
+					c.note('generic method routes of veb will be skipped', node.pos)
 				}
 			}
 		}
