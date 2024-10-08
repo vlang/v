@@ -657,7 +657,11 @@ pub fn (mut v Builder) cc() {
 		//
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
-		str_args := all_args.join(' ')
+		str_args := if v.pref.no_rsp {
+			all_args.join(' ').replace('\n', ' ')
+		} else {
+			all_args.join(' ')
+		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		mut response_file := ''
 		mut response_file_content := str_args
@@ -666,21 +670,13 @@ pub fn (mut v Builder) cc() {
 			response_file_content = str_args.replace('\\', '\\\\')
 			rspexpr := '@${response_file}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
-			$if windows {
-				os.write_file_array(response_file, string_to_ansi_not_null_terminated(response_file_content)) or {
-					verror('Unable to write to C response file "${response_file}"')
-				}
-			} $else {
-				os.write_file(response_file, response_file_content) or {
-					verror('Unable to write to C response file "${response_file}"')
-				}
+			write_response_file(response_file, response_file_content)
+			if !v.ccoptions.debug_mode {
+				v.pref.cleanup_files << response_file
 			}
 		}
 		if !v.ccoptions.debug_mode {
 			v.pref.cleanup_files << v.out_name_c
-			if !v.pref.no_rsp {
-				v.pref.cleanup_files << response_file
-			}
 		}
 		$if windows {
 			if v.ccoptions.cc == .tcc {
@@ -1176,4 +1172,20 @@ pub fn (mut v Builder) quote_compiler_name(name string) string {
 		return name
 	}
 	return os.quoted_path(name)
+}
+
+fn write_response_file(response_file string, response_file_content string) {
+	$if windows {
+		os.write_file_array(response_file, string_to_ansi_not_null_terminated(response_file_content)) or {
+			write_response_file_error(response_file_content, err)
+		}
+	} $else {
+		os.write_file(response_file, response_file_content) or {
+			write_response_file_error(response_file_content, err)
+		}
+	}
+}
+
+fn write_response_file_error(response_file string, err IError) {
+	verror('Unable to write to C response file "${response_file}", error: ${err}')
 }
