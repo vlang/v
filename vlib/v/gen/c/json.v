@@ -983,6 +983,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	mut fixed_array_idx := ''
 	mut fixed_array_idx_increment := ''
 	mut array_element_assign := ''
+	is_array_fixed_val := g.table.final_sym(value_type).kind == .array_fixed
 	if utyp.has_flag(.option) {
 		if fixed_array_size > -1 {
 			fixed_array_idx += 'int fixed_array_idx = 0;'
@@ -994,7 +995,11 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 			array_free_str += 'array_free(&res.data);'
 		}
 	} else {
-		if fixed_array_size > -1 {
+		if is_array_fixed_val {
+			fixed_array_idx += 'int fixed_array_idx = 0;'
+			array_element_assign += 'memcpy(res[fixed_array_idx], val, sizeof(${styp}));'
+			fixed_array_idx_increment += 'fixed_array_idx++;'
+		} else if fixed_array_size > -1 {
 			fixed_array_idx += 'int fixed_array_idx = 0;'
 			array_element_assign += 'res[fixed_array_idx] = val;'
 			fixed_array_idx_increment += 'fixed_array_idx++;'
@@ -1008,6 +1013,15 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	mut s := ''
 	if is_js_prim(styp) {
 		s = '${styp} val = ${fn_name}((cJSON *)jsval); '
+	} else if is_array_fixed_val {
+		s = '
+		${result_name}_${styp} val2 = ${fn_name} ((cJSON *)jsval);
+		if(val2.is_error) {
+			${array_free_str}
+			return *(${result_name}_${ret_styp}*)&val2;
+		}
+		${styp} val;
+		memcpy(&val, (${styp}*)val2.data, sizeof(${styp}));'
 	} else {
 		s = '
 		${result_name}_${styp} val2 = ${fn_name} ((cJSON *)jsval);
