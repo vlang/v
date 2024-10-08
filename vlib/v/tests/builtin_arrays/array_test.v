@@ -75,19 +75,30 @@ fn append_1d_1d(mut arr1 []string, arr2 []string) {
 	arr1 << arr2
 }
 
-fn test_string_buffer_to_generic() {
+fn test_string_buffer_to_generic_unsigned() {
 	// unsigned
 	string_value := '123'
 	bytes := unsafe { string_value.str.vbytes(3) }
-	assert unsafe { bytes.string_buffer_to_generic[u32]() } == 123
+	value := u32(0)
+	unsafe { bytes.string_buffer_to_generic[u32](&value) }
+	assert value == 123
+	// assert unsafe { bytes.string_buffer_to_generic[?u32]() } == 123
+}
 
+fn test_string_buffer_to_generic_signed() {
 	// signed
-	string_value2 := '-123'
-	bytes2 := unsafe { string_value2.str.vbytes(4) }
-	assert unsafe { bytes2.string_buffer_to_generic[int]() } == -123
+	string_value := '-123'
+	bytes := unsafe { string_value.str.vbytes(4) }
+	value := int(0)
+	unsafe { bytes.string_buffer_to_generic[int](&value) }
+	assert value == -123
+}
 
-	// decimal point
-	string_value3 := '123.456'
-	bytes3 := unsafe { string_value3.str.vbytes(7) }
-	assert unsafe { bytes3.string_buffer_to_generic[f32]() } == 123.456
+fn test_string_buffer_to_generic_float() {
+	// float
+	string_value := '123.456'
+	bytes := unsafe { string_value.str.vbytes(7) }
+	value := f32(0)
+	unsafe { bytes.string_buffer_to_generic[f32](&value) }
+	assert value == 123.456
 }

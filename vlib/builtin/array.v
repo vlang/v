@@ -1044,10 +1044,24 @@ pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }
 
+// string_buffer_to_generic converts a buffer of bytes (data) into a generic type T and stores the result in the provided result pointer.
+// The function supports conversion to the following types:
+// - Signed integers: i8, i16, int, i64
+// - Unsigned integers: u8, u16, u32, u64
+// - Floating-point numbers: f32, f64
+//
+// For signed integers, the function handles negative numbers by checking for a '-' character.
+// For floating-point numbers, the function handles decimal points and adjusts the result accordingly.
+//
+// If the type T is not supported, the function will panic with an appropriate error message.
+//
+// Parameters:
+// - data []u8: The buffer of bytes to be converted.
+// - result &T: A pointer to the variable where the converted result will be stored.
+//
+// NOTE: This aims works with not new memory allocated data, to more efficient use `vbytes` before.
 @[direct_array_access; unsafe]
-pub fn (data []u8) string_buffer_to_generic[T]() T {
-	mut result := T{}
-
+pub fn (data []u8) string_buffer_to_generic[T](result &T) {
 	$if T in [i8, i16, int, i64] {
 		mut is_negative := false
 		for ch in data {
@@ -1056,16 +1070,16 @@ pub fn (data []u8) string_buffer_to_generic[T]() T {
 				continue
 			}
 			digit := T(ch - `0`)
-			result = result * T(10) + digit
+			*result = *result * T(10) + digit
 		}
 
 		if is_negative {
-			result = -result
+			*result = -*result
 		}
 	} $else $if T in [u8, u16, u32, u64] {
 		for ch in data {
 			digit := T(ch - `0`)
-			result = result * T(10) + digit
+			*result = *result * T(10) + digit
 		}
 	} $else $if T in [f32, f64] {
 		mut decimal_seen := false
@@ -1081,14 +1095,12 @@ pub fn (data []u8) string_buffer_to_generic[T]() T {
 
 			if decimal_seen {
 				decimal_divider *= T(10)
-				result += digit / decimal_divider
+				*result += digit / decimal_divider
 			} else {
-				result = result * T(10) + digit
+				*result = *result * T(10) + digit
 			}
 		}
 	} $else {
 		panic('unsupported type ${typeof[T]().name}')
 	}
-
-	return result
 }
