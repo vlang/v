@@ -835,6 +835,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 							...sym
 							name:          sym_name
 							rname:         sym.name
+							parent_idx:    sym.idx
 							generic_types: p.init_generic_types.clone()
 						})
 					}
