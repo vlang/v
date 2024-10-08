@@ -256,31 +256,24 @@ fn pow2(k int) Integer {
 }
 
 // optimized left shift in place. amount must be positive
-@[direct_array_access]
 fn left_shift_digits_in_place(mut a []u32, amount int) {
-	a_len := a.len
-	// control or allocate capacity
-	for _ in a_len .. a_len + amount {
-		a << u32(0)
-	}
-	for index := a_len - 1; index >= 0; index-- {
-		a[index + amount] = a[index]
-	}
-	for index in 0 .. amount {
-		a[index] = u32(0)
+	// this is actual in builtin/array.v, prepend_many (private fn)
+	// x := []u32{ len : amount }
+	// a.prepend_many(&x[0], amount)
+	old_len := a.len
+	elem_size := a.element_size
+	unsafe {
+		a.grow_len(amount)
+		sptr := &u8(a.data)
+		dptr := &u8(a.data) + u64(amount) * u64(elem_size)
+		vmemmove(dptr, sptr, u64(old_len) * u64(elem_size))
+		vmemset(sptr, 0, u64(amount) * u64(elem_size))
 	}
 }
 
 // optimized right shift in place. amount must be positive
-@[direct_array_access]
 fn right_shift_digits_in_place(mut a []u32, amount int) {
-	for index := 0; index < a.len - amount; index++ {
-		a[index] = a[index + amount]
-	}
-	for index := a.len - amount; index < a.len; index++ {
-		a[index] = u32(0)
-	}
-	shrink_tail_zeros(mut a)
+	a.drop(amount)
 }
 
 // operand b can be greater than operand a
