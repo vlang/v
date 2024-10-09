@@ -143,7 +143,10 @@ fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 				start_idx := idx
 				idx++
 				next_ch := node.val[idx] or { return ast.string_type }
-				if next_ch == `u` {
+				if next_ch == `\\` {
+					// ignore escaping char
+					idx++
+				} else if next_ch == `u` {
 					idx++
 					mut ch := node.val[idx] or { return ast.string_type }
 					mut hex_char_count := 0
