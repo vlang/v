@@ -71,7 +71,7 @@ pub enum VKind {
 	map
 	chan
 	any
-	struct_
+	struct
 	generic_inst
 	multi_return
 	sum_type
@@ -258,7 +258,7 @@ pub fn get_funcs() []Function {
 }
 
 pub fn get_structs() []Type {
-	struct_idxs := g_reflection.type_symbols.filter(it.kind == .struct_).map(it.idx)
+	struct_idxs := g_reflection.type_symbols.filter(it.kind == .struct).map(it.idx)
 	return g_reflection.types.filter(it.idx in struct_idxs)
 }
 

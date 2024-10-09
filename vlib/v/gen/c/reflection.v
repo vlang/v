@@ -80,7 +80,7 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 // gen_reflection_sym generates C code for TypeSymbol struct
 @[inline]
 fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
-	kind_name := if tsym.kind in [.none_, .struct, .enum_, .interface_] {
+	kind_name := if tsym.kind in [.none_, .enum_, .interface_] {
 		tsym.kind.str() + '_'
 	} else {
 		tsym.kind.str()
