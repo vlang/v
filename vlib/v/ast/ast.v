@@ -615,6 +615,8 @@ pub mut:
 	scope       &Scope = unsafe { nil }
 	label_names []string
 	pos         token.Pos // function declaration position
+	//
+	is_expand_simple_interpolation bool // true, when @[expand_simple_interpolation] is used on a fn. It should have a single string argument.
 }
 
 pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
@@ -687,6 +689,10 @@ pub mut:
 	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
 	from_embedded_type Type     // for interface only, fn from the embedded interface
 	from_embeded_type  Type @[deprecated: 'use from_embedded_type instead'; deprecated_after: '2024-03-31']
+	//
+	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some $x $y')`,
+	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`
+	// Note: the same type, has to support also a .write_decimal(n i64) method.
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -810,6 +816,10 @@ pub mut:
 	scope                  &Scope = unsafe { nil }
 	from_embed_types       []Type // holds the type of the embed that the method is called from
 	comments               []Comment
+	//
+	is_expand_simple_interpolation bool // true, when the function/method is marked as @[expand_simple_interpolation]
+	// Calls to it with an interpolation argument like `b.f('x ${y}')`, will be converted to `b.f('x ')` followed by `b.f(y)`.
+	// The same type, has to support also a .write_decimal(n i64) method.
 }
 
 /*

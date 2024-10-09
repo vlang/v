@@ -13,6 +13,8 @@ pub mut:
 mut:
 	is_assert   bool
 	inside_dump bool
+	//
+	strings_builder_type ast.Type = ast.no_type
 }
 
 fn (mut t Transformer) trace[T](fbase string, x &T) {
@@ -38,6 +40,7 @@ pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Tr
 }
 
 pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
+	t.strings_builder_type = t.table.find_type_idx('strings.Builder')
 	for i in 0 .. ast_files.len {
 		mut file := unsafe { ast_files[i] }
 		t.transform(mut file)
@@ -178,6 +181,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		ntype := typeof(*node).replace('v.ast.', '')
 		eprintln('transformer: ${t.file.path:-50} | pos: ${node.pos.line_str():-39} | node: ${ntype:12} | ${node}')
 	}
+	mut onode := unsafe { node }
 	match mut node {
 		ast.EmptyStmt {}
 		ast.NodeError {}
@@ -243,6 +247,9 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				else {
 					t.expr(mut node.expr)
 				}
+			}
+			if mut node.expr is ast.CallExpr && node.expr.is_expand_simple_interpolation {
+				t.simplify_nested_interpolation_in_sb(mut onode, mut node.expr, node.typ)
 			}
 		}
 		ast.FnDecl {
@@ -1151,4 +1158,91 @@ pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
 		}
 	}
 	node.stmts.prepend(expr_stmt)
+}
+
+pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stmt, mut nexpr ast.CallExpr, ntype ast.Type) bool {
+	if t.pref.autofree {
+		return false
+	}
+	if nexpr.args[0].expr !is ast.StringInterLiteral {
+		return false
+	}
+	original := nexpr.args[0].expr as ast.StringInterLiteral
+	// only very simple string interpolations, without any formatting, like the following examples
+	// can be optimised to a list of simpler string builder calls, instead of using str_intp:
+	// >> sb.write_string('abc ${num}')
+	// >> sb.write_string('abc ${num} ${some_string} ${another_string} end')
+	for idx, w in original.fwidths {
+		if w != 0 {
+			return false
+		}
+		if original.precisions[idx] != 987698 {
+			return false
+		}
+		if original.need_fmts[idx] {
+			return false
+		}
+		// good ... no complex formatting found; now check the types (only strings and non float numbers are supported)
+		if original.expr_types[idx] == ast.string_type {
+			continue
+		}
+		if !original.expr_types[idx].is_int() {
+			return false
+		}
+	}
+
+	// first, insert all the statements, for writing the static strings, that were parts of the original string interpolation:
+	mut calls := []ast.Stmt{}
+	for val in original.vals {
+		if val == '' {
+			// there is no point in appending empty strings
+			// so instead, just emit an empty statement, to be ignored by the backend
+			calls << ast.EmptyStmt{}
+			continue
+		}
+		mut ncall := ast.ExprStmt{
+			expr: ast.Expr(ast.CallExpr{
+				...nexpr
+				args: [
+					ast.CallArg{
+						...nexpr.args[0]
+						expr: ast.StringLiteral{
+							val: val
+						}
+					},
+				]
+			})
+			typ:  ntype
+		}
+		calls << ncall
+	}
+	// now, insert the statements for writing the variable expressions between the static strings:
+	for idx, expr in original.exprs {
+		mut ncall := ast.ExprStmt{
+			typ:  ntype
+			expr: ast.Expr(ast.CallExpr{
+				...nexpr
+				args: [
+					ast.CallArg{
+						...nexpr.args[0]
+						expr: expr
+					},
+				]
+			})
+		}
+		etype := original.expr_types[idx]
+		if etype.is_int() {
+			if mut ncall.expr is ast.CallExpr {
+				ncall.expr.name = 'write_decimal'
+			}
+		}
+		calls.insert(1 + 2 * idx, ncall) // the new statements should be between the existing ones for static strings
+	}
+	// calls << ast.node
+	unsafe {
+		*onode = ast.Stmt(ast.Block{
+			stmts: calls
+		})
+	}
+	return true
 }
