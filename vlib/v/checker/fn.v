@@ -13,7 +13,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			eprintln('>>> post processing node.name: ${node.name:-30} | ${node.generic_names} <=> ${c.table.cur_concrete_types}')
 		}
 	}
-	// record the vweb route methods (public non-generic methods):
+	// record the veb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
 		typ_vweb_result := c.table.find_type_idx('veb.Result')
 		if node.return_type == typ_vweb_result {
