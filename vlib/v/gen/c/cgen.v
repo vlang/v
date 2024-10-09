@@ -5504,6 +5504,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
 		|| fn_return_is_fixed_array
+		|| (fn_return_is_multi && node.types.any(g.table.final_sym(it).kind == .array_fixed))
 	// handle promoting none/error/function returning _option'
 	if fn_return_is_option {
 		option_none := node.exprs[0] is ast.None
@@ -5603,6 +5604,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''
+		mut final_assignments := ''
 		g.write('(${styp}){')
 		mut arg_idx := 0
 		for i, expr in node.exprs {
@@ -5639,17 +5641,27 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				continue
 			}
 			g.write('.arg${arg_idx}=')
-			if expr.is_auto_deref_var() {
-				g.write('*')
-			}
-			if mr_info.types[i].has_flag(.option) {
-				g.expr_with_opt(expr, node.types[i], mr_info.types[i])
-			} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
-				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
-			} else {
+			if expr !is ast.ArrayInit && g.table.final_sym(node.types[i]).kind == .array_fixed {
+				line := g.go_before_last_stmt().trim_space()
+				expr_styp := g.typ(node.types[i])
+				g.write('memcpy(&${tmpvar}.arg${arg_idx}, ')
 				g.expr(expr)
+				g.writeln(', sizeof(${expr_styp}));')
+				final_assignments += g.go_before_last_stmt() + '\t'
+				g.write(line)
+				g.write('{0}')
+			} else {
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
+				if mr_info.types[i].has_flag(.option) {
+					g.expr_with_opt(expr, node.types[i], mr_info.types[i])
+				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
+					g.expr_with_cast(expr, node.types[i], mr_info.types[i])
+				} else {
+					g.expr(expr)
+				}
 			}
-
 			if i < node.exprs.len - 1 {
 				g.write(', ')
 			}
@@ -5668,6 +5680,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		// Make sure to add our unpacks
 		if multi_unpack != '' {
 			g.insert_before_stmt(multi_unpack)
+		}
+		if final_assignments != '' {
+			g.writeln(';')
+			g.write(final_assignments)
 		}
 		if use_tmp_var && !fn_return_is_option && !fn_return_is_result {
 			if !has_semicolon {
