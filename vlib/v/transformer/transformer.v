@@ -1161,6 +1161,9 @@ pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
 }
 
 pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stmt, mut nexpr ast.CallExpr, ntype ast.Type) bool {
+	if t.pref.autofree {
+		return false
+	}
 	if nexpr.args[0].expr !is ast.StringInterLiteral {
 		return false
 	}
@@ -1209,7 +1212,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 					},
 				]
 			})
-			typ: ntype
+			typ:  ntype
 		}
 		calls << ncall
 	}
