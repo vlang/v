@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_scope_err.vv:16:8: error: struct `Foobar` was declared in a local scope outside current scope
+   14 | 
+   15 | fn x() {
+   16 |     fb := Foobar{7, 8}
+      |           ~~~~~~~~~~~~
+   17 |     println(fb.bar)
+   18 | }

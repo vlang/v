@@ -370,6 +370,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			generic_types: generic_types
 			attrs:         attrs
 			is_anon:       is_anon
+			is_local:      p.inside_fn
+			scope:         p.scope
 		}
 		is_pub:   is_pub
 	}

@@ -158,7 +158,9 @@ pub mut:
 @[minify]
 pub struct Struct {
 pub:
-	attrs []Attr
+	attrs    []Attr
+	scope    &Scope = unsafe { nil }
+	is_local bool
 pub mut:
 	embeds         []Type
 	fields         []StructField
