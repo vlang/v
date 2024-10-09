@@ -558,7 +558,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 			c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym}` instead',
 				node.type_pos)
 		}
-		.struct_ {
+		.struct {
 			if mut parent_typ_sym.info is ast.Struct {
 				// check if the generic param types have been defined
 				for ct in parent_typ_sym.info.concrete_types {
@@ -576,7 +576,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 				// check if embed types are struct
 				for embed_type in parent_typ_sym.info.embeds {
 					final_embed_sym := c.table.final_sym(embed_type)
-					if final_embed_sym.kind != .struct_ {
+					if final_embed_sym.kind != .struct {
 						c.error('cannot embed non-struct `${c.table.sym(embed_type).name}`',
 							node.type_pos)
 					}
@@ -585,7 +585,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 					for field in parent_typ_sym.info.fields {
 						field_sym := c.table.sym(field.typ)
 						if field_sym.info is ast.Alias {
-							if c.table.sym(field_sym.info.parent_type).kind != .struct_ {
+							if c.table.sym(field_sym.info.parent_type).kind != .struct {
 								c.error('cannot embed non-struct `${field_sym.name}`',
 									field.type_pos)
 							}
@@ -680,7 +680,7 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		sym := c.table.sym(variant.typ)
 		if variant.typ.is_ptr() || (sym.info is ast.Alias && sym.info.parent_type.is_ptr()) {
 			variant_name := sym.name.all_after_last('.')
-			lb, rb := if sym.kind == .struct_ { '{', '}' } else { '(', ')' }
+			lb, rb := if sym.kind == .struct { '{', '}' } else { '(', ')' }
 			msg := if sym.info is ast.Alias && sym.info.parent_type.is_ptr() {
 				'alias as non-reference type'
 			} else {
@@ -698,7 +698,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 			c.error('unknown type `${sym.name}`', variant.pos)
 		} else if sym.kind == .interface_ && sym.language != .js {
 			c.error('sum type cannot hold an interface', variant.pos)
-		} else if sym.kind == .struct_ && sym.language == .js {
+		} else if sym.kind == .struct && sym.language == .js {
 			c.error('sum type cannot hold a JS struct', variant.pos)
 		} else if sym.info is ast.Struct {
 			if sym.info.is_generic {
@@ -896,7 +896,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 			}
 			mut typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
-				.struct_ {
+				.struct {
 					mut has_field := true
 					mut field_info := c.table.find_field_with_embeds(typ_sym, expr.field_name) or {
 						has_field = false
@@ -1687,7 +1687,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			if !c.inside_unsafe {
 				rec_sym := c.table.sym(receiver.set_nr_muls(0))
 				if !rec_sym.is_heap() {
-					suggestion := if rec_sym.kind == .struct_ {
+					suggestion := if rec_sym.kind == .struct {
 						'declaring `${rec_sym.name}` as `@[heap]`'
 					} else {
 						'wrapping the `${rec_sym.name}` object in a `struct` declared as `@[heap]`'
@@ -1704,7 +1704,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.typ = fn_type
 		return fn_type
 	}
-	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
+	if sym.kind !in [.struct, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 
@@ -3254,21 +3254,21 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && final_to_is_ptr) {
+	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct && final_to_is_ptr) {
 		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
 			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]))
-			|| (final_to_sym.kind == .struct_
+			|| (final_to_sym.kind == .struct
 			&& from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx]) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}` (alias to `${final_to_sym.name}`)',
 				node.pos)
 		}
-	} else if to_sym.kind == .struct_ && mut to_sym.info is ast.Struct
+	} else if to_sym.kind == .struct && mut to_sym.info is ast.Struct
 		&& (!to_sym.info.is_typedef || from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx])
 		&& !final_to_is_ptr {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard (except for `from_type` is voidptr/nil)
-		if from_sym.kind == .struct_ && from_sym.info is ast.Struct && !from_type.is_ptr() {
+		if from_sym.kind == .struct && from_sym.info is ast.Struct && !from_type.is_ptr() {
 			if !to_type.has_flag(.option) {
 				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
 					node.pos)
@@ -3281,7 +3281,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast `${ft}` to struct', node.pos)
 		}
-	} else if to_sym.kind == .struct_ && final_to_is_ptr {
+	} else if to_sym.kind == .struct && final_to_is_ptr {
 		if from_sym.info is ast.Alias {
 			from_type = from_sym.info.parent_type.derive_add_muls(from_type)
 		}
@@ -3345,7 +3345,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if from_type == ast.none_type && !to_type.has_flag(.option) && !to_type.has_flag(.result) {
 		type_name := c.table.type_to_str(to_type)
 		c.error('cannot cast `none` to `${type_name}`', node.pos)
-	} else if !from_type.has_option_or_result() && from_sym.kind == .struct_ && !from_type.is_ptr() {
+	} else if !from_type.has_option_or_result() && from_sym.kind == .struct && !from_type.is_ptr() {
 		if (final_to_is_ptr || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
@@ -4389,7 +4389,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
 					&& !c.file.is_translated {
-					suggestion := if type_sym.kind == .struct_ {
+					suggestion := if type_sym.kind == .struct {
 						'declaring `${type_sym.name}` as `@[heap]`'
 					} else {
 						'wrapping the `${type_sym.name}` object in a `struct` declared as `@[heap]`'
@@ -4402,7 +4402,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 						node.pos)
 				} else {
 					match type_sym.kind {
-						.struct_ {
+						.struct {
 							info := type_sym.info as ast.Struct
 							if !info.is_heap {
 								node.obj.is_auto_heap = true
@@ -4472,7 +4472,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 			right_sym := c.table.sym(right_type)
 			expr_sym := c.table.sym(node.right.expr_type)
-			if expr_sym.kind == .struct_ && (expr_sym.info as ast.Struct).is_minify
+			if expr_sym.kind == .struct && (expr_sym.info as ast.Struct).is_minify
 				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum_
 				&& !(right_sym.info as ast.Enum).is_flag
 				&& !(right_sym.info as ast.Enum).uses_exprs)) {
@@ -4717,8 +4717,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 	}
 
-	if (typ.is_ptr() && !typ.has_flag(.shared_f) && (!node.left.is_auto_deref_var()
-		|| (typ_sym.kind == .struct_ && typ_sym.name != 'array')))
+	if (typ.is_ptr() && !typ.has_flag(.shared_f)
+		&& (!node.left.is_auto_deref_var() || (typ_sym.kind == .struct && typ_sym.name != 'array')))
 		|| typ.is_pointer() {
 		mut is_ok := false
 		mut is_mut_struct := false
@@ -4726,10 +4726,10 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			if mut node.left.obj is ast.Var {
 				// `mut param []T` function parameter
 				is_ok = node.left.obj.is_mut && node.left.obj.is_arg && !typ.deref().is_ptr()
-					&& typ_sym.kind != .struct_
+					&& typ_sym.kind != .struct
 				// `mut param Struct`
 				is_mut_struct = node.left.obj.is_mut && node.left.obj.is_arg
-					&& typ_sym.kind == .struct_
+					&& typ_sym.kind == .struct
 			}
 		}
 		if !is_ok && node.index is ast.RangeExpr {
@@ -4895,7 +4895,7 @@ fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 
 fn (mut c Checker) offset_of(node ast.OffsetOf) ast.Type {
 	sym := c.table.final_sym(node.struct_type)
-	if sym.kind != .struct_ {
+	if sym.kind != .struct {
 		c.error('first argument of __offsetof must be struct', node.pos)
 		return ast.u32_type
 	}
@@ -4982,7 +4982,7 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 		}
 	}
 	sym := c.table.sym(field.typ)
-	if sym.kind == .struct_ && sym.name != 'time.Time' {
+	if sym.kind == .struct && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}
 	return name
@@ -5060,7 +5060,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 				return false
 			}
 		}
-		.struct_ {
+		.struct {
 			info := sym.info as ast.Struct
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic struct, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',
@@ -5103,7 +5103,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 		return false
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
+	if !c.is_builtin_mod && sym.kind == .struct && !sym.is_pub && sym.mod != c.mod {
 		c.error('struct `${sym.name}` was declared as private to module `${sym.mod}`, so it can not be used inside module `${c.mod}`',
 			pos)
 		return false
@@ -5268,7 +5268,7 @@ fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Iden
 		if obj.is_stack_obj && !c.inside_unsafe {
 			sym := c.table.sym(obj.typ.set_nr_muls(0))
 			if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-				suggestion := if sym.kind == .struct_ {
+				suggestion := if sym.kind == .struct {
 					'declaring `${sym.name}` as `@[heap]`'
 				} else {
 					'wrapping the `${sym.name}` object in a `struct` declared as `@[heap]`'

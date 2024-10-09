@@ -1093,7 +1093,7 @@ fn (mut g JsGen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type
 		ast.SelectorExpr {
 			if expr.expr is ast.CallExpr {
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
-				if sym.kind == .struct_ {
+				if sym.kind == .struct {
 					if (sym.info as ast.Struct).is_union {
 						return unsupported_ctemp_assert_transform
 					}
@@ -2263,7 +2263,7 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 						g.expr(expr)
 						g.write('.str')
 					}
-					.struct_ {
+					.struct {
 						ptr_typ := g.gen_struct_equality_fn(node.cond_type)
 
 						g.write('${ptr_typ}_struct_eq(')
@@ -3304,7 +3304,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		typ := g.unwrap_generic(it.expr_types[i])
 		/*
 		g.expr(expr)
-			if sym.kind == .struct_ && sym.has_method('str') {
+			if sym.kind == .struct && sym.has_method('str') {
 				g.write('.str()')
 			}*/
 		g.gen_expr_to_string(expr, typ)
@@ -3346,7 +3346,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		name = name[0..name.index('<') or { name.len }]
 	}
 	if it.init_fields.len == 0 && type_sym.kind != .interface_ {
-		if type_sym.kind == .struct_ && type_sym.language == .js {
+		if type_sym.kind == .struct && type_sym.language == .js {
 			g.write('{}')
 		} else {
 			g.write('new ${g.js_name(name)}({})')
@@ -3366,7 +3366,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.writeln('return tmp')
 		g.dec_indent()
 		g.writeln('})()')
-	} else if type_sym.kind == .struct_ && type_sym.language == .js {
+	} else if type_sym.kind == .struct && type_sym.language == .js {
 		g.writeln('{')
 		g.inc_indent()
 		for i, init_field in it.init_fields {

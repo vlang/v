@@ -46,7 +46,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	for field in fields {
 		field_typ, field_sym := c.get_non_array_type(field.typ)
-		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+		if field_sym.kind == .struct && (field_typ.idx() == node.table_expr.typ.idx()
 			|| c.check_recursive_structs(field_sym, table_sym.name)) {
 			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
 			return ast.void_type
@@ -281,7 +281,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	for field in non_primitive_fields {
 		field_typ, field_sym := c.get_non_array_type(field.typ)
-		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+		if field_sym.kind == .struct && (field_typ.idx() == node.table_expr.typ.idx()
 			|| c.check_recursive_structs(field_sym, table_sym.name)) {
 			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
 			return ast.void_type
@@ -364,7 +364,7 @@ fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructFi
 
 	for attr in field.attrs {
 		if attr.name == 'fkey' {
-			if field_type.kind != .array && field_type.kind != .struct_ {
+			if field_type.kind != .array && field_type.kind != .struct {
 				c.orm_error('the `fkey` attribute must be used only with arrays and structures',
 					attr.pos)
 				return
@@ -408,14 +408,14 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 		}
 		field_sym := c.table.sym(field.typ)
 		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
-		is_struct := field_sym.kind == .struct_
+		is_struct := field_sym.kind == .struct
 		is_array := field_sym.kind == .array
 		is_enum := field_sym.kind == .enum_
 		mut is_array_of_structs := false
 		if is_array {
 			array_info := field_sym.array_info()
 			elem_sym := c.table.sym(array_info.elem_type)
-			is_array_of_structs = elem_sym.kind == .struct_
+			is_array_of_structs = elem_sym.kind == .struct
 
 			if attr := field.attrs.find_first('fkey') {
 				if attr.arg == '' {
@@ -674,7 +674,7 @@ fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
 // is referred to by the provided field.  For example, the `[]Child` field
 // refers to the foreign table `Child`.
 fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.Type {
-	if c.table.sym(table_field.typ).kind == .struct_ {
+	if c.table.sym(table_field.typ).kind == .struct {
 		return table_field.typ
 	} else if c.table.sym(table_field.typ).kind == .array {
 		return c.table.sym(table_field.typ).array_info().elem_type
@@ -689,10 +689,10 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 	mut res := []ast.StructField{}
 	for field in fields {
 		type_with_no_option_flag := field.typ.clear_flag(.option)
-		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct_
+		is_struct := c.table.type_symbols[int(type_with_no_option_flag)].kind == .struct
 		is_array := c.table.sym(type_with_no_option_flag).kind == .array
 		is_array_with_struct_elements := is_array
-			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct_
+			&& c.table.sym(c.table.sym(type_with_no_option_flag).array_info().elem_type).kind == .struct
 		is_time := c.table.get_type_name(type_with_no_option_flag) == 'time.Time'
 
 		if (is_struct || is_array_with_struct_elements) && !is_time {
@@ -753,7 +753,7 @@ fn (mut c Checker) check_recursive_structs(ts &ast.TypeSymbol, struct_name strin
 	if ts.info is ast.Struct {
 		for field in ts.info.fields {
 			_, field_sym := c.get_non_array_type(field.typ)
-			if field_sym.kind == .struct_ && field_sym.name == struct_name {
+			if field_sym.kind == .struct && field_sym.name == struct_name {
 				return true
 			}
 		}

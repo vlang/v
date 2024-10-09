@@ -159,7 +159,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if left.unaliased.idx() == right.unaliased.idx()
-		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type, .interface_] {
+		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface_] {
 		if g.pref.translated && !g.is_builtin_mod {
 			g.gen_plain_infix_expr(node)
 			return
@@ -257,7 +257,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.write(')')
 			}
-			.struct_ {
+			.struct {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
@@ -353,7 +353,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
+	if left.sym.kind == .struct && (left.sym.info as ast.Struct).generic_types.len > 0 {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
@@ -635,7 +635,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 	mut elem_sym := g.table.sym(right.elem_type)
 	for i, array_expr in right.exprs {
 		match elem_sym.kind {
-			.string, .alias, .sum_type, .map, .interface_, .array, .struct_ {
+			.string, .alias, .sum_type, .map, .interface_, .array, .struct {
 				if elem_sym.kind == .string {
 					g.write('string__eq(')
 					if left.is_auto_deref_var() || (left is ast.Ident && left.info is ast.IdentVar
@@ -654,7 +654,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 						g.write('${ptr_typ}_interface_eq(')
 					} else if elem_sym.kind == .array {
 						g.write('${ptr_typ}_arr_eq(')
-					} else if elem_sym.kind == .struct_ {
+					} else if elem_sym.kind == .struct {
 						g.write('${ptr_typ}_struct_eq(')
 					}
 				}
@@ -841,7 +841,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		array_info := left.unaliased_sym.info as ast.Array
 		noscan := g.check_noscan(array_info.elem_type)
 		if (right.unaliased_sym.kind == .array
-			|| (right.unaliased_sym.kind == .struct_ && right.unaliased_sym.name == 'array'))
+			|| (right.unaliased_sym.kind == .struct && right.unaliased_sym.name == 'array'))
 			&& left.sym.nr_dims() == right.sym.nr_dims() && array_info.elem_type != right.typ
 			&& !(right.sym.kind == .alias
 			&& g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false)) {

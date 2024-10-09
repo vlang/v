@@ -820,7 +820,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			// filter vweb route methods (non-generic method)
 			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
 				rec_sym := g.table.sym(method.receiver_type)
-				if rec_sym.kind == .struct_ {
+				if rec_sym.kind == .struct {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
 						if method.generic_names.len > 0
 							|| (method.params.len > 1 && method.attrs.len == 0) {
@@ -889,7 +889,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.pop_comptime_info()
 		}
 	} else if node.kind == .fields {
-		if sym.kind in [.struct_, .interface_] {
+		if sym.kind in [.struct, .interface_] {
 			fields := match sym.info {
 				ast.Struct {
 					sym.info.fields
@@ -938,7 +938,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.is_array = ${field_sym.kind in [.array, .array_fixed]};')
 				g.writeln('\t${node.val_var}.is_map = ${field_sym.kind == .map};')
 				g.writeln('\t${node.val_var}.is_chan = ${field_sym.kind == .chan};')
-				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct_};')
+				g.writeln('\t${node.val_var}.is_struct = ${field_sym.kind == .struct};')
 				g.writeln('\t${node.val_var}.is_alias = ${field_sym.kind == .alias};')
 				g.writeln('\t${node.val_var}.is_enum = ${field_sym.kind == .enum_};')
 

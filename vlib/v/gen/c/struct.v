@@ -57,7 +57,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if sym.kind == .array_fixed {
 		arr_info := sym.array_fixed_info()
 		is_array_fixed_struct_init = g.inside_return
-			&& g.table.final_sym(arr_info.elem_type).kind == .struct_
+			&& g.table.final_sym(arr_info.elem_type).kind == .struct
 	}
 
 	// detect if we need type casting on msvc initialization
@@ -145,14 +145,14 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.is_shared = false
 		}
 		mut field_name := init_field.name
-		if node.no_keys && sym.kind == .struct_ {
+		if node.no_keys && sym.kind == .struct {
 			info := sym.info as ast.Struct
 			if info.fields.len == node.init_fields.len {
 				field_name = info.fields[i].name
 			}
 		}
 		inited_fields[field_name] = i
-		if sym.kind != .struct_ && (sym.kind == .string || !sym.is_primitive()) {
+		if sym.kind != .struct && (sym.kind == .string || !sym.is_primitive()) {
 			if init_field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', init_field.pos)
 			}
@@ -172,7 +172,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	// The rest of the fields are zeroed.
 	// `inited_fields` is a list of fields that have been init'ed, they are skipped
 	mut nr_fields := 1
-	if sym.kind == .struct_ {
+	if sym.kind == .struct {
 		mut info := sym.info as ast.Struct
 		nr_fields = info.fields.len
 		if info.is_union && node.init_fields.len > 1 {
@@ -267,7 +267,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						sfield.expected_type = tt
 					}
 				}
-				if node.no_keys && sym.kind == .struct_ {
+				if node.no_keys && sym.kind == .struct {
 					sym_info := sym.info as ast.Struct
 					if sym_info.fields.len == node.init_fields.len {
 						sfield.name = sym_info.fields[already_inited_node_field_index].name

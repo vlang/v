@@ -789,7 +789,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.array { f.write('\$array') }
 				.array_dynamic { f.write('\$array_dynamic') }
 				.array_fixed { f.write('\$array_fixed') }
-				.struct_ { f.write('\$struct') }
+				.struct { f.write('\$struct') }
 				.iface { f.write('\$interface') }
 				.map_ { f.write('\$map') }
 				.int { f.write('\$int') }

@@ -853,7 +853,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.OffsetOf {
 			styp := g.table.sym(node.struct_type)
-			if styp.kind != .struct_ {
+			if styp.kind != .struct {
 				g.v_error('__offsetof expects a struct Type as first argument', node.pos)
 			}
 			off := g.get_field_offset(node.struct_type, node.field)

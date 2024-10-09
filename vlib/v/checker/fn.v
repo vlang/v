@@ -18,7 +18,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		typ_vweb_result := c.table.find_type_idx('veb.Result')
 		if node.return_type == typ_vweb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
-			if rec_sym.kind == .struct_ {
+			if rec_sym.kind == .struct {
 				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
 					// there is no point in the message here, for methods
 					// that are not public; since they will not be available as routes anyway
@@ -136,7 +136,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						node.return_type_pos)
 				}
 			}
-			if gs.kind == .struct_ && c.needs_unwrap_generic_type(node.return_type) {
+			if gs.kind == .struct && c.needs_unwrap_generic_type(node.return_type) {
 				// resolve generic Array[T], Map[T] generics, avoid recursive generic resolving type
 				if c.ensure_generic_type_specify_type_names(node.return_type, node.return_type_pos,
 					false, false)
@@ -363,8 +363,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				if param_sym.kind == .string && receiver_sym.kind == .string {
 					// bypass check for strings
 					// TODO: there must be a better way to handle that
-				} else if param_sym.kind !in [.struct_, .alias]
-					|| receiver_sym.kind !in [.struct_, .alias] {
+				} else if param_sym.kind !in [.struct, .alias]
+					|| receiver_sym.kind !in [.struct, .alias] {
 					c.error('operator methods are only allowed for struct and type alias',
 						node.pos)
 				} else {
@@ -873,7 +873,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if sym.info is ast.Alias {
 					kind = c.table.sym(sym.info.parent_type).kind
 				}
-				if kind !in [.struct_, .sum_type, .map, .array] {
+				if kind !in [.struct, .sum_type, .map, .array] {
 					c.error('json.decode: expected sum type, struct, map or array, found ${kind}',
 						expr.pos)
 				}
@@ -1326,7 +1326,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 
 		e_sym := c.table.sym(c.expected_type)
-		if call_arg.expr is ast.MapInit && e_sym.kind == .struct_ {
+		if call_arg.expr is ast.MapInit && e_sym.kind == .struct {
 			c.error('cannot initialize a struct with a map', call_arg.pos)
 			continue
 		} else if call_arg.expr is ast.StructInit && e_sym.kind == .map {
@@ -1565,7 +1565,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			*/
 			c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
 		}
-		if final_param_sym.kind == .struct_ && arg_typ !in [ast.voidptr_type, ast.nil_type]
+		if final_param_sym.kind == .struct && arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
 			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
@@ -1814,7 +1814,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 								&& param_typ_sym.kind == .array {
 								ctyp = c.get_generic_array_element_type(arg_sym.info)
 								comptime_args[k] = ctyp
-							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+							} else if arg_sym.kind in [.struct, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
@@ -2098,7 +2098,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.from_embed_types = [m.from_embedded_type]
 		}
 	} else {
-		if final_left_sym.kind in [.struct_, .sum_type, .interface_, .array] {
+		if final_left_sym.kind in [.struct, .sum_type, .interface_, .array] {
 			mut parent_type := ast.void_type
 			match final_left_sym.info {
 				ast.Struct, ast.SumType, ast.Interface {
@@ -2255,7 +2255,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				return info.func.return_type
 			}
 		}
-		if left_sym.kind in [.struct_, .aggregate, .interface_, .sum_type] {
+		if left_sym.kind in [.struct, .aggregate, .interface_, .sum_type] {
 			if c.smartcast_mut_pos != token.Pos{} {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 					c.smartcast_mut_pos)
@@ -2594,7 +2594,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg.pos)
 		}
 		param_typ_sym := c.table.sym(exp_arg_typ)
-		if param_typ_sym.kind == .struct_ && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
+		if param_typ_sym.kind == .struct && got_arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ, param.typ)
 			c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${method_name}`',

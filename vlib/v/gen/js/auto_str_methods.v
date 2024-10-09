@@ -184,7 +184,7 @@ pub fn data_str(x StrIntpType) string {
 const si_s_code = '0xfe10'
 
 fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
+	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
 
 fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
@@ -662,8 +662,8 @@ fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
 	sym := g.table.sym(typ)
 	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
-		.sum_type, .function, .alias, .chan] {
+	} else if sym.kind in [.struct, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type,
+		.function, .alias, .chan] {
 		return .si_s
 	} else if sym.kind == .string {
 		return .si_s
@@ -759,7 +759,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			fn_builder.write_string('isnil(it.${g.js_name(field.name)})')
 			fn_builder.write_string(' ? new string("nil") : ')
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind != .struct_ && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
+			if sym.kind != .struct && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
 				fn_builder.write_string('*')
 			}
 		}
@@ -771,7 +771,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 			if field.typ in ast.charptr_types {
 				fn_builder.write_string('tos4((byteptr)${func})')
 			} else {
-				if field.typ.is_ptr() && sym.kind == .struct_ {
+				if field.typ.is_ptr() && sym.kind == .struct {
 					fn_builder.write_string('(indent_count > 25)? new string("<probably circular>") : ')
 				}
 				fn_builder.write_string(func)

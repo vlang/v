@@ -80,7 +80,7 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 // gen_reflection_sym generates C code for TypeSymbol struct
 @[inline]
 fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
-	kind_name := if tsym.kind in [.none_, .struct_, .enum_, .interface_] {
+	kind_name := if tsym.kind in [.none_, .struct, .enum_, .interface_] {
 		tsym.kind.str() + '_'
 	} else {
 		tsym.kind.str()
@@ -159,7 +159,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			s := 'ADDR(${cprefix}SumType,(((${cprefix}SumType){.parent_idx=${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
 			return '(${cprefix}TypeInfo){._${cprefix}SumType=memdup(${s},sizeof(${cprefix}SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
 		}
-		.struct_ {
+		.struct {
 			info := tsym.info as ast.Struct
 			attrs := g.gen_attrs_array(info.attrs)
 			fields := g.gen_fields_array(info.fields)

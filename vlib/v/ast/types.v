@@ -761,7 +761,7 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 }
 
 pub fn (t &Table) type_is_for_pointer_arithmetic(typ Type) bool {
-	if t.sym(typ).kind == .struct_ {
+	if t.sym(typ).kind == .struct {
 		return false
 	} else {
 		return typ.is_any_kind_of_pointer() || typ.is_int_valptr()
@@ -797,7 +797,7 @@ pub enum Kind {
 	map
 	chan
 	any
-	struct_
+	struct
 	generic_inst
 	multi_return
 	sum_type
@@ -1162,7 +1162,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 		.alias {
 			size, align = t.type_size((sym.info as Alias).parent_type)
 		}
-		.struct_, .string, .multi_return {
+		.struct, .string, .multi_return {
 			mut max_alignment := 0
 			mut total_size := 0
 			types := if mut sym.info is Struct {
@@ -1235,7 +1235,7 @@ pub fn (k Kind) str() string {
 		.voidptr { 'voidptr' }
 		.charptr { 'charptr' }
 		.byteptr { 'byteptr' }
-		.struct_ { 'struct' }
+		.struct { 'struct' }
 		.int { 'int' }
 		.i8 { 'i8' }
 		.i16 { 'i16' }
@@ -1444,7 +1444,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			res += ')'
 		}
-		.struct_, .interface_, .sum_type {
+		.struct, .interface_, .sum_type {
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
@@ -1704,7 +1704,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 							mut method := x
 							generic_names := parent_sym.info.generic_types.map(table.sym(it).name)
 							return_sym := table.sym(method.return_type)
-							if return_sym.kind in [.struct_, .interface_, .sum_type] {
+							if return_sym.kind in [.struct, .interface_, .sum_type] {
 								method.return_type = table.unwrap_generic_type(method.return_type,
 									generic_names, t.info.concrete_types)
 							} else {
@@ -1862,7 +1862,7 @@ pub fn (t &Table) find_missing_variants(s &SumType, field_name string) string {
 	mut res := []string{cap: 5}
 	for variant in s.variants {
 		ts := t.sym(variant)
-		if ts.kind != .struct_ {
+		if ts.kind != .struct {
 			continue
 		}
 		mut found := false

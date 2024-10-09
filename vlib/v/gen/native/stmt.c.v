@@ -316,7 +316,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {
 	} else if node.kind == .string {
-	} else if node.kind == .struct_ {
+	} else if node.kind == .struct {
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 	} else if it.kind == .map {
 		*/

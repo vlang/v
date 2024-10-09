@@ -903,8 +903,8 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	sym := g.table.sym(typ)
 	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
-		.sum_type, .function, .alias, .chan, .thread] {
+	} else if sym.kind in [.struct, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type,
+		.function, .alias, .chan, .thread] {
 		return .si_s
 	} else if sym.kind == .string {
 		return .si_s
@@ -1076,7 +1076,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
 			if !ftyp_noshared.has_flag(.option)
-				&& sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
+				&& sym.kind !in [.struct, .alias, .enum_, .sum_type, .map, .interface_]
 				&& !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}
@@ -1106,7 +1106,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if field.typ in ast.charptr_types {
 				fn_body.write_string('tos4((byteptr)${func})')
 			} else {
-				if field.typ.is_ptr() && sym.kind in [.struct_, .interface_] {
+				if field.typ.is_ptr() && sym.kind in [.struct, .interface_] {
 					funcprefix += '(indent_count > 25)? _SLIT("<probably circular>") : '
 				}
 				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: $funcprefix | func: $func')
@@ -1241,7 +1241,7 @@ fn data_str(x StrIntpType) string {
 }
 
 fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
+	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
 
 fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {

@@ -58,7 +58,7 @@ fn (mut g Gen) gen_jsons() {
 
 		mut init_styp := '${styp} res'
 		if utyp.has_flag(.option) {
-			if sym.kind == .struct_ && !utyp.is_ptr() {
+			if sym.kind == .struct && !utyp.is_ptr() {
 				init_styp += ' = '
 				g.set_current_pos_as_last_stmt_pos()
 				pos := g.out.len
@@ -70,7 +70,7 @@ fn (mut g Gen) gen_jsons() {
 				init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
 			}
 		} else {
-			if sym.kind == .struct_ {
+			if sym.kind == .struct {
 				init_styp += ' = '
 				g.set_current_pos_as_last_stmt_pos()
 				pos := g.out.len
@@ -385,7 +385,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		fv_sym := g.table.sym(first_variant)
 		first_variant_name := fv_sym.cname
 		// println('KIND=${fv_sym.kind}')
-		if fv_sym.kind == .struct_ && !is_option && field_op != '->' {
+		if fv_sym.kind == .struct && !is_option && field_op != '->' {
 			dec.writeln('/*sum type ${fv_sym.name} ret_styp=${ret_styp}*/\tif (root->type == cJSON_NULL) { ')
 			dec.writeln('\t\tstruct ${first_variant_name} empty = {0};')
 			dec.writeln('res = ${variant_typ}_to_sumtype_${ret_styp}(&empty); } \n else ')
@@ -580,7 +580,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 						'cJSON_IsString(root->child)'
 					} else if var_t.ends_with('bool') {
 						'cJSON_IsBool(root->child)'
-					} else if g.table.sym(g.table.value_type(ast.idx_to_type(variant_symbols[i].idx))).kind == .struct_ {
+					} else if g.table.sym(g.table.value_type(ast.idx_to_type(variant_symbols[i].idx))).kind == .struct {
 						'cJSON_IsObject(root->child)'
 					} else {
 						'cJSON_IsNumber(root->child)'
@@ -842,7 +842,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			} else if field.typ == ast.string_type {
 				enc.writeln('${indent}if (${prefix_enc}${op}${c_name(field.name)}.len != 0)')
 			} else {
-				if field_sym.kind in [.alias, .sum_type, .map, .array, .struct_] {
+				if field_sym.kind in [.alias, .sum_type, .map, .array, .struct] {
 					ptr_typ := g.equality_fn(field.typ)
 					if field_sym.kind == .alias {
 						enc.writeln('${indent}if (!${ptr_typ}_alias_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
@@ -852,7 +852,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 						enc.writeln('${indent}if (!${ptr_typ}_map_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
 					} else if field_sym.kind == .array {
 						enc.writeln('${indent}if (!${ptr_typ}_arr_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
-					} else if field_sym.kind == .struct_ {
+					} else if field_sym.kind == .struct {
 						enc.writeln('${indent}if (!${ptr_typ}_struct_eq(${prefix_enc}${op}${c_name(field.name)}, ${g.type_default(field.typ)}))')
 					}
 				} else {

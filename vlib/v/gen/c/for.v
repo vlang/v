@@ -420,7 +420,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.expr(cond)
 			g.writeln('${field_accessor}str[${i}];')
 		}
-	} else if node.kind == .struct_ {
+	} else if node.kind == .struct {
 		cond_type_sym := g.table.sym(node.cond_type)
 		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
 			verror('`next` method not found')

@@ -246,7 +246,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		return
 	}
 	if node.kind == .fields {
-		if sym.kind in [.struct_, .interface_] {
+		if sym.kind in [.struct, .interface_] {
 			mut fields := []ast.StructField{}
 			match sym.info {
 				ast.Struct {

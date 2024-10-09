@@ -354,7 +354,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
-		kind:     .struct_
+		kind:     .struct
 		language: language
 		name:     name
 		cname:    util.no_dots(name)

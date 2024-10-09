@@ -156,7 +156,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expected_type = c.unwrap_generic(left_type)
 			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
 				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
-				&& c.table.sym(left_type).kind in [.array, .map, .struct_]
+				&& c.table.sym(left_type).kind in [.array, .map, .struct]
 		}
 		if c.comptime.comptime_for_field_var != '' && mut left is ast.ComptimeSelector {
 			left_type = c.comptime.comptime_for_field_type
@@ -669,22 +669,22 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
 					}
 				} else if !left_sym.is_number()
-					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
+					&& left_sym.kind !in [.byteptr, .charptr, .struct, .alias] {
 					c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 						left.pos())
 				} else if !right_sym.is_number()
-					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
+					&& left_sym.kind !in [.byteptr, .charptr, .struct, .alias] {
 					c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
 						right.pos())
 				}
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
-					&& left_sym.kind !in [.struct_, .alias] {
+					&& left_sym.kind !in [.struct, .alias] {
 					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
 						left.pos())
 				} else if !right_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
-					&& left_sym.kind !in [.struct_, .alias] {
+					&& left_sym.kind !in [.struct, .alias] {
 					c.error('operator ${node.op.str()} not defined on right operand type `${right_sym.name}`',
 						right.pos())
 				}
@@ -765,8 +765,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			else {}
 		}
 		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign]
-			&& (left_sym.kind == .alias || (left_sym.kind == .struct_
-			&& right_sym.kind == .struct_)) {
+			&& (left_sym.kind == .alias || (left_sym.kind == .struct && right_sym.kind == .struct)) {
 			left_name := c.table.type_to_str(left_type_unwrapped)
 			right_name := c.table.type_to_str(right_type_unwrapped)
 			parent_sym := c.table.final_sym(left_type_unwrapped)
@@ -783,7 +782,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				.mult_assign { '*' }
 				else { 'unknown op' }
 			}
-			if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
+			if left_sym.kind == .struct && (left_sym.info as ast.Struct).generic_types.len > 0 {
 				continue
 			}
 			if method := left_sym.find_method(extracted_op) {

@@ -1178,7 +1178,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	if sym.info is ast.FnType {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
-	if sym.language == .c && sym.kind == .struct_ {
+	if sym.language == .c && sym.kind == .struct {
 		styp = '${option_name}_${base.replace(' ', '_')}'
 	} else {
 		styp = '${option_name}_${base}'
@@ -1200,7 +1200,7 @@ fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	if sym.info is ast.FnType {
 		base = 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
 	}
-	if sym.language == .c && sym.kind == .struct_ {
+	if sym.language == .c && sym.kind == .struct {
 		styp = '${result_name}_${base.replace(' ', '_')}'
 	} else {
 		styp = '${result_name}_${base}'
@@ -1508,7 +1508,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	}
 	if is_prefix_struct && sym.language == .c {
 		styp = styp[3..]
-		if sym.kind == .struct_ {
+		if sym.kind == .struct {
 			info := sym.info as ast.Struct
 			if !info.is_typedef {
 				styp = 'struct ${styp}'
@@ -5124,7 +5124,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else {
 			g.expr_with_cast(node.expr, expr_type, node_typ)
 		}
-	} else if !node.typ.has_flag(.option) && sym.kind == .struct_ && !node.typ.is_ptr()
+	} else if !node.typ.has_flag(.option) && sym.kind == .struct && !node.typ.is_ptr()
 		&& !(sym.info as ast.Struct).is_typedef {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.typ(node.typ)
@@ -7359,7 +7359,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				return init_str
 			}
 		}
-		.struct_ {
+		.struct {
 			mut has_none_zero := false
 			info := sym.info as ast.Struct
 			mut init_str := if info.is_anon && !g.inside_global_decl {
@@ -7376,7 +7376,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct_, .chan, .sum_type] {
+						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .voidptr, .byteptr, .charptr, .struct, .chan, .sum_type] {
 						if sym.language == .c && !field.has_default_expr {
 							continue
 						}
@@ -7792,7 +7792,7 @@ fn (mut g Gen) interface_table() string {
 						if st == ast.voidptr_type || st == ast.nil_type {
 							cast_struct.write_string('/*.... ast.voidptr_type */')
 						} else {
-							if st_sym.kind == .struct_ {
+							if st_sym.kind == .struct {
 								if _, embeds := g.table.find_field_from_embeds(st_sym,
 									field.name)
 								{
@@ -8145,7 +8145,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 			info := sym.info as ast.ArrayFixed
 			return g.contains_ptr(info.elem_type)
 		}
-		.struct_ {
+		.struct {
 			info := sym.info as ast.Struct
 			for embed in info.embeds {
 				if g.contains_ptr(embed) {

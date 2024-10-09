@@ -490,7 +490,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_expected_left := ast.no_type
 			mut op_expected_right := ast.no_type
 			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
-				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct_]
+				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct]
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
 				if mut left is ast.IndexExpr {
 					if g.table.sym(left.left_type).kind == .array_fixed {
@@ -515,7 +515,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				str_add = true
 			}
 			// Assignment Operator Overloading
-			if ((left_sym.kind == .struct_ && right_sym.kind == .struct_)
+			if ((left_sym.kind == .struct && right_sym.kind == .struct)
 				|| (left_sym.kind == .alias && right_sym.kind == .alias))
 				&& node.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
 				extracted_op := match node.op {

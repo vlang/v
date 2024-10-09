@@ -31,7 +31,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 					}
 				}
 			}
-		} else if typ.has_flag(.generic) && g.table.sym(typ).kind == .struct_ {
+		} else if typ.has_flag(.generic) && g.table.sym(typ).kind == .struct {
 			// resolve selector `a.foo` where `a` is struct[T] on non generic function	
 			sym := g.table.sym(typ)
 			if sym.info is ast.Struct {

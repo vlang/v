@@ -379,7 +379,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('infix `${node.op}` is not defined for pointer values', left_right_pos)
 			}
 
-			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
+			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if left_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
@@ -397,7 +397,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							left_right_pos)
 					}
 				}
-			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct_] {
+			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if right_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
@@ -505,12 +505,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_sym = c.table.sym(unwrapped_right_type)
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
-			} else if left_sym.kind == .struct_
+			} else if left_sym.kind == .struct
 				&& (left_sym.info as ast.Struct).generic_types.len > 0 {
 				node.promoted_type = ast.bool_type
 				return ast.bool_type
-			} else if left_sym.kind == .struct_ && right_sym.kind == .struct_
-				&& node.op in [.eq, .lt] {
+			} else if left_sym.kind == .struct && right_sym.kind == .struct && node.op in [.eq, .lt] {
 				if !(left_sym.has_method(node.op.str()) && right_sym.has_method(node.op.str())) {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
@@ -527,7 +526,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
-			if left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+			if left_sym.kind == .struct && right_sym.kind == .struct {
 				if !left_sym.has_method('<') && node.op in [.ge, .le] {
 					c.error('cannot use `${node.op}` as `<` operator method is not defined',
 						left_right_pos)
@@ -539,7 +538,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// the below check works as expected
 				left_gen_type := c.unwrap_generic(left_type)
 				gen_sym := c.table.sym(left_gen_type)
-				need_overload := gen_sym.kind in [.struct_, .interface_]
+				need_overload := gen_sym.kind in [.struct, .interface_]
 				if need_overload && !gen_sym.has_method_with_generic_parent('<')
 					&& node.op in [.ge, .le] {
 					c.error('cannot use `${node.op}` as `<` operator method is not defined',

@@ -195,7 +195,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_bool_field(field_name string)
 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
 		'is_map' { return field_sym.kind == .map }
 		'is_chan' { return field_sym.kind == .chan }
-		'is_struct' { return field_sym.kind == .struct_ }
+		'is_struct' { return field_sym.kind == .struct }
 		'is_alias' { return field_sym.kind == .alias }
 		'is_enum' { return field_sym.kind == .enum_ }
 		else { return false }
@@ -221,8 +221,8 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		.float {
 			return x_kind in [.f32, .f64, .float_literal]
 		}
-		.struct_ {
-			return x_kind == .struct_
+		.struct {
+			return x_kind == .struct
 		}
 		.iface {
 			return x_kind == .interface_

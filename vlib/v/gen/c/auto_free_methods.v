@@ -78,7 +78,7 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		field_name := c_name(field.name)
 		sym := g.table.sym(g.unwrap_generic(field.typ))
 
-		if sym.kind !in [.string, .array, .map, .struct_] {
+		if sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
 		mut field_styp := g.typ(field.typ.set_nr_muls(0).clear_flag(.option)).replace('*',
@@ -135,7 +135,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
-	if sym.kind in [.string, .array, .map, .struct_] {
+	if sym.kind in [.string, .array, .map, .struct] {
 		fn_builder.writeln('\tfor (int i = 0; i < it->len; i++) {')
 
 		mut elem_styp := g.typ(info.elem_type).replace('*', '')
