@@ -352,7 +352,7 @@ fn default_error_callback(data voidptr, req picohttpparser.Request, mut res pico
 pub fn new(config Config) !&Picoev {
 	listening_socket_fd := listen(config) or {
 		eprintln('Error during listen: ${err}')
-		return unsafe { nil }
+		return err
 	}
 
 	mut pv := &Picoev{
