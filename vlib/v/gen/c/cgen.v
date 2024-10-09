@@ -5641,7 +5641,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				continue
 			}
 			g.write('.arg${arg_idx}=')
-			if g.table.final_sym(node.types[i]).kind == .array_fixed {
+			if expr !is ast.ArrayInit && g.table.final_sym(node.types[i]).kind == .array_fixed {
 				line := g.go_before_last_stmt().trim_space()
 				expr_styp := g.typ(node.types[i])
 				g.write('memcpy(&${tmpvar}.arg${arg_idx}, ')
