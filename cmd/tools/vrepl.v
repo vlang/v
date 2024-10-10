@@ -67,7 +67,7 @@ const possible_statement_patterns = [
 ]
 
 enum FnType {
-	@none
+	none
 	void
 	fn_type
 }
@@ -183,7 +183,7 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 	if line.contains(':=') {
 		// an assignment to a variable:
 		// `z := abc()`
-		return false, FnType.@none
+		return false, FnType.none
 	}
 
 	// Check if it is a Vlib call
@@ -192,7 +192,7 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 		fntype := r.check_fn_type_kind(line)
 		return true, fntype
 	}
-	return false, FnType.@none
+	return false, FnType.none
 }
 
 // TODO(vincenzopalazzo) Remove this fancy check and add a regex
