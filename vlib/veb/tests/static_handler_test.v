@@ -119,3 +119,10 @@ fn test_custom_folder_mount() {
 	assert x.status() == .ok
 	assert x.body == 'root'
 }
+
+fn test_upper_case_mime_type() {
+	x := http.get('${localserver}/upper_case.TXT')!
+
+	assert x.status() == .ok
+	assert x.body == 'body'
+}

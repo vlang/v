@@ -845,7 +845,7 @@ fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string
 	static_file := app.static_files[asked_path] or { return false }
 
 	// StaticHandler ensures that the mime type exists on either the App or in veb
-	ext := os.file_ext(static_file)
+	ext := os.file_ext(static_file).to_lower()
 	mut mime_type := app.static_mime_types[ext] or { mime_types[ext] }
 
 	static_host := app.static_hosts[asked_path] or { '' }

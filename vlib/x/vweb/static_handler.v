@@ -104,7 +104,7 @@ pub fn (mut sh StaticHandler) serve_static(url string, file_path string) ! {
 // `url` is the access path on the site, `file_path` is the real path to the file
 // `host` is the host to serve the file from
 pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_path string) ! {
-	ext := os.file_ext(file_path)
+	ext := os.file_ext(file_path).to_lower()
 
 	// Rudimentary guard against adding files not in mime_types.
 	if ext !in sh.static_mime_types && ext !in mime_types {
