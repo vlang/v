@@ -45,6 +45,14 @@ pub enum ColorOutput {
 	never
 }
 
+// Subsystem is needed for modeling passing an explicit `/subsystem:windows` or `/subsystem:console` on Windows.
+// By default it is `auto`. It has no effect on platforms != windows.
+pub enum Subsystem {
+	auto
+	console
+	windows
+}
+
 pub enum Backend {
 	c               // The (default) C backend
 	golang          // Go backend
@@ -240,6 +248,8 @@ pub mut:
 	// use_64_int bool
 	// forwards compatibility settings:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
+	//
+	subsystem Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
 }
 
 pub struct LineInfo {
@@ -434,6 +444,19 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-e' {
 				res.is_eval_argument = true
 				res.eval_argument = cmdline.option(args[i..], '-e', '')
+				i++
+			}
+			'-subsystem' {
+				subsystem := cmdline.option(args[i..], '-subsystem', '')
+				res.subsystem = Subsystem.from(subsystem) or {
+					mut valid := []string{}
+					$for x in Subsystem.values {
+						valid << x.name
+					}
+					eprintln('invalid subsystem: ${subsystem}')
+					eprintln('valid values are: ${valid}')
+					exit(1)
+				}
 				i++
 			}
 			'-gc' {
