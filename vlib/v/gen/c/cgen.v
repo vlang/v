@@ -1926,9 +1926,14 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 								g.fn_decl.return_type.clear_flag(.option)
 							}
 							styp = g.base_type(ret_typ)
-							g.write('_option_ok(&(${styp}[]) { ')
-							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
-							g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
+							if stmt.expr is ast.CallExpr && stmt.expr.name == 'panic' {
+								g.expr(stmt.expr)
+								g.writeln(';')
+							} else {
+								g.write('_option_ok(&(${styp}[]) { ')
+								g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
+								g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
+							}
 						}
 					}
 				}
@@ -1958,9 +1963,14 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						} else {
 							ret_typ := g.fn_decl.return_type.clear_flag(.result)
 							styp = g.base_type(ret_typ)
-							g.write('_result_ok(&(${styp}[]) { ')
-							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
-							g.writeln(' }, (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
+							if stmt.expr is ast.CallExpr && stmt.expr.name == 'panic' {
+								g.expr(stmt.expr)
+								g.writeln(';')
+							} else {
+								g.write('_result_ok(&(${styp}[]) { ')
+								g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
+								g.writeln(' }, (${result_name}*)(&${tmp_var}), sizeof(${styp}));')
+							}
 						}
 					}
 				}
