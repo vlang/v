@@ -398,7 +398,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 				}
-			} else if e.table.sym(expr.typ).kind in [.interface_, .sum_type] {
+			} else if e.table.sym(expr.typ).kind in [.interface, .sum_type] {
 				if e.pref.is_verbose {
 					util.show_compiler_message('warning:',
 						pos:       expr.pos

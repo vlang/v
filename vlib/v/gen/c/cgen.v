@@ -1044,7 +1044,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t}')
 			}
 			g.writeln('}')
-		} else if sym.kind == .interface_ {
+		} else if sym.kind == .interface {
 			if sym.info !is ast.Interface {
 				continue
 			}
@@ -1618,12 +1618,12 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
 	for sym in g.table.type_symbols {
-		if sym.kind == .interface_ && sym.name !in builtins {
+		if sym.kind == .interface && sym.name !in builtins {
 			g.write_interface_typedef(sym)
 		}
 	}
 	for sym in g.table.type_symbols {
-		if sym.kind == .interface_ && sym.name !in builtins {
+		if sym.kind == .interface && sym.name !in builtins {
 			g.write_interface_typesymbol_declaration(sym)
 		}
 	}
@@ -2044,7 +2044,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
 
-	if g.table.sym(expr_typ).kind == .none_ {
+	if g.table.sym(expr_typ).kind == .none {
 		g.write('${g.typ(ret_typ)} ${tmp_var} = ')
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
@@ -2513,7 +2513,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 			type_cname = embed_sym.cname
 		}
 		field_styp := g.typ(field.typ)
-		if got_sym.kind in [.sum_type, .interface_] {
+		if got_sym.kind in [.sum_type, .interface] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
 			sb.write_string(', .${c_name(field.name)} = ptr->${field.name}')
 		} else {
@@ -2580,7 +2580,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.write('.msg))')
 		return
 	}
-	if got_sym.kind == .none_ && exp_sym.idx == ast.error_type_idx {
+	if got_sym.kind == .none && exp_sym.idx == ast.error_type_idx {
 		g.expr(expr)
 		return
 	}
@@ -3338,7 +3338,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .i32, .u32, .rune, .f32, .enum_ {
+		.int, .i32, .u32, .rune, .f32, .enum {
 			// XTODO i64
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
@@ -3896,7 +3896,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('(')
 	}
 	if node.or_block.kind != .absent && g.table.sym(node.typ).kind != .chan {
-		is_ptr := sym.kind in [.interface_, .sum_type]
+		is_ptr := sym.kind in [.interface, .sum_type]
 		stmt_str := g.go_before_last_stmt().trim_space()
 		styp := g.typ(g.unwrap_generic(node.typ))
 		g.empty_line = true
@@ -3970,10 +3970,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
-		if sym.kind in [.interface_, .sum_type] {
+		if sym.kind in [.interface, .sum_type] {
 			g.write('(*(')
 		}
-		if field_sym.kind in [.sum_type, .interface_] {
+		if field_sym.kind in [.sum_type, .interface] {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
@@ -3987,7 +3987,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							g.write('*')
 						}
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						if field_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+						if field_sym.kind == .interface && cast_sym.kind == .interface {
 							ptr := '*'.repeat(field.typ.nr_muls())
 							dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.expr}${dot}${node.field_name}))')
@@ -4099,7 +4099,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			return
 		}
 	} else {
-		if sym.kind in [.interface_, .sum_type] {
+		if sym.kind in [.interface, .sum_type] {
 			g.write('(*(')
 		}
 	}
@@ -4169,7 +4169,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if sum_type_deref_field != '' {
 		g.write('${sum_type_dot}${sum_type_deref_field})')
 	}
-	if sym.kind in [.interface_, .sum_type] {
+	if sym.kind in [.interface, .sum_type] {
 		g.write('))')
 	}
 }
@@ -4293,10 +4293,10 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 						func = g.get_str_fn(cast_sym.info.types[g.aggregate_type_idx])
 						param_var.write_string('${obj.name}${dot}_${sym.cname}')
-					} else if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+					} else if obj_sym.kind == .interface && cast_sym.kind == .interface {
 						ptr := '*'.repeat(obj.typ.nr_muls())
 						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${obj.name})')
-					} else if obj_sym.kind in [.sum_type, .interface_] {
+					} else if obj_sym.kind in [.sum_type, .interface] {
 						param_var.write_string('${obj.name}')
 						if opt_cast {
 							param_var.write_string('.data)')
@@ -4994,7 +4994,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
 							|| node.obj.ct_type_var == .smartcast
-							|| (obj_sym.kind == .interface_
+							|| (obj_sym.kind == .interface
 							&& g.table.type_kind(node.obj.typ) == .any) {
 							g.write('*')
 						} else if is_option {
@@ -5004,7 +5004,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for i, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+						if obj_sym.kind == .interface && cast_sym.kind == .interface {
 							ptr := '*'.repeat(node.obj.typ.nr_muls())
 							g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
 						} else {
@@ -5049,7 +5049,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 											cur_variant_sym)}')
 									}
 								} else if !is_option_unwrap
-									&& obj_sym.kind in [.sum_type, .interface_] {
+									&& obj_sym.kind in [.sum_type, .interface] {
 									g.write('${dot}_${cast_sym.cname}')
 								}
 							}
@@ -5116,7 +5116,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		|| node.expr is ast.ComptimeSelector {
 		expr_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.expr))
 	}
-	if sym.kind in [.sum_type, .interface_] {
+	if sym.kind in [.sum_type, .interface] {
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.typ.has_flag(.option) {
@@ -5656,7 +5656,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 				if mr_info.types[i].has_flag(.option) {
 					g.expr_with_opt(expr, node.types[i], mr_info.types[i])
-				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
+				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface] {
 					g.expr_with_cast(expr, node.types[i], mr_info.types[i])
 				} else {
 					g.expr(expr)
@@ -5750,7 +5750,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_result_ok(&(${styp}[]) { ')
 			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
-				if !((node.exprs[0] is ast.Ident && !g.is_amp) || sym.kind == .interface_) {
+				if !((node.exprs[0] is ast.Ident && !g.is_amp) || sym.kind == .interface) {
 					g.write('*')
 				}
 			}
@@ -5812,7 +5812,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.write(var_str.trim('&'))
 			} else if g.fn_decl.return_type.has_flag(.option) {
 				g.expr_with_opt(expr0, node.types[0], g.fn_decl.return_type)
-			} else if g.table.sym(g.fn_decl.return_type).kind in [.sum_type, .interface_] {
+			} else if g.table.sym(g.fn_decl.return_type).kind in [.sum_type, .interface] {
 				g.expr_with_cast(expr0, node.types[0], g.fn_decl.return_type)
 			} else {
 				g.write('*')
@@ -6480,7 +6480,7 @@ fn (mut g Gen) write_debug_calls_typeof_functions() {
 			}
 			g.writeln('\tv_typeof_sumtype_${sym.cname}(0);')
 		}
-		if sym.kind == .interface_ {
+		if sym.kind == .interface {
 			if sym.info !is ast.Interface {
 				continue
 			}
@@ -6678,7 +6678,7 @@ fn (mut g Gen) write_builtin_types() {
 	// everything except builtin will get sorted
 	for builtin_name in builtins {
 		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
-		if sym.kind == .interface_ {
+		if sym.kind == .interface {
 			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
@@ -6714,7 +6714,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		if sym.name.starts_with('C.') {
 			continue
 		}
-		if sym.kind == .none_ {
+		if sym.kind == .none {
 			g.type_definitions.writeln('struct none {')
 			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 			g.type_definitions.writeln('};')
@@ -6950,7 +6950,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	}
 	// loop over types
 	for sym in typesa {
-		if sym.kind == .interface_ {
+		if sym.kind == .interface {
 			dep_graph.add(sym.name, [])
 			continue
 		}
@@ -7323,7 +7323,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		.sum_type {
 			return '{0}' // g.type_default_sumtype(typ, sym)
 		}
-		.interface_, .multi_return, .thread {
+		.interface, .multi_return, .thread {
 			return '{0}'
 		}
 		.alias {
@@ -7399,7 +7399,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
 							mut expr_str := ''
-							if field_sym.kind in [.sum_type, .interface_] {
+							if field_sym.kind in [.sum_type, .interface] {
 								expr_str = g.expr_string_with_cast(field.default_expr,
 									field.default_expr_typ, field.typ)
 							} else if field_sym.is_array_fixed() && g.inside_global_decl {
@@ -7475,7 +7475,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				return init_str
 			}
 		}
-		.enum_ {
+		.enum {
 			// returns the enum's first value
 			if enum_decl := g.table.enum_decls[sym.name] {
 				return if enum_decl.fields[0].expr is ast.EmptyExpr {
@@ -7614,7 +7614,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			variant_sym := g.table.sym(variant)
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
-	} else if expr_type_sym.kind == .interface_ && sym.kind == .interface_ {
+	} else if expr_type_sym.kind == .interface && sym.kind == .interface {
 		g.write('I_${expr_type_sym.cname}_as_I_${sym.cname}(')
 		if node.expr_type.is_ptr() {
 			g.write('*')
@@ -7714,7 +7714,7 @@ fn (mut g Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
 	for isym in g.table.type_symbols {
-		if isym.kind != .interface_ {
+		if isym.kind != .interface {
 			continue
 		}
 		if isym.info !is ast.Interface {
@@ -8154,7 +8154,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 		return true
 	}
 	match sym.kind {
-		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum_ {
+		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum {
 			return false
 		}
 		.array_fixed {

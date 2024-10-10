@@ -13,15 +13,15 @@ import v.token
 // SymbolKind categorizes the symbols it documents.
 // The names are intentionally not in order as a guide when sorting the nodes.
 pub enum SymbolKind {
-	none_
+	none
 	const_group
 	constant
 	variable
 	function
 	method
-	interface_
+	interface
 	typedef
-	enum_
+	enum
 	enum_field
 	struct
 	struct_field
@@ -88,9 +88,9 @@ pub fn (sk SymbolKind) str() string {
 	return match sk {
 		.const_group { 'Constants' }
 		.function, .method { 'fn' }
-		.interface_ { 'interface' }
+		.interface { 'interface' }
 		.typedef { 'type' }
-		.enum_ { 'enum' }
+		.enum { 'enum' }
 		.struct { 'struct' }
 		else { '' }
 	}
@@ -225,7 +225,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			}
 		}
 		ast.EnumDecl {
-			node.kind = .enum_
+			node.kind = .enum
 			if d.extract_vars {
 				for mut field in stmt.fields {
 					ret_type := if field.has_expr {
@@ -252,7 +252,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			}
 		}
 		ast.InterfaceDecl {
-			node.kind = .interface_
+			node.kind = .interface
 		}
 		ast.StructDecl {
 			node.kind = .struct
@@ -492,7 +492,7 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 			d.head = DocNode{
 				name:    module_name
 				content: 'module ${module_name}'
-				kind:    .none_
+				kind:    .none
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {
 			continue
@@ -507,12 +507,12 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 				d.contents[name] = node
 				continue
 			}
-			if d.contents[name].kind == .typedef && node.kind !in [.typedef, .none_] {
+			if d.contents[name].kind == .typedef && node.kind !in [.typedef, .none] {
 				old_children := d.contents[name].children.clone()
 				d.contents[name] = node
 				d.contents[name].children = old_children
 			}
-			if d.contents[name].kind != .none_ || node.kind == .none_ {
+			if d.contents[name].kind != .none || node.kind == .none {
 				d.contents[name].children << node.children
 				d.contents[name].children.arrange()
 			}

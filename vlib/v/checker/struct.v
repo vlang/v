@@ -201,7 +201,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				.multi_return {
 					c.error('cannot use multi return as field type', field.type_pos)
 				}
-				.none_ {
+				.none {
 					c.error('cannot use `none` as field type', field.type_pos)
 				}
 				.map {
@@ -234,12 +234,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						}
 					}
 				}
-				interface_implemented := sym.kind == .interface_
+				interface_implemented := sym.kind == .interface
 					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
 				c.check_expected(field.default_expr_typ, field.typ) or {
-					if sym.kind == .interface_ && interface_implemented {
+					if sym.kind == .interface && interface_implemented {
 						if !c.inside_unsafe && !field.default_expr_typ.is_any_kind_of_pointer() {
-							if c.table.sym(field.default_expr_typ).kind != .interface_ {
+							if c.table.sym(field.default_expr_typ).kind != .interface {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
 							}
@@ -533,7 +533,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
 		}
-		if type_sym.kind == .enum_ && !c.pref.translated && !c.file.is_translated {
+		if type_sym.kind == .enum && !c.pref.translated && !c.file.is_translated {
 			c.error('cannot initialize enums', node.pos)
 		}
 	}
@@ -542,7 +542,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.error('cast to sum type using `${type_sym.name}(${sexpr})` not `${type_sym.name}{${sexpr}}`',
 			node.pos)
 	}
-	if type_sym.kind == .interface_ && type_sym.language != .js {
+	if type_sym.kind == .interface && type_sym.language != .js {
 		c.error('cannot instantiate interface `${type_sym.name}`', node.pos)
 	}
 	if type_sym.info is ast.Alias {
@@ -745,9 +745,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						node.init_fields[i].expr = right
 					}
 				}
-				if exp_type_sym.kind == .interface_ {
+				if exp_type_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, init_field.pos) {
-						if !c.inside_unsafe && got_type_sym.kind != .interface_
+						if !c.inside_unsafe && got_type_sym.kind != .interface
 							&& !got_type.is_any_kind_of_pointer() {
 							c.mark_as_referenced(mut &init_field.expr, true)
 						}
@@ -876,7 +876,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						continue
 					}
 					param_sym := c.table.sym(param.typ)
-					if param_sym.kind in [.struct, .interface_, .sum_type] {
+					if param_sym.kind in [.struct, .interface, .sum_type] {
 						c.table.unwrap_generic_type(param.typ, generic_names, struct_sym.info.concrete_types)
 					}
 				}
@@ -976,7 +976,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 			}
 		}
 		// Do not allow empty uninitialized interfaces
-		if sym.kind == .interface_ && !node.has_update_expr && !field.typ.has_flag(.option)
+		if sym.kind == .interface && !node.has_update_expr && !field.typ.has_flag(.option)
 			&& sym.language != .js && !field.attrs.contains('noinit') {
 			// TODO: should be an error instead, but first `ui` needs updating.
 			c.note('interface field `${type_sym.name}.${field.name}` must be initialized',

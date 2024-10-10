@@ -146,7 +146,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		if c.expected_type != 0 {
 			expected_value_type = c.table.value_type(c.expected_type)
 			expected_value_sym := c.table.sym(expected_value_type)
-			if expected_value_sym.kind == .interface_ {
+			if expected_value_sym.kind == .interface {
 				// array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
 			} else if expected_value_sym.kind == .sum_type {
@@ -168,7 +168,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
-					if typ_sym.kind != .interface_ {
+					if typ_sym.kind != .interface {
 						c.mark_as_referenced(mut &expr, true)
 					}
 				}
@@ -207,7 +207,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 			if expr !is ast.TypeNode {
-				if c.table.type_kind(elem_type) == .interface_ {
+				if c.table.type_kind(elem_type) == .interface {
 					if c.type_implements(typ, elem_type, expr.pos()) {
 						continue
 					}
@@ -526,7 +526,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		node.value_type = map_val_type
 
 		map_value_sym := c.table.sym(map_val_type)
-		expecting_interface_map := map_value_sym.kind == .interface_
+		expecting_interface_map := map_value_sym.kind == .interface
 		mut same_key_type := true
 		for i, mut key in node.keys {
 			if i == 0 && map_type == ast.void_type {
@@ -672,7 +672,7 @@ fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 		}
 	}
 	sym := c.table.sym(typ)
-	if sym.kind == .interface_ {
+	if sym.kind == .interface {
 		return err_interface_uninitialized
 	} else if sym.kind == .sum_type {
 		return err_sumtype_uninitialized

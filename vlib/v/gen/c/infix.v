@@ -83,7 +83,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	}
 	g.expr(node.left)
 	g.write(', ')
-	if g.table.sym(elem_type).kind in [.sum_type, .interface_] {
+	if g.table.sym(elem_type).kind in [.sum_type, .interface] {
 		g.expr_with_cast(node.right, node.right_type, elem_type)
 	} else {
 		g.expr(node.right)
@@ -159,7 +159,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if left.unaliased.idx() == right.unaliased.idx()
-		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface_] {
+		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface] {
 		if g.pref.translated && !g.is_builtin_mod {
 			g.gen_plain_infix_expr(node)
 			return
@@ -291,7 +291,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.write(')')
 			}
-			.interface_ {
+			.interface {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
@@ -466,10 +466,10 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write('!')
 	}
 	if right.unaliased_sym.kind == .array {
-		if left.sym.kind in [.sum_type, .interface_] {
+		if left.sym.kind in [.sum_type, .interface] {
 			if node.right is ast.ArrayInit {
 				if node.right.exprs.len > 0
-					&& g.table.sym(node.right.expr_types[0]).kind !in [.sum_type, .interface_] {
+					&& g.table.sym(node.right.expr_types[0]).kind !in [.sum_type, .interface] {
 					mut infix_exprs := []ast.InfixExpr{}
 					for i in 0 .. node.right.exprs.len {
 						infix_exprs << ast.InfixExpr{
@@ -527,7 +527,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 					g.write(')')
 					return
 				}
-			} else if elem_type_.sym.kind == .interface_ {
+			} else if elem_type_.sym.kind == .interface {
 				new_node_left := ast.CastExpr{
 					arg:       ast.empty_expr
 					typ:       elem_type
@@ -566,7 +566,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		}
 		g.write(')')
 	} else if right.unaliased_sym.kind == .array_fixed {
-		if left.sym.kind in [.sum_type, .interface_] {
+		if left.sym.kind in [.sum_type, .interface] {
 			if node.right is ast.ArrayInit {
 				if node.right.exprs.len > 0 {
 					mut infix_exprs := []ast.InfixExpr{}
@@ -635,11 +635,11 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 	mut elem_sym := g.table.sym(right.elem_type)
 	for i, array_expr in right.exprs {
 		match elem_sym.kind {
-			.string, .alias, .sum_type, .map, .interface_, .array, .struct {
+			.string, .alias, .sum_type, .map, .interface, .array, .struct {
 				if elem_sym.kind == .string {
 					g.write('string__eq(')
 					if left.is_auto_deref_var() || (left is ast.Ident && left.info is ast.IdentVar
-						&& g.table.sym(left.obj.typ).kind in [.interface_, .sum_type]) {
+						&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]) {
 						g.write('*')
 					}
 				} else {
@@ -650,7 +650,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 						g.write('${ptr_typ}_sumtype_eq(')
 					} else if elem_sym.kind == .map {
 						g.write('${ptr_typ}_map_eq(')
-					} else if elem_sym.kind == .interface_ {
+					} else if elem_sym.kind == .interface {
 						g.write('${ptr_typ}_interface_eq(')
 					} else if elem_sym.kind == .array {
 						g.write('${ptr_typ}_arr_eq(')
@@ -688,7 +688,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		left_sym = g.table.sym(parent_left_type)
 	}
 	right_sym := g.table.sym(node.right_type)
-	if left_sym.kind == .interface_ && right_sym.kind == .interface_ {
+	if left_sym.kind == .interface && right_sym.kind == .interface {
 		g.gen_interface_is_op(node)
 		return
 	}
@@ -709,7 +709,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	} else {
 		g.write('.')
 	}
-	if left_sym.kind == .interface_ {
+	if left_sym.kind == .interface {
 		g.write('_typ ${cmp_op} ')
 		// `_Animal_Dog_index`
 		sub_type := match node.right {

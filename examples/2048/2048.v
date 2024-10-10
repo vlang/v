@@ -162,7 +162,7 @@ enum TileFormat {
 	log
 	exponent
 	shifts
-	none_
+	none
 	end_ // To know when to wrap around
 }
 
@@ -671,7 +671,7 @@ fn (app &App) draw_tiles() {
 							size: fs2
 						})
 					}
-					.none_ {} // Don't draw any text here, colors only
+					.none {} // Don't draw any text here, colors only
 					.end_ {} // Should never get here
 				}
 			}

@@ -1036,7 +1036,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if idx > 0 {
 			// is from another mod.
 			if enum_name.contains('.') {
-				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
+				if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
 					return ast.void_type
 				}
 			}
@@ -1048,7 +1048,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if idx < 1 {
 					continue
 				}
-				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
+				if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
 					return ast.void_type
 				}
 				break
@@ -1324,7 +1324,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
+					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
 					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
 					elem_styp := c.table.type_to_str(expected_type)
@@ -1368,7 +1368,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		arg_typ_sym := c.table.sym(arg_typ)
-		if arg_typ_sym.kind == .none_ && param.typ.has_flag(.generic) {
+		if arg_typ_sym.kind == .none && param.typ.has_flag(.generic) {
 			c.error('cannot use `none` as generic argument', call_arg.pos)
 		}
 		param_typ_sym := c.table.sym(param.typ)
@@ -1439,10 +1439,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
 		// Handle expected interface
-		if final_param_sym.kind == .interface_ {
+		if final_param_sym.kind == .interface {
 			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
 				if !arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe
-					&& arg_typ_sym.kind != .interface_ {
+					&& arg_typ_sym.kind != .interface {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
@@ -1507,10 +1507,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 				// TODO: duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
-				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum_ {
+				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum {
 					continue
 				}
-				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum_ {
+				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum {
 					continue
 				}
 
@@ -1625,10 +1625,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				{
 					utyp := c.unwrap_generic(typ)
 					unwrap_sym := c.table.sym(unwrap_typ)
-					if unwrap_sym.kind == .interface_ {
+					if unwrap_sym.kind == .interface {
 						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos()) {
 							if !utyp.is_any_kind_of_pointer() && !c.inside_unsafe
-								&& c.table.sym(utyp).kind != .interface_ {
+								&& c.table.sym(utyp).kind != .interface {
 								c.mark_as_referenced(mut &call_arg.expr, true)
 							}
 						}
@@ -1832,7 +1832,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 								&& param_typ_sym.kind == .array {
 								ctyp = c.get_generic_array_element_type(arg_sym.info)
 								comptime_args[k] = ctyp
-							} else if arg_sym.kind in [.struct, .interface_, .sum_type] {
+							} else if arg_sym.kind in [.struct, .interface, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
@@ -2037,7 +2037,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		c.error('Result type cannot be called directly', node.left.pos())
 		return ast.void_type
 	}
-	if left_sym.kind in [.sum_type, .interface_] {
+	if left_sym.kind in [.sum_type, .interface] {
 		if method_name == 'type_name' {
 			return ast.string_type
 		}
@@ -2111,12 +2111,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
-		if left_sym.kind == .interface_ && m.from_embedded_type != 0 {
+		if left_sym.kind == .interface && m.from_embedded_type != 0 {
 			is_method_from_embed = true
 			node.from_embed_types = [m.from_embedded_type]
 		}
 	} else {
-		if final_left_sym.kind in [.struct, .sum_type, .interface_, .array] {
+		if final_left_sym.kind in [.struct, .sum_type, .interface, .array] {
 			mut parent_type := ast.void_type
 			match final_left_sym.info {
 				ast.Struct, ast.SumType, ast.Interface {
@@ -2134,7 +2134,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					method = m
 					has_method = true
 					is_generic = true
-					if left_sym.kind == .interface_ && m.from_embedded_type != 0 {
+					if left_sym.kind == .interface && m.from_embedded_type != 0 {
 						is_method_from_embed = true
 						node.from_embed_types = [m.from_embedded_type]
 					}
@@ -2166,7 +2166,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if !has_method {
 		// TODO: str methods
 		if method_name == 'str' {
-			if left_sym.kind == .interface_ {
+			if left_sym.kind == .interface {
 				iname := left_sym.name
 				c.error('interface `${iname}` does not have a .str() method. Use typeof() instead',
 					node.pos)
@@ -2216,7 +2216,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 					// registers if the arg must be passed by ref to disable auto deref args
 					arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
-					if c.table.sym(param.typ).kind == .interface_ {
+					if c.table.sym(param.typ).kind == .interface {
 						// cannot hide interface expected type to make possible to pass its interface type automatically
 						earg_types << if targ.idx() != param.typ.idx() { param.typ } else { targ }
 					} else {
@@ -2273,7 +2273,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				return info.func.return_type
 			}
 		}
-		if left_sym.kind in [.struct, .aggregate, .interface_, .sum_type] {
+		if left_sym.kind in [.struct, .aggregate, .interface, .sum_type] {
 			if c.smartcast_mut_pos != token.Pos{} {
 				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 					c.smartcast_mut_pos)
@@ -2480,7 +2480,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			typ := c.expr(mut arg.expr)
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
+					&& c.table.sym(expected_type).kind !in [.sum_type, .interface]
 					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
 					elem_styp := c.table.type_to_str(expected_type)
@@ -2564,11 +2564,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 		}
 		// Handle expected interface
-		if final_arg_sym.kind == .interface_ {
+		if final_arg_sym.kind == .interface {
 			if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
 				if !got_arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					got_arg_typ_sym := c.table.sym(got_arg_typ)
-					if got_arg_typ_sym.kind != .interface_ {
+					if got_arg_typ_sym.kind != .interface {
 						c.mark_as_referenced(mut &arg.expr, true)
 					}
 				}
@@ -2582,7 +2582,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			continue
 		}
-		if final_arg_sym.kind == .none_ && param.typ.has_flag(.generic) {
+		if final_arg_sym.kind == .none && param.typ.has_flag(.generic) {
 			c.error('cannot use `none` as generic argument', arg.pos)
 		}
 		if param.typ.is_ptr() && !arg.typ.is_any_kind_of_pointer() && arg.expr.is_literal()
@@ -2645,7 +2645,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		method.params[0].typ
 	}
-	if left_sym.kind == .interface_ && is_method_from_embed && method.return_type.has_flag(.generic)
+	if left_sym.kind == .interface && is_method_from_embed && method.return_type.has_flag(.generic)
 		&& method.generic_names.len == 0 {
 		method.generic_names = c.table.get_generic_names((rec_sym.info as ast.Interface).generic_types)
 	}

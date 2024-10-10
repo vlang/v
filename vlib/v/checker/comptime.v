@@ -246,7 +246,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		return
 	}
 	if node.kind == .fields {
-		if sym.kind in [.struct, .interface_] {
+		if sym.kind in [.struct, .interface] {
 			mut fields := []ast.StructField{}
 			match sym.info {
 				ast.Struct {
@@ -294,7 +294,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 	} else if node.kind == .values {
-		if sym.kind == .enum_ {
+		if sym.kind == .enum {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			if c.enum_data_type == 0 {
@@ -772,7 +772,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 					if cond.left is ast.TypeNode && mut cond.right is ast.TypeNode {
 						// `$if Foo is Interface {`
 						sym := c.table.sym(cond.right.typ)
-						if sym.kind != .interface_ {
+						if sym.kind != .interface {
 							c.expr(mut cond.left)
 						}
 						return .unknown

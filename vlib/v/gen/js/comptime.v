@@ -95,7 +95,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					// Handle `$if x is Interface {`
 					// mut matches_interface := 'false'
 					if left is ast.TypeNode && cond.right is ast.TypeNode
-						&& g.table.sym(got_type).kind == .interface_ {
+						&& g.table.sym(got_type).kind == .interface {
 						// `$if Foo is Interface {`
 						interface_sym := g.table.sym(got_type)
 						if interface_sym.info is ast.Interface {

@@ -39,7 +39,7 @@ enum HighlightTokenTyp {
 	partial_string
 	closing_string
 	symbol
-	none_
+	none
 	module_
 	prefix
 }

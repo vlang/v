@@ -37,7 +37,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum_, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface_, .none_]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
@@ -179,7 +179,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.expr(expr)
 		}
-	} else if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
+	} else if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)

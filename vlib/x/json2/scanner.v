@@ -14,13 +14,13 @@ mut:
 }
 
 enum TokenKind {
-	none_
+	none
 	error
-	str_
+	str
 	float
-	int_
+	int
 	null
-	bool_
+	bool
 	eof
 	comma = 44  // ,
 	colon = 58  // :
@@ -184,7 +184,7 @@ fn (mut s Scanner) text_scan() Token {
 		}
 		chrs << ch
 	}
-	tok := s.tokenize(chrs, .str_)
+	tok := s.tokenize(chrs, .str)
 	s.move()
 	if !has_closed {
 		return s.error('missing double quotes in string closing')
@@ -237,7 +237,7 @@ fn (mut s Scanner) num_scan() Token {
 			return s.error('invalid exponent')
 		}
 	}
-	kind := if is_fl { TokenKind.float } else { TokenKind.int_ }
+	kind := if is_fl { TokenKind.float } else { TokenKind.int }
 	return s.tokenize(digits, kind)
 }
 
@@ -266,7 +266,7 @@ fn (mut s Scanner) scan() Token {
 		if ident == 'true' || ident == 'null' {
 			mut kind := TokenKind.null
 			if ident == 'true' {
-				kind = .bool_
+				kind = .bool
 			}
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 4]
@@ -284,7 +284,7 @@ fn (mut s Scanner) scan() Token {
 		if ident == 'false' {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 5]
-			tok := s.tokenize(val, .bool_)
+			tok := s.tokenize(val, .bool)
 			s.move() // f
 			s.move() // a
 			s.move() // l

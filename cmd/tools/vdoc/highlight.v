@@ -55,7 +55,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			.boolean {
 				lit = term.bright_magenta(tok.lit)
 			}
-			.none_ {
+			.none {
 				lit = term.red(tok.lit)
 			}
 			.prefix {
@@ -133,7 +133,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 					tok_typ = .punctuation
 				}
 				.key_none {
-					tok_typ = .none_
+					tok_typ = .none
 				}
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {

@@ -1382,7 +1382,7 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 								&& param_typ_sym.kind == .array {
 								ctyp = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 								comptime_args[k] = ctyp
-							} else if arg_sym.kind in [.struct, .interface_, .sum_type] {
+							} else if arg_sym.kind in [.struct, .interface, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
@@ -1643,18 +1643,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_fixed_array_wait(node)
 		return
 	}
-	if left_sym.kind in [.sum_type, .interface_] {
+	if left_sym.kind in [.sum_type, .interface] {
 		prefix_name := if left_sym.kind == .sum_type { 'sumtype' } else { 'interface' }
 		match node.name {
 			'type_name' {
-				if left_sym.kind in [.sum_type, .interface_] {
+				if left_sym.kind in [.sum_type, .interface] {
 					g.conversion_function_call('charptr_vstring_literal( /* ${left_sym.name} */ v_typeof_${prefix_name}_${typ_sym.cname}',
 						')', node)
 					return
 				}
 			}
 			'type_idx' {
-				if left_sym.kind in [.sum_type, .interface_] {
+				if left_sym.kind in [.sum_type, .interface] {
 					g.conversion_function_call('/* ${left_sym.name} */ v_typeof_${prefix_name}_idx_${typ_sym.cname}',
 						'', node)
 					return
@@ -1750,8 +1750,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	is_interface := left_sym.kind == .interface_
-		&& g.table.sym(node.receiver_type).kind == .interface_
+	is_interface := left_sym.kind == .interface
+		&& g.table.sym(node.receiver_type).kind == .interface
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
@@ -1905,7 +1905,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				fn_typ = field.typ
 			}
 		}
-		if left_sym.kind == .interface_ || fn_typ.is_ptr() {
+		if left_sym.kind == .interface || fn_typ.is_ptr() {
 			is_interface_call = true
 			g.write('(*')
 		}
@@ -2060,7 +2060,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ != ast.string_type || g.comptime.comptime_for_method != unsafe { nil } {
 			expr := node.args[0].expr
 			typ_sym := g.table.sym(typ)
-			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
+			if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 				g.write('${c_fn_name(print_method)}(')
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
 				g.write('${c_name(rec_type_name)}_name_table[')
@@ -2460,7 +2460,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				} else if arg.expr.obj.smartcasts.len > 0 {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
-					if orig_sym.kind != .interface_ && (exp_sym.kind != .sum_type
+					if orig_sym.kind != .interface && (exp_sym.kind != .sum_type
 						&& expected_types[i] != arg.expr.obj.orig_type) {
 						expected_types[i] = g.unwrap_generic(arg.expr.obj.smartcasts.last())
 						cast_sym := g.table.sym(expected_types[i])
@@ -2700,7 +2700,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('&/*sum*/')
 				g.expr(arg.expr)
 				return
-			} else if arg_sym.kind == .interface_ && exp_sym.kind == .interface_
+			} else if arg_sym.kind == .interface && exp_sym.kind == .interface
 				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
 				g.write('&/*iface*/')
 				g.expr(arg.expr)
@@ -2718,7 +2718,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				expected_type
 			}
 			deref_sym := g.table.sym(expected_deref_type)
-			if arg_typ_sym.kind != .function && deref_sym.kind !in [.sum_type, .interface_]
+			if arg_typ_sym.kind != .function && deref_sym.kind !in [.sum_type, .interface]
 				&& lang != .c {
 				if arg.expr.is_lvalue() {
 					if expected_type.has_flag(.option) {
@@ -2744,7 +2744,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						g.write('(voidptr)')
 					} else {
 						needs_closing = true
-						if arg_typ_sym.kind in [.sum_type, .interface_] {
+						if arg_typ_sym.kind in [.sum_type, .interface] {
 							atype = arg_typ
 						}
 						g.write('ADDR(${g.typ(atype)}/*qq*/, ')
@@ -2763,7 +2763,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					g.write(')')
 					return
 				}
-			} else if arg_sym.kind == .interface_ && exp_sym.kind == .interface_ {
+			} else if arg_sym.kind == .interface && exp_sym.kind == .interface {
 				if exp_is_ptr && !arg_is_ptr {
 					g.write('&')
 				}

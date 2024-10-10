@@ -95,7 +95,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	} else {
 		name
 	}
-	if !(expr.is_method && (g.table.sym(expr.receiver_type).kind == .interface_
+	if !(expr.is_method && (g.table.sym(expr.receiver_type).kind == .interface
 		|| (g.table.sym(expr.receiver_type).kind == .struct && expr.is_field))) {
 		g.writeln('${arg_tmp_var}${dot}fn = ${fn_name};')
 	}
@@ -310,7 +310,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if expr.is_method {
 			unwrapped_rec_type := g.unwrap_generic(expr.receiver_type)
 			typ_sym := g.table.sym(unwrapped_rec_type)
-			if typ_sym.kind == .interface_
+			if typ_sym.kind == .interface
 				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
 				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 				receiver_type_name := util.no_dots(rec_cc_type)
@@ -339,8 +339,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if expr.args.len > 0 {
 			mut has_cast := false
 			for i in 0 .. expr.args.len {
-				if g.table.sym(expr.expected_arg_types[i]).kind == .interface_
-					&& g.table.sym(expr.args[i].typ).kind != .interface_ {
+				if g.table.sym(expr.expected_arg_types[i]).kind == .interface
+					&& g.table.sym(expr.args[i].typ).kind != .interface {
 					has_cast = true
 					break
 				}

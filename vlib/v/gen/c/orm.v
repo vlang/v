@@ -161,7 +161,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			sym := g.table.sym(field.typ)
 			typ := match true {
 				sym.name == 'time.Time' { '_const_orm__time_' }
-				sym.kind == .enum_ { '_const_orm__enum_' }
+				sym.kind == .enum { '_const_orm__enum_' }
 				else { field.typ.idx().str() }
 			}
 			g.writeln('(orm__TableField){')
@@ -414,7 +414,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if typ == 'time__Time' {
 				ctyp = 'time__Time'
 				typ = 'time'
-			} else if sym.kind == .enum_ {
+			} else if sym.kind == .enum {
 				typ = 'i64'
 			}
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
@@ -903,7 +903,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			if sym.kind == .struct {
 				types << int(ast.int_type).str()
 				continue
-			} else if sym.kind == .enum_ {
+			} else if sym.kind == .enum {
 				types << '_const_orm__enum_'
 				continue
 			}
@@ -1138,7 +1138,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				g.writeln('else')
 				g.writeln('\t_option_ok(${prim_var}->_${sym.cname}, (_option *)&${field_var}, sizeof(${sym.cname}));')
 				fields_idx++
-			} else if sym.kind == .enum_ {
+			} else if sym.kind == .enum {
 				mut typ := sym.cname
 				g.writeln('${tmp}.${c_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
 				fields_idx++

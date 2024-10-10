@@ -5,7 +5,7 @@ fn test_str() {
 		text: '"test"'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .str_
+	assert tok.kind == .str
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == 'test'
 }
@@ -15,7 +15,7 @@ fn test_str_valid_unicode_escape() {
 		text: r'"\u0048"'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .str_
+	assert tok.kind == .str
 	assert tok.lit.len == 1
 	assert tok.lit.bytestr() == 'H'
 }
@@ -25,7 +25,7 @@ fn test_str_valid_unicode_escape_2() {
 		text: r'"\u2714"'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .str_
+	assert tok.kind == .str
 	assert tok.lit.len == 3
 	assert tok.lit.bytestr() == '✔'
 }
@@ -91,7 +91,7 @@ fn test_int() {
 		text: '10'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 2
 	assert tok.lit.bytestr() == '10'
 }
@@ -101,7 +101,7 @@ fn test_int_negative() {
 		text: '-10'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 3
 	assert tok.lit.bytestr() == '-10'
 }
@@ -131,7 +131,7 @@ fn test_int_exp() {
 		text: '1E22'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == '1E22'
 }
@@ -141,7 +141,7 @@ fn test_int_exp_negative() {
 		text: '1E-2'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == '1E-2'
 }
@@ -151,7 +151,7 @@ fn test_int_exp_positive() {
 		text: '1E+2'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == '1E+2'
 }
@@ -191,7 +191,7 @@ fn test_number_with_space() {
 		text: ' 4'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .int_
+	assert tok.kind == .int
 	assert tok.lit.len == 1
 	assert tok.lit.bytestr() == '4'
 }
@@ -314,7 +314,7 @@ fn test_bool_true() {
 		text: 'true'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .bool_
+	assert tok.kind == .bool
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == 'true'
 }
@@ -324,7 +324,7 @@ fn test_bool_false() {
 		text: 'false'.bytes()
 	}
 	tok := sc.scan()
-	assert tok.kind == .bool_
+	assert tok.kind == .bool
 	assert tok.lit.len == 5
 	assert tok.lit.bytestr() == 'false'
 }
