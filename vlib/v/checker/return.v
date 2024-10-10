@@ -394,8 +394,10 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 		if !is_valid_end_of_noreturn_fn {
 			c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
 				last_stmt.pos)
-			return
 		}
+	} else {
+		c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
+			node.pos)
 	}
 }
 
