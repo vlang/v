@@ -21,6 +21,7 @@ fn test2(arg []string) {}
 
 @[noreturn]
 fn test3(a reflection.Function) {
+	panic('foo')
 }
 
 fn test_module_existing() {
