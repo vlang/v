@@ -14,7 +14,7 @@ const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com'
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
 	'remove', 'show']
-const excluded_dirs = ['cache', 'vlib']
+const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
 	// This tool is intended to be launched by the v frontend,

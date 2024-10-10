@@ -39,8 +39,9 @@ fn init_settings() VpmSettings {
 	}
 	if !is_ci && !is_dbg {
 		// Log by default:
-		os.mkdir_all(os.join_path(vmodules_path, 'cache'), mode: 0o700) or { panic(err) }
-		logger.set_output_path(os.join_path(vmodules_path, 'cache', 'vpm.log'))
+		cache_path := os.join_path(vmodules_path, '.cache')
+		os.mkdir_all(cache_path, mode: 0o700) or { panic(err) }
+		logger.set_output_path(os.join_path(cache_path, 'vpm.log'))
 	}
 
 	return VpmSettings{

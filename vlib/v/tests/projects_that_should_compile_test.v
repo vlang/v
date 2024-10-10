@@ -2,6 +2,12 @@ import os
 
 fn testsuite_begin() {
 	os.setenv('VCOLORS', 'never', true)
+	// TODO: remove this, when after vc/v.c *also* uses `_cache`, instead of `cache`:
+	old_cache_path := os.join_path(os.vmodules_dir(), 'cache')
+	dump(old_cache_path)
+	if os.exists(old_cache_path) {
+		os.rmdir_all(old_cache_path)!
+	}
 }
 
 fn vroot_path(relpath string) string {
@@ -28,4 +34,7 @@ fn test_projects_should_run() {
 
 	res2 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/modules_in_src/'))
 	assert res2.trim_space() == 'somemodule somemoduletwo'
+
+	res3 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/module_named_cache/'))
+	assert res3.trim_space().ends_with('cache.a: 123')
 }
