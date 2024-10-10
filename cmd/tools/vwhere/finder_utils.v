@@ -6,12 +6,12 @@ import os.cmdline
 
 // Symbol type to search
 enum Symbol {
-	@fn
+	fn
 	method
-	@struct
-	@interface
-	@enum
-	@const
+	struct
+	interface
+	enum
+	const
 	var
 	regexp
 }
@@ -19,7 +19,7 @@ enum Symbol {
 // Visibility of the symbols to search
 enum Visibility {
 	all
-	@pub
+	pub
 	pri
 }
 
@@ -35,18 +35,18 @@ const verbose = '-v' in cmdline.only_options(_args)
 const header = '-h' in cmdline.only_options(_args)
 const format = '-f' in cmdline.only_options(_args)
 const symbols = {
-	'fn':        Symbol.@fn
+	'fn':        Symbol.fn
 	'method':    .method
-	'struct':    .@struct
-	'interface': .@interface
-	'enum':      .@enum
-	'const':     .@const
+	'struct':    .struct
+	'interface': .interface
+	'enum':      .enum
+	'const':     .const
 	'var':       .var
 	'regexp':    .regexp
 }
 const visibilities = {
 	'all': Visibility.all
-	'pub': .@pub
+	'pub': .pub
 	'pri': .pri
 }
 const mutabilities = {
