@@ -153,9 +153,8 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		if add_para_types {
 			f.write_string('[')
 			for i, gname in node.generic_names {
-				is_last := i == node.generic_names.len - 1
 				f.write_string(gname)
-				if !is_last {
+				if i != node.generic_names.len - 1 {
 					f.write_string(', ')
 				}
 			}
@@ -189,16 +188,15 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		}
 		f.write_string(param.name)
 		param_sym := t.sym(param.typ)
-		if param_sym.kind == .struct && (param_sym.info as Struct).is_anon {
+		if param_sym.info is Struct && param_sym.info.is_anon {
 			f.write_string(' struct {')
-			struct_ := param_sym.info as Struct
-			for field in struct_.fields {
+			for field in param_sym.info.fields {
 				f.write_string(' ${field.name} ${t.type_to_str(field.typ)}')
 				if field.has_default_expr {
 					f.write_string(' = ${field.default_expr}')
 				}
 			}
-			if struct_.fields.len > 0 {
+			if param_sym.info.fields.len > 0 {
 				f.write_string(' ')
 			}
 			f.write_string('}')
@@ -207,9 +205,9 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 			if param.is_mut {
 				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v
-					|| (param.typ.is_ptr() && t.sym(param.typ).kind == .struct)) {
+					|| (param.typ.is_ptr() && param_sym.kind == .struct)) {
 					s = s[1..]
-				} else if param.typ.is_ptr() && t.sym(param.typ).kind == .struct && !s.contains('[') {
+				} else if param.typ.is_ptr() && param_sym.kind == .struct && !s.contains('[') {
 					s = t.type_to_str(param.typ.clear_flag(.shared_f).deref())
 				}
 			}
