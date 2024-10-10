@@ -65,6 +65,7 @@ jobs:
           ./v -skip-unused -prod -cc msvc cmd/tools/vup.v
           ./v -skip-unused -prod -cc msvc cmd/tools/vdoctor.v
           del *.exe
+          del *.tmp.obj
           move cmd/vprod.exe v.exe
       - name: Prepare artifact
         shell: bash
