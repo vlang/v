@@ -1926,7 +1926,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 								g.fn_decl.return_type.clear_flag(.option)
 							}
 							styp = g.base_type(ret_typ)
-							if stmt.expr is ast.CallExpr && stmt.expr.name == 'panic' {
+							if stmt.expr is ast.CallExpr && stmt.expr.is_noreturn {
 								g.expr(stmt.expr)
 								g.writeln(';')
 							} else {
@@ -1963,7 +1963,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						} else {
 							ret_typ := g.fn_decl.return_type.clear_flag(.result)
 							styp = g.base_type(ret_typ)
-							if stmt.expr is ast.CallExpr && stmt.expr.name == 'panic' {
+							if stmt.expr is ast.CallExpr && stmt.expr.is_noreturn {
 								g.expr(stmt.expr)
 								g.writeln(';')
 							} else {
