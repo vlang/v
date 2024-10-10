@@ -277,7 +277,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	// handle interface implementation methods:
 	for isym in table.type_symbols {
-		if isym.kind != .interface_ {
+		if isym.kind != .interface {
 			continue
 		}
 		if isym.info !is ast.Interface {

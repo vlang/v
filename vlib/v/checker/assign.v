@@ -802,7 +802,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface
 			&& ((!right_type.has_flag(.generic) && !left_type.has_flag(.generic))
 			|| right_sym.kind != left_sym.kind) {
 			// Dual sides check (compatibility check)
@@ -837,7 +837,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					if c.comptime.comptime_for_field_var != '' && left is ast.ComptimeSelector {
 						field_sym := c.table.sym(c.unwrap_generic(c.comptime.comptime_for_field_type))
 
-						if field_sym.kind == .enum_ && !right_type.is_int() {
+						if field_sym.kind == .enum && !right_type.is_int() {
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
 					} else {
@@ -858,9 +858,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if left_sym.kind == .interface_ {
+		if left_sym.kind == .interface {
 			if c.type_implements(right_type, left_type, right.pos()) {
-				if !right_type.is_any_kind_of_pointer() && right_sym.kind != .interface_
+				if !right_type.is_any_kind_of_pointer() && right_sym.kind != .interface
 					&& !c.inside_unsafe {
 					c.mark_as_referenced(mut &node.right[i], true)
 				}

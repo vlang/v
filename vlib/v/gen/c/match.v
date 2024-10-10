@@ -11,7 +11,7 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 			|| node.return_type.has_option_or_result() {
 			return true
 		}
-		if g.table.final_sym(node.cond_type).kind == .enum_ && node.branches.len > 5 {
+		if g.table.final_sym(node.cond_type).kind == .enum && node.branches.len > 5 {
 			return true
 		}
 		if g.need_tmp_var_in_expr(node.cond) {
@@ -140,7 +140,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		if can_be_a_switch && !is_expr && g.loop_depth == 0 && g.fn_decl != unsafe { nil }
 			&& cond_fsym.is_int() {
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
-		} else if cond_fsym.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5
+		} else if cond_fsym.kind == .enum && g.loop_depth == 0 && node.branches.len > 5
 			&& g.fn_decl != unsafe { nil } {
 			// do not optimize while in top-level
 			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
@@ -213,7 +213,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					} else {
 						g.expr(cur_expr)
 					}
-				} else if cond_sym.kind == .interface_ {
+				} else if cond_sym.kind == .interface {
 					if cur_expr is ast.TypeNode {
 						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
 						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')

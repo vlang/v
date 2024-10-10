@@ -64,7 +64,7 @@ pub enum VKind {
 	char
 	rune
 	bool
-	none_
+	none
 	string
 	array
 	array_fixed
@@ -76,9 +76,9 @@ pub enum VKind {
 	multi_return
 	sum_type
 	alias
-	enum_
+	enum
 	function
-	interface_
+	interface
 	float_literal
 	int_literal
 	aggregate
@@ -269,7 +269,7 @@ pub fn get_types() []Type {
 
 // get_enums returns the registered enums
 pub fn get_enums() []Type {
-	enum_idxs := g_reflection.type_symbols.filter(it.kind == .enum_).map(it.idx)
+	enum_idxs := g_reflection.type_symbols.filter(it.kind == .enum).map(it.idx)
 	return g_reflection.types.filter(it.idx in enum_idxs)
 }
 
@@ -281,7 +281,7 @@ pub fn get_aliases() []Type {
 
 // get_interfaces returns the registered aliases
 pub fn get_interfaces() []Interface {
-	iface_idxs := g_reflection.type_symbols.filter(it.kind == .interface_).map(it.idx)
+	iface_idxs := g_reflection.type_symbols.filter(it.kind == .interface).map(it.idx)
 	return g_reflection.types.filter(it.idx in iface_idxs).map(it.sym.info as Interface)
 }
 

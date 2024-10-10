@@ -39,7 +39,7 @@ fn (mut g Gen) gen_equality_fns() {
 			.alias {
 				g.gen_alias_equality_fn(needed_typ)
 			}
-			.interface_ {
+			.interface {
 				g.gen_interface_equality_fn(needed_typ)
 			}
 			else {
@@ -246,7 +246,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('${eq_fn}_alias_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .function && !field.typ.has_flag(.option) {
 				fn_builder.write_string('*((voidptr*)(${left_arg})) == *((voidptr*)(${right_arg}))')
-			} else if field_type.sym.kind == .interface_
+			} else if field_type.sym.kind == .interface
 				&& (!field.typ.has_flag(.option) || !field.typ.is_ptr()) {
 				ptr := if field.typ.is_ptr() { '*'.repeat(field.typ.nr_muls()) } else { '' }
 				eq_fn := g.gen_interface_equality_fn(field.typ)
@@ -304,7 +304,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	} else if sym.kind == .struct && !left.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_struct_eq(${left_var}, ${right_var});')
-	} else if sym.kind == .interface_ && !left.typ.is_ptr() {
+	} else if sym.kind == .interface && !left.typ.is_ptr() {
 		eq_fn := g.gen_interface_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_interface_eq(${left_var}, ${right_var});')
 	} else if sym.kind == .array && !left.typ.is_ptr() {
@@ -372,7 +372,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
-	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
+	} else if elem.sym.kind == .interface && !elem.typ.is_ptr() {
 		eq_fn := g.gen_interface_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
@@ -431,7 +431,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(${left}[i], ${right}[i])) {')
-	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
+	} else if elem.sym.kind == .interface && !elem.typ.is_ptr() {
 		eq_fn := g.gen_interface_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(${left}[i], ${right}[i])) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
@@ -511,7 +511,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
-		.interface_ {
+		.interface {
 			eq_fn := g.gen_interface_equality_fn(value.typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}

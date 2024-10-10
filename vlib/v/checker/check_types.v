@@ -43,7 +43,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			deref := expected.deref()
 			// deref := expected.set_nr_muls(0)
 			got_sym := c.table.sym(got)
-			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum_) {
+			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum) {
 				return true
 			}
 		}
@@ -71,7 +71,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			}
 		}
 
-		if got_sym.kind == .enum_ {
+		if got_sym.kind == .enum {
 			// Allow ints as enums
 			if expected_sym.is_number() {
 				return true
@@ -100,7 +100,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				return true
 			}
 		}
-		if expected_sym.kind == .enum_ && got_sym.is_number() {
+		if expected_sym.kind == .enum && got_sym.is_number() {
 			// Allow enums as numbers
 			return true
 		}
@@ -329,7 +329,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	} else {
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
 		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
-		if expected_typ_sym.kind == .interface_ && c.type_implements(got, expected, token.Pos{}) {
+		if expected_typ_sym.kind == .interface && c.type_implements(got, expected, token.Pos{}) {
 			return
 		}
 
@@ -1101,7 +1101,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							}
 						}
 					}
-				} else if arg_sym.kind in [.struct, .interface_, .sum_type] {
+				} else if arg_sym.kind in [.struct, .interface, .sum_type] {
 					mut generic_types := []ast.Type{}
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {

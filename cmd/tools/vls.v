@@ -25,7 +25,7 @@ enum UpdateSource {
 }
 
 enum SetupKind {
-	none_
+	none
 	install
 	update
 }
@@ -39,7 +39,7 @@ enum OutputMode {
 struct VlsUpdater {
 mut:
 	output        OutputMode   = .text
-	setup_kind    SetupKind    = .none_
+	setup_kind    SetupKind    = .none
 	update_source UpdateSource = .github_releases
 	ls_path       string // --path
 	pass_to_ls    bool   // --ls
@@ -348,7 +348,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 
 		upd.ls_path = ls_path
 
-		if upd.setup_kind != .none_ {
+		if upd.setup_kind != .none {
 			upd.update_source = .local_file // use local path if both -p and --source are used
 		}
 	}
@@ -368,7 +368,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 				}
 
 				upd.ls_path = ls_path
-			} else if upd.setup_kind == .none_ {
+			} else if upd.setup_kind == .none {
 				return server_not_found_err
 			}
 		}
@@ -455,7 +455,7 @@ fn (upd VlsUpdater) check_installation() {
 fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 	if upd.is_check {
 		upd.check_installation()
-	} else if upd.setup_kind != .none_ {
+	} else if upd.setup_kind != .none {
 		upd.check_or_create_vls_folder()!
 
 		match upd.update_source {

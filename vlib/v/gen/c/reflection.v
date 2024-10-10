@@ -80,11 +80,7 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 // gen_reflection_sym generates C code for TypeSymbol struct
 @[inline]
 fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
-	kind_name := if tsym.kind in [.none_, .enum_, .interface_] {
-		tsym.kind.str() + '_'
-	} else {
-		tsym.kind.str()
-	}
+	kind_name := tsym.kind.str()
 	info := g.gen_reflection_sym_info(tsym)
 	methods := g.gen_function_array(tsym.methods)
 	return '(${cprefix}TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
@@ -166,7 +162,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			s := 'ADDR(${cprefix}Struct,(((${cprefix}Struct){.parent_idx=${(tsym.info as ast.Struct).parent_type.idx()},.attrs=${attrs},.fields=${fields}})))'
 			return '(${cprefix}TypeInfo){._${cprefix}Struct=memdup(${s},sizeof(${cprefix}Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
 		}
-		.enum_ {
+		.enum {
 			info := tsym.info as ast.Enum
 			vals := g.gen_string_array(info.vals)
 			s := 'ADDR(${cprefix}Enum,(((${cprefix}Enum){.vals=${vals},.is_flag=${info.is_flag}})))'
@@ -177,7 +173,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 			s := 'ADDR(${cprefix}Function,${g.gen_reflection_fn(info.func)})'
 			return '(${cprefix}TypeInfo){._${cprefix}Function=memdup(${s},sizeof(${cprefix}Function)),._typ=${g.table.find_type_idx('v.reflection.Function')}}'
 		}
-		.interface_ {
+		.interface {
 			name := tsym.name.all_after_last('.')
 			info := tsym.info as ast.Interface
 			methods := g.gen_function_array(info.methods)

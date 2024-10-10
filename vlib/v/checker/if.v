@@ -13,7 +13,7 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, right ast.TypeNode
 		return .skip
 	}
 
-	if sym.kind == .interface_ {
+	if sym.kind == .interface {
 		checked_type := c.unwrap_generic(left_type)
 		return if c.table.does_type_implement_interface(checked_type, right_type) {
 			.eval
@@ -585,8 +585,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 				if left_sym.kind == .aggregate {
 					expr_type = (left_sym.info as ast.Aggregate).sum_type
 				}
-				if left_sym.kind == .interface_ {
-					if right_sym.kind != .interface_ {
+				if left_sym.kind == .interface {
+					if right_sym.kind != .interface {
 						c.type_implements(right_type, expr_type, node.pos)
 					}
 				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
@@ -608,14 +608,14 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 						}
 						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code
 						if mut node.left is ast.Ident
-							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
+							&& (left_sym.kind == .interface && right_sym.kind != .interface) {
 							v := scope.find_var(node.left.name) or { &ast.Var{} }
 							if v.is_mut && !node.left.is_mut {
 								c.error('smart casting a mutable interface value requires `if mut ${node.left.name} is ...`',
 									node.left.pos)
 							}
 						}
-						if left_sym.kind in [.interface_, .sum_type] {
+						if left_sym.kind in [.interface, .sum_type] {
 							c.smartcast(mut node.left, node.left_type, right_type, mut
 								scope, is_comptime)
 						}

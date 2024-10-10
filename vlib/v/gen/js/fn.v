@@ -250,7 +250,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
 
-	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
+	if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method(node.name) {
 		g.expr(it.left)
 		g.gen_deref_ptr(it.left_type)
 		g.write('.${it.name}(')
@@ -501,7 +501,7 @@ enum FnGenType {
 fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
 	if it.is_method && g.table.sym(it.params[0].typ).kind == .alias {
 		return .alias_method
-	} else if it.is_method && g.table.sym(it.params[0].typ).kind == .interface_ {
+	} else if it.is_method && g.table.sym(it.params[0].typ).kind == .interface {
 		return .iface_method
 	} else if it.is_method || it.no_body {
 		return .struct_method
@@ -686,7 +686,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			g.writeln('${arg_name} = new array(new array_buffer({arr: ${arg_name},len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
 			asym := g.table.sym(arg.typ)
-			if asym.kind != .interface_ && asym.language != .js {
+			if asym.kind != .interface && asym.language != .js {
 				if arg.typ.is_ptr() || arg.is_mut {
 					g.writeln('${arg_name} = new \$ref(${arg_name})')
 				}
@@ -826,7 +826,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		} else {
 			asym := g.table.sym(arg.typ)
 
-			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface_ && asym.language != .js) {
+			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface && asym.language != .js) {
 				g.writeln('${arg_name} = new \$ref(${arg_name})')
 			}
 		}

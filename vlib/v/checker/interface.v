@@ -35,7 +35,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				if embed.typ.has_flag(.generic) {
 					has_generic_types = true
 				}
-				if isym.kind != .interface_ {
+				if isym.kind != .interface {
 					c.error('interface `${node.name}` tries to embed `${isym.name}`, but `${isym.name}` is not an interface, but `${isym.kind}`',
 						embed.pos)
 					continue

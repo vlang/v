@@ -184,7 +184,7 @@ pub fn data_str(x StrIntpType) string {
 const si_s_code = '0xfe10'
 
 fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
+	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface]
 }
 
 fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
@@ -662,7 +662,7 @@ fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
 	sym := g.table.sym(typ)
 	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
-	} else if sym.kind in [.struct, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type,
+	} else if sym.kind in [.struct, .array, .array_fixed, .map, .bool, .enum, .interface, .sum_type,
 		.function, .alias, .chan] {
 		return .si_s
 	} else if sym.kind == .string {
@@ -788,7 +788,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 fn struct_auto_str_func(mut g JsGen, sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
 	has_custom_str, expects_ptr, _ := sym.str_method_info()
-	if sym.kind == .enum_ {
+	if sym.kind == .enum {
 		return '${fn_name}(it.${g.js_name(field_name)})'
 	} else if should_use_indent_func(sym.kind) {
 		mut obj := 'it.${g.js_name(field_name)}'

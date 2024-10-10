@@ -2676,7 +2676,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 						}
 					}
 				}
-				.enum_ {
+				.enum {
 					c.mov_store(.rdx, .rax, ._32)
 				}
 				else {}

@@ -613,7 +613,7 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 			// type Sum = int | Alias
 			// type Alias = Sum
 		}
-		.none_ {
+		.none {
 			c.error('cannot create a type alias of `none` as it is a value', node.type_pos)
 		}
 		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
@@ -624,11 +624,11 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		/*
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
-		.string, .enum_, .none_, .any {}
+		.string, .enum, .none, .any {}
 		.i8, .i16, .int, .i64, .isize {}
 		.u8, .u16, .u32, .u64, .usize {}
 		.f32, .f64 {}
-		.interface_ {}
+		.interface {}
 		.generic_inst {}
 		.aggregate {}
 		*/
@@ -696,7 +696,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
 			c.error('unknown type `${sym.name}`', variant.pos)
-		} else if sym.kind == .interface_ && sym.language != .js {
+		} else if sym.kind == .interface && sym.language != .js {
 			c.error('sum type cannot hold an interface', variant.pos)
 		} else if sym.kind == .struct && sym.language == .js {
 			c.error('sum type cannot hold a JS struct', variant.pos)
@@ -936,7 +936,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 						explicit_lock_needed = true
 					}
 				}
-				.interface_ {
+				.interface {
 					interface_info := typ_sym.info as ast.Interface
 					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -1080,12 +1080,12 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
+	if typ_sym.kind == .interface && inter_sym.kind == .interface && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
 			pos)
 	}
-	imethods := if inter_sym.kind == .interface_ {
+	imethods := if inter_sym.kind == .interface {
 		(inter_sym.info as ast.Interface).methods
 	} else {
 		inter_sym.methods
@@ -1658,7 +1658,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		if field.is_deprecated && is_used_outside {
 			c.deprecate('field', field_name, field.attrs, node.pos)
 		}
-		if field_sym.kind in [.sum_type, .interface_] {
+		if field_sym.kind in [.sum_type, .interface] {
 			if !prevent_sum_type_unwrapping_once {
 				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
 					return scope_field.smartcasts.last()
@@ -1704,7 +1704,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.typ = fn_type
 		return fn_type
 	}
-	if sym.kind !in [.struct, .aggregate, .interface_, .sum_type] {
+	if sym.kind !in [.struct, .aggregate, .interface, .sum_type] {
 		if sym.kind != .placeholder {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 
@@ -2821,9 +2821,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
 				}
-			} else if expr_type_sym.kind == .interface_ {
+			} else if expr_type_sym.kind == .interface {
 				c.ensure_type_exists(node.typ, node.pos)
-				if type_sym.kind != .interface_ {
+				if type_sym.kind != .interface {
 					c.type_implements(node.typ, node.expr_type, node.pos)
 				}
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
@@ -3256,7 +3256,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct && final_to_is_ptr) {
 		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]))
+			&& final_from_sym.kind in [.enum, .bool, .i8, .u8, .char]))
 			|| (final_to_sym.kind == .struct
 			&& from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx]) {
 			ft := c.table.type_to_str(from_type)
@@ -3313,7 +3313,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			&& !c.file.is_translated {
 			c.error('cannot cast voidptr to a struct outside `unsafe`', node.pos)
 		}
-		if !from_type.is_int() && final_from_sym.kind != .enum_
+		if !from_type.is_int() && final_from_sym.kind != .enum
 			&& !from_type.is_any_kind_of_pointer() {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
@@ -3321,7 +3321,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
 		if c.type_implements(from_type, to_type, node.pos) {
-			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface_
+			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface
 				&& !c.inside_unsafe {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
@@ -3346,13 +3346,13 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		type_name := c.table.type_to_str(to_type)
 		c.error('cannot cast `none` to `${type_name}`', node.pos)
 	} else if !from_type.has_option_or_result() && from_sym.kind == .struct && !from_type.is_ptr() {
-		if (final_to_is_ptr || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
+		if (final_to_is_ptr || to_sym.kind !in [.sum_type, .interface]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
 			c.error('cannot cast struct `${from_type_name}` to `${type_name}`', node.pos)
 		}
 	} else if to_sym.kind == .u8 && !final_from_sym.is_number()
-		&& !from_type.is_any_kind_of_pointer() && final_from_sym.kind !in [.char, .enum_, .bool] {
+		&& !from_type.is_any_kind_of_pointer() && final_from_sym.kind !in [.char, .enum, .bool] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `${ft}` to `${tt}`', node.pos)
@@ -3416,7 +3416,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('cannot cast `${ft}` to rune, use `${snexpr}.runes()` instead.', node.pos)
 	}
 
-	if to_sym.kind == .enum_ && !(c.inside_unsafe || c.file.is_translated) && from_sym.is_int() {
+	if to_sym.kind == .enum && !(c.inside_unsafe || c.file.is_translated) && from_sym.is_int() {
 		c.error('casting numbers to enums, should be done inside `unsafe{}` blocks', node.pos)
 	}
 
@@ -3457,7 +3457,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				c.error('cannot cast array to string, use `${snexpr}${first_elem_idx}.str()` instead.',
 					node.pos)
 			}
-		} else if final_from_sym.kind == .enum_ {
+		} else if final_from_sym.kind == .enum {
 			snexpr := node.expr.str()
 			c.error('cannot cast enum to string, use ${snexpr}.str() instead.', node.pos)
 		} else if final_from_sym.kind == .map {
@@ -3509,8 +3509,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	}
 	if from_sym.language == .v && !from_type.is_ptr()
-		&& final_from_sym.kind in [.sum_type, .interface_]
-		&& final_to_sym.kind !in [.sum_type, .interface_] {
+		&& final_from_sym.kind in [.sum_type, .interface]
+		&& final_to_sym.kind !in [.sum_type, .interface] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		kind_name := if from_sym.kind == .sum_type { 'sum type' } else { 'interface' }
@@ -3523,7 +3523,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	// checks on int literal to enum cast if the value represents a value on the enum
-	if to_sym.kind == .enum_ {
+	if to_sym.kind == .enum {
 		if mut node.expr is ast.IntegerLiteral {
 			enum_typ_name := c.table.get_type_name(to_type)
 			node_val := node.expr.val.i64()
@@ -4091,7 +4091,7 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
 	is_comptime bool) {
 	sym := c.table.sym(cur_type)
-	to_type := if sym.kind == .interface_ && c.table.sym(to_type_).kind != .interface_ {
+	to_type := if sym.kind == .interface && c.table.sym(to_type_).kind != .interface {
 		to_type_.ref()
 	} else {
 		to_type_
@@ -4408,7 +4408,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 								node.obj.is_auto_heap = true
 							}
 						}
-						.sum_type, .interface_ {}
+						.sum_type, .interface {}
 						.function {
 							if type_sym.info is ast.FnType {
 								if type_sym.info.is_anon {
@@ -4473,7 +4473,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			right_sym := c.table.sym(right_type)
 			expr_sym := c.table.sym(node.right.expr_type)
 			if expr_sym.kind == .struct && (expr_sym.info as ast.Struct).is_minify
-				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum_
+				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum
 				&& !(right_sym.info as ast.Enum).is_flag
 				&& !(right_sym.info as ast.Enum).uses_exprs)) {
 				c.error('cannot take the address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `@[minify]`',
@@ -4609,7 +4609,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	range_index bool, is_gated bool) {
 	if typ_sym.kind in [.array, .array_fixed, .string] {
 		index_type_sym := c.table.sym(index_type)
-		if !(index_type.is_int() || index_type_sym.kind == .enum_
+		if !(index_type.is_int() || index_type_sym.kind == .enum
 			|| (index_type_sym.kind == .alias
 			&& (index_type_sym.info as ast.Alias).parent_type.is_int())
 			|| (c.pref.translated && index_type.is_any_kind_of_pointer())) {
@@ -4677,7 +4677,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map]
-		&& (!typ.is_ptr() || typ_sym.kind in [.sum_type, .interface_])
+		&& (!typ.is_ptr() || typ_sym.kind in [.sum_type, .interface])
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic)
 		&& !is_aggregate_arr {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
@@ -4845,7 +4845,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		typ_sym = c.table.sym(typ)
 	}
 	fsym := c.table.final_sym(typ)
-	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
+	if fsym.kind != .enum && !c.pref.translated && !c.file.is_translated {
 		// TODO: in C int fields can be compared to enums, need to handle that in C2V
 		if typ_sym.kind == .placeholder {
 			// If it's a placeholder, the type doesn't exist, print
@@ -5068,7 +5068,7 @@ fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos toke
 				return false
 			}
 		}
-		.interface_ {
+		.interface {
 			info := sym.info as ast.Interface
 			if info.generic_types.len > 0 && !typ.has_flag(.generic) && info.concrete_types.len == 0 {
 				c.error('`${sym.name}` type is generic interface, must specify the generic type names, e.g. ${sym.name}[T], ${sym.name}[int]',

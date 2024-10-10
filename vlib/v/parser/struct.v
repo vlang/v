@@ -571,7 +571,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Declare the type
 	reg_idx := p.table.register_sym(
 		is_pub:   is_pub
-		kind:     .interface_
+		kind:     .interface
 		name:     interface_name
 		cname:    util.no_dots(interface_name)
 		mod:      p.mod

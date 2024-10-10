@@ -344,14 +344,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if is_method {
 			mut is_duplicate := type_sym.has_method(name)
 			// make sure this is a normal method and not an interface method
-			if type_sym.kind == .interface_ && is_duplicate {
+			if type_sym.kind == .interface && is_duplicate {
 				if mut type_sym.info is ast.Interface {
 					// if the method is in info then its an interface method
 					is_duplicate = !type_sym.info.has_method(name)
 				}
 			}
 			if is_duplicate {
-				if type_sym.kind == .enum_
+				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
 					if enum_fn := type_sym.find_method(name) {
 						name_pos = enum_fn.name_pos
@@ -1265,7 +1265,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 	sym := p.table.sym(typ)
-	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct, .generic_inst,
+	if sym.kind in [.array, .array_fixed, .interface, .map, .placeholder, .struct, .generic_inst,
 		.sum_type] {
 		return
 	}

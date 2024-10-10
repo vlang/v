@@ -91,7 +91,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
-	} else if sym.kind == .none_ || typ == ast.void_type.set_flag(.option) {
+	} else if sym.kind == .none || typ == ast.void_type.set_flag(.option) {
 		if expr is ast.CallExpr {
 			stmt_str := g.go_before_last_stmt()
 			g.expr(expr)
@@ -99,7 +99,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write(stmt_str)
 		}
 		g.write('_SLIT("<none>")')
-	} else if sym.kind == .enum_ {
+	} else if sym.kind == .enum {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
@@ -114,7 +114,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('")')
 		}
 	} else if sym_has_str_method
-		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface_] {
+		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
 		is_ptr := exp_typ.is_ptr()

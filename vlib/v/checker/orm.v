@@ -410,7 +410,7 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
 		is_struct := field_sym.kind == .struct
 		is_array := field_sym.kind == .array
-		is_enum := field_sym.kind == .enum_
+		is_enum := field_sym.kind == .enum
 		mut is_array_of_structs := false
 		if is_array {
 			array_info := field_sym.array_info()

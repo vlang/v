@@ -2170,7 +2170,7 @@ fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 		if sym.kind == .multi_return {
 			return false
 		}
-		if cond_sym.kind == .enum_ && node.branches.len > 5 {
+		if cond_sym.kind == .enum && node.branches.len > 5 {
 			return true
 		}
 		for branch in node.branches {
@@ -2403,7 +2403,7 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	cond_fsym := g.table.final_sym(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if cond_fsym.kind == .enum_ && !g.inside_loop && node.branches.len > 5
+	} else if cond_fsym.kind == .enum && !g.inside_loop && node.branches.len > 5
 		&& unsafe { g.fn_decl != 0 } { // do not optimize while in top-level
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
 	} else {
@@ -2489,7 +2489,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 				} else {
 					g.write('if (')
 				}
-				if sym.kind == .sum_type || sym.kind == .interface_ {
+				if sym.kind == .sum_type || sym.kind == .interface {
 					x := branch.exprs[sumtype_index]
 
 					if x is ast.TypeNode {
@@ -2519,7 +2519,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						g.write(' instanceof ')
 						g.expr(branch.exprs[sumtype_index])
 					}
-				} else if sym.kind == .interface_ {
+				} else if sym.kind == .interface {
 					if !sym.name.starts_with('JS.') {
 						g.write('.val')
 					}
@@ -3273,7 +3273,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	g.expr(it.expr)
 	mut ltyp := it.expr_type
 	lsym := g.table.sym(ltyp)
-	if lsym.kind != .interface_ && lsym.language != .js {
+	if lsym.kind != .interface && lsym.language != .js {
 		for ltyp.is_ptr() {
 			g.write('.val')
 			ltyp = ltyp.deref()
@@ -3345,15 +3345,15 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	if name.contains('<') {
 		name = name[0..name.index('<') or { name.len }]
 	}
-	if it.init_fields.len == 0 && type_sym.kind != .interface_ {
+	if it.init_fields.len == 0 && type_sym.kind != .interface {
 		if type_sym.kind == .struct && type_sym.language == .js {
 			g.write('{}')
 		} else {
 			g.write('new ${g.js_name(name)}({})')
 		}
-	} else if it.init_fields.len == 0 && type_sym.kind == .interface_ {
+	} else if it.init_fields.len == 0 && type_sym.kind == .interface {
 		g.write('new ${g.js_name(name)}()') // JS interfaces can be instantiated with default ctor
-	} else if type_sym.kind == .interface_ && it.init_fields.len != 0 {
+	} else if type_sym.kind == .interface && it.init_fields.len != 0 {
 		g.writeln('(function () {')
 		g.inc_indent()
 		g.writeln('let tmp = new ${g.js_name(name)}()')

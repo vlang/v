@@ -141,7 +141,7 @@ pub mut:
 
 pub enum ComptimeTypeKind {
 	unknown
-	map_
+	map
 	int
 	float
 	struct
@@ -150,7 +150,7 @@ pub enum ComptimeTypeKind {
 	array_fixed
 	array_dynamic
 	sum_type
-	enum_
+	enum
 	alias
 	function
 	option
@@ -166,7 +166,7 @@ pub:
 pub fn (cty ComptimeType) str() string {
 	return match cty.kind {
 		.unknown { '\$unknown' }
-		.map_ { '\$map' }
+		.map { '\$map' }
 		.int { '\$int' }
 		.float { '\$float' }
 		.struct { '\$struct' }
@@ -175,7 +175,7 @@ pub fn (cty ComptimeType) str() string {
 		.array_dynamic { '\$array_dynamic' }
 		.array_fixed { '\$array_fixed' }
 		.sum_type { '\$sumtype' }
-		.enum_ { '\$enum' }
+		.enum { '\$enum' }
 		.alias { '\$alias' }
 		.function { '\$function' }
 		.option { '\$option' }

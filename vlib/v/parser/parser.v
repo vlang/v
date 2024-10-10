@@ -4321,7 +4321,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 
 	idx := p.table.register_sym(ast.TypeSymbol{
-		kind:   .enum_
+		kind:   .enum
 		name:   name
 		cname:  util.no_dots(name)
 		mod:    p.mod
@@ -4428,7 +4428,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			variant_sym := p.table.sym(variant.typ)
 			// TODO: implement this check for error too
-			if variant_sym.kind == .none_ {
+			if variant_sym.kind == .none {
 				p.error_with_pos('named sum type cannot have none as its variant', variant.pos)
 				return ast.AliasTypeDecl{}
 			}

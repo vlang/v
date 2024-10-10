@@ -109,7 +109,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		mut str_dumparg_ret_type := ''
-		if dump_sym.kind == .none_ {
+		if dump_sym.kind == .none {
 			str_dumparg_type = 'IError' + ptr_asterisk
 		} else {
 			if typ.has_flag(.option) {
@@ -174,7 +174,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
 		if dump_sym.kind == .function {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
-		} else if dump_sym.kind == .none_ {
+		} else if dump_sym.kind == .none {
 			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')
 		} else if is_ptr {
 			if typ.has_flag(.option) {

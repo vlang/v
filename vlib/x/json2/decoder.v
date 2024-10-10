@@ -38,7 +38,7 @@ pub fn (err InvalidTokenError) code() int {
 
 // msg returns the message of the InvalidTokenError
 pub fn (err InvalidTokenError) msg() string {
-	footer_text := if err.expected != .none_ { ', expecting `${err.expected}`' } else { '' }
+	footer_text := if err.expected != .none { ', expecting `${err.expected}`' } else { '' }
 	return format_message('invalid token `${err.token.kind}`${footer_text}', err.token.line,
 		err.token.full_col())
 }
@@ -441,7 +441,7 @@ fn (mut p Parser) decode_value() !Any {
 		.lcbr {
 			return p.decode_object()
 		}
-		.int_, .float {
+		.int, .float {
 			tl := p.tok.lit.bytestr()
 			kind := p.tok.kind
 			p.next_with_err()!
@@ -455,7 +455,7 @@ fn (mut p Parser) decode_value() !Any {
 			}
 			return Any(tl)
 		}
-		.bool_ {
+		.bool {
 			lit := p.tok.lit.bytestr()
 			p.next_with_err()!
 			if p.convert_type {
@@ -470,7 +470,7 @@ fn (mut p Parser) decode_value() !Any {
 			}
 			return Any('null')
 		}
-		.str_ {
+		.str {
 			str := p.tok.lit.bytestr()
 			p.next_with_err()!
 			return Any(str)
@@ -521,10 +521,10 @@ fn (mut p Parser) decode_object() !Any {
 	// `}`
 	for p.tok.kind != .rcbr {
 		// step 1 -> key
-		if p.tok.kind != .str_ {
+		if p.tok.kind != .str {
 			return InvalidTokenError{
 				token:    p.tok
-				expected: .str_
+				expected: .str
 			}
 		}
 

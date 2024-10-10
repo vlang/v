@@ -87,7 +87,7 @@ fn test_enum_sym() {
 	var := reflection.type_of(Flags.foo)
 	assert var.sym.name == 'main.Flags'
 	assert var.sym.parent_idx == 0
-	assert var.sym.kind == .enum_
+	assert var.sym.kind == .enum
 	assert var.sym.language == .v
 	assert (var.sym.info as reflection.Enum).vals == ['foo', 'bar']
 }
