@@ -355,7 +355,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = right_type
 					}
 				} else if right_final_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := right_final_sym.find_method(node.op.str()) {
+					if method := right_final_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
@@ -367,7 +367,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = left_type
 					}
 				} else if left_final_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := left_final_sym.find_method(node.op.str()) {
+					if method := left_final_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
