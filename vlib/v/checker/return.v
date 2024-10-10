@@ -367,8 +367,9 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 	if uses_return_stmt(node.stmts) {
 		c.error('[noreturn] functions cannot use return statements', node.pos)
 	}
+	mut pos := node.pos
+	mut is_valid_end_of_noreturn_fn := false
 	if node.stmts.len != 0 {
-		mut is_valid_end_of_noreturn_fn := false
 		last_stmt := node.stmts.last()
 		match last_stmt {
 			ast.ExprStmt {
@@ -391,10 +392,12 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			else {}
 		}
 		if !is_valid_end_of_noreturn_fn {
-			c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
-				last_stmt.pos)
-			return
+			pos = last_stmt.pos
 		}
+	}
+	if !is_valid_end_of_noreturn_fn {
+		c.error('@[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop',
+			pos)
 	}
 }
 
