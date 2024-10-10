@@ -368,7 +368,7 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		ast.OffsetOf {
 			styp := g.typ(expr.struct_type)
 			field_name := expr.field
-			if styp.kind == .struct_ {
+			if styp.kind == .struct {
 				off := g.get_field_offset(expr.struct_type, field_name)
 				if newline {
 					g.code_gen.gen_print('${off}\n', fd)

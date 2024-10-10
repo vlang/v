@@ -41,7 +41,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 		.array {
 			styp = 'empty_array()'
 		}
-		.struct_ {
+		.struct {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
 		}
 		.voidptr {
@@ -197,7 +197,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			styp = 'any'
 		}
 		// ns.Foo => alias["Foo"]["prototype"]
-		.struct_ {
+		.struct {
 			styp = g.struct_typ(sym.name)
 		}
 		.generic_inst {}

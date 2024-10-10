@@ -154,7 +154,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
 	mut elem_sym := g.table.final_sym(elem_type)
 
-	is_struct := g.inside_array_fixed_struct && elem_sym.kind == .struct_
+	is_struct := g.inside_array_fixed_struct && elem_sym.kind == .struct
 
 	if !is_struct {
 		g.write('{')
@@ -266,7 +266,7 @@ fn (mut g Gen) expr_with_init(node ast.ArrayInit) {
 
 fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 	unaliased_sym := g.table.final_sym(elem_typ)
-	if unaliased_sym.kind == .struct_ {
+	if unaliased_sym.kind == .struct {
 		info := unaliased_sym.info as ast.Struct
 		for field in info.fields {
 			field_sym := g.table.final_sym(field.typ)
@@ -450,7 +450,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('&(${elem_styp}[]){')
 		g.write('_SLIT("")')
 		g.write('})')
-	} else if node.has_len && elem_type.unaliased_sym.kind in [.struct_, .array, .map] {
+	} else if node.has_len && elem_type.unaliased_sym.kind in [.struct, .array, .map] {
 		g.write('(voidptr)&(${elem_styp}[]){')
 		g.write(g.type_default(node.elem_type))
 		g.write('}[0])')
@@ -996,7 +996,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			} else if elem_kind == .map && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(((${elem_type_str}*)a.data)[i], v)) {')
-			} else if elem_kind == .struct_ && elem_is_not_ptr {
+			} else if elem_kind == .struct && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(((${elem_type_str}*)a.data)[i], v)) {')
 			} else if elem_kind == .interface_ && elem_is_not_ptr {
@@ -1035,7 +1035,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			} else if elem_kind == .map && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a[i], v)) {')
-			} else if elem_kind == .struct_ && elem_is_not_ptr {
+			} else if elem_kind == .struct && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a[i], v)) {')
 			} else if elem_kind == .interface_ && elem_is_not_ptr {
@@ -1080,7 +1080,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 		left_sym.array_fixed_info().elem_type
 	}
 	if (right.is_auto_deref_var() && !elem_typ.is_ptr())
-		|| (g.table.sym(elem_typ).kind !in [.interface_, .sum_type, .struct_] && right is ast.Ident
+		|| (g.table.sym(elem_typ).kind !in [.interface_, .sum_type, .struct] && right is ast.Ident
 		&& right.info is ast.IdentVar
 		&& g.table.sym(right.obj.typ).kind in [.interface_, .sum_type]) {
 		g.write('*')
@@ -1131,7 +1131,7 @@ fn (mut g Gen) gen_array_index_methods() {
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((*pelem, v))) {')
-		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
+		} else if elem_sym.kind == .struct && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .interface_ {

@@ -25,7 +25,7 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 			.map_
 		}
 		'struct' {
-			.struct_
+			.struct
 		}
 		'interface' {
 			.iface

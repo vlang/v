@@ -78,7 +78,7 @@ enum DeclType {
 	type_      // type ...
 	enum_      // enum ...
 	fn_        // fn ...
-	struct_    // struct ...
+	struct     // struct ...
 	interface_ // interface ...
 	stmt_      // statement
 }
@@ -265,7 +265,7 @@ fn (r &Repl) insert_source_code(typ DeclType, lines []string) string {
 		all_lines << lines
 	}
 	all_lines << r.structs
-	if typ == .struct_ {
+	if typ == .struct {
 		all_lines << lines
 	}
 	all_lines << r.interfaces
@@ -598,7 +598,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				if was_func {
 					temp_source_code = r.insert_source_code(DeclType.fn_, r.temp_lines)
 				} else if was_struct {
-					temp_source_code = r.insert_source_code(DeclType.struct_, r.temp_lines)
+					temp_source_code = r.insert_source_code(DeclType.struct, r.temp_lines)
 				} else if was_enum {
 					temp_source_code = r.insert_source_code(DeclType.enum_, r.temp_lines)
 				} else if was_interface {
@@ -615,7 +615,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			} else if starts_with_enum {
 				temp_source_code = r.insert_source_code(DeclType.enum_, [r.line])
 			} else if starts_with_struct {
-				temp_source_code = r.insert_source_code(DeclType.struct_, [r.line])
+				temp_source_code = r.insert_source_code(DeclType.struct, [r.line])
 			} else if starts_with_interface {
 				temp_source_code = r.insert_source_code(DeclType.interface_, [r.line])
 			} else if starts_with_type {

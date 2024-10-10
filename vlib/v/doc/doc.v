@@ -23,7 +23,7 @@ pub enum SymbolKind {
 	typedef
 	enum_
 	enum_field
-	struct_
+	struct
 	struct_field
 }
 
@@ -91,7 +91,7 @@ pub fn (sk SymbolKind) str() string {
 		.interface_ { 'interface' }
 		.typedef { 'type' }
 		.enum_ { 'enum' }
-		.struct_ { 'struct' }
+		.struct { 'struct' }
 		else { '' }
 	}
 }
@@ -255,7 +255,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			node.kind = .interface_
 		}
 		ast.StructDecl {
-			node.kind = .struct_
+			node.kind = .struct
 			if d.extract_vars {
 				for mut field in stmt.fields {
 					ret_type := if field.typ == 0 && field.has_default_expr {

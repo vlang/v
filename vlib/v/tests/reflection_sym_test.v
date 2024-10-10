@@ -94,7 +94,7 @@ fn test_enum_sym() {
 
 fn test_struct_sym() {
 	var := reflection.type_of(Test{})
-	assert var.sym.kind == .struct_
+	assert var.sym.kind == .struct
 	assert (var.sym.info as reflection.Struct).attrs.len == 1
 	assert (var.sym.info as reflection.Struct).attrs == ['test_struct']
 

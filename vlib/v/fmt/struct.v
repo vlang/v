@@ -149,7 +149,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl ast.StructDecl) bool {
 	sym := f.table.sym(field_typ)
 	match sym.kind {
-		.struct_ {
+		.struct {
 			info := sym.info as ast.Struct
 			if info.is_anon {
 				f.indent++

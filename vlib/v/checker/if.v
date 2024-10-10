@@ -459,7 +459,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							continue
 						}
 						if (node.typ.has_option_or_result())
-							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.table.sym(stmt.typ).kind == .struct
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{
 								expr:      stmt.expr

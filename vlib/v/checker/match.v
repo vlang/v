@@ -101,7 +101,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				} else {
 					if ret_type.idx() != expr_type.idx() {
 						if node.expected_type.has_option_or_result()
-							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.table.sym(stmt.typ).kind == .struct
 							&& (c.table.sym(ret_type).kind != .sum_type
 							|| !c.check_types(expr_type, ret_type))
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
@@ -322,7 +322,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(mut expr)
 			}
-			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
+			if expr is ast.TypeNode && cond_sym.kind == .struct {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
 					branch.pos)
 			}

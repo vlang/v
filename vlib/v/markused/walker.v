@@ -165,7 +165,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			if node.kind == .map {
 				w.table.used_maps++
 			}
-			if node.kind == .struct_ {
+			if node.kind == .struct {
 				if node.cond_type == 0 {
 					return
 				}
@@ -327,7 +327,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				return
 			}
 			sym := w.table.sym(node.left_type)
-			if sym.kind == .struct_ {
+			if sym.kind == .struct {
 				if opmethod := sym.find_method(node.op.str()) {
 					unsafe {
 						w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
@@ -432,7 +432,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				return
 			}
 			sym := w.table.sym(node.typ)
-			if sym.kind == .struct_ {
+			if sym.kind == .struct {
 				info := sym.info as ast.Struct
 				w.a_struct_info(sym.name, info)
 			}
@@ -496,7 +496,7 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 			if fsym.kind == .map {
 				w.table.used_maps++
 			}
-			if fsym.kind == .struct_ {
+			if fsym.kind == .struct {
 				w.a_struct_info(fsym.name, fsym.struct_info())
 			}
 		}

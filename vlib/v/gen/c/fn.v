@@ -1382,7 +1382,7 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 								&& param_typ_sym.kind == .array {
 								ctyp = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 								comptime_args[k] = ctyp
-							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+							} else if arg_sym.kind in [.struct, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
 									ast.Struct, ast.Interface, ast.SumType {
@@ -2157,7 +2157,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						mut is_cast_needed := true
 						if node.left_type != 0 {
 							left_sym := g.table.sym(node.left_type)
-							if left_sym.kind == .struct_ && node.name == obj.name {
+							if left_sym.kind == .struct && node.name == obj.name {
 								is_cast_needed = false
 							}
 						}
@@ -2669,7 +2669,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()
-		&& g.table.sym(arg_typ).kind == .struct_ && expected_type == arg_typ.ref() {
+		&& g.table.sym(arg_typ).kind == .struct && expected_type == arg_typ.ref() {
 		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
 			g.arg_no_auto_deref = true
 			g.expr(arg.expr)

@@ -92,7 +92,7 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 		ast.SelectorExpr {
 			if expr.expr is ast.CallExpr {
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
-				if sym.kind == .struct_ {
+				if sym.kind == .struct {
 					if (sym.info as ast.Struct).is_union {
 						return unsupported_ctemp_assert_transform
 					}

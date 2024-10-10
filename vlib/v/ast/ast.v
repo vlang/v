@@ -144,7 +144,7 @@ pub enum ComptimeTypeKind {
 	map_
 	int
 	float
-	struct_
+	struct
 	iface
 	array
 	array_fixed
@@ -169,7 +169,7 @@ pub fn (cty ComptimeType) str() string {
 		.map_ { '\$map' }
 		.int { '\$int' }
 		.float { '\$float' }
-		.struct_ { '\$struct' }
+		.struct { '\$struct' }
 		.iface { '\$interface' }
 		.array { '\$array' }
 		.array_dynamic { '\$array_dynamic' }

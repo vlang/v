@@ -1729,7 +1729,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	return_size := c.g.get_type_size(node.return_type)
 	mut return_pos := i32(-1)
 	mut is_struct_return := false
-	if ts.kind in [.struct_, .multi_return] {
+	if ts.kind in [.struct, .multi_return] {
 		return_pos = c.g.allocate_by_type('', node.return_type)
 		if return_size > 16 {
 			is_struct_return = true
@@ -1802,7 +1802,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 			continue
 		}
 		c.g.expr(args[i].expr)
-		if c.g.table.sym(args[i].typ).kind == .struct_ && !args[i].typ.is_ptr() {
+		if c.g.table.sym(args[i].typ).kind == .struct && !args[i].typ.is_ptr() {
 			match args_size[i] {
 				1...8 {
 					c.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.i64_type_idx)
@@ -1877,7 +1877,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	}
 	c.g.println('call `${n}()`')
 
-	if ts.kind in [.struct_, .multi_return] {
+	if ts.kind in [.struct, .multi_return] {
 		match return_size {
 			1...7 {
 				c.mov_var_to_reg(Amd64Register.rdx, LocalVar{
@@ -2323,7 +2323,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 			size := c.g.get_type_size(typ)
 			if c.g.pref.arch == .amd64 {
 				match ts.kind {
-					.struct_, .multi_return {
+					.struct, .multi_return {
 						if size <= 8 {
 							c.mov_deref(Amd64Register.rax, Amd64Register.rax, ast.i64_type_idx)
 							if size != 8 {
@@ -2631,7 +2631,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 			}
 			ts := c.g.table.sym(typ)
 			match ts.kind {
-				.struct_ {
+				.struct {
 					size := c.g.get_type_size(typ)
 					if size >= 8 {
 						for j in 0 .. size / 8 {
@@ -3096,7 +3096,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 	// The first parameter is an address of returned struct if size > 16
 	ts := c.g.table.sym(node.return_type)
 	return_size := c.g.get_type_size(node.return_type)
-	if ts.kind in [.struct_, .multi_return] {
+	if ts.kind in [.struct, .multi_return] {
 		if return_size > 16 {
 			params << ast.Param{
 				name: '_return_val_addr'

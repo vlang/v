@@ -396,7 +396,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.typ(val_type.clear_flag(.result))
 		}
 	}
-	get_and_set_types := val_sym.kind in [.struct_, .map, .array, .array_fixed]
+	get_and_set_types := val_sym.kind in [.struct, .map, .array, .array_fixed]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
 			g.cur_indexexpr << node.pos.pos

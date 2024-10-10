@@ -24,7 +24,7 @@ fn (mut g Gen) gen_equality_fns() {
 			.sum_type {
 				g.gen_sumtype_equality_fn(needed_typ)
 			}
-			.struct_ {
+			.struct {
 				g.gen_struct_equality_fn(needed_typ)
 			}
 			.array {
@@ -84,7 +84,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 		} else if variant.sym.kind == .sum_type && !typ.is_ptr() {
 			eq_fn := g.gen_sumtype_equality_fn(typ)
 			fn_builder.writeln('\t\treturn ${eq_fn}_sumtype_eq(*${left_arg}, *${right_arg});')
-		} else if variant.sym.kind == .struct_ && !typ.is_ptr() {
+		} else if variant.sym.kind == .struct && !typ.is_ptr() {
 			eq_fn := g.gen_struct_equality_fn(typ)
 			fn_builder.writeln('\t\treturn ${eq_fn}_struct_eq(*${left_arg}, *${right_arg});')
 		} else if variant.sym.kind == .array && !typ.is_ptr() {
@@ -229,7 +229,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_sumtype_eq(${left_arg}, ${right_arg})')
-			} else if field_type.sym.kind == .struct_ && !field.typ.is_ptr() {
+			} else if field_type.sym.kind == .struct && !field.typ.is_ptr() {
 				eq_fn := g.gen_struct_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_struct_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
@@ -301,7 +301,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	} else if sym.kind == .sum_type && !left.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_sumtype_eq(${left_var}, ${right_var});')
-	} else if sym.kind == .struct_ && !left.typ.is_ptr() {
+	} else if sym.kind == .struct && !left.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_struct_eq(${left_var}, ${right_var});')
 	} else if sym.kind == .interface_ && !left.typ.is_ptr() {
@@ -369,7 +369,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
-	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
+	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
 	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
@@ -428,7 +428,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(${left}[i], ${right}[i])) {')
-	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
+	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(${left}[i], ${right}[i])) {')
 	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
@@ -507,7 +507,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 			eq_fn := g.gen_sumtype_equality_fn(value.typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
-		.struct_ {
+		.struct {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
@@ -583,7 +583,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 			fn_builder.writeln('\t\tif (idx == ${typ.idx()}) {')
 			fn_builder.write_string('\t\t\treturn ')
 			match g.table.type_kind(typ.set_nr_muls(0)) {
-				.struct_ {
+				.struct {
 					eq_fn := g.gen_struct_equality_fn(typ)
 					l_eqfn := g.read_field(left_type, '_${eq_fn}', 'a')
 					r_eqfn := g.read_field(left_type, '_${eq_fn}', 'b')

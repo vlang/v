@@ -96,7 +96,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		name
 	}
 	if !(expr.is_method && (g.table.sym(expr.receiver_type).kind == .interface_
-		|| (g.table.sym(expr.receiver_type).kind == .struct_ && expr.is_field))) {
+		|| (g.table.sym(expr.receiver_type).kind == .struct && expr.is_field))) {
 		g.writeln('${arg_tmp_var}${dot}fn = ${fn_name};')
 	}
 	if expr.is_method {
@@ -321,7 +321,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.gowrappers.write_string('${idot}_typ]._method_${mname}(')
 				g.gowrappers.write_string('arg->arg0')
 				g.gowrappers.write_string('${idot}_object')
-			} else if typ_sym.kind == .struct_ && expr.is_field {
+			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')
 				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
 				mname := c_name(expr.name)
@@ -330,7 +330,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.gowrappers.write_string('arg->fn(')
 				g.gowrappers.write_string('arg->arg0')
 			}
-			if expr.args.len > 0 && (typ_sym.kind != .struct_ || !expr.is_field) {
+			if expr.args.len > 0 && (typ_sym.kind != .struct || !expr.is_field) {
 				g.gowrappers.write_string(', ')
 			}
 		} else {

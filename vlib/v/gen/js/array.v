@@ -38,7 +38,7 @@ fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_map_equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(pelem.get(new int(i)), v).val) {')
-		} else if elem_sym.kind == .struct_ && !info.elem_type.is_ptr() {
+		} else if elem_sym.kind == .struct && !info.elem_type.is_ptr() {
 			ptr_typ := g.gen_struct_equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(pelem.get(new int(i)), v)) {')
 		} else {
@@ -187,7 +187,7 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a.arr.get(new int(i)),v).val) {')
-		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
+		} else if elem_sym.kind == .struct && left_info.elem_type.nr_muls() == 0 {
 			ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a.arr.get(new int(i)),v).val) {')
 		} else {

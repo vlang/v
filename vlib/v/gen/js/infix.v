@@ -95,7 +95,7 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.write('.valueOf()')
 		}
 	} else if left.typ.idx() == right.typ.idx()
-		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
+		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type] {
 		match left.sym.kind {
 			.alias {
 				ptr_typ := g.gen_alias_equality_fn(left.typ)
@@ -161,7 +161,7 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 					g.write('.valueOf()')
 				}
 			}
-			.struct_ {
+			.struct {
 				ptr_typ := g.gen_struct_equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')

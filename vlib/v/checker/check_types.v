@@ -234,7 +234,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		exp_sym := c.table.sym(expected)
 		// unknown C types are set to int, allow int to be used for types like `&C.FILE`
 		// eg. `C.fflush(C.stderr)` - error: cannot use `int` as `&C.FILE` in argument 1 to `C.fflush`
-		if expected.is_ptr() && exp_sym.language == .c && exp_sym.kind in [.placeholder, .struct_]
+		if expected.is_ptr() && exp_sym.language == .c && exp_sym.kind in [.placeholder, .struct]
 			&& got == ast.int_type_idx {
 			return
 		}
@@ -316,7 +316,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			}
 			exp_sym := c.table.final_sym(expected)
 			if exp_sym.language == .v
-				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .sum_type, .struct_] {
+				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .sum_type, .struct] {
 				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
@@ -436,7 +436,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// struct
-	if exp_sym.kind == .struct_ && got_sym.kind == .struct_ {
+	if exp_sym.kind == .struct && got_sym.kind == .struct {
 		if c.table.type_to_str(expected) == c.table.type_to_str(got) {
 			return true
 		}
@@ -991,7 +991,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
-				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct_, .any]
+				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct, .any]
 					&& arg.expr is ast.ComptimeSelector {
 					comptime_typ := c.comptime.get_comptime_selector_type(arg.expr, ast.void_type)
 					if comptime_typ != ast.void_type {
@@ -1101,7 +1101,7 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							}
 						}
 					}
-				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
+				} else if arg_sym.kind in [.struct, .interface_, .sum_type] {
 					mut generic_types := []ast.Type{}
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {
@@ -1184,7 +1184,7 @@ fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_typ
 			return c.is_contains_any_kind_of_pointer(sym.info.parent_type, mut checked_types)
 		}
 		ast.Struct {
-			if sym.kind == .struct_ && sym.language == .v {
+			if sym.kind == .struct && sym.language == .v {
 				fields := c.table.struct_fields(sym)
 				for field in fields {
 					ret := c.is_contains_any_kind_of_pointer(field.typ, mut checked_types)

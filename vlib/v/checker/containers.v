@@ -433,7 +433,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			node.value_type = info.value_type
 			return node.typ
 		} else {
-			if sym.kind == .struct_ {
+			if sym.kind == .struct {
 				c.error('`{}` can not be used for initialising empty structs any more. Use `${c.table.type_to_str(c.expected_type)}{}` instead.',
 					node.pos)
 			} else {
@@ -451,7 +451,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.error('cannot use Result type as map value type', node.pos)
 			}
 			val_sym := c.table.sym(info.value_type)
-			if val_sym.kind == .struct_ {
+			if val_sym.kind == .struct {
 				val_info := val_sym.info as ast.Struct
 				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
 					&& !info.value_type.has_flag(.generic) {
@@ -550,7 +550,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				if val_type == map_val_type {
 					continue
 				}
-				if val_type_sym.kind == .struct_
+				if val_type_sym.kind == .struct
 					&& c.type_implements(val_type, map_val_type, val.pos()) {
 					node.vals[i] = ast.CastExpr{
 						expr:      val

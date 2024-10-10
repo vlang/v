@@ -309,7 +309,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	for field in node.fields {
 		sym := g.table.sym(field.typ)
-		if sym.kind == .struct_ && sym.name != 'time.Time' {
+		if sym.kind == .struct && sym.name != 'time.Time' {
 			subs << unsafe { node.sub_structs[int(field.typ)] }
 			unwrapped_c_typ := g.typ(field.typ.clear_flag(.option))
 			subs_unwrapped_c_typ << if field.typ.has_flag(.option) { unwrapped_c_typ } else { '' }
@@ -405,7 +405,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			mut sym := g.table.sym(field.typ)
 			mut typ := sym.cname
 			mut ctyp := sym.cname
-			if sym.kind == .struct_ && typ != 'time__Time' {
+			if sym.kind == .struct && typ != 'time__Time' {
 				g.writeln('(*(orm__Primitive*) array_get(${last_ids_arr}, ${structs})),')
 				structs++
 				continue
@@ -900,7 +900,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				types << '_const_orm__time_'
 				continue
 			}
-			if sym.kind == .struct_ {
+			if sym.kind == .struct {
 				types << int(ast.int_type).str()
 				continue
 			} else if sym.kind == .enum_ {
@@ -1039,7 +1039,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			sym := g.table.sym(field.typ)
 			field_var := '${tmp}.${c_name(field.name)}'
 			field_c_typ := g.typ(field.typ)
-			if sym.kind == .struct_ && sym.name != 'time.Time' {
+			if sym.kind == .struct && sym.name != 'time.Time' {
 				mut sub := node.sub_structs[int(field.typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
@@ -1247,7 +1247,7 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 	}
 
 	sym := g.table.sym(field.typ)
-	if sym.kind == .struct_ && sym.name != 'time.Time' {
+	if sym.kind == .struct && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}
 
