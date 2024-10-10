@@ -51,6 +51,13 @@ see also `v help build`.
           b) `int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){`
           when you are compiling console apps.
 
+   -subsystem <auto|console|windows>
+      Useful to change the generated main function on Windows.
+      Ignored on other platforms. The default is `auto`.
+      When set to `console` V will generate a `wmain` main function.
+      When set to `windows` V will generate a `wWinMain` main function,
+      even when you are not compiling `gg` apps.
+
    -showcc
       Prints the C command that is used to build the program.
 
