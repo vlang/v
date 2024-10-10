@@ -2804,6 +2804,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 }
 
 fn (mut g Gen) is_gui_app() bool {
+	match g.pref.subsystem {
+		.windows { return true }
+		.console { return false }
+		.auto {}
+	}
 	if g.pref.os == .windows {
 		if g.force_main_console {
 			return false
