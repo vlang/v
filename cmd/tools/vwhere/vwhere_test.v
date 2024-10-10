@@ -8,15 +8,15 @@ fn test_create_finder() {
 	mut fdr := Finder{}
 
 	fdr.configure_from_arguments(['some'])
-	assert fdr.symbol == .@fn
+	assert fdr.symbol == .fn
 	assert fdr.name == 'some'
 	assert fdr.visib == .all
 	assert fdr.mutab == .any
 
 	fdr.configure_from_arguments(['fn', 'some', '-vis', 'pub'])
-	assert fdr.symbol == .@fn
+	assert fdr.symbol == .fn
 	assert fdr.name == 'some'
-	assert fdr.visib == .@pub
+	assert fdr.visib == .pub
 
 	fdr.configure_from_arguments(['method', 'Some.some', '-vis', 'pri'])
 	assert fdr.symbol == .method
@@ -25,23 +25,23 @@ fn test_create_finder() {
 	assert fdr.visib == .pri
 
 	fdr.configure_from_arguments(['struct', 'Some', '-mod', 'foo'])
-	assert fdr.symbol == .@struct
+	assert fdr.symbol == .struct
 	assert fdr.name == 'Some'
 	assert fdr.modul == 'foo'
 
 	fdr.configure_from_arguments(['interface', 'Some', '-mod', 'foo', '-dir', 'bar'])
-	assert fdr.symbol == .@interface
+	assert fdr.symbol == .interface
 	assert fdr.name == 'Some'
 	assert fdr.modul == 'foo'
 	assert fdr.dirs == ['bar']
 
 	fdr.configure_from_arguments(['enum', 'Some', '-dir', 'bar', '-dir', 'baz'])
-	assert fdr.symbol == .@enum
+	assert fdr.symbol == .enum
 	assert fdr.name == 'Some'
 	assert fdr.dirs == ['bar', 'baz']
 
 	fdr.configure_from_arguments(['const', 'some'])
-	assert fdr.symbol == .@const
+	assert fdr.symbol == .const
 	assert fdr.name == 'some'
 
 	fdr.configure_from_arguments(['var', 'some', '-mut', 'yes'])

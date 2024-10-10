@@ -14,7 +14,7 @@ pub enum Backend {
 // PixelFormat is C.sg_pixel_format
 pub enum PixelFormat as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 
 	r8
 	r8sn
@@ -126,7 +126,7 @@ pub enum BufferType as u32 {
 
 pub enum IndexType as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 	uint16
 	uint32
 	_num
@@ -193,7 +193,7 @@ pub enum PrimitiveType as u32 {
 
 pub enum Filter as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 	nearest
 	linear
 	_num
@@ -267,7 +267,7 @@ pub enum UniformType as u32 {
 
 pub enum CullMode as u32 {
 	_default // value 0 reserved for default-init
-	@none
+	none
 	front
 	back
 	_num
@@ -343,7 +343,7 @@ pub enum BlendOp as u32 {
 
 pub enum ColorMask as u32 {
 	_default   = 0    // value 0 reserved for default-init
-	@none      = 0x10 // special value for 'all channels disabled
+	none       = 0x10 // special value for 'all channels disabled
 	r          = 1
 	g          = 2
 	rg         = 3

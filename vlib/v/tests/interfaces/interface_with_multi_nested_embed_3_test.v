@@ -5,7 +5,7 @@ mut:
 }
 
 enum NodeType {
-	@none
+	none
 }
 
 struct Node {
