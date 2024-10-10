@@ -37,7 +37,7 @@ pub mut:
 pub fn new_cache_manager(opts []string) CacheManager {
 	mut vcache_basepath := os.getenv('VCACHE')
 	if vcache_basepath == '' {
-		vcache_basepath = os.join_path(os.vmodules_dir(), 'cache')
+		vcache_basepath = os.join_path(os.vmodules_dir(), '_cache') // use a path, that would not conflict with a user installable module
 	}
 	nlog(@FN, 'vcache_basepath: ${vcache_basepath}\n         opts: ${opts}\n      os.args: ${os.args.join(' ')}')
 	dlog(@FN, 'vcache_basepath: ${vcache_basepath} | opts:\n     ${opts}')

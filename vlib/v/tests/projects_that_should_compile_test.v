@@ -28,4 +28,7 @@ fn test_projects_should_run() {
 
 	res2 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/modules_in_src/'))
 	assert res2.trim_space() == 'somemodule somemoduletwo'
+
+	res3 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/module_named_cache/'))
+	assert res3.trim_space().ends_with('cache.a: 123')
 }
