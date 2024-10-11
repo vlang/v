@@ -30,7 +30,7 @@ pub struct Field {
 	flags            u32
 	decimals         u32
 	charsetnr        u32
-	type_            FieldType
+	type             FieldType
 }
 
 // fetch_row fetches the next row from a result.
@@ -112,7 +112,7 @@ pub fn (r Result) fields() []Field {
 				flags:            orig_fields.flags
 				decimals:         orig_fields.decimals
 				charsetnr:        orig_fields.charsetnr
-				type_:            FieldType(orig_fields.@type)
+				type:             FieldType(orig_fields.type)
 			}
 		}
 	}
@@ -142,7 +142,7 @@ pub fn (f Field) str() string {
 	flags: ${f.flags}
 	decimals: ${f.decimals}
 	charsetnr: ${f.charsetnr}
-	type: ${f.type_.str()}
+	type: ${f.type.str()}
 }
 '
 }

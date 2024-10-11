@@ -785,7 +785,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 							.skip
 						}
 					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
-						// `$if method.@type is string`
+						// `$if method.type is string`
 						c.expr(mut cond.left)
 						if cond.left is ast.SelectorExpr
 							&& c.comptime.is_comptime_selector_type(cond.left)

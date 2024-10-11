@@ -89,7 +89,7 @@ mut:
 @[typedef]
 pub struct C.XSelectionEvent {
 mut:
-	@type     int
+	type      int
 	display   &C.Display = unsafe { nil } // Display the event was read from
 	requestor Window
 	selection Atom
@@ -114,7 +114,7 @@ mut:
 @[typedef]
 union C.XEvent {
 mut:
-	@type             int
+	type              int
 	xdestroywindow    C.XDestroyWindowEvent
 	xselectionclear   C.XSelectionClearEvent
 	xselectionrequest C.XSelectionRequestEvent
@@ -298,11 +298,11 @@ fn (mut cb Clipboard) start_listener() {
 	for {
 		time.sleep(1 * time.millisecond)
 		C.XNextEvent(cb.display, &event)
-		if unsafe { event.@type == 0 } {
+		if unsafe { event.type == 0 } {
 			println('error')
 			continue
 		}
-		match unsafe { event.@type } {
+		match unsafe { event.type } {
 			C.DestroyNotify {
 				if unsafe { event.xdestroywindow.window == cb.window } {
 					// we are done
@@ -327,7 +327,7 @@ fn (mut cb Clipboard) start_listener() {
 					xsre = unsafe { &event.xselectionrequest }
 
 					mut xse := C.XSelectionEvent{
-						@type:     C.SelectionNotify // 31
+						type:      C.SelectionNotify // 31
 						display:   xsre.display
 						requestor: xsre.requestor
 						selection: xsre.selection

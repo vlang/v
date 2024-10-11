@@ -86,7 +86,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 		size: usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
 	}
 
-	vert_buffer_desc.@type = .vertexbuffer
+	vert_buffer_desc.type = .vertexbuffer
 	vert_buffer_desc.label = 'vertbuf_part_${in_part:03}'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
@@ -100,7 +100,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 		size: usize(obj_buf.ibuf.len * int(sizeof(u32)))
 	}
 
-	index_buffer_desc.@type = .indexbuffer
+	index_buffer_desc.type = .indexbuffer
 	index_buffer_desc.label = 'indbuf_part_${in_part:03}'.str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 

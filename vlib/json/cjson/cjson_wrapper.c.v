@@ -19,7 +19,7 @@ pub:
 	prev  &C.cJSON
 	child &C.cJSON // An array or object item will have a child pointer pointing to a chain of the items in the array/object
 
-	@type int // The type of the item, as above
+	type int // The type of the item, as above
 
 	valueint    int   // writing to valueint is DEPRECATED, use cJSON_SetNumberValue instead
 	valuedouble f64   // The item's number, if type==cJSON_Number

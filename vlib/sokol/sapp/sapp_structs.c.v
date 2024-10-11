@@ -90,7 +90,7 @@ pub type Desc = C.sapp_desc
 pub struct C.sapp_event {
 pub:
 	frame_count        u64                         // current frame counter, always valid, useful for checking if two events were issued in the same frame
-	@type              EventType                   // the event type, always valid
+	type               EventType                   // the event type, always valid
 	key_code           KeyCode                     // the virtual key code, only valid in KEY_UP, KEY_DOWN
 	char_code          u32                         // the UTF-32 character code, only valid in CHAR events
 	key_repeat         bool                        // true if this is a key-repeat event, valid in KEY_UP, KEY_DOWN and CHAR
@@ -113,7 +113,7 @@ pub:
 pub type Event = C.sapp_event
 
 pub fn (e &C.sapp_event) str() string {
-	return 'evt: frame_count=${e.frame_count}, type=${e.@type}'
+	return 'evt: frame_count=${e.frame_count}, type=${e.type}'
 }
 
 @[typedef]
