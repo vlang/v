@@ -220,17 +220,17 @@ pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, 
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType,
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, typ UniformType,
 	array_count int) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
-	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
+	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].type = typ
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType,
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, typ UniformType,
 	array_count int) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
-	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
+	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].type = typ
 	return desc
 }
 
@@ -280,7 +280,7 @@ pub type ShaderUniformBlockDesc = C.sg_shader_uniform_block_desc
 pub struct C.sg_shader_uniform_desc {
 pub mut:
 	name        &char
-	@type       UniformType
+	type        UniformType
 	array_count int
 }
 
@@ -636,7 +636,7 @@ pub type Pass = C.sg_pass
 pub struct C.sg_buffer_desc {
 pub mut:
 	size  usize
-	@type BufferType
+	type  BufferType
 	usage Usage
 	data  Range
 	label &char
@@ -682,7 +682,7 @@ pub fn (mut b Buffer) free() {
 
 pub struct C.sg_image_desc {
 pub mut:
-	@type         ImageType
+	type          ImageType
 	render_target bool
 	width         int
 	height        int

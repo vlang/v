@@ -115,7 +115,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 		ptr: vertices.data
 		size: vert_buffer_desc.size
 	}
-	vert_buffer_desc.@type = .vertexbuffer
+	vert_buffer_desc.type = .vertexbuffer
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	mut index_buffer_desc := gfx.BufferDesc{}
@@ -126,7 +126,7 @@ fn (mut app App) init_glsl_shader(shader_name string, shader_desc &gfx.ShaderDes
 		ptr: indices.data
 		size: index_buffer_desc.size
 	}
-	index_buffer_desc.@type = .indexbuffer
+	index_buffer_desc.type = .indexbuffer
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	// create shader

@@ -308,7 +308,7 @@ fn init_cube_glsl(mut app App) {
 		size: usize(vertices.len * int(sizeof(Vertex_t)))
 	}
 
-	vert_buffer_desc.@type = .vertexbuffer
+	vert_buffer_desc.type = .vertexbuffer
 	// vert_buffer_desc.usage   = .immutable
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
@@ -335,7 +335,7 @@ fn init_cube_glsl(mut app App) {
 		size: usize(indices.len * int(sizeof(u16)))
 	}
 
-	index_buffer_desc.@type = .indexbuffer
+	index_buffer_desc.type = .indexbuffer
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	// create shader

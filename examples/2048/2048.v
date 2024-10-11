@@ -163,7 +163,7 @@ enum TileFormat {
 	exponent
 	shifts
 	none
-	end_ // To know when to wrap around
+	end // To know when to wrap around
 }
 
 enum GameState {
@@ -672,7 +672,7 @@ fn (app &App) draw_tiles() {
 						})
 					}
 					.none {} // Don't draw any text here, colors only
-					.end_ {} // Should never get here
+					.end {} // Should never get here
 				}
 			}
 		}
@@ -767,7 +767,7 @@ fn (mut app App) next_theme() {
 @[inline]
 fn (mut app App) next_tile_format() {
 	app.tile_format = unsafe { TileFormat(int(app.tile_format) + 1) }
-	if app.tile_format == .end_ {
+	if app.tile_format == .end {
 		app.tile_format = .normal
 	}
 }

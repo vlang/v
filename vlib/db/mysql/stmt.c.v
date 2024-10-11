@@ -268,7 +268,7 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, num_fields int) {
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{
-			buffer_type: unsafe { fields[i].@type }
+			buffer_type: unsafe { fields[i].type }
 			buffer:      dataptr[i]
 			length:      &lengths[i]
 		}

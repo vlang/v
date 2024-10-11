@@ -113,26 +113,26 @@ fn frame(mut app App) {
 }
 
 fn event(ev &sapp.Event, mut app App) {
-	if ev.@type == .mouse_move {
+	if ev.type == .mouse_move {
 		app.ps.explode(ev.mouse_x, ev.mouse_y)
 	}
-	if ev.@type == .mouse_up || ev.@type == .mouse_down {
+	if ev.type == .mouse_up || ev.type == .mouse_down {
 		if ev.mouse_button == .left {
-			is_pressed := ev.@type == .mouse_down
+			is_pressed := ev.type == .mouse_down
 			if is_pressed {
 				app.ps.explode(ev.mouse_x, ev.mouse_y)
 			}
 		}
 	}
-	if ev.@type == .key_up || ev.@type == .key_down {
+	if ev.type == .key_up || ev.type == .key_down {
 		if ev.key_code == .r {
-			is_pressed := ev.@type == .key_down
+			is_pressed := ev.type == .key_down
 			if is_pressed {
 				app.ps.reset()
 			}
 		}
 	}
-	if ev.@type == .touches_began || ev.@type == .touches_moved {
+	if ev.type == .touches_began || ev.type == .touches_moved {
 		if ev.num_touches > 0 {
 			touch_point := ev.touches[0]
 			app.ps.explode(touch_point.pos_x, touch_point.pos_y)

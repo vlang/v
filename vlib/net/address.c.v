@@ -135,11 +135,11 @@ pub fn (a Addr) len() u32 {
 	}
 }
 
-// resolve_addrs converts the given `addr`, `family` and `@type` to a list of addresses
-pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
+// resolve_addrs converts the given `addr`, `family` and `typ` to a list of addresses
+pub fn resolve_addrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	match family {
 		.ip, .ip6, .unspec {
-			return resolve_ipaddrs(addr, family, @type)
+			return resolve_ipaddrs(addr, family, typ)
 		}
 		.unix {
 			resolved := Unix{}
@@ -165,8 +165,8 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 	}
 }
 
-// resolve_addrs converts the given `addr` and `@type` to a list of addresses
-pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
+// resolve_addrs converts the given `addr` and `typ` to a list of addresses
+pub fn resolve_addrs_fuzzy(addr string, typ SocketType) ![]Addr {
 	if addr.len == 0 {
 		return error('none')
 	}
@@ -177,10 +177,10 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
 	if addr.contains(':') {
 		// Colon is a reserved character in unix paths
 		// so this must be an ip address
-		return resolve_addrs(addr, .unspec, @type)
+		return resolve_addrs(addr, .unspec, typ)
 	}
 
-	return resolve_addrs(addr, .unix, @type)
+	return resolve_addrs(addr, .unix, typ)
 }
 
 // resolve_ipaddrs converts the given `addr`, `family` and `typ` to a list of addresses
