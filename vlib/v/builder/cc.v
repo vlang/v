@@ -377,7 +377,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 	if v.pref.os == .windows {
-		ccoptions.post_args << '-municode'
+		ccoptions.post_args << v.get_subsystem_flag()
 	}
 	cflags := v.get_os_cflags()
 
@@ -811,6 +811,14 @@ fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
 	}
 }
 
+fn (mut b Builder) get_subsystem_flag() string {
+	return match b.pref.subsystem {
+		.auto { '-municode' }
+		.console { '-municode -mconsole' }
+		.windows { '-municode -mwindows' }
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	b.setup_ccompiler_options(b.pref.ccompiler)
 	b.build_thirdparty_obj_files()
@@ -1014,8 +1022,7 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << debug_options
 
 	all_args << args
-
-	all_args << '-municode'
+	all_args << c.get_subsystem_flag()
 	all_args << c.ccoptions.linker_flags
 	all_args << '${c.pref.ldflags}'
 	c.dump_c_options(all_args)
