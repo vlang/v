@@ -354,6 +354,9 @@ pub fn (mut v Builder) cc_msvc() {
 	if env_ldflags != '' {
 		a << env_ldflags
 	}
+	if v.pref.ldflags != '' {
+		a << v.pref.ldflags.trim_space()
+	}
 	v.dump_c_options(a)
 	args := '\xEF\xBB\xBF' + a.join(' ')
 	// write args to a file so that we dont smash createprocess
