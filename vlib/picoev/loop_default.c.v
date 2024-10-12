@@ -68,7 +68,7 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 		tv_sec:  u64(max_wait_in_sec)
 		tv_usec: 0
 	}
-	r := C.@select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
+	r := C.select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)
 	if r == -1 {
 		// timeout
 		return -1

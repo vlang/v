@@ -316,8 +316,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut type_sym := p.table.sym(rec.typ)
 	mut name_pos := p.tok.pos()
 	mut static_type_pos := p.tok.pos()
-	if p.tok.kind == .name {
-		mut check_name := ''
+	if p.tok.kind == .name || is_ident_name(p.tok.lit) {
+		mut check_name := p.tok.lit
 		// TODO: high order fn
 		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`

@@ -274,8 +274,8 @@ fn (mut s UdpSocket) close() ! {
 	return close(s.handle)
 }
 
-fn (mut s UdpSocket) @select(test Select, timeout time.Duration) !bool {
-	return @select(s.handle, test, timeout)
+fn (mut s UdpSocket) select(test Select, timeout time.Duration) !bool {
+	return select(s.handle, test, timeout)
 }
 
 fn (s &UdpSocket) remote() !Addr {

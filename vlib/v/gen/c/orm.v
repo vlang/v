@@ -22,8 +22,8 @@ enum SqlExprSide {
 // 	select from User
 // }
 // ```
-// cgen will write calling the function `@select` of the needed database.
-// If you use sqlite, it calls `@select` from `vlib/db/sqlite/orm.v`
+// cgen will write calling the function `select` of the needed database.
+// If you use sqlite, it calls `select` from `vlib/db/sqlite/orm.v`
 
 // sql_select_expr writes C code that calls ORM functions for selecting objects
 // from the database, which is used by the `select` query.

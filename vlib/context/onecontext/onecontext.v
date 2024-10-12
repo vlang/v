@@ -61,7 +61,7 @@ pub fn (octx OneContext) done() chan int {
 }
 
 pub fn (mut octx OneContext) err() IError {
-	octx.err_mutex.@lock()
+	octx.err_mutex.lock()
 	defer {
 		octx.err_mutex.unlock()
 	}
@@ -102,7 +102,7 @@ pub fn (octx OneContext) str() string {
 
 pub fn (mut octx OneContext) cancel(err IError) {
 	octx.cancel_fn()
-	octx.err_mutex.@lock()
+	octx.err_mutex.lock()
 	octx.err = err
 	octx.err_mutex.unlock()
 	if !octx.done.closed {

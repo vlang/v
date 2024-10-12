@@ -72,7 +72,7 @@ pub fn (mut m RwMutex) init() {
 	C.InitializeSRWLock(&m.mx)
 }
 
-pub fn (mut m Mutex) @lock() {
+pub fn (mut m Mutex) lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
 }
 
@@ -94,11 +94,11 @@ pub fn (mut m Mutex) unlock() {
 }
 
 // RwMutex has separate read- and write locks
-pub fn (mut m RwMutex) @rlock() {
+pub fn (mut m RwMutex) rlock() {
 	C.AcquireSRWLockShared(&m.mx)
 }
 
-pub fn (mut m RwMutex) @lock() {
+pub fn (mut m RwMutex) lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
 }
 

@@ -3,8 +3,8 @@ module mysql
 import orm
 import time
 
-// @select is used internally by V's ORM for processing `SELECT ` queries.
-pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+// select is used internally by V's ORM for processing `SELECT ` queries.
+pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)

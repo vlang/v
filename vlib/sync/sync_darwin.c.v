@@ -115,10 +115,10 @@ pub fn (mut m RwMutex) init() {
 	C.pthread_rwlock_init(&m.mutex, &a.attr)
 }
 
-// @lock locks the mutex instance (`lock` is a keyword).
+// lock locks the mutex instance (`lock` is a keyword).
 // If the mutex was already locked, it will block, till it is unlocked.
 @[inline]
-pub fn (mut m Mutex) @lock() {
+pub fn (mut m Mutex) lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
@@ -130,7 +130,7 @@ pub fn (mut m Mutex) try_lock() bool {
 }
 
 // unlock unlocks the mutex instance. The mutex is released, and one of
-// the other threads, that were blocked, because they called @lock can continue.
+// the other threads, that were blocked, because they called lock can continue.
 @[inline]
 pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
@@ -146,25 +146,25 @@ pub fn (mut m Mutex) destroy() {
 	}
 }
 
-// @rlock locks the given RwMutex instance for reading.
+// rlock locks the given RwMutex instance for reading.
 // If the mutex was already locked, it will block, and will try to get the lock,
 // once the lock is released by another thread calling unlock.
 // Once it succeds, it returns.
 // Note: there may be several threads that are waiting for the same lock.
 // Note: RwMutex has separate read and write locks.
 @[inline]
-pub fn (mut m RwMutex) @rlock() {
+pub fn (mut m RwMutex) rlock() {
 	C.pthread_rwlock_rdlock(&m.mutex)
 }
 
-// @lock locks the given RwMutex instance for writing.
+// lock locks the given RwMutex instance for writing.
 // If the mutex was already locked, it will block, till it is unlocked,
 // then it will try to get the lock, and if it can, it will return, otherwise
 // it will continue waiting for the mutex to become unlocked.
 // Note: there may be several threads that are waiting for the same lock.
 // Note: RwMutex has separate read and write locks.
 @[inline]
-pub fn (mut m RwMutex) @lock() {
+pub fn (mut m RwMutex) lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
 }
 

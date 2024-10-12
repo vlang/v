@@ -11,7 +11,7 @@ const run_time = 10 * time.second
 fn request(mut mu sync.Mutex, count &int) {
 	for {
 		http.get('http://vlang.io/utc_now') or { panic(err) }
-		mu.@lock()
+		mu.lock()
 		unsafe {
 			(*count)++
 		}

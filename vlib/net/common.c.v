@@ -106,7 +106,7 @@ pub fn close(handle int) ! {
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) !bool {
+fn select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -130,13 +130,13 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 
 	match test {
 		.read {
-			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+			socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 		}
 		.write {
-			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+			socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 		}
 		.except {
-			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+			socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 		}
 	}
 
@@ -149,7 +149,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	infinite := deadline.unix() == 0
 	for infinite || time.now() <= deadline {
 		timeout := if infinite { infinite_timeout } else { deadline - time.now() }
-		ready := @select(handle, test, timeout) or {
+		ready := select(handle, test, timeout) or {
 			if err.code() == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
 				continue

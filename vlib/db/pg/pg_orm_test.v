@@ -97,7 +97,7 @@ fn test_pg_orm() {
 		data:   [orm.string_to_primitive('Louis'), orm.int_to_primitive(101)]
 	}) or { panic(err) }
 
-	res := db.@select(orm.SelectConfig{
+	res := db.select(orm.SelectConfig{
 		table:      'Test'
 		is_count:   false
 		has_where:  true

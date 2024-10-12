@@ -23,12 +23,12 @@ fn MockDB.new() &MockDB {
 	}
 }
 
-fn (db MockDB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+fn (db MockDB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	mut st := db.st
 	st.last = orm.orm_select_gen(config, '`', false, '?', 5, where)
 	st.data = data.data
 	st.where = where.data
-	return db.db.@select(config, data, where)
+	return db.db.select(config, data, where)
 }
 
 fn (db MockDB) insert(table string, data orm.QueryData) ! {

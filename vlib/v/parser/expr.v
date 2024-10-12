@@ -152,7 +152,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			node = p.match_expr()
 		}
 		.key_select {
-			node = p.select_expr()
+			if p.peek_tok.kind in [.lpar, .lsbr] {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = p.select_expr()
+			}
 		}
 		.key_nil {
 			node = ast.Nil{
@@ -205,7 +209,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_lock, .key_rlock {
-			node = p.lock_expr()
+			if p.peek_tok.kind in [.lpar, .lsbr] {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = p.lock_expr()
+			}
 		}
 		.lsbr {
 			if p.expecting_type {
