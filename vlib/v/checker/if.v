@@ -363,7 +363,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
-			c.smartcast_if_conds(mut branch.cond, mut branch.scope)
+			c.smartcast_if_conds(mut branch.cond, mut branch.scope, node)
 			if node_is_expr {
 				c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
 			} else {
@@ -535,11 +535,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	return node.typ
 }
 
-fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
+fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, control_expr ast.Expr) {
 	if mut node is ast.InfixExpr {
 		if node.op == .and {
-			c.smartcast_if_conds(mut node.left, mut scope)
-			c.smartcast_if_conds(mut node.right, mut scope)
+			c.smartcast_if_conds(mut node.left, mut scope, control_expr)
+			c.smartcast_if_conds(mut node.right, mut scope, control_expr)
 		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
 			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
 				node.left_type = c.comptime.get_comptime_var_type(node.left)
@@ -624,7 +624,26 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 			}
 		}
 	} else if mut node is ast.Likely {
-		c.smartcast_if_conds(mut node.expr, mut scope)
+		c.smartcast_if_conds(mut node.expr, mut scope, control_expr)
+	} else if control_expr is ast.IfExpr && mut node is ast.NodeError { // IfExpr else branch
+		if control_expr.branches.len != 2 {
+			return
+		}
+		mut first_cond := control_expr.branches[0].cond
+		// handles unwrapping on if var == none { /**/ } else { /*unwrapped var*/ }
+		if mut first_cond is ast.InfixExpr {
+			if first_cond.left is ast.Ident && first_cond.op == .eq && first_cond.right is ast.None {
+				if first_cond.left is ast.Ident
+					&& c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
+					first_cond.left_type = c.comptime.get_comptime_var_type(first_cond.left)
+					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
+						scope, true)
+				} else {
+					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
+						scope, false)
+				}
+			}
+		}
 	}
 }
 
