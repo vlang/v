@@ -50,6 +50,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.definitions.write_string('#define _v_malloc GC_MALLOC\n')
 		return
 	}
+
 	if g.pref.parallel_cc {
 		if node.is_anon {
 			g.write('static ')
@@ -64,6 +65,16 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	defer {
 		g.is_direct_array_access = prev_is_direct_array_access
 	}
+
+	// handle `@[c_extern] fn C.some_name() int` declarations:
+	old_inside_c_extern := g.inside_c_extern
+	defer {
+		g.inside_c_extern = old_inside_c_extern
+	}
+	if node.language == .c && node.attrs.contains('c_extern') {
+		g.inside_c_extern = true
+	}
+
 	g.gen_attrs(node.attrs)
 	mut skip := false
 	pos := g.out.len
@@ -133,7 +144,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
 	if node.language == .c {
-		return
+		if !g.inside_c_extern {
+			return
+		}
 	}
 
 	old_is_vlines_enabled := g.is_vlines_enabled
@@ -260,7 +273,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	g.last_fn_c_name = impl_fn_name
 
-	if node.trace_fns.len > 0 {
+	if !g.inside_c_extern && node.trace_fns.len > 0 {
 		for trace_fn, call_fn in node.trace_fns {
 			if trace_fn in g.trace_fn_definitions {
 				continue
@@ -345,6 +358,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				g.write('${type_name} ${impl_fn_name}(')
 			}
 		}
+	} else if g.inside_c_extern {
+		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${name.all_after_first('C__')}('
+		g.definitions.write_string(c_extern_fn_header)
 	} else {
 		if !(node.is_pub || g.pref.is_debug) {
 			// Private functions need to marked as static so that they are not exportable in the
@@ -380,7 +396,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		&& !g.pref.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // NO BODY')
-		g.writeln(');')
+		if !g.inside_c_extern {
+			g.writeln(');')
+		}
 		return
 	}
 	if node.params.len == 0 {
@@ -690,7 +708,9 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 	mut heap_promoted := []bool{}
 	if params.len == 0 {
 		// in C, `()` is untyped, unlike `(void)`
-		g.write('void')
+		if !g.inside_c_extern {
+			g.write('void')
+		}
 	}
 	/// mut is_implicit_ctx := false
 	// Veb actions defined by user can have implicit context
@@ -702,7 +722,9 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		//}
 		if g.cur_fn.return_type == typ_veb_result {
 			// is_implicit_ctx = true
-			g.write('/*veb*/')
+			if !g.inside_c_extern {
+				g.write('/*veb*/')
+			}
 		}
 	}
 	*/
@@ -721,10 +743,14 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
-			g.write('${g.typ(func.return_type)} (*${caname})(')
+			if !g.inside_c_extern {
+				g.write('${g.typ(func.return_type)} (*${caname})(')
+			}
 			g.definitions.write_string('${g.typ(func.return_type)} (*${caname})(')
 			g.fn_decl_params(func.params, unsafe { nil }, func.is_variadic, func.is_c_variadic)
-			g.write(')')
+			if !g.inside_c_extern {
+				g.write(')')
+			}
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
@@ -748,14 +774,18 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 				''
 			}
 			s := '${const_prefix}${param_type_name} ${var_name_prefix}${caname}'
-			g.write(s)
+			if !g.inside_c_extern {
+				g.write(s)
+			}
 			g.definitions.write_string(s)
 			fparams << caname
 			fparamtypes << param_type_name
 			heap_promoted << heap_prom
 		}
 		if i < params.len - 1 {
-			g.write(', ')
+			if !g.inside_c_extern {
+				g.write(', ')
+			}
 			g.definitions.write_string(', ')
 		}
 
@@ -765,7 +795,9 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		//}
 	}
 	if (g.pref.translated && is_variadic) || is_c_variadic {
-		g.write(', ... ')
+		if !g.inside_c_extern {
+			g.write(', ... ')
+		}
 		g.definitions.write_string(', ... ')
 	}
 	return fparams, fparamtypes, heap_promoted

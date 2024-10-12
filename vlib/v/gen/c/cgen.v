@@ -145,6 +145,7 @@ mut:
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
 	inside_dump_fn            bool
+	inside_c_extern           bool // inside `@[c_extern] fn C.somename(param1 int, param2 voidptr, param3 &char) &char`
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
@@ -2797,6 +2798,9 @@ fn ctoslit(s string) string {
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 	if g.pref.skip_unused {
+		return
+	}
+	if g.inside_c_extern {
 		return
 	}
 	for attr in attrs {
