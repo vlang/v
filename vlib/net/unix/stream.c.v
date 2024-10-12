@@ -407,8 +407,8 @@ fn (mut s StreamSocket) close() ! {
 	return close(s.handle)
 }
 
-fn (mut s StreamSocket) @select(test Select, timeout time.Duration) !bool {
-	return @select(s.handle, test, timeout)
+fn (mut s StreamSocket) select(test Select, timeout time.Duration) !bool {
+	return select(s.handle, test, timeout)
 }
 
 // set_option sets an option on the socket
@@ -462,7 +462,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 			if ecode == int(net.error_ewouldblock) {
 				// The socket is nonblocking and the connection cannot be completed
 				// immediately. Wait till the socket is ready to write
-				write_result := s.@select(.write, connect_timeout)!
+				write_result := s.select(.write, connect_timeout)!
 				err := 0
 				len := sizeof(err)
 				// determine whether connect() completed successfully (SO_ERROR is zero)

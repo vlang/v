@@ -2,14 +2,14 @@ import sync
 
 fn main() {
 	mut mutex := sync.new_mutex()
-	mutex.@lock()
+	mutex.lock()
 	mutex.unlock()
 	mutex.destroy()
 
 	mut rwmutex := sync.new_rwmutex()
-	rwmutex.@rlock()
+	rwmutex.rlock()
 	rwmutex.unlock()
-	rwmutex.@lock()
+	rwmutex.lock()
 	rwmutex.unlock()
 	rwmutex.destroy()
 

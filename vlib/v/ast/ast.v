@@ -1395,7 +1395,7 @@ pub mut:
 pub struct EnumField {
 pub:
 	name             string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
-	source_name      string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
+	source_name      string // The name in the source, for example `lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos              token.Pos
 	pre_comments     []Comment // comment before Enumfield
 	comments         []Comment // comment after Enumfield in the same line

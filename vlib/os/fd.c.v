@@ -80,7 +80,7 @@ pub:
 	tv_usec u64
 }
 
-fn C.@select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
+fn C.select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
 
 // These are C macros, but from the V's point of view, can be treated as C functions:
 fn C.FD_ZERO(fdset &C.fd_set)
@@ -97,7 +97,7 @@ pub fn fd_is_pending(fd int) bool {
 		tv_sec:  0
 		tv_usec: 0
 	}
-	res := C.@select(fd + 1, &read_set, C.NULL, C.NULL, &ts)
+	res := C.select(fd + 1, &read_set, C.NULL, C.NULL, &ts)
 	if res > 0 {
 		if C.FD_ISSET(fd, &read_set) != 0 {
 			return true
