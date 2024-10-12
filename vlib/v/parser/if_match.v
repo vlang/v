@@ -235,12 +235,7 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 	name_tok := if is_option { p.peek_tok } else { p.tok }
 	next_tok_kind := if is_option { p.peek_token(2).kind } else { p.peek_tok.kind }
 	next_next_idx := if is_option { 3 } else { 2 }
-	next_next_tok := if is_option {
-		p.peek_token(next_next_idx)
-	} else {
-		p.peek_token(next_next_idx)
-	}
-
+	next_next_tok := p.peek_token(next_next_idx)
 	return name_tok.kind == .name && !(name_tok.lit == 'C' && next_tok_kind == .dot)
 		&& (((ast.builtin_type_names_matcher.matches(name_tok.lit) || name_tok.lit[0].is_capital())
 		&& next_tok_kind != .lpar && !(next_tok_kind == .dot && next_next_tok.kind == .name
