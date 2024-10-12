@@ -1278,6 +1278,15 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
 						expr)
 				}
+			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
+				with_modifier_kind := if expr.left_type.has_flag(.option) {
+					'an Option'
+				} else {
+					'a Result'
+				}
+				with_modifier := if expr.left_type.has_flag(.option) { '?' } else { '!' }
+				c.error('field `${expr.left.field_name}` is ${with_modifier_kind}, so it should have either an `or {}` block, or `${with_modifier}` at the end',
+					expr.left.pos)
 			}
 		}
 		ast.CastExpr {
