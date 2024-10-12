@@ -123,10 +123,13 @@ fn listen(config Config) !int {
 		// epoll socket options
 		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
 		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)))!
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
-			sizeof(int)))!
-		queue_len := max_queue
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)))!
+		$if !support_wsl1 ? {
+			net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
+				sizeof(int)))!
+			queue_len := max_queue
+			net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len,
+				sizeof(int)))!
+		}
 	}
 
 	// addr settings
