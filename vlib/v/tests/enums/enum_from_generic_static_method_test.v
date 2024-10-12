@@ -1,9 +1,9 @@
 enum MyEnum {
 	abc
 	def
-	@lock
+	lock
 	xyz
-	@if
+	if
 }
 
 @[flag]
@@ -38,8 +38,8 @@ fn test_enum_from_string() {
 	y := MyFlaggedEnum.from('xyz')!
 	dump(y)
 	assert y == .xyz
-	assert MyEnum.from('if')! == MyEnum.@if
-	assert MyEnum.from('lock')! == MyEnum.@lock
+	assert MyEnum.from('if')! == MyEnum.if
+	assert MyEnum.from('lock')! == MyEnum.lock
 	if z := MyEnum.from('unknown') {
 		assert false
 	} else {

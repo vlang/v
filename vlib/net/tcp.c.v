@@ -145,7 +145,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		// The new socket returned by accept() behaves differently in blocking mode and needs special treatment.
 		mut has_data := true
 		if c.is_blocking {
-			if ok := @select(c.sock.handle, .read, 1) {
+			if ok := select(c.sock.handle, .read, 1) {
 				has_data = ok
 			} else {
 				false
@@ -392,7 +392,7 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 		for {
 			code := error_code()
 			if code in [int(error_einprogress), int(error_ewouldblock), int(error_eagain), C.EINTR] {
-				@select(s.handle, .read, connect_timeout)!
+				select(s.handle, .read, connect_timeout)!
 				res = C.listen(s.handle, options.backlog)
 				if res == 0 {
 					break
@@ -655,7 +655,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			// determine whether connect() completed successfully (SO_ERROR is zero) or
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
-			write_result := @select(s.handle, .write, connect_timeout)!
+			write_result := select(s.handle, .write, connect_timeout)!
 			err := 0
 			len := sizeof(err)
 			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)

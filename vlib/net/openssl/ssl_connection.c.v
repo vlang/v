@@ -384,7 +384,7 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) !bool {
+fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
@@ -411,13 +411,13 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		mut res := -1
 		match test {
 			.read {
-				res = net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+				res = net.socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 			}
 			.write {
-				res = net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+				res = net.socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 			}
 			.except {
-				res = net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 			}
 		}
 		if res < 0 {
@@ -443,7 +443,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 
 // wait_for wraps the common wait code
 fn wait_for(handle int, what Select, timeout time.Duration) ! {
-	ready := @select(handle, what, timeout)!
+	ready := select(handle, what, timeout)!
 	if ready {
 		return
 	}

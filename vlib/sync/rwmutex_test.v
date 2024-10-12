@@ -7,7 +7,7 @@ pub mut:
 }
 
 fn write_10000(mut co Counter, mut mx sync.RwMutex) {
-	mx.@lock()
+	mx.lock()
 	co.i = 10000
 	mx.unlock()
 }
@@ -15,14 +15,14 @@ fn write_10000(mut co Counter, mut mx sync.RwMutex) {
 fn test_rwmutex() {
 	mut co := &Counter{10086}
 	mut mx := sync.new_rwmutex()
-	mx.@lock()
+	mx.lock()
 	co.i = 888
 	th1 := spawn write_10000(mut co, mut mx)
 	mx.unlock() // after mx unlock, thread write_10000 can continue
 	th1.wait()
 	assert co.i == 10000
 
-	mx.@rlock()
+	mx.rlock()
 	th2 := spawn write_10000(mut co, mut mx) // write_10000 will be blocked
 	co.i = 999 // for demo purpose, don't modify data in rlock!
 	time.sleep(1 * time.millisecond)
@@ -43,7 +43,7 @@ fn test_try_lock_rwmutex() {
 	mut mx := sync.new_rwmutex()
 
 	// try_rlock will always fail when mx locked
-	mx.@lock()
+	mx.lock()
 	try_fail_reading1 := mx.try_rlock()
 	try_fail_writing1 := mx.try_wlock()
 	assert try_fail_reading1 == false

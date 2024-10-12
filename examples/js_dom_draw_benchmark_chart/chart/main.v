@@ -17,9 +17,9 @@ mut:
 }
 
 struct FrameworkBenchmarkResponse {
-	insert  []int
-	@select []int
-	update  []int
+	insert []int
+	select []int
+	update []int
 }
 
 struct FrameworkPlatform {
@@ -125,9 +125,9 @@ fn insert_framework_benchmark_times() !FrameworkPlatform {
 
 fn select_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
-		v_sqlite_memory: v_sqlite_memory()!.@select
-		// v_sqlite_file: v_sqlite_file()!.@select
-		typescript_sqlite_memory: typescript_sqlite_memory()!.@select
+		v_sqlite_memory: v_sqlite_memory()!.select
+		// v_sqlite_file: v_sqlite_file()!.select
+		typescript_sqlite_memory: typescript_sqlite_memory()!.select
 	}
 
 	return numbers
@@ -136,7 +136,7 @@ fn select_framework_benchmark_times() !FrameworkPlatform {
 fn update_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
 		v_sqlite_memory: v_sqlite_memory()!.update
-		// v_sqlite_file: v_sqlite_file()!.@select
+		// v_sqlite_file: v_sqlite_file()!.select
 		typescript_sqlite_memory: typescript_sqlite_memory()!.update
 	}
 
@@ -162,9 +162,9 @@ fn v_sqlite_file() !FrameworkBenchmarkResponse {
 	// res := http.get(url) or { panic(err) }
 	// framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
 	framework_benchmark_response := FrameworkBenchmarkResponse{
-		insert:  []
-		@select: []
-		update:  []
+		insert: []
+		select: []
+		update: []
 	}
 	return framework_benchmark_response
 }

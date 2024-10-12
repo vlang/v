@@ -17,9 +17,9 @@ mut:
 }
 
 struct Response {
-	insert  []int
-	@select []int
-	update  []int
+	insert []int
+	select []int
+	update []int
 }
 
 fn main() {
@@ -93,9 +93,9 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	} or { panic(err) }
 
 	response := Response{
-		insert:  insert_stopwatchs
-		@select: select_stopwatchs
-		update:  update_stopwatchs
+		insert: insert_stopwatchs
+		select: select_stopwatchs
+		update: update_stopwatchs
 	}
 	return app.json(response)
 }
@@ -103,9 +103,9 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 @['/sqlite-file/:count']
 pub fn (mut app App) sqlite_file(count int) vweb.Result {
 	response := Response{
-		insert:  []
-		@select: []
-		update:  []
+		insert: []
+		select: []
+		update: []
 	}
 	return app.json(response)
 }
@@ -113,9 +113,9 @@ pub fn (mut app App) sqlite_file(count int) vweb.Result {
 @['/postgres/:count']
 pub fn (mut app App) postgres(count int) vweb.Result {
 	response := Response{
-		insert:  []
-		@select: []
-		update:  []
+		insert: []
+		select: []
+		update: []
 	}
 	return app.json(response)
 }
@@ -123,9 +123,9 @@ pub fn (mut app App) postgres(count int) vweb.Result {
 @['/mysql/:count']
 pub fn (mut app App) mysql(count int) vweb.Result {
 	response := Response{
-		insert:  []
-		@select: []
-		update:  []
+		insert: []
+		select: []
+		update: []
 	}
 	return app.json(response)
 }

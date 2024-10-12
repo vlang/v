@@ -3,12 +3,12 @@ module sqlite
 import orm
 import time
 
-// @select is used internally by V's ORM for processing `SELECT ` queries
-pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+// select is used internally by V's ORM for processing `SELECT ` queries
+pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	// 1. Create query and bind necessary data
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	$if trace_sqlite ? {
-		eprintln('> @select query: "${query}"')
+		eprintln('> select query: "${query}"')
 	}
 	stmt := db.new_init_stmt(query)!
 	defer {
