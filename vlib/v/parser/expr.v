@@ -48,13 +48,17 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
-			ident := p.ident(ast.Language.v)
-			node = ident
-			if p.peek_tok.kind != .assign && (p.inside_if_cond || p.inside_match) {
-				p.mark_var_as_used(ident.name)
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				ident := p.ident(ast.Language.v)
+				node = ident
+				if p.peek_tok.kind != .assign && (p.inside_if_cond || p.inside_match) {
+					p.mark_var_as_used(ident.name)
+				}
+				p.add_defer_var(ident)
+				p.is_stmt_ident = is_stmt_ident
 			}
-			p.add_defer_var(ident)
-			p.is_stmt_ident = is_stmt_ident
 		}
 		.name, .question {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
@@ -131,28 +135,44 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_go, .key_spawn {
-			if (p.pref.use_coroutines || p.pref.is_fmt) && p.tok.kind == .key_go {
-				mut go_expr := p.go_expr()
-				go_expr.is_expr = true
-				node = go_expr
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
 			} else {
-				mut spawn_expr := p.spawn_expr()
-				spawn_expr.is_expr = true
-				node = spawn_expr
+				if (p.pref.use_coroutines || p.pref.is_fmt) && p.tok.kind == .key_go {
+					mut go_expr := p.go_expr()
+					go_expr.is_expr = true
+					node = go_expr
+				} else {
+					mut spawn_expr := p.spawn_expr()
+					spawn_expr.is_expr = true
+					node = spawn_expr
+				}
 			}
 		}
 		.key_true, .key_false {
-			node = ast.BoolLiteral{
-				val: p.tok.kind == .key_true
-				pos: p.tok.pos()
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = ast.BoolLiteral{
+					val: p.tok.kind == .key_true
+					pos: p.tok.pos()
+				}
+				p.next()
 			}
-			p.next()
 		}
 		.key_match {
-			node = p.match_expr()
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = p.match_expr()
+			}
 		}
 		.key_select {
-			node = p.select_expr()
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = p.select_expr()
+			}
 		}
 		.key_nil {
 			node = ast.Nil{
@@ -177,7 +197,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_if {
-			node = p.if_expr(false)
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = p.if_expr(false)
+			}
 		}
 		.key_unsafe {
 			// unsafe {
@@ -205,7 +229,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 		.key_lock, .key_rlock {
-			node = p.lock_expr()
+			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+				node = p.call_expr(p.language, p.mod)
+			} else {
+				node = p.lock_expr()
+			}
 		}
 		.lsbr {
 			if p.expecting_type {
