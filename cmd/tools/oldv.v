@@ -4,24 +4,24 @@ import scripting
 import vgit
 
 const tool_version = '0.0.4'
-const tool_description = '  Checkout an old V and compile it as it was on specific commit.
-|     This tool is useful, when you want to discover when something broke.
-|     It is also useful, when you just want to experiment with an older historic V.
+const tool_description = '  Checkout an old version of V and compile it as it was on a specific commit.
+|     This tool is useful when you want to discover when something broke.
+|     It is also useful when you just want to experiment with an older, historic V.
 |
-|     The VCOMMIT argument can be a git commitish like HEAD or master and so on.
-|     When oldv is used with git bisect, you probably want to give HEAD. For example:
+|     The VCOMMIT argument can be a git commit object like HEAD or master and so on.
+|     When oldv is used with git bisect, you probably want to use HEAD. For example:
 |          git bisect start
 |          git bisect bad
 |          git checkout known_good_commit
 |          git bisect good
-|              ## Now git will automatically checkout a middle commit between the bad and the good
-|          cmd/tools/oldv --bisect --command="run commands in oldv folder, to verify if the commit is good or bad"
-|              ## See what the result is, and either do: ...
+|              ## git will automatically checkout a middle commit between the bad and the good
+|          cmd/tools/oldv --bisect --command="run commands in oldv folder, to verify if the commit is good or bad
+|              ## Examine the results, and either do: ...
 |          git bisect good
 |              ## ... or do:
 |          git bisect bad
-|              ## Now you just repeat the above steps, each time running oldv with the same command, then mark the result as good or bad,
-|              ## until you find the commit, where the problem first occurred.
+|              ## Repeat the above steps, each time running oldv with the same command, then mark the result as good
+|              ## or bad until you find the commit where the problem first occurred.
 |              ## When you finish, do not forget to do:
 |          git bisect reset'.strip_margin()
 
