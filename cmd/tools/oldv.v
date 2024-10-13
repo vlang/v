@@ -8,7 +8,7 @@ const tool_description = '  Checkout an old version of V and compile it as it wa
 |     This tool is useful when you want to discover when something broke.
 |     It is also useful when you just want to experiment with an older, historic V.
 |
-|     The VCOMMIT argument can be a git commit name like HEAD or master and so on.
+|     The VCOMMIT argument can be a git commit object like HEAD or master and so on.
 |     When oldv is used with git bisect, you probably want to use HEAD. For example:
 |          git bisect start
 |          git bisect bad
