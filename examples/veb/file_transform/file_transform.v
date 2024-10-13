@@ -13,7 +13,7 @@ pub struct App {
 
 fn main() {
 	mut app := &App{}
-	veb.run[App, Context](mut app, 8080)
+	veb.run[App, Context](mut app, port)
 }
 
 pub fn (mut app App) index() veb.Result {
