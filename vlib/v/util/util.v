@@ -295,13 +295,13 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 					break
 				} else {
 					if tool_name == 'vup' {
+						eprintln('Cannot recompile the new version of `vup`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 						if os.exists(tool_exe) {
 							// Compilation failed, but we still have an already existing old `vup.exe`, that *probably* works.
 							// It is better to pretend the compilation succeeded, and try the old executable, then let it fail
 							// on its own, if it can not work too (it will produce a nicer diagnostic message), than to fail here
 							// right away, just because the new source is too breaking, for the older V frontend process,
 							// that is currently running :-|
-							eprintln('Cannot recompile the new version of `vup`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 							eprintln('Trying an already existing old version of the `vup` tool instead...')
 							break
 						} else {
