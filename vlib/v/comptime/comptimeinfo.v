@@ -287,6 +287,9 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 
 pub fn (mut ct ComptimeInfo) unwrap_generic_expr(expr ast.Expr, default_typ ast.Type) ast.Type {
 	match expr {
+		ast.StringLiteral, ast.StringInterLiteral {
+			return ast.string_type
+		}
 		ast.ParExpr {
 			return ct.unwrap_generic_expr(expr.expr, default_typ)
 		}

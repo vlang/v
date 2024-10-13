@@ -75,7 +75,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		if fmt == `_` { // set default representation for type if none has been given
 			fmt = c.get_default_fmt(ftyp, typ)
 			if fmt == `_` {
-				if typ != ast.void_type {
+				if typ != ast.void_type && !(c.inside_lambda && typ.has_flag(.generic)) {
 					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
 						node.fmt_poss[i])
 				}
