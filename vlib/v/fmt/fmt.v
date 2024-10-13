@@ -2126,6 +2126,9 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 			} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
 				name = 'JS.' + name
 			}
+			if tsym.language == .c {
+				name = 'C.' + name
+			}
 			f.write(name)
 			f.mark_types_import_as_used(concrete_type)
 			if i != node.concrete_types.len - 1 {
