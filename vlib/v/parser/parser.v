@@ -2322,7 +2322,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	if is_volatile {
 		p.next()
 	}
-	if p.tok.kind != .name {
+	if p.tok.kind !in [.name, .key_type] {
 		if is_mut || is_static || is_volatile {
 			p.error_with_pos('the `${modifier_kind}` keyword is invalid here', mut_pos)
 		} else {

@@ -519,8 +519,14 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.next()
 					return p.struct_init('', .anon, false)
 				}
-			}
-			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
+			} else if p.tok.kind == .key_type {
+				// variable name: type
+				ident := p.ident(ast.Language.v)
+				node = ident
+				p.mark_var_as_used(ident.name)
+				p.add_defer_var(ident)
+				p.is_stmt_ident = is_stmt_ident
+			} else if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
 				return error('none')
 				// return p.unexpected(prepend_msg: 'invalid expression: ')
