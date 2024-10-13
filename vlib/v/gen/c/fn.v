@@ -10,6 +10,9 @@ import v.util
 const c_fn_name_escape_seq = ['[', '_T_', ']', '']
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
+	if node.is_c_extern {
+		return true
+	}
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
 		fkey := node.fkey()
@@ -71,7 +74,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	defer {
 		g.inside_c_extern = old_inside_c_extern
 	}
-	if node.language == .c && node.attrs.contains('c_extern') {
+	if node.language == .c && node.is_c_extern {
 		g.inside_c_extern = true
 	}
 

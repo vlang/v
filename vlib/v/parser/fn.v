@@ -196,6 +196,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_noreturn := false
 	mut is_ctor_new := false
 	mut is_c2v_variadic := false
+	mut is_c_extern := false
 	mut is_markused := false
 	mut is_expand_simple_interpolation := false
 	mut comments := []ast.Comment{}
@@ -236,6 +237,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			'markused' {
 				is_markused = true
+			}
+			'c_extern' {
+				is_c_extern = true
 			}
 			'windows_stdcall' {
 				p.note_with_pos('the tag [windows_stdcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: stdcall]` instead',
@@ -662,6 +666,7 @@ run them via `v file.v` instead',
 		is_pub:             is_pub
 		is_variadic:        is_variadic
 		is_c_variadic:      is_c_variadic
+		is_c_extern:        is_c_extern
 		is_main:            is_main
 		is_test:            is_test
 		is_keep_alive:      is_keep_alive

@@ -560,6 +560,7 @@ pub:
 	is_deprecated         bool
 	is_pub                bool
 	is_c_variadic         bool
+	is_c_extern           bool
 	is_variadic           bool
 	is_anon               bool
 	is_noreturn           bool        // true, when @[noreturn] is used on a fn
