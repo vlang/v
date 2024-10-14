@@ -1331,7 +1331,7 @@ fn (mut g Gen) write_shareds() {
 		g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
 		g.shared_functions.writeln('\treturn dest;')
 		g.shared_functions.writeln('}')
-		g.typedefs.writeln('typedef struct ${sh_typ} ${sh_typ}; ///shared')
+		g.typedefs.writeln('typedef struct ${sh_typ} ${sh_typ};')
 	}
 }
 
