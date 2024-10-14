@@ -518,7 +518,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.writeln('if (${tmp_opt_ptr}) {')
 			g.writeln('\t*((${val_type_str}*)&${tmp_opt}.data) = *((${val_type_str}*)${tmp_opt_ptr});')
 			g.writeln('} else {')
-			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = _v_error(_SLIT("array index out of range"));')
+			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = _v_error(_SLIT("map key does not exist"));')
 			g.writeln('}')
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, val_type)
