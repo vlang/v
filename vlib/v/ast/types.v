@@ -159,7 +159,6 @@ pub mut:
 pub struct Struct {
 pub:
 	attrs       []Attr
-	scope       &Scope = unsafe { nil }
 	scoped_name string
 pub mut:
 	embeds         []Type
