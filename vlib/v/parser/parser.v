@@ -679,8 +679,12 @@ fn (mut p Parser) check_js_name() string {
 	return name
 }
 
+@[direct_array_access]
 fn is_ident_name(name string) bool {
-	if name.len == 0 || !util.name_char_table[name[0]] {
+	if name.len == 0 {
+		return false
+	}
+	if !util.name_char_table[name[0]] {
 		return false
 	}
 	for i in 1 .. name.len {
