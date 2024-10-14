@@ -125,6 +125,7 @@ pub fn (node &TrieNode) show(level int) {
 
 // add_word adds another `word` and `value` pair into the trie, starting from `node` (recursively).
 // `word_idx` is just used as an accumulator, and starts from 0 at the root of the tree.
+@[direct_array_access]
 pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 	first := u8(word[word_idx] or {
 		node.value = value
