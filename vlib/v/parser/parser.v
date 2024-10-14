@@ -2617,7 +2617,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		is_known_var := p.scope.known_var(p.tok.lit)
 		if is_known_var {
 			p.mark_var_as_used(p.tok.lit)
-			return p.ident(ast.Language.v)
+			return p.ident(.v)
 		} else {
 			type_pos := p.tok.pos()
 			typ := p.parse_type()

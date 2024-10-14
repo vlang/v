@@ -51,7 +51,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 				node = p.call_expr(p.language, p.mod)
 			} else {
-				ident := p.ident(ast.Language.v)
+				ident := p.ident(.v)
 				node = ident
 				if p.peek_tok.kind != .assign && (p.inside_if_cond || p.inside_match) {
 					p.mark_var_as_used(ident.name)
@@ -521,7 +521,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 			} else if p.tok.kind == .key_type {
 				// variable name: type
-				ident := p.ident(ast.Language.v)
+				ident := p.ident(.v)
 				node = ident
 				p.mark_var_as_used(ident.name)
 				p.add_defer_var(ident)
@@ -944,7 +944,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 			if p.tok.kind == .eof {
 				break
 			}
-			ident := p.ident(ast.Language.v)
+			ident := p.ident(.v)
 			if p.scope.known_var(ident.name) {
 				p.error_with_pos('redefinition of parameter `${ident.name}`', ident.pos)
 			}
