@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_scope_duplicated_err.vv:9:10: error: cannot register struct `Foobar`, another type with this name exists
+    7 | 
+    8 |     if true {
+    9 |         struct Foobar {
+      |                ~~~~~~
+   10 |             foo int
+   11 |             bar int
