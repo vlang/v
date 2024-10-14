@@ -2326,7 +2326,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	if is_volatile {
 		p.next()
 	}
-	if p.tok.kind != .name {
+	if p.tok.kind !in [.name, .key_type] {
 		if is_mut || is_static || is_volatile {
 			p.error_with_pos('the `${modifier_kind}` keyword is invalid here', mut_pos)
 		} else {
@@ -2621,7 +2621,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		is_known_var := p.scope.known_var(p.tok.lit)
 		if is_known_var {
 			p.mark_var_as_used(p.tok.lit)
-			return p.ident(ast.Language.v)
+			return p.ident(.v)
 		} else {
 			type_pos := p.tok.pos()
 			typ := p.parse_type()
