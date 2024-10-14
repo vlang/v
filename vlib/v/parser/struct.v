@@ -352,6 +352,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		p.check(.rcbr)
 		end_comments = p.eat_comments(same_line: true)
 	}
+	scoped_name := if p.inside_fn { '_${name}_${p.cur_fn_scope.start_pos}' } else { '' }
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
 		kind:     .struct
@@ -360,6 +361,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		cname:    util.no_dots(name)
 		mod:      p.mod
 		info:     ast.Struct{
+			scoped_name:   scoped_name
 			embeds:        embed_types
 			fields:        fields
 			is_typedef:    attrs.contains('typedef')
@@ -370,8 +372,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			generic_types: generic_types
 			attrs:         attrs
 			is_anon:       is_anon
-			is_local:      p.inside_fn
-			scope:         p.scope
 		}
 		is_pub:   is_pub
 	}
@@ -392,6 +392,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.expr_mod = ''
 	return ast.StructDecl{
 		name:             name
+		scoped_name:      scoped_name
 		is_pub:           is_pub
 		fields:           ast_fields
 		pos:              start_pos.extend_with_last_line(name_pos, last_line)

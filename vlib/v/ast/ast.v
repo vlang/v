@@ -409,6 +409,7 @@ pub struct StructDecl {
 pub:
 	pos           token.Pos
 	name          string
+	scoped_name   string
 	generic_types []Type
 	is_pub        bool
 	// _pos fields for vfmt

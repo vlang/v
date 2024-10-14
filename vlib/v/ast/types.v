@@ -158,9 +158,9 @@ pub mut:
 @[minify]
 pub struct Struct {
 pub:
-	attrs    []Attr
-	scope    &Scope = unsafe { nil }
-	is_local bool
+	attrs       []Attr
+	scope       &Scope = unsafe { nil }
+	scoped_name string
 pub mut:
 	embeds         []Type
 	fields         []StructField
@@ -414,6 +414,24 @@ pub fn (t Type) clear_option_and_result() Type {
 @[inline]
 pub fn (t Type) has_option_or_result() bool {
 	return t & 0x0300_0000 != 0
+}
+
+@[inline]
+pub fn (ts TypeSymbol) scoped_name() string {
+	return if ts.info is Struct && ts.info.scoped_name != '' {
+		ts.info.scoped_name
+	} else {
+		ts.name
+	}
+}
+
+@[inline]
+pub fn (ts TypeSymbol) scoped_cname() string {
+	return if ts.info is Struct && ts.info.scoped_name != '' {
+		ts.info.scoped_name.replace('.', '__')
+	} else {
+		ts.cname
+	}
 }
 
 // debug returns a verbose representation of the information in ts, useful for tracing/debugging

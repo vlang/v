@@ -655,6 +655,17 @@ pub fn (t &Table) find_type_idx(name string) int {
 }
 
 @[inline]
+pub fn (t &Table) find_type_idx_fn_scoped(name string, scope &Scope) int {
+	if scope != unsafe { nil } {
+		idx := t.type_idxs['_${name}_${scope.start_pos}']
+		if idx != 0 {
+			return idx
+		}
+	}
+	return t.type_idxs[name]
+}
+
+@[inline]
 pub fn (t &Table) find_sym(name string) ?&TypeSymbol {
 	idx := t.type_idxs[name]
 	if idx > 0 {
@@ -665,6 +676,22 @@ pub fn (t &Table) find_sym(name string) ?&TypeSymbol {
 
 @[inline]
 pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
+	idx := t.type_idxs[name]
+	if idx > 0 {
+		return t.type_symbols[idx], idx
+	}
+	return invalid_type_symbol, idx
+}
+
+@[inline]
+pub fn (t &Table) find_sym_and_type_idx_fn_scoped(name string) (&TypeSymbol, int) {
+	if t.cur_fn != unsafe { nil } && t.cur_fn.scope != unsafe { nil } {
+		sym_name := '_${name}_${t.cur_fn.scope.start_pos}'
+		idx := t.type_idxs[sym_name]
+		if idx > 0 {
+			return t.type_symbols[idx], idx
+		}
+	}
 	idx := t.type_idxs[name]
 	if idx > 0 {
 		return t.type_symbols[idx], idx
@@ -791,7 +818,12 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 			eprintln('>> register_sym: ${sym.name:-60} | idx: ${idx}')
 		}
 	}
-	mut existing_idx := t.type_idxs[sym.name]
+	sym_name := if sym.info is Struct && sym.info.scoped_name != '' {
+		sym.info.scoped_name
+	} else {
+		sym.name
+	}
+	mut existing_idx := t.type_idxs[sym_name]
 	if existing_idx > 0 {
 		idx = t.rewrite_already_registered_symbol(sym, existing_idx)
 		if idx != -2 {
@@ -799,7 +831,7 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 		}
 	}
 	if sym.mod == 'main' {
-		existing_idx = t.type_idxs[sym.name.trim_string_left('main.')]
+		existing_idx = t.type_idxs[sym_name.trim_string_left('main.')]
 		if existing_idx > 0 {
 			idx = t.rewrite_already_registered_symbol(sym, existing_idx)
 			if idx != -2 {
@@ -812,7 +844,7 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 		...sym
 	}
 	t.type_symbols[idx].idx = idx
-	t.type_idxs[sym.name] = idx
+	t.type_idxs[sym_name] = idx
 	return idx
 }
 
