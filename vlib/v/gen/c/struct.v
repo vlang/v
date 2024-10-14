@@ -506,7 +506,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		if s.is_union {
 			g.typedefs.writeln('typedef union ${name} ${name};')
 		} else {
-			g.typedefs.writeln('typedef struct ${name} ${name}; // 3')
+			g.typedefs.writeln('typedef struct ${name} ${name};')
 		}
 	}
 	// TODO: avoid buffer manip
