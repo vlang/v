@@ -294,6 +294,29 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 				if tool_compilation.exit_code == 0 {
 					break
 				} else {
+					if tool_name == 'vup' {
+						eprintln('Cannot recompile the new version of `vup`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+						if os.exists(tool_exe) {
+							// Compilation failed, but we still have an already existing old `vup.exe`, that *probably* works.
+							// It is better to pretend the compilation succeeded, and try the old executable, then let it fail
+							// on its own, if it can not work too (it will produce a nicer diagnostic message), than to fail here
+							// right away, just because the new source is too breaking, for the older V frontend process,
+							// that is currently running :-|
+							eprintln('Trying an already existing old version of the `vup` tool instead...')
+							break
+						} else {
+							// No pre-existing `vup.exe` ... No choice but to show a message to the user :-( .
+							// Note: running `make` here from within the old V frontend process, is not reliable, since it can fail
+							// on windows and probably other systems, because the currently running executable is locked.
+							// `vup.exe` has logic to workaround that, and duplicating it here, is hard to debug/diagnose.
+							eprintln('Failed compilation of the `vup` tool, using the new V source code.')
+							eprintln('The new source code, is likely to be unsupported, by your existing older V executable.')
+							eprintln('Try running `make` or `make.bat` manually.')
+							eprintln('If that fails, clone V from source in a new folder, and run `make` or `make.bat` manually again there.')
+							l.release()
+							exit(1)
+						}
+					}
 					if i == tool_recompile_retry_max_count - 1 {
 						eprintln('cannot compile `${tool_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 						l.release()
