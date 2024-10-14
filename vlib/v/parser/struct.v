@@ -352,7 +352,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		p.check(.rcbr)
 		end_comments = p.eat_comments(same_line: true)
 	}
-	scoped_name := if p.inside_fn { '_${name}_${p.cur_fn_scope.start_pos}' } else { '' }
+	scoped_name := if !is_anon && p.inside_fn { '_${name}_${p.cur_fn_scope.start_pos}' } else { '' }
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
 		kind:     .struct
