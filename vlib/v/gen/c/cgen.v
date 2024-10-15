@@ -174,6 +174,7 @@ mut:
 	defer_ifdef               string
 	defer_profile_code        string
 	defer_vars                []string
+	closure_structs           []string
 	str_types                 []StrType       // types that need automatic str() generation
 	generated_str_fns         []StrType       // types that already have a str() function
 	str_fn_names              shared []string // remove duplicate function names

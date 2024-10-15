@@ -762,6 +762,7 @@ fn (mut g Gen) push_new_comptime_info() {
 		comptime_for_method_var:      g.comptime.comptime_for_method_var
 		comptime_for_method:          g.comptime.comptime_for_method
 		comptime_for_method_ret_type: g.comptime.comptime_for_method_ret_type
+		comptime_loop_id:             g.comptime.comptime_loop_id++
 	}
 }
 
