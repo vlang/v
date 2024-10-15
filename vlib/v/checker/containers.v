@@ -432,16 +432,21 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
-		} else {
-			if sym.kind == .struct {
-				c.error('`{}` can not be used for initialising empty structs any more. Use `${c.table.type_to_str(c.expected_type)}{}` instead.',
-					node.pos)
+		} else if sym.info is ast.Struct {
+			msg := if sym.info.is_anon {
+				'`{}` cannot be used to initialize anonymous structs. Use `struct{}` instead.'
 			} else {
-				c.error('invalid empty map initialisation syntax, use e.g. map[string]int{} instead',
-					node.pos)
+				'`{}` can not be used for initialising empty structs any more. Use `${c.table.type_to_str(c.expected_type)}{}` instead.'
 			}
-			return ast.void_type
+			c.error(msg, node.pos)
+			if sym.info.is_anon {
+				return c.expected_type
+			}
+		} else {
+			c.error('invalid empty map initialisation syntax, use e.g. map[string]int{} instead',
+				node.pos)
 		}
+		return ast.void_type
 	}
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
