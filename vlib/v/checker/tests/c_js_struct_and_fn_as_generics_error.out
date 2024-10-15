@@ -1,0 +1,26 @@
+vlib/v/checker/tests/c_js_struct_and_fn_as_generics_error.vv:1:1: error: C structs cannot be declared as generic
+    1 | struct C.Ptr[T] {
+      | ~~~~~~~~~~~~
+    2 |     ptr &T
+    3 | }
+vlib/v/checker/tests/c_js_struct_and_fn_as_generics_error.vv:5:1: error: C functions cannot be declared as generic
+    3 | }
+    4 | 
+    5 | fn C.alloc[T]() &T
+      | ~~~~~~~~~~~~~~~~~~
+    6 | 
+    7 | fn JS.encode[T](data string) T
+vlib/v/checker/tests/c_js_struct_and_fn_as_generics_error.vv:7:1: error: JS functions cannot be declared as generic
+    5 | fn C.alloc[T]() &T
+    6 | 
+    7 | fn JS.encode[T](data string) T
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 | 
+    9 | struct JS.Some[T] {
+vlib/v/checker/tests/c_js_struct_and_fn_as_generics_error.vv:9:1: error: JS structs cannot be declared as generic
+    7 | fn JS.encode[T](data string) T
+    8 | 
+    9 | struct JS.Some[T] {
+      | ~~~~~~~~~~~~~~
+   10 |     i T
+   11 | }
