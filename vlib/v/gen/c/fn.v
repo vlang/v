@@ -1976,6 +1976,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	is_json_encode_pretty := name == 'json.encode_pretty'
 	is_json_decode := name == 'json.decode'
 	is_json_fn := is_json_encode || is_json_encode_pretty || is_json_decode
+	is_va_arg := name == 'C.va_arg'
 	mut json_type_str := ''
 	mut json_obj := ''
 	if is_json_fn {
@@ -2022,6 +2023,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.write('\n${cur_line}')
 		name = ''
 		json_obj = tmp2
+	} else if is_va_arg {
+		ast_type := node.args[0].expr as ast.TypeNode
+		typ := g.typ(ast_type.typ)
+		g.write(util.no_dots(name[2..]))
+		g.write('(')
+		g.expr(node.args[1].expr)
+		g.write(', ${typ})')
+		return
 	}
 	if name == '__addr' {
 		name = '&'
