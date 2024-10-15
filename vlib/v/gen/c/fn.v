@@ -2026,8 +2026,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else if is_va_arg {
 		ast_type := node.args[0].expr as ast.TypeNode
 		typ := g.typ(ast_type.typ)
-		g.write(util.no_dots(name[2..]))
-		g.write('(')
+		g.write('va_arg(')
 		g.expr(node.args[1].expr)
 		g.write(', ${typ})')
 		return
