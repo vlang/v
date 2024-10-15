@@ -13,6 +13,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			eprintln('>>> post processing node.name: ${node.name:-30} | ${node.generic_names} <=> ${c.table.cur_concrete_types}')
 		}
 	}
+	if node.language == .c && node.generic_names.len > 0 {
+		c.error('C functions cannot be declared as generic', node.pos)
+	}
 	// record the veb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
 		typ_vweb_result := c.table.find_type_idx('veb.Result')

@@ -1,0 +1,7 @@
+struct C.Ptr[T] {
+	ptr &T
+}
+
+fn C.alloc[T]() &T
+
+fn main() {}
