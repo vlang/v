@@ -635,9 +635,12 @@ run them via `v file.v` instead',
 		if language != .v && !(language == .js && type_sym.info is ast.Interface) {
 			p.error_with_pos('interop functions cannot have a body', body_start_pos)
 		}
+		last_fn_scope := p.scope
 		p.inside_fn = true
 		p.inside_unsafe_fn = is_unsafe
+		p.cur_fn_scope = p.scope
 		stmts = p.parse_block_no_scope(true)
+		p.cur_fn_scope = last_fn_scope
 		p.inside_unsafe_fn = false
 		p.inside_fn = false
 	}

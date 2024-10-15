@@ -1492,7 +1492,7 @@ static inline ${option_name}_void __Option_${styp}_pushval(${styp} ch, ${el_type
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
 fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.sym(g.unwrap_generic(typ))
-	mut styp := sym.cname
+	mut styp := sym.scoped_cname()
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
@@ -2358,6 +2358,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				util.no_dots(node.name)
 			} else if node.name in ['array', 'string'] {
 				node.name
+			} else if node.scoped_name != '' {
+				c_name(node.scoped_name)
 			} else {
 				c_name(node.name)
 			}
@@ -6739,7 +6741,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			g.type_definitions.writeln('};')
 			g.typedefs.writeln('typedef struct none none;')
 		}
-		mut name := sym.cname
+		mut name := sym.scoped_cname()
 		match sym.info {
 			ast.Struct {
 				if !struct_names[name] {
@@ -6965,7 +6967,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	// types name list
 	mut type_names := []string{}
 	for sym in typesa {
-		type_names << sym.name
+		type_names << sym.scoped_name()
 	}
 	// loop over types
 	for sym in typesa {
@@ -7067,7 +7069,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 			else {}
 		}
 		// add type and dependent types to graph
-		dep_graph.add(sym.name, field_deps)
+		dep_graph.add(sym.scoped_name(), field_deps)
 	}
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()

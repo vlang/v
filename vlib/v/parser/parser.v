@@ -91,6 +91,7 @@ mut:
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
 	expecting_type           bool // `is Type`, expecting type
 	cur_fn_name              string
+	cur_fn_scope             &ast.Scope = unsafe { nil }
 	label_names              []string
 	name_error               bool // indicates if the token is not a name or the name is on another line
 	n_asm                    int  // controls assembly labels
