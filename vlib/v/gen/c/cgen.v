@@ -4161,6 +4161,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			} else {
 				g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
+		} else if sym.info is ast.Aggregate {
+			agg_sym := g.table.sym(sym.info.types[g.aggregate_type_idx])
+			if !g.table.struct_has_field(agg_sym, field_name) {
+				g.write_selector_expr_embed_name(node, node.from_embed_types)
+			}
 		} else {
 			g.write_selector_expr_embed_name(node, node.from_embed_types)
 		}
