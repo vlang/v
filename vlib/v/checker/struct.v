@@ -11,6 +11,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	defer {
 		util.timing_measure_cumulative(@METHOD)
 	}
+	if node.language in [.c, .js] && node.generic_types.len > 0 {
+		lang := if node.language == .c { 'C' } else { 'JS' }
+		c.error('${lang} structs cannot be declared as generic', node.pos)
+	}
 	node_name := if node.scoped_name != '' { node.scoped_name } else { node.name }
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node_name)
 	mut has_generic_types := false
