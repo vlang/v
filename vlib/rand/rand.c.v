@@ -1,6 +1,6 @@
 module rand
 
-const clock_seq_hi_and_reserved_valid_values = [`8`, `9`, `a`, `b`]
+const clock_seq_hi_and_reserved_valid_values = [`8`, `9`, `a`, `b`]!
 
 // uuid_v4 generates a random (v4) UUID
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
@@ -8,6 +8,7 @@ pub fn uuid_v4() string {
 	return internal_uuid_v4(mut default_rng)
 }
 
+@[direct_array_access]
 fn internal_uuid_v4(mut rng PRNG) string {
 	buflen := 36
 	mut buf := unsafe { malloc_noscan(37) }
@@ -56,6 +57,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 
 const ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
+@[direct_array_access]
 fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	buflen := 26
 	mut buf := unsafe { malloc_noscan(27) }
@@ -136,6 +138,7 @@ fn init() {
 	at_exit(deinit) or {}
 }
 
+@[direct_array_access]
 fn read_32(mut rng PRNG, mut buf []u8) {
 	p32 := unsafe { &u32(buf.data) }
 	u32s := buf.len / 4
@@ -149,6 +152,7 @@ fn read_32(mut rng PRNG, mut buf []u8) {
 	}
 }
 
+@[direct_array_access]
 fn read_64(mut rng PRNG, mut buf []u8) {
 	p64 := unsafe { &u64(buf.data) }
 	u64s := buf.len / 8
@@ -162,6 +166,7 @@ fn read_64(mut rng PRNG, mut buf []u8) {
 	}
 }
 
+@[direct_array_access]
 fn read_internal(mut rng PRNG, mut buf []u8) {
 	match rng.block_size() {
 		32 {
