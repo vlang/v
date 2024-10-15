@@ -545,7 +545,8 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 			name = name.replace_each(c_fn_name_escape_seq)
 		}
 	}
-	if node.is_anon && g.comptime.comptime_for_method_var != '' {
+	if node.is_anon && g.comptime.comptime_for_method_var != ''
+		&& node.scope.is_inherited_var('method') {
 		name = '${name}_${g.comptime.comptime_loop_id}'
 	}
 	if node.language == .c {
