@@ -12,7 +12,7 @@ fn sum(qtd int, ...) int {
 	mut s := 0
 	C.va_start(va, qtd)
 	for i := 0; i < qtd; i++ {
-		s += int(C.va_arg(int, va))
+		s += C.va_arg(int, va)
 	}
 	return s
 }
