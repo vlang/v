@@ -362,6 +362,12 @@
      See end of file for license information.
 */
 
+// __v_ start
+#ifdef __TINYC__
+#define STBIR_NO_SIMD
+#endif
+// __v_ end
+
 #if !defined(STB_IMAGE_RESIZE_DO_HORIZONTALS) && !defined(STB_IMAGE_RESIZE_DO_VERTICALS) && !defined(STB_IMAGE_RESIZE_DO_CODERS)   // for internal re-includes
 
 #ifndef STBIR_INCLUDE_STB_IMAGE_RESIZE2_H
@@ -1274,7 +1280,9 @@ static stbir__inline stbir_uint8 stbir__linear_to_srgb_uchar(float in)
 
 #else // STBIR_SIMD
 
-#ifdef STBIR_SSE2
+// __v_ start
+# if defined(STBIR_SSE2) && !defined(__TINYC__)
+// __v_ end
   #include <emmintrin.h>
 
   #define stbir__simdf __m128
