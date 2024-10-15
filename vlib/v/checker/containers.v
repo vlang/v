@@ -517,6 +517,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if node.keys.len == 1 && map_val_type == ast.none_type {
 				c.error('map value cannot be only `none`', node.vals[0].pos())
 			}
+			c.check_expr_option_or_result_call(key_, map_key_type)
+			c.check_expr_option_or_result_call(val_, map_val_type)
 		}
 		map_key_type = c.unwrap_generic(map_key_type)
 		map_val_type = c.unwrap_generic(map_val_type)
@@ -539,6 +541,8 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
+			c.check_expr_option_or_result_call(key, key_type)
+			c.check_expr_option_or_result_call(val, val_type)
 			if !c.check_types(key_type, map_key_type)
 				|| (i == 0 && key_type.is_number() && map_key_type.is_number()
 				&& map_key_type != ast.mktyp(key_type)) {
