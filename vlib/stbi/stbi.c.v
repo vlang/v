@@ -36,14 +36,17 @@ fn cb_free(p voidptr) {
 #include "stb_v_header.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
+// Image represents an image loaded from file or memory, or an image, produced after resizing
 pub struct Image {
 pub mut:
-	width       int
-	height      int
-	nr_channels int
-	ok          bool
-	data        &u8 = unsafe { nil }
-	ext         string
+	width       int  // the width in pixels in the .data
+	height      int  // the height in pixels in the .data
+	nr_channels int  // the number of color channels in the .data
+	ok          bool // if the image was loaded successfully
+	data        &u8 = unsafe { nil } // the actual data/pixels in the image, after reading and potentially converting the image
+	ext         string // the extension of the file, from which the image was loaded
+	//
+	original_nr_channels int // when loaded from memory/disk, this field will contain the original number of channels, based on the data, prior to any conversions. Use only as metadata, not for further conversions.
 }
 
 //-----------------------------------------------------------------------------
@@ -113,21 +116,27 @@ fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file
 @[params]
 pub struct LoadParams {
 pub:
-	// the number of channels you expect the image to have.
-	// If set to 0 stbi will figure out the correct number of channels
-	desired_channels int = C.STBI_rgb_alpha
+	desired_channels int = C.STBI_rgb_alpha // 4 by default (RGBA); desired_channels is the number of color channels, that will be used for representing the image in memory. If set to 0, stbi will figure out the number of channels, based on the original image data.
 }
 
-// load load an image from a path
+// load loads an image from `path`
+// If you do not pass desired_channels: explicitly, it will default to 4 (RGBA),
+// The image, will get converted into that internal format, no matter what it was on disk.
+// Use desired_channels:0, if you need to keep the channels of the image on disk.
+//    Note that displaying such an image, with gg/sokol later, can be a problem.
+//    Converting/resizing it, should work fine though.
 pub fn load(path string, params LoadParams) !Image {
 	ext := path.all_after_last('.')
 	mut res := Image{
-		ok:  true
-		ext: ext
+		ok:          true
+		ext:         ext
+		nr_channels: params.desired_channels
 	}
-	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
+	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.original_nr_channels,
 		params.desired_channels)
-
+	if params.desired_channels == 0 {
+		res.nr_channels = res.original_nr_channels
+	}
 	if isnil(res.data) {
 		return error('stbi_image failed to load from "${path}"')
 	}
@@ -135,12 +144,21 @@ pub fn load(path string, params LoadParams) !Image {
 }
 
 // load_from_memory load an image from a memory buffer
+// If you do not pass desired_channels: explicitly, it will default to 4 (RGBA),
+// and the image will get converted into that internal format, no matter what it was originally.
+// Use desired_channels:0, if you need to keep the channels of the image as they were.
+//    Note that displaying such an image, with gg/sokol later, can be a problem.
+//    Converting/resizing it, should work fine though.
 pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 	mut res := Image{
-		ok: true
+		ok:          true
+		nr_channels: params.desired_channels
 	}
-	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels,
+	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.original_nr_channels,
 		params.desired_channels)
+	if params.desired_channels == 0 {
+		res.nr_channels = res.original_nr_channels
+	}
 	if isnil(res.data) {
 		return error('stbi_image failed to load from memory')
 	}
@@ -158,11 +176,12 @@ fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 	mut res := Image{
-		ok:          true
-		ext:         img.ext
-		width:       output_w
-		height:      output_h
-		nr_channels: img.nr_channels
+		ok:                   true
+		ext:                  img.ext
+		width:                output_w
+		height:               output_h
+		nr_channels:          img.nr_channels
+		original_nr_channels: img.original_nr_channels // preserve the metadata of the original, during resizes
 	}
 
 	res.data = cb_malloc(usize(output_w * output_h * img.nr_channels))
