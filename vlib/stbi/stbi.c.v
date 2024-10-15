@@ -127,6 +127,9 @@ pub fn load(path string, params LoadParams) !Image {
 	}
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
 		params.desired_channels)
+	if params.desired_channels != 0 {
+		res.nr_channels = params.desired_channels
+	}
 
 	if isnil(res.data) {
 		return error('stbi_image failed to load from "${path}"')
@@ -141,6 +144,9 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 	}
 	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels,
 		params.desired_channels)
+	if params.desired_channels != 0 {
+		res.nr_channels = params.desired_channels
+	}
 	if isnil(res.data) {
 		return error('stbi_image failed to load from memory')
 	}
