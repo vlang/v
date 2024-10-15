@@ -683,22 +683,6 @@ pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
 	return invalid_type_symbol, idx
 }
 
-@[inline]
-pub fn (t &Table) find_sym_and_type_idx_fn_scoped(name string) (&TypeSymbol, int) {
-	if t.cur_fn != unsafe { nil } && t.cur_fn.scope != unsafe { nil } {
-		sym_name := '_${name}_${t.cur_fn.scope.start_pos}'
-		idx := t.type_idxs[sym_name]
-		if idx > 0 {
-			return t.type_symbols[idx], idx
-		}
-	}
-	idx := t.type_idxs[name]
-	if idx > 0 {
-		return t.type_symbols[idx], idx
-	}
-	return invalid_type_symbol, idx
-}
-
 pub const invalid_type_symbol = &TypeSymbol{
 	idx:        invalid_type_idx
 	parent_idx: invalid_type_idx
