@@ -3,7 +3,8 @@ import stbi
 
 const vroot = @VEXEROOT
 const tfolder = os.join_path(os.vtmp_dir(), 'stbi')
-const logo_path = os.join_path(vroot, 'examples', 'assets', 'logo.png')
+const logo_path = os.join_path(vroot, 'examples/assets/logo.png')
+const background_path = os.join_path(vroot, 'examples/flappylearning/assets/img/background.png')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}
@@ -66,4 +67,12 @@ fn test_stbi_resize() {
 	assert d_d.height == new_height
 	assert d_d.nr_channels == d_r.nr_channels
 	os.rm(out_path) or {}
+}
+
+fn test_load_image_with_channels_different_than_4() {
+	img := stbi.load(background_path)!
+	assert img.nr_channels == 4, 'by default, stbi.load should convert images to 4 channels'
+
+	img3 := stbi.load(background_path, desired_channels: 0)!
+	assert img3.nr_channels == 3, 'stbi.load, with desired_channels: 0, should return an image, without any conversion. the nr_channels should be determined by the image data'
 }
