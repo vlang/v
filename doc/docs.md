@@ -1,6 +1,8 @@
 # V Documentation
 
 (See https://modules.vlang.io/ for documentation of V's standard library)
+(See also https://docs.vlang.io/introduction.html, which has the same information as this document,
+but split in separate pages for each section, for easier reading on mobile devices)
 
 ## Introduction
 
