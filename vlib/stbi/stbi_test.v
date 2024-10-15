@@ -1,7 +1,9 @@
 import os
 import stbi
 
+const vroot = @VEXEROOT
 const tfolder = os.join_path(os.vtmp_dir(), 'stbi')
+const logo_path = os.join_path(vroot, 'examples', 'assets', 'logo.png')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}
@@ -12,10 +14,8 @@ fn testsuite_end() {
 }
 
 fn test_stbi_read_write() {
-	vroot := @VEXEROOT
-	path := os.join_path(vroot, 'examples', 'assets', 'logo.png')
-	println('Source path: ${path}')
-	d_s := stbi.load(path) or { panic(err) }
+	println('Source path: ${logo_path}')
+	d_s := stbi.load(logo_path) or { panic(err) }
 	println('Image source data:\n ${d_s}')
 
 	out_path := os.join_path(tfolder, 'test.png')
@@ -31,8 +31,8 @@ fn test_stbi_read_write() {
 	assert d_s.height == d_d.height
 	assert d_s.nr_channels == d_d.nr_channels
 
-	mut v_s := &u32(d_s.data)
-	mut v_d := &u32(d_d.data)
+	mut v_s := unsafe { &u32(d_s.data) }
+	mut v_d := unsafe { &u32(d_d.data) }
 	mut delta := i64(0)
 	for index in 0 .. (d_d.width * d_d.width) {
 		unsafe {
@@ -44,10 +44,8 @@ fn test_stbi_read_write() {
 }
 
 fn test_stbi_resize() {
-	vroot := @VEXEROOT
-	path := os.join_path(vroot, 'examples', 'assets', 'logo.png')
-	println('Source path: ${path}')
-	d_s := stbi.load(path) or { panic(err) }
+	println('Source path: ${logo_path}')
+	d_s := stbi.load(logo_path) or { panic(err) }
 	println('Image source data:\n ${d_s}')
 
 	new_width, new_height := 100, 100
