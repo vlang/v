@@ -869,9 +869,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
-	} else if node.args.len > 0 && node.args[0].typ.has_flag(.shared_f)
-		&& (is_va_arg || is_json_decode) {
-		c.error('${fn_name} cannot handle shared data', node.pos)
+	} else if node.args.len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
+		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
 	} else if node.args.len > 0 && (is_va_arg || is_json_decode) {
 		if node.args.len != 2 {
