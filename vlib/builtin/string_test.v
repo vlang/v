@@ -1577,3 +1577,12 @@ fn test_string_wrap() {
 	assert 'The V programming language'.wrap(width: 20, end: '|') == 'The V programming|language'
 	assert 'Hello, my name is Carl and I am a delivery'.wrap(width: 20) == 'Hello, my name is\nCarl and I am a\ndelivery'
 }
+
+fn test_hex() {
+	assert 'Hello World!'.hex() == '48656c6c6f20576f726c6421'
+	assert 'VLANG'.hex() == '564c414e47'
+	assert 'VLANG'.hex() == 'VLANG'.bytes().hex()
+	for c in u8(0) .. 255 {
+		assert c.ascii_str().hex() == [c].hex()
+	}
+}
