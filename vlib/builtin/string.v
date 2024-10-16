@@ -2863,19 +2863,25 @@ pub fn (s string) hex() string {
 	if s == '' {
 		return ''
 	}
-	mut hex := unsafe { malloc_noscan(u64(s.len) * 2 + 1) }
-	mut i := 0
-	for b in s {
+	return unsafe { data_to_hex_string(&u8(s.str), s.len) }
+}
+
+@[unsafe]
+fn data_to_hex_string(data &u8, len int) string {
+	mut hex := unsafe { malloc_noscan(u64(len) * 2 + 1) }
+	mut dst := 0
+	for c in 0 .. len {
+		b := data[c]
 		n0 := b >> 4
 		n1 := b & 0xF
 		unsafe {
-			hex[i] = if n0 < 10 { n0 + `0` } else { n0 + `W` }
-			hex[i + 1] = if n1 < 10 { n1 + `0` } else { n1 + `W` }
+			hex[dst] = if n0 < 10 { n0 + `0` } else { n0 + `W` }
+			hex[dst + 1] = if n1 < 10 { n1 + `0` } else { n1 + `W` }
 		}
-		i += 2
+		dst += 2
 	}
 	unsafe {
-		hex[i] = 0
-		return tos(hex, i)
+		hex[dst] = 0
+		return tos(hex, dst)
 	}
 }
