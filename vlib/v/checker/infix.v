@@ -1052,6 +1052,9 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
 			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)
 		}
+		ast.IndexExpr {
+			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
+		}
 		else {}
 	}
 }
