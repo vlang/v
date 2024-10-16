@@ -1035,6 +1035,11 @@ fn (mut g Gen) delay_fn_call(name string) {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	if node.attrs.contains('flag_enum_fn') {
+		// TODO: remove, when the native backend can process all flagged enum generated functions
+		return
+	}
+
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {

@@ -179,6 +179,11 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		return
 	}
 
+	if node.attrs.contains('flag_enum_fn') {
+		// TODO: remove, when support for fn results is done
+		return
+	}
+
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
