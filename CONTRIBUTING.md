@@ -1,15 +1,13 @@
-## Contributing task lists
-
-(suggested by [@spytheman](https://github.com/spytheman))
+## How to help and contribute to the V project
 
 The tasks in the lists below are ordered in terms of easiness/time/nerves
 investment.
 
 ### Starting tasks
 
-1. Read the docs.
+1. Read the [language documentation](https://docs.vlang.io/introduction.html) and [standard module documentation](https://modules.vlang.io/).
 
-2. Fix errors in the docs, and make PRs about it.
+2. Fix doc errors and places you found unclear, and make [PRs](https://github.com/vlang/v/pulls) about it.
 
 3. Make V programs, in the areas that you are interested in, or help others make
    V programs. If the programs/libraries are public, post them to the channel
@@ -37,7 +35,7 @@ investment.
 
 ### Advanced tasks (after doing 1..9 for a while)
 
-10. work on [V RFCs](https://github.com/vlang/rfcs/) (submitting new ones,
+10. Work on [V RFCs](https://github.com/vlang/rfcs/) (submitting new ones,
     providing feedback to existing ones, implementing them).
 
 ## Code Structure
