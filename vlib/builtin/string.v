@@ -2857,3 +2857,31 @@ pub fn (s string) wrap(config WrapConfig) string {
 	}
 	return sb.str()
 }
+
+// hex returns a string with the hexadecimal representation of the bytes of the string `s`
+pub fn (s string) hex() string {
+	if s == '' {
+		return ''
+	}
+	return unsafe { data_to_hex_string(&u8(s.str), s.len) }
+}
+
+@[unsafe]
+fn data_to_hex_string(data &u8, len int) string {
+	mut hex := unsafe { malloc_noscan(u64(len) * 2 + 1) }
+	mut dst := 0
+	for c in 0 .. len {
+		b := data[c]
+		n0 := b >> 4
+		n1 := b & 0xF
+		unsafe {
+			hex[dst] = if n0 < 10 { n0 + `0` } else { n0 + `W` }
+			hex[dst + 1] = if n1 < 10 { n1 + `0` } else { n1 + `W` }
+		}
+		dst += 2
+	}
+	unsafe {
+		hex[dst] = 0
+		return tos(hex, dst)
+	}
+}

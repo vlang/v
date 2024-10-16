@@ -952,27 +952,12 @@ pub fn (a []string) str() string {
 	return res
 }
 
-// hex returns a string with the hexadecimal representation
-// of the byte elements of the array.
+// hex returns a string with the hexadecimal representation of the byte elements of the array `b`.
 pub fn (b []u8) hex() string {
-	mut hex := unsafe { malloc_noscan(u64(b.len) * 2 + 1) }
-	mut dst_i := 0
-	for i in b {
-		n0 := i >> 4
-		unsafe {
-			hex[dst_i] = if n0 < 10 { n0 + `0` } else { n0 + u8(87) }
-			dst_i++
-		}
-		n1 := i & 0xF
-		unsafe {
-			hex[dst_i] = if n1 < 10 { n1 + `0` } else { n1 + u8(87) }
-			dst_i++
-		}
+	if b.len == 0 {
+		return ''
 	}
-	unsafe {
-		hex[dst_i] = 0
-		return tos(hex, dst_i)
-	}
+	return unsafe { data_to_hex_string(&u8(b.data), b.len) }
 }
 
 // copy copies the `src` byte array elements to the `dst` byte array.

@@ -419,8 +419,8 @@ fn diff_content(expected string, found string) {
 		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
 		println('   found bytes:\n${chunka(found.bytes(), 25)}')
 		println('============')
-		println('  expected hex:\n${chunks(expected.bytes().hex(), 80)}')
-		println('     found hex:\n${chunks(found.bytes().hex(), 80)}')
+		println('  expected hex:\n${chunks(expected.hex(), 80)}')
+		println('     found hex:\n${chunks(found.hex(), 80)}')
 	}
 	println('============\n')
 }
