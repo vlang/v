@@ -53,6 +53,10 @@ fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
 				.ne {
 					return g.comptime_is_truthy(cond.left) != g.comptime_is_truthy(cond.right)
 				}
+				.key_is {
+					// TODO: implement properly, to support @[flag_enum_fn] functions
+					return true
+				}
 				else {
 					g.n_error('Compile time infix expr `${cond}` is not handled by the native backend.')
 				}
