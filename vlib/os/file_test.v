@@ -509,8 +509,6 @@ fn test_write_lines() {
 	os.write_lines(wline2_file, lines)!
 	c1 := os.read_file(wline1_file)!
 	c2 := os.read_file(wline2_file)!
-	// dump(c1.bytes().hex())
-	// dump(c2.bytes().hex())
 	assert c1 == c2
 	assert c1.split_into_lines() == some_lines_content.split_into_lines()
 }

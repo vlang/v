@@ -9,7 +9,7 @@ fn test_encode() {
 		'\x00\x00hello world': '11StV1DL6CwTryKyV'
 	} {
 		output := base58.encode(input)
-		println('> input: `${input}` | ${input.bytes().hex()} | => output: `${output}`')
+		println('> input: `${input}` | ${input.hex()} | => output: `${output}`')
 		assert output == expected
 	}
 }
@@ -36,7 +36,7 @@ fn test_decode() {
 		'3vQB7B6MrGQZaxCuFg4oh':                                        hex.decode('68656c6c6f20776f726c64bc62d4b8')!.bytestr()
 	} {
 		input := base58.decode(output)!
-		println('> output: `${output}` | decoded input: `${input}` | bytes: ${input.bytes().hex()}')
-		assert input.bytes().hex() == expected.bytes().hex()
+		println('> output: `${output}` | decoded input: `${input}` | bytes: ${input.hex()}')
+		assert input.hex() == expected.hex()
 	}
 }

@@ -168,8 +168,8 @@ fn string_interpolation_with_negative_format_width_should_compile_and_run_withou
 	i := 3
 	input := '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 	println('---------------------------------------------------------------------------------------------')
-	println('+60 ${i:10} | input.len: ${input.len:10} | ${input.bytes().hex():60} | $input')
-	println('-60 ${i:10} | input.len: ${input.len:10} | ${input.bytes().hex():-60} | $input')
+	println('+60 ${i:10} | input.len: ${input.len:10} | ${input.hex():60} | $input')
+	println('-60 ${i:10} | input.len: ${input.len:10} | ${input.hex():-60} | $input')
 	println('---------------------------------------------------------------------------------------------')
 	println(true)
 }
