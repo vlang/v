@@ -797,6 +797,8 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 }
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
+	is_va_arg := node.name == 'C.va_arg'
+	is_json_decode := node.name == 'json.decode'
 	mut fn_name := node.name
 	if index := node.name.index('__static__') {
 		// resolve static call T.name()
@@ -874,10 +876,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	} else if node.args.len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
-	} else if node.args.len > 0 && fn_name == 'json.decode' {
+	} else if node.args.len > 0 && (is_va_arg || is_json_decode) {
 		if node.args.len != 2 {
-			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
-				node.pos)
+			if is_json_decode {
+				c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
+					node.pos)
+			} else {
+				c.error('C.va_arg expects 2 arguments, a type and va_list (e.g `C.va_arg(int, va)`)',
+					node.pos)
+			}
 			return ast.void_type
 		}
 		mut expr := node.args[0].expr
@@ -894,27 +901,26 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if sym.info is ast.Alias {
 					kind = c.table.sym(sym.info.parent_type).kind
 				}
-				if kind !in [.struct, .sum_type, .map, .array] {
-					c.error('json.decode: expected sum type, struct, map or array, found ${kind}',
+				if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
+					c.error('${fn_name}: expected sum type, struct, map or array, found ${kind}',
 						expr.pos)
 				}
 			} else {
-				c.error('json.decode: unknown type `${sym.name}`', node.pos)
+				c.error('${fn_name}: unknown type `${sym.name}`', node.pos)
 			}
 		} else {
 			typ := expr.type_name()
-			c.error('json.decode: first argument needs to be a type, got `${typ}`', node.pos)
+			c.error('${fn_name}: first argument needs to be a type, got `${typ}`', node.pos)
 			return ast.void_type
 		}
 		c.expected_type = ast.string_type
 		node.args[1].typ = c.expr(mut node.args[1].expr)
-		if node.args[1].typ != ast.string_type {
+		if is_json_decode && node.args[1].typ != ast.string_type {
 			c.error('json.decode: second argument needs to be a string', node.pos)
 		}
 		typ := expr as ast.TypeNode
-		ret_type := typ.typ.set_flag(.result)
-		node.return_type = ret_type
-		return ret_type
+		node.return_type = if is_json_decode { typ.typ.set_flag(.result) } else { typ.typ }
+		return node.return_type
 	} else if fn_name == '__addr' {
 		if !c.inside_unsafe {
 			c.error('`__addr` must be called from an unsafe block', node.pos)

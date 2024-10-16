@@ -32,7 +32,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		p.check_for_impure_v(language, first_pos)
 	}
 	mut or_kind := ast.OrKind.absent
-	if fn_name == 'json.decode' {
+	if fn_name == 'json.decode' || fn_name == 'C.va_arg' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 	}
 
