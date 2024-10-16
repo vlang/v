@@ -1054,6 +1054,19 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 		}
 		ast.IndexExpr {
 			c.autocast_in_if_conds(mut right.left, from_expr, from_type, to_type)
+			c.autocast_in_if_conds(mut right.index, from_expr, from_type, to_type)
+		}
+		ast.RangeExpr {
+			c.autocast_in_if_conds(mut right.low, from_expr, from_type, to_type)
+			c.autocast_in_if_conds(mut right.high, from_expr, from_type, to_type)
+		}
+		ast.StringInterLiteral {
+			for mut expr in right.exprs {
+				c.autocast_in_if_conds(mut expr, from_expr, from_type, to_type)
+			}
+		}
+		ast.UnsafeExpr {
+			c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
 		}
 		else {}
 	}
