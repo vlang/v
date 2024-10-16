@@ -225,6 +225,17 @@ pub fn (s &Scope) has_inherited_vars() bool {
 	return false
 }
 
+pub fn (s &Scope) is_inherited_var(var_name string) bool {
+	for _, obj in s.objects {
+		if obj is Var {
+			if obj.is_inherited && obj.name == var_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''

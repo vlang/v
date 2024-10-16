@@ -333,6 +333,8 @@ pub mut:
 	resolver IResolverType = DummyResolver{}
 	// symbol table resolver
 	table &ast.Table = unsafe { nil }
+	// loop id for loop distinction
+	comptime_loop_id int
 	// $for
 	inside_comptime_for bool
 	type_map            map[string]ast.Type

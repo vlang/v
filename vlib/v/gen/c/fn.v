@@ -545,6 +545,10 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 			name = name.replace_each(c_fn_name_escape_seq)
 		}
 	}
+	if node.is_anon && g.comptime.comptime_for_method_var != ''
+		&& node.scope.is_inherited_var('method') {
+		name = '${name}_${g.comptime.comptime_loop_id}'
+	}
 	if node.language == .c {
 		name = util.no_dots(name)
 	} else {
@@ -571,6 +575,18 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 
 const closure_ctx = '_V_closure_ctx'
 
+fn (mut g Gen) gen_closure_fn_name(node ast.AnonFn) string {
+	mut fn_name := node.decl.name
+	if node.decl.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
+	}
+	if node.inherited_vars.len > 0 && g.comptime.comptime_for_method_var != ''
+		&& node.inherited_vars.any(it.name == 'method') {
+		fn_name += '_${g.comptime.comptime_loop_id}'
+	}
+	return fn_name
+}
+
 fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 	mut fn_name := node.name
 	if node.generic_names.len > 0 {
@@ -581,12 +597,7 @@ fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.gen_anon_fn_decl(mut node)
-	mut fn_name := node.decl.name
-
-	if node.decl.generic_names.len > 0 {
-		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
-	}
-
+	fn_name := g.gen_closure_fn_name(node)
 	if !node.decl.scope.has_inherited_vars() {
 		g.write(fn_name)
 		return
@@ -652,10 +663,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 }
 
 fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
-	mut fn_name := node.decl.name
-	if node.decl.generic_names.len > 0 {
-		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
-	}
+	mut fn_name := g.gen_closure_fn_name(node)
 	if node.has_gen[fn_name] {
 		return
 	}
@@ -664,19 +672,22 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	builder.writeln('/*F*/')
 	if node.inherited_vars.len > 0 {
 		ctx_struct := g.closure_ctx(node.decl)
-		builder.writeln('${ctx_struct} {')
-		for var in node.inherited_vars {
-			var_sym := g.table.sym(var.typ)
-			if var_sym.info is ast.FnType {
-				sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
-					c_name(var.name))
-				builder.writeln('\t' + sig + ';')
-			} else {
-				styp := g.typ(var.typ)
-				builder.writeln('\t${styp} ${c_name(var.name)};')
+		if ctx_struct !in g.closure_structs {
+			g.closure_structs << ctx_struct
+			builder.writeln('${ctx_struct} {')
+			for var in node.inherited_vars {
+				var_sym := g.table.sym(var.typ)
+				if var_sym.info is ast.FnType {
+					sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
+						c_name(var.name))
+					builder.writeln('\t' + sig + ';')
+				} else {
+					styp := g.typ(var.typ)
+					builder.writeln('\t${styp} ${c_name(var.name)};')
+				}
 			}
+			builder.writeln('};\n')
 		}
-		builder.writeln('};\n')
 	}
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
