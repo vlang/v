@@ -41,6 +41,9 @@ fn C.sem_destroy(voidptr) int
 pub struct C.pthread_mutex_t {}
 
 @[typedef]
+pub struct C.pthread_cond_t {}
+
+@[typedef]
 pub struct C.pthread_rwlock_t {}
 
 @[typedef]
@@ -64,6 +67,13 @@ struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
 
+@[typedef]
+pub struct C.pthread_condattr_t {}
+
+struct CondAttr {
+	attr C.pthread_condattr_t
+}
+
 @[heap]
 pub struct Semaphore {
 	sem C.sem_t
@@ -81,6 +91,37 @@ pub fn new_mutex() &Mutex {
 @[inline]
 pub fn (mut m Mutex) init() {
 	C.pthread_mutex_init(&m.mutex, C.NULL)
+}
+
+@[heap]
+pub struct Cond {
+	cond C.pthread_cond_t
+}
+
+pub fn new_cond() &Cond {
+	mut cond := &Cond{}
+	cond.init()
+	return cond
+}
+
+@[inline]
+pub fn (mut cond Cond) init() {
+	C.pthread_cond_init(&cond.cond, C.NULL)
+}
+
+pub fn (mut cond Cond) wait(mut m Mutex) {
+	C.pthread_cond_wait(&cond.cond, &m.mutex)
+}
+
+pub fn (mut cond Cond) signal() {
+	C.pthread_cond_signal(&cond.cond)
+}
+
+pub fn (mut cond Cond) destroy() {
+	res := C.pthread_cond_destroy(&cond.cond)
+	if res != 0 {
+		cpanic(res)
+	}
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.

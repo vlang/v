@@ -453,10 +453,34 @@ fn C.pthread_condattr_setpshared(voidptr, int) int
 
 fn C.pthread_condattr_destroy(voidptr) int
 
+// pthread_cond_init initializes a condition variable using the specified attributes.
+//
+// Parameters:
+// - voidptr: A pointer to the condition variable to be initialized.
+// - voidptr: A pointer to the attributes to be used for initialization.
+//
+// Returns:
+// - int: Returns 0 on success, or an error number on failure.
 fn C.pthread_cond_init(voidptr, voidptr) int
 
+// pthread_cond_signal signals a `condition` variable, waking up one of the threads
+// that are waiting for the condition variable to be signaled.
+//
+// Parameters:
+// - voidptr: A pointer to the condition variable to be signaled.
+//
+// Returns:
+// - int: Returns 0 on success, or an error number on failure.
 fn C.pthread_cond_signal(voidptr) int
 
+// C.pthread_cond_wait is a function that waits for a condition variable to be signaled.
+//
+// Parameters:
+// - voidptr: A pointer to the `condition` variable.
+// - voidptr: A pointer to the `mutex` that is associated with the condition variable.
+//
+// Returns:
+// - int: Returns 0 on success, or an error number on failure.
 fn C.pthread_cond_wait(voidptr, voidptr) int
 
 fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
