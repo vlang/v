@@ -3256,6 +3256,14 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 				g.write(')')
 				return
 			}
+			.unaliased_typ {
+				g.write('new int(')
+
+				g.write('${int(g.table.unaliased_type(g.unwrap_generic(it.name_type)))}')
+				g.write(')')
+				g.write(')')
+				return
+			}
 			.unknown {
 				if node.field_name == 'name' {
 					g.type_name(it.name_type)
