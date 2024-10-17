@@ -170,18 +170,18 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 }
 
 // get_root returns the root of the document.
-pub fn (dom DocumentObjectModel) get_root() &Tag {
+pub fn (dom &DocumentObjectModel) get_root() &Tag {
 	return dom.root
 }
 
 // get_tag retrieves all tags in the document that have the given tag name.
 @[deprecated: 'use get_tags instead']
-pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
+pub fn (dom &DocumentObjectModel) get_tag(name string) []&Tag {
 	return dom.get_tags(name: name)
 }
 
 // get_tags returns all tags stored in the document.
-pub fn (dom DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
+pub fn (dom &DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
 	if options.name != '' {
 		return if options.name in dom.tag_type {
 			unsafe { dom.tag_type[options.name] }
@@ -193,18 +193,18 @@ pub fn (dom DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
 }
 
 // get_tags_by_class_name retrieves all tags recursively in the document root that have the given class name(s).
-pub fn (dom DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
+pub fn (dom &DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
 	return dom.root.get_tags_by_class_name(...names)
 }
 
 // get_tag_by_attribute retrieves all tags in the document that have the given attribute name.
 @[deprecated: 'use get_tags_by_attribute instead']
-pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
+pub fn (dom &DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
 	return dom.get_tags_by_attribute(name)
 }
 
 // get_tags_by_attribute retrieves all tags in the document that have the given attribute name.
-pub fn (dom DocumentObjectModel) get_tags_by_attribute(name string) []&Tag {
+pub fn (dom &DocumentObjectModel) get_tags_by_attribute(name string) []&Tag {
 	return if name in dom.all_attributes { unsafe { dom.all_attributes[name] } } else { []&Tag{} }
 }
 

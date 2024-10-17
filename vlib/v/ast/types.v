@@ -416,7 +416,7 @@ pub fn (t Type) has_option_or_result() bool {
 }
 
 @[inline]
-pub fn (ts TypeSymbol) scoped_name() string {
+pub fn (ts &TypeSymbol) scoped_name() string {
 	return if ts.info is Struct && ts.info.scoped_name != '' {
 		ts.info.scoped_name
 	} else {
@@ -425,7 +425,7 @@ pub fn (ts TypeSymbol) scoped_name() string {
 }
 
 @[inline]
-pub fn (ts TypeSymbol) scoped_cname() string {
+pub fn (ts &TypeSymbol) scoped_cname() string {
 	return if ts.info is Struct && ts.info.scoped_name != '' {
 		ts.info.scoped_name.replace('.', '__')
 	} else {
@@ -434,7 +434,7 @@ pub fn (ts TypeSymbol) scoped_cname() string {
 }
 
 // debug returns a verbose representation of the information in ts, useful for tracing/debugging
-pub fn (ts TypeSymbol) debug() []string {
+pub fn (ts &TypeSymbol) debug() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
 	res << 'info: ${ts.info}'
@@ -443,13 +443,13 @@ pub fn (ts TypeSymbol) debug() []string {
 }
 
 // same as .debug(), but without the verbose .info and .methods fields
-pub fn (ts TypeSymbol) dbg() []string {
+pub fn (ts &TypeSymbol) dbg() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
 	return res
 }
 
-fn (ts TypeSymbol) dbg_common(mut res []string) {
+fn (ts &TypeSymbol) dbg_common(mut res []string) {
 	res << 'idx: 0x${ts.idx.hex()}'
 	res << 'parent_idx: 0x${ts.parent_idx.hex()}'
 	res << 'mod: ${ts.mod}'
@@ -460,7 +460,7 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: ${ts.language}'
 }
 
-pub fn (ts TypeSymbol) nr_dims() int {
+pub fn (ts &TypeSymbol) nr_dims() int {
 	match ts.info {
 		Alias {
 			parent_sym := global_table.sym(ts.info.parent_type)
@@ -831,7 +831,7 @@ pub enum Kind {
 }
 
 // str returns the internal & source name of the type
-pub fn (t TypeSymbol) str() string {
+pub fn (t &TypeSymbol) str() string {
 	return t.name
 }
 
@@ -1550,7 +1550,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	return res
 }
 
-fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases map[string]string) string {
+fn (t &Table) shorten_user_defined_typenames(original_name string, import_aliases map[string]string) string {
 	if alias := import_aliases[original_name] {
 		return alias
 	}

@@ -28,17 +28,15 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		for idx, mut x in node.params {
 			eparam := exp_sym.info.func.params[idx]
 			eparam_type := eparam.typ
-			eparam_auto_deref := eparam.typ.is_ptr()
 			c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
 			if eparam_type.has_flag(.generic) {
 				generic_types[eparam_type] = true
 			}
 			params << ast.Param{
-				pos:         x.pos
-				name:        x.name
-				typ:         eparam_type
-				type_pos:    x.pos
-				is_auto_rec: eparam_auto_deref
+				pos:      x.pos
+				name:     x.name
+				typ:      eparam_type
+				type_pos: x.pos
 			}
 		}
 
@@ -139,18 +137,15 @@ pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mu
 }
 
 pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
-	is_auto_rec := param_type.is_ptr()
 	mut expected_fn := ast.Fn{
 		params:      [
 			ast.Param{
-				name:        'zza'
-				typ:         param_type
-				is_auto_rec: is_auto_rec
+				name: 'zza'
+				typ:  param_type
 			},
 			ast.Param{
-				name:        'zzb'
-				typ:         param_type
-				is_auto_rec: is_auto_rec
+				name: 'zzb'
+				typ:  param_type
 			},
 		]
 		return_type: return_type
@@ -164,9 +159,8 @@ pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return
 	mut expected_fn := ast.Fn{
 		params:      [
 			ast.Param{
-				name:        'xx'
-				typ:         param_type
-				is_auto_rec: param_type.is_ptr()
+				name: 'xx'
+				typ:  param_type
 			},
 		]
 		return_type: return_type

@@ -3250,8 +3250,14 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 			}
 			.typ {
 				g.write('new int(')
-
 				g.write('${int(g.unwrap_generic(it.name_type))}')
+				g.write(')')
+				g.write(')')
+				return
+			}
+			.unaliased_typ {
+				g.write('new int(')
+				g.write('${int(g.table.unaliased_type(g.unwrap_generic(it.name_type)))}')
 				g.write(')')
 				g.write(')')
 				return

@@ -305,7 +305,7 @@ pub fn (s &Scanner) at() u32 {
 
 // at_crlf returns `true` if the scanner is at a `\r` character
 // and the next character is a `\n`.
-fn (s Scanner) at_crlf() bool {
+fn (s &Scanner) at_crlf() bool {
 	return s.at() == `\r` && s.peek(1) == `\n`
 }
 
@@ -654,14 +654,14 @@ fn (mut s Scanner) extract_nan_or_inf_number() !string {
 // excerpt returns a string excerpt of the input text centered
 // at `pos`. The `margin` argument defines how many chacters
 // on each side of `pos` is returned
-pub fn (s Scanner) excerpt(pos int, margin int) string {
+pub fn (s &Scanner) excerpt(pos int, margin int) string {
 	start := if pos > 0 && pos >= margin { pos - margin } else { 0 }
 	end := if pos + margin < s.text.len { pos + margin } else { s.text.len }
 	return s.text[start..end].replace('\n', r'\n')
 }
 
 // state returns a read-only view of the scanner's internal state.
-pub fn (s Scanner) state() State {
+pub fn (s &Scanner) state() State {
 	return State{
 		col:     s.col
 		line_nr: s.line_nr

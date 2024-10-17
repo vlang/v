@@ -562,7 +562,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u32) {
 	mut next := unsafe { next_ }
 	mut head := unsafe { head_ }
-	println('Unlink first small')
+	// println('Unlink first small')
 	mut ptr := next.prev
 	if voidptr(head) == voidptr(ptr) {
 		unsafe { dl.clear_smallmap(idx) }
@@ -675,7 +675,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 	}
 }
 
-fn (dl Dlmalloc) should_trim(size usize) bool {
+fn (dl &Dlmalloc) should_trim(size usize) bool {
 	return size > dl.trim_check
 }
 

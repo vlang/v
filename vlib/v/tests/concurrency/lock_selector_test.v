@@ -11,7 +11,7 @@ struct Gen {
 	s shared St
 }
 
-fn (g Gen) set_val() bool {
+fn (g &Gen) set_val() bool {
 	lock g.s {
 		g.s.x = 6.25
 		if g.s.x == 6.25 {
