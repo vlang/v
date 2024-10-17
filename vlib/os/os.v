@@ -800,15 +800,27 @@ fn create_folder_when_it_does_not_exist(path string) {
 	if is_dir(path) || is_link(path) {
 		return
 	}
-	mkdir_all(path, mode: 0o700) or {
-		if is_dir(path) || is_link(path) {
-			// A race had been won, and the `path` folder had been created,
-			// by another concurrent V executable, since the folder now exists,
-			// but it did not right before ... we will just use it too.
-			return
+	mut error_msg := ''
+	for _ in 0 .. 10 {
+		mkdir_all(path, mode: 0o700) or {
+			if is_dir(path) || is_link(path) {
+				// A race had been won, and the `path` folder had been created, by another concurrent V program.
+				// We are fine with that, since the folder now exists, even though this process did not create it.
+				// We can just use it too  ¯\_(ツ)_/¯ .
+				return
+			}
+			error_msg = err.msg()
+			sleep_ms(1) // wait a bit, before a retry, to let the other process finish its folder creation
+			continue
 		}
-		panic(err)
+		break
 	}
+	if is_dir(path) || is_link(path) {
+		return
+	}
+	// There was something wrong, that could not be solved, by just retrying
+	// There is no choice, but to report it back :-\
+	panic(error_msg)
 }
 
 fn xdg_home_folder(ename string, lpath string) string {
