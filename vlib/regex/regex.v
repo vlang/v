@@ -82,7 +82,7 @@ fn utf8util_char_len(b u8) int {
 
 // get_char get a char from position i and return an u32 with the unicode code
 @[direct_array_access; inline]
-fn (re RE) get_char(in_txt string, i int) (u32, int) {
+fn (re &RE) get_char(in_txt string, i int) (u32, int) {
 	ini := unsafe { in_txt.str[i] }
 	// ascii 8 bit
 	if (re.flag & f_bin) != 0 || ini & 0x80 == 0 {
@@ -101,7 +101,7 @@ fn (re RE) get_char(in_txt string, i int) (u32, int) {
 
 // get_charb get a char from position i and return an u32 with the unicode code
 @[direct_array_access; inline]
-fn (re RE) get_charb(in_txt &u8, i int) (u32, int) {
+fn (re &RE) get_charb(in_txt &u8, i int) (u32, int) {
 	// ascii 8 bit
 	if (re.flag & f_bin) != 0 || unsafe { in_txt[i] } & 0x80 == 0 {
 		return u32(unsafe { in_txt[i] }), 1
@@ -187,7 +187,7 @@ fn is_upper(in_char u8) bool {
 	return tmp <= 25
 }
 
-pub fn (re RE) get_parse_error_string(err int) string {
+pub fn (re &RE) get_parse_error_string(err int) string {
 	match err {
 		compile_ok { return 'compile_ok' }
 		no_match_found { return 'no_match_found' }
@@ -403,7 +403,7 @@ enum BSLS_parse_state {
 }
 
 // parse_bsls return (index, str_len) bsls_validator_array index, len of the backslash sequence if present
-fn (re RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
+fn (re &RE) parse_bsls(in_txt string, in_i int) (int, int, u32) {
 	mut status := BSLS_parse_state.start
 	mut i := in_i
 	mut hex_max_len := 2
@@ -539,7 +539,7 @@ enum CharClass_parse_state {
 	finish
 }
 
-fn (re RE) get_char_class(pc int) string {
+fn (re &RE) get_char_class(pc int) string {
 	buf := []u8{len: (re.cc.len)}
 	mut buf_ptr := unsafe { &u8(&buf) }
 
@@ -602,7 +602,7 @@ fn (re RE) get_char_class(pc int) string {
 	return unsafe { tos_clone(buf_ptr) }
 }
 
-fn (re RE) check_char_class(pc int, ch rune) bool {
+fn (re &RE) check_char_class(pc int, ch rune) bool {
 	mut cc_i := re.prog[pc].cc_index
 	for cc_i >= 0 && cc_i < re.cc.len && re.cc[cc_i].cc_type != cc_end {
 		if re.cc[cc_i].cc_type == cc_bsls {
@@ -757,7 +757,7 @@ enum Quant_parse_state {
 }
 
 // parse_quantifier return (min, max, str_len, greedy_flag) of a {min,max}? quantifier starting after the { char
-fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
+fn (re &RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut status := Quant_parse_state.start
 	mut i := in_i
 
@@ -887,7 +887,7 @@ enum Group_parse_state {
 }
 
 // parse_groups parse a group for ? (question mark) syntax, if found, return (error, capture_flag, negate_flag, name_of_the_group, next_index)
-fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, bool, string, int) {
+fn (re &RE) parse_groups(in_txt string, in_i int) (int, bool, bool, string, int) {
 	mut status := Group_parse_state.start
 	mut i := in_i
 	mut name := ''
@@ -1530,7 +1530,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 }
 
 // get_code return the compiled code as regex string, note: may be different from the source!
-pub fn (re RE) get_code() string {
+pub fn (re &RE) get_code() string {
 	mut pc1 := 0
 	mut res := strings.new_builder(re.cc.len * 2 * re.prog.len)
 	res.write_string('========================================\nv RegEx compiler v ${v_regex_version} output:\n')
@@ -1617,7 +1617,7 @@ pub fn (re RE) get_code() string {
 }
 
 // get_query return a string with a reconstruction of the query starting from the regex program code
-pub fn (re RE) get_query() string {
+pub fn (re &RE) get_query() string {
 	mut res := strings.new_builder(re.query.len * 2)
 
 	if (re.flag & f_ms) != 0 {
