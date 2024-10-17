@@ -1513,6 +1513,9 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			.name {
 				return ast.string_type
 			}
+			.unaliased_typ {
+				return ast.int_type
+			}
 			.typ {
 				return ast.int_type
 			}

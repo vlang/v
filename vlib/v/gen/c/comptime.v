@@ -473,6 +473,8 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 		ast.SelectorExpr {
 			if cond.gkind_field == .typ {
 				return g.unwrap_generic(cond.name_type)
+			} else if cond.gkind_field == .unaliased_typ {
+				return g.table.unaliased_type(g.unwrap_generic(cond.name_type))
 			} else {
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.comptime.type_map {

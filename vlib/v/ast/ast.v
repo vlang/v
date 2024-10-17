@@ -279,6 +279,7 @@ pub enum GenericKindField {
 	unknown
 	name
 	typ
+	unaliased_typ
 }
 
 // `foo.bar`
