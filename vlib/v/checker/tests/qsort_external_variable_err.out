@@ -1,7 +1,7 @@
-vlib/v/checker/tests/qsort_external_variable_err.vv:8:22: error: can not access external variable `i`
-    6 |     unsafe{array.sort(a[0]>b[0])}
-    7 |     println(array)
-    8 |     unsafe{array.sort(a[i]<b[i])}
-      |                         ^
-    9 |     println(array)
-   10 | }
+vlib/v/checker/tests/qsort_external_variable_err.vv:7:24: error: can not access external variable `i`
+    5 |     unsafe { array.sort(a[0] > b[0]) }
+    6 |     println(array)
+    7 |     unsafe { array.sort(a[i] < b[i]) }
+      |                           ^
+    8 |     println(array)
+    9 | }
