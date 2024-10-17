@@ -1071,3 +1071,40 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 		else {}
 	}
 }
+
+fn (mut c Checker) check_sort_external_variable_access(node ast.Expr) bool {
+	match node {
+		ast.InfixExpr {
+			if !c.check_sort_external_variable_access(node.left) {
+				return false
+			}
+			if !c.check_sort_external_variable_access(node.right) {
+				return false
+			}
+		}
+		ast.Ident {
+			if node.name !in ['a', 'b'] {
+				c.error('can not access external variable `${node.name}`', node.pos)
+				return false
+			}
+		}
+		ast.CallExpr {
+			return c.check_sort_external_variable_access(node.left)
+		}
+		ast.SelectorExpr {
+			return c.check_sort_external_variable_access(node.expr)
+		}
+		ast.IndexExpr {
+			if !c.check_sort_external_variable_access(node.left) {
+				return false
+			}
+			if !c.check_sort_external_variable_access(node.index) {
+				return false
+			}
+		}
+		else {
+			return true
+		}
+	}
+	return true
+}
