@@ -883,7 +883,7 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 // string_buffer_to_generic_number converts a buffer of bytes (data) into a generic type T and
 // stores the result in the provided result pointer.
 // The function supports conversion to the following types:
-// - Signed integers: i8, i16, int, i64
+// - Signed integers: i8, i16, i32, i64
 // - Unsigned integers: u8, u16, u32, u64
 // - Floating-point numbers: f32, f64
 //
