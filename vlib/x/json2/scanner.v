@@ -101,12 +101,12 @@ fn (mut s Scanner) move_pos(include_space bool, include_newlines bool) {
 }
 
 // error returns an error token.
-fn (s Scanner) error(description string) Token {
+fn (s &Scanner) error(description string) Token {
 	return s.tokenize(description.bytes(), .error)
 }
 
 // tokenize returns a token based on the given lit and kind.
-fn (s Scanner) tokenize(lit []u8, kind TokenKind) Token {
+fn (s &Scanner) tokenize(lit []u8, kind TokenKind) Token {
 	return Token{
 		lit:  lit
 		kind: kind
@@ -242,7 +242,7 @@ fn (mut s Scanner) num_scan() Token {
 }
 
 // invalid_token returns an error token with the invalid token message.
-fn (s Scanner) invalid_token() Token {
+fn (s &Scanner) invalid_token() Token {
 	if s.text[s.pos] >= 32 && s.text[s.pos] <= 126 {
 		x := s.text[s.pos].ascii_str()
 		return s.error('invalid token `${x}`')

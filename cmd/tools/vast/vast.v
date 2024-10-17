@@ -863,7 +863,6 @@ fn (t Tree) arg(node ast.Param) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add_terse('is_shared', t.bool_node(node.is_shared))
 	obj.add_terse('is_atomic', t.bool_node(node.is_atomic))
-	obj.add_terse('is_auto_rec', t.bool_node(node.is_auto_rec))
 	obj.add_terse('on_newline', t.bool_node(node.on_newline))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('type_pos', t.pos(node.type_pos))

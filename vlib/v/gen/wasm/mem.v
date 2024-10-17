@@ -276,7 +276,7 @@ pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_glob
 
 // is_pure_type(voidptr) == true
 // is_pure_type(&Struct) == false
-pub fn (g Gen) is_pure_type(typ ast.Type) bool {
+pub fn (g &Gen) is_pure_type(typ ast.Type) bool {
 	if typ.is_pure_int() || typ.is_pure_float() || typ == ast.char_type_idx
 		|| typ.is_any_kind_of_pointer() || typ.is_bool() {
 		return true

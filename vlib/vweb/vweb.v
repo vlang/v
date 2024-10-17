@@ -203,7 +203,7 @@ struct Route {
 // Defining this method is optional.
 // This method called at server start.
 // You can use it for initializing globals.
-pub fn (ctx Context) init_server() {
+pub fn (ctx &Context) init_server() {
 	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
 }
 
@@ -220,7 +220,7 @@ pub fn (ctx &Context) before_accept_loop() {
 // It will be called in one of multiple threads in a pool, serving requests,
 // the same one, in which the matching route method will be executed right after it.
 // Defining this method is optional.
-pub fn (ctx Context) before_request() {}
+pub fn (ctx &Context) before_request() {}
 
 // TODO: test
 // vweb intern function
