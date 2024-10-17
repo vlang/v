@@ -634,6 +634,10 @@ println(country[0]) // Output: 78
 println(country[0].ascii_str()) // Output: N
 ```
 
+If you want the code point from a specific `string` index or other more advanced 
+utf8 processing and conversions, refer to the
+[vlib/encoding.utf8](https://modules.vlang.io/encoding.utf8.html) module.
+
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
@@ -783,7 +787,7 @@ and related modules [strings](https://modules.vlang.io/strings.html),
 
 ### Runes
 
-A `rune` represents a single Unicode character and is an alias for `u32`.
+A `rune` represents a single UTF-32 encoded Unicode character and is an alias for `u32`.
 To denote them, use <code>`</code> (backticks) :
 
 ```v
