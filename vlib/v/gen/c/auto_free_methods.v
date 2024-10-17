@@ -43,7 +43,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-	if sym.has_method_with_generic_parent('free') {
+	if sym.kind != .interface && sym.has_method_with_generic_parent('free') {
 		return fn_name
 	}
 
@@ -57,6 +57,9 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		ast.Map {
 			g.gen_free_for_map(objtyp, sym.info, styp, fn_name)
 		}
+		ast.Interface {
+			g.gen_free_for_interface(sym, sym.info, styp, fn_name)
+		}
 		else {
 			println(g.table.type_str(typ))
 			// print_backtrace()
@@ -65,6 +68,29 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		}
 	}
 	return fn_name
+}
+
+fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, styp string, fn_name string) {
+	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	mut fn_builder := strings.new_builder(128)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
+	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	fn_builder.writeln('\tswitch (it->_typ) {')
+	for t in info.types {
+		sub_sym := g.table.sym(ast.mktyp(t))
+		if sub_sym.kind !in [.string, .array, .map, .struct] {
+			continue
+		}
+		fn_name_typ := g.get_free_method(t)
+		fn_builder.writeln('\t\tcase _${sym.cname}_${sub_sym.cname}_index:')
+		fn_builder.writeln('\t\t\t${fn_name_typ}(it);')
+		fn_builder.writeln('\t\t\tbreak;')
+	}
+	fn_builder.writeln('\t\tdefault:')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('}')
 }
 
 fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {

@@ -1,0 +1,20 @@
+ void main__IFoo_free(main__IFoo* it) {
+	switch (it->_typ) {
+		case _main__IFoo_main__Foo_index:
+			main__Foo_free(it);
+			break;
+		case _main__IFoo_array_index:
+			array_free(it);
+			break;
+		case _main__IFoo_map_index:
+			map_free(it);
+			break;
+		case _main__IFoo_VAssertMetaInfo_index:
+			VAssertMetaInfo_free(it);
+			break;
+		case _main__IFoo_MessageError_index:
+			MessageError_free(it);
+			break;
+		default:
+	}
+}
