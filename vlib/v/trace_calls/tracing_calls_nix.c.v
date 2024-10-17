@@ -7,5 +7,5 @@ pub mut:
 }
 
 fn C.gettid() u32
-fn C.clock_gettime(int, &C.timespec)
+fn C.clock_gettime(int, &C.timespec) int
 fn C.pthread_self() u64

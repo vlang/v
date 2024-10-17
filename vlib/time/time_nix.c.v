@@ -50,7 +50,7 @@ pub mut:
 }
 
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
-fn C.clock_gettime(int, &C.timespec)
+fn C.clock_gettime(int, &C.timespec) int
 
 fn C.nanosleep(req &C.timespec, rem &C.timespec) int
 
