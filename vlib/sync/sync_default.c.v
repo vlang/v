@@ -79,6 +79,11 @@ pub struct Semaphore {
 	sem C.sem_t
 }
 
+@[heap]
+pub struct Cond {
+	cond C.pthread_cond_t
+}
+
 // new_mutex creates and initialises a new mutex instance on the heap, then returns a pointer to it.
 pub fn new_mutex() &Mutex {
 	mut m := &Mutex{}
@@ -93,30 +98,30 @@ pub fn (mut m Mutex) init() {
 	C.pthread_mutex_init(&m.mutex, C.NULL)
 }
 
-@[heap]
-pub struct Cond {
-	cond C.pthread_cond_t
-}
-
+// new_cond creates a new condition variable instance on the heap, and returns a pointer to it.
 pub fn new_cond() &Cond {
 	mut cond := &Cond{}
 	cond.init()
 	return cond
 }
 
+// init initialises the condition variable. It should be called once before the condition variable is used,
 @[inline]
 pub fn (mut cond Cond) init() {
 	C.pthread_cond_init(&cond.cond, C.NULL)
 }
 
+// wait waits for the condition variable to be signaled.
 pub fn (mut cond Cond) wait(mut m Mutex) {
 	C.pthread_cond_wait(&cond.cond, &m.mutex)
 }
 
+// signal signals the condition variable, waking up one of the threads that are waiting for the condition variable to be signaled.
 pub fn (mut cond Cond) signal() {
 	C.pthread_cond_signal(&cond.cond)
 }
 
+// destroy frees the resources associated with the condition variable.
 pub fn (mut cond Cond) destroy() {
 	res := C.pthread_cond_destroy(&cond.cond)
 	if res != 0 {
