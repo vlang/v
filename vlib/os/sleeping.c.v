@@ -14,7 +14,6 @@ fn sleep_ms(ms i64) {
 		C.Sleep(u32(ms))
 	} $else {
 		mut req := C.timespec{ms / 1000, 1_000_000 * (ms % 1000)}
-		dump(req)
 		rem := C.timespec{}
 		for C.nanosleep(&req, &rem) < 0 {
 			if C.errno == C.EINTR {
