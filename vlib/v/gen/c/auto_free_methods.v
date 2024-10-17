@@ -77,19 +77,14 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
-	fn_builder.writeln('\tswitch (it->_typ) {')
 	for t in info.types {
 		sub_sym := g.table.sym(ast.mktyp(t))
 		if sub_sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
 		fn_name_typ := g.get_free_method(t)
-		fn_builder.writeln('\t\tcase _${sym.cname}_${sub_sym.cname}_index:')
-		fn_builder.writeln('\t\t\t${fn_name_typ}(it);')
-		fn_builder.writeln('\t\t\tbreak;')
+		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${fn_name_typ}(it); return; }')
 	}
-	fn_builder.writeln('\t\tdefault:')
-	fn_builder.writeln('\t}')
 	fn_builder.writeln('}')
 }
 
