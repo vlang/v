@@ -191,7 +191,22 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									checked_type = c.unwrap_generic(var.smartcasts.last())
 								}
 							}
-							skip_state = c.check_compatible_types(checked_type, right as ast.TypeNode)
+							if sym.info is ast.FnType
+								&& c.comptime.comptime_for_method_var == left.name {
+								skip_state = if c.table.fn_signature(sym.info.func,
+									skip_receiver: true
+									type_only:     true
+								) == c.table.fn_signature(c.comptime.comptime_for_method,
+									skip_receiver: true
+									type_only:     true
+								) {
+									.eval
+								} else {
+									.skip
+								}
+							} else {
+								skip_state = c.check_compatible_types(checked_type, right as ast.TypeNode)
+							}
 						}
 					}
 					if branch.cond.op == .not_is && skip_state != .unknown {
