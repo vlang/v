@@ -23,7 +23,7 @@ fn test_utf8_util() {
 	a := '.abc?abcòàè.'
 	assert utf8.is_punct(a, 0) == true
 	assert utf8.is_punct('b', 0) == false
-	assert utf8.is_uchar_punct(0x002E) == true
+	assert utf8.is_rune_punct(0x002E) == true
 	assert utf8.is_punct(a, 4) == true // ?
 	assert utf8.is_punct(a, 14) == true // last .
 	assert utf8.is_punct(a, 12) == false // è
@@ -33,12 +33,16 @@ fn test_utf8_util() {
 	b := '.ĂĂa. ÔÔ TESTO Æ€'
 	assert utf8.is_global_punct(b, 0) == true
 	assert utf8.is_global_punct('.', 0) == true
-	assert utf8.is_uchar_punct(0x002E) == true
+	assert utf8.is_rune_punct(0x002E) == true
 	assert utf8.is_global_punct(b, 6) == true // .
 	assert utf8.is_global_punct(b, 1) == false // a
 
 	// test utility functions
-	assert utf8.get_uchar(b, 0) == 0x002E
+	c := 'a©★🚀'
+	assert utf8.get_rune(c, 0) == `a` // 1 byte
+	assert utf8.get_rune(c, 1) == `©` // 2 bytes
+	assert utf8.get_rune(c, 3) == `★` // 3 bytes
+	assert utf8.get_rune(c, 6) == `🚀` // 4 bytes
 }
 
 fn test_raw_indexing() {
@@ -56,6 +60,13 @@ fn test_raw_indexing() {
 	assert utf8.raw_index(a, 6) == 'n'
 	assert utf8.raw_index(a, 7) == 'g'
 	assert utf8.raw_index(a, 8) == '!'
+
+	// test differnt utf8 byte lenghts
+	c := 'a©★🚀'
+	assert utf8.raw_index(c, 0) == 'a' // 1 byte
+	assert utf8.raw_index(c, 1) == '©' // 2 bytes
+	assert utf8.raw_index(c, 2) == '★' // 3 bytes
+	assert utf8.raw_index(c, 3) == '🚀' // 4 bytes
 }
 
 fn test_reversed() {
