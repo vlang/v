@@ -101,7 +101,7 @@ pub fn (r Readline) read_char() !int {
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
+// read_line_utf8 returns the complete UTF-8 input line as an UTF-32 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
@@ -152,7 +152,7 @@ pub fn (mut r Readline) read_line(prompt string) !string {
 // read_line_utf8 blocks execution in a loop and awaits user input
 // characters from a terminal until `EOF` or `Enter` key is encountered
 // in the input stream.
-// read_line_utf8 returns the complete input line as an UTF-8 encoded `[]rune` or
+// read_line_utf8 returns the complete UTF-8 input line as an UTF-32 encoded `[]rune` or
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.

@@ -27,7 +27,7 @@ pub fn len(s string) int {
 	return count
 }
 
-// get_uchar convert a unicode glyph in string[index] into a int unicode char
+// get_uchar convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded int unicode char
 pub fn get_uchar(s string, index int) int {
 	mut res := 0
 	mut ch_len := 0
@@ -66,7 +66,7 @@ pub fn get_uchar(s string, index int) int {
 	return res
 }
 
-// raw_index - get the raw character from the string by the given index value.
+// raw_index - get the raw unicode character from the UTF-8 string by the given index value as UTF-8 string.
 // example: utf8.raw_index('我是V Lang', 1) => '是'
 pub fn raw_index(s string, index int) string {
 	mut r := []rune{}
