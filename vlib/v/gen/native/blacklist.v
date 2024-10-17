@@ -32,6 +32,6 @@ const whitelist = {
 	'main.main': false
 }
 
-fn (g Gen) is_blacklisted(name string, is_builtin bool) bool {
+fn (g &Gen) is_blacklisted(name string, is_builtin bool) bool {
 	return whitelist[name] or { is_builtin }
 }

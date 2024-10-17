@@ -192,7 +192,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	return true
 }
 
-fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
+fn (c &Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
 	param_nr_muls := if param.is_mut && !expected.is_ptr() { 1 } else { expected.nr_muls() }
 	if got.is_ptr() && got.nr_muls() > 1 && got.nr_muls() != param_nr_muls {
 		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
@@ -361,7 +361,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	}
 }
 
-fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
+fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
 	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
 	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 	return got_typ_str, expected_typ_str
@@ -370,7 +370,7 @@ fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, str
 // helper method to check if the type is of the same module.
 // FIXME(vincenzopalazzo) This is a work around to the issue
 // explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
-fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
+fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
 	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 	if clean_got_typ == clean_expected_typ {

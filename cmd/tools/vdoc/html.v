@@ -56,7 +56,7 @@ struct SearchResult {
 	link        string
 }
 
-fn (vd VDoc) render_search_index(out Output) {
+fn (vd &VDoc) render_search_index(out Output) {
 	mut js_search_index := strings.new_builder(200)
 	mut js_search_data := strings.new_builder(200)
 	js_search_index.write_string('var searchModuleIndex = [\n')
@@ -96,7 +96,7 @@ fn (mut vd VDoc) render_static_html(out Output) {
 	}
 }
 
-fn (vd VDoc) get_resource(name string, out Output) string {
+fn (vd &VDoc) get_resource(name string, out Output) string {
 	cfg := vd.cfg
 	path := os.join_path(cfg.theme_dir, name)
 	mut res := os.read_file(path) or { panic('vdoc: could not read ${path}') }
@@ -169,7 +169,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	}
 }
 
-fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
+fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
 	cfg := vd.cfg
 	base_dir := os.dir(os.real_path(cfg.input_path))
 	file_path_name := if cfg.is_multi {
@@ -192,7 +192,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	}
 }
 
-fn (vd VDoc) gen_html(d doc.Doc) string {
+fn (vd &VDoc) gen_html(d doc.Doc) string {
 	cfg := vd.cfg
 	mut symbols_toc := strings.new_builder(200)
 	mut modules_toc := strings.new_builder(200)

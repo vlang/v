@@ -36,6 +36,6 @@ fn print_version_for_command(cmd Command) ! {
 }
 
 // version returns a generated version `string` for the `Command`.
-pub fn (cmd Command) version() string {
+pub fn (cmd &Command) version() string {
 	return '${cmd.name} version ${cmd.version}'
 }

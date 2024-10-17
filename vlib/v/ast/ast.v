@@ -707,15 +707,14 @@ fn (f &Fn) method_equals(o &Fn) bool {
 @[minify]
 pub struct Param {
 pub:
-	pos         token.Pos
-	name        string
-	is_mut      bool
-	is_shared   bool
-	is_atomic   bool
-	is_auto_rec bool
-	type_pos    token.Pos
-	is_hidden   bool // interface first arg
-	on_newline  bool // whether the argument starts on a new line
+	pos        token.Pos
+	name       string
+	is_mut     bool
+	is_shared  bool
+	is_atomic  bool
+	type_pos   token.Pos
+	is_hidden  bool // interface first arg
+	on_newline bool // whether the argument starts on a new line
 pub mut:
 	typ Type
 }

@@ -180,7 +180,7 @@ pub fn (mut ws Client) read_next_message() !Message {
 }
 
 // payload_from_fragments returns the whole paylaod from fragmented message
-fn (ws Client) payload_from_fragments(fin_payload []u8) ![]u8 {
+fn (ws &Client) payload_from_fragments(fin_payload []u8) ![]u8 {
 	mut total_size := 0
 	for f in ws.fragments {
 		if f.data.len > 0 {
@@ -202,7 +202,7 @@ fn (ws Client) payload_from_fragments(fin_payload []u8) ![]u8 {
 }
 
 // opcode_from_fragments returns the opcode for message from the first fragment sent
-fn (ws Client) opcode_from_fragments() OPCode {
+fn (ws &Client) opcode_from_fragments() OPCode {
 	return OPCode(ws.fragments[0].opcode)
 }
 
@@ -287,7 +287,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 }
 
 // unmask_sequence unmask any given sequence
-fn (f Frame) unmask_sequence(mut buffer []u8) {
+fn (f &Frame) unmask_sequence(mut buffer []u8) {
 	for i in 0 .. buffer.len {
 		buffer[i] ^= f.masking_key[i % 4] & 0xff
 	}

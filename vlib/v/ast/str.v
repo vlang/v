@@ -113,9 +113,6 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		}
 		f.write_string(node.receiver.name + ' ')
 		styp = util.no_cur_mod(styp, cur_mod)
-		if node.params[0].is_auto_rec {
-			styp = styp.trim('&')
-		}
 		f.write_string(styp + ') ')
 	} else if node.is_static_type_method {
 		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),

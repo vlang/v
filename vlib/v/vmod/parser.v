@@ -107,7 +107,7 @@ fn (mut s Scanner) create_ident() string {
 	return text
 }
 
-fn (s Scanner) peek_char(c u8) bool {
+fn (s &Scanner) peek_char(c u8) bool {
 	return s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
 }
 
