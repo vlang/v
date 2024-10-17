@@ -574,7 +574,23 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 									return !is_true, true
 								}
 							}
-							if cond.op == .key_is {
+							if got_sym.info is ast.FnType && cond.left is ast.Ident
+								&& g.comptime.comptime_for_method_var == cond.left.name {
+								is_compatible := g.table.fn_signature(got_sym.info.func,
+									skip_receiver: true
+									type_only:     true
+								) == g.table.fn_signature(g.comptime.comptime_for_method,
+									skip_receiver: true
+									type_only:     true
+								)
+								if cond.op == .key_is {
+									g.write(int(is_compatible).str())
+									return is_compatible, true
+								} else {
+									g.write(int(!is_compatible).str())
+									return !is_compatible, true
+								}
+							} else if cond.op == .key_is {
 								g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 								return exp_type == got_type, true
 							} else {

@@ -1604,7 +1604,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 		sb.write_string(func.name)
 	}
 	sb.write_string('(')
-	start := int(opts.skip_receiver)
+	start := int(func.is_method && opts.skip_receiver)
 	for i in start .. func.params.len {
 		if i != start {
 			sb.write_string(', ')
