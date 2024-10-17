@@ -2,7 +2,7 @@ import os
 import rand
 
 fn test_envbang_script_runs() {
-	env_location := '/usr/bin/env'
+	env_location := os.quoted_path(@VEXE)
 	$if windows {
 		skip_test('windows does not support envbang lines')
 	}
@@ -12,7 +12,6 @@ fn test_envbang_script_runs() {
 	if !os.is_executable(env_location) {
 		skip_test('${env_location} is not executable')
 	}
-	os.find_abs_path_of_executable('v') or { skip_test('v is not in PATH') }
 	rndname := rand.ulid()
 	rnd_vsh_script_path := os.real_path(os.join_path(os.cache_dir(), '${rndname}.vsh'))
 	os.write_file(rnd_vsh_script_path, "#!${env_location} v
