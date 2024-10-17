@@ -3880,6 +3880,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				g.write(int(g.unwrap_generic(node.name_type)).str())
 				return
 			}
+			.unaliased_typ {
+				g.write(int(g.table.unaliased_type(g.unwrap_generic(node.name_type))).str())
+				return
+			}
 			.unknown {
 				// ast.TypeOf of `typeof(string).idx` etc
 				if node.field_name == 'name' {

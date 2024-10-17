@@ -2936,6 +2936,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			fkind := match field {
 				'name' { ast.GenericKindField.name }
 				'typ' { ast.GenericKindField.typ }
+				'unaliased_typ' { ast.GenericKindField.unaliased_typ }
 				else { ast.GenericKindField.unknown }
 			}
 			pos.extend(p.tok.pos())
