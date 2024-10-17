@@ -506,6 +506,30 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T is time.Time {
 	} $else $if T is $map {
 	} $else $if T is $array {
+		array_info := decoder.values_info[decoder.value_info_idx]
+
+		if array_info.value_kind == .array {
+			array_position := array_info.position
+			array_end := array_position + array_info.length
+
+			decoder.value_info_idx++
+			for {
+				if decoder.value_info_idx >= decoder.values_info.len {
+					break
+				}
+				value_info := decoder.values_info[decoder.value_info_idx]
+
+				if value_info.position + value_info.length >= array_end {
+					break
+				}
+
+				mut array_element := create_array_element(val)
+
+				decoder.decode_value(mut &array_element)!
+
+				val << array_element
+			}
+		}
 	} $else $if T is $struct {
 		mut nodes := []Node{}
 		// TODO: needs performance improvements
@@ -545,6 +569,10 @@ fn get_value_kind(value rune) ValueKind {
 		`n` { .null }
 		else { .unknown }
 	}
+}
+
+fn create_array_element[T](array []T) T {
+	return T{}
 }
 
 // decode_optional_value_in_actual_node decodes an optional value in a node.
@@ -883,7 +911,7 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 // string_buffer_to_generic_number converts a buffer of bytes (data) into a generic type T and
 // stores the result in the provided result pointer.
 // The function supports conversion to the following types:
-// - Signed integers: i8, i16, int, i64
+// - Signed integers: i8, i16, i32, i64
 // - Unsigned integers: u8, u16, u32, u64
 // - Floating-point numbers: f32, f64
 //

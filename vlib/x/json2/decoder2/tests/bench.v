@@ -115,6 +115,22 @@ fn main() {
 
 	b.measure('old_json.decode(map[string]string, json_data1)!\n')
 
+	// array **********************************************************
+
+	println('\n***arrays***')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[[]int]('[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!
+	}
+
+	b.measure("decoder2.decode[[]int]('[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!")
+
+	for i := 0; i < max_iterations; i++ {
+		_ := old_json.decode([]int, '[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!
+	}
+
+	b.measure("old_json.decode([]int, '[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!\n")
+
 	println('\n***simple types***')
 
 	// int **********************************************************
