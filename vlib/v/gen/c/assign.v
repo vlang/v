@@ -729,7 +729,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						cloned = true
 					}
 				} else if right_sym.kind == .interface {
-					g.get_free_method(var_type)
+					if g.table.type_to_str(var_type) != 'IError' {
+						if var_type.has_flag(.shared_f) {
+							g.get_free_method(var_type.clear_flag(.shared_f).set_nr_muls(0))
+						} else {
+							g.get_free_method(var_type)
+						}
+					}
 				}
 			}
 			if !cloned {

@@ -6,7 +6,9 @@ import v.ast
 import strings
 
 fn (mut g Gen) get_free_method(typ ast.Type) string {
-	g.autofree_methods[typ] = true
+	if typ in g.autofree_methods {
+		return g.autofree_methods[typ]
+	}
 	mut sym := g.table.sym(g.unwrap_generic(typ))
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
@@ -16,8 +18,10 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
 	fn_name := styp_to_free_fn_name(styp)
 	if sym.has_method_with_generic_parent('free') {
+		g.autofree_methods[typ] = fn_name
 		return fn_name
 	}
+	g.autofree_methods[typ] = fn_name
 	return fn_name
 }
 
@@ -78,12 +82,13 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 	}
 	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 	for t in info.types {
-		sub_sym := g.table.sym(ast.mktyp(t))
+		typ_ := g.unwrap_generic(t)
+		sub_sym := g.table.sym(typ_)
 		if sub_sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
-		fn_name_typ := g.get_free_method(t)
-		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${fn_name_typ}(it); return; }')
+		fn_name_typ := g.get_free_method(typ_)
+		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${fn_name_typ}(it->_${sub_sym.cname}); return; }')
 	}
 	fn_builder.writeln('}')
 }

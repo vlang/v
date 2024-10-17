@@ -245,7 +245,7 @@ mut:
 	cur_fn                 &ast.FnDecl = unsafe { nil } // same here
 	cur_lock               ast.LockExpr
 	cur_struct_init_typ    ast.Type
-	autofree_methods       map[int]bool
+	autofree_methods       map[int]string
 	generated_free_methods map[int]bool
 	autofree_scope_stmts   []string
 	use_segfault_handler   bool = true
