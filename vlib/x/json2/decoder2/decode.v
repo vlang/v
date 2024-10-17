@@ -22,7 +22,7 @@ struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
 	values_info    []ValueInfo
-	idx            int // idx is the current index of the decoder.
+	idx            int // idx is byte offset from the start in json
 	checker_idx    int // checker_idx is the current index of the decoder.
 	value_info_idx int // value_info_idx is the current index of the values_info.
 }
@@ -140,7 +140,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		.null {
 			// check if the JSON string is a null value
 			if checker_end - checker.checker_idx <= 3 {
-				return checker.error('EOF error')
+				return checker.error('EOF error: expecting `null`')
 			}
 
 			is_not_ok := unsafe {
@@ -184,7 +184,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 						for val[checker.checker_idx] != `:` {
 							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error')
+								return checker.error('EOF error: key colon not found')
 							}
 							if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
 								return checker.error('invalid value after object key')
@@ -227,7 +227,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
 						for val[checker.checker_idx] != `}` {
 							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error')
+								return checker.error('EOF error: object value not closed')
 							}
 							checker.check_json_format(val)!
 							// whitespace
@@ -294,7 +294,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				}
 
 				if checker.checker_idx >= checker_end - 1 {
-					return checker.error('EOF error')
+					return checker.error('EOF error: array not closed')
 				}
 
 				checker.check_json_format(val)!
@@ -424,7 +424,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			match val[checker.checker_idx] {
 				`t` {
 					if checker_end - checker.checker_idx <= 3 {
-						return checker.error('EOF error')
+						return checker.error('EOF error: expecting `true`')
 					}
 
 					is_not_ok := unsafe {
@@ -439,7 +439,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				}
 				`f` {
 					if checker_end - checker.checker_idx <= 4 {
-						return checker.error('EOF error')
+						return checker.error('EOF error: expecting `false`')
 					}
 
 					is_not_ok := unsafe {
