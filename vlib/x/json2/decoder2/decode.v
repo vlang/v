@@ -513,11 +513,10 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		decoder.decode_struct(nodes, val)
 	} $else $if T is bool {
-		// REVIEW -  Why `bool` is true in `T in [$int, $float, $enum]` is this a bug?
 		value_info := decoder.values_info[decoder.value_info_idx]
 
 		unsafe {
-			*val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
+			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
 		}
 	} $else $if T in [$int, $float, $enum] {
 		value_info := decoder.values_info[decoder.value_info_idx]
