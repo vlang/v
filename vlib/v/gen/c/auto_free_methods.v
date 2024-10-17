@@ -6,7 +6,9 @@ import v.ast
 import strings
 
 fn (mut g Gen) get_free_method(typ ast.Type) string {
-	g.autofree_methods[typ] = true
+	if typ in g.autofree_methods {
+		return g.autofree_methods[typ]
+	}
 	mut sym := g.table.sym(g.unwrap_generic(typ))
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
@@ -16,8 +18,10 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
 	fn_name := styp_to_free_fn_name(styp)
 	if sym.has_method_with_generic_parent('free') {
+		g.autofree_methods[typ] = fn_name
 		return fn_name
 	}
+	g.autofree_methods[typ] = fn_name
 	return fn_name
 }
 
@@ -43,7 +47,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-	if sym.has_method_with_generic_parent('free') {
+	if sym.kind != .interface && sym.has_method_with_generic_parent('free') {
 		return fn_name
 	}
 
@@ -57,6 +61,9 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		ast.Map {
 			g.gen_free_for_map(objtyp, sym.info, styp, fn_name)
 		}
+		ast.Interface {
+			g.gen_free_for_interface(sym, sym.info, styp, fn_name)
+		}
 		else {
 			println(g.table.type_str(typ))
 			// print_backtrace()
@@ -65,6 +72,25 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		}
 	}
 	return fn_name
+}
+
+fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, styp string, fn_name string) {
+	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	mut fn_builder := strings.new_builder(128)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
+	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	for t in info.types {
+		typ_ := g.unwrap_generic(t)
+		sub_sym := g.table.sym(typ_)
+		if sub_sym.kind !in [.string, .array, .map, .struct] {
+			continue
+		}
+		fn_name_typ := g.get_free_method(typ_)
+		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${fn_name_typ}(it->_${sub_sym.cname}); return; }')
+	}
+	fn_builder.writeln('}')
 }
 
 fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
