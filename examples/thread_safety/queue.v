@@ -64,7 +64,6 @@ fn consumer(mut queue ThreadSafeQueue[int]) {
 	}
 }
 
-// Main function
 fn main() {
 	mut queue := new_queue[int]()
 
