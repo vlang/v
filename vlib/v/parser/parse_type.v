@@ -434,7 +434,7 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 		name := '_v_anon_sum_type_${variant_names.join('_')}'
 		variant_types := variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
-		mut idx := p.table.find_type(prepend_mod_name)
+		mut idx := p.table.find_type_idx(prepend_mod_name)
 		if idx > 0 {
 			return ast.new_type(idx)
 		}
@@ -894,7 +894,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 }
 
 fn (mut p Parser) parse_generic_type(name string) ast.Type {
-	mut idx := p.table.find_type(name)
+	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
 		return ast.new_type(idx).set_flag(.generic)
 	}
@@ -962,7 +962,7 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	bs_name += ']'
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
 	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
-		mut gt_idx := p.table.find_type(bs_name)
+		mut gt_idx := p.table.find_type_idx(bs_name)
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)
 		}

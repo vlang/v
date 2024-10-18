@@ -4821,7 +4821,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 			c.expected_type.idx()
 		}
 	} else {
-		c.table.find_type(node.enum_name)
+		c.table.find_type_idx(node.enum_name)
 	}
 	if typ_idx == 0 {
 		// Handle `builtin` enums like `ChanState`, so that `x := ChanState.closed` works.
