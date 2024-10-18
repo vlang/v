@@ -20,15 +20,7 @@ Key points:
 By using atomic operations and proper thread synchronization, the code ensures that the shared counter is
 incremented safely and correctly by multiple threads.
 */
-$if windows {
-	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
-} $else {
-	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
-}
-
-// Declare the atomic functions
-fn C.atomic_fetch_add_u32(&u32, u32) u32
-fn C.atomic_load_u32(&u32) u32
+import sync as _
 
 // Function to increment the atomic counter
 fn increment(atomic_counter &u32) {
