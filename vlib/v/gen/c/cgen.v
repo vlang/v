@@ -3613,9 +3613,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		ast.LambdaExpr {
 			if node.call_ctx != unsafe { nil } {
 				save_cur_concrete_types := g.cur_concrete_types
+				save_cur_unwrap_cache := g.table.cur_unwrap_cache.clone()
 				g.cur_concrete_types = node.call_ctx.concrete_types
+				g.table.cur_unwrap_cache.clear()
 				g.gen_anon_fn(mut node.func)
 				g.cur_concrete_types = save_cur_concrete_types
+				g.table.cur_unwrap_cache = save_cur_unwrap_cache.clone()
 			} else {
 				g.gen_anon_fn(mut node.func)
 			}

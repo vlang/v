@@ -39,8 +39,9 @@ pub mut:
 	panic_npanics      int
 	cur_fn             &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_lambda         &LambdaExpr = unsafe { nil } // current lambda node
-	cur_concrete_types []Type // current concrete types, e.g. <int, string>
-	gostmts            int    // how many `go` statements there were in the parsed files.
+	cur_concrete_types []Type        // current concrete types, e.g. <int, string>
+	cur_unwrap_cache   map[Type]Type // currenct unwrap_generic cache
+	gostmts            int           // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
 	module_deprecated map[string]bool

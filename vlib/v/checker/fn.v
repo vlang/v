@@ -424,6 +424,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.expected_type = ast.void_type
 	c.table.cur_fn = unsafe { node }
+	c.table.cur_unwrap_cache.clear()
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.option)
@@ -587,6 +588,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
 		c.cur_anon_fn = keep_anon_fn
+		c.table.cur_unwrap_cache.clear()
 	}
 	if node.decl.no_body {
 		c.error('anonymous function must declare a body', node.decl.pos)
@@ -597,6 +599,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		}
 	}
 	c.table.cur_fn = unsafe { &node.decl }
+	c.table.cur_unwrap_cache.clear()
 	c.inside_anon_fn = true
 	c.cur_anon_fn = unsafe { &node }
 	mut has_generic := false
@@ -2794,6 +2797,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		$if trace_post_process_generic_fns ? {
 			eprintln('> post_process_generic_fns ${node.mod} | ${node.name} | fkey: ${fkey} | gtypes: ${gtypes} | c.file.generic_fns.len: ${c.file.generic_fns.len}')
 		}
+		c.table.cur_unwrap_cache.clear()
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
@@ -2807,6 +2811,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 			}
 		}
 		c.table.cur_concrete_types = []
+		c.table.cur_unwrap_cache.clear()
 		$if trace_post_process_generic_fns ? {
 			if node.generic_names.len > 0 {
 				eprintln('       > fn_decl node.name: ${node.name} | generic_names: ${node.generic_names} | ninstances: ${node.ninstances}')
