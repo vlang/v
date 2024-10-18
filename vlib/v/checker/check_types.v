@@ -213,9 +213,11 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		return error('unexpected 0 type')
 	}
 	mut expected := c.table.unaliased_type(expected_)
+	is_aliased := expected != expected_
+	is_exp_sumtype := c.table.type_kind(expected_) == .sum_type
 	got := c.table.unaliased_type(got_)
 	// variadic
-	if expected.has_flag(.variadic) {
+	if expected_.has_flag(.variadic) {
 		exp_type_sym := c.table.sym(expected_)
 		exp_info := exp_type_sym.info as ast.Array
 		expected = exp_info.elem_type
@@ -310,7 +312,13 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		}
 	}
 
-	if c.check_types(got, expected) {
+	if c.check_types(if is_exp_sumtype { got_ } else { got }, if !is_aliased
+		|| expected_.has_flag(.variadic) {
+		expected
+	} else {
+		expected_
+	})
+	{
 		if language == .v && idx_got == ast.voidptr_type_idx {
 			if expected.is_int_valptr() || expected.is_int() || expected.is_ptr() {
 				return
