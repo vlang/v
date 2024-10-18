@@ -190,7 +190,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	defer {
 		g.is_autofree = old_g_autofree
 	}
-	g.table.cur_unwrap_cache.clear()
 	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 {
 		// need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
@@ -209,18 +208,15 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.gen_fn_decl(node, skip)
 		}
 		g.cur_concrete_types = []
-		g.table.cur_unwrap_cache.clear()
 		return
 	}
 	cur_fn_save := g.cur_fn
 	defer {
 		g.cur_fn = cur_fn_save
-		g.table.cur_unwrap_cache.clear()
 	}
 	unsafe {
 		// TODO: remove unsafe
 		g.cur_fn = node
-		g.table.cur_unwrap_cache.clear()
 	}
 	fn_start_pos := g.out.len
 	is_closure := node.scope.has_inherited_vars()

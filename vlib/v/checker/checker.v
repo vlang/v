@@ -2756,17 +2756,9 @@ fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 			}
 		}
 		if c.table.cur_fn != unsafe { nil } {
-			if t_typ := c.table.cur_unwrap_cache[typ] {
-				if t_typ != 0 {
-					return t_typ
-				}
-			}
 			if t_typ := c.table.convert_generic_type(typ, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
 			{
-				if !t_typ.has_flag(.generic) {
-					c.table.cur_unwrap_cache[typ] = t_typ
-				}
 				return t_typ
 			}
 			if c.inside_lambda && c.table.cur_lambda.call_ctx != unsafe { nil } {

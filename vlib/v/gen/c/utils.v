@@ -16,15 +16,7 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		// `convert_generic_type`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
 		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
-			if t_typ := g.table.cur_unwrap_cache[typ] {
-				if t_typ != 0 {
-					return t_typ
-				}
-			}
 			if t_typ := g.table.convert_generic_type(typ, g.cur_fn.generic_names, g.cur_concrete_types) {
-				if !t_typ.has_flag(.generic) {
-					g.table.cur_unwrap_cache[typ] = t_typ
-				}
 				return t_typ
 			}
 		} else if g.inside_struct_init {
