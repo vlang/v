@@ -7135,7 +7135,17 @@ that are intended to be used have to be declared. Example:
 
 ```v globals
 
-import sync as _
+$if windows {
+	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+} $else {
+	#include "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+}
+
+// declare functions we want to use - V does not parse the C header
+fn C.atomic_store_u32(&u32, u32)
+fn C.atomic_load_u32(&u32) u32
+fn C.atomic_compare_exchange_weak_u32(&u32, &u32, u32) bool
+fn C.atomic_compare_exchange_strong_u32(&u32, &u32, u32) bool
 
 const num_iterations = 10000000
 
