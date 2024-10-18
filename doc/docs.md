@@ -7134,7 +7134,6 @@ To use these functions the C header for the used OS has to be included and the f
 that are intended to be used have to be declared. Example:
 
 ```v globals
-
 $if windows {
 	#include "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
