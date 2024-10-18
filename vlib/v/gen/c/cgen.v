@@ -1005,9 +1005,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 				}
 				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			} else {
-				tidx := g.table.find_type(sym.name)
+				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
-				g.writeln('\t\tcase ${int(tidx)}: return "${util.strip_main_name(sym.name)}";')
+				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
 				mut idxs := []int{}
 				for v in sum_info.variants {
 					if v in idxs {
@@ -1031,9 +1031,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 				}
 				g.writeln('\treturn ${int(ityp)};')
 			} else {
-				tidx := g.table.find_type(sym.name)
+				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
-				g.writeln('\t\tcase ${int(tidx)}: return ${int(ityp)};')
+				g.writeln('\t\tcase ${tidx}: return ${int(ityp)};')
 				mut idxs := []int{}
 				for v in sum_info.variants {
 					if v in idxs {

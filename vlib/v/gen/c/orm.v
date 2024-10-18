@@ -162,7 +162,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			typ := match true {
 				sym.name == 'time.Time' { '_const_orm__time_' }
 				sym.kind == .enum { '_const_orm__enum_' }
-				else { int(field.typ.idx()).str() }
+				else { field.typ.idx().str() }
 			}
 			g.writeln('(orm__TableField){')
 			g.indent++
@@ -907,7 +907,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				types << '_const_orm__enum_'
 				continue
 			}
-			types << int(field.typ.idx()).str()
+			types << field.typ.idx().str()
 		}
 		g.indent--
 		g.writeln('})')

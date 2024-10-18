@@ -311,14 +311,12 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			return
 		}
 	}
-
-	if c.check_types(if is_exp_sumtype { got_ } else { got }, if !is_aliased
-		|| expected_.has_flag(.variadic) {
+	exp_type := if !is_aliased || expected_.has_flag(.variadic) {
 		expected
 	} else {
 		expected_
-	})
-	{
+	}
+	if c.check_types(if is_exp_sumtype { got_ } else { got }, exp_type) {
 		if language == .v && idx_got == ast.voidptr_type_idx {
 			if expected.is_int_valptr() || expected.is_int() || expected.is_ptr() {
 				return
@@ -326,7 +324,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			exp_sym := c.table.final_sym(expected)
 			if exp_sym.language == .v
 				&& exp_sym.kind !in [.voidptr, .charptr, .byteptr, .function, .placeholder, .array_fixed, .sum_type, .struct] {
-				got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 		}
@@ -352,7 +350,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 				|| !c.check_same_module(got, expected)
 				|| (!got.is_ptr() && !expected.is_ptr()
 				&& got_typ_sym.name != expected_typ_sym.name) {
-				got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 			}
 			return
@@ -360,12 +358,12 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		if got == ast.void_type {
 			return error('`${arg.expr}` (no value) used as value')
 		}
-		got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
+		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
 
 	if got != ast.void_type {
-		got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
+		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
 }

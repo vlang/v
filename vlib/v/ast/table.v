@@ -660,14 +660,14 @@ pub fn (t &Table) find_type_idx(name string) int {
 }
 
 @[inline]
-pub fn (t &Table) find_type_fn_scoped(name string, scope &Scope) Type {
+pub fn (t &Table) find_type_idx_fn_scoped(name string, scope &Scope) int {
 	if scope != unsafe { nil } {
 		idx := t.type_idxs['_${name}_${scope.start_pos}']
 		if idx != 0 {
-			return idx_to_type(idx)
+			return idx
 		}
 	}
-	return idx_to_type(t.type_idxs[name])
+	return t.type_idxs[name]
 }
 
 @[inline]

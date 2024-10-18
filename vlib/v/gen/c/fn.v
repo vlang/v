@@ -1604,7 +1604,7 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	} else if mut typ_sym.info is ast.Array && !typ_sym.has_method(node.name) && node.name != 'str' {
 		typ := g.table.unaliased_type(typ_sym.info.elem_type)
-		typ_idx := g.table.find_type(g.table.array_name(typ))
+		typ_idx := g.table.find_type_idx(g.table.array_name(typ))
 		if typ_idx > 0 {
 			unwrapped_rec_type = ast.idx_to_type(typ_idx)
 			typ_sym = g.table.sym(unwrapped_rec_type)

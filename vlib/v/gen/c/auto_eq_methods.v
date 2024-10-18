@@ -580,7 +580,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
 	if info is ast.Interface {
 		for typ in info.types {
-			fn_builder.writeln('\t\tif (idx == ${int(typ.idx())}) {')
+			fn_builder.writeln('\t\tif (idx == ${typ.idx()}) {')
 			fn_builder.write_string('\t\t\treturn ')
 			match g.table.type_kind(typ.set_nr_muls(0)) {
 				.struct {

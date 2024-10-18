@@ -209,7 +209,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				if cond_sym.kind == .sum_type {
 					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
-						g.write('${int(ast.none_type.idx())} /* none */')
+						g.write('${ast.none_type.idx()} /* none */')
 					} else {
 						g.expr(cur_expr)
 					}

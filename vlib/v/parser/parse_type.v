@@ -566,7 +566,7 @@ fn (mut p Parser) parse_type() ast.Type {
 	if p.tok.kind == .key_struct {
 		p.anon_struct_decl = p.struct_decl(true)
 		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-		return p.table.find_type(p.anon_struct_decl.name)
+		return p.table.find_type_idx(p.anon_struct_decl.name)
 	}
 
 	language := p.parse_language()
@@ -797,7 +797,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 
 fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
-	mut idx := p.table.find_type_fn_scoped(name, p.cur_fn_scope)
+	mut idx := p.table.find_type_idx_fn_scoped(name, p.cur_fn_scope)
 	if idx > 0 {
 		mut typ := ast.new_type(idx)
 		sym := p.table.sym(typ)
