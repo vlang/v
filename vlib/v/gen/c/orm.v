@@ -1224,7 +1224,7 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 
 // get_orm_current_table_field returns the current processing table's struct field by name.
 fn (g &Gen) get_orm_current_table_field(name string) ?ast.StructField {
-	info := g.table.sym(g.table.type_idxs[g.sql_table_name]).struct_info()
+	info := g.table.sym(ast.idx_to_type(g.table.type_idxs[g.sql_table_name])).struct_info()
 
 	for field in info.fields {
 		if field.name == name {

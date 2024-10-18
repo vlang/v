@@ -469,7 +469,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 				array_info := parent_elem_sym.array_info()
 				elem_type := c.table.find_or_register_array_with_dims(array_info.elem_type,
 					array_info.nr_dims + exp_sym.info.nr_dims)
-				if c.table.type_to_str(got) == c.table.type_to_str(elem_type) {
+				if c.table.type_to_str(got) == c.table.type_to_str(ast.idx_to_type(elem_type)) {
 					return true
 				}
 			}

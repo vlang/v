@@ -2444,7 +2444,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 		return fn_name
 	}
 	for got_sym.parent_idx != 0 && got_sym.idx !in (exp_sym.info as ast.SumType).variants {
-		got_sym = g.table.sym(got_sym.parent_idx)
+		got_sym = g.table.sym(ast.idx_to_type(got_sym.parent_idx))
 	}
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{

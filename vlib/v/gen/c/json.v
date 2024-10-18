@@ -365,7 +365,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	ret_styp string) {
 	info := sym.info as ast.SumType
 	type_var := g.new_tmp_var()
-	typ := g.table.type_idxs[sym.name]
+	typ := ast.idx_to_type(g.table.type_idxs[sym.name])
 	prefix := if utyp.is_ptr() { '*' } else { '' }
 	field_op := if utyp.is_ptr() { '->' } else { '.' }
 	is_option := utyp.has_flag(.option)

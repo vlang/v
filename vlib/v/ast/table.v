@@ -13,7 +13,7 @@ mut:
 	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
 	type_symbols       []&TypeSymbol
-	type_idxs          map[string]Type
+	type_idxs          map[string]int
 	fns                map[string]Fn
 	iface_types        map[string][]Type
 	dumps              map[Type]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
@@ -651,7 +651,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 
 @[inline]
 pub fn (t &Table) find_type(name string) Type {
-	return t.type_idxs[name]
+	return idx_to_type(t.type_idxs[name])
 }
 
 @[inline]
@@ -659,10 +659,10 @@ pub fn (t &Table) find_type_fn_scoped(name string, scope &Scope) Type {
 	if scope != unsafe { nil } {
 		idx := t.type_idxs['_${name}_${scope.start_pos}']
 		if idx != 0 {
-			return idx
+			return idx_to_type(idx)
 		}
 	}
-	return t.type_idxs[name]
+	return idx_to_type(t.type_idxs[name])
 }
 
 @[inline]
@@ -795,7 +795,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 }
 
 @[inline]
-pub fn (mut t Table) register_sym(sym TypeSymbol) Type {
+pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	mut idx := -2
 	$if trace_register_sym ? {
 		defer {
@@ -1047,7 +1047,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	}
 }
 
-pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) Type {
+pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 	name := t.chan_name(elem_type, is_mut)
 	cname := t.chan_cname(elem_type, is_mut)
 	// existing
@@ -1069,7 +1069,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) Type {
 	return t.register_sym(chan_typ)
 }
 
-pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) Type {
+pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	name := t.map_name(key_type, value_type)
 	cname := t.map_cname(key_type, value_type)
 	// existing
@@ -1091,7 +1091,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) Type {
 	return t.register_sym(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_thread(return_type Type) Type {
+pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 	name := t.thread_name(return_type)
 	cname := t.thread_cname(return_type)
 	// existing
@@ -1112,7 +1112,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) Type {
 	return t.register_sym(thread_typ)
 }
 
-pub fn (mut t Table) find_or_register_promise(return_type Type) Type {
+pub fn (mut t Table) find_or_register_promise(return_type Type) int {
 	name := t.promise_name(return_type)
 
 	cname := t.promise_cname(return_type)
@@ -1158,14 +1158,15 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 	return t.register_sym(array_type_)
 }
 
-pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) Type {
+pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
 	if nr_dims == 1 {
 		return t.find_or_register_array(elem_type)
 	}
-	return t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
+	return t.find_or_register_array(idx_to_type(t.find_or_register_array_with_dims(elem_type,
+		nr_dims - 1)))
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr, is_fn_ret bool) Type {
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr, is_fn_ret bool) int {
 	prefix := if is_fn_ret { '_v_' } else { '' }
 	name := prefix + t.array_fixed_name(elem_type, size, size_expr)
 	// existing
@@ -1189,7 +1190,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 	return t.register_sym(array_fixed_type)
 }
 
-pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) Type {
+pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	mut name := '('
 	mut cname := 'multi_return'
 	for i, mr_typ in mr_typs {
@@ -1416,10 +1417,11 @@ pub fn (t &Table) is_interface_smartcast(var ScopeObject) bool {
 pub fn (t &Table) known_type_names() []string {
 	mut res := []string{cap: t.type_idxs.len}
 	for _, idx in t.type_idxs {
+		typ := idx_to_type(idx)
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
-		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(idx)
-			&& t.sym(idx).kind != .function {
-			res << t.type_to_str(idx)
+		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(typ)
+			&& t.sym(typ).kind != .function {
+			res << t.type_to_str(typ)
 		}
 	}
 	return res
@@ -2130,7 +2132,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				info:   info
 				is_pub: ts.is_pub
 			)
-			mut ts_copy := t.sym(new_idx)
+			mut ts_copy := t.sym(idx_to_type(new_idx))
 			for method in all_methods {
 				ts_copy.register_method(method)
 			}

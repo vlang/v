@@ -1042,7 +1042,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			enum_name
 		}
-		mut idx := c.table.type_idxs[full_enum_name]
+		mut idx := ast.idx_to_type(c.table.type_idxs[full_enum_name])
 		if idx > 0 {
 			// is from another mod.
 			if enum_name.contains('.') {

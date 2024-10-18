@@ -97,7 +97,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 @[minify]
 pub struct TypeSymbol {
 pub:
-	parent_idx Type
+	parent_idx int
 pub mut:
 	info          TypeInfo
 	kind          Kind
