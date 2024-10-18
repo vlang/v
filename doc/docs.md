@@ -634,6 +634,10 @@ println(country[0]) // Output: 78
 println(country[0].ascii_str()) // Output: N
 ```
 
+If you want the code point from a specific `string` index or other more advanced 
+utf8 processing and conversions, refer to the
+[vlib/encoding.utf8](https://modules.vlang.io/encoding.utf8.html) module.
+
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
@@ -783,7 +787,7 @@ and related modules [strings](https://modules.vlang.io/strings.html),
 
 ### Runes
 
-A `rune` represents a single Unicode character and is an alias for `u32`.
+A `rune` represents a single UTF-32 encoded Unicode character and is an alias for `u32`.
 To denote them, use <code>`</code> (backticks) :
 
 ```v
@@ -5685,6 +5689,23 @@ pub mut:
 ```
 
 Function/method deprecations:
+
+Functions are deprecated before they are finally removed to give users time to migrate their code. 
+Adding a date is preferable in most cases. An immediate change, without a deprecation date, may be 
+used for functions that are found to be conceptually broken and obsoleted by much better 
+functionality. Other than that setting a date is advisable to grant users a grace period. 
+
+Deprecated functions cause warnings, which cause errors if built with `-prod`. To avoid immediate 
+CI breakage, it is advisable to set a future date, ahead of the date when the code is merged. This 
+gives people who actively developed V projects, the chance to see the deprecation notice at least 
+once and fix the uses. Setting a date in the next 30 days, assumes they would have compiled their 
+projects manually at least once, within that time. For small changes, this should be plenty time. 
+For complex changes, this time may need to be longer. 
+
+Different V projects and maintainers may reasonably choose different deprecation policies. 
+Depending on the type and impact of the change, you may want to consult with them first, before 
+deprecating a function.
+
 
 ```v
 // Calling this function will result in a deprecation warning
