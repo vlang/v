@@ -109,7 +109,7 @@ pub mut:
 	mod           string
 	is_pub        bool
 	language      Language
-	idx           Type
+	idx           int
 	size          int = -1
 	align         int = -1
 }
@@ -177,7 +177,7 @@ pub mut:
 // instantiation of a generic struct
 pub struct GenericInst {
 pub mut:
-	parent_idx     Type   // idx of the base generic struct
+	parent_idx     int    // idx of the base generic struct
 	concrete_types []Type // concrete types, e.g. [int, string]
 }
 
@@ -189,7 +189,7 @@ pub mut:
 	methods []Fn
 	embeds  []Type
 	// `I1 is I2` conversions
-	conversions map[Type][]Type
+	conversions map[int][]Type
 	// generic interface support
 	is_generic     bool
 	generic_types  []Type

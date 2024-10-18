@@ -95,16 +95,16 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		dump_sym := g.table.sym(dump_type)
+		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
 		// eprintln('>>> dump_type: $dump_type | cname: $cname | dump_sym: $dump_sym.name')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		typ := dump_type
+		typ := ast.idx_to_type(dump_type)
 		is_ptr := typ.is_ptr()
-		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
+		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, typ)
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
 		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
@@ -116,7 +116,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				str_dumparg_type += '_option_'
 				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
 			}
-			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
+			str_dumparg_type += g.cc_type(typ, true) + ptr_asterisk
 		}
 		mut is_fixed_arr_ret := false
 		if dump_sym.kind == .function {
@@ -182,7 +182,7 @@ fn (mut g Gen) dump_expr_definitions() {
 					'\tstring_free(&value);')
 			} else {
 				prefix := if dump_sym.is_c_struct() {
-					c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+					c_struct_ptr(dump_sym, typ, str_method_expects_ptr)
 				} else {
 					deref
 				}
@@ -191,7 +191,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			}
 		} else {
 			prefix := if dump_sym.is_c_struct() {
-				c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+				c_struct_ptr(dump_sym, typ, str_method_expects_ptr)
 			} else {
 				deref
 			}

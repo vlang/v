@@ -2450,7 +2450,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
 		got:     if got_.has_flag(.option) {
-			new_got := got_sym.idx.set_flag(.option)
+			new_got := ast.idx_to_type(got_sym.idx).set_flag(.option)
 			new_got
 		} else {
 			got_sym.idx
@@ -8030,7 +8030,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 			}
 		}
 		for vtyp, variants in inter_info.conversions {
-			vsym := g.table.sym(vtyp)
+			vsym := g.table.sym(ast.idx_to_type(vtyp))
 
 			if variants.len > 0 {
 				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')

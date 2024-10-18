@@ -16,9 +16,9 @@ pub mut:
 	type_idxs          map[string]int
 	fns                map[string]Fn
 	iface_types        map[string][]Type
-	dumps              map[Type]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports            []string        // List of all imports
-	modules            []string        // Topologically sorted list of all modules registered by the application
+	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports            []string       // List of all imports
+	modules            []string       // Topologically sorted list of all modules registered by the application
 	global_scope       &Scope = unsafe { nil }
 	cflags             []cflag.CFlag
 	redefined_fns      []string

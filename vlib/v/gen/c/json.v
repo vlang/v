@@ -580,7 +580,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 						'cJSON_IsString(root->child)'
 					} else if var_t.ends_with('bool') {
 						'cJSON_IsBool(root->child)'
-					} else if g.table.sym(g.table.value_type(variant_symbols[i].idx)).kind == .struct {
+					} else if g.table.sym(g.table.value_type(ast.idx_to_type(variant_symbols[i].idx))).kind == .struct {
 						'cJSON_IsObject(root->child)'
 					} else {
 						'cJSON_IsNumber(root->child)'
