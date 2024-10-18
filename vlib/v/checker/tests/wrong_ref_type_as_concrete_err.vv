@@ -1,0 +1,11 @@
+import datatypes
+
+[heap]
+struct User {
+	name string
+}
+
+fn main() {
+	mut dl := datatypes.DoublyLinkedList[&User]{}
+	println(dl)
+}
