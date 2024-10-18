@@ -9,8 +9,11 @@ import v.util
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	g.expected_fixed_arr = true
+	pre_inside_infix := g.inside_infix
+	g.inside_infix = true
 	defer {
 		g.expected_fixed_arr = false
+		g.inside_infix = pre_inside_infix
 	}
 	if node.auto_locked != '' {
 		g.writeln('sync__RwMutex_lock(&${node.auto_locked}->mtx);')
@@ -877,7 +880,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			// push a single element
 			elem_type_str := g.typ(array_info.elem_type)
 			elem_sym := g.table.sym(array_info.elem_type)
-			elem_is_array_var := elem_sym.kind in [.array, .array_fixed] && node.right is ast.Ident
+			elem_is_array_var := (elem_sym.kind == .array && node.right is ast.Ident)
+				|| elem_sym.kind == .array_fixed
 			g.write('array_push${noscan}((array*)')
 			if !left.typ.is_ptr()
 				|| (node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr()) {

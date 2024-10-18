@@ -7,6 +7,11 @@ import v.ast
 import v.util
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
+	pre_inside_index := g.inside_index
+	g.inside_index = true
+	defer {
+		g.inside_index = pre_inside_index
+	}
 	if node.index is ast.RangeExpr {
 		g.index_range_expr(node, node.index)
 	} else {

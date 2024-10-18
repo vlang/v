@@ -33,6 +33,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
 	} else {
 		// `[1, 2, 3]`
+		tmp_inside_array := g.inside_array_item
+		g.inside_array_item = true
+		defer {
+			g.inside_array_item = tmp_inside_array
+		}
 		elem_styp := g.typ(elem_type.typ)
 		noscan := g.check_noscan(elem_type.typ)
 		if elem_type.unaliased_sym.kind == .function {
@@ -136,7 +141,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.set_current_pos_as_last_stmt_pos()
 		return
 	}
-	need_tmp_var := g.inside_call && !g.inside_struct_init && node.exprs.len == 0
+	need_tmp_var := (g.inside_call || g.inside_infix) && !g.inside_struct_init && !g.inside_index
+		&& !g.inside_array_item
 	mut stmt_str := ''
 	mut tmp_var := ''
 	if need_tmp_var {
@@ -159,12 +165,12 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	if !is_struct {
 		g.write('{')
 	}
+	tmp_inside_array := g.inside_array_item
+	g.inside_array_item = true
+	defer {
+		g.inside_array_item = tmp_inside_array
+	}
 	if node.has_val {
-		tmp_inside_array := g.inside_array_item
-		g.inside_array_item = true
-		defer {
-			g.inside_array_item = tmp_inside_array
-		}
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
 				info := elem_sym.info as ast.ArrayFixed
@@ -988,7 +994,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
-			} else if elem_kind == .array && elem_is_not_ptr {
+			} else if elem_kind in [.array, .array_fixed] && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(((${elem_type_str}*)a.data)[i], v)) {')
 			} else if elem_kind == .function {
@@ -1027,7 +1033,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
-			} else if elem_kind == .array && elem_is_not_ptr {
+			} else if elem_kind in [.array, .array_fixed] && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(left_info.elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a[i], v)) {')
 			} else if elem_kind == .function {
