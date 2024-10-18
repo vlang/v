@@ -386,6 +386,9 @@ fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 }
 
 fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
+	if got == expected {
+		return true
+	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
