@@ -73,7 +73,7 @@ pub fn get_rune(s string, index int) rune {
 	return res
 }
 
-// raw_index - get the raw character from the string by the given index value.
+// raw_index - get the raw unicode character from the UTF-8 string by the given index value as UTF-8 string.
 // example: utf8.raw_index('我是V Lang', 1) => '是'
 pub fn raw_index(s string, index int) string {
 	mut r := []rune{}
