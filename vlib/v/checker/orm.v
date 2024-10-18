@@ -636,7 +636,7 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 
 // check_db_expr checks the `db_expr` implements `orm.Connection` and has no `option` flag.
 fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
-	connection_type_index := c.table.find_type_idx('orm.Connection')
+	connection_type_index := c.table.find_type('orm.Connection')
 	connection_typ := connection_type_index
 	db_expr_type := c.expr(mut db_expr)
 

@@ -650,12 +650,12 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 }
 
 @[inline]
-pub fn (t &Table) find_type_idx(name string) Type {
+pub fn (t &Table) find_type(name string) Type {
 	return t.type_idxs[name]
 }
 
 @[inline]
-pub fn (t &Table) find_type_idx_fn_scoped(name string, scope &Scope) int {
+pub fn (t &Table) find_type_fn_scoped(name string, scope &Scope) Type {
 	if scope != unsafe { nil } {
 		idx := t.type_idxs['_${name}_${scope.start_pos}']
 		if idx != 0 {
@@ -1047,7 +1047,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	}
 }
 
-pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
+pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) Type {
 	name := t.chan_name(elem_type, is_mut)
 	cname := t.chan_cname(elem_type, is_mut)
 	// existing
@@ -1069,7 +1069,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 	return t.register_sym(chan_typ)
 }
 
-pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
+pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) Type {
 	name := t.map_name(key_type, value_type)
 	cname := t.map_cname(key_type, value_type)
 	// existing
@@ -1594,7 +1594,7 @@ pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_na
 			valid_generic := util.is_generic_type_name(generic_name)
 				&& generic_name in generic_names
 			if valid_generic {
-				name_type := t.find_type_idx(generic_name).set_flag(.generic)
+				name_type := t.find_type(generic_name).set_flag(.generic)
 				if typ := t.convert_generic_type(name_type, generic_names, concrete_types) {
 					return '${t.type_to_str(typ)}${fn_name[index..]}'
 				}
@@ -2586,6 +2586,6 @@ pub fn (mut t Table) get_veb_result_type_idx() int {
 		return t.veb_res_idx_cache
 	}
 
-	t.veb_res_idx_cache = t.find_type_idx('veb.Result')
+	t.veb_res_idx_cache = t.find_type('veb.Result')
 	return t.veb_res_idx_cache
 }

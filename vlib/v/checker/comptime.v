@@ -88,7 +88,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			c.error('not supported compression type: .${node.embed_file.compression_type}. supported: ${supported}',
 				node.pos)
 		}
-		return c.table.find_type_idx('v.embed_file.EmbedFileData')
+		return c.table.find_type('v.embed_file.EmbedFileData')
 	}
 	if node.is_vweb {
 		// TODO: assoc parser bug
@@ -118,9 +118,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 				node.pos)
 		}
 		rtyp := if node.is_veb {
-			c.table.find_type_idx('veb.Result')
+			c.table.find_type('veb.Result')
 		} else {
-			c.table.find_type_idx('vweb.Result')
+			c.table.find_type('vweb.Result')
 		}
 		node.result_type = rtyp
 		return rtyp
@@ -265,7 +265,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.push_new_comptime_info()
 				c.comptime.inside_comptime_for = true
 				if c.field_data_type == 0 {
-					c.field_data_type = c.table.find_type_idx('FieldData')
+					c.field_data_type = c.table.find_type('FieldData')
 				}
 				c.comptime.comptime_for_field_value = field
 				c.comptime.comptime_for_field_var = node.val_var
@@ -298,7 +298,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			if c.enum_data_type == 0 {
-				c.enum_data_type = c.table.find_type_idx('EnumData')
+				c.enum_data_type = c.table.find_type('EnumData')
 			}
 			c.comptime.comptime_for_enum_var = node.val_var
 			c.comptime.type_map[node.val_var] = c.enum_data_type
@@ -338,7 +338,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		c.pop_comptime_info()
 	} else if node.kind == .variants {
 		if c.variant_data_type == 0 {
-			c.variant_data_type = c.table.find_type_idx('VariantData')
+			c.variant_data_type = c.table.find_type('VariantData')
 		}
 		mut variants := []ast.Type{}
 		if c.comptime.comptime_for_field_var != '' && typ == c.field_data_type {
@@ -628,7 +628,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 		return
 	}
 	c.table.used_veb_types = c.vweb_gen_types
-	typ_vweb_result := c.table.find_type_idx('vweb.Result')
+	typ_vweb_result := c.table.find_type('vweb.Result')
 	old_file := c.file
 	for vgt in c.vweb_gen_types {
 		sym_app := c.table.sym(vgt)

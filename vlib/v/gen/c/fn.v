@@ -730,7 +730,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 	// Veb actions defined by user can have implicit context
 	/*
 	if g.cur_fn != unsafe { nil } && g.cur_fn.is_method && g.cur_mod.name != 'veb' {
-		typ_veb_result := g.table.find_type_idx('veb.Result')
+		typ_veb_result := g.table.find_type('veb.Result')
 		// if params.len == 3 {
 		// println(g.cur_fn)
 		//}
@@ -1604,7 +1604,7 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	} else if mut typ_sym.info is ast.Array && !typ_sym.has_method(node.name) && node.name != 'str' {
 		typ := g.table.unaliased_type(typ_sym.info.elem_type)
-		typ_idx := g.table.find_type_idx(g.table.array_name(typ))
+		typ_idx := g.table.find_type(g.table.array_name(typ))
 		if typ_idx > 0 {
 			unwrapped_rec_type = ast.idx_to_type(typ_idx)
 			typ_sym = g.table.sym(unwrapped_rec_type)

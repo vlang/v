@@ -518,7 +518,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 	match expr {
 		ast.InfixExpr {
-			g.write_orm_primitive(g.table.find_type_idx('orm.InfixType'), expr)
+			g.write_orm_primitive(g.table.find_type('orm.InfixType'), expr)
 		}
 		ast.StringLiteral {
 			g.write_orm_primitive(ast.string_type, expr)
@@ -1043,7 +1043,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				mut sub := node.sub_structs[int(field.typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
-				primitive_type_index := g.table.find_type_idx('orm.Primitive')
+				primitive_type_index := g.table.find_type('orm.Primitive')
 
 				if primitive_type_index != 0 {
 					if mut ident.info is ast.IdentVar {
@@ -1132,7 +1132,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			} else if field.typ.has_flag(.option) {
 				prim_var := g.new_tmp_var()
 				g.writeln('orm__Primitive *${prim_var} = &${array_get_call_code};')
-				g.writeln('if (${prim_var}->_typ == ${int(g.table.find_type_idx('orm.Null'))})')
+				g.writeln('if (${prim_var}->_typ == ${int(g.table.find_type('orm.Null'))})')
 				g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
 
 				g.writeln('else')

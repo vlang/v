@@ -2992,7 +2992,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		if p.inside_in_array && ((lit0_is_capital && !known_var && language == .v)
 			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital())
-			|| p.table.find_type_idx(p.mod + '.' + p.tok.lit) > 0
+			|| p.table.find_type(p.mod + '.' + p.tok.lit) > 0
 			|| p.inside_comptime_if) {
 			type_pos := p.tok.pos()
 			mut typ := p.parse_type()
@@ -3456,7 +3456,7 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 		p.check(.name)
 		param_names << name
 
-		mut idx := p.table.find_type_idx(name)
+		mut idx := p.table.find_type(name)
 		if idx == 0 {
 			idx = p.table.register_sym(ast.TypeSymbol{
 				name:   name

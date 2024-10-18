@@ -294,7 +294,7 @@ pub fn (t Type) share() ShareType {
 
 // return TypeSymbol idx for `t`
 @[inline]
-pub fn (t Type) idx() Type {
+pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 

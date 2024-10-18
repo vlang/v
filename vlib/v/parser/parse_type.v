@@ -361,7 +361,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
-	already_exists := p.table.find_type_idx(name) != 0
+	already_exists := p.table.find_type(name) != 0
 	idx := p.table.find_or_register_fn_type(func, false, has_decl)
 	if already_exists && p.table.sym_by_idx(idx).kind != .function {
 		p.error_with_pos('cannot register fn `${name}`, another type with this name exists',
@@ -434,7 +434,7 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 		name := '_v_anon_sum_type_${variant_names.join('_')}'
 		variant_types := variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
-		mut idx := p.table.find_type_idx(prepend_mod_name)
+		mut idx := p.table.find_type(prepend_mod_name)
 		if idx > 0 {
 			return ast.new_type(idx)
 		}
@@ -566,7 +566,7 @@ fn (mut p Parser) parse_type() ast.Type {
 	if p.tok.kind == .key_struct {
 		p.anon_struct_decl = p.struct_decl(true)
 		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-		return p.table.find_type_idx(p.anon_struct_decl.name)
+		return p.table.find_type(p.anon_struct_decl.name)
 	}
 
 	language := p.parse_language()
@@ -797,7 +797,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 
 fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
-	mut idx := p.table.find_type_idx_fn_scoped(name, p.cur_fn_scope)
+	mut idx := p.table.find_type_fn_scoped(name, p.cur_fn_scope)
 	if idx > 0 {
 		mut typ := ast.new_type(idx)
 		sym := p.table.sym(typ)
@@ -894,7 +894,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 }
 
 fn (mut p Parser) parse_generic_type(name string) ast.Type {
-	mut idx := p.table.find_type_idx(name)
+	mut idx := p.table.find_type(name)
 	if idx > 0 {
 		return ast.new_type(idx).set_flag(.generic)
 	}
@@ -962,7 +962,7 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	bs_name += ']'
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
 	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
-		mut gt_idx := p.table.find_type_idx(bs_name)
+		mut gt_idx := p.table.find_type(bs_name)
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)
 		}

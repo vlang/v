@@ -329,9 +329,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			label:        'global_cgen'
 		)
 		inner_loop:           unsafe { &ast.empty_stmt }
-		field_data_type:      table.find_type_idx('FieldData')
-		enum_data_type:       table.find_type_idx('EnumData')
-		variant_data_type:    table.find_type_idx('VariantData')
+		field_data_type:      table.find_type('FieldData')
+		enum_data_type:       table.find_type('EnumData')
+		variant_data_type:    table.find_type('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -719,8 +719,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
 		inner_loop:           &ast.empty_stmt
-		field_data_type:      global_g.table.find_type_idx('FieldData')
-		enum_data_type:       global_g.table.find_type_idx('EnumData')
+		field_data_type:      global_g.table.find_type('FieldData')
+		enum_data_type:       global_g.table.find_type('EnumData')
 		array_sort_fn:        global_g.array_sort_fn
 		waiter_fns:           global_g.waiter_fns
 		threaded_fns:         global_g.threaded_fns
@@ -1005,7 +1005,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				}
 				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			} else {
-				tidx := g.table.find_type_idx(sym.name)
+				tidx := g.table.find_type(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${int(tidx)}: return "${util.strip_main_name(sym.name)}";')
 				mut idxs := []int{}
@@ -1031,7 +1031,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				}
 				g.writeln('\treturn ${int(ityp)};')
 			} else {
-				tidx := g.table.find_type_idx(sym.name)
+				tidx := g.table.find_type(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${int(tidx)}: return ${int(ityp)};')
 				mut idxs := []int{}
@@ -2429,7 +2429,7 @@ struct SumtypeCastingFn {
 }
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
-	mut got, exp := got_.idx(), exp_.idx()
+	mut got, exp := ast.idx_to_type(got_.idx()), ast.idx_to_type(exp_.idx())
 	i := got | int(u32(exp) << 17) | int(u32(exp_.has_flag(.option)) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
@@ -4057,13 +4057,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					left_type_name := util.no_dots(left_cc_type)
 					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]._method_${m.name}')
 				} else {
-					g.write('${g.typ(node.expr_type.idx())}_${m.name}')
+					g.write('${g.typ(ast.idx_to_type(node.expr_type.idx()))}_${m.name}')
 				}
 				return
 			}
 			receiver := m.params[0]
-			expr_styp := g.typ(node.expr_type.idx())
-			data_styp := g.typ(receiver.typ.idx())
+			expr_styp := g.typ(ast.idx_to_type(node.expr_type.idx()))
+			data_styp := g.typ(ast.idx_to_type(receiver.typ.idx()))
 			mut sb := strings.new_builder(256)
 			name := '_V_closure_${expr_styp}_${m.name}_${node.pos.pos}'
 			sb.write_string('${g.typ(m.return_type)} ${name}(')
@@ -6819,7 +6819,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					if variant in idxs {
 						continue
 					}
-					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(ast.idx_to_type(variant.idx())):-20s}')
 					idxs << variant
 				}
 				idxs.clear()

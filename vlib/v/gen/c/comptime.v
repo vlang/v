@@ -833,7 +833,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		if methods.len > 0 {
 			g.writeln('FunctionData ${node.val_var} = {0};')
 		}
-		typ_vweb_result := g.table.find_type_idx('vweb.Result')
+		typ_vweb_result := g.table.find_type('vweb.Result')
 		for method in methods {
 			g.push_new_comptime_info()
 			// filter vweb route methods (non-generic method)
@@ -893,7 +893,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if ret_type != 'void' {
 				sig += ' ${ret_type}'
 			}
-			styp := g.table.find_type_idx(sig)
+			styp := g.table.find_type(sig)
 
 			// TODO: type aliases
 			ret_typ := method.return_type
