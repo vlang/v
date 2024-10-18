@@ -588,6 +588,7 @@ fn (mut g JsGen) generic_fn_name(types []ast.Type, before string) string {
 
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	node := it
+	g.table.cur_unwrap_cache.clear()
 	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.fkey()] {
@@ -600,6 +601,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			g.gen_method_decl(node, typ)
 		}
 		g.cur_concrete_types = []
+		g.table.cur_unwrap_cache.clear()
 		return
 	}
 	cur_fn_decl := g.fn_decl
