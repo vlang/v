@@ -655,6 +655,11 @@ pub fn (t &Table) find_type(name string) Type {
 }
 
 @[inline]
+pub fn (t &Table) find_type_idx(name string) int {
+	return t.type_idxs[name]
+}
+
+@[inline]
 pub fn (t &Table) find_type_fn_scoped(name string, scope &Scope) Type {
 	if scope != unsafe { nil } {
 		idx := t.type_idxs['_${name}_${scope.start_pos}']
