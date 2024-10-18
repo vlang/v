@@ -341,7 +341,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	if node.is_implements {
 		// XTODO2
 		// cgen error if I use `println(sym)` without handling the option with `or{}`
-		struct_type := c.table.find_type_idx(node.name) // or { panic(err) }
+		struct_type := c.table.find_type(node.name) // or { panic(err) }
 		mut names_used := []string{}
 		for t in node.implements_types {
 			t_sym := c.table.sym(t.typ)
@@ -935,7 +935,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		if field.has_default_expr {
 			if i < info.fields.len && field.default_expr_typ == 0 {
 				if mut field.default_expr is ast.StructInit {
-					idx := c.table.find_type_idx(field.default_expr.typ_str)
+					idx := c.table.find_type(field.default_expr.typ_str)
 					if idx != 0 {
 						info.fields[i].default_expr_typ = ast.new_type(idx)
 					}

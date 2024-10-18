@@ -377,7 +377,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 	return &mut g
 }
 
-pub fn (mut g Gen) typ(a i32) &ast.TypeSymbol {
+pub fn (mut g Gen) typ(a ast.Type) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
 
@@ -826,7 +826,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 		ast.Var { ident.obj.typ }
 	}
 	if typ != 0 {
-		return g.get_type_size(typ)
+		return g.get_type_size(ast.idx_to_type(typ))
 	}
 	size := g.var_alloc_size[ident.name] or {
 		g.n_error('unknown variable `${ident}`')

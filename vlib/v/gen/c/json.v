@@ -365,7 +365,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	ret_styp string) {
 	info := sym.info as ast.SumType
 	type_var := g.new_tmp_var()
-	typ := g.table.type_idxs[sym.name]
+	typ := ast.idx_to_type(g.table.type_idxs[sym.name])
 	prefix := if utyp.is_ptr() { '*' } else { '' }
 	field_op := if utyp.is_ptr() { '->' } else { '.' }
 	is_option := utyp.has_flag(.option)
@@ -419,7 +419,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
 
 		// ENCODING
-		enc.writeln('\tif (${var_data}${field_op}_typ == ${variant.idx()}) {')
+		enc.writeln('\tif (${var_data}${field_op}_typ == ${int(variant.idx())}) {')
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ}));')

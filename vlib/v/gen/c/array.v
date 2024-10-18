@@ -941,7 +941,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
 	t := g.table.final_sym(g.unwrap_generic(typ).set_nr_muls(0)).idx
 	g.array_contains_types << t
-	return g.typ(t) + '_contains'
+	return g.typ(ast.idx_to_type(t)) + '_contains'
 }
 
 fn (mut g Gen) gen_array_contains_methods() {

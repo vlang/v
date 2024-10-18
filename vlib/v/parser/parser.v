@@ -2593,7 +2593,7 @@ fn (mut p Parser) alias_array_type() ast.Type {
 		if idx == 0 {
 			return ast.void_type
 		}
-		sym := p.table.sym(idx)
+		sym := p.table.sym(ast.idx_to_type(idx))
 		if sym.info is ast.Alias {
 			if sym.info.parent_type == 0 {
 				return ast.void_type

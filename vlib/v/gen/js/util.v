@@ -29,7 +29,7 @@ fn (mut g JsGen) unwrap(typ ast.Type) Type {
 	return Type{
 		typ:           no_generic
 		sym:           no_generic_sym
-		unaliased:     no_generic_sym.parent_idx
-		unaliased_sym: g.table.sym(no_generic_sym.parent_idx)
+		unaliased:     ast.idx_to_type(no_generic_sym.parent_idx)
+		unaliased_sym: g.table.sym(ast.idx_to_type(no_generic_sym.parent_idx))
 	}
 }

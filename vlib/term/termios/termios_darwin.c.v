@@ -94,5 +94,5 @@ pub fn set_state(fd int, new_state Termios) int {
 // disable_echo disables echoing characters as they are typed,
 // when that Termios state is later set with termios.set_state(fd,t)
 pub fn (mut t Termios) disable_echo() {
-	t.c_lflag &= invert(C.ECHO)
+	t.c_lflag &= invert(usize(C.ECHO))
 }
