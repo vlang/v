@@ -29,7 +29,7 @@ pub fn len(s string) int {
 
 // get_uchar convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded int unicode char
 @[deprecated: 'use `.get_rune(s string, index int)` instead']
-@[deprecated_after: '2024-10-17']
+@[deprecated_after: '2024-11-17']
 pub fn get_uchar(s string, index int) int {
 	return int(get_rune(s, index))
 }
@@ -183,7 +183,7 @@ pub fn is_number(r rune) bool {
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
 @[deprecated: 'use `.is_rune_punct(r rune)` instead']
-@[deprecated_after: '2024-10-17']
+@[deprecated_after: '2024-11-17']
 pub fn is_uchar_punct(uchar int) bool {
 	return is_rune_punct(rune(uchar))
 }
@@ -202,7 +202,7 @@ pub fn is_global_punct(s string, index int) bool {
 
 // is_uchar_global_punct return true if the input unicode is a global unicode punctuation
 @[deprecated: 'use `.is_rune_global_punct(r rune)` instead']
-@[deprecated_after: '2024-10-17']
+@[deprecated_after: '2024-11-17']
 pub fn is_uchar_global_punct(uchar int) bool {
 	return is_rune_global_punct(rune(uchar))
 }
