@@ -97,7 +97,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 @[minify]
 pub struct TypeSymbol {
 pub:
-	parent_idx int
+	parent_idx Type
 pub mut:
 	info          TypeInfo
 	kind          Kind
@@ -109,7 +109,7 @@ pub mut:
 	mod           string
 	is_pub        bool
 	language      Language
-	idx           int
+	idx           Type
 	size          int = -1
 	align         int = -1
 }
@@ -177,7 +177,7 @@ pub mut:
 // instantiation of a generic struct
 pub struct GenericInst {
 pub mut:
-	parent_idx     int    // idx of the base generic struct
+	parent_idx     Type   // idx of the base generic struct
 	concrete_types []Type // concrete types, e.g. [int, string]
 }
 
@@ -189,7 +189,7 @@ pub mut:
 	methods []Fn
 	embeds  []Type
 	// `I1 is I2` conversions
-	conversions map[int][]Type
+	conversions map[Type][]Type
 	// generic interface support
 	is_generic     bool
 	generic_types  []Type
@@ -294,7 +294,7 @@ pub fn (t Type) share() ShareType {
 
 // return TypeSymbol idx for `t`
 @[inline]
-pub fn (t Type) idx() int {
+pub fn (t Type) idx() Type {
 	return u16(t) & 0xffff
 }
 
@@ -642,21 +642,21 @@ pub fn (typ Type) is_bool() bool {
 
 pub const invalid_type_idx = -1
 pub const no_type_idx = 0
-pub const void_type_idx = 1
-pub const voidptr_type_idx = 2
-pub const byteptr_type_idx = 3
-pub const charptr_type_idx = 4
-pub const i8_type_idx = 5
-pub const i16_type_idx = 6
-pub const i32_type_idx = 7
-pub const int_type_idx = 8
-pub const i64_type_idx = 9
-pub const isize_type_idx = 10
-pub const u8_type_idx = 11
-pub const u16_type_idx = 12
-pub const u32_type_idx = 13
-pub const u64_type_idx = 14
-pub const usize_type_idx = 15
+pub const void_type_idx = Type(1)
+pub const voidptr_type_idx = Type(2)
+pub const byteptr_type_idx = Type(3)
+pub const charptr_type_idx = Type(4)
+pub const i8_type_idx = Type(5)
+pub const i16_type_idx = Type(6)
+pub const i32_type_idx = Type(7)
+pub const int_type_idx = Type(8)
+pub const i64_type_idx = Type(9)
+pub const isize_type_idx = Type(10)
+pub const u8_type_idx = Type(11)
+pub const u16_type_idx = Type(12)
+pub const u32_type_idx = Type(13)
+pub const u64_type_idx = Type(14)
+pub const usize_type_idx = Type(15)
 pub const f32_type_idx = 16
 pub const f64_type_idx = 17
 pub const char_type_idx = 18

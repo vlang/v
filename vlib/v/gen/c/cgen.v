@@ -245,8 +245,8 @@ mut:
 	cur_fn                 &ast.FnDecl = unsafe { nil } // same here
 	cur_lock               ast.LockExpr
 	cur_struct_init_typ    ast.Type
-	autofree_methods       map[int]bool
-	generated_free_methods map[int]bool
+	autofree_methods       map[ast.Type]bool
+	generated_free_methods map[ast.Type]bool
 	autofree_scope_stmts   []string
 	use_segfault_handler   bool = true
 	test_function_names    []string
@@ -329,9 +329,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			label:        'global_cgen'
 		)
 		inner_loop:           unsafe { &ast.empty_stmt }
-		field_data_type:      ast.idx_to_type(table.find_type_idx('FieldData'))
-		enum_data_type:       ast.idx_to_type(table.find_type_idx('EnumData'))
-		variant_data_type:    ast.idx_to_type(table.find_type_idx('VariantData'))
+		field_data_type:      table.find_type_idx('FieldData')
+		enum_data_type:       table.find_type_idx('EnumData')
+		variant_data_type:    table.find_type_idx('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -719,8 +719,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
 		inner_loop:           &ast.empty_stmt
-		field_data_type:      ast.idx_to_type(global_g.table.find_type_idx('FieldData'))
-		enum_data_type:       ast.idx_to_type(global_g.table.find_type_idx('EnumData'))
+		field_data_type:      global_g.table.find_type_idx('FieldData')
+		enum_data_type:       global_g.table.find_type_idx('EnumData')
 		array_sort_fn:        global_g.array_sort_fn
 		waiter_fns:           global_g.waiter_fns
 		threaded_fns:         global_g.threaded_fns
@@ -1007,7 +1007,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			} else {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
-				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
+				g.writeln('\t\tcase ${int(tidx)}: return "${util.strip_main_name(sym.name)}";')
 				mut idxs := []int{}
 				for v in sum_info.variants {
 					if v in idxs {
@@ -1033,7 +1033,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			} else {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
-				g.writeln('\t\tcase ${tidx}: return ${int(ityp)};')
+				g.writeln('\t\tcase ${int(tidx)}: return ${int(ityp)};')
 				mut idxs := []int{}
 				for v in sum_info.variants {
 					if v in idxs {
@@ -2450,13 +2450,13 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
 		got:     if got_.has_flag(.option) {
-			new_got := ast.idx_to_type(got_sym.idx).set_flag(.option)
+			new_got := got_sym.idx.set_flag(.option)
 			new_got
 		} else {
 			got_sym.idx
 		}
 		exp:     if exp_.has_flag(.option) {
-			new_exp := ast.idx_to_type(exp).set_flag(.option)
+			new_exp := exp.set_flag(.option)
 			new_exp
 		} else {
 			exp

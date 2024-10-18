@@ -13,12 +13,12 @@ mut:
 	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
 	type_symbols       []&TypeSymbol
-	type_idxs          map[string]int
+	type_idxs          map[string]Type
 	fns                map[string]Fn
 	iface_types        map[string][]Type
-	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports            []string       // List of all imports
-	modules            []string       // Topologically sorted list of all modules registered by the application
+	dumps              map[Type]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports            []string        // List of all imports
+	modules            []string        // Topologically sorted list of all modules registered by the application
 	global_scope       &Scope = unsafe { nil }
 	cflags             []cflag.CFlag
 	redefined_fns      []string
@@ -650,7 +650,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 }
 
 @[inline]
-pub fn (t &Table) find_type_idx(name string) int {
+pub fn (t &Table) find_type_idx(name string) Type {
 	return t.type_idxs[name]
 }
 
@@ -795,7 +795,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 }
 
 @[inline]
-pub fn (mut t Table) register_sym(sym TypeSymbol) int {
+pub fn (mut t Table) register_sym(sym TypeSymbol) Type {
 	mut idx := -2
 	$if trace_register_sym ? {
 		defer {
@@ -1091,7 +1091,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	return t.register_sym(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_thread(return_type Type) int {
+pub fn (mut t Table) find_or_register_thread(return_type Type) Type {
 	name := t.thread_name(return_type)
 	cname := t.thread_cname(return_type)
 	// existing
@@ -1112,7 +1112,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 	return t.register_sym(thread_typ)
 }
 
-pub fn (mut t Table) find_or_register_promise(return_type Type) int {
+pub fn (mut t Table) find_or_register_promise(return_type Type) Type {
 	name := t.promise_name(return_type)
 
 	cname := t.promise_cname(return_type)
@@ -1158,14 +1158,14 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 	return t.register_sym(array_type_)
 }
 
-pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
+pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) Type {
 	if nr_dims == 1 {
 		return t.find_or_register_array(elem_type)
 	}
 	return t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr, is_fn_ret bool) int {
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr, is_fn_ret bool) Type {
 	prefix := if is_fn_ret { '_v_' } else { '' }
 	name := prefix + t.array_fixed_name(elem_type, size, size_expr)
 	// existing
@@ -1189,7 +1189,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 	return t.register_sym(array_fixed_type)
 }
 
-pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
+pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) Type {
 	mut name := '('
 	mut cname := 'multi_return'
 	for i, mr_typ in mr_typs {
@@ -1449,6 +1449,7 @@ pub fn (mut t Table) complete_interface_check() {
 		util.timing_measure(@METHOD)
 	}
 	for tk, mut tsym in t.type_symbols {
+		tk_typ := idx_to_type(tk)
 		if tsym.kind != .struct {
 			continue
 		}
@@ -1460,11 +1461,11 @@ pub fn (mut t Table) complete_interface_check() {
 			if idecl.methods.len == 0 && idecl.fields.len == 0 && tsym.mod != t.sym(idecl.typ).mod {
 				continue
 			}
-			if t.does_type_implement_interface(tk, idecl.typ) {
+			if t.does_type_implement_interface(tk_typ, idecl.typ) {
 				$if trace_types_implementing_each_interface ? {
 					eprintln('>>> tsym.mod: ${tsym.mod} | tsym.name: ${tsym.name} | tk: ${tk} | idecl.name: ${idecl.name} | idecl.typ: ${idecl.typ}')
 				}
-				t.iface_types[idecl.name] << tk
+				t.iface_types[idecl.name] << tk_typ
 			}
 		}
 	}
@@ -1593,7 +1594,7 @@ pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_na
 			valid_generic := util.is_generic_type_name(generic_name)
 				&& generic_name in generic_names
 			if valid_generic {
-				name_type := idx_to_type(t.find_type_idx(generic_name)).set_flag(.generic)
+				name_type := t.find_type_idx(generic_name).set_flag(.generic)
 				if typ := t.convert_generic_type(name_type, generic_names, concrete_types) {
 					return '${t.type_to_str(typ)}${fn_name[index..]}'
 				}
