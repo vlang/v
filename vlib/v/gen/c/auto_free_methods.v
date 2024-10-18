@@ -87,7 +87,12 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 		if sub_sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
-		fn_name_typ := g.get_free_method(typ_)
+		field_styp := g.gen_type_name_for_free_call(typ_)
+		fn_name_typ := if sub_sym.has_method('free') {
+			'${field_styp}_free'
+		} else {
+			g.gen_free_method(typ_)
+		}
 		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${fn_name_typ}(it->_${sub_sym.cname}); return; }')
 	}
 	fn_builder.writeln('}')
@@ -107,13 +112,8 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		if sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
-		mut field_styp := g.typ(field.typ.set_nr_muls(0).clear_flag(.option)).replace('*',
-			'')
-		is_shared := field_styp.starts_with('__shared')
+		field_styp := g.gen_type_name_for_free_call(field.typ)
 		is_struct_option := typ.has_flag(.option)
-		if is_shared {
-			field_styp = field_styp.all_after('__shared__')
-		}
 		field_styp_fn_name := if sym.has_method('free') {
 			'${field_styp}_free'
 		} else {
@@ -121,7 +121,7 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		}
 		is_field_option := field.typ.has_flag(.option)
 		expects_opt := field_styp_fn_name.starts_with('_option_')
-		if is_shared {
+		if field.typ.has_flag(.shared_f) {
 			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}->val));')
 		} else if is_struct_option {
 			opt_styp := g.base_type(typ)
@@ -150,6 +150,14 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		}
 	}
 	fn_builder.writeln('}')
+}
+
+fn (mut g Gen) gen_type_name_for_free_call(typ ast.Type) string {
+	mut styp := g.typ(typ.set_nr_muls(0).clear_flag(.option)).replace('*', '')
+	if styp.starts_with('__shared') {
+		styp = styp.all_after('__shared__')
+	}
+	return styp
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
