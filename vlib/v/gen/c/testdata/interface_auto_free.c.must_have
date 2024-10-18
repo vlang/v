@@ -1,0 +1,7 @@
+void main__IFoo_free(main__IFoo* it) {
+	if (it->_typ == _main__IFoo_main__Foo_index) { main__Foo_free(it->_main__Foo); return; }
+	if (it->_typ == _main__IFoo_array_index) { array_free(it->_array); return; }
+	if (it->_typ == _main__IFoo_map_index) { map_free(it->_map); return; }
+	if (it->_typ == _main__IFoo_VAssertMetaInfo_index) { VAssertMetaInfo_free(it->_VAssertMetaInfo); return; }
+	if (it->_typ == _main__IFoo_MessageError_index) { MessageError_free(it->_MessageError); return; }
+}
