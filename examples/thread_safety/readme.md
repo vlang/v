@@ -4,7 +4,7 @@
 v -prod  -gc none -cc gcc ./queue.v && \
 ./queue
 ```
-<!-- examples/thread_safety/atomic_counter.v -->
+
 ### Valgrind
 
 ```sh

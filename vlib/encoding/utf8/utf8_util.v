@@ -27,8 +27,15 @@ pub fn len(s string) int {
 	return count
 }
 
-// get_uchar convert a unicode glyph in string[index] into a int unicode char
+// get_uchar convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded int unicode char
+@[deprecated: 'use `.get_rune(s string, index int)` instead']
+@[deprecated_after: '2024-11-17']
 pub fn get_uchar(s string, index int) int {
+	return int(get_rune(s, index))
+}
+
+// get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune
+pub fn get_rune(s string, index int) rune {
 	mut res := 0
 	mut ch_len := 0
 	if s.len > 0 {
@@ -66,7 +73,7 @@ pub fn get_uchar(s string, index int) int {
 	return res
 }
 
-// raw_index - get the raw character from the string by the given index value.
+// raw_index - get the raw unicode character from the UTF-8 string by the given index value as UTF-8 string.
 // example: utf8.raw_index('我是V Lang', 1) => '是'
 pub fn raw_index(s string, index int) string {
 	mut r := []rune{}
@@ -81,7 +88,7 @@ pub fn raw_index(s string, index int) string {
 
 		r << if ch_len > 0 {
 			i += ch_len
-			rune(get_uchar(s, i - ch_len))
+			rune(get_rune(s, i - ch_len))
 		} else {
 			rune(b)
 		}
@@ -126,7 +133,7 @@ pub fn to_lower(s string) string {
 
 // is_punct return true if the string[index] byte is the start of a unicode western punctuation
 pub fn is_punct(s string, index int) bool {
-	return is_uchar_punct(get_uchar(s, index))
+	return is_rune_punct(get_rune(s, index))
 }
 
 // is_control return true if the rune is control code
@@ -175,20 +182,34 @@ pub fn is_number(r rune) bool {
 }
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
+@[deprecated: 'use `.is_rune_punct(r rune)` instead']
+@[deprecated_after: '2024-11-17']
 pub fn is_uchar_punct(uchar int) bool {
-	return find_punct_in_table(uchar, unicode_punct_western) != 0
+	return is_rune_punct(rune(uchar))
+}
+
+// is_rune_punct return true if the input unicode is a western unicode punctuation
+pub fn is_rune_punct(r rune) bool {
+	return find_punct_in_table(r, unicode_punct_western) != 0
 }
 
 // Global
 
 // is_global_punct return true if the string[index] byte of is the start of a global unicode punctuation
 pub fn is_global_punct(s string, index int) bool {
-	return is_uchar_global_punct(get_uchar(s, index))
+	return is_rune_global_punct(get_rune(s, index))
 }
 
 // is_uchar_global_punct return true if the input unicode is a global unicode punctuation
+@[deprecated: 'use `.is_rune_global_punct(r rune)` instead']
+@[deprecated_after: '2024-11-17']
 pub fn is_uchar_global_punct(uchar int) bool {
-	return find_punct_in_table(uchar, unicode_punct) != 0
+	return is_rune_global_punct(rune(uchar))
+}
+
+// is_rune_global_punct return true if the input unicode is a global unicode punctuation
+pub fn is_rune_global_punct(r rune) bool {
+	return find_punct_in_table(r, unicode_punct) != 0
 }
 
 // Private functions
@@ -523,13 +544,13 @@ fn convert_case(s string, upper_flag bool) string {
 
 // find_punct_in_table looks for valid punctuation in table
 @[direct_array_access]
-fn find_punct_in_table(in_code int, in_table []int) int {
+fn find_punct_in_table(in_code rune, in_table []rune) rune {
 	// uses simple binary search
 
 	mut first_index := 0
 	mut last_index := (in_table.len)
 	mut index := 0
-	mut x := 0
+	mut x := rune(0)
 
 	for {
 		index = (first_index + last_index) >> 1
@@ -559,7 +580,7 @@ fn find_punct_in_table(in_code int, in_table []int) int {
 // Western punctuation mark
 // Character	Name	Browser	Image
 const unicode_punct_western = [
-	0x0021, // EXCLAMATION MARK !
+	rune(0x0021), // EXCLAMATION MARK !
 	0x0022, // QUOTATION MARK "
 	0x0027, // APOSTROPHE '
 	0x002A, // ASTERISK *
@@ -593,7 +614,7 @@ const unicode_punct_western = [
 // Unicode Characters in the 'Punctuation, Other' Category
 // Character	Name	Browser	Image
 const unicode_punct = [
-	0x0021, // EXCLAMATION MARK	!
+	rune(0x0021), // EXCLAMATION MARK	!
 	0x0022, // QUOTATION MARK	"
 	0x0023, // NUMBER SIGN	#
 	0x0025, // PERCENT SIGN	%

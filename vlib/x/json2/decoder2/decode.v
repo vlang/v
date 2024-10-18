@@ -494,31 +494,68 @@ pub fn decode[T](val string) !T {
 
 // decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	$if val is $option {
+	$if T is $option {
 	} $else $if T is string {
 	} $else $if T is $sumtype {
 		$for v in val.variants {
 			if val is v {
-				decoder.decode_value(nodes, val)
+				decoder.decode_value(val)
 			}
 		}
 	} $else $if T is $alias {
 	} $else $if T is time.Time {
 	} $else $if T is $map {
 	} $else $if T is $array {
+		array_info := decoder.values_info[decoder.value_info_idx]
+
+		if array_info.value_kind == .array {
+			array_position := array_info.position
+			array_end := array_position + array_info.length
+
+			decoder.value_info_idx++
+			for {
+				if decoder.value_info_idx >= decoder.values_info.len {
+					break
+				}
+				value_info := decoder.values_info[decoder.value_info_idx]
+
+				if value_info.position + value_info.length >= array_end {
+					break
+				}
+
+				mut array_element := create_array_element(val)
+
+				decoder.decode_value(mut &array_element)!
+
+				val << array_element
+			}
+		}
 	} $else $if T is $struct {
 		mut nodes := []Node{}
 		// TODO: needs performance improvements
 		decoder.fulfill_nodes(mut nodes)
 
 		decoder.decode_struct(nodes, val)
-	} $else $if T is $enum {
-	} $else $if T is $int {
-	} $else $if T is $float {
 	} $else $if T is bool {
+		value_info := decoder.values_info[decoder.value_info_idx]
+
+		unsafe {
+			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
+		}
+	} $else $if T in [$int, $float, $enum] {
+		value_info := decoder.values_info[decoder.value_info_idx]
+
+		if value_info.value_kind == .number {
+			bytes := unsafe { (decoder.json.str + value_info.position).vbytes(value_info.length) }
+
+			unsafe {
+				string_buffer_to_generic_number(val, bytes)
+			}
+		}
 	} $else {
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
+	decoder.value_info_idx++
 }
 
 // get_value_kind returns the kind of a JSON value.
@@ -532,6 +569,10 @@ fn get_value_kind(value rune) ValueKind {
 		`n` { .null }
 		else { .unknown }
 	}
+}
+
+fn create_array_element[T](array []T) T {
+	return T{}
 }
 
 // decode_optional_value_in_actual_node decodes an optional value in a node.
@@ -864,5 +905,76 @@ fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 			actual_key_len++
 		}
 		decoder.idx++
+	}
+}
+
+// string_buffer_to_generic_number converts a buffer of bytes (data) into a generic type T and
+// stores the result in the provided result pointer.
+// The function supports conversion to the following types:
+// - Signed integers: i8, i16, i32, i64
+// - Unsigned integers: u8, u16, u32, u64
+// - Floating-point numbers: f32, f64
+//
+// For signed integers, the function handles negative numbers by checking for a '-' character.
+// For floating-point numbers, the function handles decimal points and adjusts the result
+// accordingly.
+//
+// If the type T is not supported, the function will panic with an appropriate error message.
+//
+// Parameters:
+// - data []u8: The buffer of bytes to be converted.
+// - result &T: A pointer to the variable where the converted result will be stored.
+//
+// NOTE: This aims works with not new memory allocated data, to more efficient use `vbytes` before
+@[direct_array_access; unsafe]
+pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
+	mut is_negative := false
+
+	$if T is $int {
+		for ch in data {
+			if ch == `-` {
+				is_negative = true
+				continue
+			}
+			digit := T(ch - `0`)
+			*result = T(*result * 10 + digit)
+		}
+	} $else $if T is $float {
+		mut decimal_seen := false
+		mut decimal_divider := int(1)
+
+		for ch in data {
+			if ch == `-` {
+				is_negative = true
+				continue
+			}
+			if ch == `.` {
+				decimal_seen = true
+				continue
+			}
+
+			digit := T(ch - `0`)
+
+			if decimal_seen {
+				decimal_divider *= 10
+				*result += T(digit / decimal_divider)
+			} else {
+				*result = *result * 10 + digit
+			}
+		}
+	} $else $if T is $enum {
+		// Convert the string to an integer
+		enumeration := 0
+		for ch in data {
+			digit := int(ch - `0`)
+			enumeration = enumeration * 10 + digit
+		}
+		*result = T(enumeration)
+	} $else {
+		panic('unsupported type ${typeof[T]().name}')
+	}
+
+	if is_negative {
+		*result = -*result
 	}
 }
