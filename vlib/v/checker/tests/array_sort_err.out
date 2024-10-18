@@ -19,6 +19,12 @@ vlib/v/checker/tests/array_sort_err.vv:5:6: error: `.sort()` cannot use same arg
       |         ~~~~~~~~~~~
     6 |     arr.sort(c > d)
     7 | }
+vlib/v/checker/tests/array_sort_err.vv:6:11: error: can not access external variable `c`
+    4 |     arr.sort(a == b)
+    5 |     arr.sort(a > a)
+    6 |     arr.sort(c > d)
+      |              ^
+    7 | }
 vlib/v/checker/tests/array_sort_err.vv:6:6: error: `.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`
     4 |     arr.sort(a == b)
     5 |     arr.sort(a > a)
