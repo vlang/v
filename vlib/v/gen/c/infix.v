@@ -717,7 +717,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 				g.unwrap_generic(node.right.typ)
 			}
 			ast.None {
-				g.table.type_idxs['None__']
+				ast.idx_to_type(g.table.type_idxs['None__'])
 			}
 			else {
 				ast.no_type
@@ -730,7 +730,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		g.write('_typ ${cmp_op} ')
 	}
 	if node.right is ast.None {
-		g.write('${int(ast.none_type.idx())} /* none */')
+		g.write('${ast.none_type.idx()} /* none */')
 	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
 		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
 			ast.void_type

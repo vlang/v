@@ -102,7 +102,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		typ := dump_type
+		typ := ast.idx_to_type(dump_type)
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))

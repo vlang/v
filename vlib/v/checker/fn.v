@@ -1069,7 +1069,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			return ast.void_type
 		}
 
-		ret_typ := idx.set_flag(.option)
+		ret_typ := ast.idx_to_type(idx).set_flag(.option)
 		if node.args.len != 1 {
 			c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 		} else {
@@ -1117,7 +1117,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 	// check for arg (var) of fn type
 	if !found {
-		mut typ := ast.Type(0)
+		mut typ := 0
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
 				ast.GlobalField {
@@ -2134,7 +2134,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 				ast.Array {
 					typ := c.table.unaliased_type(final_left_sym.info.elem_type)
-					parent_type = c.table.find_or_register_array(typ)
+					parent_type = ast.idx_to_type(c.table.find_or_register_array(typ))
 				}
 				else {}
 			}
@@ -3114,7 +3114,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 			} else {
 				c.table.find_or_register_array(info.value_type)
 			}
-			ret_type = typ
+			ret_type = ast.idx_to_type(typ)
 			if info.key_type.has_flag(.generic) && method_name == 'keys' {
 				ret_type = ret_type.set_flag(.generic)
 			}

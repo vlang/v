@@ -575,10 +575,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 								}
 							}
 							if cond.op == .key_is {
-								g.write('${int(exp_type.idx())} == ${int(got_type.idx())} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
+								g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 								return exp_type == got_type, true
 							} else {
-								g.write('${int(exp_type.idx())} != ${int(got_type.idx())}')
+								g.write('${exp_type.idx()} != ${got_type.idx()}')
 								return exp_type != got_type, true
 							}
 						}
@@ -881,8 +881,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 
 			// TODO: type aliases
 			ret_typ := method.return_type
-			g.writeln('\t${node.val_var}.typ = ${int(styp)};')
-			g.writeln('\t${node.val_var}.return_type = ${int(ret_typ.idx())};')
+			g.writeln('\t${node.val_var}.typ = ${styp};')
+			g.writeln('\t${node.val_var}.return_type = ${ret_typ.idx()};')
 
 			g.comptime.type_map['${node.val_var}.return_type'] = ret_typ
 			g.comptime.type_map['${node.val_var}.typ'] = styp
@@ -929,8 +929,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				styp := field.typ
 				unaliased_styp := g.table.unaliased_type(styp)
 
-				g.writeln('\t${node.val_var}.typ = ${int(styp.idx())};')
-				g.writeln('\t${node.val_var}.unaliased_typ = ${int(unaliased_styp.idx())};')
+				g.writeln('\t${node.val_var}.typ = ${styp.idx()};')
+				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
 

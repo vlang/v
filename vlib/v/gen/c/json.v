@@ -419,7 +419,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		g.definitions.writeln('static inline ${sym.cname} ${variant_typ}_to_sumtype_${sym.cname}(${variant_typ}* x);')
 
 		// ENCODING
-		enc.writeln('\tif (${var_data}${field_op}_typ == ${int(variant.idx())}) {')
+		enc.writeln('\tif (${var_data}${field_op}_typ == ${variant.idx()}) {')
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "${unmangled_variant_name}", ${js_enc_name('u64')}(*${var_data}${field_op}_${variant_typ}));')
@@ -580,7 +580,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 						'cJSON_IsString(root->child)'
 					} else if var_t.ends_with('bool') {
 						'cJSON_IsBool(root->child)'
-					} else if g.table.sym(g.table.value_type(variant_symbols[i].idx)).kind == .struct {
+					} else if g.table.sym(g.table.value_type(ast.idx_to_type(variant_symbols[i].idx))).kind == .struct {
 						'cJSON_IsObject(root->child)'
 					} else {
 						'cJSON_IsNumber(root->child)'
