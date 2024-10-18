@@ -219,6 +219,9 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		exp_info := exp_type_sym.info as ast.Array
 		expected = exp_info.elem_type
 	}
+	if expected == got {
+		return
+	}
 	if language == .c {
 		// allow number types to be used interchangeably
 		if got.is_number() && expected.is_number() {
