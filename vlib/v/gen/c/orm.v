@@ -162,7 +162,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			typ := match true {
 				sym.name == 'time.Time' { '_const_orm__time_' }
 				sym.kind == .enum { '_const_orm__enum_' }
-				else { field.typ.idx().str() }
+				else { int(field.typ.idx()).str() }
 			}
 			g.writeln('(orm__TableField){')
 			g.indent++
@@ -907,7 +907,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				types << '_const_orm__enum_'
 				continue
 			}
-			types << field.typ.idx().str()
+			types << int(field.typ.idx()).str()
 		}
 		g.indent--
 		g.writeln('})')
@@ -1132,7 +1132,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			} else if field.typ.has_flag(.option) {
 				prim_var := g.new_tmp_var()
 				g.writeln('orm__Primitive *${prim_var} = &${array_get_call_code};')
-				g.writeln('if (${prim_var}->_typ == ${g.table.find_type_idx('orm.Null')})')
+				g.writeln('if (${prim_var}->_typ == ${int(g.table.find_type_idx('orm.Null'))})')
 				g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
 
 				g.writeln('else')

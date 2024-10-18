@@ -152,14 +152,14 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 		}
 		.sum_type {
 			info := tsym.info as ast.SumType
-			s := 'ADDR(${cprefix}SumType,(((${cprefix}SumType){.parent_idx=${info.parent_type.idx()},.variants=${g.gen_type_array(info.variants)}})))'
+			s := 'ADDR(${cprefix}SumType,(((${cprefix}SumType){.parent_idx=${int(info.parent_type.idx())},.variants=${g.gen_type_array(info.variants)}})))'
 			return '(${cprefix}TypeInfo){._${cprefix}SumType=memdup(${s},sizeof(${cprefix}SumType)),._typ=${g.table.find_type_idx('v.reflection.SumType')}}'
 		}
 		.struct {
 			info := tsym.info as ast.Struct
 			attrs := g.gen_attrs_array(info.attrs)
 			fields := g.gen_fields_array(info.fields)
-			s := 'ADDR(${cprefix}Struct,(((${cprefix}Struct){.parent_idx=${(tsym.info as ast.Struct).parent_type.idx()},.attrs=${attrs},.fields=${fields}})))'
+			s := 'ADDR(${cprefix}Struct,(((${cprefix}Struct){.parent_idx=${int((tsym.info as ast.Struct).parent_type.idx())},.attrs=${attrs},.fields=${fields}})))'
 			return '(${cprefix}TypeInfo){._${cprefix}Struct=memdup(${s},sizeof(${cprefix}Struct)),._typ=${g.table.find_type_idx('v.reflection.Struct')}}'
 		}
 		.enum {
@@ -183,7 +183,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 		}
 		.alias {
 			info := tsym.info as ast.Alias
-			s := 'ADDR(${cprefix}Alias,(((${cprefix}Alias){.parent_idx=${info.parent_type.idx()},.language=${cprefix}VLanguage__${info.language.str()}})))'
+			s := 'ADDR(${cprefix}Alias,(((${cprefix}Alias){.parent_idx=${int(info.parent_type.idx())},.language=${cprefix}VLanguage__${info.language.str()}})))'
 			return '(${cprefix}TypeInfo){._${cprefix}Alias=memdup(${s},sizeof(${cprefix}Alias)),._typ=${g.table.find_type_idx('v.reflection.Alias')}}'
 		}
 		.multi_return {
