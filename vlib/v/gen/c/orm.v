@@ -61,9 +61,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 		node.or_expr)
 
 	g.write(left)
-	g.write('db__pg__DB_last_id(')
-	g.expr(node.db_expr)
-	g.write(');')
+	g.write('orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object)')
 }
 
 // sql_stmt writes C code that calls ORM functions for

@@ -421,3 +421,36 @@ fn test_i64_primary_field_works_with_insertions_of_id_0() {
 	assert users.len == 2
 	// println("${users}")
 }
+
+struct Address {
+	id     i64 @[primary; sql: serial]
+	street string
+	number int
+}
+
+fn test_the_result_of_insert_should_be_the_last_insert_id() {
+	db := sqlite.connect(':memory:')!
+	address := Address{
+		street: 'abc'
+		number: 123
+	}
+	dump(address)
+	sql db {
+		create table Address
+	} or {}
+	aid1 := sql db {
+		insert address into Address
+	} or { panic(err) }
+	dump(aid1)
+	aid2 := sql db {
+		insert address into Address
+	} or { panic(err) }
+	dump(aid2)
+	assert aid2 == 2
+	addresses := sql db {
+		select from Address
+	}!
+	dump(addresses)
+	assert addresses.len == 2
+	assert addresses.all(it.street == 'abc' && it.number == 123)
+}
