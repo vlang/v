@@ -720,7 +720,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					ast.void_type
 				} else if left_type.is_int_literal() {
 					// int literal => i64
-					ast.idx_to_type(ast.u32_type_idx)
+					ast.u32_type
 				} else if left_type.is_unsigned() {
 					left_type
 				} else {
