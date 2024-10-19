@@ -820,13 +820,13 @@ fn (mut g Gen) is_fp_type(typ ast.Type) bool {
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 	typ := match ident.obj {
-		ast.AsmRegister { ast.i64_type_idx }
+		ast.AsmRegister { ast.i64_type }
 		ast.ConstField { ident.obj.typ }
 		ast.GlobalField { ident.obj.typ }
 		ast.Var { ident.obj.typ }
 	}
 	if typ != 0 {
-		return g.get_type_size(ast.idx_to_type(typ))
+		return g.get_type_size(typ)
 	}
 	size := g.var_alloc_size[ident.name] or {
 		g.n_error('unknown variable `${ident}`')
