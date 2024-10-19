@@ -161,7 +161,7 @@ pub fn parse_rfc3339(s string) !Time {
 			// To local time using the offset to add_seconds
 			mut offset_in_minutes := 0
 			mut offset_in_hours := 0
-			// offset seconds
+			// offset hours
 			for i := 0; i < 2; i++ {
 				offset_in_hours = offset_in_minutes * 10 + (s[s.len - 5 + i] - u8(`0`))
 			}
