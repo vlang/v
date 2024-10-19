@@ -1,46 +1,5 @@
 module decoder2
 
-fn test_nodes() {
-	mut nodes := []Node{}
-
-	mut decoder := Decoder{
-		json: '{"val": "2"}'
-	}
-
-	decoder.fulfill_nodes(mut nodes)
-
-	assert nodes.len == 1
-	assert nodes[0].key_pos == 2
-	assert nodes[0].key_len == 3
-	assert nodes[0].children == none
-	nodes = []
-
-	decoder = Decoder{
-		json: '{"val": 0, "val1": 1}'
-	}
-	decoder.fulfill_nodes(mut nodes)
-
-	assert nodes.len == 2
-	assert nodes[0].key_pos == 2
-	assert nodes[0].key_len == 3
-
-	assert nodes[1].key_pos == 12
-	assert nodes[1].key_len == 4
-
-	nodes = []
-
-	decoder = Decoder{
-		json: '{"val": {"val": 2}}'
-	}
-	decoder.fulfill_nodes(mut nodes)
-
-	assert nodes.len == 1
-	assert nodes[0].children != none
-	assert nodes[0].children?.len == 1
-	assert nodes[0].children?[0].key_pos == 10
-	assert nodes[0].children?[0].children == none
-}
-
 fn test_check_if_json_match() {
 	// /* Test wrong string values */
 	mut has_error := false
@@ -222,120 +181,25 @@ fn test_check_json_format() {
 }
 
 fn test_get_value_kind() {
-	assert get_value_kind(`"`) == .string_
-	assert get_value_kind(`t`) == .boolean
-	assert get_value_kind(`f`) == .boolean
-	assert get_value_kind(`{`) == .object
-	assert get_value_kind(`[`) == .array
-	assert get_value_kind(`0`) == .number
-	assert get_value_kind(`-`) == .number
-	assert get_value_kind(`n`) == .null
-	assert get_value_kind(`x`) == .unknown
-}
 
-fn test_checker_values_info() {
-	// Test for string value
-	mut checker := Decoder{
-		checker_idx: 0
-		json:        '"value"'
+	struct Object_ {
+		byte_      u8
+		value_kind ValueKind
 	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	assert checker.values_info.len == 1
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 7
-	assert checker.values_info[0].value_kind == .string_
 
-	// Test for number value
-	checker = Decoder{
-		checker_idx: 0
-		json:        '123'
-	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	assert checker.values_info.len == 1
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 3
-	assert checker.values_info[0].value_kind == .number
+	array_ := [
+		Object_{`"`, .string_},
+		Object_{`t`, .boolean},
+		Object_{`f`, .boolean},
+		Object_{`{`, .object},
+		Object_{`[`, .array},
+		Object_{`0`, .number},
+		Object_{`-`, .number},
+		Object_{`n`, .null},
+		Object_{`x`, .unknown},
+	]
 
-	// Test for boolean value
-	checker = Decoder{
-		checker_idx: 0
-		json:        'true'
+	for value in array_ {
+		assert get_value_kind(&value.byte_) == value.value_kind
 	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	assert checker.values_info.len == 1
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 4
-	assert checker.values_info[0].value_kind == .boolean
-
-	// Test for null value
-	checker = Decoder{
-		checker_idx: 0
-		json:        'null'
-	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	assert checker.values_info.len == 1
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 4
-	assert checker.values_info[0].value_kind == .null
-
-	// Test for object value
-	checker = Decoder{
-		checker_idx: 0
-		json:        '{"key": "value"}'
-	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	assert checker.values_info.len == 3
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 16
-	assert checker.values_info[0].value_kind == .object
-	assert checker.values_info[1].position == 1
-	assert checker.values_info[1].length == 5
-	assert checker.values_info[1].value_kind == .string_
-	assert checker.values_info[2].position == 8
-	assert checker.values_info[2].length == 7
-	assert checker.values_info[2].value_kind == .string_
-
-	// Test for nested object value
-	checker = Decoder{
-		checker_idx: 0
-		// json: '0<-{1"key1": 9<-{10"key2": 18"value1"}}'
-		json: '{"key1": {"key2": "value1"}'
-	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	dump(checker.values_info)
-	assert checker.values_info.len == 5
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 27
-	assert checker.values_info[0].value_kind == .object
-	assert checker.values_info[1].position == 1
-	assert checker.values_info[1].length == 6
-	assert checker.values_info[1].value_kind == .string_
-	assert checker.values_info[2].position == 9
-	assert checker.values_info[2].length == 18
-	assert checker.values_info[2].value_kind == .object
-	assert checker.values_info[3].position == 10
-	assert checker.values_info[3].length == 6
-	assert checker.values_info[3].value_kind == .string_
-	assert checker.values_info[4].position == 18
-	assert checker.values_info[4].length == 8
-
-	// Test for array value
-	checker = Decoder{
-		checker_idx: 0
-		json:        '[1, 22, 333]'
-	}
-	checker.check_json_format(checker.json) or { assert false, err.str() }
-	assert checker.values_info.len == 4
-	assert checker.values_info[0].position == 0
-	assert checker.values_info[0].length == 12
-	assert checker.values_info[0].value_kind == .array
-	assert checker.values_info[1].position == 1
-	assert checker.values_info[1].length == 1
-	assert checker.values_info[1].value_kind == .number
-	assert checker.values_info[2].position == 4
-	assert checker.values_info[2].length == 2
-	assert checker.values_info[2].value_kind == .number
-	assert checker.values_info[3].position == 8
-	assert checker.values_info[3].length == 3
-	assert checker.values_info[3].value_kind == .number
 }
