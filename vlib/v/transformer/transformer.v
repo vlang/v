@@ -40,7 +40,7 @@ pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Tr
 }
 
 pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
-	t.strings_builder_type = t.table.find_type_idx('strings.Builder')
+	t.strings_builder_type = t.table.find_type('strings.Builder')
 	for i in 0 .. ast_files.len {
 		mut file := unsafe { ast_files[i] }
 		t.transform(mut file)

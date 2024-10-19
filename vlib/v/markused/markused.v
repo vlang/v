@@ -444,10 +444,10 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string,
 	context_name string) {
 	// handle vweb magic router methods:
-	result_type_idx := table.find_type_idx(result_name)
+	result_type_idx := table.find_type(result_name)
 	if result_type_idx != 0 {
 		all_fn_root_names << filter_name
-		typ_vweb_context := ast.idx_to_type(table.find_type_idx(context_name)).set_nr_muls(1)
+		typ_vweb_context := table.find_type(context_name).set_nr_muls(1)
 		all_fn_root_names << '${int(typ_vweb_context)}.html'
 		for vgt in table.used_veb_types {
 			sym_app := table.sym(vgt)

@@ -530,6 +530,12 @@ pub fn (t Type) derive_add_muls(t_from Type) Type {
 	return Type((0xff000000 & t_from) | u16(t)).set_nr_muls(t.nr_muls() + t_from.nr_muls())
 }
 
+// return new type from its `idx`
+@[inline]
+pub fn (t Type) idx_type() Type {
+	return idx_to_type(t.idx())
+}
+
 // return new type with TypeSymbol idx set to `idx`
 @[inline]
 pub fn new_type(idx int) Type {

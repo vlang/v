@@ -676,10 +676,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			modified_left_type := if !left_type.is_int() {
 				c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 					left_pos)
-				ast.void_type_idx
+				ast.void_type
 			} else if left_type.is_int_literal() {
 				// int literal => i64
-				ast.u32_type_idx
+				ast.u32_type
 			} else if left_type.is_unsigned() {
 				left_type
 			} else {
@@ -690,7 +690,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				// i64  	=> u64
 				// isize	=> usize
 				// i128 	=> u128 NOT IMPLEMENTED YET
-				match left_type.idx() {
+				ast.idx_to_type(match left_type.idx() {
 					ast.i8_type_idx { ast.u8_type_idx }
 					ast.i16_type_idx { ast.u16_type_idx }
 					ast.i32_type_idx { ast.u32_type_idx }
@@ -698,7 +698,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					ast.i64_type_idx { ast.u64_type_idx }
 					ast.isize_type_idx { ast.usize_type_idx }
 					else { 0 }
-				}
+				})
 			}
 
 			if modified_left_type == 0 {
