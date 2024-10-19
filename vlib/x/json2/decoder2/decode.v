@@ -74,9 +74,13 @@ fn (list &LinkedList) free() {
 	mut current := list.head
 	for current != unsafe { nil } {
 		mut next := current.next
+		current.next = unsafe { nil }
 		unsafe { free(current) }
 		current = next
 	}
+	list.head = unsafe { nil }
+	list.tail = unsafe { nil }
+	list.len = 0
 }
 
 // ValueKind represents the kind of a JSON value.
