@@ -19,8 +19,8 @@ pub const result_name = '_result'
 pub const option_name = '_option'
 
 // V builtin types defined on .v files
-// (IError, string, array, map were defined as builtin on types.v)
-pub const builtins = ['DenseArray', 'Error', option_name, result_name]
+pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name,
+	result_name]
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
