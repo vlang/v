@@ -22,9 +22,9 @@ mut:
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	linked_list_of_value_info LinkedList // A linked list to store ValueInfo.
-	checker_idx               int        // checker_idx is the current index of the decoder.
-	current_node              &Node = unsafe { nil } // The current node in the linked list.
+	values_info  LinkedList // A linked list to store ValueInfo.
+	checker_idx  int        // checker_idx is the current index of the decoder.
+	current_node &Node = unsafe { nil } // The current node in the linked list.
 }
 
 // LinkedList represents a linked list to store ValueInfo.
@@ -184,12 +184,12 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 	// check if generic type matches the JSON type
 	value_kind := get_value_kind(unsafe { val.str + checker.checker_idx })
 	start_idx_position := checker.checker_idx
-	checker.linked_list_of_value_info.push(ValueInfo{
+	checker.values_info.push(ValueInfo{
 		position:   start_idx_position
 		value_kind: value_kind
 	})
 
-	mut actual_value_info_pointer := checker.linked_list_of_value_info.last()
+	mut actual_value_info_pointer := checker.values_info.last()
 	match value_kind {
 		.unknown {
 			return checker.error('unknown value kind')
@@ -544,7 +544,7 @@ pub fn decode[T](val string) !T {
 	check_if_json_match[T](val)!
 
 	mut result := T{}
-	decoder.current_node = decoder.linked_list_of_value_info.head
+	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut &result)!
 	return result
 }
@@ -666,7 +666,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			decoder.current_node = decoder.current_node.next
 			for {
-				// if decoder.value_info_idx >= decoder.values_info.len {
 				if decoder.current_node == unsafe { nil } {
 					break
 				}
