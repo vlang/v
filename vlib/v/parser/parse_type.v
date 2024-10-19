@@ -439,14 +439,15 @@ fn (mut p Parser) parse_inline_sum_type() ast.Type {
 			return ast.new_type(idx)
 		}
 		idx = p.table.register_sym(ast.TypeSymbol{
-			kind:  .sum_type
-			name:  prepend_mod_name
-			cname: util.no_dots(prepend_mod_name)
-			mod:   p.mod
-			info:  ast.SumType{
+			kind:       .sum_type
+			name:       prepend_mod_name
+			cname:      util.no_dots(prepend_mod_name)
+			mod:        p.mod
+			info:       ast.SumType{
 				is_anon:  true
 				variants: variant_types
 			}
+			is_builtin: prepend_mod_name in ast.builtins
 		})
 		return ast.new_type(idx)
 	} else if variants.len == 1 {
@@ -899,11 +900,12 @@ fn (mut p Parser) parse_generic_type(name string) ast.Type {
 		return ast.new_type(idx).set_flag(.generic)
 	}
 	idx = p.table.register_sym(ast.TypeSymbol{
-		name:   name
-		cname:  util.no_dots(name)
-		mod:    p.mod
-		kind:   .any
-		is_pub: true
+		name:       name
+		cname:      util.no_dots(name)
+		mod:        p.mod
+		kind:       .any
+		is_pub:     true
+		is_builtin: name in ast.builtins
 	})
 	return ast.new_type(idx).set_flag(.generic)
 }
@@ -1004,14 +1006,15 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		}
 
 		idx := p.table.register_sym(ast.TypeSymbol{
-			kind:  .generic_inst
-			name:  bs_name
-			cname: util.no_dots(bs_cname)
-			mod:   p.mod
-			info:  ast.GenericInst{
+			kind:       .generic_inst
+			name:       bs_name
+			cname:      util.no_dots(bs_cname)
+			mod:        p.mod
+			info:       ast.GenericInst{
 				parent_idx:     parent_idx
 				concrete_types: concrete_types
 			}
+			is_builtin: bs_name in ast.builtins
 		})
 		return ast.new_type(idx)
 	}

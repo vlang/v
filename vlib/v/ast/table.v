@@ -691,6 +691,7 @@ pub const invalid_type_symbol = &TypeSymbol{
 	kind:       .placeholder
 	name:       'InvalidType'
 	cname:      'InvalidType'
+	is_builtin: false
 }
 
 @[inline]
@@ -765,8 +766,9 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		// override placeholder
 		t.type_symbols[existing_idx] = &TypeSymbol{
 			...typ
-			methods: existing_symbol.methods
-			idx:     existing_idx
+			methods:    existing_symbol.methods
+			idx:        existing_idx
+			is_builtin: existing_symbol.is_builtin
 		}
 		return existing_idx
 	}
@@ -779,14 +781,16 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 			unsafe {
 				*existing_symbol = &TypeSymbol{
 					...typ
-					kind: existing_symbol.kind
-					idx:  existing_idx
+					kind:       existing_symbol.kind
+					idx:        existing_idx
+					is_builtin: existing_symbol.is_builtin
 				}
 			}
 		} else {
 			t.type_symbols[existing_idx] = &TypeSymbol{
 				...typ
-				idx: existing_idx
+				idx:        existing_idx
+				is_builtin: existing_symbol.is_builtin
 			}
 		}
 		return existing_idx
@@ -1065,6 +1069,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 			elem_type: elem_type
 			is_mut:    is_mut
 		}
+		is_builtin: name in builtins
 	}
 	return t.register_sym(chan_typ)
 }
@@ -1087,6 +1092,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 			key_type:   key_type
 			value_type: value_type
 		}
+		is_builtin: name in builtins
 	}
 	return t.register_sym(map_typ)
 }
@@ -1108,6 +1114,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 		info:       Thread{
 			return_type: return_type
 		}
+		is_builtin: name in builtins
 	}
 	return t.register_sym(thread_typ)
 }
@@ -1130,6 +1137,7 @@ pub fn (mut t Table) find_or_register_promise(return_type Type) int {
 		info:       Struct{
 			concrete_types: [return_type, t.type_idxs['JS.Any']]
 		}
+		is_builtin: name in builtins
 	}
 
 	// register
@@ -1154,6 +1162,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 			nr_dims:   1
 			elem_type: elem_type
 		}
+		is_builtin: name in builtins
 	}
 	return t.register_sym(array_type_)
 }
@@ -1176,15 +1185,16 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 	cname := prefix + t.array_fixed_cname(elem_type, size)
 	// register
 	array_fixed_type := TypeSymbol{
-		kind:  .array_fixed
-		name:  name
-		cname: cname
-		info:  ArrayFixed{
+		kind:       .array_fixed
+		name:       name
+		cname:      cname
+		info:       ArrayFixed{
 			elem_type: elem_type
 			size:      size
 			size_expr: size_expr
 			is_fn_ret: is_fn_ret
 		}
+		is_builtin: name in builtins
 	}
 	return t.register_sym(array_fixed_type)
 }
@@ -1213,12 +1223,13 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	}
 	// register
 	mr_type := TypeSymbol{
-		kind:  .multi_return
-		name:  name
-		cname: cname
-		info:  MultiReturn{
+		kind:       .multi_return
+		name:       name
+		cname:      cname
+		info:       MultiReturn{
 			types: mr_typs
 		}
+		is_builtin: name in builtins
 	}
 	return t.register_sym(mr_type)
 }
@@ -1254,11 +1265,12 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		modname = name.all_before_last('.')
 	}
 	ph_type := TypeSymbol{
-		kind:     .placeholder
-		name:     name
-		cname:    util.no_dots(name).replace_each(['&', ''])
-		language: language
-		mod:      modname
+		kind:       .placeholder
+		name:       name
+		cname:      util.no_dots(name).replace_each(['&', ''])
+		language:   language
+		mod:        modname
+		is_builtin: name in builtins
 	}
 	return t.register_sym(ph_type)
 }

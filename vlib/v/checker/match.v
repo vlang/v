@@ -486,14 +486,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						expr_type = existing_idx
 					} else {
 						expr_type = c.table.register_sym(ast.TypeSymbol{
-							name:  name
-							cname: agg_cname.str()
-							kind:  .aggregate
-							mod:   c.mod
-							info:  ast.Aggregate{
+							name:       name
+							cname:      agg_cname.str()
+							kind:       .aggregate
+							mod:        c.mod
+							info:       ast.Aggregate{
 								sum_type: node.cond_type
 								types:    expr_types.map(it.typ)
 							}
+							is_builtin: name in ast.builtins
 						})
 					}
 				} else {

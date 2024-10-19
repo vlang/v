@@ -108,6 +108,7 @@ pub mut:
 	generic_types []Type
 	mod           string
 	is_pub        bool
+	is_builtin    bool
 	language      Language
 	idx           int
 	size          int = -1
@@ -1052,10 +1053,10 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin') // 18
 	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin') // 19
 	t.register_sym(kind: .none, name: 'none', cname: 'none', mod: 'builtin') // 20
-	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin') // 21
+	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin', is_builtin: true) // 21
 	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin') // 22
-	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin') // 23
-	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin') // 24
+	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin', is_builtin: true) // 23
+	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin', is_builtin: true) // 24
 	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin') // 25
 	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin') // 26
 	t.register_sym(
@@ -1079,7 +1080,13 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 			return_type: void_type
 		}
 	) // 29
-	t.register_sym(kind: .interface, name: 'IError', cname: 'IError', mod: 'builtin') // 30
+	t.register_sym(
+		kind:       .interface
+		name:       'IError'
+		cname:      'IError'
+		mod:        'builtin'
+		is_builtin: true
+	) // 30
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
 }
 
