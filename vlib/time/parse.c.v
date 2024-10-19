@@ -173,7 +173,7 @@ pub fn parse_rfc3339(s string) !Time {
 
 			offset_in_minutes += offset_in_hours * 60
 
-			if is_negative {
+			if !is_negative {
 				offset_in_minutes *= -1
 			}
 
