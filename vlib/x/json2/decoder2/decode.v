@@ -61,7 +61,7 @@ fn (list LinkedList) str() string {
 	mut current := list.head
 	for current != unsafe { nil } {
 		value_kind_as_string := current.value.value_kind.str()
-		result_buffer.push_many(value_kind_as_string.str, value_kind_as_string.len)
+		unsafe { result_buffer.push_many(value_kind_as_string.str, value_kind_as_string.len) }
 		result_buffer << u8(` `)
 
 		current = current.next
@@ -102,7 +102,7 @@ fn check_if_json_match[T](val string) ! {
 	}
 
 	// check if generic type matches the JSON type
-	value_kind := get_value_kind(unsafe { val.str })
+	value_kind := get_value_kind(val[0])
 
 	$if T is $option {
 		// TODO
@@ -182,7 +182,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 	}
 
 	// check if generic type matches the JSON type
-	value_kind := get_value_kind(unsafe { val.str + checker.checker_idx })
+	value_kind := get_value_kind(val[checker.checker_idx])
 	start_idx_position := checker.checker_idx
 	checker.values_info.push(ValueInfo{
 		position:   start_idx_position
@@ -748,8 +748,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 }
 
 // get_value_kind returns the kind of a JSON value.
-fn get_value_kind(val &u8) ValueKind {
-	value := *val
+fn get_value_kind(value u8) ValueKind {
+	// value := *val
 	if value == u8(`"`) {
 		return .string_
 	} else if value == u8(`t`) || value == u8(`f`) {

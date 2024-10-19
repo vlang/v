@@ -200,6 +200,6 @@ fn test_get_value_kind() {
 	]
 
 	for value in array_ {
-		assert get_value_kind(&value.byte_) == value.value_kind
+		assert get_value_kind(value.byte_) == value.value_kind
 	}
 }
