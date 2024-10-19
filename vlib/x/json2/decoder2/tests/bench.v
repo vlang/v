@@ -166,5 +166,5 @@ fn main() {
 		_ := decoder2.decode[string]('"abcdefghijklimnopqrstuv"')!
 	}
 
-	b.measure('decoder2.decode[string](\'"lala"\')!')
+	b.measure('decoder2.decode[string](\'"abcdefghijklimnopqrstuv"\')!')
 }
