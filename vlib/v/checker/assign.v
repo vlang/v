@@ -717,7 +717,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				modified_left_type := if !left_type.is_int() {
 					c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 						node.pos)
-					ast.idx_to_type(ast.void_type_idx)
+					ast.void_type
 				} else if left_type.is_int_literal() {
 					// int literal => i64
 					ast.idx_to_type(ast.u32_type_idx)

@@ -679,7 +679,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				ast.idx_to_type(ast.void_type_idx)
 			} else if left_type.is_int_literal() {
 				// int literal => i64
-				ast.idx_to_type(ast.u32_type_idx)
+				ast.u32_type
 			} else if left_type.is_unsigned() {
 				left_type
 			} else {
