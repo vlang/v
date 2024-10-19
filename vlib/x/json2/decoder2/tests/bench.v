@@ -153,4 +153,18 @@ fn main() {
 	}
 
 	b.measure("decoder2.decode[bool]('true')!")
+
+	// time.Time **********************************************************
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25"')!
+	}
+
+	b.measure("decoder2.decode[time.Time]('2022-03-11T13:54:25')!")
+
+	// string **********************************************************
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[string]('"abcdefghijklimnopqrstuv"')!
+	}
+
+	b.measure('decoder2.decode[string](\'"lala"\')!')
 }
