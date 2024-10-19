@@ -157,9 +157,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 			sym := g.table.sym(expr.typ)
-			if sym.info is ast.Struct {
-				return sym.info.fields.any(it.typ.has_flag(.option))
-			}
+			return sym.info is ast.Struct && sym.info.has_option
 		}
 		else {}
 	}
