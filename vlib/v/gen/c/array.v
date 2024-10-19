@@ -1079,16 +1079,19 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	} else {
 		left_sym.array_fixed_info().elem_type
 	}
-	if (right.is_auto_deref_var() && !elem_typ.is_ptr())
+	is_auto_deref_var := right.is_auto_deref_var()
+	if (is_auto_deref_var && !elem_typ.is_ptr())
 		|| (g.table.sym(elem_typ).kind !in [.interface, .sum_type, .struct] && right is ast.Ident
 		&& right.info is ast.IdentVar && g.table.sym(right.obj.typ).kind in [.interface, .sum_type]) {
 		g.write('*')
 	}
-	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
+	sym := g.table.sym(elem_typ)
+	if sym.kind in [.interface, .sum_type] {
 		g.expr_with_cast(right, right_type, elem_typ)
-	} else if right is ast.ArrayInit {
+	} else if right is ast.ArrayInit && sym.info is ast.ArrayFixed {
 		g.write('(${g.typ(right.typ)})')
-		g.expr(right)
+		g.fixed_array_var_init(g.expr_string(right), is_auto_deref_var, sym.info.elem_type,
+			sym.info.size)
 	} else {
 		g.expr(right)
 	}
