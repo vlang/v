@@ -1085,13 +1085,19 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 		&& right.info is ast.IdentVar && g.table.sym(right.obj.typ).kind in [.interface, .sum_type]) {
 		g.write('*')
 	}
-	sym := g.table.sym(elem_typ)
-	if sym.kind in [.interface, .sum_type] {
+	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
 		g.expr_with_cast(right, right_type, elem_typ)
-	} else if right is ast.ArrayInit && sym.info is ast.ArrayFixed {
-		g.write('(${g.typ(right.typ)})')
-		g.fixed_array_var_init(g.expr_string(right), is_auto_deref_var, sym.info.elem_type,
-			sym.info.size)
+	} else if right is ast.ArrayInit {
+		if g.is_cc_msvc {
+			stmts := g.go_before_last_stmt().trim_space()
+			tmp_var := g.new_tmp_var()
+			g.write('${g.typ(right_type)} ${tmp_var} = ${g.expr_string(right)};')
+			g.write(stmts)
+			g.write(tmp_var)
+		} else {
+			g.write('(${g.typ(right.typ)})')
+			g.expr(right)
+		}
 	} else {
 		g.expr(right)
 	}
