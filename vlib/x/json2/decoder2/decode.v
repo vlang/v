@@ -557,8 +557,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				for i := 0; i < escape_positions.len; i++ {
 					escape_position := escape_positions[i]
 					if i == 0 {
-						// string_buffer << decoder.json[value_info.position + 1..escape_position].bytes()
-
 						// Pushes a substring from the JSON string into the string buffer.
 						// The substring starts at the position of the value in the JSON string plus one,
 						// and ends at the escape position minus one.
@@ -568,8 +566,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 								escape_position - string_info.position - 1)
 						}
 					} else {
-						// string_buffer << decoder.json[escape_positions[i - 1] + 2..escape_position].bytes()
-
 						// Pushes a substring from the JSON string into the string buffer, starting after the previous escape position
 						// and ending just before the current escape position. This handles the characters between escape sequences.
 						unsafe {
