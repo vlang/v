@@ -3,8 +3,7 @@ import time
 fn test_parse() {
 	s := '2018-01-27 12:48:34'
 	t := time.parse(s) or {
-		eprintln('> failing format: ${s} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${s} | err: ${err}'
 		return
 	}
 	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
@@ -27,8 +26,7 @@ fn test_parse_invalid() {
 fn test_parse_rfc2822() {
 	s1 := 'Thu, 12 Dec 2019 06:07:45 GMT'
 	t1 := time.parse_rfc2822(s1) or {
-		eprintln('> failing format: ${s1} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${s1} | err: ${err}'
 		return
 	}
 	assert t1.year == 2019 && t1.month == 12 && t1.day == 12 && t1.hour == 6 && t1.minute == 7
@@ -36,8 +34,7 @@ fn test_parse_rfc2822() {
 	assert t1.unix() == 1576130865
 	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
 	t2 := time.parse_rfc2822(s2) or {
-		eprintln('> failing format: ${s2} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${s2} | err: ${err}'
 		return
 	}
 	assert t2.year == 2019 && t2.month == 12 && t2.day == 12 && t2.hour == 6 && t2.minute == 7
@@ -73,8 +70,7 @@ fn test_parse_iso8601() {
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or {
-			eprintln('>>> failing format: ${format} | err: ${err}')
-			assert false
+			assert false, '>>> failing format: ${format} | err: ${err}'
 			continue
 		}
 		year := times[i][0]
@@ -97,8 +93,7 @@ fn test_parse_iso8601() {
 fn test_parse_iso8601_local() {
 	format := '2020-06-05T15:38:06.015959'
 	t := time.parse_iso8601(format) or {
-		eprintln('> failing format: ${format} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${format} | err: ${err}'
 		return
 	}
 	assert t.year == 2020
@@ -135,8 +130,7 @@ fn test_parse_iso8601_invalid() {
 fn test_parse_iso8601_date_only() {
 	format := '2020-06-05'
 	t := time.parse_iso8601(format) or {
-		eprintln('> failing format: ${format} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${format} | err: ${err}'
 		return
 	}
 	assert t.year == 2020
@@ -150,8 +144,7 @@ fn test_parse_iso8601_date_only() {
 
 fn check_invalid_date(s string) {
 	if date := time.parse(s) {
-		eprintln('invalid date: "${s}" => "${date}"')
-		assert false
+		assert false, 'invalid date: "${s}" => "${date}"'
 	}
 	assert true
 }
@@ -175,12 +168,24 @@ fn test_parse_rfc3339() {
 	pairs := [
 		['2015-01-06T15:47:32.080254511Z', '2015-01-06 15:47:32.080254'],
 		['2015-01-06T15:47:32.072697474Z', '2015-01-06 15:47:32.072697'],
+		['2015-01-06T15:47:32.1234Z', '2015-01-06 15:47:32.123400'],
+		['2015-01-06T15:47:32.001234Z', '2015-01-06 15:47:32.001234'],
+		['2015-01-06T15:47:32Z', '2015-01-06 15:47:32.000000'],
+		['2015-01-06T15:47:32+00:00', '2015-01-06 15:47:32.000000'],
+		['2015-01-06T15:47:32-00:00', '2015-01-06 15:47:32.000000'],
+		['2015-01-06T15:47:32+01:00', '2015-01-06 16:47:32.000000'],
+		['2015-01-06T15:47:32-01:00', '2015-01-06 14:47:32.000000'],
+		['2015-01-06T15:47:32+01:10', '2015-01-06 16:57:32.000000'],
+		['2015-01-06T15:47:32-01:10', '2015-01-06 14:37:32.000000'],
+		['2015-01-06T15:47:32.1234-00:00', '2015-01-06 15:47:32.123400'],
+		['2015-01-06T15:47:32.1234-01:00', '2015-01-06 14:47:32.123400'],
+		['2015-01-06T15:47:32.1234+01:00', '2015-01-06 16:47:32.123400'],
 	]
 	for pair in pairs {
 		input, expected := pair[0], pair[1]
+
 		res := time.parse_rfc3339(input) or {
-			eprintln('>>> failing input: ${input} | err: ${err}')
-			assert false
+			assert false, '>>> failing input: ${input} | err: ${err}'
 			return
 		}
 		output := res.format_ss_micro()
@@ -205,8 +210,7 @@ fn test_ad_second_to_parse_result_pre_2001() {
 fn test_parse_format() {
 	mut s := '2018-01-27 12:48:34'
 	mut t := time.parse_format(s, 'YYYY-MM-DD HH:mm:ss') or {
-		eprintln('> failing format: ${s} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${s} | err: ${err}'
 		return
 	}
 	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
@@ -214,8 +218,7 @@ fn test_parse_format() {
 
 	s = '2018-November-27 12:48:20'
 	t = time.parse_format(s, 'YYYY-MMMM-DD HH:mm:ss') or {
-		eprintln('> failing format: ${s} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${s} | err: ${err}'
 		return
 	}
 	assert t.year == 2018 && t.month == 11 && t.day == 27 && t.hour == 12 && t.minute == 48
@@ -223,8 +226,7 @@ fn test_parse_format() {
 
 	s = '18-1-2 0:8:2'
 	t = time.parse_format(s, 'YY-M-D H:m:s') or {
-		eprintln('> failing format: ${s} | err: ${err}')
-		assert false
+		assert false, '> failing format: ${s} | err: ${err}'
 		return
 	}
 	assert t.year == 2018 && t.month == 1 && t.day == 2 && t.hour == 0 && t.minute == 8
@@ -233,6 +235,6 @@ fn test_parse_format() {
 	// This should always fail, because we test if M and D allow for a 01 value which they shouldn't
 	s = '2018-01-02 1:8:2'
 	t = time.parse_format(s, 'YYYY-M-D H:m:s') or { return }
-	eprintln('> failing for datetime: ${s}, the datetime string should not have passed the format "YYYY-M-D H:m:s"')
-	assert false
+
+	assert false, '> failing for datetime: ${s}, the datetime string should not have passed the format "YYYY-M-D H:m:s"'
 }
