@@ -757,6 +757,18 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
+fn create_array_element[T](array []T) T {
+	return T{}
+}
+
+fn create_map_value[K, V](map_ map[K]V) V {
+	return V{}
+}
+
+fn create_value_from_optional[T](val ?T) T {
+	return T{}
+}
+
 // get_value_kind returns the kind of a JSON value.
 fn get_value_kind(val &u8) ValueKind {
 	value := *val
@@ -874,18 +886,6 @@ fn generate_unicode_escape_sequence(escape_sequence_byte []u8) ![]u8 {
 	}
 
 	return utf8_bytes
-}
-
-fn create_array_element[T](array []T) T {
-	return T{}
-}
-
-fn create_map_value[K, V](map_ map[K]V) V {
-	return V{}
-}
-
-fn create_value_from_optional[T](val ?T) T {
-	return T{}
 }
 
 // string_buffer_to_generic_number converts a buffer of bytes (data) into a generic type T and
