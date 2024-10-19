@@ -757,18 +757,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
-fn create_array_element[T](array []T) T {
-	return T{}
-}
-
-fn create_map_value[K, V](map_ map[K]V) V {
-	return V{}
-}
-
-fn create_value_from_optional[T](val ?T) T {
-	return T{}
-}
-
 // get_value_kind returns the kind of a JSON value.
 fn get_value_kind(val &u8) ValueKind {
 	value := *val
@@ -786,6 +774,18 @@ fn get_value_kind(val &u8) ValueKind {
 		return .null
 	}
 	return .unknown
+}
+
+fn create_array_element[T](array []T) T {
+	return T{}
+}
+
+fn create_map_value[K, V](map_ map[K]V) V {
+	return V{}
+}
+
+fn create_value_from_optional[T](val ?T) T {
+	return T{}
 }
 
 fn utf8_byte_length(unicode_value u32) int {
