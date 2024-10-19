@@ -7,8 +7,8 @@ pub struct Stru {
 }
 
 pub struct Stru2 {
-	a         int
-	churrasco string
+	a               int
+	brazilian_steak string
 }
 
 struct StructType[T] {
@@ -45,12 +45,12 @@ fn test_array_of_strings() {
 	// assert json.decode[map[string]map[string]string]('{"val": {"val2": "2"}}')! == {"val": {"val2": "2"}}
 
 	// nested struct
-	assert json.decode[Stru]('{"val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}}')! == Stru{
+	assert json.decode[Stru]('{"val": 1, "val2": "lala", "val3": {"a": 2, "brazilian_steak": "leleu"}}')! == Stru{
 		val:  1
 		val2: 'lala'
 		val3: Stru2{
-			a:         2
-			churrasco: 'leleu'
+			a:               2
+			brazilian_steak: 'leleu'
 		}
 	}
 }
