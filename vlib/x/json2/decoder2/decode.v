@@ -66,6 +66,16 @@ fn (list LinkedList) str() string {
 	return result
 }
 
+@[unsafe]
+fn (list &LinkedList) free() {
+	mut current := list.head
+	for current != unsafe { nil } {
+		mut next := current.next
+		unsafe { free(current) }
+		current = next
+	}
+}
+
 // ValueKind represents the kind of a JSON value.
 pub enum ValueKind {
 	unknown
