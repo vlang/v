@@ -676,7 +676,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			modified_left_type := if !left_type.is_int() {
 				c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 					left_pos)
-				ast.idx_to_type(ast.void_type_idx)
+				ast.void_type
 			} else if left_type.is_int_literal() {
 				// int literal => i64
 				ast.u32_type
