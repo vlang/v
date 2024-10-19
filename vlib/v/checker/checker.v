@@ -1704,7 +1704,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 					} else {
 						'wrapping the `${rec_sym.name}` object in a `struct` declared as `@[heap]`'
 					}
-					c.error('method `${c.table.type_to_str(ast.idx_to_type(receiver.idx()))}.${method.name}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider ${suggestion}.',
+					c.error('method `${c.table.type_to_str(receiver.idx_type())}.${method.name}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider ${suggestion}.',
 						node.expr.pos().extend(node.pos))
 				}
 			}
@@ -3494,7 +3494,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_type.is_int() && mut node.expr is ast.IntegerLiteral {
 		tt := c.table.type_to_str(to_type)
-		tsize, _ := c.table.type_size(ast.idx_to_type(to_type.idx()))
+		tsize, _ := c.table.type_size(to_type.idx_type())
 		bit_size := tsize * 8
 		value_string := match node.expr.val[0] {
 			`-`, `+` {

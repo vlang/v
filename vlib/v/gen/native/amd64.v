@@ -666,7 +666,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 						size_str = 'BYTE'
 					}
 					else {
-						ts := c.g.table.sym(ast.idx_to_type(typ.idx()))
+						ts := c.g.table.sym(typ.idx_type())
 						if ts.info is ast.Enum {
 							if is_extended_register {
 								c.g.write8(0x44)

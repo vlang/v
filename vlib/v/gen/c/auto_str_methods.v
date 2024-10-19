@@ -1244,7 +1244,7 @@ fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct, .alias, .array, .array_fixed, .map, .sum_type, .interface]
 }
 
-fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, ast.Type) {
+fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
 	enum_name := fn_name.all_before('__static__')
 	mut mod_enum_name := if !enum_name.contains('.') {
 		g.cur_mod.name + '.' + enum_name
@@ -1265,7 +1265,8 @@ fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, ast.Type)
 	return mod_enum_name, idx
 }
 
-fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string, enum_typ ast.Type) {
+fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string, idx int) {
+	enum_typ := ast.idx_to_type(idx)
 	enum_styp := g.typ(enum_typ)
 	option_enum_typ := enum_typ.set_flag(.option)
 	option_enum_styp := g.typ(option_enum_typ)
