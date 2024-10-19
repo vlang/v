@@ -57,13 +57,16 @@ fn (list LinkedList) last() &ValueInfo {
 
 // str returns a string representation of the linked list.
 fn (list LinkedList) str() string {
-	mut result := ''
+	mut result_buffer := []u8{}
 	mut current := list.head
 	for current != unsafe { nil } {
-		result += current.value.value_kind.str() + ' '
+		value_kind_as_string := current.value.value_kind.str()
+		result_buffer.push_many(value_kind_as_string.str, value_kind_as_string.len)
+		result_buffer << u8(` `)
+
 		current = current.next
 	}
-	return result
+	return result_buffer.bytestr()
 }
 
 @[unsafe]
