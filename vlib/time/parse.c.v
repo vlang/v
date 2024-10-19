@@ -5,6 +5,9 @@ module time
 
 import strconv
 
+const date_format_buffer = [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`]!
+const time_format_buffer = [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]!
+
 // parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
@@ -12,48 +15,183 @@ pub fn parse_rfc3339(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	// Normalize the input before parsing. Good since iso8601 doesn't permit lower case `t` and `z`.
-	sn := s.replace_each(['t', 'T', 'z', 'Z'])
-	mut t := parse_iso8601(sn) or { Time{} }
-	// If parse_iso8601 DID NOT result in default values (i.e. date was parsed correctly)
-	if t != Time{} {
-		return t
+	if s.len < date_format_buffer.len {
+		return error_invalid_time(1, 'datetime string is too short')
+	}
+	mut year, mut month, mut day := 0, 0, 0
+	mut hour_, mut minute_, mut second_, mut nanosecond_ := 0, 0, 0, 0
+	// Check if the string start in the format "YYYY-MM-DD"
+	for i := 0; i < date_format_buffer.len; i++ {
+		if date_format_buffer[i] == u8(`0`) {
+			if s[i] < u8(`0`) && s[i] > u8(`9`) {
+				return error('`YYYY-MM-DD` match error: expected digit, not `${[s[i]].bytestr()}` in position ${i}')
+			} else {
+				if i < 4 {
+					year = year * 10 + (s[i] - u8(`0`))
+				} else if i < 7 {
+					month = month * 10 + (s[i] - u8(`0`))
+				} else {
+					day = day * 10 + (s[i] - u8(`0`))
+				}
+			}
+		} else if date_format_buffer[i] != s[i] {
+			return error('date separator error:expected "${date_format_buffer[i]}", not `${[
+				s[i],
+			].bytestr()}` in position ${i}')
+		}
 	}
 
-	t_i := sn.index('T') or { -1 }
-	parts := if t_i != -1 { [sn[..t_i], sn[t_i + 1..]] } else { sn.split(' ') }
-
-	// Check if sn is date only
-	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
-		year, month, day := parse_iso8601_date(sn)!
-		t = new(Time{
-			year:  year
-			month: month
-			day:   day
+	if s.len == date_format_buffer.len {
+		return new(Time{
+			year:     year
+			month:    month
+			day:      day
+			is_local: false
 		})
-		return t
 	}
-	// Check if sn is time only
-	if !parts[0].contains('-') && parts[0].contains(':') {
-		mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
-		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])!
-		t = new(Time{
-			hour:       hour_
-			minute:     minute_
-			second:     second_
-			nanosecond: nanosecond_
-		})
-		if is_local_time {
-			return t // Time is already local time
+
+	if s.len < date_format_buffer.len + time_format_buffer.len + 2 {
+		return error_invalid_time(2, 'datetime string is too short')
+	}
+
+	// Check if the string contains the time part after the date part
+	if s[date_format_buffer.len] !in [u8(`T`), `t`, ` `, `_`] {
+		return error('time part error:expected "T" or "t" or " " or "_" in position ${date_format_buffer.len}, not ${s[date_format_buffer.len]}')
+	}
+
+	// Check if the string start in the format "HH:MM:SS"
+	for i := 0; i < time_format_buffer.len; i++ {
+		if time_format_buffer[i] == u8(`0`) {
+			if s[i + date_format_buffer.len + 1] < u8(`0`)
+				&& s[i + date_format_buffer.len + 1] > u8(`9`) {
+				return error('`HH:MM:SS` match error: expected digit, not ${s[i +
+					date_format_buffer.len + 1]} in position ${i + date_format_buffer.len + 1}')
+			} else {
+				if i < 2 {
+					hour_ = hour_ * 10 + (s[i + date_format_buffer.len + 1] - u8(`0`))
+				} else if i < 5 {
+					minute_ = minute_ * 10 + (s[i + date_format_buffer.len + 1] - u8(`0`))
+				} else {
+					second_ = second_ * 10 + (s[i + date_format_buffer.len + 1] - u8(`0`))
+				}
+			}
+		} else if time_format_buffer[i] != s[i + date_format_buffer.len + 1] {
+			return error('time separator error:expected "${time_format_buffer[i]}", not ${s[i +
+				date_format_buffer.len + 1]} in position ${i + date_format_buffer.len + 1}')
 		}
-		mut unix_time := t.unix
-		if unix_offset < 0 {
-			unix_time -= (-unix_offset)
-		} else if unix_offset > 0 {
-			unix_time += unix_offset
+	}
+
+	if s[date_format_buffer.len + 1 + time_format_buffer.len] == u8(`.`) {
+		// Check if the string contains the nanoseconds part after the time part
+		if s.len < date_format_buffer.len + time_format_buffer.len + 2 {
+			return error_invalid_time(3, 'datetime string is too short')
 		}
-		t = unix_nanosecond(i64(unix_time), t.nanosecond)
-		return t
+		// Check if the string start in the format ".NNNNNNNNN"
+		mut nanosecond_digits := 0
+		for i := date_format_buffer.len + 1 + time_format_buffer.len + 1; i < s.len; i++ {
+			if s[i] < u8(`0`) || s[i] > u8(`9`) {
+				if s[i] in [u8(`Z`), `z`] {
+					if i != s.len - 1 {
+						return error('timezone error: "Z" or "z" can only be at the end of the string')
+					}
+					break
+				} else if s[i] in [u8(`+`), `-`] {
+					break
+				}
+				return error('nanoseconds error: expected digit, not `${[s[i]].bytestr()}` in position ${i}')
+			}
+			if !(i >= date_format_buffer.len + 1 + time_format_buffer.len + 1 + 9) {
+				// nanoseconds limit is 9 digits
+				nanosecond_ = nanosecond_ * 10 + (s[i] - u8(`0`))
+				nanosecond_digits++
+			}
+		}
+		if nanosecond_digits < 9 {
+			for i := 0; i < 9 - nanosecond_digits; i++ {
+				nanosecond_ *= 10
+			}
+		}
+	}
+
+	if s[date_format_buffer.len + time_format_buffer.len + 1] !in [u8(`Z`), `z`, `+`, `-`, `.`] {
+		// RFC 3339 needs a timezone
+		return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${
+			date_format_buffer.len + time_format_buffer.len + 1}, not "${[
+			s[date_format_buffer.len + time_format_buffer.len + 1],
+		].bytestr()}"')
+	} else {
+		if s[s.len - 1] in [u8(`Z`), `z`] {
+			return new(Time{
+				year:       year
+				month:      month
+				day:        day
+				hour:       hour_
+				minute:     minute_
+				second:     second_
+				nanosecond: nanosecond_
+				is_local:   false
+			})
+		} else {
+			// Check if the string contains the timezone part after the time part +00:00
+			if s.len < date_format_buffer.len + 1 + time_format_buffer.len + 6 {
+				return error('datetime string is too short')
+			}
+			if s[s.len - 3] != u8(`:`) {
+				return error('timezone separator error: expected ":", not `${[
+					s[date_format_buffer.len + time_format_buffer.len + 3],
+				].bytestr()}` in position ${date_format_buffer.len + time_format_buffer.len + 3}')
+			}
+
+			// Check if it is UTC time
+			if unsafe { vmemcmp(s.str + s.len - 5, '00:00'.str, 5) == 0 } {
+				return new(Time{
+					year:       year
+					month:      month
+					day:        day
+					hour:       hour_
+					minute:     minute_
+					second:     second_
+					nanosecond: nanosecond_
+					is_local:   false
+				})
+			}
+
+			is_negative := s[s.len - 6] == u8(`-`)
+
+			// To local time using the offset to add_seconds
+			mut offset_in_minutes := 0
+			mut offset_in_hours := 0
+			// offset seconds
+			for i := 0; i < 2; i++ {
+				offset_in_hours = offset_in_minutes * 10 + (s[s.len - 5 + i] - u8(`0`))
+			}
+
+			// offset minutes
+			for i := 0; i < 2; i++ {
+				offset_in_minutes = offset_in_minutes * 10 + (s[s.len - 2 + i] - u8(`0`))
+			}
+
+			offset_in_minutes += offset_in_hours * 60
+
+			if is_negative {
+				offset_in_minutes *= -1
+			}
+
+			mut time_to_be_returned := new(Time{
+				year:       year
+				month:      month
+				day:        day
+				hour:       hour_
+				minute:     minute_
+				second:     second_
+				nanosecond: nanosecond_
+				is_local:   false
+			})
+
+			time_to_be_returned = time_to_be_returned.add_seconds(offset_in_minutes * 60)
+
+			return time_to_be_returned
+		}
 	}
 
 	return error_invalid_time(9, 'malformed date')
@@ -310,6 +448,6 @@ fn parse_iso8601_time(s string) !(int, int, int, int, int, i64, bool) {
 	if plus_min_z == `+` {
 		unix_offset *= -1
 	}
-	// eprintln('parse_iso8601_time s: $s | hour_: $hour_ | minute_: $minute_ | second_: $second_ | microsecond_: $microsecond_ | nanosecond_: $nanosecond_ | unix_offset: $unix_offset | is_local_time: $is_local_time')
+	// eprintln('parse_iso8601_time s: $s | hour_: $hour_ | minute_: $minute_ | second_: $second_ | microsecond_: $microsecond_ | nanosecond_: $nanosecond_ | unix_offset: $unix_offset | is_local: $is_local_time')
 	return hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time
 }
