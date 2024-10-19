@@ -572,7 +572,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 						// Pushes a substring from the JSON string into the string buffer, starting after the previous escape position
 						// and ending just before the current escape position. This handles the characters between escape sequences.
-						// dump(escape_position - escape_positions[i - 1] - 6 )
 						unsafe {
 							string_buffer.push_many(decoder.json.str + escape_positions[i - 1] + 6,
 								escape_position - escape_positions[i - 1] - 6)
@@ -616,9 +615,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			map_position := map_info.position
 			map_end := map_position + map_info.length
 
-			// decoder.value_info_idx++
 			decoder.current_node = decoder.current_node.next
-			// dump(decoder.json)
 			for {
 				if decoder.current_node == unsafe { nil } {
 					break
@@ -648,25 +645,19 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			}
 		}
 	} $else $if T is $array {
-		// array_info := decoder.values_info[decoder.value_info_idx]
 		array_info := decoder.current_node.value
 
 		if array_info.value_kind == .array {
 			array_position := array_info.position
 			array_end := array_position + array_info.length
 
-			// decoder.value_info_idx++
 			decoder.current_node = decoder.current_node.next
-			// dump(decoder.json)
 			for {
 				// if decoder.value_info_idx >= decoder.values_info.len {
 				if decoder.current_node == unsafe { nil } {
-					// dump("break")
 					break
 				}
-				// value_info := decoder.values_info[decoder.value_info_idx]
 				value_info := decoder.current_node.value
-				// dump(value_info)
 
 				if value_info.position + value_info.length >= array_end {
 					break
@@ -677,10 +668,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				decoder.decode_value(mut array_element)!
 
 				val << array_element
-				// dump(val)
 			}
 		}
-		// dump("out")
 	} $else $if T is $struct {
 		struct_info := decoder.current_node.value
 
@@ -688,11 +677,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			struct_position := struct_info.position
 			struct_end := struct_position + struct_info.length
 
-			// decoder.value_info_idx++
 			decoder.current_node = decoder.current_node.next
-			// dump(decoder.json)
 			for {
-				// dump(decoder.current_node)
 				if decoder.current_node == unsafe { nil } {
 					break
 				}
@@ -708,15 +694,10 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				$for field in T.fields {
 					if key_info.length - 2 == field.name.len {
 						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
-						// dump('a')
-						// dump(decoder.json[key_info.position+1..key_info.position + 1 + field.name.len])
 						if unsafe {
 							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
 								field.name.len) == 0
 						} {
-							// mut workaround := val.$(field.name)
-							// decoder.decode_value(mut workaround)!
-							// val.$(field.name) = workaround
 							$if field.typ is $option {
 								mut unwrapped_val := create_value_from_optional(val.$(field.name))
 								decoder.decode_value(mut unwrapped_val)!
@@ -730,14 +711,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			}
 		}
 	} $else $if T is bool {
-		// value_info := decoder.values_info[decoder.value_info_idx]
 		value_info := decoder.current_node.value
 
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
 		}
 	} $else $if T in [$int, $float, $enum] {
-		// value_info := decoder.values_info[decoder.value_info_idx]
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
@@ -750,8 +729,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else {
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
-	// decoder.value_info_idx++
-	// decoder.current_node = decoder.current_node.next
+
 	if decoder.current_node != unsafe { nil } {
 		decoder.current_node = decoder.current_node.next
 	}
