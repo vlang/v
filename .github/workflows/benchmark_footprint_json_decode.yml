@@ -17,7 +17,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
 
-      - name: Run C program and save output
+      - name: Run V benchmark and save output
         run: (echo '```sh'; v -prod crun vlib/x/json2/decoder2/tests/bench.v; echo '```') > vlib/x/json2/decoder2/tests/bench_out.md
 
       - name: Upload result file
