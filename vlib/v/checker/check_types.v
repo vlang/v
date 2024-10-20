@@ -222,6 +222,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		exp_info := exp_type_sym.info as ast.Array
 		expected = exp_info.elem_type
 	}
+	if expected == got {
+		return
+	}
 	if language == .c {
 		// allow number types to be used interchangeably
 		if got.is_number() && expected.is_number() {
@@ -390,6 +393,9 @@ fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 }
 
 fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
+	if got == expected {
+		return true
+	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
