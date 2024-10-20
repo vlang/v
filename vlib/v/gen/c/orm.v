@@ -516,7 +516,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 	match expr {
 		ast.InfixExpr {
-			g.write_orm_primitive(g.table.find_type_idx('orm.InfixType'), expr)
+			g.write_orm_primitive(g.table.find_type('orm.InfixType'), expr)
 		}
 		ast.StringLiteral {
 			g.write_orm_primitive(ast.string_type, expr)
@@ -1041,7 +1041,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				mut sub := node.sub_structs[int(field.typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
-				primitive_type_index := g.table.find_type_idx('orm.Primitive')
+				primitive_type_index := g.table.find_type('orm.Primitive')
 
 				if primitive_type_index != 0 {
 					if mut ident.info is ast.IdentVar {
@@ -1222,7 +1222,7 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 
 // get_orm_current_table_field returns the current processing table's struct field by name.
 fn (g &Gen) get_orm_current_table_field(name string) ?ast.StructField {
-	info := g.table.sym(g.table.type_idxs[g.sql_table_name]).struct_info()
+	info := g.table.sym(ast.idx_to_type(g.table.type_idxs[g.sql_table_name])).struct_info()
 
 	for field in info.fields {
 		if field.name == name {

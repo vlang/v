@@ -19,7 +19,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	// record the veb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
-		typ_vweb_result := c.table.find_type_idx('veb.Result')
+		typ_vweb_result := c.table.find_type('veb.Result')
 		if node.return_type == typ_vweb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
 			if rec_sym.kind == .struct {
@@ -452,15 +452,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	// Register implicit context var
-	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type_idx('veb.Result')
+	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
 	if node.return_type == typ_veb_result {
 		// Find a custom user Context type first
-		mut ctx_idx := c.table.find_type_idx('main.Context')
+		mut ctx_idx := c.table.find_type('main.Context')
 		if ctx_idx < 1 {
 			// If it doesn't exist, use veb.Context
-			ctx_idx = c.table.find_type_idx('veb.Context')
+			ctx_idx = c.table.find_type('veb.Context')
 		}
-		typ_veb_context := ast.Type(u32(ctx_idx)).set_nr_muls(1)
+		typ_veb_context := ctx_idx.set_nr_muls(1)
 		// No `ctx` param? Add it
 		if !node.params.any(it.name == 'ctx') && node.params.len >= 1 {
 			params := node.params.clone()

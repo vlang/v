@@ -377,7 +377,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 	return &mut g
 }
 
-pub fn (mut g Gen) typ(a i32) &ast.TypeSymbol {
+pub fn (mut g Gen) typ(a ast.Type) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
 
@@ -820,7 +820,7 @@ fn (mut g Gen) is_fp_type(typ ast.Type) bool {
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 	typ := match ident.obj {
-		ast.AsmRegister { ast.i64_type_idx }
+		ast.AsmRegister { ast.i64_type }
 		ast.ConstField { ident.obj.typ }
 		ast.GlobalField { ident.obj.typ }
 		ast.Var { ident.obj.typ }

@@ -730,7 +730,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 	// Veb actions defined by user can have implicit context
 	/*
 	if g.cur_fn != unsafe { nil } && g.cur_fn.is_method && g.cur_mod.name != 'veb' {
-		typ_veb_result := g.table.find_type_idx('veb.Result')
+		typ_veb_result := g.table.find_type('veb.Result')
 		// if params.len == 3 {
 		// println(g.cur_fn)
 		//}
