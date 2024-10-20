@@ -1716,11 +1716,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			return
 		}
 	} else if node.name == 'free' {
-		mut rec_type := node.receiver_type
-		if rec_type.has_flag(.shared_f) {
-			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
-		}
-		g.get_free_method(rec_type)
+		g.register_free_method(node.receiver_type)
 		is_free_method = true
 	}
 	mut cast_n := 0

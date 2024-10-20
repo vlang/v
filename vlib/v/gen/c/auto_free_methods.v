@@ -5,6 +5,15 @@ module c
 import v.ast
 import strings
 
+@[inline]
+fn (mut g Gen) register_free_method(typ ast.Type) {
+	if typ.has_flag(.shared_f) {
+		g.get_free_method(typ.clear_flag(.shared_f).set_nr_muls(0))
+	} else {
+		g.get_free_method(typ)
+	}
+}
+
 fn (mut g Gen) get_free_method(typ ast.Type) string {
 	if typ in g.autofree_methods {
 		return g.autofree_methods[typ]
@@ -87,13 +96,11 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 		if sub_sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
-		field_styp := g.gen_type_name_for_free_call(typ_)
-		fn_name_typ := if sub_sym.has_method('free') {
-			'${field_styp}_free'
-		} else {
-			g.gen_free_method(typ_)
+		if !sub_sym.has_method_with_generic_parent('free') {
+			continue
 		}
-		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${fn_name_typ}(it->_${sub_sym.cname}); return; }')
+		type_styp := g.gen_type_name_for_free_call(typ_)
+		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${type_styp}_free(it->_${sub_sym.cname}); return; }')
 	}
 	fn_builder.writeln('}')
 }
