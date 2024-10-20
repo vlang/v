@@ -1,9 +1,11 @@
 name: json decoder benchmark CI
 
 on:
-  push:
-    paths:
-      - 'vlib/x/json2/decoder2/**' # Trigger on changes in this folder
+  # just testing
+  pull_request:
+  # push:
+  #   paths:
+  #     - 'vlib/x/json2/decoder2/**' # Trigger on changes in this folder
 
 jobs:
   json-encode-benchmark:
@@ -13,15 +15,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build V
         run: make -j4 && ./v symlink
 
       - name: Run V benchmark and save output
-        run: (echo '```sh'; v -prod crun vlib/x/json2/decoder2/tests/bench.v; echo '```') > vlib/x/json2/decoder2/tests/bench_out.md
+        run: (echo '```sh'; ./v -prod crun vlib/x/json2/decoder2/tests/bench.v; echo '```') > vlib/x/json2/decoder2/tests/bench_out.md
 
       - name: Upload result file
         uses: actions/upload-artifact@v4
         with:
           name: program-output
           path: vlib/x/json2/decoder2/tests/bench_out.md
+
+      - name: Commit and push benchmark results
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add vlib/x/json2/decoder2/tests/bench_out.md
+          git commit -m "Update benchmark results"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
