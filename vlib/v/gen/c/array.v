@@ -1096,50 +1096,96 @@ fn (mut g Gen) gen_array_index_methods() {
 		final_left_sym := g.table.final_sym(t)
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_index'
-		info := final_left_sym.info as ast.Array
-		mut elem_type_str := g.typ(info.elem_type)
-		elem_sym := g.table.sym(info.elem_type)
-		if elem_sym.kind == .function {
-			left_type_str = 'Array_voidptr'
-			elem_type_str = 'voidptr'
-		}
-		g.type_definitions.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
 		mut fn_builder := strings.new_builder(512)
-		fn_builder.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
-		fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
-		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
-		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (fast_string_eq(*pelem, v)) {')
-		} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
-			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*pelem, v)) {')
-		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif ( *pelem == v) {')
-		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
-			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((*pelem, v))) {')
-		} else if elem_sym.kind == .struct && !info.elem_type.is_ptr() {
-			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*pelem, v)) {')
-		} else if elem_sym.kind == .interface {
-			ptr_typ := g.equality_fn(info.elem_type)
-			if info.elem_type.is_ptr() {
-				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(**pelem, *v)) {')
-			} else {
-				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(*pelem, v)) {')
+
+		if final_left_sym.kind == .array {
+			info := final_left_sym.info as ast.Array
+			mut elem_type_str := g.typ(info.elem_type)
+			elem_sym := g.table.sym(info.elem_type)
+			if elem_sym.kind == .function {
+				left_type_str = 'Array_voidptr'
+				elem_type_str = 'voidptr'
 			}
-		} else if elem_sym.kind == .sum_type {
-			ptr_typ := g.equality_fn(info.elem_type)
-			if info.elem_type.is_ptr() {
-				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(**pelem, *v)) {')
+			g.type_definitions.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			fn_builder.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			fn_builder.writeln('\t${elem_type_str}* pelem = a.data;')
+			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
+			if elem_sym.kind == .string {
+				fn_builder.writeln('\t\tif (fast_string_eq(*pelem, v)) {')
+			} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*pelem, v)) {')
+			} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
+				fn_builder.writeln('\t\tif ( *pelem == v) {')
+			} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((*pelem, v))) {')
+			} else if elem_sym.kind == .struct && !info.elem_type.is_ptr() {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*pelem, v)) {')
+			} else if elem_sym.kind == .interface {
+				ptr_typ := g.equality_fn(info.elem_type)
+				if info.elem_type.is_ptr() {
+					fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(**pelem, *v)) {')
+				} else {
+					fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(*pelem, v)) {')
+				}
+			} else if elem_sym.kind == .sum_type {
+				ptr_typ := g.equality_fn(info.elem_type)
+				if info.elem_type.is_ptr() {
+					fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(**pelem, *v)) {')
+				} else {
+					fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(*pelem, v)) {')
+				}
+			} else if elem_sym.kind == .alias {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(*pelem, v)) {')
 			} else {
-				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(*pelem, v)) {')
+				fn_builder.writeln('\t\tif (*pelem == v) {')
 			}
-		} else if elem_sym.kind == .alias {
-			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(*pelem, v)) {')
-		} else {
-			fn_builder.writeln('\t\tif (*pelem == v) {')
+		} else if final_left_sym.kind == .array_fixed {
+			info := final_left_sym.info as ast.ArrayFixed
+			mut elem_type_str := g.typ(info.elem_type)
+			elem_sym := g.table.sym(info.elem_type)
+			if elem_sym.kind == .function {
+				elem_type_str = 'voidptr'
+			}
+			g.type_definitions.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')
+			fn_builder.writeln('static int ${fn_name}(${left_type_str} a, ${elem_type_str} v) {')
+			fn_builder.writeln('\tfor (int i = 0; i < ${info.size}; ++i) {')
+			if elem_sym.kind == .string {
+				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
+			} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a[i], v)) {')
+			} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
+				fn_builder.writeln('\t\tif (a[i] == v) {')
+			} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((a[i], v))) {')
+			} else if elem_sym.kind == .struct && !info.elem_type.is_ptr() {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a[i], v)) {')
+			} else if elem_sym.kind == .interface {
+				ptr_typ := g.equality_fn(info.elem_type)
+				if info.elem_type.is_ptr() {
+					fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(*a[i], *v)) {')
+				} else {
+					fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(a[i], v)) {')
+				}
+			} else if elem_sym.kind == .sum_type {
+				ptr_typ := g.equality_fn(info.elem_type)
+				if info.elem_type.is_ptr() {
+					fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(*a[i], *v)) {')
+				} else {
+					fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(a[i], v)) {')
+				}
+			} else if elem_sym.kind == .alias {
+				ptr_typ := g.equality_fn(info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(a[i], v)) {')
+			} else {
+				fn_builder.writeln('\t\tif (a[i] == v) {')
+			}
 		}
 		fn_builder.writeln('\t\t\treturn i;')
 		fn_builder.writeln('\t\t}')
@@ -1160,7 +1206,12 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	g.expr(node.left)
 	g.write(', ')
 
-	elem_typ := g.table.sym(node.left_type).array_info().elem_type
+	left_sym := g.table.final_sym(node.left_type)
+	elem_typ := if left_sym.kind == .array {
+		left_sym.array_info().elem_type
+	} else {
+		left_sym.array_fixed_info().elem_type
+	}
 	// auto deref var is redundant for interfaces and sum types.
 	if node.args[0].expr.is_auto_deref_var()
 		&& g.table.sym(elem_typ).kind !in [.interface, .sum_type] {
