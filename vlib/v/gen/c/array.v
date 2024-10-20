@@ -1027,7 +1027,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
-			} else if elem_kind == .array && elem_is_not_ptr {
+			} else if elem_kind in [.array, .array_fixed] && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(left_info.elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a[i], v)) {')
 			} else if elem_kind == .function {
@@ -1134,7 +1134,7 @@ fn (mut g Gen) gen_array_index_methods() {
 		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i, ++pelem) {')
 		if elem_sym.kind == .string {
 			fn_builder.writeln('\t\tif (fast_string_eq(*pelem, v)) {')
-		} else if elem_sym.kind == .array && !info.elem_type.is_ptr() {
+		} else if elem_sym.kind in [.array, .array_fixed] && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
@@ -1192,6 +1192,17 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	}
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
 		g.expr_with_cast(node.args[0].expr, node.args[0].typ, elem_typ)
+	} else if node.args[0].expr is ast.ArrayInit {
+		if g.is_cc_msvc {
+			stmts := g.go_before_last_stmt().trim_space()
+			tmp_var := g.new_tmp_var()
+			g.write('${g.typ(node.args[0].typ)} ${tmp_var} = ${g.expr_string(node.args[0].expr)};')
+			g.write(stmts)
+			g.write(tmp_var)
+		} else {
+			g.write('(${g.typ(node.args[0].typ)})')
+			g.expr(node.args[0].expr)
+		}
 	} else {
 		g.expr(node.args[0].expr)
 	}
