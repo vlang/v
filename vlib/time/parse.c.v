@@ -8,23 +8,86 @@ import strconv
 const date_format_buffer = [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`]!
 const time_format_buffer = [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]!
 
-// parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
-// See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
-// the differences between ISO-8601 and RFC 3339.
-pub fn parse_rfc3339(s string) !Time {
-	if s == '' {
-		return error_invalid_time(0, 'datetime string is empty')
+fn extract_time(s string) !(int, int, int, int) {
+	mut hour_ := 0
+	mut minute_ := 0
+	mut second_ := 0
+	mut nanosecond_ := 0
+
+	// Check if the string start in the format "HH:MM:SS"
+	for i := 0; i < time_format_buffer.len; i++ {
+		if time_format_buffer[i] == u8(`0`) {
+			if s[i] < u8(`0`) && s[i] > u8(`9`) {
+				return error('`HH:MM:SS` match error: expected digit, not `${s[i]}` in position ${i}')
+			} else {
+				if i < 2 {
+					hour_ = hour_ * 10 + (s[i] - u8(`0`))
+				} else if i < 5 {
+					minute_ = minute_ * 10 + (s[i] - u8(`0`))
+				} else {
+					second_ = second_ * 10 + (s[i] - u8(`0`))
+				}
+			}
+		} else if time_format_buffer[i] != s[i] {
+			return error('time separator error: expected `:`, not `${[s[i]].bytestr()}` in position ${i}')
+		}
 	}
-	if s.len < date_format_buffer.len {
-		return error_invalid_time(1, 'datetime string is too short')
+
+	if s.len == time_format_buffer.len + 1 {
+		if s[time_format_buffer.len] !in [u8(`Z`), `z`] {
+			return error('timezone error: expected "Z" or "z" at the end of the string')
+		}
+		return hour_, minute_, second_, nanosecond_
 	}
-	mut year, mut month, mut day := 0, 0, 0
-	mut hour_, mut minute_, mut second_, mut nanosecond_ := 0, 0, 0, 0
+
+	if s.len < time_format_buffer.len + 1 {
+		return error('datetime string is too short')
+	}
+
+	if s[time_format_buffer.len] == u8(`.`) {
+		// Check if the string contains the nanoseconds part after the time part
+		if s.len < time_format_buffer.len + 1 {
+			return error('datetime string is too short')
+		}
+		// Check if the string start in the format ".NNNNNNNNN"
+		mut nanosecond_digits := 0
+		for i := time_format_buffer.len + 1; i < s.len; i++ {
+			if s[i] < u8(`0`) || s[i] > u8(`9`) {
+				if s[i] in [u8(`Z`), `z`] {
+					if i != s.len - 1 {
+						return error('timezone error: "Z" or "z" can only be at the end of the string')
+					}
+					break
+				} else if s[i] in [u8(`+`), `-`] {
+					break
+				}
+				return error('nanoseconds error: expected digit, not `${s[i]}` in position ${i}')
+			}
+			if !(i >= time_format_buffer.len + 1 + 9) {
+				// nanoseconds limit is 9 digits
+				nanosecond_ = nanosecond_ * 10 + (s[i] - u8(`0`))
+				nanosecond_digits++
+			}
+		}
+		if nanosecond_digits < 9 {
+			for i := 0; i < 9 - nanosecond_digits; i++ {
+				nanosecond_ *= 10
+			}
+		}
+	}
+
+	return hour_, minute_, second_, nanosecond_
+}
+
+fn extract_date(s string) !(int, int, int) {
+	mut year := 0
+	mut month := 0
+	mut day := 0
 	// Check if the string start in the format "YYYY-MM-DD"
 	for i := 0; i < date_format_buffer.len; i++ {
 		if date_format_buffer[i] == u8(`0`) {
 			if s[i] < u8(`0`) && s[i] > u8(`9`) {
-				return error('`YYYY-MM-DD` match error: expected digit, not `${[s[i]].bytestr()}` in position ${i}')
+				return error('`YYYY-MM-DD` match error: expected digit, not `${s[i]}` in position ${i}')
 			} else {
 				if i < 4 {
 					year = year * 10 + (s[i] - u8(`0`))
@@ -35,80 +98,86 @@ pub fn parse_rfc3339(s string) !Time {
 				}
 			}
 		} else if date_format_buffer[i] != s[i] {
-			return error('date separator error:expected "${date_format_buffer[i]}", not `${[
-				s[i],
-			].bytestr()}` in position ${i}')
+			return error('date separator error:expected "${date_format_buffer[i]}", not `${s[i]}` in position ${i}')
 		}
 	}
+	return year, month, day
+}
 
-	if s.len == date_format_buffer.len {
+// parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
+// See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
+// the differences between ISO-8601 and RFC 3339.
+pub fn parse_rfc3339(s string) !Time {
+	if s == '' {
+		return error_invalid_time(0, 'datetime string is empty')
+	}
+
+	if s.len < time_format_buffer.len {
+		return error('string is too short to parse')
+	}
+
+	mut year, mut month, mut day := 0, 0, 0
+	mut hour_, mut minute_, mut second_, mut nanosecond_ := 0, 0, 0, 0
+
+	is_time := if s.len >= time_format_buffer.len {
+		s[2] == u8(`:`) && s[5] == u8(`:`)
+	} else {
+		false
+	}
+	if is_time {
+		hour_, minute_, second_, nanosecond_ = extract_time(s)!
+
 		return new(Time{
-			year:     year
-			month:    month
-			day:      day
-			is_local: false
+			hour:       hour_
+			minute:     minute_
+			second:     second_
+			nanosecond: nanosecond_
+			is_local:   false
 		})
 	}
 
-	if s.len < date_format_buffer.len + time_format_buffer.len + 2 {
-		return error_invalid_time(2, 'datetime string is too short')
+	is_date := if s.len >= date_format_buffer.len {
+		s[4] == u8(`-`) && s[7] == u8(`-`)
+	} else {
+		false
 	}
 
-	// Check if the string contains the time part after the date part
-	if s[date_format_buffer.len] !in [u8(`T`), `t`, ` `, `_`] {
-		return error('time part error:expected "T" or "t" or " " or "_" in position ${date_format_buffer.len}, not ${s[date_format_buffer.len]}')
+	if is_date {
+		year, month, day = extract_date(s)!
+		if s.len == date_format_buffer.len {
+			return new(Time{
+				year:     year
+				month:    month
+				day:      day
+				is_local: false
+			})
+		}
 	}
 
-	// Check if the string start in the format "HH:MM:SS"
-	for i := 0; i < time_format_buffer.len; i++ {
-		if time_format_buffer[i] == u8(`0`) {
-			if s[i + date_format_buffer.len + 1] < u8(`0`)
-				&& s[i + date_format_buffer.len + 1] > u8(`9`) {
-				return error('`HH:MM:SS` match error: expected digit, not ${s[i +
-					date_format_buffer.len + 1]} in position ${i + date_format_buffer.len + 1}')
-			} else {
-				if i < 2 {
-					hour_ = hour_ * 10 + (s[i + date_format_buffer.len + 1] - u8(`0`))
-				} else if i < 5 {
-					minute_ = minute_ * 10 + (s[i + date_format_buffer.len + 1] - u8(`0`))
-				} else {
-					second_ = second_ * 10 + (s[i + date_format_buffer.len + 1] - u8(`0`))
+	is_datetime := if s.len >= date_format_buffer.len + 1 + time_format_buffer.len + 1 {
+		is_date && s[10] == u8(`T`)
+	} else {
+		false
+	}
+	if is_datetime {
+		// year, month, day := extract_date(s)!
+		hour_, minute_, second_, nanosecond_ = extract_time(s[date_format_buffer.len + 1..])!
+	}
+
+	mut timezone_start_position := 0
+
+	if is_datetime || is_time {
+		timezone_start_position = date_format_buffer.len + 1 + time_format_buffer.len
+		if s[timezone_start_position] == u8(`.`) {
+			timezone_start_position++
+
+			for s[timezone_start_position] !in [u8(`Z`), `z`, `+`, `-`] {
+				timezone_start_position++
+				if timezone_start_position == s.len {
+					return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${timezone_start_position}, not "${[
+						s[timezone_start_position],
+					].bytestr()}"')
 				}
-			}
-		} else if time_format_buffer[i] != s[i + date_format_buffer.len + 1] {
-			return error('time separator error:expected "${time_format_buffer[i]}", not ${s[i +
-				date_format_buffer.len + 1]} in position ${i + date_format_buffer.len + 1}')
-		}
-	}
-
-	if s[date_format_buffer.len + 1 + time_format_buffer.len] == u8(`.`) {
-		// Check if the string contains the nanoseconds part after the time part
-		if s.len < date_format_buffer.len + time_format_buffer.len + 2 {
-			return error_invalid_time(3, 'datetime string is too short')
-		}
-		// Check if the string start in the format ".NNNNNNNNN"
-		mut nanosecond_digits := 0
-		for i := date_format_buffer.len + 1 + time_format_buffer.len + 1; i < s.len; i++ {
-			if s[i] < u8(`0`) || s[i] > u8(`9`) {
-				if s[i] in [u8(`Z`), `z`] {
-					if i != s.len - 1 {
-						return error('timezone error: "Z" or "z" can only be at the end of the string')
-					}
-					break
-				} else if s[i] in [u8(`+`), `-`] {
-					break
-				}
-				return error('nanoseconds error: expected digit, not `${[s[i]].bytestr()}` in position ${i}')
-			}
-			if !(i >= date_format_buffer.len + 1 + time_format_buffer.len + 1 + 9) {
-				// nanoseconds limit is 9 digits
-				nanosecond_ = nanosecond_ * 10 + (s[i] - u8(`0`))
-				nanosecond_digits++
-			}
-		}
-		if nanosecond_digits < 9 {
-			for i := 0; i < 9 - nanosecond_digits; i++ {
-				nanosecond_ *= 10
 			}
 		}
 	}
