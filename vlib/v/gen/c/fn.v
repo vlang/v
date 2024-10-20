@@ -1189,6 +1189,18 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 	return true
 }
 
+fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
+	match node.name {
+		'index' {
+			g.gen_array_index(node)
+		}
+		else {
+			return false
+		}
+	}
+	return true
+}
+
 fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	mut rec_type := node.receiver_type
 	if rec_type.has_flag(.shared_f) {
@@ -1677,6 +1689,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	final_left_sym := g.table.final_sym(left_type)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
 		if g.gen_array_method_call(node, left_type, final_left_sym) {
+			return
+		}
+	}
+	if final_left_sym.kind == .array_fixed && !(left_sym.kind == .alias
+		&& left_sym.has_method(node.name)) {
+		if g.gen_fixed_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
 	}

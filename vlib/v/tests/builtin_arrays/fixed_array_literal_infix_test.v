@@ -24,3 +24,12 @@ fn test_array_of_fixed_array_index() {
 	println(ret)
 	assert ret == 0
 }
+
+fn test_fixed_array_of_fixed_array_index() {
+	mut a := [2][2]int{}
+	a[0] = [1, 2]!
+	println(a.index([1, 2]!))
+	ret := a.index([1, 2]!)
+	println(ret)
+	assert ret == 0
+}
