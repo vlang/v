@@ -146,7 +146,7 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 		}
 		idx++
 	}
-	// e.encode_newline(level, mut buf)!
+
 	e.encode_newline(level - 1, mut buf)!
 	buf << curly_close_rune
 }
