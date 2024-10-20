@@ -1,0 +1,27 @@
+name: json decoder benchmark CI
+
+on:
+  push:
+    paths:
+      - 'vlib/x/json2/decoder2/**' # Trigger on changes in this folder
+
+jobs:
+  json-encode-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build V
+        run: make -j4 && ./v symlink
+
+      - name: Run V benchmark and save output
+        run: (echo '```sh'; v -prod crun vlib/x/json2/decoder2/tests/bench.v; echo '```') > vlib/x/json2/decoder2/tests/bench_out.md
+
+      - name: Upload result file
+        uses: actions/upload-artifact@v4
+        with:
+          name: program-output
+          path: vlib/x/json2/decoder2/tests/bench_out.md
