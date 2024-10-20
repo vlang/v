@@ -12,7 +12,11 @@ fn gcommit() string {
 }
 
 fn r(cmd string) {
-	os.system(cmd)
+	res := os.system(cmd)
+	if res != 0 {
+		eprintln('> failed running: `${cmd}`')
+		exit(1)
+	}
 }
 
 fn xtime(cmd string) {
