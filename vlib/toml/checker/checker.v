@@ -321,7 +321,7 @@ fn (c &Checker) check_date_time(dt ast.DateTime) ! {
 		// Use V's builtin functionality to validate the string
 		// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
 		mut has_time_offset := false
-		for ch in lit[19..] {
+		for ch in lit#[19..] {
 			if ch in [u8(`-`), `+`, `Z`] {
 				has_time_offset = true
 				break
@@ -397,7 +397,7 @@ fn (c &Checker) check_time(t ast.Time) ! {
 	// Use V's builtin functionality to validate the time string
 	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
 	mut has_time_offset := false
-	for ch in parts[0][8..] {
+	for ch in parts[0]#[8..] {
 		if ch in [u8(`-`), `+`, `Z`] {
 			has_time_offset = true
 			break
