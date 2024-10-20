@@ -86,16 +86,17 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	defer {
 		g.inside_lambda = prev_inside_lambda
 	}
+	array_info := array_type.unaliased_sym.array_fixed_info()
 	if node.has_index {
 		past := g.past_tmp_var_from_var_name(var_name)
 		defer {
 			g.past_tmp_var_done(past)
 		}
 
-		ret_typ := g.typ(node.typ)
-		elem_typ := g.typ(node.elem_type)
+		ret_typ_str := g.typ(node.typ)
+		elem_typ_str := g.typ(node.elem_type)
 		if var_name == '' {
-			g.write('${ret_typ} ${past.tmp_var} =')
+			g.write('${ret_typ_str} ${past.tmp_var} =')
 		}
 		g.write('{')
 		if node.has_val {
@@ -106,10 +107,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				}
 			}
 		} else if node.has_init {
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
-			for i in 0 .. info.size {
+			for i in 0 .. array_info.size {
 				g.write('0')
-				if i != info.size - 1 {
+				if i != array_info.size - 1 {
 					g.write(', ')
 				}
 			}
@@ -120,8 +120,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln(';')
 		g.writeln('{')
 		g.indent++
-		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var};')
-		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ});')
+		g.writeln('${elem_typ_str}* pelem = (${elem_typ_str}*)${past.tmp_var};')
+		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ_str});')
 		g.writeln('for (int index=0; index<_len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
@@ -136,26 +136,12 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.set_current_pos_as_last_stmt_pos()
 		return
 	}
-	need_tmp_var := g.inside_call && !g.inside_struct_init && node.exprs.len == 0
-	mut stmt_str := ''
-	mut tmp_var := ''
-	if need_tmp_var {
-		tmp_var = g.new_tmp_var()
-		stmt_str = g.go_before_last_stmt()
-		g.empty_line = true
-
-		ret_typ := g.typ(node.typ)
-		g.write('${ret_typ} ${tmp_var} = ')
-	}
 	if g.inside_struct_init && g.inside_cast {
-		ret_typ := g.typ(node.typ)
-		g.write('(${ret_typ})')
+		ret_typ_str := g.typ(node.typ)
+		g.write('(${ret_typ_str})')
 	}
-	elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
-	mut elem_sym := g.table.final_sym(elem_type)
-
+	elem_sym := g.table.final_sym(node.elem_type)
 	is_struct := g.inside_array_fixed_struct && elem_sym.kind == .struct
-
 	if !is_struct {
 		g.write('{')
 	}
@@ -167,9 +153,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
-				info := elem_sym.info as ast.ArrayFixed
+				elem_info := elem_sym.array_fixed_info()
 				g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
-					info.elem_type, info.size)
+					elem_info.elem_type, elem_info.size)
 			} else {
 				if expr.is_auto_deref_var() {
 					g.write('*')
@@ -191,56 +177,51 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	} else if is_amp {
 		g.write('0')
 	} else {
-		elem_sym = g.table.final_sym(node.elem_type)
 		if elem_sym.kind == .map {
 			// fixed array for map -- [N]map[key_type]value_type
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			map_info := elem_sym.map_info()
-			for i in 0 .. info.size {
+			for i in 0 .. array_info.size {
 				g.expr(ast.MapInit{
 					key_type:   map_info.key_type
 					value_type: map_info.value_type
 				})
-				if i != info.size - 1 {
+				if i != array_info.size - 1 {
 					g.write(', ')
 				}
 			}
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			arr_info := elem_sym.array_fixed_info()
-			for i in 0 .. info.size {
+			for i in 0 .. array_info.size {
 				g.expr(ast.ArrayInit{
 					exprs:     [ast.IntegerLiteral{}]
 					typ:       node.elem_type
 					elem_type: arr_info.elem_type
 				})
-				if i != info.size - 1 {
+				if i != array_info.size - 1 {
 					g.write(', ')
 				}
 			}
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			chan_info := elem_sym.chan_info()
-			for i in 0 .. info.size {
+			for i in 0 .. array_info.size {
 				g.expr(ast.ChanInit{
 					typ:       node.elem_type
 					elem_type: chan_info.elem_type
 				})
-				if i != info.size - 1 {
+				if i != array_info.size - 1 {
 					g.write(', ')
 				}
 			}
 		} else {
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
-			for i in 0 .. info.size {
+			for i in 0 .. array_info.size {
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
 				} else {
 					g.write(g.type_default(node.elem_type))
 				}
-				if i != info.size - 1 {
+				if i != array_info.size - 1 {
 					g.write(', ')
 				}
 			}
@@ -248,11 +229,6 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	if !is_struct {
 		g.write('}')
-	}
-	if need_tmp_var {
-		g.writeln(';')
-		g.write(stmt_str)
-		g.write(tmp_var)
 	}
 }
 
