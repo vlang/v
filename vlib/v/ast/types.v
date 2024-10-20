@@ -169,6 +169,7 @@ pub mut:
 	is_minify      bool
 	is_anon        bool
 	is_generic     bool
+	has_option     bool // contains any option field
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
