@@ -39,6 +39,6 @@ jobs:
           git config --local user.name "GitHub Actions"
           git add vlib/x/json2/decoder2/tests/bench_out.md
           git commit -m "Update benchmark results"
-          git push
+          git push origin HEAD:master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
