@@ -3104,7 +3104,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.gen_deref_ptr(it.right_type)
 			g.write(')')
 		} else {
-			mut greater_typ := 0
+			mut greater_typ := ast.no_type
 			// todo(playX): looks like this cast is always required to perform .eq operation on types.
 			if is_arithmetic {
 				greater_typ = g.greater_typ(it.left_type, it.right_type)

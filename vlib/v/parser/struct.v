@@ -97,6 +97,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut implements_types := []ast.TypeNode{cap: 3} // ast.void_type
 	mut last_line := p.prev_tok.pos().line_nr + 1
 	mut end_comments := []ast.Comment{}
+	mut has_option := false
 	if !no_body {
 		if p.tok.kind == .key_implements {
 			is_implements = true
@@ -253,6 +254,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				field_pos = field_start_pos.extend(p.prev_tok.pos())
 				if typ.has_option_or_result() {
 					option_pos = p.peek_token(-2).pos()
+					has_option = true
 				}
 			}
 			// Comments after type (same line)
@@ -372,6 +374,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			generic_types: generic_types
 			attrs:         attrs
 			is_anon:       is_anon
+			has_option:    has_option
 		}
 		is_pub:     is_pub
 		is_builtin: name in ast.builtins

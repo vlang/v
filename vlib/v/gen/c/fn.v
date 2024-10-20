@@ -730,7 +730,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 	// Veb actions defined by user can have implicit context
 	/*
 	if g.cur_fn != unsafe { nil } && g.cur_fn.is_method && g.cur_mod.name != 'veb' {
-		typ_veb_result := g.table.find_type_idx('veb.Result')
+		typ_veb_result := g.table.find_type('veb.Result')
 		// if params.len == 3 {
 		// println(g.cur_fn)
 		//}
@@ -1181,6 +1181,18 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 				g.write(', ${array_depth}')
 			}
 			g.write(')')
+		}
+		else {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
+	match node.name {
+		'index' {
+			g.gen_array_index(node)
 		}
 		else {
 			return false
@@ -1677,6 +1689,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	final_left_sym := g.table.final_sym(left_type)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name)) {
 		if g.gen_array_method_call(node, left_type, final_left_sym) {
+			return
+		}
+	}
+	if final_left_sym.kind == .array_fixed && !(left_sym.kind == .alias
+		&& left_sym.has_method(node.name)) {
+		if g.gen_fixed_array_method_call(node, left_type, final_left_sym) {
 			return
 		}
 	}
