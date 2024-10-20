@@ -31,7 +31,7 @@ fn load_tr_map() map[string]map[string]string {
 			return {}
 		}
 		x := text.split('-----\n')
-		for i, s in x {
+		for s in x {
 			// println('val="${val}"')
 			nl_pos := s.index('\n') or { continue }
 			key := s[..nl_pos]
