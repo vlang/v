@@ -325,11 +325,7 @@ fn (mut context Context) show_diff_summary() {
 			}
 			mut tcomparison := 'base        '
 			if r.atiming.average != base {
-				if r.atiming.average < base {
-					tcomparison = '${base / r.atiming.average:4.2f}x ${c(tgreen, 'faster')}'
-				} else {
-					tcomparison = '${r.atiming.average / base:4.2f}x ${c(tcyan, 'slower')}'
-				}
+				tcomparison = readable_comparison(r.atiming.average, base, cpercent)
 			}
 			gcmd := c(tgreen, r.cmd)
 			println(' ${first_marker}${(i + 1):3} ${comparison:7} ${tcomparison:5} ${r.atiming} `${gcmd}`')
@@ -351,6 +347,22 @@ fn (mut context Context) show_diff_summary() {
 		flushed_print(performance_regression_label)
 		println('${first_cmd_percentage:5.1f}% > ${fail_threshold_max:5.1f}% threshold.')
 		exit(3)
+	}
+}
+
+fn readable_comparison(tcurrent f64, tbase f64, cpercent f64) string {
+	is_same := math.abs(cpercent) <= 0.15
+	mut label := '~same~'
+	if tcurrent < tbase {
+		if !is_same {
+			label = c(tgreen, 'faster')
+		}
+		return '${tbase / tcurrent:4.2f}x ${label}'
+	} else {
+		if !is_same {
+			label = c(tcyan, 'slower')
+		}
+		return '${tcurrent / tbase:4.2f}x ${label}'
 	}
 }
 
