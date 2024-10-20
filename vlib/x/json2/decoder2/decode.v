@@ -749,7 +749,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 // get_value_kind returns the kind of a JSON value.
 fn get_value_kind(value u8) ValueKind {
-	// value := *val
 	if value == u8(`"`) {
 		return .string_
 	} else if value == u8(`t`) || value == u8(`f`) {
