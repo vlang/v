@@ -8,7 +8,7 @@ import strconv
 const date_format_buffer = [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`]!
 const time_format_buffer = [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]!
 
-fn extract_time(s string) !(int, int, int, int) {
+fn check_and_extract_time(s string) !(int, int, int, int) {
 	mut hour_ := 0
 	mut minute_ := 0
 	mut second_ := 0
@@ -79,7 +79,7 @@ fn extract_time(s string) !(int, int, int, int) {
 	return hour_, minute_, second_, nanosecond_
 }
 
-fn extract_date(s string) !(int, int, int) {
+fn check_and_extract_date(s string) !(int, int, int) {
 	mut year := 0
 	mut month := 0
 	mut day := 0
@@ -125,7 +125,7 @@ pub fn parse_rfc3339(s string) !Time {
 		false
 	}
 	if is_time {
-		hour_, minute_, second_, nanosecond_ = extract_time(s)!
+		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s)!
 
 		return new(Time{
 			hour:       hour_
@@ -143,7 +143,7 @@ pub fn parse_rfc3339(s string) !Time {
 	}
 
 	if is_date {
-		year, month, day = extract_date(s)!
+		year, month, day = check_and_extract_date(s)!
 		if s.len == date_format_buffer.len {
 			return new(Time{
 				year:     year
@@ -160,8 +160,8 @@ pub fn parse_rfc3339(s string) !Time {
 		false
 	}
 	if is_datetime {
-		// year, month, day := extract_date(s)!
-		hour_, minute_, second_, nanosecond_ = extract_time(s[date_format_buffer.len + 1..])!
+		// year, month, day := check_and_extract_date(s)!
+		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s[date_format_buffer.len + 1..])!
 	}
 
 	mut timezone_start_position := 0
