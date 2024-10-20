@@ -225,7 +225,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
-import veb
+import veb as _
 // === veb html template ===
 fn veb_tmpl_${fn_name}() string {
 	mut sb_${fn_name} := strings.new_builder(${lstartlength})\n
