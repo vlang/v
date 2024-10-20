@@ -319,7 +319,21 @@ fn (c &Checker) check_date_time(dt ast.DateTime) ! {
 			}
 		})!
 		// Use V's builtin functionality to validate the string
-		time.parse_rfc3339(lit) or {
+		// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
+		mut has_time_offset := false
+		for ch in lit[19..] {
+			if ch in [u8(`-`), `+`, `Z`] {
+				has_time_offset = true
+				break
+			}
+		}
+
+		mut lit_with_offset := lit
+		if !has_time_offset {
+			lit_with_offset += 'Z'
+		}
+
+		time.parse_rfc3339(lit_with_offset) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' "${lit}" is not a valid RFC 3339 Date-Time format string "${err}". In ...${c.excerpt(dt.pos)}...')
 		}
@@ -381,7 +395,21 @@ fn (c &Checker) check_time(t ast.Time) ! {
 			' "${lit}" is not a valid RFC 3339 Time format string in ...${c.excerpt(t.pos)}...')
 	}
 	// Use V's builtin functionality to validate the time string
-	time.parse_rfc3339(parts[0]) or {
+	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
+	mut has_time_offset := false
+	for ch in parts[0][8..] {
+		if ch in [u8(`-`), `+`, `Z`] {
+			has_time_offset = true
+			break
+		}
+	}
+
+	mut part_with_offset := parts[0]
+	if !has_time_offset {
+		part_with_offset += 'Z'
+	}
+
+	time.parse_rfc3339(part_with_offset) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Time format string "${err}". In ...${c.excerpt(t.pos)}...')
 	}
