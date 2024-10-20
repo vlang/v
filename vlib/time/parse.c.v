@@ -8,6 +8,21 @@ import strconv
 const date_format_buffer = [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`]!
 const time_format_buffer = [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]!
 
+fn validate_time_bounds(hour int, minute int, second int, nanosecond int) ! {
+	if hour < 0 || hour > 23 {
+		return error('invalid hour: ${hour}')
+	}
+	if minute < 0 || minute > 59 {
+		return error('invalid minute: ${minute}')
+	}
+	if second < 0 || second > 59 {
+		return error('invalid second: ${second}')
+	}
+	if nanosecond < 0 || nanosecond > 1_000_000_000 {
+		return error('invalid nanosecond: ${nanosecond}')
+	}
+}
+
 fn check_and_extract_time(s string) !(int, int, int, int) {
 	mut hour_ := 0
 	mut minute_ := 0
@@ -37,6 +52,7 @@ fn check_and_extract_time(s string) !(int, int, int, int) {
 		if s[time_format_buffer.len] !in [u8(`Z`), `z`] {
 			return error('timezone error: expected "Z" or "z" at the end of the string')
 		}
+		validate_time_bounds(hour_, minute_, second_, nanosecond_)!
 		return hour_, minute_, second_, nanosecond_
 	}
 
@@ -75,7 +91,7 @@ fn check_and_extract_time(s string) !(int, int, int, int) {
 			}
 		}
 	}
-
+	validate_time_bounds(hour_, minute_, second_, nanosecond_)!
 	return hour_, minute_, second_, nanosecond_
 }
 
@@ -100,6 +116,12 @@ fn check_and_extract_date(s string) !(int, int, int) {
 		} else if date_format_buffer[i] != s[i] {
 			return error('date separator error:expected "${date_format_buffer[i]}", not `${s[i]}` in position ${i}')
 		}
+	}
+	if month < 1 || month > 12 {
+		return error('date error: invalid month ${month}')
+	}
+	if day < 1 || day > 31 {
+		return error('date error: invalid day ${day}')
 	}
 	return year, month, day
 }
@@ -126,7 +148,6 @@ pub fn parse_rfc3339(s string) !Time {
 	}
 	if is_time {
 		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s)!
-
 		return new(Time{
 			year:  1970
 			month: 1

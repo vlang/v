@@ -149,6 +149,16 @@ fn check_invalid_date(s string) {
 	assert true
 }
 
+fn invalid_rfc3339(s string) string {
+	if date := time.parse_rfc3339(s) {
+		assert false, 'invalid date: "${s}" => "${date}"'
+	} else {
+		assert true
+		return err.str()
+	}
+	return ''
+}
+
 fn test_invalid_dates_should_error_during_parse() {
 	check_invalid_date('-99999-12-20 00:00:00')
 	check_invalid_date('99999-12-20 00:00:00')
@@ -198,6 +208,18 @@ fn test_parse_rfc3339() {
 		output := res.format_ss_micro()
 		assert expected == output
 	}
+	assert invalid_rfc3339('2006-01-00') == 'date error: invalid day 0'
+	assert invalid_rfc3339('2006-01-32') == 'date error: invalid day 32'
+	assert invalid_rfc3339('2006-01-88') == 'date error: invalid day 88'
+	assert invalid_rfc3339('2006-00-01') == 'date error: invalid month 0'
+	assert invalid_rfc3339('2006-13-01') == 'date error: invalid month 13'
+	assert invalid_rfc3339('2006-77-01') == 'date error: invalid month 77'
+	assert invalid_rfc3339('24:47:08Z') == 'invalid hour: 24'
+	assert invalid_rfc3339('99:47:08Z') == 'invalid hour: 99'
+	assert invalid_rfc3339('23:60:08Z') == 'invalid minute: 60'
+	assert invalid_rfc3339('23:99:08Z') == 'invalid minute: 99'
+	assert invalid_rfc3339('23:59:60Z') == 'invalid second: 60'
+	assert invalid_rfc3339('23:59:99Z') == 'invalid second: 99'
 }
 
 fn test_ad_second_to_parse_result_in_2001() {
