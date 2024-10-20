@@ -176,7 +176,7 @@ fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	if value_type.idx() == ast.void_type_idx {
-		p.error_with_pos('map value type cannot be void', p.tok.pos())
+		p.error_with_pos('map value type is missing: use `map[KeyType]ValueType`', p.tok.pos())
 		return 0
 	}
 	idx := p.table.find_or_register_map(key_type, value_type)

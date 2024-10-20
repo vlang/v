@@ -50,7 +50,7 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 	mut msg := message.replace('`Array_', '`[]')
 	if c.pref.is_vweb {
 		// Show in which veb action the error occurred (for easier debugging)
-		veb_action := c.table.cur_fn.name.replace('vweb_tmpl_', '')
+		veb_action := c.table.cur_fn.name.replace('veb_tmpl_', '')
 		mut j := 0
 		for _, ch in veb_action {
 			if ch.is_digit() {

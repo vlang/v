@@ -1028,7 +1028,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('method_name', t.string_node(node.method_name))
 	obj.add_terse('left', t.expr(node.left))
 	obj.add_terse('is_vweb', t.bool_node(node.is_vweb))
-	obj.add_terse('vweb_tmpl', t.string_node(node.vweb_tmpl.path))
+	obj.add_terse('veb_tmpl', t.string_node(node.vweb_tmpl.path))
 	obj.add_terse('args_var', t.string_node(node.args_var))
 	obj.add_terse('has_parens', t.bool_node(node.has_parens))
 	obj.add_terse('is_embed', t.bool_node(node.is_embed))

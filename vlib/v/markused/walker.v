@@ -286,7 +286,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ComptimeCall {
 			w.expr(node.left)
 			if node.is_vweb {
-				w.stmts(node.vweb_tmpl.stmts)
+				w.stmts(node.veb_tmpl.stmts)
 			}
 		}
 		ast.DumpExpr {

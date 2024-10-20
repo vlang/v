@@ -87,9 +87,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
 		is_veb := ret_sym.cname == 'veb__Result'
 
-		for stmt in node.vweb_tmpl.stmts {
+		for stmt in node.veb_tmpl.stmts {
 			if stmt is ast.FnDecl {
-				if stmt.name.starts_with('main.vweb_tmpl') {
+				if stmt.name.starts_with('main.veb_tmpl') {
 					if is_html {
 						g.inside_vweb_tmpl = true
 						if is_veb {

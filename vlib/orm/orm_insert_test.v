@@ -442,6 +442,7 @@ fn test_the_result_of_insert_should_be_the_last_insert_id() {
 		insert address into Address
 	} or { panic(err) }
 	dump(aid1)
+	assert aid1 == 1
 	aid2 := sql db {
 		insert address into Address
 	} or { panic(err) }

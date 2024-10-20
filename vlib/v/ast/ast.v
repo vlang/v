@@ -1989,7 +1989,7 @@ pub:
 mut:
 	is_d_resolved bool
 pub mut:
-	vweb_tmpl     File
+	veb_tmpl      File
 	left          Expr
 	left_type     Type
 	result_type   Type

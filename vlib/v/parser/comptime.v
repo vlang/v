@@ -324,7 +324,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		scope:       unsafe { nil }
 		is_vweb:     true
 		is_veb:      is_veb
-		vweb_tmpl:   file
+		veb_tmpl:    file
 		method_name: method_name
 		args_var:    literal_string_param
 		args:        [arg]

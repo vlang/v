@@ -75,7 +75,7 @@ fn is_html_open_tag(name string, s string) bool {
 
 fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
 	// HTML, may include `@var`
-	// escaped by cgen, unless it's a `vweb.RawHtml` string
+	// escaped by cgen, unless it's a `veb.RawHtml` string
 	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
 	replace_pairs := ['\\', '\\\\', r"'", "\\'", r'@@', r'@', r'@', r'$', r'$$', r'\@']
 	mut rline := line.replace_each(replace_pairs)
@@ -225,8 +225,9 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
-// === vweb html template ===
-fn vweb_tmpl_${fn_name}() string {
+import veb
+// === veb html template ===
+fn veb_tmpl_${fn_name}() string {
 	mut sb_${fn_name} := strings.new_builder(${lstartlength})\n
 
 ')
@@ -438,7 +439,7 @@ fn vweb_tmpl_${fn_name}() string {
 				key := line[pos + 1..end]
 				println('GOT tr key line="${line}" key="${key}"')
 				// source.writeln('\${tr("${key}")}')
-				line_ = line.replace('%${key}', '\${tr("${key}")}')
+				line_ = line.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
 				// i += key.len
 			}
 			// println(source.str())
@@ -454,7 +455,7 @@ fn vweb_tmpl_${fn_name}() string {
 	source.writeln('\t_tmpl_res_${fn_name} := sb_${fn_name}.str() ')
 	source.writeln('\treturn _tmpl_res_${fn_name}')
 	source.writeln('}')
-	source.writeln('// === end of vweb html template_file: ${template_file} ===')
+	source.writeln('// === end of veb html template_file: ${template_file} ===')
 
 	result := source.str()
 	$if trace_tmpl_expansion ? {
