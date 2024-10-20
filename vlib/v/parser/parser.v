@@ -3459,12 +3459,11 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 		mut idx := p.table.find_type_idx(name)
 		if idx == 0 {
 			idx = p.table.register_sym(ast.TypeSymbol{
-				name:       name
-				cname:      util.no_dots(name)
-				mod:        p.mod
-				kind:       .any
-				is_pub:     true
-				is_builtin: name in ast.builtins
+				name:   name
+				cname:  util.no_dots(name)
+				mod:    p.mod
+				kind:   .any
+				is_pub: true
 			})
 		}
 		types << ast.new_type(idx).set_flag(.generic)
@@ -4323,11 +4322,11 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 
 	idx := p.table.register_sym(ast.TypeSymbol{
-		kind:       .enum
-		name:       name
-		cname:      util.no_dots(name)
-		mod:        p.mod
-		info:       ast.Enum{
+		kind:   .enum
+		name:   name
+		cname:  util.no_dots(name)
+		mod:    p.mod
+		info:   ast.Enum{
 			vals:             vals
 			is_flag:          is_flag
 			is_multi_allowed: is_multi_allowed
@@ -4335,8 +4334,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			typ:              enum_type
 			attrs:            enum_attrs
 		}
-		is_pub:     is_pub
-		is_builtin: name in ast.builtins
+		is_pub: is_pub
 	})
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
@@ -4439,17 +4437,16 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
 		typ := p.table.register_sym(ast.TypeSymbol{
-			kind:       .sum_type
-			name:       prepend_mod_name
-			cname:      util.no_dots(prepend_mod_name)
-			mod:        p.mod
-			info:       ast.SumType{
+			kind:   .sum_type
+			name:   prepend_mod_name
+			cname:  util.no_dots(prepend_mod_name)
+			mod:    p.mod
+			info:   ast.SumType{
 				variants:      variant_types
 				is_generic:    generic_types.len > 0
 				generic_types: generic_types
 			}
-			is_pub:     is_pub
-			is_builtin: prepend_mod_name in ast.builtins
+			is_pub: is_pub
 		})
 		if typ in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 			p.error_with_pos('cannot register sum type `${name}`, another type with this name exists',
@@ -4495,7 +4492,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			language:    parent_language
 		}
 		is_pub:     is_pub
-		is_builtin: prepend_mod_name in ast.builtins
 	})
 	type_end_pos := p.prev_tok.pos()
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
