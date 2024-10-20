@@ -245,8 +245,8 @@ mut:
 	cur_fn                 &ast.FnDecl = unsafe { nil } // same here
 	cur_lock               ast.LockExpr
 	cur_struct_init_typ    ast.Type
-	autofree_methods       map[int]string
-	generated_free_methods map[int]bool
+	autofree_methods       map[ast.Type]string
+	generated_free_methods map[ast.Type]bool
 	autofree_scope_stmts   []string
 	use_segfault_handler   bool = true
 	test_function_names    []string
@@ -329,9 +329,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			label:        'global_cgen'
 		)
 		inner_loop:           unsafe { &ast.empty_stmt }
-		field_data_type:      ast.idx_to_type(table.find_type_idx('FieldData'))
-		enum_data_type:       ast.idx_to_type(table.find_type_idx('EnumData'))
-		variant_data_type:    ast.idx_to_type(table.find_type_idx('VariantData'))
+		field_data_type:      table.find_type('FieldData')
+		enum_data_type:       table.find_type('EnumData')
+		variant_data_type:    table.find_type('VariantData')
 		is_cc_msvc:           pref_.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref_.compile_defines
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
@@ -719,8 +719,8 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
 		inner_loop:           &ast.empty_stmt
-		field_data_type:      ast.idx_to_type(global_g.table.find_type_idx('FieldData'))
-		enum_data_type:       ast.idx_to_type(global_g.table.find_type_idx('EnumData'))
+		field_data_type:      global_g.table.find_type('FieldData')
+		enum_data_type:       global_g.table.find_type('EnumData')
 		array_sort_fn:        global_g.array_sort_fn
 		waiter_fns:           global_g.waiter_fns
 		threaded_fns:         global_g.threaded_fns
@@ -2429,7 +2429,7 @@ struct SumtypeCastingFn {
 }
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
-	mut got, exp := got_.idx(), exp_.idx()
+	mut got, exp := got_.idx_type(), exp_.idx_type()
 	i := got | int(u32(exp) << 17) | int(u32(exp_.has_flag(.option)) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
@@ -2444,7 +2444,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 		return fn_name
 	}
 	for got_sym.parent_idx != 0 && got_sym.idx !in (exp_sym.info as ast.SumType).variants {
-		got_sym = g.table.sym(got_sym.parent_idx)
+		got_sym = g.table.sym(ast.idx_to_type(got_sym.parent_idx))
 	}
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
@@ -2456,7 +2456,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 			got_sym.idx
 		}
 		exp:     if exp_.has_flag(.option) {
-			new_exp := ast.idx_to_type(exp).set_flag(.option)
+			new_exp := exp.set_flag(.option)
 			new_exp
 		} else {
 			exp
@@ -3070,7 +3070,17 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 			if typ.share() == .shared_t {
 				g.write('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
 			}
-			g.write(' array_clone_static_to_depth(')
+			is_sumtype := g.table.type_kind(var_type) == .sum_type
+			if is_sumtype {
+				variant_typ := g.typ(typ).replace('*', '')
+				fn_name := g.get_sumtype_casting_fn(typ, var_type)
+				g.write('${fn_name}(ADDR(${variant_typ}, array_clone_static_to_depth(')
+				if typ.is_ptr() {
+					g.write('*')
+				}
+			} else {
+				g.write(' array_clone_static_to_depth(')
+			}
 			g.expr(val)
 			if typ.share() == .shared_t {
 				g.write('->val')
@@ -3080,6 +3090,9 @@ fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Typ
 			g.write(', ${array_depth})')
 			if typ.share() == .shared_t {
 				g.write('}, sizeof(${shared_styp}))')
+			}
+			if is_sumtype {
+				g.write('))')
 			}
 		} else if right_sym.kind == .string {
 			// `str1 = str2` => `str1 = str2.clone()`
@@ -4044,13 +4057,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					left_type_name := util.no_dots(left_cc_type)
 					g.write('${c_name(left_type_name)}_name_table[${node.expr.name}${g.dot_or_ptr(node.expr_type)}_typ]._method_${m.name}')
 				} else {
-					g.write('${g.typ(node.expr_type.idx())}_${m.name}')
+					g.write('${g.typ(node.expr_type.idx_type())}_${m.name}')
 				}
 				return
 			}
 			receiver := m.params[0]
-			expr_styp := g.typ(node.expr_type.idx())
-			data_styp := g.typ(receiver.typ.idx())
+			expr_styp := g.typ(node.expr_type.idx_type())
+			data_styp := g.typ(receiver.typ.idx_type())
 			mut sb := strings.new_builder(256)
 			name := '_V_closure_${expr_styp}_${m.name}_${node.pos.pos}'
 			sb.write_string('${g.typ(m.return_type)} ${name}(')
@@ -6806,7 +6819,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					if variant in idxs {
 						continue
 					}
-					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx_type()):-20s}')
 					idxs << variant
 				}
 				idxs.clear()
@@ -8017,7 +8030,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 			}
 		}
 		for vtyp, variants in inter_info.conversions {
-			vsym := g.table.sym(vtyp)
+			vsym := g.table.sym(ast.idx_to_type(vtyp))
 
 			if variants.len > 0 {
 				conversion_functions.write_string('static inline bool I_${interface_name}_is_I_${vsym.cname}(${interface_name} x) {\n\treturn ')

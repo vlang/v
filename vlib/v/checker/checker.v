@@ -1490,7 +1490,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			valid_generic := util.is_generic_type_name(name) && c.table.cur_fn != unsafe { nil }
 				&& name in c.table.cur_fn.generic_names
 			if valid_generic {
-				name_type = ast.idx_to_type(c.table.find_type_idx(name)).set_flag(.generic)
+				name_type = c.table.find_type(name).set_flag(.generic)
 			}
 		}
 		ast.TypeOf {
@@ -1704,7 +1704,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 					} else {
 						'wrapping the `${rec_sym.name}` object in a `struct` declared as `@[heap]`'
 					}
-					c.error('method `${c.table.type_to_str(receiver.idx())}.${method.name}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider ${suggestion}.',
+					c.error('method `${c.table.type_to_str(receiver.idx_type())}.${method.name}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider ${suggestion}.',
 						node.expr.pos().extend(node.pos))
 				}
 			}
@@ -3142,7 +3142,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					node.pos)
 			} else if node.stmt != ast.empty_stmt && node.typ == ast.void_type {
 				c.stmt(mut node.stmt)
-				node.typ = c.table.find_type_idx((node.stmt as ast.StructDecl).name)
+				node.typ = c.table.find_type((node.stmt as ast.StructDecl).name)
 			}
 			return node.typ
 		}
@@ -3494,7 +3494,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_type.is_int() && mut node.expr is ast.IntegerLiteral {
 		tt := c.table.type_to_str(to_type)
-		tsize, _ := c.table.type_size(to_type.idx())
+		tsize, _ := c.table.type_size(to_type.idx_type())
 		bit_size := tsize * 8
 		value_string := match node.expr.val[0] {
 			`-`, `+` {
@@ -4828,7 +4828,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		// In the checker the name for such enums was set to `main.ChanState` instead of
 		// just `ChanState`.
 		if node.enum_name.starts_with('${c.mod}.') {
-			typ_idx = c.table.find_type_idx(node.enum_name['${c.mod}.'.len..])
+			typ_idx = c.table.find_type(node.enum_name['${c.mod}.'.len..])
 			if typ_idx == 0 {
 				c.error('unknown enum `${node.enum_name}` (type_idx=0)', node.pos)
 				return ast.void_type

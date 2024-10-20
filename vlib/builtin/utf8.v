@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
+// utf8_char_len returns the length in bytes of a UTF-8 encoded codepoint that starts with the byte `b`
 pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }

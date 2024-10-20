@@ -169,6 +169,7 @@ pub mut:
 	is_minify      bool
 	is_anon        bool
 	is_generic     bool
+	has_option     bool // contains any option field
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
@@ -528,6 +529,12 @@ pub fn (t Type) derive(t_from Type) Type {
 @[inline]
 pub fn (t Type) derive_add_muls(t_from Type) Type {
 	return Type((0xff000000 & t_from) | u16(t)).set_nr_muls(t.nr_muls() + t_from.nr_muls())
+}
+
+// return new type from its `idx`
+@[inline]
+pub fn (t Type) idx_type() Type {
+	return idx_to_type(t.idx())
 }
 
 // return new type with TypeSymbol idx set to `idx`
@@ -1604,7 +1611,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 		sb.write_string(func.name)
 	}
 	sb.write_string('(')
-	start := int(opts.skip_receiver)
+	start := int(func.is_method && opts.skip_receiver)
 	for i in start .. func.params.len {
 		if i != start {
 			sb.write_string(', ')

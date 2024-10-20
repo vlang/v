@@ -26,7 +26,7 @@ fn get_termios() termios.Termios {
 @[inline]
 fn get_terminal_size() (u16, u16) {
 	winsz := C.winsize{}
-	termios.ioctl(0, termios.flag(C.TIOCGWINSZ), voidptr(&winsz))
+	termios.ioctl(0, u64(termios.flag(C.TIOCGWINSZ)), voidptr(&winsz))
 	return winsz.ws_row, winsz.ws_col
 }
 

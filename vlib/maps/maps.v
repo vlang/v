@@ -75,7 +75,11 @@ pub fn from_array[T](array []T) map[int]T {
 // Note that this function modifes `m1`, while `m2` will not be.
 pub fn merge_in_place[K, V](mut m1 map[K]V, m2 map[K]V) {
 	for k, v in m2 {
-		m1[k] = v
+		$if v is $map {
+			m1[k] = v.clone()
+		} $else {
+			m1[k] = v
+		}
 	}
 }
 
@@ -86,7 +90,11 @@ pub fn merge_in_place[K, V](mut m1 map[K]V, m2 map[K]V) {
 pub fn merge[K, V](m1 map[K]V, m2 map[K]V) map[K]V {
 	mut res := m1.clone()
 	for k, v in m2 {
-		res[k] = v
+		$if v is $map {
+			res[k] = v.clone()
+		} $else {
+			res[k] = v
+		}
 	}
 	return res
 }

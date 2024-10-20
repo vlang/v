@@ -574,11 +574,27 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 									return !is_true, true
 								}
 							}
-							if cond.op == .key_is {
-								g.write('${exp_type.idx()} == ${got_type.idx()} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
+							if got_sym.info is ast.FnType && cond.left is ast.Ident
+								&& g.comptime.comptime_for_method_var == cond.left.name {
+								is_compatible := g.table.fn_signature(got_sym.info.func,
+									skip_receiver: true
+									type_only:     true
+								) == g.table.fn_signature(g.comptime.comptime_for_method,
+									skip_receiver: true
+									type_only:     true
+								)
+								if cond.op == .key_is {
+									g.write(int(is_compatible).str())
+									return is_compatible, true
+								} else {
+									g.write(int(!is_compatible).str())
+									return !is_compatible, true
+								}
+							} else if cond.op == .key_is {
+								g.write('${int(exp_type.idx())} == ${int(got_type.idx())} && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 								return exp_type == got_type, true
 							} else {
-								g.write('${exp_type.idx()} != ${got_type.idx()}')
+								g.write('${int(exp_type.idx())} != ${int(got_type.idx())}')
 								return exp_type != got_type, true
 							}
 						}
@@ -817,7 +833,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		if methods.len > 0 {
 			g.writeln('FunctionData ${node.val_var} = {0};')
 		}
-		typ_vweb_result := g.table.find_type_idx('vweb.Result')
+		typ_vweb_result := g.table.find_type('vweb.Result')
 		for method in methods {
 			g.push_new_comptime_info()
 			// filter vweb route methods (non-generic method)
@@ -877,12 +893,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if ret_type != 'void' {
 				sig += ' ${ret_type}'
 			}
-			styp := g.table.find_type_idx(sig)
+			styp := g.table.find_type(sig)
 
 			// TODO: type aliases
 			ret_typ := method.return_type
-			g.writeln('\t${node.val_var}.typ = ${styp};')
-			g.writeln('\t${node.val_var}.return_type = ${ret_typ.idx()};')
+			g.writeln('\t${node.val_var}.typ = ${int(styp)};')
+			g.writeln('\t${node.val_var}.return_type = ${int(ret_typ.idx())};')
 
 			g.comptime.type_map['${node.val_var}.return_type'] = ret_typ
 			g.comptime.type_map['${node.val_var}.typ'] = styp
@@ -929,8 +945,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				styp := field.typ
 				unaliased_styp := g.table.unaliased_type(styp)
 
-				g.writeln('\t${node.val_var}.typ = ${styp.idx()};')
-				g.writeln('\t${node.val_var}.unaliased_typ = ${unaliased_styp.idx()};')
+				g.writeln('\t${node.val_var}.typ = ${int(styp.idx())};')
+				g.writeln('\t${node.val_var}.unaliased_typ = ${int(unaliased_styp.idx())};')
 				g.writeln('\t${node.val_var}.is_pub = ${field.is_pub};')
 				g.writeln('\t${node.val_var}.is_mut = ${field.is_mut};')
 

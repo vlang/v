@@ -19,7 +19,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	// record the veb route methods (public non-generic methods):
 	if node.generic_names.len > 0 && node.is_pub {
-		typ_vweb_result := c.table.find_type_idx('veb.Result')
+		typ_vweb_result := c.table.find_type('veb.Result')
 		if node.return_type == typ_vweb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
 			if rec_sym.kind == .struct {
@@ -452,15 +452,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	// Register implicit context var
-	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type_idx('veb.Result')
+	typ_veb_result := c.table.get_veb_result_type_idx() // c.table.find_type('veb.Result')
 	if node.return_type == typ_veb_result {
 		// Find a custom user Context type first
-		mut ctx_idx := c.table.find_type_idx('main.Context')
+		mut ctx_idx := c.table.find_type('main.Context')
 		if ctx_idx < 1 {
 			// If it doesn't exist, use veb.Context
-			ctx_idx = c.table.find_type_idx('veb.Context')
+			ctx_idx = c.table.find_type('veb.Context')
 		}
-		typ_veb_context := ast.Type(u32(ctx_idx)).set_nr_muls(1)
+		typ_veb_context := ctx_idx.set_nr_muls(1)
 		// No `ctx` param? Add it
 		if !node.params.any(it.name == 'ctx') && node.params.len >= 1 {
 			params := node.params.clone()
@@ -2064,6 +2064,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		return c.array_builtin_method_call(mut node, left_type)
+	} else if final_left_sym.kind == .array_fixed && method_name in ['index', 'all', 'any', 'map']
+		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
@@ -3296,6 +3299,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			if mut node.args[0].expr is ast.LambdaExpr {
 				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut node.args[0].expr)
 			} else if node.args[0].expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(node.args[0].expr)
 				if node.args[0].expr.op !in [.gt, .lt] {
 					c.error('`.${method_name}()` can only use `<` or `>` comparison',
 						node.pos)
@@ -3461,6 +3465,34 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		node.return_type = ast.void_type
+	}
+	return node.return_type
+}
+
+fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type) ast.Type {
+	left_sym := c.table.final_sym(left_type)
+	method_name := node.name
+	unwrapped_left_type := c.unwrap_generic(left_type)
+	unaliased_left_type := c.table.unaliased_type(unwrapped_left_type)
+	array_info := if left_sym.info is ast.ArrayFixed {
+		left_sym.info as ast.ArrayFixed
+	} else {
+		c.table.sym(unaliased_left_type).info as ast.ArrayFixed
+	}
+	elem_typ := array_info.elem_type
+	if method_name == 'index' {
+		if node.args.len != 1 {
+			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
+		} else if !left_sym.has_method('index') {
+			arg_typ := c.expr(mut node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+				c.error('${err.msg()} in argument 1 to `.index()`', node.args[0].pos)
+			}
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.return_type = ast.int_type
 	}
 	return node.return_type
 }
