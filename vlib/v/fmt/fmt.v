@@ -1612,7 +1612,9 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.writeln(' {')
 
 	for line in node.lines {
+		f.comments(line.pre_comments, level: .indent)
 		f.sql_stmt_line(line)
+		f.comments(line.end_comments, level: .indent)
 	}
 	f.write('}')
 	f.or_expr(node.or_expr)

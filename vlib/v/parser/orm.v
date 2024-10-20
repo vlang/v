@@ -199,6 +199,7 @@ fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
 }
 
 fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
+	pre_comments := p.eat_comments()
 	mut n := p.check_name() // insert
 	pos := p.tok.pos()
 	mut kind := ast.SqlStmtKind.insert
@@ -215,6 +216,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		}
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
+		end_comments := p.eat_comments()
 		return ast.SqlStmtLine{
 			kind:         kind
 			pos:          pos.extend(p.prev_tok.pos())
@@ -224,6 +226,8 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			}
 			scope:        p.scope
 			is_generated: false
+			pre_comments: pre_comments
+			end_comments: end_comments
 		}
 	} else if n == 'drop' {
 		kind = .drop
@@ -234,6 +238,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		}
 		typ := p.parse_type()
 		typ_pos := p.tok.pos()
+		end_comments := p.eat_comments()
 		return ast.SqlStmtLine{
 			kind:         kind
 			pos:          pos.extend(p.prev_tok.pos())
@@ -243,6 +248,8 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			}
 			is_generated: false
 			scope:        p.scope
+			pre_comments: pre_comments
+			end_comments: end_comments
 		}
 	}
 	mut inserted_var := ''
@@ -313,6 +320,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			return ast.SqlStmtLine{}
 		}
 	}
+	end_comments := p.eat_comments()
 	return ast.SqlStmtLine{
 		table_expr:      ast.TypeNode{
 			typ: table_type
@@ -326,6 +334,8 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		where_expr:      where_expr
 		is_generated:    false
 		scope:           p.scope
+		pre_comments:    pre_comments
+		end_comments:    end_comments
 	}
 }
 

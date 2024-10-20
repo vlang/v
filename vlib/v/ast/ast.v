@@ -2082,6 +2082,8 @@ pub mut:
 	sub_structs     map[int]SqlStmtLine
 	where_expr      Expr
 	update_exprs    []Expr // for `update`
+	pre_comments    []Comment
+	end_comments    []Comment
 }
 
 pub struct SqlExpr {

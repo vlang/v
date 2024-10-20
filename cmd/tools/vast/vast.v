@@ -1823,6 +1823,8 @@ fn (t Tree) sql_stmt_line(node ast.SqlStmtLine) &Node {
 	obj.add_terse('updated_columns', t.array_node_string(node.updated_columns))
 	obj.add_terse('update_exprs', t.array_node_expr(node.update_exprs))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
+	obj.add('end_comments', t.array_node_comment(node.end_comments))
 
 	sub_struct_map := new_object()
 	for key, val in node.sub_structs {
