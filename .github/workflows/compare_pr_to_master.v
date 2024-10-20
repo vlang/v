@@ -72,5 +72,6 @@ fn main() {
 	} else {
 		vcompare('./vold', './vnew')
 	}
+	r('rm -rf hw nv ov hw.exe nv.exe ov.exe hw.c nv.c ov.c')
 	println('Done.')
 }
