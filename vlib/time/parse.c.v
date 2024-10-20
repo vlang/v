@@ -182,6 +182,10 @@ pub fn parse_rfc3339(s string) !Time {
 		}
 	}
 
+	pos := date_format_buffer.len + time_format_buffer.len + 1
+	if pos >= s.len {
+		return error('timezone error: datetime string is too short')
+	}
 	if s[date_format_buffer.len + time_format_buffer.len + 1] !in [u8(`Z`), `z`, `+`, `-`, `.`] {
 		// RFC 3339 needs a timezone
 		return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${
