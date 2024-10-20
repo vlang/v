@@ -128,6 +128,10 @@ pub fn parse_rfc3339(s string) !Time {
 		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s)!
 
 		return new(Time{
+			year:  1970
+			month: 1
+			day:   1
+
 			hour:       hour_
 			minute:     minute_
 			second:     second_
