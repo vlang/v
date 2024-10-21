@@ -138,10 +138,15 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.write('${arrow}len ${node.op} 0')
 		} else {
 			// vmemcmp(left, "str", sizeof("str")) optimization
-			g.write('vmemcmp(')
-			g.expr(node.left)
 			slit := cescape_nonascii(util.smart_quote(node.right.val, node.right.is_raw))
-			g.write('.str, "${slit}", sizeof("${slit}")-1) ${node.op} 0')
+			var := g.expr_string(node.left)
+			arrow := if left.typ.is_ptr() { '->' } else { '.' }
+			if node.op == .eq {
+				g.write('${var}${arrow}len == sizeof("${slit}")-1 && ')
+				g.write('!vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1)')
+			} else {
+				g.write('(${var}${arrow}len ${node.op} sizeof("${slit}")-1 || vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1))')
+			}
 		}
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
