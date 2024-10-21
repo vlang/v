@@ -15,6 +15,13 @@ pub const global_reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'in
 	'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread',
 	'array']
 
+pub const result_name = '_result'
+pub const option_name = '_option'
+
+// V builtin types defined on .v files
+pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name,
+	result_name]
+
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 // pub const int_type_name = $if amd64 || arm64 {

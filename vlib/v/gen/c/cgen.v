@@ -32,8 +32,8 @@ const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 // when operands are switched
 const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
-const result_name = '_result'
-const option_name = '_option'
+const result_name = ast.result_name
+const option_name = ast.option_name
 
 fn string_array_to_map(a []string) map[string]bool {
 	mut res := map[string]bool{}
@@ -1530,10 +1530,9 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 }
 
 pub fn (mut g Gen) write_typedef_types() {
-	for sym in g.table.type_symbols {
-		if sym.name in builtins {
-			continue
-		}
+	type_symbols := g.table.type_symbols.filter(!it.is_builtin
+		&& it.kind in [.array, .array_fixed, .chan, .map])
+	for sym in type_symbols {
 		match sym.kind {
 			.array {
 				info := sym.info as ast.Array
@@ -1612,22 +1611,24 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 		}
 	}
 	for sym in g.table.type_symbols {
-		if sym.kind == .alias && sym.name !in builtins && sym.name !in ['byte', 'i32'] {
+		if sym.kind == .alias && !sym.is_builtin && sym.name !in ['byte', 'i32'] {
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
 	g.write_sorted_fn_typesymbol_declaration()
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
-	for sym in g.table.type_symbols {
-		if sym.kind == .interface && sym.name !in builtins {
-			g.write_interface_typedef(sym)
+
+	interfaces := g.table.type_symbols.filter(it.info is ast.Interface && !it.is_builtin)
+	mut interface_non_generic_syms := []&ast.TypeSymbol{cap: interfaces.len}
+	for sym in interfaces {
+		g.write_interface_typedef(sym)
+		if sym.info is ast.Interface && !sym.info.is_generic {
+			interface_non_generic_syms << sym
 		}
 	}
-	for sym in g.table.type_symbols {
-		if sym.kind == .interface && sym.name !in builtins {
-			g.write_interface_typesymbol_declaration(sym)
-		}
+	for sym in interface_non_generic_syms {
+		g.write_interface_typesymbol_declaration(sym)
 	}
 }
 
@@ -1669,13 +1670,7 @@ pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
 }
 
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
-	if sym.info !is ast.Interface {
-		return
-	}
 	info := sym.info as ast.Interface
-	if info.is_generic {
-		return
-	}
 	struct_name := c_name(sym.cname)
 	g.type_definitions.writeln('struct ${struct_name} {')
 	g.type_definitions.writeln('\tunion {')
@@ -1775,13 +1770,8 @@ pub fn (mut g Gen) write_multi_return_types() {
 	start_pos := g.type_definitions.len
 	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
-	for sym in g.table.type_symbols {
-		if sym.kind != .multi_return {
-			continue
-		}
-		if sym.cname.contains('[') {
-			continue
-		}
+	multi_rets := g.table.type_symbols.filter(it.kind == .multi_return && !it.cname.contains('['))
+	for sym in multi_rets {
 		info := sym.mr_info()
 		if info.types.any(it.has_flag(.generic)) {
 			continue
@@ -6706,8 +6696,6 @@ fn (mut g Gen) write_init_function() {
 	}
 }
 
-const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name, result_name]
-
 fn (mut g Gen) write_builtin_types() {
 	if g.pref.no_builtin {
 		return
@@ -6715,11 +6703,13 @@ fn (mut g Gen) write_builtin_types() {
 	mut builtin_types := []&ast.TypeSymbol{} // builtin types
 	// builtin types need to be on top
 	// everything except builtin will get sorted
-	for builtin_name in builtins {
+	for builtin_name in ast.builtins {
 		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
-		if sym.kind == .interface {
+		if sym.info is ast.Interface {
 			g.write_interface_typedef(sym)
-			g.write_interface_typesymbol_declaration(sym)
+			if !sym.info.is_generic {
+				g.write_interface_typesymbol_declaration(sym)
+			}
 		} else {
 			builtin_types << sym
 		}
@@ -6737,10 +6727,9 @@ fn (mut g Gen) write_sorted_types() {
 	}
 	unsafe {
 		mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
-		for sym in g.table.type_symbols {
-			if sym.name !in builtins {
-				symbols << sym
-			}
+		non_builtin_syms := g.table.type_symbols.filter(!it.is_builtin)
+		for sym in non_builtin_syms {
+			symbols << sym
 		}
 		sorted_symbols := g.sort_structs(symbols)
 		g.write_types(sorted_symbols)
@@ -6928,7 +6917,7 @@ fn (mut g Gen) write_sorted_fn_typesymbol_declaration() {
 	}
 	mut syms := []&ast.TypeSymbol{} // functions to be defined
 	for sym in g.table.type_symbols {
-		if sym.kind == .function && sym.name !in builtins {
+		if sym.kind == .function && !sym.is_builtin {
 			syms << sym
 		}
 	}
@@ -7752,14 +7741,8 @@ fn (mut g Gen) interface_table() string {
 	}
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
-	for isym in g.table.type_symbols {
-		if isym.kind != .interface {
-			continue
-		}
-		if isym.info !is ast.Interface {
-			// Do not remove this check, `isym.info` could be `&IError`.
-			continue
-		}
+	interfaces := g.table.type_symbols.filter(it.kind == .interface && it.info is ast.Interface)
+	for isym in interfaces {
 		inter_info := isym.info as ast.Interface
 		if inter_info.is_generic {
 			continue

@@ -357,12 +357,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	scoped_name := if !is_anon && p.inside_fn { '_${name}_${p.cur_fn_scope.start_pos}' } else { '' }
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
-		kind:     .struct
-		language: language
-		name:     name
-		cname:    util.no_dots(name)
-		mod:      p.mod
-		info:     ast.Struct{
+		kind:       .struct
+		language:   language
+		name:       name
+		cname:      util.no_dots(name)
+		mod:        p.mod
+		info:       ast.Struct{
 			scoped_name:   scoped_name
 			embeds:        embed_types
 			fields:        fields
@@ -376,7 +376,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_anon:       is_anon
 			has_option:    has_option
 		}
-		is_pub:   is_pub
+		is_pub:     is_pub
+		is_builtin: name in ast.builtins
 	}
 	if p.table.has_deep_child_no_ref(&sym, name) {
 		p.error_with_pos('invalid recursive struct `${orig_name}`', name_pos)

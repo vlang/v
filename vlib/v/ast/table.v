@@ -696,6 +696,7 @@ pub const invalid_type_symbol = &TypeSymbol{
 	kind:       .placeholder
 	name:       'InvalidType'
 	cname:      'InvalidType'
+	is_builtin: false
 }
 
 @[inline]
@@ -770,8 +771,9 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		// override placeholder
 		t.type_symbols[existing_idx] = &TypeSymbol{
 			...typ
-			methods: existing_symbol.methods
-			idx:     existing_idx
+			methods:    existing_symbol.methods
+			idx:        existing_idx
+			is_builtin: existing_symbol.is_builtin
 		}
 		return existing_idx
 	}
@@ -784,14 +786,16 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 			unsafe {
 				*existing_symbol = &TypeSymbol{
 					...typ
-					kind: existing_symbol.kind
-					idx:  existing_idx
+					kind:       existing_symbol.kind
+					idx:        existing_idx
+					is_builtin: existing_symbol.is_builtin
 				}
 			}
 		} else {
 			t.type_symbols[existing_idx] = &TypeSymbol{
 				...typ
-				idx: existing_idx
+				idx:        existing_idx
+				is_builtin: existing_symbol.is_builtin
 			}
 		}
 		return existing_idx
@@ -1260,11 +1264,12 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		modname = name.all_before_last('.')
 	}
 	ph_type := TypeSymbol{
-		kind:     .placeholder
-		name:     name
-		cname:    util.no_dots(name).replace_each(['&', ''])
-		language: language
-		mod:      modname
+		kind:       .placeholder
+		name:       name
+		cname:      util.no_dots(name).replace_each(['&', ''])
+		language:   language
+		mod:        modname
+		is_builtin: name in builtins
 	}
 	return t.register_sym(ph_type)
 }
