@@ -606,13 +606,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			val = string_buffer.bytestr()
 		}
-	} $else $if T is $sumtype {
+	} $else $if T.unaliased_typ is $sumtype {
 		$for v in val.variants {
 			if val is v {
 				decoder.decode_value(val)
 			}
 		}
-	} $else $if T is time.Time {
+	} $else $if T.unaliased_typ is time.Time {
 		time_info := decoder.current_node.value
 
 		if time_info.value_kind == .string_ {
@@ -621,7 +621,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 			val = time.parse_rfc3339(string_time) or { time.Time{} }
 		}
-	} $else $if T is $map {
+	} $else $if T.unaliased_typ is $map {
 		map_info := decoder.current_node.value
 
 		if map_info.value_kind == .object {
@@ -657,7 +657,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				val[key] = map_value
 			}
 		}
-	} $else $if T is $array {
+	} $else $if T.unaliased_typ is $array {
 		array_info := decoder.current_node.value
 
 		if array_info.value_kind == .array {
@@ -682,7 +682,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				val << array_element
 			}
 		}
-	} $else $if T is $struct {
+	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
 		if struct_info.value_kind == .object {
@@ -722,13 +722,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 			}
 		}
-	} $else $if T is bool {
+	} $else $if T.unaliased_typ is bool {
 		value_info := decoder.current_node.value
 
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
 		}
-	} $else $if T in [$int, $float, $enum] {
+	} $else $if T.unaliased_typ in [$int, $float, $enum] {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
@@ -897,7 +897,7 @@ fn generate_unicode_escape_sequence(escape_sequence_byte []u8) ![]u8 {
 // NOTE: This aims works with not new memory allocated data, to more efficient use `vbytes` before
 @[direct_array_access; unsafe]
 pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
-	$if T is $int {
+	$if T.unaliased_typ is $int {
 		mut is_negative := false
 		for ch in data {
 			if ch == `-` {
@@ -910,7 +910,7 @@ pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
 		if is_negative {
 			*result *= -1
 		}
-	} $else $if T is $float {
+	} $else $if T.unaliased_typ is $float {
 		mut is_negative := false
 		mut decimal_seen := false
 		mut decimal_divider := int(1)
@@ -937,7 +937,7 @@ pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
 		if is_negative {
 			*result *= -1
 		}
-	} $else $if T is $enum {
+	} $else $if T.unaliased_typ is $enum {
 		// Convert the string to an integer
 		enumeration := 0
 		for ch in data {
@@ -945,20 +945,6 @@ pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
 			enumeration = enumeration * 10 + digit
 		}
 		*result = T(enumeration)
-	} $else $if T is $alias {
-		$if T.unaliased_typ in [$int, $enum] {
-			// alias_value := 0
-			// string_buffer_to_generic_number(&alias_value, data)
-			// *result = alias_value
-			panic('unsupported type ${typeof[T]().name}')
-		} $else $if T.unaliased_typ is $float {
-			// alias_value := 0.0
-			// string_buffer_to_generic_number(&alias_value, data)
-			// *result = alias_value
-			panic('unsupported type ${typeof[T]().name}')
-		} $else {
-			panic('unsupported type ${typeof[T]().name}')
-		}
 	} $else {
 		panic('unsupported type ${typeof[T]().name}')
 	}
