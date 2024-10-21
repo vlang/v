@@ -143,8 +143,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			var := g.expr_string(node.left)
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			if node.op == .eq {
-				g.write('${var}${arrow}len == sizeof("${slit}")-1 && ')
-				g.write('!vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1)')
+				g.write('(${var}${arrow}len == sizeof("${slit}")-1 && !vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1))')
 			} else {
 				g.write('(${var}${arrow}len ${node.op} sizeof("${slit}")-1 || vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1))')
 			}
