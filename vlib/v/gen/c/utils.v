@@ -85,7 +85,7 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 
 // generate function variable definition, e.g. `void (*var_name) (int, string)`
 fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_name string) string {
-	ret_styp := g.typ(return_type)
+	ret_styp := g.styp(return_type)
 	mut sig := '${ret_styp} (*${c_name(var_name)}) ('
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
@@ -94,7 +94,7 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 			arg_sig := g.fn_var_signature(func.return_type, func.params.map(it.typ), '')
 			sig += arg_sig
 		} else {
-			arg_styp := g.typ(arg_typ)
+			arg_styp := g.styp(arg_typ)
 			sig += arg_styp
 		}
 		if j < arg_types.len - 1 {
@@ -107,14 +107,14 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 
 // generate anon fn cname, e.g. `anon_fn_void_int_string`, `anon_fn_void_int_ptr_string`
 fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string {
-	ret_styp := g.typ(return_type).replace('*', '_ptr')
+	ret_styp := g.styp(return_type).replace('*', '_ptr')
 	mut sig := 'anon_fn_${ret_styp}_'
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
 			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
 		} else {
-			sig += g.typ(arg_typ).replace('*', '_ptr')
+			sig += g.styp(arg_typ).replace('*', '_ptr')
 		}
 		if j < arg_types.len - 1 {
 			sig += '_'

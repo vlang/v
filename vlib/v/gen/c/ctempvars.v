@@ -18,7 +18,7 @@ fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTe
 }
 
 fn (mut g Gen) gen_ctemp_var(tvar ast.CTempVar) {
-	styp := g.typ(tvar.typ)
+	styp := g.styp(tvar.typ)
 	g.write('${styp} ${tvar.name} = ')
 	g.expr(tvar.orig)
 	g.writeln(';')

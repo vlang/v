@@ -81,7 +81,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			''
 		}
 		cond_var = g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} ${cond_var} = ')
+		g.write('${g.styp(node.cond_type)} ${cond_var} = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		g.set_current_pos_as_last_stmt_pos()
@@ -97,13 +97,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			if ret_final_sym.info is ast.FnType {
 				def := g.fn_var_signature(ret_final_sym.info.func.return_type, ret_final_sym.info.func.params.map(it.typ),
 					tmp_var)
-				func_decl = '${def} = &${g.typ(node.return_type)};'
+				func_decl = '${def} = &${g.styp(node.return_type)};'
 			}
 		}
 		if func_decl != '' {
 			g.writeln(func_decl) // func, anon func declaration
 		} else {
-			g.writeln('${g.typ(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
+			g.writeln('${g.styp(node.return_type)} ${tmp_var} = ${g.type_default(node.return_type)};')
 		}
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {

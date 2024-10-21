@@ -43,7 +43,7 @@ fn (mut g JsGen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	left_styp := g.typ(left.typ.set_nr_muls(0))
+	left_styp := g.styp(left.typ.set_nr_muls(0))
 	g.write(left_styp)
 	g.write('_')
 	g.write(util.replace_op(node.op.str()))
@@ -83,7 +83,7 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 		if node.op == .ne {
 			g.write('!')
 		}
-		g.write(g.typ(left.unaliased.set_nr_muls(0)))
+		g.write(g.styp(left.unaliased.set_nr_muls(0)))
 		g.write('__eq(')
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
@@ -216,7 +216,7 @@ fn (mut g JsGen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
-		g.write(g.typ(left.typ.set_nr_muls(0)))
+		g.write(g.styp(left.typ.set_nr_muls(0)))
 		g.write('__lt')
 		if node.op in [.lt, .ge] {
 			g.write('(')

@@ -80,7 +80,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			unwrapped = ast.u64_type
 		}
 	}
-	styp := g.typ(unwrapped)
+	styp := g.styp(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias && !sym.has_method('str') {
@@ -462,7 +462,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 			continue
 		}
 		idxs << typ
-		typ_name := g.typ(typ)
+		typ_name := g.styp(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)
 		is_c_struct := sym.is_c_struct()
@@ -594,7 +594,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 		typ = sym.info.parent_type
 		sym = g.table.sym(typ)
 	}
-	field_styp := g.typ(typ)
+	field_styp := g.styp(typ)
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	elem_str_fn_name := g.get_str_fn(typ)
@@ -704,7 +704,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	elem_str_fn_name := g.get_str_fn(typ)
-	def_arg := if info.is_fn_ret { '${g.typ(typ)} a[${info.size}]' } else { '${styp} a' }
+	def_arg := if info.is_fn_ret { '${g.styp(typ)} a[${info.size}]' } else { '${styp} a' }
 
 	g.definitions.writeln('static string ${str_fn_name}(); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${def_arg}) { return indent_${str_fn_name}(a, 0);}')
@@ -768,7 +768,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		key_typ = key_sym.info.parent_type
 		key_sym = g.table.sym(key_typ)
 	}
-	key_styp := g.typ(key_typ)
+	key_styp := g.styp(key_typ)
 	key_str_fn_name := styp_to_str_fn_name(key_styp)
 	if !key_sym.has_method('str') {
 		g.get_str_fn(key_typ)
@@ -781,7 +781,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		val_typ = val_sym.info.parent_type
 		val_sym = g.table.sym(val_typ)
 	}
-	val_styp := g.typ(val_typ)
+	val_styp := g.styp(val_typ)
 	mut elem_str_fn_name := styp_to_str_fn_name(val_styp)
 
 	mut receiver_is_ptr := false
@@ -1026,7 +1026,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 
 		// custom methods management
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-		sftyp := g.typ(ftyp_noshared)
+		sftyp := g.styp(ftyp_noshared)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
 			mut field_fn_name := if ftyp_noshared.has_flag(.option) {
@@ -1083,10 +1083,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		}
 		mut is_field_array := false
 		if sym.info is ast.Array {
-			field_styp = g.typ(sym.info.elem_type).trim('*')
+			field_styp = g.styp(sym.info.elem_type).trim('*')
 			is_field_array = true
 		} else if sym.info is ast.ArrayFixed {
-			field_styp = g.typ(sym.info.elem_type).trim('*')
+			field_styp = g.styp(sym.info.elem_type).trim('*')
 			is_field_array = true
 		}
 		// handle circular ref type of struct to the struct itself
@@ -1267,9 +1267,9 @@ fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
 
 fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string, idx int) {
 	enum_typ := ast.idx_to_type(idx)
-	enum_styp := g.typ(enum_typ)
+	enum_styp := g.styp(enum_typ)
 	option_enum_typ := enum_typ.set_flag(.option)
-	option_enum_styp := g.typ(option_enum_typ)
+	option_enum_styp := g.styp(option_enum_typ)
 	enum_field_names := g.table.get_enum_field_names(mod_enum_name)
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
 

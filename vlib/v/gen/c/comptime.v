@@ -223,7 +223,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				&& node.args[i - 1].expr is ast.ArrayDecompose {
 				mut d_count := 0
 				for d_i in i .. m.params.len {
-					g.write('*(${g.typ(m.params[i].typ)}*)array_get(')
+					g.write('*(${g.styp(m.params[i].typ)}*)array_get(')
 					g.expr(node.args[i - 1].expr)
 					g.write(', ${d_count})')
 
@@ -265,7 +265,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			if !g.inside_assign {
 				cur_line := g.go_before_last_stmt()
 				tmp_var := g.new_tmp_var()
-				g.write('${g.typ(m.return_type)} ${tmp_var} = ')
+				g.write('${g.styp(m.return_type)} ${tmp_var} = ')
 				g.write(cur_line)
 				g.or_block(tmp_var, node.or_block, m.return_type)
 			}
@@ -352,7 +352,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	line := if node.is_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
-		styp := g.typ(node.typ)
+		styp := g.styp(node.typ)
 		g.writeln('${styp} ${tmp_var};')
 		stmt_str.trim_space()
 	} else {
@@ -988,7 +988,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if g.pref.translated && node.typ.is_number() {
 						g.writeln('_const_main__${val};')
 					} else {
-						g.writeln('${g.typ(node.typ)}__${val};')
+						g.writeln('${g.styp(node.typ)}__${val};')
 					}
 					enum_attrs := sym.info.attrs[val]
 					if enum_attrs.len == 0 {

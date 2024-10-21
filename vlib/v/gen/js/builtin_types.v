@@ -133,7 +133,7 @@ fn (mut g JsGen) base_type(_t ast.Type) string {
 	return styp
 }
 
-pub fn (mut g JsGen) typ(t ast.Type) string {
+pub fn (mut g JsGen) styp(t ast.Type) string {
 	sym := g.table.final_sym(t)
 	if sym.kind == .voidptr {
 		return 'voidptr'
@@ -177,11 +177,11 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		// 'array_array_int' => 'number[][]'
 		.array {
 			info := sym.info as ast.Array
-			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${g.sym_to_js_typ(sym)}(${g.styp(info.elem_type)})'
 		}
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
-			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${g.sym_to_js_typ(sym)}(${g.styp(info.elem_type)})'
 		}
 		.chan {
 			styp = 'chan'
@@ -189,8 +189,8 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		// 'map[string]int' => 'Map<string, number>'
 		.map {
 			info := sym.info as ast.Map
-			key := g.typ(info.key_type)
-			val := g.typ(info.value_type)
+			key := g.styp(info.key_type)
+			val := g.styp(info.value_type)
 			styp = 'Map<${key}, ${val}>'
 		}
 		.any {
@@ -204,7 +204,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		// 'multi_return_int_int' => '[number, number]'
 		.multi_return {
 			info := sym.info as ast.MultiReturn
-			types := info.types.map(g.typ(it))
+			types := info.types.map(g.styp(it))
 			joined := types.join(', ')
 			styp = '[${joined}]'
 		}
@@ -257,12 +257,12 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 fn (mut g JsGen) fn_typ(args []ast.Param, return_type ast.Type) string {
 	mut res := '('
 	for i, arg in args {
-		res += '${arg.name}: ${g.typ(arg.typ)}'
+		res += '${arg.name}: ${g.styp(arg.typ)}'
 		if i < args.len - 1 {
 			res += ', '
 		}
 	}
-	return res + ') => ' + g.typ(return_type)
+	return res + ') => ' + g.styp(return_type)
 }
 
 fn (mut g JsGen) struct_typ(s string) string {

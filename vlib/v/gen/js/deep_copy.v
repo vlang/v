@@ -21,7 +21,7 @@ fn (mut g JsGen) get_copy_fn(typ ast.Type) string {
 	if typ.has_flag(.option) {
 		unwrapped.set_flag(.option)
 	}
-	styp := g.typ(unwrapped)
+	styp := g.styp(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut copy_fn_name := styp_to_copy_fn_name(styp)
 	if mut sym.info is ast.Alias {
@@ -85,7 +85,7 @@ fn (mut g JsGen) gen_copy_for_union_sum_type(info ast.SumType, styp string, copy
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function ${copy_fn_name}(x) {')
 	for typ in info.variants {
-		typ_str := g.typ(typ)
+		typ_str := g.styp(typ)
 		mut func_name := g.get_copy_fn(typ)
 		fn_builder.writeln('if (x instanceof ${typ_str}) { return ${func_name}(x); }')
 	}
@@ -124,7 +124,7 @@ fn (mut g JsGen) gen_copy_for_interface(info ast.Interface, styp string, copy_fn
 			val = val
 			*/
 			res := '"TODO'
-			fn_builder.write_string('\tif (x instanceof ${g.typ(typ)})')
+			fn_builder.write_string('\tif (x instanceof ${g.styp(typ)})')
 			fn_builder.write_string(' return ${func_name}(x);\n')
 		}
 	}

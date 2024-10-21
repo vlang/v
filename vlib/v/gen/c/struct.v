@@ -17,7 +17,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		s := g.go_before_last_stmt()
 		g.empty_line = true
 
-		styp := g.typ(node.update_expr_type)
+		styp := g.styp(node.update_expr_type)
 		g.write('${styp} ${tmp_update_var} = ')
 		g.expr(node.update_expr)
 		g.writeln(';')
@@ -27,9 +27,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 	unalised_typ := g.table.unaliased_type(node.typ)
 	styp := if g.table.sym(unalised_typ).language == .v {
-		g.typ(unalised_typ).replace('*', '')
+		g.styp(unalised_typ).replace('*', '')
 	} else {
-		g.typ(node.typ)
+		g.styp(node.typ)
 	}
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in skip_struct_init {
@@ -73,7 +73,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.writeln('(${styp}){')
 	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
-		shared_styp = g.typ(shared_typ)
+		shared_styp = g.styp(shared_typ)
 		g.writeln('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =(${styp}){')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
 		if node.typ.has_flag(.option) {
@@ -83,7 +83,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('(${styp}*)memdup(&(${styp}){')
 		}
 	} else if node.typ.is_ptr() {
-		basetyp := g.typ(node.typ.set_nr_muls(0))
+		basetyp := g.styp(node.typ.set_nr_muls(0))
 		if is_multiline {
 			g.writeln('&(${basetyp}){')
 		} else {
@@ -94,7 +94,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		s := g.go_before_last_stmt()
 		g.empty_line = true
 
-		base_styp := g.typ(node.typ.clear_option_and_result())
+		base_styp := g.styp(node.typ.clear_option_and_result())
 		g.writeln('${styp} ${tmp_var} = {0};')
 
 		if node.init_fields.len > 0 {
@@ -455,7 +455,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			tmp_var := g.new_tmp_var()
 			s := g.go_before_last_stmt()
 			g.empty_line = true
-			styp := g.typ(field.typ)
+			styp := g.styp(field.typ)
 			g.writeln('${styp} ${tmp_var} = {0};')
 			g.write('memcpy(${tmp_var}, ')
 			g.expr(field.default_expr)
@@ -567,7 +567,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 			// write the option in and then continue
 			// FIXME: for parallel cgen (two different files using the same option in struct fields)
 			if field.typ.has_flag(.option) {
-				// Dont use g.typ() here because it will register
+				// Dont use g.styp() here because it will register
 				// option and we dont want that
 				styp, base := g.option_type_name(field.typ)
 				lock g.done_options {
@@ -582,7 +582,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 				}
 			}
 			if field.typ.has_flag(.result) {
-				// Dont use g.typ() here because it will register
+				// Dont use g.styp() here because it will register
 				// result and we dont want that
 				styp, base := g.result_type_name(field.typ)
 				lock g.done_results {
@@ -596,7 +596,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 					}
 				}
 			}
-			type_name := g.typ(field.typ)
+			type_name := g.styp(field.typ)
 			field_name := c_name(field.name)
 			volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 			mut size_suffix := ''
