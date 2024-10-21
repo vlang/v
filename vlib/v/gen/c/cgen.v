@@ -535,13 +535,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if g.out_options_forward.len > 0 || g.out_results_forward.len > 0 {
 		tail := g.type_definitions.cut_to(g.options_pos_forward)
 		if g.out_options_forward.len > 0 {
-			g.type_definitions.writeln('// #start V forward option_xxx definitions:')
-			g.type_definitions.writeln(g.out_options_forward.str())
+			g.type_definitions.write2ln('// #start V forward option_xxx definitions:',
+				g.out_options_forward.str())
 			g.type_definitions.writeln('// #end V forward option_xxx definitions\n')
 		}
 		if g.out_results_forward.len > 0 {
-			g.type_definitions.writeln('// #start V forward result_xxx definitions:')
-			g.type_definitions.writeln(g.out_results_forward.str())
+			g.type_definitions.write2ln('// #start V forward result_xxx definitions:',
+				g.out_results_forward.str())
 			g.type_definitions.writeln('// #end V forward result_xxx definitions\n')
 		}
 		g.type_definitions.writeln(tail)
@@ -838,8 +838,7 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln(tcc_undef_has_include)
 			g.includes.writeln(tcc_undef_has_include)
 			if g.pref.os == .freebsd {
-				g.cheaders.writeln('#include <inttypes.h>')
-				g.cheaders.writeln('#include <stddef.h>')
+				g.cheaders.write2ln('#include <inttypes.h>', '#include <stddef.h>')
 			} else {
 				install_compiler_msg := ' Please install the package `build-essential`.'
 				g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>.${install_compiler_msg}')) // int64_t etc
@@ -863,8 +862,7 @@ pub fn (mut g Gen) init() {
 		}
 	}
 	if g.pref.os == .ios {
-		g.cheaders.writeln('#define __TARGET_IOS__ 1')
-		g.cheaders.writeln('#include <spawn.h>')
+		g.cheaders.write2ln('#define __TARGET_IOS__ 1', '#include <spawn.h>')
 	}
 	g.write_builtin_types()
 	g.options_pos_forward = g.type_definitions.len
@@ -8039,16 +8037,14 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 			pmessage := 'string__plus(string__plus(tos3("`as_cast`: cannot convert "), tos3(v_typeof_interface_${interface_name}(x._typ))), tos3(" to ${util.strip_main_name(vsym.name)}"))'
 			if g.pref.is_debug {
 				// TODO: actually return a valid position here
-				conversion_functions.write_string('\tpanic_debug(1, tos3("builtin.v"), tos3("builtin"), tos3("__as_cast"), ')
-				conversion_functions.write_string(pmessage)
+				conversion_functions.write_2_string('\tpanic_debug(1, tos3("builtin.v"), tos3("builtin"), tos3("__as_cast"), ',
+					pmessage)
 				conversion_functions.writeln(');')
 			} else {
-				conversion_functions.write_string('\t_v_panic(')
-				conversion_functions.write_string(pmessage)
+				conversion_functions.write_2_string('\t_v_panic(', pmessage)
 				conversion_functions.writeln(');')
 			}
-			conversion_functions.writeln('\treturn (${vsym.cname}){0};')
-			conversion_functions.writeln('}')
+			conversion_functions.write2ln('\treturn (${vsym.cname}){0};', '}')
 		}
 		sb.writeln('// ^^^ number of types for interface ${interface_name}: ${current_iinidx - iinidx_minimum_base}')
 		if iname_table_length == 0 {
@@ -8061,8 +8057,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 		// add line return after interface index declarations
 		sb.writeln('')
 		if inter_methods.len > 0 {
-			sb.writeln(methods_wrapper.str())
-			sb.writeln(methods_struct_def.str())
+			sb.write2ln(methods_wrapper.str(), methods_struct_def.str())
 			sb.writeln(methods_struct.str())
 		}
 		sb.writeln(cast_functions.str())
