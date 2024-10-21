@@ -5,7 +5,7 @@ import strings
 
 fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.sumtype_fn_definitions {
 		return ptr_styp
 	}
@@ -57,7 +57,7 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_struct_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	fn_name := ptr_styp.replace('struct ', '')
 	if fn_name in g.struct_fn_definitions {
 		return fn_name
@@ -122,7 +122,7 @@ fn (mut g JsGen) gen_struct_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_alias_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.alias_fn_definitions {
 		return ptr_styp
 	}
@@ -164,7 +164,7 @@ fn (mut g JsGen) gen_alias_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.array_fn_definitions {
 		return ptr_styp
 	}
@@ -217,7 +217,7 @@ fn (mut g JsGen) gen_array_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.array_fn_definitions {
 		return ptr_styp
 	}
@@ -269,7 +269,7 @@ fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_map_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.map_fn_definitions {
 		return ptr_styp
 	}

@@ -14,7 +14,7 @@ const special_array_methods = [
 fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 	unwrap_left_type := g.unwrap_generic(left_type)
 	mut left_sym := g.table.sym(unwrap_left_type)
-	mut left_type_str := g.typ(unwrap_left_type).trim('*')
+	mut left_type_str := g.styp(unwrap_left_type).trim('*')
 	fn_name := '${left_type_str}_index'
 
 	if !left_sym.has_method('index') {
@@ -165,7 +165,7 @@ fn (mut g JsGen) gen_array_contains_method(left_type ast.Type) string {
 	}
 	mut left_sym := g.table.sym(unwrap_left_type)
 	left_final_sym := g.table.final_sym(unwrap_left_type)
-	mut left_type_str := g.typ(unwrap_left_type).replace('*', '')
+	mut left_type_str := g.styp(unwrap_left_type).replace('*', '')
 	fn_name := '${left_type_str}_contains'
 	if !left_sym.has_method('contains') {
 		left_info := left_final_sym.info as ast.Array
@@ -220,7 +220,7 @@ fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
 
 	info := rec_sym.info as ast.Array
 
-	elem_stype := g.typ(info.elem_type)
+	elem_stype := g.styp(info.elem_type)
 	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
@@ -267,9 +267,9 @@ fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
 
 	g.definitions.writeln('function ${compare_fn}(a,b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
-		'${g.typ(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
+		'${g.styp(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {
-		'${g.typ(comparison_type.unaliased)}__lt(${left_expr}, ${right_expr})'
+		'${g.styp(comparison_type.unaliased)}__lt(${left_expr}, ${right_expr})'
 	} else {
 		'${left_expr}.valueOf() < ${right_expr}.valueOf()'
 	}

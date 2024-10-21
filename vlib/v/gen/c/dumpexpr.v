@@ -27,7 +27,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar && node.expr.language == .v {
-				name = g.typ(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
+				name = g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f,
 					.result))).replace('*', '')
 			}
 		}
@@ -39,7 +39,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				if node.expr.field_expr.expr.name == g.comptime.comptime_for_field_var
 					&& node.expr.field_expr.field_name == 'name' {
 					field, _ := g.comptime.get_comptime_selector_var_type(node.expr)
-					name = g.typ(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
+					name = g.styp(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 					expr_type = field.typ
 				}
 			}
@@ -47,7 +47,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	} else if node.expr is ast.Ident && g.comptime.inside_comptime_for
 		&& g.comptime.is_comptime_var(node.expr) {
 		expr_type = g.comptime.get_comptime_var_type(node.expr)
-		name = g.typ(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	}
 
@@ -70,7 +70,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if node.expr is ast.ArrayInit {
 		if node.expr.is_fixed {
-			s := g.typ(node.expr.typ)
+			s := g.styp(node.expr.typ)
 			if !node.expr.has_index {
 				g.write('(${s})')
 			}
@@ -233,7 +233,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				'{0}'
 			}
 			if typ.is_ptr() {
-				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.typ(typ.set_nr_muls(0))}, ${init_str});')
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.styp(typ.set_nr_muls(0))}, ${init_str});')
 				dump_fns.writeln('\tmemcpy(${tmp_var}->ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
 			} else {
 				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = ${init_str};')

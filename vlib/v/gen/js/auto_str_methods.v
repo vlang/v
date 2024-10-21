@@ -25,7 +25,7 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 	if typ.has_flag(.option) {
 		unwrapped.set_flag(.option)
 	}
-	styp := g.typ(unwrapped)
+	styp := g.styp(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias {
@@ -382,7 +382,7 @@ fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_f
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('function indent_${str_fn_name}(x, indent_count) {')
 	for typ in info.variants {
-		typ_str := g.typ(typ)
+		typ_str := g.styp(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -580,7 +580,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		key_typ = key_sym.info.parent_type
 		key_sym = g.table.sym(key_typ)
 	}
-	key_styp := g.typ(key_typ)
+	key_styp := g.styp(key_typ)
 	key_str_fn_name := key_styp.replace('*', '') + '_str'
 	if !key_sym.has_method('str') {
 		g.get_str_fn(key_typ)
@@ -592,7 +592,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 		val_typ = val_sym.info.parent_type
 		val_sym = g.table.sym(val_typ)
 	}
-	val_styp := g.typ(val_typ)
+	val_styp := g.styp(val_typ)
 	elem_str_fn_name := val_styp.replace('*', '') + '_str'
 	if !val_sym.has_method('str') {
 		g.get_str_fn(val_typ)
@@ -744,7 +744,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 
 		// custom methods management
 		has_custom_str := sym.has_method('str')
-		mut field_styp := g.typ(field.typ).replace('*', '')
+		mut field_styp := g.styp(field.typ).replace('*', '')
 		field_styp_fn_name := if has_custom_str {
 			'${field_styp}_str'
 		} else {

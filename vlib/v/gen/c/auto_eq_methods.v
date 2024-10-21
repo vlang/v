@@ -9,7 +9,7 @@ fn (mut g Gen) equality_fn(typ ast.Type) string {
 	g.needed_equality_fns << typ.set_nr_muls(0)
 	t1 := g.unwrap_generic(typ)
 	t2 := t1.set_nr_muls(0)
-	st2 := g.typ(t2)
+	st2 := g.styp(t2)
 	res := st2.replace('struct ', '')
 	return res
 }
@@ -51,7 +51,7 @@ fn (mut g Gen) gen_equality_fns() {
 
 fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
 	left_no_ptr := left_type.set_nr_muls(0)
 	if left_no_ptr in g.generated_eq_fns {
@@ -170,7 +170,7 @@ fn (mut g Gen) read_map_opt_field(struct_type ast.Type, field_name string, var_n
 
 fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	fn_name := ptr_styp.replace('struct ', '')
 
 	left_no_ptr := left_type.set_nr_muls(0)
@@ -191,7 +191,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	// overloaded
 	if left.sym.has_method('==') {
 		if left.typ.has_flag(.option) {
-			opt_ptr_styp := g.typ(left.typ.set_nr_muls(0).clear_flag(.option))
+			opt_ptr_styp := g.styp(left.typ.set_nr_muls(0).clear_flag(.option))
 			opt_fn_name := opt_ptr_styp.replace('struct ', '')
 			fn_builder.writeln('\treturn (a.state == b.state && b.state == 2) || ${opt_fn_name}__eq(*(${opt_ptr_styp}*)a.data, *(${opt_ptr_styp}*)b.data);')
 		} else {
@@ -270,7 +270,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 
 fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
 	left_no_ptr := left_type.set_nr_muls(0)
 	if left_no_ptr in g.generated_eq_fns {
@@ -330,7 +330,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 
 fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
 	left_no_ptr := left_type.set_nr_muls(0)
 	if left_no_ptr in g.generated_eq_fns {
@@ -339,7 +339,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	g.generated_eq_fns << left_no_ptr
 
 	elem := g.unwrap(left.sym.array_info().elem_type)
-	ptr_elem_styp := g.typ(elem.typ)
+	ptr_elem_styp := g.styp(elem.typ)
 	g.definitions.writeln('static bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
 
 	mut fn_builder := strings.new_builder(512)
@@ -403,7 +403,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 
 fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	left_typ := g.unwrap(left_type)
-	ptr_styp := g.typ(left_typ.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left_typ.typ.set_nr_muls(0))
 
 	left_no_ptr := left_type.set_nr_muls(0)
 	if left_no_ptr in g.generated_eq_fns {
@@ -462,7 +462,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 
 fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 
 	left_no_ptr := left_type.set_nr_muls(0)
 	if left_no_ptr in g.generated_eq_fns {
@@ -471,7 +471,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	g.generated_eq_fns << left_no_ptr
 
 	value := g.unwrap(left.sym.map_info().value_type)
-	ptr_value_styp := g.typ(value.typ)
+	ptr_value_styp := g.styp(value.typ)
 	g.definitions.writeln('static bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
 
 	left_len := g.read_map_field_from_option(left.typ, 'len', 'a')
@@ -553,8 +553,8 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 
 fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
-	idx_fn := g.typ(left.typ.set_nr_muls(0).clear_flag(.option))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
+	idx_fn := g.styp(left.typ.set_nr_muls(0).clear_flag(.option))
 	fn_name := ptr_styp.replace('interface ', '')
 
 	left_no_ptr := left_type.set_nr_muls(0)

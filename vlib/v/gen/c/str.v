@@ -43,7 +43,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.expr(call_expr.left)
 		g.write(', ')
 		typ := node.expr_types[i]
-		g.write(g.typ(typ))
+		g.write(g.styp(typ))
 		g.write('_str(')
 		sym := g.table.sym(typ)
 		if sym.kind != .function {
@@ -125,7 +125,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		mut tmp_var := ''
 		if temp_var_needed {
 			tmp_var = g.new_tmp_var()
-			ret_typ := g.typ(exp_typ)
+			ret_typ := g.styp(exp_typ)
 			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${ret_typ} ${tmp_var} = ')
@@ -163,7 +163,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('(')
 		if str_method_expects_ptr && !is_ptr {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
-				g.write('ADDR(${g.typ(typ)}, ')
+				g.write('ADDR(${g.styp(typ)}, ')
 				defer {
 					g.write(')')
 				}
@@ -171,7 +171,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			}
 		} else if is_ptr && typ.has_flag(.option) {
-			g.write('*(${g.typ(typ)}*)&')
+			g.write('*(${g.styp(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
@@ -183,7 +183,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
-				s := g.typ(expr.typ)
+				s := g.styp(expr.typ)
 				if !expr.has_index {
 					g.write('(${s})')
 				}

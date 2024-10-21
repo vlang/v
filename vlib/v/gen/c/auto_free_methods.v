@@ -24,7 +24,7 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-	styp := g.typ(typ).replace('*', '')
+	styp := g.styp(typ).replace('*', '')
 	fn_name := styp_to_free_fn_name(styp)
 	if sym.has_method_with_generic_parent('free') {
 		g.autofree_methods[typ] = fn_name
@@ -41,7 +41,7 @@ fn (mut g Gen) gen_free_methods() {
 }
 
 fn (mut g Gen) gen_free_method(typ ast.Type) string {
-	styp := g.typ(typ).replace('*', '')
+	styp := g.styp(typ).replace('*', '')
 	mut fn_name := styp_to_free_fn_name(styp)
 	deref_typ := if typ.has_flag(.option) { typ } else { typ.set_nr_muls(0) }
 	if deref_typ in g.generated_free_methods {
@@ -134,7 +134,11 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 			opt_styp := g.base_type(typ)
 			prefix := if field.typ.is_ptr() { '' } else { '&' }
 			if is_field_option {
-				opt_field_styp := if expects_opt { g.typ(field.typ) } else { g.base_type(field.typ) }
+				opt_field_styp := if expects_opt {
+					g.styp(field.typ)
+				} else {
+					g.base_type(field.typ)
+				}
 				suffix := if expects_opt { '' } else { '.data' }
 
 				fn_builder.writeln('\tif (((${opt_styp}*)&it->data)->${field_name}.state != 2) {')
@@ -145,7 +149,11 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 			}
 		} else {
 			if is_field_option {
-				opt_field_styp := if expects_opt { g.typ(field.typ) } else { g.base_type(field.typ) }
+				opt_field_styp := if expects_opt {
+					g.styp(field.typ)
+				} else {
+					g.base_type(field.typ)
+				}
 				suffix := if expects_opt { '' } else { '.data' }
 
 				fn_builder.writeln('\tif (it->${field_name}.state != 2) {')
@@ -160,7 +168,7 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 }
 
 fn (mut g Gen) gen_type_name_for_free_call(typ ast.Type) string {
-	mut styp := g.typ(typ.set_nr_muls(0).clear_flag(.option)).replace('*', '')
+	mut styp := g.styp(typ.set_nr_muls(0).clear_flag(.option)).replace('*', '')
 	if styp.starts_with('__shared') {
 		styp = styp.all_after('__shared__')
 	}
@@ -179,7 +187,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 	if sym.kind in [.string, .array, .map, .struct] {
 		fn_builder.writeln('\tfor (int i = 0; i < it->len; i++) {')
 
-		mut elem_styp := g.typ(info.elem_type).replace('*', '')
+		mut elem_styp := g.styp(info.elem_type).replace('*', '')
 		elem_styp_fn_name := if sym.has_method('free') {
 			'${elem_styp}_free'
 		} else {

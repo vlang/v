@@ -377,7 +377,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 	return &mut g
 }
 
-pub fn (mut g Gen) typ(a ast.Type) &ast.TypeSymbol {
+pub fn (mut g Gen) styp(a ast.Type) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
 

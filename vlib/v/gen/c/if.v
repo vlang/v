@@ -192,7 +192,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
-		mut styp := g.typ(node.typ)
+		mut styp := g.styp(node.typ)
 		if node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
 			defer {
@@ -255,7 +255,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
-				g.writeln('${g.typ(g.unwrap_generic(cond.expr_type))} ${var_name};')
+				g.writeln('${g.styp(g.unwrap_generic(cond.expr_type))} ${var_name};')
 			} else {
 				guard_vars[i] = ''
 			}
@@ -331,7 +331,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									if var.name == '_' {
 										continue
 									}
-									var_typ := g.typ(sym.info.types[vi])
+									var_typ := g.styp(sym.info.types[vi])
 									left_var_name := c_name(var.name)
 									if is_auto_heap {
 										g.writeln('\t${var_typ}* ${left_var_name} = (HEAP(${base_type}, *(${base_type}*)${var_name}.data).arg${vi});')

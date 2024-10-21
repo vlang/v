@@ -581,7 +581,7 @@ fn (mut g JsGen) generic_fn_name(types []ast.Type, before string) string {
 
 	mut name := before + '_T'
 	for typ in types {
-		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.typ(typ.set_nr_muls(0))
+		name += '_' + strings.repeat_string('__ptr__', typ.nr_muls()) + g.styp(typ.set_nr_muls(0))
 	}
 	return name
 }
@@ -631,7 +631,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		g.push_pub_var(name)
 	}
 	if it.language == .js && it.is_method {
-		g.writeln('${g.typ(it.receiver.typ)}.prototype.${it.name} = ')
+		g.writeln('${g.styp(it.receiver.typ)}.prototype.${it.name} = ')
 	}
 
 	mut has_go := fn_has_go(it) || it.has_await
@@ -661,7 +661,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		if c in [`+`, `-`, `*`, `/`] {
 			name = util.replace_op(name)
 		}
-		// type_name := g.typ(it.return_type)
+		// type_name := g.styp(it.return_type)
 		// generate jsdoc for the function
 		g.doc.gen_fn(it)
 		if has_go && !g.pref.output_es5 {

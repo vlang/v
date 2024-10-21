@@ -34,7 +34,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		name = g.generic_fn_name(expr.concrete_types, name)
 	} else if expr.is_fn_var && expr.fn_var_type.has_flag(.generic) {
 		fn_var_type := g.unwrap_generic(expr.fn_var_type)
-		name = g.typ(fn_var_type)
+		name = g.styp(fn_var_type)
 	}
 
 	if expr.is_method {
@@ -109,7 +109,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
-	s_ret_typ := g.typ(node.call_expr.return_type)
+	s_ret_typ := g.styp(node.call_expr.return_type)
 	if g.pref.os == .windows && node.call_expr.return_type != ast.void_type {
 		g.writeln('${arg_tmp_var}->ret_ptr = (void *) _v_malloc(sizeof(${s_ret_typ}));')
 	}
@@ -125,7 +125,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			gohandle_name = '__v_thread'
 		}
 	} else {
-		ret_styp := g.typ(g.unwrap_generic(node.call_expr.return_type)).replace('*', '_ptr')
+		ret_styp := g.styp(g.unwrap_generic(node.call_expr.return_type)).replace('*',
+			'_ptr')
 		gohandle_name = '__v_thread_${ret_styp}'
 	}
 	if is_spawn {
@@ -275,7 +276,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.type_definitions.writeln('\t${fn_var};')
 		}
 		if expr.is_method {
-			styp := g.typ(expr.receiver_type)
+			styp := g.styp(expr.receiver_type)
 			g.type_definitions.writeln('\t${styp} arg0;')
 		}
 		need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != ast.void_type
@@ -286,7 +287,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
-				styp := g.typ(arg.typ)
+				styp := g.styp(arg.typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
 		}

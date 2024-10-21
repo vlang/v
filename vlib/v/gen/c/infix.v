@@ -75,7 +75,7 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	gen_or := node.or_block.kind != .absent
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 	if gen_or {
-		elem_styp := g.typ(elem_type)
+		elem_styp := g.styp(elem_type)
 		g.register_chan_push_option_fn(elem_styp, styp)
 		g.write('${option_name}_void ${tmp_opt} = __Option_${styp}_pushval(')
 	} else {
@@ -141,9 +141,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.write('!')
 		}
 		if has_alias_eq_op_overload {
-			g.write(g.typ(left.typ.set_nr_muls(0)))
+			g.write(g.styp(left.typ.set_nr_muls(0)))
 		} else {
-			g.write(g.typ(left.unaliased.set_nr_muls(0)))
+			g.write(g.styp(left.unaliased.set_nr_muls(0)))
 		}
 		g.write('__eq(')
 		g.write('*'.repeat(left.typ.nr_muls()))
@@ -225,7 +225,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				if node.left is ast.ArrayInit {
 					if !node.left.has_index {
-						s := g.typ(left.unaliased)
+						s := g.styp(left.unaliased)
 						g.write('(${s})')
 					}
 				}
@@ -233,7 +233,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(', ')
 				if node.right is ast.ArrayInit {
 					if !node.right.has_index {
-						s := g.typ(right.unaliased)
+						s := g.styp(right.unaliased)
 						g.write('(${s})')
 					}
 				}
@@ -394,7 +394,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
-		g.write(g.typ(left.typ.set_nr_muls(0)))
+		g.write(g.styp(left.typ.set_nr_muls(0)))
 		g.write('__lt')
 		if node.op in [.lt, .ge] {
 			g.write('(')
@@ -546,7 +546,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
-			styp := g.typ(node.left_type)
+			styp := g.styp(node.left_type)
 			g.write('ADDR(${styp}, ')
 			g.expr(node.left)
 			g.write(')')
@@ -806,7 +806,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		if node.right is ast.Ident && node.right.or_expr.kind != .absent {
 			cur_line := g.go_before_last_stmt().trim_space()
 			right_var = g.new_tmp_var()
-			g.write('${g.typ(right.typ)} ${right_var} = ')
+			g.write('${g.styp(right.typ)} ${right_var} = ')
 			g.op_arg(node.right, method.params[1].typ, right.typ)
 			g.writeln(';')
 			g.write(cur_line)
@@ -871,11 +871,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				g.write(', (')
 			}
 			g.expr_with_cast(node.right, right.typ, left.unaliased.clear_flag(.shared_f))
-			styp := g.typ(expected_push_many_atype)
+			styp := g.styp(expected_push_many_atype)
 			g.write('), ${tmp_var}, ${styp})')
 		} else {
 			// push a single element
-			elem_type_str := g.typ(array_info.elem_type)
+			elem_type_str := g.styp(array_info.elem_type)
 			elem_sym := g.table.sym(array_info.elem_type)
 			elem_is_array_var := elem_sym.kind in [.array, .array_fixed] && node.right is ast.Ident
 			g.write('array_push${noscan}((array*)')
@@ -1029,7 +1029,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
 		|| g.file.is_translated)
 	if needs_cast {
-		typ_str := g.typ(node.promoted_type)
+		typ_str := g.styp(node.promoted_type)
 		g.write('(${typ_str})(')
 	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
@@ -1065,7 +1065,7 @@ fn (mut g Gen) op_arg(expr ast.Expr, expected ast.Type, got ast.Type) {
 			if expr.is_lvalue() {
 				g.write('&')
 			} else {
-				styp := g.typ(got.set_nr_muls(0))
+				styp := g.styp(got.set_nr_muls(0))
 				g.write('ADDR(${styp}, ')
 				needs_closing = true
 			}
