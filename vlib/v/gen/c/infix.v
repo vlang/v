@@ -141,7 +141,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.write('vmemcmp(')
 			g.expr(node.left)
 			slit := cescape_nonascii(util.smart_quote(node.right.val, node.right.is_raw))
-			g.write('.str, "${slit}", sizeof("${slit}")) ${node.op} 0')
+			g.write('.str, "${slit}", sizeof("${slit}")-1) ${node.op} 0')
 		}
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
