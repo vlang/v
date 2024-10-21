@@ -128,7 +128,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		|| (left.typ.is_ptr() && right.typ == ast.nil_type) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
-		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral {
+		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
+		&& (node.right.val == '' || node.left in [ast.SelectorExpr, ast.Ident]) {
 		if node.right.val == '' {
 			// `str == ''` -> `str.len == 0` optimization
 			g.write('(')
