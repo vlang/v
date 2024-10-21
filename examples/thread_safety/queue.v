@@ -16,33 +16,40 @@ that data is safely passed between threads.
 ensuring that the program does not hang if the producer is not ready.
 */
 import time
+import sync
 
-fn producer(ch chan int) {
+fn producer(ch chan int, mut mtx sync.Mutex) {
 	for i in 1 .. 100 {
+		mtx.lock()
 		ch <- i
 		println('Produced: ${i}')
+		mtx.unlock()
 	}
 }
 
-fn consumer(ch chan int) {
+fn consumer(ch chan int, mut mtx sync.Mutex) {
 	for {
+		mtx.lock()
 		select {
 			item := <-ch {
 				println('Consumed: ${item}')
 			}
 			500 * time.millisecond {
 				println('Timeout: No producers were ready within 0.5s')
+				mtx.unlock()
 				break
 			}
 		}
+		mtx.unlock()
 	}
 }
 
 fn main() {
-	ch := chan int{cap: 10}
+	mut mtx := sync.new_mutex()
+	ch := chan int{cap: 100}
 
-	producer_thread := spawn producer(ch)
-	consumer_thread := spawn consumer(ch)
+	producer_thread := spawn producer(ch, mut mtx)
+	consumer_thread := spawn consumer(ch, mut mtx)
 
 	producer_thread.wait()
 	consumer_thread.wait()
