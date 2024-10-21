@@ -17,6 +17,14 @@ pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, 
 // utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
 const utf8_max = 0x10FFFF
 
+fn toml_parse_time(s string) !time.Time {
+	if s.len > 3 && s[2] == `:` {
+		// complete the partial time, with an arbitrary date:
+		return time.parse_rfc3339('0001-01-01T' + s)
+	}
+	return time.parse_rfc3339(s)!
+}
+
 // Checker checks a tree of TOML `ast.Value`'s for common errors.
 pub struct Checker {
 pub:
@@ -318,7 +326,6 @@ fn (c &Checker) check_date_time(dt ast.DateTime) ! {
 				col:     dt.pos.col + split[0].len
 			}
 		})!
-		// Use V's builtin functionality to validate the string
 		// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
 		mut has_time_offset := false
 		for ch in lit#[19..] {
@@ -333,7 +340,7 @@ fn (c &Checker) check_date_time(dt ast.DateTime) ! {
 			lit_with_offset += 'Z'
 		}
 
-		time.parse_rfc3339(lit_with_offset) or {
+		toml_parse_time(lit_with_offset) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' "${lit}" is not a valid RFC 3339 Date-Time format string "${err}". In ...${c.excerpt(dt.pos)}...')
 		}
@@ -366,8 +373,7 @@ fn (c &Checker) check_date(date ast.Date) ! {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" does not have a valid RFC 3339 day indication in ...${c.excerpt(date.pos)}...')
 	}
-	// Use V's builtin functionality to validate the string
-	time.parse_rfc3339(lit) or {
+	toml_parse_time(lit) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Date format string "${err}". In ...${c.excerpt(date.pos)}...')
 	}
@@ -394,7 +400,7 @@ fn (c &Checker) check_time(t ast.Time) ! {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Time format string in ...${c.excerpt(t.pos)}...')
 	}
-	// Use V's builtin functionality to validate the time string
+
 	// Simulate a time offset if it's missing then it can be checked. Already toml supports local time and rfc3339 don't.
 	mut has_time_offset := false
 	for ch in parts[0]#[8..] {
@@ -409,7 +415,7 @@ fn (c &Checker) check_time(t ast.Time) ! {
 		part_with_offset += 'Z'
 	}
 
-	time.parse_rfc3339(part_with_offset) or {
+	toml_parse_time(part_with_offset) or {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' "${lit}" is not a valid RFC 3339 Time format string "${err}". In ...${c.excerpt(t.pos)}...')
 	}
