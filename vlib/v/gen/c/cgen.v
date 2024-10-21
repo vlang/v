@@ -4469,10 +4469,14 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 			}
 		}
 		if node.lockeds.len == 2 {
-			g.write2ln('if (_arr_${mtxs}[0] > _arr_${mtxs}[1]) {', '\tuintptr_t _ptr_${mtxs} = _arr_${mtxs}[0];')
-			g.write2ln('\t_arr_${mtxs}[0] = _arr_${mtxs}[1];', '\t_arr_${mtxs}[1] = _ptr_${mtxs};')
-			g.write2ln('\tbool _bool_${mtxs} = _isrlck_${mtxs}[0];', '\t_isrlck_${mtxs}[0] = _isrlck_${mtxs}[1];')
-			g.write2ln('\t_isrlck_${mtxs}[1] = _bool_${mtxs};', '}')
+			g.writeln('if (_arr_${mtxs}[0] > _arr_${mtxs}[1]) {')
+			g.writeln('\tuintptr_t _ptr_${mtxs} = _arr_${mtxs}[0];')
+			g.writeln('\t_arr_${mtxs}[0] = _arr_${mtxs}[1];')
+			g.writeln('\t_arr_${mtxs}[1] = _ptr_${mtxs};')
+			g.writeln('\tbool _bool_${mtxs} = _isrlck_${mtxs}[0];')
+			g.writeln('\t_isrlck_${mtxs}[0] = _isrlck_${mtxs}[1];')
+			g.writeln('\t_isrlck_${mtxs}[1] = _bool_${mtxs};')
+			g.writeln('}')
 		} else {
 			g.writeln('__sort_ptr(_arr_${mtxs}, _isrlck_${mtxs}, ${node.lockeds.len});')
 		}
