@@ -108,8 +108,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		})
 		g.writeln('}, &${tmp_var}, sizeof(${base_styp}));')
 		g.empty_line = false
-		g.write(s)
-		g.write(tmp_var)
+		g.write2(s, tmp_var)
 		return
 	} else if g.inside_cinit {
 		if is_multiline {
@@ -461,8 +460,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 			g.expr(field.default_expr)
 			g.writeln(', sizeof(${styp}));')
 			g.empty_line = false
-			g.write(s)
-			g.write('{')
+			g.write2(s, '{')
 			for i in 0 .. final_sym.info.size {
 				g.write('${tmp_var}[${i}]')
 				if i != final_sym.info.size - 1 {

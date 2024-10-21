@@ -8,12 +8,10 @@ import v.util
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
-		g.write('"')
-		g.write(escaped_val)
+		g.write2('"', escaped_val)
 		g.write('"')
 	} else {
-		g.write('_SLIT("')
-		g.write(escaped_val)
+		g.write2('_SLIT("', escaped_val)
 		g.write('")')
 	}
 }
@@ -29,8 +27,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
-		g.write(', _SLIT("')
-		g.write(escaped_val)
+		g.write2(', _SLIT("', escaped_val)
 		g.writeln('"));')
 		if i >= node.exprs.len {
 			break
@@ -43,8 +40,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.expr(call_expr.left)
 		g.write(', ')
 		typ := node.expr_types[i]
-		g.write(g.styp(typ))
-		g.write('_str(')
+		g.write2(g.styp(typ), '_str(')
 		sym := g.table.sym(typ)
 		if sym.kind != .function {
 			g.expr(node.exprs[i])
@@ -143,8 +139,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				} else {
 					g.expr(expr)
 				}
-				g.write('.data')
-				g.write(') ? _SLIT("Option(&nil)") : ')
+				g.write2('.data', ') ? _SLIT("Option(&nil)") : ')
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
 				g.inside_interface_deref = false
@@ -159,8 +154,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
-		g.write(str_fn_name)
-		g.write('(')
+		g.write2(str_fn_name, '(')
 		if str_method_expects_ptr && !is_ptr {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.styp(typ)}, ')

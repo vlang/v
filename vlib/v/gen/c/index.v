@@ -117,8 +117,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			g.write('${styp} ${var} = ')
 			g.expr(node.left)
 			g.writeln(';')
-			g.write(line)
-			g.write(' ${var})')
+			g.write2(line, ' ${var})')
 		} else {
 			g.expr(node.left)
 			g.write(')')
