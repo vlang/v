@@ -6597,11 +6597,13 @@ fn (mut g Gen) write_init_function() {
 		} else {
 			g.writeln('__attribute__ ((constructor))')
 		}
-		g.write2ln('void _vinit_caller() {', '\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('void _vinit_caller() {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		if g.nr_closures > 0 {
 			g.writeln('\t__closure_init(); // vinit_caller()')
 		}
-		g.write2ln('\t_vinit(0,0);', '}')
+		g.writeln('\t_vinit(0,0);')
+		g.writeln('}')
 
 		if g.pref.os == .windows {
 			g.write2ln('// workaround for windows, export _vcleanup_caller, let dl.close() call it',
@@ -6610,8 +6612,10 @@ fn (mut g Gen) write_init_function() {
 		} else {
 			g.writeln('__attribute__ ((destructor))')
 		}
-		g.write2ln('void _vcleanup_caller() {', '\tstatic bool once = false; if (once) {return;} once = true;')
-		g.write2ln('\t_vcleanup();', '}')
+		g.writeln('void _vcleanup_caller() {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('\t_vcleanup();')
+		g.writeln('}')
 	}
 }
 
