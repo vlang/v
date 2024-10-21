@@ -5,8 +5,19 @@ module c
 import v.ast
 import strings
 
+@[inline]
+fn (mut g Gen) register_free_method(typ ast.Type) {
+	if typ.has_flag(.shared_f) {
+		g.get_free_method(typ.clear_flag(.shared_f).set_nr_muls(0))
+	} else {
+		g.get_free_method(typ)
+	}
+}
+
 fn (mut g Gen) get_free_method(typ ast.Type) string {
-	g.autofree_methods[typ] = true
+	if typ in g.autofree_methods {
+		return g.autofree_methods[typ]
+	}
 	mut sym := g.table.sym(g.unwrap_generic(typ))
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
@@ -16,8 +27,10 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
 	fn_name := styp_to_free_fn_name(styp)
 	if sym.has_method_with_generic_parent('free') {
+		g.autofree_methods[typ] = fn_name
 		return fn_name
 	}
+	g.autofree_methods[typ] = fn_name
 	return fn_name
 }
 
@@ -43,7 +56,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-	if sym.has_method_with_generic_parent('free') {
+	if sym.kind != .interface && sym.has_method_with_generic_parent('free') {
 		return fn_name
 	}
 
@@ -57,6 +70,9 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		ast.Map {
 			g.gen_free_for_map(objtyp, sym.info, styp, fn_name)
 		}
+		ast.Interface {
+			g.gen_free_for_interface(sym, sym.info, styp, fn_name)
+		}
 		else {
 			println(g.table.type_str(typ))
 			// print_backtrace()
@@ -65,6 +81,28 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		}
 	}
 	return fn_name
+}
+
+fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, styp string, fn_name string) {
+	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
+	mut fn_builder := strings.new_builder(128)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
+	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
+	for t in info.types {
+		typ_ := g.unwrap_generic(t)
+		sub_sym := g.table.sym(typ_)
+		if sub_sym.kind !in [.string, .array, .map, .struct] {
+			continue
+		}
+		if !sub_sym.has_method_with_generic_parent('free') {
+			continue
+		}
+		type_styp := g.gen_type_name_for_free_call(typ_)
+		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${type_styp}_free(it->_${sub_sym.cname}); return; }')
+	}
+	fn_builder.writeln('}')
 }
 
 fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, fn_name string) {
@@ -81,13 +119,8 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		if sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
-		mut field_styp := g.typ(field.typ.set_nr_muls(0).clear_flag(.option)).replace('*',
-			'')
-		is_shared := field_styp.starts_with('__shared')
+		field_styp := g.gen_type_name_for_free_call(field.typ)
 		is_struct_option := typ.has_flag(.option)
-		if is_shared {
-			field_styp = field_styp.all_after('__shared__')
-		}
 		field_styp_fn_name := if sym.has_method('free') {
 			'${field_styp}_free'
 		} else {
@@ -95,7 +128,7 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		}
 		is_field_option := field.typ.has_flag(.option)
 		expects_opt := field_styp_fn_name.starts_with('_option_')
-		if is_shared {
+		if field.typ.has_flag(.shared_f) {
 			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}->val));')
 		} else if is_struct_option {
 			opt_styp := g.base_type(typ)
@@ -124,6 +157,14 @@ fn (mut g Gen) gen_free_for_struct(typ ast.Type, info ast.Struct, styp string, f
 		}
 	}
 	fn_builder.writeln('}')
+}
+
+fn (mut g Gen) gen_type_name_for_free_call(typ ast.Type) string {
+	mut styp := g.typ(typ.set_nr_muls(0).clear_flag(.option)).replace('*', '')
+	if styp.starts_with('__shared') {
+		styp = styp.all_after('__shared__')
+	}
+	return styp
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {

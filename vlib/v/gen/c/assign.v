@@ -723,10 +723,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.write(', ')
 			}
 			mut cloned := false
-			if g.is_autofree && right_sym.kind in [.array, .string]
-				&& !unwrapped_val_type.has_flag(.shared_f) {
-				if g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
-					cloned = true
+			if g.is_autofree {
+				if right_sym.kind in [.array, .string] && !unwrapped_val_type.has_flag(.shared_f) {
+					if g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
+						cloned = true
+					}
+				} else if right_sym.info is ast.Interface && var_type != ast.error_type {
+					g.register_free_method(var_type)
 				}
 			}
 			if !cloned {
