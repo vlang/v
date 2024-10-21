@@ -212,6 +212,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	if got_ == 0 {
 		return error('unexpected 0 type')
 	}
+	if got_ == expected_ {
+		return
+	}
 	mut expected := c.table.unaliased_type(expected_)
 	is_aliased := expected != expected_
 	is_exp_sumtype := c.table.type_kind(expected_) == .sum_type
@@ -221,6 +224,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		exp_type_sym := c.table.sym(expected_)
 		exp_info := exp_type_sym.info as ast.Array
 		expected = exp_info.elem_type
+	}
+	if expected == got {
+		return
 	}
 	if language == .c {
 		// allow number types to be used interchangeably
@@ -390,6 +396,9 @@ fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 }
 
 fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
+	if got == expected {
+		return true
+	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
