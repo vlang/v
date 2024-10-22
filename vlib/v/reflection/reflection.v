@@ -193,6 +193,7 @@ pub type TypeInfo = Alias
 pub struct TypeSymbol {
 pub:
 	name       string     // symbol name
+	mod        string     // mod name
 	idx        int        // symbol idx
 	parent_idx int        // symbol parent idx
 	language   VLanguage  // language
