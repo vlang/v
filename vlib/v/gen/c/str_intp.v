@@ -186,8 +186,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		dot := if typ.is_ptr() { '->' } else { '.' }
 		g.write('${dot}_typ]._method_str(')
 		g.expr(expr)
-		g.write('${dot}_object')
-		g.write(')')
+		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
@@ -261,17 +260,14 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write(' str_intp(')
-	g.write(node.vals.len.str())
-	g.write(', ')
-	g.write('_MOV((StrIntpData[]){')
+	g.write2(' str_intp(', node.vals.len.str())
+	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
 		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
-			g.write('{_SLIT("')
-			g.write(escaped_val)
+			g.write2('{_SLIT("', escaped_val)
 			g.write('"), ')
 		} else {
 			g.write('{_SLIT0, ')
@@ -284,10 +280,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 
 		ft_u64, ft_str := g.str_format(node, i, fmts)
-		g.write('0x')
-		g.write(ft_u64.hex())
-		g.write(', {.d_')
-		g.write(ft_str)
+		g.write2('0x', ft_u64.hex())
+		g.write2(', {.d_', ft_str)
 		g.write(' = ')
 
 		// for pointers we need a void* cast

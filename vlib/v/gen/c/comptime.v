@@ -265,8 +265,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			if !g.inside_assign {
 				cur_line := g.go_before_last_stmt()
 				tmp_var := g.new_tmp_var()
-				g.write('${g.styp(m.return_type)} ${tmp_var} = ')
-				g.write(cur_line)
+				g.write2('${g.styp(m.return_type)} ${tmp_var} = ', cur_line)
 				g.or_block(tmp_var, node.or_block, m.return_type)
 			}
 		}
@@ -414,8 +413,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 						g.stmt(last)
 					}
 					g.skip_stmt_pos = prev_skip_stmt_pos
-					g.writeln(';')
-					g.writeln('}')
+					g.writeln2(';', '}')
 					g.indent--
 				} else {
 					g.indent++

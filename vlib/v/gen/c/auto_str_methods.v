@@ -417,8 +417,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 				{_SLIT("${clean_interface_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${sub_sym.cname}_index)')
-			fn_builder.write_string(' return ${res};')
+			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+				' return ${res};')
 		} else {
 			mut val := '${func_name}(${deref}(${sub_sym.cname}*)x._${sub_sym.cname}'
 			if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
@@ -429,8 +429,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 				{_SLIT("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${sub_sym.cname}_index)')
-			fn_builder.write_string(' return ${res};\n')
+			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+				' return ${res};\n')
 		}
 	}
 	fn_builder.writeln('\treturn _SLIT("unknown interface value");')
@@ -1116,8 +1116,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 						'\tstring_free(&${tmpvar});')
 					fn_body.write_string(tmpvar)
 				} else {
-					fn_body.write_string(funcprefix)
-					fn_body.write_string(func)
+					fn_body.write_string2(funcprefix, func)
 				}
 			}
 		}

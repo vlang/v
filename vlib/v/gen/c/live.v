@@ -72,8 +72,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	g.writeln('')
 	// We are in live code reload mode, so start the .so loader in the background
-	g.writeln('\t// live code initialization section:')
-	g.writeln('\t{')
+	g.writeln2('\t// live code initialization section:', '\t{')
 	g.writeln('\t\t// initialization of live function pointers')
 	for fname in g.hotcode_fn_names {
 		g.writeln('\t\timpl_live_${fname} = 0;')

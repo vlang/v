@@ -915,8 +915,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			g.expr(lx)
 			sym := g.table.final_sym(node.left_types[i])
 			if sym.kind == .array_fixed {
-				g.writeln(';')
-				g.writeln('memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
+				g.writeln2(';', 'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
 				if cur_indexexpr != -1 {
 					if is_auto_heap {
@@ -1123,8 +1122,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			for lx in left {
 				if lx is ast.Ident {
 					if val.name == lx.name {
-						g.write('_var_')
-						g.write(lx.pos.pos.str())
+						g.write2('_var_', lx.pos.pos.str())
 						has_var = true
 						break
 					}
@@ -1138,8 +1136,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if val_.str() == lx.str() {
-					g.write('_var_')
-					g.write(lx.pos().pos.str())
+					g.write2('_var_', lx.pos().pos.str())
 					has_var = true
 					break
 				}
@@ -1152,10 +1149,8 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			sym := g.table.sym(val.left_type)
 			if _ := g.table.find_method(sym, val.op.str()) {
 				left_styp := g.styp(val.left_type.set_nr_muls(0))
-				g.write(left_styp)
-				g.write('_')
-				g.write(util.replace_op(val.op.str()))
-				g.write('(')
+				g.write2(left_styp, '_')
+				g.write2(util.replace_op(val.op.str()), '(')
 				g.gen_cross_tmp_variable(left, val.left)
 				g.write(', ')
 				g.gen_cross_tmp_variable(left, val.right)
@@ -1216,8 +1211,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if val_.str() == lx.str() {
-					g.write('_var_')
-					g.write(lx.pos().pos.str())
+					g.write2('_var_', lx.pos().pos.str())
 					has_var = true
 					break
 				}

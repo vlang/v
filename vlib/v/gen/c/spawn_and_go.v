@@ -142,8 +142,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if node.is_expr && node.call_expr.return_type != ast.void_type {
 				g.writeln('${gohandle_name} thread_${tmp} = {')
 				g.writeln('\t.ret_ptr = ${arg_tmp_var}->ret_ptr,')
-				g.writeln('\t.handle = thread_handle_${tmp}')
-				g.writeln('};')
+				g.writeln2('\t.handle = thread_handle_${tmp}', '};')
 			}
 			if !node.is_expr {
 				g.writeln('CloseHandle(thread_${tmp});')
@@ -315,12 +314,11 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				&& (typ_sym.info as ast.Interface).defines_method(expr.name) {
 				rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 				receiver_type_name := util.no_dots(rec_cc_type)
-				g.gowrappers.write_string('${c_name(receiver_type_name)}_name_table[')
-				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string2('${c_name(receiver_type_name)}_name_table[',
+					'arg->arg0')
 				idot := if expr.left_type.is_ptr() { '->' } else { '.' }
 				mname := c_name(expr.name)
-				g.gowrappers.write_string('${idot}_typ]._method_${mname}(')
-				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string2('${idot}_typ]._method_${mname}(', 'arg->arg0')
 				g.gowrappers.write_string('${idot}_object')
 			} else if typ_sym.kind == .struct && expr.is_field {
 				g.gowrappers.write_string('arg->arg0')
@@ -328,8 +326,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				mname := c_name(expr.name)
 				g.gowrappers.write_string('${idot}${mname}(')
 			} else {
-				g.gowrappers.write_string('arg->fn(')
-				g.gowrappers.write_string('arg->arg0')
+				g.gowrappers.write_string2('arg->fn(', 'arg->arg0')
 			}
 			if expr.args.len > 0 && (typ_sym.kind != .struct || !expr.is_field) {
 				g.gowrappers.write_string(', ')
@@ -400,8 +397,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	if node.is_expr {
 		g.empty_line = false
-		g.write(line)
-		g.write(handle)
+		g.write2(line, handle)
 	}
 }
 

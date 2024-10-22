@@ -145,14 +145,12 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		} else {
 			g.write(g.styp(left.unaliased.set_nr_muls(0)))
 		}
-		g.write('__eq(')
-		g.write('*'.repeat(left.typ.nr_muls()))
+		g.write2('__eq(', '*'.repeat(left.typ.nr_muls()))
 		if eq_operator_expects_ptr {
 			g.write('&')
 		}
 		g.expr(node.left)
-		g.write(', ')
-		g.write('*'.repeat(right.typ.nr_muls()))
+		g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 		if eq_operator_expects_ptr {
 			g.write('&')
 		}
@@ -362,28 +360,24 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
-			g.write('(')
-			g.write('*'.repeat(left.typ.nr_muls()))
+			g.write2('(', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
 			g.expr(node.left)
-			g.write(', ')
-			g.write('*'.repeat(right.typ.nr_muls()))
+			g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
 			g.expr(node.right)
 			g.write(')')
 		} else {
-			g.write('(')
-			g.write('*'.repeat(right.typ.nr_muls()))
+			g.write2('(', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
 			g.expr(node.right)
-			g.write(', ')
-			g.write('*'.repeat(left.typ.nr_muls()))
+			g.write2(', ', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
@@ -394,31 +388,26 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
-		g.write(g.styp(left.typ.set_nr_muls(0)))
-		g.write('__lt')
+		g.write2(g.styp(left.typ.set_nr_muls(0)), '__lt')
 		if node.op in [.lt, .ge] {
-			g.write('(')
-			g.write('*'.repeat(left.typ.nr_muls()))
+			g.write2('(', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
 			g.expr(node.left)
-			g.write(', ')
-			g.write('*'.repeat(right.typ.nr_muls()))
+			g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
 			g.expr(node.right)
 			g.write(')')
 		} else {
-			g.write('(')
-			g.write('*'.repeat(right.typ.nr_muls()))
+			g.write2('(', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
 			g.expr(node.right)
-			g.write(', ')
-			g.write('*'.repeat(left.typ.nr_muls()))
+			g.write2(', ', '*'.repeat(left.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
@@ -618,13 +607,11 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
 		g.write(')')
 	} else if right.unaliased_sym.kind == .string {
-		g.write('(')
-		g.write('string_contains(')
+		g.write2('(', 'string_contains(')
 		g.expr(node.right)
 		g.write(', ')
 		g.expr(node.left)
-		g.write(')')
-		g.write(')')
+		g.write('))')
 	}
 }
 
@@ -775,8 +762,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
 		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
-		g.write(method_name)
-		g.write('(')
+		g.write2(method_name, '(')
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
@@ -811,8 +797,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			g.writeln(';')
 			g.write(cur_line)
 		}
-		g.write(method_name)
-		g.write('(')
+		g.write2(method_name, '(')
 		g.op_arg(node.left, method.params[0].typ, left.typ)
 		if right_var != '' {
 			g.write(', ${right_var}')
@@ -1011,12 +996,10 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 		g.empty_line = true
 		left_var := g.expr_with_opt(node.left, node.left_type, node.left_type)
 		g.writeln(';')
-		g.write(stmt_str)
-		g.write(' ')
+		g.write2(stmt_str, ' ')
 		g.write('${left_var}.state')
 	}
-	g.write(' ${node.op.str()} ')
-	g.write('2') // none state
+	g.write(' ${node.op.str()} 2') // none state
 }
 
 // gen_plain_infix_expr generates basic code for infix expressions,

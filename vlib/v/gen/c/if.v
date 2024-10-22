@@ -354,8 +354,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.writeln(';')
 				branch_cond_var_names << cond_var_name
 				g.set_current_pos_as_last_stmt_pos()
-				g.writeln(line)
-				g.writeln('if (${cond_var_name}) {')
+				g.writeln2(line, 'if (${cond_var_name}) {')
 			} else if i > 0 && branch_cond_var_names.len > 0 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
 				line := g.go_before_last_stmt()

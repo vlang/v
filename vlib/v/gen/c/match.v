@@ -543,8 +543,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		if g.inside_ternary == 0 && node.branches.len >= 1 {
 			if reset_if {
 				has_goto = true
-				g.writeln('\tgoto end_block_${node.pos.line_nr};')
-				g.writeln('}')
+				g.writeln2('\tgoto end_block_${node.pos.line_nr};', '}')
 				g.set_current_pos_as_last_stmt_pos()
 			} else {
 				g.write('}')

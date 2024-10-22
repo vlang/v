@@ -341,8 +341,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				}
 				g.writeln('\treturn ret;')
 			}
-			g.writeln('}')
-			g.writeln('')
+			g.writeln2('}', '')
 			g.trace_fn_definitions << trace_fn
 		}
 	}
@@ -525,10 +524,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			export_alias := '${weak}${type_name} ${fn_attrs}${attr.arg}(${arg_str})'
 			g.definitions.writeln('VV_EXPORTED_SYMBOL ${export_alias}; // exported fn ${node.name}')
 			g.writeln('${export_alias} {')
-			g.write('\treturn ${name}(')
-			g.write(fargs.join(', '))
-			g.writeln(');')
-			g.writeln('}')
+			g.write2('\treturn ${name}(', fargs.join(', '))
+			g.writeln2(');', '}')
 		}
 	}
 }
@@ -709,10 +706,8 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 		g.write_defer_stmts()
 	}
 	if g.defer_profile_code.len > 0 {
-		g.writeln('')
-		g.writeln('\t// defer_profile_code')
-		g.writeln(g.defer_profile_code)
-		g.writeln('')
+		g.writeln2('', '\t// defer_profile_code')
+		g.writeln2(g.defer_profile_code, '')
 	}
 }
 
@@ -887,8 +882,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.expr(node)
 
 			g.inside_curry_call = old_inside_curry_call
-			g.write(line)
-			g.write('*(${g.base_type(ret_typ)}*)${tmp_res}.data')
+			g.write2(line, '*(${g.base_type(ret_typ)}*)${tmp_res}.data')
 			return
 		}
 	}
@@ -1131,8 +1125,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 				g.gen_arg_from_type(left_type, node.left)
 			} else {
 				if node.left_type.is_ptr() {
-					g.write('(')
-					g.write('*'.repeat(node.left_type.nr_muls()))
+					g.write2('(', '*'.repeat(node.left_type.nr_muls()))
 					g.expr(node.left)
 					g.write(')')
 				} else {
@@ -1658,8 +1651,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		left_type_name := util.no_dots(left_cc_type)
 		g.write('${c_name(left_type_name)}_name_table[')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
-			g.write('(')
-			g.write('*'.repeat(left_type.nr_muls() - 1))
+			g.write2('(', '*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -1669,8 +1661,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		mname := c_fn_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
-			g.write('(')
-			g.write('*'.repeat(left_type.nr_muls() - 1))
+			g.write2('(', '*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -1865,8 +1856,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		} else if !is_interface && node.from_embed_types.len > 0 {
 			n_ptr := node.left_type.nr_muls() - 1
 			if n_ptr > 0 {
-				g.write('(')
-				g.write('*'.repeat(n_ptr))
+				g.write2('(', '*'.repeat(n_ptr))
 				g.expr(node.left)
 				g.write(')')
 			} else {
@@ -1878,27 +1868,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			if node.receiver_type.is_ptr() && left_type.is_ptr() {
 				// (main__IFoo*)bar
-				g.write('(')
-				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
 				g.write('*)')
 				g.expr(node.left)
 			} else if node.receiver_type.is_ptr() && !left_type.is_ptr() {
 				// (main__IFoo*)&bar
-				g.write('(')
-				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
 				g.write('*)&')
 				g.expr(node.left)
 			} else if !node.receiver_type.is_ptr() && left_type.is_ptr() {
 				// *((main__IFoo*)bar)
-				g.write('*((')
-				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
 				g.write('*)')
 				g.expr(node.left)
 				g.write(')')
 			} else {
 				// *((main__IFoo*)&bar)
-				g.write('*((')
-				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
 				g.write('*)&')
 				g.expr(node.left)
 				g.write(')')

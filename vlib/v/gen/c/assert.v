@@ -121,8 +121,7 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	if g.pref.is_test {
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
 	}
-	g.writeln('\t// TODO')
-	g.writeln('\t// Maybe print all vars in a test function if it fails?')
+	g.writeln2('\t// TODO', '\t// Maybe print all vars in a test function if it fails?')
 	if g.pref.assert_failure_mode != .continues {
 		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 	}

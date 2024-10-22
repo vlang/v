@@ -239,8 +239,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
-			g.write(g.styp(node.cond_type))
-			g.write(' ${cond_var} = ')
+			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			old_inside_opt_or_res := g.inside_opt_or_res
 			if node.cond_type.has_flag(.option) {
 				g.inside_opt_or_res = true
@@ -289,8 +288,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		cond_is_literal := node.cond is ast.ArrayInit
 		if cond_is_literal {
 			cond_var = g.new_tmp_var()
-			g.write(g.styp(node.cond_type))
-			g.write(' ${cond_var} = ')
+			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		} else if cond_type_is_ptr {
@@ -348,8 +346,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
-			g.write(g.styp(node.cond_type))
-			g.write(' ${cond_var} = ')
+			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		}

@@ -21,6 +21,35 @@ fn (mut g Gen) write(s string) {
 	g.empty_line = false
 }
 
+fn (mut g Gen) write2(s1 string, s2 string) {
+	$if trace_gen ? {
+		if g.file == unsafe { nil } {
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | write: ${s1}')
+		} else {
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: ${s1}')
+		}
+	}
+	if g.indent > 0 && g.empty_line {
+		g.out.write_string(util.tabs(g.indent))
+	}
+	g.out.write_string(s1)
+	g.empty_line = false
+
+	$if trace_gen ? {
+		if g.file == unsafe { nil } {
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | write: ${s2}')
+		} else {
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: ${s2}')
+		}
+	}
+
+	if g.indent > 0 && g.empty_line {
+		g.out.write_string(util.tabs(g.indent))
+	}
+	g.out.write_string(s2)
+	g.empty_line = false
+}
+
 fn (mut g Gen) write_decimal(x i64) {
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
@@ -51,6 +80,36 @@ fn (mut g Gen) writeln(s string) {
 	// println('w len=$g.out_parallel.len')
 	g.out.writeln(s)
 	// g.out_parallel[g.out_idx].writeln(s)
+	g.empty_line = true
+}
+
+fn (mut g Gen) writeln2(s1 string, s2 string) {
+	// expansion for s1
+	$if trace_gen ? {
+		if g.file == unsafe { nil } {
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s1}')
+		} else {
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s1}')
+		}
+	}
+	if g.indent > 0 && g.empty_line {
+		g.out.write_string(util.tabs(g.indent))
+	}
+	g.out.writeln(s1)
+	g.empty_line = true
+
+	// expansion for s2
+	$if trace_gen ? {
+		if g.file == unsafe { nil } {
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s2}')
+		} else {
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s2}')
+		}
+	}
+	if g.indent > 0 && g.empty_line {
+		g.out.write_string(util.tabs(g.indent))
+	}
+	g.out.writeln(s2)
 	g.empty_line = true
 }
 
