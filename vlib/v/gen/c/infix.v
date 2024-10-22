@@ -145,7 +145,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			if node.op == .eq {
 				g.write('(${var}${arrow}len == sizeof("${slit}")-1 && !vmemcmp(${var}${arrow}str, "${slit}", sizeof("${slit}")-1))')
 			} else {
-				g.write('(${var}${arrow}len ${node.op} sizeof("${slit}")-1 || vmemcmp(${var}${arrow}str, "${slit}", sizeof("${slit}")-1))')
+				g.write('(${var}${arrow}len != sizeof("${slit}")-1 || vmemcmp(${var}${arrow}str, "${slit}", sizeof("${slit}")-1))')
 			}
 		}
 	} else if has_defined_eq_operator {
