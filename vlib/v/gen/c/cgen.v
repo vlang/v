@@ -85,6 +85,7 @@ mut:
 	sorted_global_const_names []string
 	file                      &ast.File  = unsafe { nil }
 	table                     &ast.Table = unsafe { nil }
+	styp_cache                map[ast.Type]string
 	unique_file_path_hash     u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
@@ -120,6 +121,7 @@ mut:
 	chan_push_options         map[string]string // types for `ch <- x or {...}`
 	mtxs                      string            // array of mutexes if the `lock` has multiple variables
 	labeled_loops             map[string]&ast.Stmt
+	contains_ptr_cache        map[ast.Type]bool
 	inner_loop                &ast.Stmt = unsafe { nil }
 	cur_indexexpr             []int          // list of nested indexexpr which generates array_set/map_set
 	shareds                   map[int]string // types with hidden mutex for which decl has been emitted
@@ -1050,6 +1052,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C typecc
+@[inline]
 fn (mut g Gen) styp(t ast.Type) string {
 	if t.has_flag(.option) {
 		// Register an optional if it's not registered yet
@@ -1063,6 +1066,9 @@ fn (mut g Gen) styp(t ast.Type) string {
 
 fn (mut g Gen) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
+	if styp := g.styp_cache[t] {
+		return styp
+	}
 	if g.pref.nofloat {
 		// TODO: compile time if for perf?
 		if t == ast.f32_type {
@@ -1088,6 +1094,7 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	g.styp_cache[t] = styp
 	return styp
 }
 
@@ -8080,8 +8087,13 @@ pub fn (mut g Gen) get_array_depth(el_typ ast.Type) int {
 
 // returns true if `t` includes any pointer(s) - during garbage collection heap regions
 // that contain no pointers do not have to be scanned
+@[direct_array_access]
 pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
+	if t_typ := g.contains_ptr_cache[el_typ] {
+		return t_typ
+	}
 	if el_typ.is_any_kind_of_pointer() {
+		g.contains_ptr_cache[el_typ] = true
 		return true
 	}
 	typ := g.unwrap_generic(el_typ)
@@ -8090,10 +8102,12 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 	}
 	sym := g.table.final_sym(typ)
 	if sym.language != .v {
+		g.contains_ptr_cache[typ] = true
 		return true
 	}
 	match sym.kind {
 		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum {
+			g.contains_ptr_cache[typ] = false
 			return false
 		}
 		.array_fixed {
@@ -8133,6 +8147,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 			return false
 		}
 		else {
+			g.contains_ptr_cache[typ] = true
 			return true
 		}
 	}

@@ -32,14 +32,14 @@ fn xtime(cmd string) {
 }
 
 fn vcompare(vold string, vnew string) {
-	r("v repeat -R 3 '${vold} -check-syntax examples/hello_world.v' '${vnew} -check-syntax examples/hello_world.v'")
-	r("v repeat -R 3 '${vold} -check        examples/hello_world.v' '${vnew} -check        examples/hello_world.v'")
-	r("v repeat -R 3 '${vold} -o    hw.c    examples/hello_world.v' '${vnew} -o    hw.c    examples/hello_world.v'")
-	r("v repeat -R 3 '${vold} -o    hw      examples/hello_world.v' '${vnew} -o    hw      examples/hello_world.v'")
-	r("v repeat -R 3 '${vold} -check-syntax cmd/v'                  '${vnew} -check-syntax cmd/v'")
-	r("v repeat -R 3 '${vold} -check        cmd/v'                  '${vnew} -check        cmd/v'")
-	r("v repeat -R 3 '${vold} -o    ov.c    cmd/v'                  '${vnew} -o    nv.c    cmd/v'")
-	r("v repeat -R 3 '${vold} -o    ov      cmd/v'                  '${vnew} -o    nv      cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax examples/hello_world.v' '${vnew} -check-syntax examples/hello_world.v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -check        examples/hello_world.v' '${vnew} -check        examples/hello_world.v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o    hw.c    examples/hello_world.v' '${vnew} -o    hw.c    examples/hello_world.v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o    hw      examples/hello_world.v' '${vnew} -o    hw      examples/hello_world.v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax cmd/v'                  '${vnew} -check-syntax cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -check        cmd/v'                  '${vnew} -check        cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o    ov.c    cmd/v'                  '${vnew} -o    nv.c    cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o    ov      cmd/v'                  '${vnew} -o    nv      cmd/v'")
 }
 
 fn main() {

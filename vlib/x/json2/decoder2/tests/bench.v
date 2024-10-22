@@ -20,6 +20,8 @@ pub struct Stru2 {
 }
 
 type SumTypes = StructType[string] | bool | int | string | time.Time
+type StringAlias = string
+type IntAlias = int
 
 enum Enum {
 	a
@@ -167,4 +169,20 @@ fn main() {
 	}
 
 	b.measure('decoder2.decode[string](\'"abcdefghijklimnopqrstuv"\')!')
+
+	// alias **********************************************************
+
+	println('\n***alias***')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[IntAlias]('2')!
+	}
+
+	b.measure('decoder2.decode[IntAlias](2)!')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[StringAlias]('"abcdefghijklimnopqrstuv"')!
+	}
+
+	b.measure('decoder2.decode[StringAlias](\'"abcdefghijklimnopqrstuv"\')!')
 }
