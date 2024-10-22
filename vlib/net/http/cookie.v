@@ -128,8 +128,7 @@ pub fn (c &Cookie) str() string {
 		}
 	}
 	if c.expires.year > 1600 {
-		e := c.expires
-		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
+		time_str := c.expires.http_header_string()
 		b.write_string('; expires=')
 		b.write_string(time_str)
 	}

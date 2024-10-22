@@ -410,10 +410,7 @@ fn update_date_string(mut pv Picoev) {
 	for {
 		// get GMT (UTC) time for the HTTP Date header
 		gmt := time.utc()
-		mut date_string := gmt.strftime('---, %d --- %Y %H:%M:%S GMT')
-		date_string = date_string.replace_once('---', gmt.weekday_str())
-		date_string = date_string.replace_once('---', gmt.smonth())
-		pv.date = date_string
+		pv.date = gmt.http_header_string()
 		time.sleep(time.second)
 	}
 }
