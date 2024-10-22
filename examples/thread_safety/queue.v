@@ -1,3 +1,20 @@
+/*
+This example demonstrates thread safety using a queue of callbacks.
+
+### Functions:
+- `producer`: creates a callback and adds it to the queue.
+- `consumer`: consumes a callback from the queue and runs it.
+- `heavy_processing`: a heavy processing function that is added to the queue.
+
+### Thread Safety:
+- The `fn producer` function is protected by a mutex. It locks the mutex before adding a callback
+to the queue and unlocks it after adding the callback.
+- The `fn consumer` function is also protected by the same mutex. It locks the mutex before
+consuming a callback from the queue and unlocks it after consuming the callback.
+- The `heavy_processing` function is added to the queue by the main thread before the producer
+threads start producing callbacks. The main thread is the only thread that adds this function to
+the queue, so it doesn't need to be protected by a mutex.
+*/
 import time
 import sync
 
@@ -20,11 +37,11 @@ fn consumer(consumer_name string, mut arr []Callback, mut mtx sync.Mutex) {
 	for {
 		mtx.lock()
 		if arr.len > 0 {
-			item := arr[0]
+			callback := arr[0]
 			arr.delete(0)
 
 			mtx.unlock()
-			item(consumer_name) // run after unlocking to allow other threads to consume
+			callback(consumer_name) // run after unlocking to allow other threads to consume
 			continue
 		} else {
 			println('- No items to consume')
