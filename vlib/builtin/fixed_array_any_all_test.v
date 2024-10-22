@@ -1,42 +1,37 @@
 fn test_any_all_of_ints() {
 	ia := [1, 2, 3]!
-	mut ii := ia.any(it > 2)
-	println(ii)
-	assert ii
 
-	ii = ia.all(it > 1)
-	println(ii)
-	assert !ii
+	assert ia.any(it > 2)
+	assert ia.any(|x| x > 2)
 
-	ii = ia.any(it == 2)
-	println(ii)
-	assert ii
+	assert !ia.all(it > 1)
+	assert !ia.all(|x| x > 1)
 
-	ii = ia.all(it == 3)
-	println(ii)
-	assert !ii
+	assert ia.any(it == 2)
+	assert ia.any(|x| x == 2)
+
+	assert !ia.all(it == 3)
+	assert !ia.all(|x| x == 3)
 }
 
 fn test_any_all_of_strings() {
 	sa := ['a', 'b', 'c']!
-	mut si := sa.any(it == 'b')
-	println(si)
-	assert si
 
-	si = sa.all(it == 'c')
-	println(si)
-	assert !si
+	assert sa.any(it == 'b')
+	assert sa.any(|x| x == 'b')
+
+	assert !sa.all(it == 'c')
+	assert !sa.all(|x| x == 'c')
 }
 
 fn test_any_all_of_voidptrs() {
 	pa := [voidptr(123), voidptr(45), voidptr(99)]!
-	mut pi := pa.any(it == voidptr(45))
-	println(pi)
-	assert pi
 
-	pi = pa.all(it == voidptr(123))
-	println(pi)
-	assert !pi
+	assert pa.any(it == voidptr(45))
+	assert pa.any(|x| x == voidptr(45))
+
+	assert !pa.all(it == voidptr(123))
+	assert !pa.all(|x| x == voidptr(123))
 }
 
 fn a() {}
@@ -49,11 +44,10 @@ fn v() {}
 
 fn test_any_all_of_fns() {
 	fa := [a, b, c]!
-	mut fi := fa.any(it == b)
-	println(fi)
-	assert fi
 
-	fi = fa.all(it == v)
-	println(fi)
-	assert !fi
+	assert fa.any(it == b)
+	assert fa.any(|x| x == b)
+
+	assert !fa.all(it == v)
+	assert !fa.all(|x| x == v)
 }
