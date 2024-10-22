@@ -85,6 +85,7 @@ mut:
 	sorted_global_const_names []string
 	file                      &ast.File  = unsafe { nil }
 	table                     &ast.Table = unsafe { nil }
+	styp_cache                map[ast.Type]string
 	unique_file_path_hash     u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
@@ -1083,6 +1084,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 }
 
 // V type to C typecc
+@[inline]
 fn (mut g Gen) styp(t ast.Type) string {
 	if t.has_flag(.option) {
 		// Register an optional if it's not registered yet
@@ -1096,6 +1098,9 @@ fn (mut g Gen) styp(t ast.Type) string {
 
 fn (mut g Gen) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
+	if styp := g.styp_cache[t] {
+		return styp
+	}
 	if g.pref.nofloat {
 		// TODO: compile time if for perf?
 		if t == ast.f32_type {
@@ -1121,6 +1126,7 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	g.styp_cache[t] = styp
 	return styp
 }
 
