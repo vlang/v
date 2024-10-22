@@ -984,7 +984,6 @@ fn (mut g Gen) gen_array_contains_methods() {
 			elem_kind := g.table.sym(elem_type).kind
 			elem_is_not_ptr := elem_type.nr_muls() == 0
 			if elem_kind == .function {
-				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
 			}
 			g.type_definitions.writeln('static bool ${fn_name}(${left_type_str} a, ${elem_type_str} v); // auto')

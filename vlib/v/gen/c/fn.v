@@ -1187,6 +1187,9 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		'index' {
 			g.gen_array_index(node)
 		}
+		'contains' {
+			g.gen_array_contains(left_type, node.left, node.args[0].typ, node.args[0].expr)
+		}
 		'any' {
 			g.gen_array_any(node)
 		}
