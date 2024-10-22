@@ -53,4 +53,21 @@ fn test_array_of_strings() {
 			brazilian_steak: 'leleu'
 		}
 	}
+
+	// pretty print
+	assert json.decode[Stru]('{
+		"val": 1,
+		"val2": "lala",
+		"val3": {
+			"a": 2,
+			"brazilian_steak": "leleu"
+		}
+	}')! == Stru{
+		val:  1
+		val2: 'lala'
+		val3: Stru2{
+			a:               2
+			brazilian_steak: 'leleu'
+		}
+	}
 }
