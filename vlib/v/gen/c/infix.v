@@ -129,7 +129,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
-		&& (node.right.val == '' || node.left in [ast.SelectorExpr, ast.Ident]) {
+		&& (node.right.val == '' || node.left is ast.Ident) {
 		if node.right.val == '' {
 			// `str == ''` -> `str.len == 0` optimization
 			g.write('(')
@@ -143,9 +143,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			var := g.expr_string(node.left)
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			if node.op == .eq {
-				g.write('(${var}${arrow}len == sizeof("${slit}")-1 && !vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1))')
+				g.write('(${var}${arrow}len == sizeof("${slit}")-1 && !vmemcmp(${var}${arrow}str, "${slit}", sizeof("${slit}")-1))')
 			} else {
-				g.write('(${var}${arrow}len ${node.op} sizeof("${slit}")-1 || vmemcmp(${var}.str, "${slit}", sizeof("${slit}")-1))')
+				g.write('(${var}${arrow}len ${node.op} sizeof("${slit}")-1 || vmemcmp(${var}${arrow}str, "${slit}", sizeof("${slit}")-1))')
 			}
 		}
 	} else if has_defined_eq_operator {
