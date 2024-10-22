@@ -143,9 +143,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			var := g.expr_string(node.left)
 			arrow := if left.typ.is_ptr() { '->' } else { '.' }
 			if node.op == .eq {
-				g.write('_SLIT_EQ(${var}, ${arrow}, "${slit}")')
+				g.write('_SLIT_EQ(${var}${arrow}str, ${var}${arrow}len, "${slit}")')
 			} else {
-				g.write('_SLIT_NE(${var}, ${arrow}, "${slit}")')
+				g.write('_SLIT_NE(${var}${arrow}str, ${var}${arrow}len, "${slit}")')
 			}
 		}
 	} else if has_defined_eq_operator {
