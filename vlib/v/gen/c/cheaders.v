@@ -498,6 +498,9 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _SLIT0 (string){.str=(byteptr)(""), .len=0, .is_lit=1}
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 #define _SLEN(s, n) ((string){.str=(byteptr)("" s), .len=n, .is_lit=1})
+// optimized way to compare literal strings
+#define _SLIT_EQ(s, op, l) (s##op##len == sizeof(l)-1 && !vmemcmp(s##op##str, l, sizeof(l)-1))
+#define _SLIT_NE(s, op, l) (s##op##len != sizeof(l)-1 || vmemcmp(s##op##str, l, sizeof(l)-1))
 
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
