@@ -1194,6 +1194,12 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		'index' {
 			g.gen_array_index(node)
 		}
+		'any' {
+			g.gen_array_any(node)
+		}
+		'all' {
+			g.gen_array_all(node)
+		}
 		else {
 			return false
 		}
