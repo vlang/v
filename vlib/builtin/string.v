@@ -1510,13 +1510,10 @@ pub fn (s string) starts_with(p string) bool {
 pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
+	} else if unsafe { vmemcmp(s.str + s.len - p.len, p.str, p.len) == 0 } {
+		return true
 	}
-	for i in 0 .. p.len {
-		if unsafe { p.str[i] != s.str[s.len - p.len + i] } {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 // to_lower returns the string in all lowercase characters.
