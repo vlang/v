@@ -801,7 +801,8 @@ pub fn (mut g Gen) init() {
 		if g.pref.os == .wasm32 {
 			g.cheaders.writeln('#define VWASM 1')
 			// Include <stdint.h> instead of <inttypes.h> for WASM target
-			g.cheaders.writeln2('#include <stdint.h>', '#include <stddef.h>')
+			g.cheaders.writeln('#include <stdint.h>')
+			g.cheaders.writeln('#include <stddef.h>')
 		} else {
 			tcc_undef_has_include := '
 #if defined(__TINYC__) && defined(__has_include)
@@ -812,7 +813,8 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln(tcc_undef_has_include)
 			g.includes.writeln(tcc_undef_has_include)
 			if g.pref.os == .freebsd {
-				g.cheaders.writeln2('#include <inttypes.h>', '#include <stddef.h>')
+				g.cheaders.writeln('#include <inttypes.h>')
+				g.cheaders.writeln('#include <stddef.h>')
 			} else {
 				install_compiler_msg := ' Please install the package `build-essential`.'
 				g.cheaders.writeln(get_guarded_include_text('<inttypes.h>', 'The C compiler can not find <inttypes.h>.${install_compiler_msg}')) // int64_t etc
