@@ -1097,10 +1097,10 @@ fn (mut g Gen) styp(t ast.Type) string {
 }
 
 fn (mut g Gen) base_type(_t ast.Type) string {
-	t := g.unwrap_generic(_t)
-	if styp := g.styp_cache[t] {
+	if styp := g.styp_cache[_t] {
 		return styp
 	}
+	t := g.unwrap_generic(_t)
 	if g.pref.nofloat {
 		// TODO: compile time if for perf?
 		if t == ast.f32_type {
