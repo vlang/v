@@ -3493,6 +3493,21 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.int_type
+	} else if method_name in ['any', 'all'] {
+		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.void_type
+			}
+			c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
+		c.expr(mut node.args[0].expr)
+		c.check_map_and_filter(false, elem_typ, node)
+		node.return_type = ast.bool_type
 	}
 	return node.return_type
 }
