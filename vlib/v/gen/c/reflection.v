@@ -81,9 +81,10 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 @[inline]
 fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	kind_name := tsym.kind.str()
+	name := tsym.name.all_after_last('.')
 	info := g.gen_reflection_sym_info(tsym)
 	methods := g.gen_function_array(tsym.methods)
-	return '(${cprefix}TypeSymbol){.name=_SLIT("${tsym.name}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
+	return '(${cprefix}TypeSymbol){.name=_SLIT("${name}"),.mod=_SLIT("${tsym.mod}"),.idx=${tsym.idx},.parent_idx=${tsym.parent_idx},.language=${cprefix}VLanguage__${tsym.language},.kind=${cprefix}VKind__${kind_name},.info=${info},.methods=${methods}}'
 }
 
 // gen_attrs_array generates C code for []Attr
