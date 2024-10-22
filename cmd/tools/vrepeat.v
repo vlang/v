@@ -69,6 +69,7 @@ mut:
 	nmins                   int  // number of minimums to discard
 	nmaxs                   int  // number of maximums to discard
 	ignore_failed           bool // ignore commands that exit with != 0 exit code
+	no_vexe_setenv          bool // do not change the VEXE variable
 }
 
 fn new_aints(ovals []i64, extreme_mins int, extreme_maxs int) Aints {
@@ -394,6 +395,7 @@ fn (mut context Context) parse_options() ! {
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup run count. These are done *at the start* of each series, and the timings are ignored. Default: 2')
 	context.series = fp.int('series', `s`, 1, 'Series count. `-s 2 -r 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -r 2 a b` => aabbaabbaabb. Default: 1')
 	context.ignore_failed = fp.bool('ignore', `e`, false, 'Ignore failed commands (returning a non 0 exit code).')
+	context.no_vexe_setenv = fp.bool('no_vexe_reset', `N`, false, 'Do not reset the VEXE env variable at the start. \n                            By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it')
 	context.use_newline = fp.bool('newline', `n`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
 	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
@@ -447,11 +449,13 @@ fn (mut context Context) reset_results() {
 }
 
 fn main() {
-	// Make sure that we can measure various V executables
-	// without influencing them, by presetting VEXE
-	os.setenv('VEXE', '', true)
 	mut context := Context{}
 	context.parse_options()!
+	if !context.no_vexe_setenv {
+		// Make sure that we can measure various V executables
+		// without influencing them, by presetting VEXE
+		os.setenv('VEXE', '', true)
+	}
 	for i := 1; i <= context.repeats_count; i++ {
 		context.current_run = i
 		context.reset_results()
