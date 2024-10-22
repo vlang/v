@@ -215,22 +215,16 @@ pub fn (mut b Builder) writeln(s string) {
 	b << u8(`\n`)
 }
 
-// write2ln appends two string `s1` and `s2`, and then a newline character.
+// write2ln appends two strings: `s1` + `\n`, and `s2` + `\n`, to the buffer.
 @[inline]
 pub fn (mut b Builder) write2ln(s1 string, s2 string) {
-	// for c in s {
-	// b.buf << c
-	// }
 	if s1 != '' {
 		unsafe { b.push_many(s1.str, s1.len) }
 	}
-	// b.buf << []u8(s)  // TODO
 	b << u8(`\n`)
-
 	if s2 != '' {
 		unsafe { b.push_many(s2.str, s2.len) }
 	}
-
 	b << u8(`\n`)
 }
 
