@@ -32,7 +32,7 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 			g.writeln('\tv__profile_enabled = true;')
 		}
 		g.writeln('\tdouble _PROF_FN_START = ${measure_fn_name}();')
-		g.write2ln('\tif(v__profile_enabled) { ${fn_profile_counter_name_calls}++; } // ${fn_name}',
+		g.writeln2('\tif(v__profile_enabled) { ${fn_profile_counter_name_calls}++; } // ${fn_name}',
 			'')
 		g.defer_profile_code = '\tif(v__profile_enabled) { ${fn_profile_counter_name} += ${measure_fn_name}() - _PROF_FN_START; }'
 		if should_restore_v__profile_enabled {

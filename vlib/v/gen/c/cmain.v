@@ -42,8 +42,8 @@ fn (mut g Gen) gen_vlines_reset() {
 		// The rest is auto generated code, which will not have
 		// different .v source file/line numbers.
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
-		g.write2ln('', '// Reset the C file/line numbers')
-		g.write2ln('${reset_dbg_line} "${g.vlines_path}"', '')
+		g.writeln2('', '// Reset the C file/line numbers')
+		g.writeln2('${reset_dbg_line} "${g.vlines_path}"', '')
 	}
 }
 
@@ -134,7 +134,7 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 fn (mut g Gen) gen_c_main_function_header() {
 	g.gen_c_main_function_only_header()
 	g.gen_c_main_trace_calls_hook()
-	g.write2ln('\tg_main_argc = ___argc;', '\tg_main_argv = ___argv;')
+	g.writeln2('\tg_main_argc = ___argc;', '\tg_main_argv = ___argv;')
 	if g.nr_closures > 0 {
 		g.writeln('\t__closure_init(); // main()')
 	}
@@ -167,7 +167,7 @@ fn (mut g Gen) gen_c_main_header() {
 
 pub fn (mut g Gen) gen_c_main_footer() {
 	g.writeln('\t_vcleanup();')
-	g.write2ln('\treturn 0;', '}')
+	g.writeln2('\treturn 0;', '}')
 }
 
 pub fn (mut g Gen) gen_c_android_sokol_main() {
@@ -202,7 +202,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
-		g.write2ln('\tGC_set_pages_executable(0);', '\tGC_INIT();')
+		g.writeln2('\tGC_set_pages_executable(0);', '\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
 		}
@@ -225,7 +225,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	}
 ')
 	}
-	g.write2ln('	return g_desc;', '}')
+	g.writeln2('	return g_desc;', '}')
 }
 
 pub fn (mut g Gen) write_tests_definitions() {
@@ -255,9 +255,9 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 
 pub fn (mut g Gen) gen_c_main_profile_hook() {
 	if g.pref.is_prof {
-		g.write2ln('', '\tsignal(SIGINT, vprint_profile_stats_on_signal);')
+		g.writeln2('', '\tsignal(SIGINT, vprint_profile_stats_on_signal);')
 		g.writeln('\tsignal(SIGTERM, vprint_profile_stats_on_signal);')
-		g.write2ln('\tatexit(vprint_profile_stats);', '')
+		g.writeln2('\tatexit(vprint_profile_stats);', '')
 	}
 	if g.pref.profile_file != '' {
 		if 'no_profile_startup' in g.pref.compile_defines {
@@ -300,11 +300,11 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, v_test_file);')
 	}
-	g.write2ln('', '\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
-	g.write2ln('\tvoid * _vtobj = test_runner._object;', '')
+	g.writeln2('', '\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
+	g.writeln2('\tvoid * _vtobj = test_runner._object;', '')
 	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
 	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, ${all_tfuncs.len});')
-	g.write2ln('\t_vtrunner._method_start(_vtobj, ${all_tfuncs.len});', '')
+	g.writeln2('\t_vtrunner._method_start(_vtobj, ${all_tfuncs.len});', '')
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
 		testfn := unsafe { g.table.fns[tname] }
@@ -336,12 +336,12 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.show_asserts {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
-	g.write2ln('', '\t_vtrunner._method_finish(_vtobj);')
+	g.writeln2('', '\t_vtrunner._method_finish(_vtobj);')
 	g.writeln('\tint test_exit_code = _vtrunner._method_exit_code(_vtobj);')
 
-	g.write2ln('\t_vtrunner._method__v_free(_vtobj);', '')
-	g.write2ln('\t_vcleanup();', '')
-	g.write2ln('\treturn test_exit_code;', '}')
+	g.writeln2('\t_vtrunner._method__v_free(_vtobj);', '')
+	g.writeln2('\t_vcleanup();', '')
+	g.writeln2('\treturn test_exit_code;', '}')
 	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
 		println(g.out.after(main_fn_start_pos))
 	}

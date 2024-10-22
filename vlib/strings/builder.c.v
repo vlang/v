@@ -143,9 +143,9 @@ pub fn (mut b Builder) write_string(s string) {
 	// b.buf << []u8(s)  // TODO
 }
 
-// write_2_string appends the strings `s1` and `s2` to the buffer
+// write_string2 appends the strings `s1` and `s2` to the buffer
 @[inline]
-pub fn (mut b Builder) write_2_string(s1 string, s2 string) {
+pub fn (mut b Builder) write_string2(s1 string, s2 string) {
 	if s1.len != 0 {
 		unsafe { b.push_many(s1.str, s1.len) }
 	}
@@ -215,9 +215,9 @@ pub fn (mut b Builder) writeln(s string) {
 	b << u8(`\n`)
 }
 
-// write2ln appends two strings: `s1` + `\n`, and `s2` + `\n`, to the buffer.
+// writeln2 appends two strings: `s1` + `\n`, and `s2` + `\n`, to the buffer.
 @[inline]
-pub fn (mut b Builder) write2ln(s1 string, s2 string) {
+pub fn (mut b Builder) writeln2(s1 string, s2 string) {
 	if s1 != '' {
 		unsafe { b.push_many(s1.str, s1.len) }
 	}

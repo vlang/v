@@ -257,7 +257,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.writeln('.fields = __new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
 	}
 
-	g.write2ln('),', '.data = new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
+	g.writeln2('),', '.data = new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
 
 	if node.update_exprs.len > 0 {
 		g.indent++
@@ -713,7 +713,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		g.write('.is_and = __new_array_with_default_noscan(${is_ands.len}, ${is_ands.len}, sizeof(bool), 0')
 	}
 	g.indent--
-	g.write2ln('),', '}')
+	g.writeln2('),', '}')
 }
 
 // write_orm_where_expr writes C code that generates expression which is used in the `QueryData`.
@@ -910,7 +910,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('NULL')
 	}
 	g.indent--
-	g.write2ln('),', '.types = new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
+	g.writeln2('),', '.types = new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
 	g.indent++
 
 	if types.len > 0 {

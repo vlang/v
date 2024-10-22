@@ -83,28 +83,25 @@ fn (mut g Gen) writeln(s string) {
 	g.empty_line = true
 }
 
-fn (mut g Gen) write2ln(s1 string, s2 string) {
+fn (mut g Gen) writeln2(s1 string, s2 string) {
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
-			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: ${s1}')
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s1}')
 		} else {
-			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: ${s1}')
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s1}')
 		}
 	}
 	if g.indent > 0 && g.empty_line {
 		g.out.write_string(util.tabs(g.indent))
-		// g.out_parallel[g.out_idx].write_string(util.tabs(g.indent))
 	}
-	// println('w len=$g.out_parallel.len')
 	g.out.writeln(s1)
-	// g.out_parallel[g.out_idx].writeln(s)
 	g.empty_line = true
 
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
-			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: ${s2}')
+			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s2}')
 		} else {
-			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: ${s2}')
+			eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s2}')
 		}
 	}
 	if g.indent > 0 && g.empty_line {

@@ -915,7 +915,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			g.expr(lx)
 			sym := g.table.final_sym(node.left_types[i])
 			if sym.kind == .array_fixed {
-				g.write2ln(';', 'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
+				g.writeln2(';', 'memcpy(&${g.expr_string(lx)}, &${mr_var_name}.arg${i}, sizeof(${styp}));')
 			} else {
 				if cur_indexexpr != -1 {
 					if is_auto_heap {

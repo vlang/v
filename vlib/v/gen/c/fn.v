@@ -341,7 +341,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				}
 				g.writeln('\treturn ret;')
 			}
-			g.write2ln('}', '')
+			g.writeln2('}', '')
 			g.trace_fn_definitions << trace_fn
 		}
 	}
@@ -525,7 +525,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.definitions.writeln('VV_EXPORTED_SYMBOL ${export_alias}; // exported fn ${node.name}')
 			g.writeln('${export_alias} {')
 			g.write2('\treturn ${name}(', fargs.join(', '))
-			g.write2ln(');', '}')
+			g.writeln2(');', '}')
 		}
 	}
 }
@@ -706,8 +706,8 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 		g.write_defer_stmts()
 	}
 	if g.defer_profile_code.len > 0 {
-		g.write2ln('', '\t// defer_profile_code')
-		g.write2ln(g.defer_profile_code, '')
+		g.writeln2('', '\t// defer_profile_code')
+		g.writeln2(g.defer_profile_code, '')
 	}
 }
 

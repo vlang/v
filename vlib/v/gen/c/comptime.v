@@ -413,7 +413,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 						g.stmt(last)
 					}
 					g.skip_stmt_pos = prev_skip_stmt_pos
-					g.write2ln(';', '}')
+					g.writeln2(';', '}')
 					g.indent--
 				} else {
 					g.indent++

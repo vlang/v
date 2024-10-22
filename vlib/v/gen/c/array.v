@@ -117,7 +117,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			g.write('0')
 		}
 		g.write('}')
-		g.write2ln(';', '{')
+		g.writeln2(';', '{')
 		g.indent++
 		g.writeln('${elem_typ_str}* pelem = (${elem_typ_str}*)${past.tmp_var};')
 		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ_str});')
@@ -326,7 +326,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		} else if is_amp {
 			g.write(')')
 		}
-		g.write2ln(';', '{')
+		g.writeln2(';', '{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var}.data;')
 		g.writeln('for (int index=0; index<${past.tmp_var}.len; index++, pelem++) {')
@@ -405,7 +405,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 				g.write(g.type_default(node.elem_type))
 			}
 		}
-		g.write2ln(';', '}')
+		g.writeln2(';', '}')
 		g.write2(line, ' (voidptr)${tmp})')
 	} else if node.has_init {
 		g.write('&(${elem_styp}[]){')
@@ -572,7 +572,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
-	g.write2ln(';', 'array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
+	g.writeln2(';', 'array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -823,7 +823,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
-	g.write2ln(') {', '\tarray_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
+	g.writeln2(') {', '\tarray_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
 	g.writeln('}')
 	g.indent--
 	g.writeln('}')
@@ -1319,8 +1319,8 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
-	g.write2ln(') {', '\t${past.tmp_var} = true;')
-	g.write2ln('\tbreak;', '}')
+	g.writeln2(') {', '\t${past.tmp_var} = true;')
+	g.writeln2('\tbreak;', '}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -1408,8 +1408,8 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
-	g.write2ln(')) {', '\t${past.tmp_var} = false;')
-	g.write2ln('\tbreak;', '}')
+	g.writeln2(')) {', '\t${past.tmp_var} = false;')
+	g.writeln2('\tbreak;', '}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -1445,14 +1445,14 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 	if node.left_type.has_flag(.shared_f) {
 		g.write('->val')
 	}
-	g.write2ln(';', 'int ${tmp}_len = ${tmp}_orig.len;')
+	g.writeln2(';', 'int ${tmp}_len = ${tmp}_orig.len;')
 	return has_infix_left_var_name
 }
 
 fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_type string, tmp string,
 	i string) {
 	if g.table.sym(inp_info.elem_type).kind == .array_fixed {
-		g.write2ln('${inp_elem_type} ${var_name};', 'memcpy(&${var_name}, ((${inp_elem_type}*) ${tmp}_orig.data)[${i}], sizeof(${inp_elem_type}));')
+		g.writeln2('${inp_elem_type} ${var_name};', 'memcpy(&${var_name}, ((${inp_elem_type}*) ${tmp}_orig.data)[${i}], sizeof(${inp_elem_type}));')
 	} else {
 		g.writeln('${inp_elem_type} ${var_name} = ((${inp_elem_type}*) ${tmp}_orig.data)[${i}];')
 	}
