@@ -535,13 +535,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if g.out_options_forward.len > 0 || g.out_results_forward.len > 0 {
 		tail := g.type_definitions.cut_to(g.options_pos_forward)
 		if g.out_options_forward.len > 0 {
-			g.type_definitions.writeln2('// #start V forward option_xxx definitions:',
-				g.out_options_forward.str())
+			g.type_definitions.writeln('// #start V forward option_xxx definitions:')
+			g.type_definitions.writeln(g.out_options_forward.str())
 			g.type_definitions.writeln('// #end V forward option_xxx definitions\n')
 		}
 		if g.out_results_forward.len > 0 {
-			g.type_definitions.writeln2('// #start V forward result_xxx definitions:',
-				g.out_results_forward.str())
+			g.type_definitions.writeln('// #start V forward result_xxx definitions:')
+			g.type_definitions.writeln(g.out_results_forward.str())
 			g.type_definitions.writeln('// #end V forward result_xxx definitions\n')
 		}
 		g.type_definitions.writeln(tail)
@@ -980,7 +980,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			} else {
 				tidx := g.table.find_type_idx(sym.name)
-				g.writeln2('\tswitch(sidx) {', '\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
+				g.writeln('\tswitch(sidx) {')
+				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
 				mut idxs := []int{}
 				for v in sum_info.variants {
 					if v in idxs {
@@ -990,8 +991,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 					g.writeln('\t\tcase ${int(v)}: return "${util.strip_main_name(subtype.name)}";')
 					idxs << v
 				}
-				g.writeln2('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";',
-					'\t}')
+				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";')
+				g.writeln('\t}')
 			}
 			g.writeln2('}', '')
 			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
@@ -4512,10 +4513,12 @@ fn (mut g Gen) unlock_locks() {
 		g.expr(g.cur_lock.lockeds[0])
 		g.write('->mtx);')
 	} else {
-		g.writeln2('for (int ${g.mtxs}=${g.cur_lock.lockeds.len - 1}; ${g.mtxs}>=0; ${g.mtxs}--) {',
-			'\tif (${g.mtxs} && _arr_${g.mtxs}[${g.mtxs}] == _arr_${g.mtxs}[${g.mtxs}-1]) continue;')
-		g.writeln2('\tif (_isrlck_${g.mtxs}[${g.mtxs}])', '\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_${g.mtxs}[${g.mtxs}]);')
-		g.writeln2('\telse', '\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_${g.mtxs}[${g.mtxs}]);')
+		g.writeln('for (int ${g.mtxs}=${g.cur_lock.lockeds.len - 1}; ${g.mtxs}>=0; ${g.mtxs}--) {')
+		g.writeln('\tif (${g.mtxs} && _arr_${g.mtxs}[${g.mtxs}] == _arr_${g.mtxs}[${g.mtxs}-1]) continue;')
+		g.writeln('\tif (_isrlck_${g.mtxs}[${g.mtxs}])')
+		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_${g.mtxs}[${g.mtxs}]);')
+		g.writeln('\telse')
+		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_${g.mtxs}[${g.mtxs}]);')
 		g.write('}')
 	}
 }
@@ -5135,8 +5138,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					g.writeln2('${styp} ${tmp_var};', '${g.styp(parent_type)} ${tmp_var2};')
 					g.write('_option_ok(&(${g.base_type(parent_type)}[]) { ')
 					g.expr(node.expr)
-					g.writeln2(' }, (${option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));',
-						'_option_ok(&(${g.styp(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.styp(parent_type)}));')
+					g.writeln(' }, (${option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));')
+					g.writeln('_option_ok(&(${g.styp(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.styp(parent_type)}));')
 					g.write2(cur_stmt, tmp_var)
 				} else if node.expr_type.has_flag(.option) {
 					g.expr_opt_with_cast(node.expr, expr_type, node.typ)
@@ -6593,8 +6596,8 @@ fn (mut g Gen) write_init_function() {
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
 		if g.pref.os == .windows {
-			g.writeln2('// workaround for windows, export _vinit_caller, let dl.open() call it',
-				'// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
+			g.writeln('// workaround for windows, export _vinit_caller, let dl.open() call it')
+			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
 			g.writeln('VV_EXPORTED_SYMBOL void _vinit_caller();')
 		} else {
 			g.writeln('__attribute__ ((constructor))')
@@ -6608,8 +6611,8 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('}')
 
 		if g.pref.os == .windows {
-			g.writeln2('// workaround for windows, export _vcleanup_caller, let dl.close() call it',
-				'// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
+			g.writeln('// workaround for windows, export _vcleanup_caller, let dl.close() call it')
+			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
 			g.writeln('VV_EXPORTED_SYMBOL void _vcleanup_caller();')
 		} else {
 			g.writeln('__attribute__ ((destructor))')

@@ -84,6 +84,7 @@ fn (mut g Gen) writeln(s string) {
 }
 
 fn (mut g Gen) writeln2(s1 string, s2 string) {
+	// expansion for s1
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
 			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s1}')
@@ -97,6 +98,7 @@ fn (mut g Gen) writeln2(s1 string, s2 string) {
 	g.out.writeln(s1)
 	g.empty_line = true
 
+	// expansion for s2
 	$if trace_gen ? {
 		if g.file == unsafe { nil } {
 			eprintln('gen file: <nil> | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln2: ${s2}')
