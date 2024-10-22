@@ -2064,8 +2064,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		return c.array_builtin_method_call(mut node, left_type)
-	} else if final_left_sym.kind == .array_fixed && method_name in ['index', 'all', 'any', 'map']
-		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
+	} else if final_left_sym.kind == .array_fixed
+		&& method_name in ['contains', 'index', 'all', 'any', 'map'] && !(left_sym.kind == .alias
+		&& left_sym.has_method(method_name)) {
 		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
@@ -3493,6 +3494,19 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.return_type = ast.int_type
+	} else if method_name == 'contains' {
+		if node.args.len != 1 {
+			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
+		} else if !left_sym.has_method('contains') {
+			arg_typ := c.expr(mut node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
+			}
+		}
+		for i, mut arg in node.args {
+			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		node.return_type = ast.bool_type
 	} else if method_name in ['any', 'all'] {
 		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
 			if node.args[0].expr.params.len != 1 {
