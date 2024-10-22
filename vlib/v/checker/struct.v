@@ -224,6 +224,17 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					c.check_any_type(field.typ, sym, field.type_pos)
 				}
 			}
+			if sym.kind == .function {
+				fn_info := sym.info as ast.FnType
+				if !field.typ.has_flag(.option) {
+					if fn_info.is_anon {
+						c.warn('you should declare it as Option instead (?fn ...)', field.type_pos)
+					} else {
+						c.warn('this is not recommended, you should use Option function instead',
+							field.type_pos)
+					}
+				}
+			}
 
 			if field.has_default_expr {
 				c.expected_type = field.typ
