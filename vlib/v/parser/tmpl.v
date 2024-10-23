@@ -437,7 +437,7 @@ fn veb_tmpl_${fn_name}() string {
 					end++
 				}
 				key := line[pos + 1..end]
-				println('GOT tr key line="${line}" key="${key}"')
+				// println('GOT tr key line="${line}" key="${key}"')
 				// source.writeln('\${tr("${key}")}')
 				line_ = line.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
 				// i += key.len
