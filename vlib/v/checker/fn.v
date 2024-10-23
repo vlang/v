@@ -3484,12 +3484,12 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	if method_name == 'index' {
 		if node.args.len != 1 {
 			c.error('`.index()` expected 1 argument, but got ${node.args.len}', node.pos)
-			return ast.void_type
+			return ast.int_type
 		} else if !left_sym.has_method('index') {
 			arg_typ := c.expr(mut node.args[0].expr)
 			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.index()`', node.args[0].pos)
-				return ast.void_type
+				return ast.int_type
 			}
 		}
 		for i, mut arg in node.args {
@@ -3499,12 +3499,12 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	} else if method_name == 'contains' {
 		if node.args.len != 1 {
 			c.error('`.contains()` expected 1 argument, but got ${node.args.len}', node.pos)
-			return ast.void_type
+			return ast.bool_type
 		} else if !left_sym.has_method('contains') {
 			arg_typ := c.expr(mut node.args[0].expr)
 			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
 				c.error('${err.msg()} in argument 1 to `.contains()`', node.args[0].pos)
-				return ast.void_type
+				return ast.bool_type
 			}
 		}
 		for i, mut arg in node.args {
@@ -3515,13 +3515,13 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		if node.args.len != 1 {
 			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
 				node.pos)
-			return ast.void_type
+			return ast.bool_type
 		}
 		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
 			if node.args[0].expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
 					node.args[0].expr.pos)
-				return ast.void_type
+				return ast.bool_type
 			}
 			c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
 		} else {
