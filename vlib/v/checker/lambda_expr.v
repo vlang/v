@@ -156,14 +156,22 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 }
 
 pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
-	mut expected_fn := ast.Fn{
+	expected_fn := ast.Fn{
 		params:      [
 			ast.Param{
 				name: 'xx'
-				typ:  param_type
+				typ:  if c.table.final_sym(param_type).kind == .function {
+					ast.voidptr_type
+				} else {
+					param_type
+				}
 			},
 		]
-		return_type: return_type
+		return_type: if c.table.final_sym(return_type).kind == .function {
+			ast.voidptr_type
+		} else {
+			return_type
+		}
 	}
 	cb_type := c.table.find_or_register_fn_type(expected_fn, true, false)
 	expected_fn_type := ast.new_type(cb_type)
