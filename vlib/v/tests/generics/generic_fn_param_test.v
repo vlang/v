@@ -18,11 +18,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $array {
 		mut array_element := create_array_element(val)
 
-		decoder.decode_value(mut array_element)! // error: cannot use `string` as `&int` in argument 1 to `Decoder.decode_value`
+		decoder.decode_value(mut array_element)!
 	} $else $if T is $map {
 		mut map_value := create_map_value(val)
 
-		decoder.decode_value(mut map_value)! // error: cannot use `string` as `&int` in argument 1 to `Decoder.decode_value`
+		decoder.decode_value(mut map_value)!
 	}
 }
 
