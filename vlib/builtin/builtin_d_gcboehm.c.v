@@ -1,6 +1,8 @@
 module builtin
 
-#flag -DGC_THREADS=1
+$if !no_gc_threads ? {
+	#flag -DGC_THREADS=1
+}
 
 $if use_bundled_libgc ? {
 	#flag -DGC_BUILTIN_ATOMIC=1
