@@ -305,7 +305,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					}
 				} else if left.obj.ct_type_var == .generic_var && val is ast.CallExpr {
 					if val.return_type_generic != 0 && val.return_type_generic.has_flag(.generic) {
-						fn_ret_type := g.resolve_fn_return_type(val)
+						fn_ret_type := g.resolve_return_type(val)
 						if fn_ret_type != ast.void_type {
 							var_type = fn_ret_type
 							val_type = var_type
