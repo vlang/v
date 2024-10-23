@@ -32,22 +32,40 @@ fn xtime(cmd string) {
 }
 
 fn vcompare(vold string, vnew string) {
+	println('>Size of ${vold}: ${os.file_size(vold)}')
+	println('>Size of ${vnew}: ${os.file_size(vnew)}')
+
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax examples/hello_world.v' '${vnew} -check-syntax examples/hello_world.v'")
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check        examples/hello_world.v' '${vnew} -check        examples/hello_world.v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -o    hw.c    examples/hello_world.v' '${vnew} -o    hw.c    examples/hello_world.v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -o    hw      examples/hello_world.v' '${vnew} -o    hw      examples/hello_world.v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o  ohw.c     examples/hello_world.v' '${vnew} -o  nhw.c     examples/hello_world.v'")
+	println('>Size of ohw.c: ${os.file_size('ohw.c')}')
+	println('>Size of nhw.c: ${os.file_size('nhw.c')}')
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o  ohw.exe   examples/hello_world.v' '${vnew} -o  nhw.exe   examples/hello_world.v'")
+	println('>Size of ohw.exe: ${os.file_size('ohw.exe')}')
+	println('>Size of nhw.exe: ${os.file_size('nhw.exe')}')
+
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax cmd/v'                  '${vnew} -check-syntax cmd/v'")
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check        cmd/v'                  '${vnew} -check        cmd/v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -o    ov.c    cmd/v'                  '${vnew} -o    nv.c    cmd/v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -o    ov      cmd/v'                  '${vnew} -o    nv      cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o  ov.c      cmd/v'                  '${vnew} -o  nv.c      cmd/v'")
+	println('>Size of ov.c: ${os.file_size('ov.c')}')
+	println('>Size of nv.c: ${os.file_size('nv.c')}')
+	r("v repeat --nmaxs 7 -R 3 '${vold} -o  ov.exe    cmd/v'                  '${vnew} -o  nv.exe    cmd/v'")
+	println('>Size of ov.exe: ${os.file_size('ov.exe')}')
+	println('>Size of nv.exe: ${os.file_size('nv.exe')}')
+
+	// After all the measurements are done, delete all the generated temporary files,
+	// except the `vold` and `vnew` compilers, so that they can be used later in manual
+	// experiments:
+	r('rm -rf ohw* nhw* nv* ov*')
 }
 
 fn main() {
+	start := time.now()
 	// The starting point, when this program should be started, is just after `gh pr checkout NUMBER`.
 	pr_branch := gbranch()
 	println('Current git branch: ${pr_branch}, commit: ${gcommit()}')
 	println('    Compiling new V executables from PR branch: ${pr_branch}, commit: ${gcommit()} ...')
-	xtime('./v -g self')
+	// *not* using v self here is deliberate, so that the `v` executable itself, is not changed after running this script
 	xtime('./v     -o vnew1 cmd/v')
 	xtime('./vnew1 -o vnew2 cmd/v')
 	xtime('./vnew2 -o vnew  cmd/v')
@@ -59,7 +77,6 @@ fn main() {
 	r('git checkout master')
 	master_branch := gbranch()
 	println('    Compiling old V executables from branch: ${master_branch}, commit: ${gcommit()} ...')
-	xtime('./v -g self')
 	xtime('./v     -o vold1 cmd/v')
 	xtime('./vold1 -o vold2 cmd/v')
 	xtime('./vold2 -o vold  cmd/v')
@@ -76,6 +93,5 @@ fn main() {
 	} else {
 		vcompare('./vold', './vnew')
 	}
-	r('rm -rf hw nv ov hw.exe nv.exe ov.exe hw.c nv.c ov.c')
-	println('Done.')
+	println('Done. Total time: ${(time.now() - start).seconds()} s.')
 }
