@@ -129,13 +129,25 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
-		&& node.right.val == '' {
-		// `str == ''` -> `str.len == 0` optimization
-		g.write('(')
-		g.expr(node.left)
-		g.write(')')
-		arrow := if left.typ.is_ptr() { '->' } else { '.' }
-		g.write('${arrow}len ${node.op} 0')
+		&& (node.right.val == '' || (node.left is ast.Ident && node.left.or_expr.kind == .absent)) {
+		if node.right.val == '' {
+			// `str == ''` -> `str.len == 0` optimization
+			g.write('(')
+			g.expr(node.left)
+			g.write(')')
+			arrow := if left.typ.is_ptr() { '->' } else { '.' }
+			g.write('${arrow}len ${node.op} 0')
+		} else {
+			// vmemcmp(left, "str", sizeof("str")) optimization
+			slit := cescape_nonascii(util.smart_quote(node.right.val, node.right.is_raw))
+			var := g.expr_string(node.left)
+			arrow := if left.typ.is_ptr() { '->' } else { '.' }
+			if node.op == .eq {
+				g.write('_SLIT_EQ(${var}${arrow}str, ${var}${arrow}len, "${slit}")')
+			} else {
+				g.write('_SLIT_NE(${var}${arrow}str, ${var}${arrow}len, "${slit}")')
+			}
+		}
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
 			g.write('!')
