@@ -1692,7 +1692,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 
 	if func.generic_names.len > 0 {
-		if has_generic || node.concrete_types.any(it.has_flag(.generic)) {
+		has_any_generic := node.concrete_types.any(it.has_flag(.generic))
+		if has_generic || has_any_generic {
 			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 				node.concrete_types)
 			{
@@ -1703,7 +1704,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.register_trace_call(node, func)
 			return node.return_type
 		} else {
-			if node.concrete_types.len > 0 && !node.concrete_types.any(it.has_flag(.generic)) {
+			if node.concrete_types.len > 0 && !has_any_generic {
 				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 					node.concrete_types)
 				{
@@ -3550,4 +3551,85 @@ fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name st
 		typ:     typ
 		is_used: true
 	})
+}
+
+// resolve_fn_return_type resolves the generic return type of fn
+fn (mut c Checker) resolve_fn_return_type(node ast.CallExpr) ast.Type {
+	mut ret_type := node.return_type
+	if node.return_type == ast.void_type {
+		return ast.void_type
+	}
+	if node.is_method {
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		if method := c.table.find_method(left_sym, node.name) {
+			mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+			if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
+				&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
+				ret_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
+					concrete_types)
+			}
+			if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
+				&& method.return_type.has_flag(.generic) && method.generic_names.len > 0
+				&& method.generic_names.len == node.concrete_types.len {
+				if typ := c.table.convert_generic_type(method.return_type, method.generic_names,
+					concrete_types)
+				{
+					ret_type = typ
+				} else {
+					ret_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
+						concrete_types)
+				}
+			}
+		}
+	} else {
+		has_generic := node.raw_concrete_types.any(it.has_flag(.generic))
+		mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		if func := c.table.find_fn(node.name) {
+			if node.concrete_types.len > 0 && func.return_type != 0
+				&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
+				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+					concrete_types)
+				{
+					ret_type = typ
+				}
+				unsafe {
+					goto ret
+				}
+			}
+			if func.generic_names.len > 0 {
+				has_any_generic := node.concrete_types.any(it.has_flag(.generic))
+				if has_generic || has_any_generic {
+					if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+						node.concrete_types)
+					{
+						if typ.has_flag(.generic) {
+							ret_type = typ
+						}
+					}
+				} else {
+					if node.concrete_types.len > 0 && !has_any_generic {
+						if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+							node.concrete_types)
+						{
+							ret_type = typ
+							unsafe {
+								goto ret
+							}
+						}
+					}
+					if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+						concrete_types)
+					{
+						ret_type = typ
+					}
+				}
+			}
+		}
+	}
+	ret:
+	return if node.or_block.kind == .absent {
+		ret_type
+	} else {
+		ret_type.clear_option_and_result()
+	}
 }
