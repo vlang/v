@@ -593,6 +593,11 @@ fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
 }
 
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
+	is_amp := g.is_amp
+	g.is_amp = false
+	defer {
+		g.is_amp = is_amp
+	}
 	g.gen_anon_fn_decl(mut node)
 	fn_name := g.gen_closure_fn_name(node)
 	if !node.decl.scope.has_inherited_vars() {
