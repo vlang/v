@@ -3521,72 +3521,73 @@ fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name st
 	})
 }
 
-// resolve_fn_return_type resolves the generic return type of fn
+// resolve_fn_return_type resolves the generic return type of fn with its related CallExpr
 fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr) ast.Type {
 	mut ret_type := func.return_type
 	if node.is_method {
-		mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// resolve possible generic types
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// generic method being called from a non-generic func
 		if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
 			&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
 			ret_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 				concrete_types)
 		}
+		// generic method called without generic type to be resolved on call
 		if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
 			&& func.return_type.has_flag(.generic) && func.generic_names.len > 0
 			&& func.generic_names.len == node.concrete_types.len {
 			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 				concrete_types)
 			{
-				ret_type = typ
+				return typ
 			} else {
-				ret_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
+				return c.table.unwrap_generic_type(func.return_type, func.generic_names,
 					concrete_types)
 			}
 		}
 	} else {
-		mut concrete_types := node.concrete_types.map(c.unwrap_generic(it))
-		has_generic := node.raw_concrete_types.any(it.has_flag(.generic))
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// generic func called from non-generic func
 		if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 			&& c.table.cur_fn.generic_names.len == 0 {
 			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 				concrete_types)
 			{
-				ret_type = typ
+				return typ
 			}
-			unsafe {
-				goto ret
-			}
+			return ret_type
 		}
 		if func.generic_names.len > 0 {
+			has_generic := node.raw_concrete_types.any(it.has_flag(.generic))
 			has_any_generic := node.concrete_types.any(it.has_flag(.generic))
+			// fn call with any generic type to be resolved on call (e.g. foo[T]())
 			if has_generic || has_any_generic {
 				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 					node.concrete_types)
 				{
 					if typ.has_flag(.generic) {
-						ret_type = typ
+						return typ
 					}
 				}
 			} else {
+				// fn call with all generic types already resolved to its concrete ones (e.g. foo[int]())
 				if node.concrete_types.len > 0 && !has_any_generic {
 					if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 						node.concrete_types)
 					{
-						ret_type = typ
-						unsafe {
-							goto ret
-						}
+						return typ
 					}
 				}
+				// use fresh resolved concrete_types list
 				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
 					concrete_types)
 				{
-					ret_type = typ
+					return typ
 				}
 			}
 		}
 	}
-	ret:
 	return ret_type
 }
 
