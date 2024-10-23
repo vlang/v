@@ -1283,7 +1283,7 @@ fn (mut g Gen) get_gn_var_type(var ast.Ident) ast.Type {
 	return ast.void_type
 }
 
-// resolve_return_type resolves the generic return type of fn
+// resolve_return_type resolves the generic return type of CallExpr
 fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 	if node.is_method {
 		if func := g.table.find_method(g.table.sym(node.left_type), node.name) {
