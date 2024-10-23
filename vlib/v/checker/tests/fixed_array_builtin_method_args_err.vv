@@ -1,0 +1,12 @@
+fn main() {
+	arr := [1, 2, 3]!
+
+	_ := arr.index()
+	_ := arr.index('hello')
+	_ := arr.contains()
+	_ := arr.contains('hello')
+	_ := arr.any()
+	_ := arr.any(22)
+	_ := arr.all()
+	_ := arr.all('hello')
+}
