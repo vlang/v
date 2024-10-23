@@ -46,8 +46,8 @@ fn test_any_all_of_fns() {
 	fa := [a, b, c]!
 
 	assert fa.any(it == b)
-	// assert fa.any(|x| x == b)
+	assert fa.any(|x| x == b)
 
 	assert !fa.all(it == v)
-	// assert !fa.all(|x| x == v)
+	assert !fa.all(|x| x == v)
 }
