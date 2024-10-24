@@ -648,12 +648,26 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 		match elem_sym.kind {
 			.string, .alias, .sum_type, .map, .interface, .array, .struct {
 				if elem_sym.kind == .string {
-					if array_expr is ast.StringLiteral {
+					is_auto_deref_var := left.is_auto_deref_var()
+					if left is ast.Ident && left.or_expr.kind == .absent
+						&& array_expr is ast.StringLiteral {
+						var := g.expr_string(left)
+						slit := cescape_nonascii(util.smart_quote(array_expr.val, array_expr.is_raw))
+						if is_auto_deref_var || (left.info is ast.IdentVar
+							&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]) {
+							g.write('_SLIT_EQ(${var}->str, ${var}->len, "${slit}")')
+						} else {
+							g.write('_SLIT_EQ(${var}.str, ${var}.len, "${slit}")')
+						}
+						unsafe {
+							goto end
+						}
+					} else if array_expr is ast.StringLiteral {
 						g.write('fast_string_eq(')
 					} else {
 						g.write('string__eq(')
 					}
-					if left.is_auto_deref_var() || (left is ast.Ident && left.info is ast.IdentVar
+					if is_auto_deref_var || (left is ast.Ident && left.info is ast.IdentVar
 						&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]) {
 						g.write('*')
 					}
@@ -684,6 +698,7 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 				g.expr(array_expr)
 			}
 		}
+		end:
 		if i < right.exprs.len - 1 {
 			g.write(' || ')
 		}
