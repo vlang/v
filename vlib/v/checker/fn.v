@@ -1691,37 +1691,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)
 	}
 
-	if func.generic_names.len > 0 {
-		if has_generic || node.concrete_types.any(it.has_flag(.generic)) {
-			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
-				node.concrete_types)
-			{
-				if typ.has_flag(.generic) {
-					node.return_type = typ
-				}
-			}
-			c.register_trace_call(node, func)
-			return node.return_type
-		} else {
-			if node.concrete_types.len > 0 && !node.concrete_types.any(it.has_flag(.generic)) {
-				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
-					node.concrete_types)
-				{
-					node.return_type = typ
-					c.register_trace_call(node, func)
-					return typ
-				}
-			}
-			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
-				concrete_types)
-			{
-				if typ.has_flag(.generic) {
-					node.return_type = typ
-				}
-				c.register_trace_call(node, func)
-				return typ
-			}
-		}
+	// resolve generic fn return type
+	if func.generic_names.len > 0 && node.return_type != ast.void_type {
+		ret_type := c.resolve_fn_return_type(func, node)
+		c.register_trace_call(node, func)
+		node.return_type = ret_type
+		return ret_type
 	}
 	c.register_trace_call(node, func)
 	return func.return_type
@@ -2673,6 +2648,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		c.resolve_fn_generic_args(method, mut node)
 	}
 
+	if node.concrete_types.len > 0 && method.generic_names.len == 0 {
+		c.error('a non generic function called like a generic one', node.concrete_list_pos)
+	}
 	// resolve return generics struct to concrete type
 	if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
 		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
@@ -2681,21 +2659,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else {
 		node.return_type = method.return_type
 	}
-
-	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
-		&& method.return_type.has_flag(.generic) && method.generic_names.len > 0
-		&& method.generic_names.len == node.concrete_types.len {
-		if typ := c.table.convert_generic_type(method.return_type, method.generic_names,
-			concrete_types)
-		{
-			node.return_type = typ
-		} else {
-			node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
-				concrete_types)
-		}
-	}
-	if node.concrete_types.len > 0 && method.generic_names.len == 0 {
-		c.error('a non generic function called like a generic one', node.concrete_list_pos)
+	// resolve generic fn return type
+	if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+		ret_type := c.resolve_fn_return_type(method, node)
+		c.register_trace_call(node, method)
+		node.return_type = ret_type
+		return ret_type
 	}
 	if method.generic_names.len > 0 {
 		if !left_type.has_flag(.generic) {
@@ -3559,4 +3528,89 @@ fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name st
 		typ:     typ
 		is_used: true
 	})
+}
+
+// resolve_fn_return_type resolves the generic return type of fn with its related CallExpr
+fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr) ast.Type {
+	mut ret_type := func.return_type
+	if node.is_method {
+		// resolve possible generic types
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// generic method being called from a non-generic func
+		if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
+			&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
+			ret_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
+				concrete_types)
+		}
+		// generic method called without generic type to be resolved on call
+		if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
+			&& func.return_type.has_flag(.generic) && func.generic_names.len > 0
+			&& func.generic_names.len == node.concrete_types.len {
+			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+				concrete_types)
+			{
+				return typ
+			} else {
+				return c.table.unwrap_generic_type(func.return_type, func.generic_names,
+					concrete_types)
+			}
+		}
+	} else {
+		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
+		// generic func called from non-generic func
+		if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
+			&& c.table.cur_fn.generic_names.len == 0 {
+			if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+				concrete_types)
+			{
+				return typ
+			}
+			return ret_type
+		}
+		if func.generic_names.len > 0 {
+			has_generic := node.raw_concrete_types.any(it.has_flag(.generic))
+			has_any_generic := node.concrete_types.any(it.has_flag(.generic))
+			// fn call with any generic type to be resolved on call (e.g. foo[T]())
+			if has_generic || has_any_generic {
+				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+					node.concrete_types)
+				{
+					if typ.has_flag(.generic) {
+						return typ
+					}
+				}
+			} else {
+				// fn call with all generic types already resolved to its concrete ones (e.g. foo[int]())
+				if node.concrete_types.len > 0 && !has_any_generic {
+					if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+						node.concrete_types)
+					{
+						return typ
+					}
+				}
+				// use fresh resolved concrete_types list
+				if typ := c.table.convert_generic_type(func.return_type, func.generic_names,
+					concrete_types)
+				{
+					return typ
+				}
+			}
+		}
+	}
+	return ret_type
+}
+
+// resolve_return_type resolves the generic return type of CallExpr
+fn (mut c Checker) resolve_return_type(node ast.CallExpr) ast.Type {
+	if node.is_method {
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		if method := c.table.find_method(left_sym, node.name) {
+			return c.resolve_fn_return_type(method, node)
+		}
+	} else {
+		if func := c.table.find_fn(node.name) {
+			return c.resolve_fn_return_type(func, node)
+		}
+	}
+	return node.return_type
 }

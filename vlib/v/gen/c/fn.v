@@ -1283,8 +1283,8 @@ fn (mut g Gen) get_gn_var_type(var ast.Ident) ast.Type {
 	return ast.void_type
 }
 
-// resolve_fn_return_type resolves the generic return type of fn
-fn (mut g Gen) resolve_fn_return_type(node ast.CallExpr) ast.Type {
+// resolve_return_type resolves the generic return type of CallExpr
+fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 	if node.is_method {
 		if func := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			if func.generic_names.len > 0 {
@@ -1375,7 +1375,7 @@ fn (g &Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	return typ
 }
 
-fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut g Gen) resolve_comptime_args(func &ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
 		|| g.comptime.comptime_for_field_var != ''
