@@ -4063,8 +4063,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			if !receiver.typ.is_ptr() {
 				g.write('memdup_uncollectable(')
 			}
+			mut has_addr := false
 			if !node.expr_type.is_ptr() {
-				g.write('&')
+				if node.expr is ast.IndexExpr {
+					has_addr = true
+					g.write('ADDR(${g.styp(node.expr_type)}, ')
+				} else {
+					g.write('&')
+				}
 			}
 			if !node.expr.is_lvalue() {
 				current_stmt := g.go_before_last_stmt()
@@ -4074,6 +4080,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				g.expr(ast.Expr(var))
 			} else {
 				g.expr(node.expr)
+			}
+			if has_addr {
+				g.write(')')
 			}
 			if !receiver.typ.is_ptr() {
 				g.write(', sizeof(${expr_styp}))')
