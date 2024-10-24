@@ -463,15 +463,26 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	ret_typ := g.styp(node.return_type)
+	ret_styp := g.styp(node.return_type)
 	ret_sym := g.table.final_sym(node.return_type)
+	left_is_array := g.table.final_sym(node.left_type).kind == .array
 	inp_sym := g.table.final_sym(node.receiver_type)
-	ret_info := ret_sym.info as ast.Array
-	mut ret_elem_type := g.styp(ret_info.elem_type)
-	inp_info := inp_sym.info as ast.Array
-	inp_elem_type := g.styp(inp_info.elem_type)
-	if inp_sym.kind != .array {
-		verror('map() requires an array')
+
+	ret_elem_type := if left_is_array {
+		(ret_sym.info as ast.Array).elem_type
+	} else {
+		(ret_sym.info as ast.ArrayFixed).elem_type
+	}
+	mut ret_elem_styp := g.styp(ret_elem_type)
+
+	inp_elem_type := if left_is_array {
+		(inp_sym.info as ast.Array).elem_type
+	} else {
+		(inp_sym.info as ast.ArrayFixed).elem_type
+	}
+	inp_elem_styp := g.styp(inp_elem_type)
+	if inp_sym.kind !in [.array, .array_fixed] {
+		verror('map() requires an array or a fixed array')
 	}
 
 	mut expr := node.args[0].expr
@@ -481,16 +492,18 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		if expr.typ != ast.void_type {
 			var_sym := g.table.sym(expr.typ)
 			if var_sym.info is ast.FnType {
-				ret_elem_type = 'voidptr'
+				ret_elem_styp = 'voidptr'
 				closure_var_decl = g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
 					tmp_map_expr_result_name)
 			}
 		}
 	}
-	noscan := g.check_noscan(ret_info.elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ret_typ,
+	noscan := g.check_noscan(ret_elem_type)
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ret_styp,
 		'{0}')
-	g.writeln('${past.tmp_var} = __new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${ret_elem_type}));\n')
+	if left_is_array {
+		g.writeln('${past.tmp_var} = __new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${ret_elem_styp}));\n')
+	}
 
 	mut closure_var := ''
 	if mut expr is ast.AnonFn {
@@ -504,13 +517,12 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
 	g.indent++
 	var_name := g.get_array_expr_param_name(mut expr)
-	g.write_prepared_var(var_name, inp_info.elem_type, inp_elem_type, past.tmp_var, i,
-		true)
+	g.write_prepared_var(var_name, inp_elem_type, inp_elem_styp, past.tmp_var, i, left_is_array)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	match mut expr {
 		ast.AnonFn {
-			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
+			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
@@ -519,7 +531,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			}
 		}
 		ast.Ident {
-			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
+			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			if expr.kind == .function {
 				if expr.obj is ast.Var && expr.obj.is_inherited {
 					g.write(closure_ctx + '->')
@@ -545,7 +557,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
-			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
+			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			g.expr(expr)
 		}
 		ast.CastExpr {
@@ -557,23 +569,27 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 					expr.expr_type = g.table.value_type(ctyp)
 				}
 			}
-			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
+			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			g.expr(expr)
 		}
 		ast.LambdaExpr {
-			g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
+			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			g.expr(expr.expr)
 		}
 		else {
 			if closure_var_decl != '' {
 				g.write('${closure_var_decl} = ')
 			} else {
-				g.write('${ret_elem_type} ${tmp_map_expr_result_name} = ')
+				g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
 			}
 			g.expr(expr)
 		}
 	}
-	g.writeln2(';', 'array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
+	if left_is_array {
+		g.writeln2(';', 'array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
+	} else {
+		g.writeln2(';', '${past.tmp_var}[${i}] = ${tmp_map_expr_result_name};')
+	}
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
