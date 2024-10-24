@@ -6,6 +6,7 @@ SSE3: Added with later Pentium 4
 ADDSUBPD, ADDSUBPS, HADDPD, HADDPS, HSUBPD, HSUBPS, MOVDDUP, MOVSHDUP, MOVSLDUP
 */
 
+// The HADDPS instruction performs horizontal addition of two vectors of floats using SSE3 instructions.
 fn horizontal_add_sse3(a &f32, b &f32, result &f32) {
 	unsafe {
 		asm volatile amd64 {

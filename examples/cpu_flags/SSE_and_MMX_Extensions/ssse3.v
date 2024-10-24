@@ -1,5 +1,11 @@
 module main
 
+// SSE Instruction Set
+/*
+SSSE3: Added with Xeon 5100 and early Core 2
+PSIGNW, PSIGND, PSIGNB, PSHUFB, PMULHRSW, PMADDUBSW, PHSUBW, PHSUBSW, PHSUBD, PHADDW, PHADDSW, PHADDD, PALIGNR, PABSW, PABSD, PABSB
+*/
+
 // The PSIGNW instruction negates or leaves elements unchanged based on another vector's signs.
 fn psignw_example(a &i16, b &i16, result &i16) {
 	unsafe {

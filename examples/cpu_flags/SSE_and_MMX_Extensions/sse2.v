@@ -13,6 +13,7 @@ Integer Instructions:
 MOVDQ2Q, MOVDQA, MOVDQU, MOVQ2DQ, PADDQ, PSUBQ, PMULUDQ, PSHUFHW, PSHUFLW, PSHUFD, PSLLDQ, PSRLDQ, PUNPCKHQDQ, PUNPCKLQDQ
 */
 
+// The MULPD instruction multiplies two vectors of doubles using SSE2 instructions.
 fn multiply_vectors_sse2(a &f64, b &f64, result &f64) {
 	unsafe {
 		asm volatile amd64 {
