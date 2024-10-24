@@ -1201,6 +1201,9 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		'all' {
 			g.gen_array_all(node)
 		}
+		'map' {
+			g.gen_array_map(node)
+		}
 		else {
 			return false
 		}
