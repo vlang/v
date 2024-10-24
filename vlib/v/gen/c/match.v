@@ -495,7 +495,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						if expr is ast.StringLiteral {
 							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw))
 							if node.cond_type.is_ptr() {
-								g.write('_SLIT_EQ(${ptr_str}${cond_var}->str, ${ptr_str}${cond_var}->len, "${slit}")')
+								g.write('_SLIT_EQ(${cond_var}->str, ${cond_var}->len, "${slit}")')
 							} else {
 								g.write('_SLIT_EQ(${cond_var}.str, ${cond_var}.len, "${slit}")')
 							}
