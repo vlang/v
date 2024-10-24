@@ -39,5 +39,7 @@ fn main() {
 
 	println(result)
 
+	// 5.25 = 1.5 * 3.5
+	// 11.25 = 2.5 * 4.5
 	assert result == [f64(5.25), 11.25]
 }
