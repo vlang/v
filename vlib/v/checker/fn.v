@@ -2065,7 +2065,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
-		&& method_name in ['contains', 'index', 'all', 'any', 'map'] && !(left_sym.kind == .alias
+		&& method_name in ['contains', 'index', 'all', 'any', 'wait'] && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
 		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
@@ -2091,27 +2091,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		node.return_type = left_sym.info.return_type
 		return left_sym.info.return_type
-	} else if final_left_sym.info is ast.ArrayFixed && method_name == 'wait' {
-		elem_sym := c.table.sym(final_left_sym.info.elem_type)
-		if elem_sym.kind == .thread {
-			if node.args.len != 0 {
-				c.error('`.wait()` does not have any arguments', node.args[0].pos)
-			}
-			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
-			if thread_ret_type.has_flag(.option) {
-				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
-					node.pos)
-			} else if thread_ret_type.has_flag(.result) {
-				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
-					node.pos)
-			}
-			node.return_type = c.table.find_or_register_array(thread_ret_type)
-			return node.return_type
-		} else {
-			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
-				node.left.pos())
-			return ast.void_type
-		}
 	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
 			node.left.pos().extend(node.pos))
@@ -3531,6 +3510,25 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		c.expr(mut node.args[0].expr)
 		c.check_map_and_filter(false, elem_typ, node)
 		node.return_type = ast.bool_type
+	} else if method_name == 'wait' {
+		elem_sym := c.table.sym(elem_typ)
+		if elem_sym.kind == .thread {
+			if node.args.len != 0 {
+				c.error('`.wait()` does not have any arguments', node.args[0].pos)
+			}
+			thread_ret_type := c.unwrap_generic(elem_sym.thread_info().return_type)
+			if thread_ret_type.has_flag(.option) {
+				c.error('`.wait()` cannot be called for an array when thread functions return options. Iterate over the arrays elements instead and handle each returned option with `or`.',
+					node.pos)
+			} else if thread_ret_type.has_flag(.result) {
+				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
+					node.pos)
+			}
+			node.return_type = c.table.find_or_register_array(thread_ret_type)
+		} else {
+			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
+				node.left.pos())
+		}
 	}
 	return node.return_type
 }
