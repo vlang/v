@@ -225,8 +225,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
-import veb as _
-// === veb html template ===
+// === veb html template for file: ${template_file} ===
 fn veb_tmpl_${fn_name}() string {
 	mut sb_${fn_name} := strings.new_builder(${lstartlength})\n
 
@@ -457,7 +456,10 @@ fn veb_tmpl_${fn_name}() string {
 	source.writeln('}')
 	source.writeln('// === end of veb html template_file: ${template_file} ===')
 
-	result := source.str()
+	mut result := source.str()
+	if result.contains('veb.') {
+		result = 'import veb\n' + result
+	}
 	$if trace_tmpl_expansion ? {
 		eprintln('>>>>>>> template expanded to:')
 		eprintln(result)
