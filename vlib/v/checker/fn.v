@@ -2065,7 +2065,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		&& !(left_sym.kind == .alias && left_sym.has_method(method_name)) {
 		return c.array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .array_fixed
-		&& method_name in ['contains', 'index', 'all', 'any', 'wait'] && !(left_sym.kind == .alias
+		&& fixed_array_builtin_methods_chk.matches(method_name) && !(left_sym.kind == .alias
 		&& left_sym.has_method(method_name)) {
 		return c.fixed_array_builtin_method_call(mut node, left_type)
 	} else if final_left_sym.kind == .map
