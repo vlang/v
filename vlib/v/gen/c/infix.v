@@ -636,7 +636,11 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 		match elem_sym.kind {
 			.string, .alias, .sum_type, .map, .interface, .array, .struct {
 				if elem_sym.kind == .string {
-					g.write('string__eq(')
+					if array_expr is ast.StringLiteral {
+						g.write('fast_string_eq(')
+					} else {
+						g.write('string__eq(')
+					}
 					if left.is_auto_deref_var() || (left is ast.Ident && left.info is ast.IdentVar
 						&& g.table.sym(left.obj.typ).kind in [.interface, .sum_type]) {
 						g.write('*')

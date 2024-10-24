@@ -220,11 +220,11 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				if field.typ.has_flag(.option) {
 					left_arg_opt := g.read_opt_field(left_type, field_name, 'a', field.typ)
 					right_arg_opt := g.read_opt_field(left_type, field_name, 'b', field.typ)
-					fn_builder.write_string('(((${left_arg_opt}).len == (${right_arg_opt}).len && (${left_arg_opt}).len == 0) || string__eq(${left_arg_opt}, ${right_arg_opt}))')
+					fn_builder.write_string('(((${left_arg_opt}).len == (${right_arg_opt}).len && (${left_arg_opt}).len == 0) || fast_string_eq(${left_arg_opt}, ${right_arg_opt}))')
 				} else if field.typ.is_ptr() {
-					fn_builder.write_string('((${left_arg}->len == ${right_arg}->len && ${left_arg}->len == 0) || string__eq(*(${left_arg}), *(${right_arg})))')
+					fn_builder.write_string('((${left_arg}->len == ${right_arg}->len && ${left_arg}->len == 0) || fast_string_eq(*(${left_arg}), *(${right_arg})))')
 				} else {
-					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len == 0) || string__eq(${left_arg}, ${right_arg}))')
+					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len == 0) || fast_string_eq(${left_arg}, ${right_arg}))')
 				}
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
@@ -294,7 +294,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 		if info.parent_type.has_flag(.option) {
 			left_var = '*' + g.read_opt(info.parent_type, 'a')
 			right_var = '*' + g.read_opt(info.parent_type, 'b')
-			fn_builder.writeln('\treturn ((${left_var}).len == (${right_var}).len && (${left_var}).len == 0) || string__eq(${left_var}, ${right_var});')
+			fn_builder.writeln('\treturn ((${left_var}).len == (${right_var}).len && (${left_var}).len == 0) || fast_string_eq(${left_var}, ${right_var});')
 		} else {
 			fn_builder.writeln('\treturn string__eq(a, b);')
 		}
