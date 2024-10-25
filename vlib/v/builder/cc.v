@@ -513,13 +513,17 @@ fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []s
 		all << '-D_DEFAULT_SOURCE'
 	}
 
+	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
+	mut cross_compiling_from_macos_to_linux := false
 	if v.pref.os == .linux && v.pref.arch == .amd64 {
 		$if macos {
-			sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
-			v.ensure_linuxroot_exists(sysroot)
-			all << '-target x86_64-linux-gnu'
-			all << '-I${os.quoted_path(sysroot)}/include'
+			cross_compiling_from_macos_to_linux = true
 		}
+	}
+
+	if cross_compiling_from_macos_to_linux {
+		v.ensure_linuxroot_exists(sysroot)
+		all << '-target x86_64-linux-gnu'
 	}
 
 	all << ccoptions.env_cflags
@@ -529,6 +533,9 @@ fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []s
 	// compilers are inconsistent about how they handle:
 	// all << ccoptions.env_ldflags
 	// all << ccoptions.ldflags
+	if cross_compiling_from_macos_to_linux {
+		all << '-I${os.quoted_path(sysroot)}/include' // add the system include/ folder after everything else, so that local folders like thirdparty/mbedtls have a chance to supply their own headers
+	}
 	return all
 }
 
