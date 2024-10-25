@@ -3498,6 +3498,51 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			c.error('`${left_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
 				node.left.pos())
 		}
+	} else if method_name == 'map' {
+		if node.args.len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+			return ast.void_type
+		}
+		if mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.void_type
+			}
+			c.lambda_expr_fix_type_of_param(mut node.args[0].expr, mut node.args[0].expr.params[0],
+				elem_typ)
+			le_type := c.expr(mut node.args[0].expr.expr)
+			c.support_lambda_expr_one_param(elem_typ, le_type, mut node.args[0].expr)
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
+
+		c.check_map_and_filter(true, elem_typ, node)
+		arg_type := c.check_expr_option_or_result_call(node.args[0].expr, c.expr(mut node.args[0].expr))
+		arg_sym := c.table.sym(arg_type)
+		ret_type := match arg_sym.info {
+			ast.FnType {
+				if node.args[0].expr is ast.SelectorExpr {
+					arg_type
+				} else {
+					arg_sym.info.func.return_type
+				}
+			}
+			else {
+				arg_type
+			}
+		}
+		node.return_type = c.table.find_or_register_array_fixed(c.unwrap_generic(ret_type),
+			array_info.size, array_info.size_expr, false)
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		}
+		ret_sym := c.table.sym(ret_type)
+		if ret_sym.kind == .multi_return {
+			c.error('returning multiple values is not supported in .map() calls', node.pos)
+		}
 	}
 	return node.return_type
 }
