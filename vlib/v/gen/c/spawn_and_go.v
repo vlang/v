@@ -183,6 +183,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		if should_register {
+			g.waiter_fn_definitions.writeln('${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread);')
 			g.gowrappers.writeln('\n${s_ret_typ} ${waiter_fn_name}(${gohandle_name} thread) {')
 			mut c_ret_ptr_ptr := 'NULL'
 			if node.call_expr.return_type != ast.void_type {
