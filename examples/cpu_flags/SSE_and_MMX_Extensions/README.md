@@ -10,7 +10,6 @@ This document provides an overview of the SSE and MMX extensions used in the pro
 - [SSE Extensions](#sse-extensions)
 - [MMX Extensions](#mmx-extensions)
 - [Usage](#usage)
-- [References](#references)
 
 ## Introduction
 
