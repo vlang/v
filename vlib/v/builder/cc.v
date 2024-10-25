@@ -779,7 +779,7 @@ pub fn (mut v Builder) cc() {
 }
 
 fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
-	crossrepo_url := 'https://github.com/spytheman/vlinuxroot'
+	crossrepo_url := 'https://github.com/vlang/linuxroot'
 	sysroot_git_config_path := os.join_path(sysroot, '.git', 'config')
 	if os.is_dir(sysroot) && !os.exists(sysroot_git_config_path) {
 		// remove existing obsolete unarchived .zip file content
