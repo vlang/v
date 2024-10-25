@@ -66,16 +66,20 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 
 	if !p.output_cross_c {
 		if p.os != host_os {
-			if p.arch == ._auto {
-				p.arch = .amd64
-				p.build_options << '-arch amd64'
+			// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
+			if host_os == .macos && p.os == .linux {
+				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
+				if p.arch == ._auto {
+					p.arch = .amd64
+					p.build_options << '-arch amd64'
+				}
+				p.parse_define('use_bundled_libgc')
 			}
-			p.parse_define('use_bundled_libgc')
 		}
 	}
 	if p.arch == ._auto {
 		p.arch = get_host_arch()
-		p.build_options << '-arch amd64'
+		p.build_options << '-arch ${p.arch}'
 	}
 }
 
