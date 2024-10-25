@@ -1,21 +1,33 @@
 module main
 
-import encoding.utf8 as u8
+import encoding.utf8
 
-fn check_char(s &string) int {
-	for i, ch in s.runes() {
-		is_p := u8.is_punct(ch.str(), 0)
-		okch := ch.str()
-		if !is_p {
-			println('${if is_p { ' is punct' } else { 'not punct' }}, ${u8.get_rune(s,
-				i)}, ${i} ${okch}')
-			assert false
-		}
-	}
-	return 0
+fn test_true() {
+	assert utf8.is_punct('!', 0)
+	assert utf8.is_rune_punct(`!`)
+	assert utf8.is_punct('.', 0)
+	assert utf8.is_rune_punct(`.`)
+	assert utf8.is_punct(',', 0)
+	assert utf8.is_rune_punct(`,`)
+	assert utf8.is_punct(';', 0)
+	assert utf8.is_rune_punct(`;`)
+	assert utf8.is_punct("'", 0)
+	assert utf8.is_rune_punct(`'`)
+	assert utf8.is_punct(',', 0)
+	assert utf8.is_rune_punct(`,`)
+	assert utf8.is_punct('/', 0)
+	assert utf8.is_rune_punct(`/`)
+	assert utf8.is_punct('*', 0)
+	assert utf8.is_rune_punct(`*`)
 }
 
-fn test_main() {
-	a := "!.,:;',/*"
-	assert check_char(a) == 0
+fn test_false() {
+	assert !utf8.is_punct('a', 0)
+	assert !utf8.is_rune_punct(`a`)
+	assert !utf8.is_punct('ç', 0)
+	assert !utf8.is_rune_punct(`ç`)
+	assert !utf8.is_punct('á', 0)
+	assert !utf8.is_rune_punct(`á`)
+	assert !utf8.is_punct('-', 0)
+	assert !utf8.is_rune_punct(`-`)
 }
