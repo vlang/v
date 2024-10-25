@@ -3543,6 +3543,59 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 		if ret_sym.kind == .multi_return {
 			c.error('returning multiple values is not supported in .map() calls', node.pos)
 		}
+	} else if method_name in ['sort', 'sorted'] {
+		if method_name == 'sort' {
+			if node.left is ast.CallExpr {
+				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
+					node.pos)
+			}
+			c.check_for_mut_receiver(mut node.left)
+		}
+		// position of `a` and `b` doesn't matter, they're the same
+		scope_register_a_b(mut node.scope, node.pos, elem_typ)
+
+		if node.args.len > 1 {
+			c.error('expected 0 or 1 argument, but got ${node.args.len}', node.pos)
+		} else if node.args.len == 1 {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut node.args[0].expr)
+			} else if node.args[0].expr is ast.InfixExpr {
+				c.check_sort_external_variable_access(node.args[0].expr)
+				if node.args[0].expr.op !in [.gt, .lt] {
+					c.error('`.${method_name}()` can only use `<` or `>` comparison',
+						node.pos)
+				}
+				left_name := '${node.args[0].expr.left}'[0]
+				right_name := '${node.args[0].expr.right}'[0]
+				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
+					c.error('`.${method_name}()` can only use `a` or `b` as argument, e.g. `arr.${method_name}(a < b)`',
+						node.pos)
+				} else if left_name == right_name {
+					c.error('`.${method_name}()` cannot use same argument', node.pos)
+				}
+				if node.args[0].expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
+					|| node.args[0].expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
+					c.error('`.${method_name}()` can only use ident, index or selector as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
+						node.pos)
+				}
+			} else {
+				c.error(
+					'`.${method_name}()` requires a `<` or `>` comparison as the first and only argument' +
+					'\ne.g. `users.${method_name}(a.id < b.id)`', node.pos)
+			}
+		} else if !(c.table.sym(elem_typ).has_method('<')
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.u8_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
+			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
+				node.pos)
+		}
+		for mut arg in node.args {
+			c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+		}
+		if method_name == 'sort' {
+			node.return_type = ast.void_type
+		} else {
+			node.return_type = node.left_type
+		}
 	}
 	return node.return_type
 }
