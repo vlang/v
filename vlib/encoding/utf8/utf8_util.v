@@ -190,7 +190,7 @@ pub fn is_uchar_punct(uchar int) bool {
 
 // is_rune_punct return true if the input unicode is a western unicode punctuation
 pub fn is_rune_punct(r rune) bool {
-	return find_punct_in_table(r, unicode_punct_western) != -1
+	return find_punct_in_table(r, unicode_punct_western) != rune(-1)
 }
 
 // Global
