@@ -209,7 +209,7 @@ pub fn is_uchar_global_punct(uchar int) bool {
 
 // is_rune_global_punct return true if the input unicode is a global unicode punctuation
 pub fn is_rune_global_punct(r rune) bool {
-	return find_punct_in_table(r, unicode_punct) != -1
+	return find_punct_in_table(r, unicode_punct) != rune(-1)
 }
 
 // Private functions
