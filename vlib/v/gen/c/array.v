@@ -609,23 +609,35 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	}
 	atype := g.styp(node.return_type)
 	sym := g.table.final_sym(node.return_type)
-	info := sym.info as ast.Array
-	depth := g.get_array_depth(info.elem_type)
-
-	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
-		&& node.left_type.is_ptr() {
-		true
+	left_is_array := sym.kind == .array
+	elem_type := if left_is_array {
+		(sym.info as ast.Array).elem_type
 	} else {
-		false
+		(sym.info as ast.ArrayFixed).elem_type
 	}
-	if !deref_field {
-		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
-		g.expr(node.left)
-		g.writeln('), ${depth});')
+	if left_is_array {
+		depth := g.get_array_depth(elem_type)
+
+		deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+			&& node.left_type.is_ptr() {
+			true
+		} else {
+			false
+		}
+		if !deref_field {
+			g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
+			g.expr(node.left)
+			g.writeln('), ${depth});')
+		} else {
+			g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
+			g.expr(node.left)
+			g.writeln(', ${depth});')
+		}
 	} else {
-		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
+		g.writeln('${atype} ${past.tmp_var};')
+		g.write('memcpy(&${past.tmp_var}, &')
 		g.expr(node.left)
-		g.writeln(', ${depth});')
+		g.writeln(', sizeof(${atype}));')
 	}
 
 	unsafe {
@@ -641,18 +653,23 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
 	rec_sym := g.table.final_sym(node.receiver_type)
-	if rec_sym.kind != .array {
+	if rec_sym.kind !in [.array, .array_fixed] {
 		// println(rec_sym.kind)
-		verror('.sort() is an array method')
+		verror('.sort() is an array method or a fixed array method')
 	}
 	if g.pref.is_bare {
 		g.writeln('bare_panic(_SLIT("sort does not work with -freestanding"))')
 		return
 	}
-	info := rec_sym.info as ast.Array
+	left_is_array := rec_sym.kind == .array
+	elem_type := if left_is_array {
+		(rec_sym.info as ast.Array).elem_type
+	} else {
+		(rec_sym.info as ast.ArrayFixed).elem_type
+	}
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
-	elem_stype := g.styp(info.elem_type)
+	elem_stype := g.styp(elem_type)
 	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace('*', '_ptr')}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
@@ -660,10 +677,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	mut lambda_fn_name := ''
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
 	if node.args.len == 0 {
-		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
+		comparison_type = g.unwrap(elem_type.set_nr_muls(0))
 		rlock g.array_sort_fn {
 			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node, compare_fn)
+				g.gen_array_sort_call(node, compare_fn, left_is_array)
 				return
 			}
 		}
@@ -691,7 +708,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		}
 		rlock g.array_sort_fn {
 			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node, compare_fn)
+				g.gen_array_sort_call(node, compare_fn, left_is_array)
 				return
 			}
 		}
@@ -722,7 +739,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		g.array_sort_fn << compare_fn
 	}
 
-	stype_arg := g.styp(info.elem_type)
+	stype_arg := g.styp(elem_type)
 	g.definitions.writeln('VV_LOCAL_SYMBOL ${g.static_modifier} int ${compare_fn}(${stype_arg}* a, ${stype_arg}* b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
 		'${g.styp(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
@@ -738,10 +755,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	g.definitions.writeln('}\n')
 
 	// write call to the generated function
-	g.gen_array_sort_call(node, compare_fn)
+	g.gen_array_sort_call(node, compare_fn, left_is_array)
 }
 
-fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
+fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_array bool) {
 	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
 		&& node.left_type.is_ptr() {
 		g.dot_or_ptr(node.left_type.deref())
@@ -750,16 +767,24 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
-	g.write('if (')
-	g.expr(node.left)
-	g.write2('${deref_field}len > 0) { ', 'qsort(')
-	g.expr(node.left)
-	g.write('${deref_field}data, ')
-	g.expr(node.left)
-	g.write('${deref_field}len, ')
-	g.expr(node.left)
-	g.write2('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn});',
-		' }')
+	if is_array {
+		g.write('if (')
+		g.expr(node.left)
+		g.write2('${deref_field}len > 0) { ', 'qsort(')
+		g.expr(node.left)
+		g.write('${deref_field}data, ')
+		g.expr(node.left)
+		g.write('${deref_field}len, ')
+		g.expr(node.left)
+		g.write2('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn});',
+			' }')
+	} else {
+		info := g.table.final_sym(node.left_type).info as ast.ArrayFixed
+		elem_styp := g.styp(info.elem_type)
+		g.write('qsort(&')
+		g.expr(node.left)
+		g.write(', ${info.size}, sizeof(${elem_styp}), (int (*)(const void *, const void *))&${compare_fn});')
+	}
 }
 
 // `nums.filter(it % 2 == 0)`

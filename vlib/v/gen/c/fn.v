@@ -1204,6 +1204,12 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		'map' {
 			g.gen_array_map(node)
 		}
+		'sort' {
+			g.gen_array_sort(node)
+		}
+		'sorted' {
+			g.gen_array_sorted(node)
+		}
 		else {
 			return false
 		}
