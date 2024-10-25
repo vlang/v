@@ -70,6 +70,7 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 				p.arch = .amd64
 				p.build_options << '-arch amd64'
 			}
+			p.parse_define('use_bundled_libgc')
 		}
 	}
 	if p.arch == ._auto {
