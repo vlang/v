@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.util
 
 fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 	if node.is_expr && node.return_type != ast.void_type && node.return_type != 0 {
@@ -491,10 +492,19 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(')')
 					}
 					.string {
-						ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
-						g.write('string__eq(${ptr_str}${cond_var}, ')
-						g.expr(expr)
-						g.write(')')
+						if expr is ast.StringLiteral {
+							slit := cescape_nonascii(util.smart_quote(expr.val, expr.is_raw))
+							if node.cond_type.is_ptr() {
+								g.write('_SLIT_EQ(${cond_var}->str, ${cond_var}->len, "${slit}")')
+							} else {
+								g.write('_SLIT_EQ(${cond_var}.str, ${cond_var}.len, "${slit}")')
+							}
+						} else {
+							ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
+							g.write('fast_string_eq(${ptr_str}${cond_var}, ')
+							g.expr(expr)
+							g.write(')')
+						}
 					}
 					.struct {
 						derefs_expr := '*'.repeat(g.get_expr_type(expr).nr_muls())
