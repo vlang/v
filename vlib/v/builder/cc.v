@@ -493,7 +493,7 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	return all
 }
 
-fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string, cpp_file bool) []string {
+fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string, cpp_file bool) []string {
 	mut all := []string{}
 
 	if !v.pref.no_std {
@@ -511,6 +511,15 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 			}
 		}
 		all << '-D_DEFAULT_SOURCE'
+	}
+
+	if v.pref.os == .linux && v.pref.arch == .amd64 {
+		$if macos {
+			sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
+			v.ensure_linuxroot_exists(sysroot)
+			all << '-target x86_64-linux-gnu'
+			all << '-I${os.quoted_path(sysroot)}/include'
+		}
 	}
 
 	all << ccoptions.env_cflags

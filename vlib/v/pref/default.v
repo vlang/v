@@ -53,10 +53,33 @@ fn (mut p Preferences) expand_exclude_paths() {
 	p.exclude = res
 }
 
-pub fn (mut p Preferences) fill_with_defaults() {
+fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
+	if p.os == .wasm32_emscripten {
+		// TODO: remove after `$if wasm32_emscripten {` works
+		p.parse_define('emscripten')
+	}
+	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
+	if p.os == ._auto {
+		p.os = host_os
+		p.build_options << '-os ${host_os}'
+	}
+
+	if !p.output_cross_c {
+		if p.os != host_os {
+			if p.arch == ._auto {
+				p.arch = .amd64
+				p.build_options << '-arch amd64'
+			}
+		}
+	}
 	if p.arch == ._auto {
 		p.arch = get_host_arch()
+		p.build_options << '-arch amd64'
 	}
+}
+
+pub fn (mut p Preferences) fill_with_defaults() {
+	p.setup_os_and_arch_when_not_explicitly_set()
 	p.expand_lookup_paths()
 	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
@@ -135,15 +158,6 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.is_debug {
 		p.parse_define('debug')
 	}
-	if p.os == .wasm32_emscripten {
-		// TODO: remove after `$if wasm32_emscripten {` works
-		p.parse_define('emscripten')
-	}
-	if p.os == ._auto {
-		// No OS specified? Use current system
-		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
-	}
-
 	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.default_c_compiler()
