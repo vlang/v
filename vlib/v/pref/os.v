@@ -37,7 +37,8 @@ pub enum OS {
 
 // Helper function to convert string names to OS enum
 pub fn os_from_string(os_str string) !OS {
-	match os_str {
+	lcased_os_str := os_str.to_lower()
+	match lcased_os_str {
 		'' {
 			return ._auto
 		}

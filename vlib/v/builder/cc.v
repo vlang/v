@@ -493,7 +493,7 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	return all
 }
 
-fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string, cpp_file bool) []string {
+fn (mut v Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string, cpp_file bool) []string {
 	mut all := []string{}
 
 	if !v.pref.no_std {
@@ -513,6 +513,19 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 		all << '-D_DEFAULT_SOURCE'
 	}
 
+	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
+	mut cross_compiling_from_macos_to_linux := false
+	if v.pref.os == .linux && v.pref.arch == .amd64 {
+		$if macos {
+			cross_compiling_from_macos_to_linux = true
+		}
+	}
+
+	if cross_compiling_from_macos_to_linux {
+		v.ensure_linuxroot_exists(sysroot)
+		all << '-target x86_64-linux-gnu'
+	}
+
 	all << ccoptions.env_cflags
 	all << ccoptions.args
 	all << middle
@@ -520,6 +533,9 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 	// compilers are inconsistent about how they handle:
 	// all << ccoptions.env_ldflags
 	// all << ccoptions.ldflags
+	if cross_compiling_from_macos_to_linux {
+		all << '-I${os.quoted_path(sysroot)}/include' // add the system include/ folder after everything else, so that local folders like thirdparty/mbedtls have a chance to supply their own headers
+	}
 	return all
 }
 
@@ -864,7 +880,7 @@ fn (mut b Builder) cc_linux_cross() {
 		'-L${sysroot}/lib/x86_64-linux-gnu', '--sysroot=${sysroot}', '-v', '-o ${out_name}',
 		'-m elf_x86_64', '-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
 		'${sysroot}/crt1.o ${sysroot}/crti.o ${obj_file}', '-lc', '-lcrypto', '-lssl', '-lpthread',
-		'${sysroot}/crtn.o', '-lm']
+		'${sysroot}/crtn.o', '-lm', '-ldl']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
