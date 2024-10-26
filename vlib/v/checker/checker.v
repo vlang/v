@@ -800,8 +800,7 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 				return true
 			}
 			if right.obj is ast.Var {
-				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr()
-					&& c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
+				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr() {
 					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
 						right.pos)
 					return false
