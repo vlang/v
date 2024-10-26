@@ -163,7 +163,7 @@ pub fn (root &TrieNode) find(word string) int {
 		if child == unsafe { nil } {
 			return -1
 		}
-		node = unsafe { child }
+		node = child
 		idx++
 	}
 	return -1
