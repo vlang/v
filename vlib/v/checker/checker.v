@@ -4831,7 +4831,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			unwrapped_sym := c.table.final_sym(unwrapped_typ)
 			if unwrapped_sym.kind in [.map, .array, .array_fixed] {
 				typ = unwrapped_typ
-				typ_sym = unwrapped_sym
+				typ_sym = unsafe { unwrapped_sym }
 			}
 		}
 		else {}
