@@ -8,12 +8,12 @@ import time
 
 // TimeFormat define the log time string format, come from time/format.v
 pub enum TimeFormat {
-	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h) default
+	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h)
 	tf_default       // YYYY-MM-DD HH:mm (24h)
 	tf_ss            // YYYY-MM-DD HH:mm:ss (24h)
 	tf_ss_milli      // YYYY-MM-DD HH:mm:ss.123 (24h)
 	tf_ss_nano       // YYYY-MM-DD HH:mm:ss.123456789 (24h)
-	tf_rfc3339       // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_rfc3339       // YYYY-MM-DDTHH:mm:ss.123Z default (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 	tf_rfc3339_nano  // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 	tf_hhmm          // HH:mm (24h)
 	tf_hhmmss        // HH:mm:ss (24h)
@@ -24,6 +24,25 @@ pub enum TimeFormat {
 	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 }
 
+pub fn (l &Log) get_time_string_len() int {
+	match l.time_format {
+		.tf_ss_micro { return 26 }
+		.tf_default { return 16 }
+		.tf_ss { return 19 }
+		.tf_ss_milli { return 23 }
+		.tf_ss_nano { return 29 }
+		.tf_rfc3339 { return 24 }
+		.tf_rfc3339_nano { return 30 }
+		.tf_hhmm { return 5 }
+		.tf_hhmmss { return 8 }
+		.tf_hhmm12 { return 5 }
+		.tf_ymmdd { return 10 }
+		.tf_ddmmy { return 10 }
+		.tf_md { return 7 }
+		.tf_custom_format { return 30 }
+	}
+}
+
 // Log represents a logging object
 pub struct Log {
 mut:
@@ -31,8 +50,8 @@ mut:
 	output_label       string
 	ofile              os.File
 	output_target      LogTarget // output to console (stdout/stderr) or file or both.
-	time_format        TimeFormat
-	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
+	time_format        TimeFormat = .tf_rfc3339
+	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 pub mut:
@@ -116,9 +135,17 @@ pub fn (mut l Log) reopen() ! {
 
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
-	timestamp := l.time_format(time.now())
+	timestamp := l.time_format(time.utc())
 	e := tag_to_file(level, l.short_tag)
-	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
+
+	unsafe {
+		space := ' '
+		l.ofile.write_ptr(timestamp.str, timestamp.len)
+		l.ofile.write_ptr(space.str, space.len)
+		l.ofile.write_ptr(e.str, e.len)
+		l.ofile.write_ptr(space.str, space.len)
+		l.ofile.write_ptr(s.str, s.len)
+	}
 	if l.always_flush {
 		l.flush()
 	}
@@ -126,7 +153,7 @@ fn (mut l Log) log_file(s string, level Level) {
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	timestamp := l.time_format(time.now())
+	timestamp := l.time_format(time.utc())
 	e := tag_to_cli(level, l.short_tag)
 	println('${timestamp} [${e}] ${s}')
 	if l.always_flush {
