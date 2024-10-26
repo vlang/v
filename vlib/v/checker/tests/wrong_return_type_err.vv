@@ -4,6 +4,13 @@ struct Val {
 	val int
 }
 
+fn double_positive(num int) int {
+	if num <= 0 {
+		return Error{}
+	}
+	return num * 2
+}
+
 fn new_val(num int) Val {
 	if num <= 0 {
 		return Error{}
