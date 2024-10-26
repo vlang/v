@@ -807,6 +807,9 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type ast.Type, right ast.Expr) bool {
 	match right {
 		ast.Ident {
+			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+				return true
+			}
 			if right.obj is ast.Var {
 				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr()
 					&& c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
@@ -814,8 +817,7 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 						right.pos)
 					return false
 				}
-				if !right.obj.is_mut && !c.pref.translated && !c.file.is_translated
-					&& !c.inside_unsafe
+				if !right.obj.is_mut
 					&& c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
 					c.error('left-side of assignment expects a mutable reference, but variable `${right.name}` is immutable, declare it with `mut` to make it mutable or clone it',
 						right.pos)
@@ -824,6 +826,9 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 			}
 		}
 		ast.IfExpr {
+			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+				return true
+			}
 			for branch in right.branches {
 				stmts := branch.stmts.filter(it is ast.ExprStmt)
 				if stmts.len > 0 {
@@ -833,6 +838,9 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 			}
 		}
 		ast.MatchExpr {
+			if c.inside_unsafe || c.pref.translated || c.file.is_translated {
+				return true
+			}
 			for branch in right.branches {
 				stmts := branch.stmts.filter(it is ast.ExprStmt)
 				if stmts.len > 0 {
