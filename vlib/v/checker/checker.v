@@ -797,15 +797,17 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 	match right {
 		ast.Ident {
 			if right.obj is ast.Var {
-				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr() {
+				if left_type.is_ptr() && !right.is_mut() && right_type.is_ptr()
+					&& c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
 					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
-							right.pos)
+						right.pos)
 					return false
 				}
 				if !right.obj.is_mut && !c.pref.translated && !c.file.is_translated
-					&& !c.inside_unsafe && c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
+					&& !c.inside_unsafe
+					&& c.table.final_sym(right_type).kind in [.array, .array_fixed, .map] {
 					c.error('left-side of assignment expects a mutable reference, but variable `${right.name}` is immutable, declare it with `mut` to make it mutable or clone it',
-							right.pos)
+						right.pos)
 					return false
 				}
 			}
@@ -817,7 +819,7 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 					last_expr := stmts.last() as ast.ExprStmt
 					c.fail_if_immutable_to_mutable(left_type, right_type, last_expr.expr)
 				}
-			}			
+			}
 		}
 		ast.MatchExpr {
 			for branch in right.branches {
@@ -838,8 +840,7 @@ fn (mut c Checker) fail_if_immutable_to_mutable(left_type ast.Type, right_type a
 							c.note('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
 								init_field.pos)
 						} else if init_field.expr is ast.PrefixExpr {
-							if init_field.expr.op == .amp
-								&& init_field.expr.right is ast.Ident
+							if init_field.expr.op == .amp && init_field.expr.right is ast.Ident
 								&& !init_field.expr.right.is_mut() {
 								c.note('`${init_field.expr.right.name}` is immutable, cannot have a mutable reference to an immutable object',
 									init_field.expr.right.pos)
