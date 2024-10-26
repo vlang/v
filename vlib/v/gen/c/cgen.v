@@ -7598,10 +7598,12 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 
 		mut info := expr_type_sym.info as ast.Interface
-		if node.typ !in info.conversions {
-			left_variants := g.table.iface_types[expr_type_sym.name]
-			right_variants := g.table.iface_types[sym.name]
-			info.conversions[node.typ] = left_variants.filter(it in right_variants)
+		lock info.conversions {
+			if node.typ !in info.conversions {
+				left_variants := g.table.iface_types[expr_type_sym.name]
+				right_variants := g.table.iface_types[sym.name]
+				info.conversions[node.typ] = left_variants.filter(it in right_variants)
+			}
 		}
 		expr_type_sym.info = info
 	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
