@@ -177,7 +177,6 @@ $ make
 
 ### Docker
 
-<details><summary>Expand Docker instructions</summary>
 
 ```bash
 git clone https://github.com/vlang/v
@@ -211,7 +210,6 @@ You should see something like this:
 -rwxr-xr-x 1 root root  16612 May 27 17:07 examples/hello_world
 -rwxr-xr-x 1 root root 335308 May 27 17:07 examples/http_server
 ```
-</details>
 
 ### Termux/Android
 
