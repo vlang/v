@@ -1,0 +1,18 @@
+module main
+
+struct Val {
+	val int
+}
+
+fn new_val(num int) Val {
+	if num <= 0 {
+		return Error{}
+	}
+	return Val{
+		val: num
+	}
+}
+
+fn main() {
+	println(new_val(2))
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wrong_return_type_err.vv:9:10: error: cannot use `Error` as type `Val` in return argument
+    7 | fn new_val(num int) Val {
+    8 |     if num <= 0 {
+    9 |         return Error{}
+      |                ~~~~~~~
+   10 |     }
+   11 |     return Val{
