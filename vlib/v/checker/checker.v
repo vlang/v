@@ -1547,7 +1547,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if node.expr.is_auto_deref_var() {
 		if mut node.expr is ast.Ident {
 			if mut node.expr.obj is ast.Var {
-				typ = node.expr.obj.typ
+				typ = c.unwrap_generic(node.expr.obj.typ)
 			}
 		}
 	}
