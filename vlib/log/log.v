@@ -8,12 +8,12 @@ import time
 
 // TimeFormat define the log time string format, come from time/format.v
 pub enum TimeFormat {
-	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h)
+	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h) default
 	tf_default       // YYYY-MM-DD HH:mm (24h)
 	tf_ss            // YYYY-MM-DD HH:mm:ss (24h)
 	tf_ss_milli      // YYYY-MM-DD HH:mm:ss.123 (24h)
 	tf_ss_nano       // YYYY-MM-DD HH:mm:ss.123456789 (24h)
-	tf_rfc3339       // YYYY-MM-DDTHH:mm:ss.123Z default (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_rfc3339       // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 	tf_rfc3339_nano  // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 	tf_hhmm          // HH:mm (24h)
 	tf_hhmmss        // HH:mm:ss (24h)
@@ -51,7 +51,7 @@ mut:
 	output_label       string
 	ofile              os.File
 	output_target      LogTarget // output to console (stdout/stderr) or file or both.
-	time_format        TimeFormat = .tf_rfc3339
+	time_format        TimeFormat = .tf_ss_micro
 	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
