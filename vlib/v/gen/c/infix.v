@@ -776,18 +776,19 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 	right_sym := g.table.sym(node.right_type)
 
 	mut info := left_sym.info as ast.Interface
-
-	common_variants := info.conversions[node.right_type] or {
-		left_variants := g.table.iface_types[left_sym.name]
-		right_variants := g.table.iface_types[right_sym.name]
-		c := left_variants.filter(it in right_variants)
-		info.conversions[node.right_type] = c
-		c
-	}
-	left_sym.info = info
-	if common_variants.len == 0 {
-		g.write('false')
-		return
+	lock info.conversions {
+		common_variants := info.conversions[node.right_type] or {
+			left_variants := g.table.iface_types[left_sym.name]
+			right_variants := g.table.iface_types[right_sym.name]
+			c := left_variants.filter(it in right_variants)
+			info.conversions[node.right_type] = c
+			c
+		}
+		left_sym.info = info
+		if common_variants.len == 0 {
+			g.write('false')
+			return
+		}
 	}
 	g.write('I_${left_sym.cname}_is_I_${right_sym.cname}(')
 	if node.left_type.is_ptr() {

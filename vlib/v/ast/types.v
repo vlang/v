@@ -191,7 +191,7 @@ pub mut:
 	methods []Fn
 	embeds  []Type
 	// `I1 is I2` conversions
-	conversions map[int][]Type
+	conversions shared map[int][]Type
 	// generic interface support
 	is_generic     bool
 	generic_types  []Type
