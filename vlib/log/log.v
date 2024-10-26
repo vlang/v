@@ -136,15 +136,15 @@ pub fn (mut l Log) reopen() ! {
 
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
-	// timestamp := l.time_format(time.utc())
-	// e := tag_to_file(level, l.short_tag)
+	timestamp := l.time_format(time.utc())
+	e := tag_to_file(level, l.short_tag)
 
 	unsafe {
-		// space := ' '
-		// l.ofile.write_ptr(timestamp.str, timestamp.len)
-		// l.ofile.write_ptr(space.str, space.len)
-		// l.ofile.write_ptr(e.str, e.len)
-		// l.ofile.write_ptr(space.str, space.len)
+		space := ' '
+		l.ofile.write_ptr(timestamp.str, timestamp.len)
+		l.ofile.write_ptr(space.str, space.len)
+		l.ofile.write_ptr(e.str, e.len)
+		l.ofile.write_ptr(space.str, space.len)
 		l.ofile.write_ptr(s.str, s.len)
 		l.ofile.write_ptr('\n'.str, 1)
 	}
