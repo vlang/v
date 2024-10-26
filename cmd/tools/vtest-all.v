@@ -295,6 +295,11 @@ fn get_all_commands() []Command {
 	}
 	$if linux {
 		res << Command{
+			line:   '${vexe} -o swait vlib/v/tests/reliability/semaphore_wait.v'
+			okmsg:  'V can compile semaphore_wait.v on Linux with GC on.'
+			rmfile: 'swait'
+		}
+		res << Command{
 			line:   '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
 			okmsg:  'V can compile with -freestanding on Linux with GCC.'
 			rmfile: 'bel'
