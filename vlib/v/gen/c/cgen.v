@@ -704,6 +704,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		inner_loop:            &ast.empty_stmt
 		field_data_type:       global_g.table.find_type('FieldData')
 		enum_data_type:        global_g.table.find_type('EnumData')
+		variant_data_type:     global_g.table.find_type('VariantData')
 		array_sort_fn:         global_g.array_sort_fn
 		waiter_fns:            global_g.waiter_fns
 		threaded_fns:          global_g.threaded_fns
@@ -2512,13 +2513,15 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
+	is_comptime_variant := expr is ast.Ident && g.comptime.is_comptime_variant_var(expr)
 	if exp_is_ptr {
 		g.write('HEAP(${exp_styp}, ')
 		rparen_n++
 	}
 	g.write('${fname}(')
 	if !got_is_ptr && !got_is_fn {
-		if !expr.is_lvalue() || (expr is ast.Ident && expr.obj.is_simple_define_const()) {
+		if is_comptime_variant || !expr.is_lvalue()
+			|| (expr is ast.Ident && expr.obj.is_simple_define_const()) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
 			promotion_macro_name := if fname.contains('_to_sumtype_') { 'ADDR' } else { 'HEAP' }
@@ -2530,6 +2533,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	}
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.option) {
 		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
+	} else if is_comptime_variant {
+		g.write(g.type_default(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
 	} else {
 		g.expr(expr)
 	}
@@ -5109,6 +5114,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	if sym.kind in [.sum_type, .interface] {
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
+		} else if node.expr is ast.Ident && g.comptime.is_comptime_variant_var(node.expr) {
+			g.expr_with_cast(node.expr, g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'],
+				node_typ)
 		} else if node.typ.has_flag(.option) {
 			g.expr_with_opt(node.expr, expr_type, node.typ)
 		} else {
