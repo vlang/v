@@ -1,0 +1,10 @@
+fn main() {
+    arr := [1, 2, 3] // declared as immutable!
+    mut arr_mut := if true { arr } else { []int{} }
+	mut arr_mut2 := match true { true { arr } else { [0] } }
+    arr_mut[0] = 999
+	arr_mut2[1] = 999
+    println(arr)
+	println(arr)
+	assert arr == [1,2,3]
+}
