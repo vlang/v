@@ -307,12 +307,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if mut right_sym.info is ast.Alias && (right_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
 				&& (right_final_sym.is_primitive() || right_final_sym.kind == .enum)) {
-				right_sym = right_final_sym
+				right_sym = unsafe { right_final_sym }
 			}
 			if mut left_sym.info is ast.Alias && (left_sym.info.language != .c
 				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
 				&& (left_final_sym.is_primitive() || left_final_sym.kind == .enum)) {
-				left_sym = left_final_sym
+				left_sym = unsafe { left_final_sym }
 			}
 
 			if c.pref.translated && node.op in [.plus, .minus, .mul]

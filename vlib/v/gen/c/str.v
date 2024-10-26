@@ -70,7 +70,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
-			sym = parent_sym
+			sym = unsafe { parent_sym }
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
