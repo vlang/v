@@ -248,7 +248,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
 		}
-		if left is ast.Ident && left.is_mut() && !c.inside_unsafe {
+		if left is ast.Ident && left.is_mut() && !left.is_blank_ident() && !c.inside_unsafe {
 			// check if right-side is a immutable reference
 			c.fail_if_immutable_to_mutable(left_type, right_type, right)
 		}
