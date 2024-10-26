@@ -190,7 +190,7 @@ pub fn is_uchar_punct(uchar int) bool {
 
 // is_rune_punct return true if the input unicode is a western unicode punctuation
 pub fn is_rune_punct(r rune) bool {
-	return find_punct_in_table(r, unicode_punct_western) != 0
+	return find_punct_in_table(r, unicode_punct_western) != rune(-1)
 }
 
 // Global
@@ -209,7 +209,7 @@ pub fn is_uchar_global_punct(uchar int) bool {
 
 // is_rune_global_punct return true if the input unicode is a global unicode punctuation
 pub fn is_rune_global_punct(r rune) bool {
-	return find_punct_in_table(r, unicode_punct) != 0
+	return find_punct_in_table(r, unicode_punct) != rune(-1)
 }
 
 // Private functions
@@ -553,7 +553,6 @@ fn find_punct_in_table(in_code rune, in_table []rune) rune {
 	mut x := rune(0)
 
 	for {
-		index = (first_index + last_index) >> 1
 		x = in_table[index]
 		// C.printf("(%d..%d) index:%d base[%08x]==>[%08x]\n",first_index,last_index,index,in_code,x)
 
@@ -568,9 +567,10 @@ fn find_punct_in_table(in_code rune, in_table []rune) rune {
 		if (last_index - first_index) <= 1 {
 			break
 		}
+		index = (first_index + last_index) >> 1
 	}
 
-	return 0
+	return -1
 }
 
 // Unicode punctuation chars
