@@ -1,1 +1,7 @@
-MapString({'abc': 'String Error'})
+vlib/v/slow_tests/inout/printing_option_or_expr_with_map_val.vv:17:9: error: cannot use `MyError` as type `?MapString` in return argument
+   15 | 
+   16 | fn f() ?MapString {
+   17 |     return MyError{
+      |            ~~~~~~~~
+   18 |         msg: 'String Error'
+   19 |     }
