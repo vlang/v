@@ -68,6 +68,7 @@ mut:
 	cleanup                   strings.Builder
 	cleanups                  map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers                strings.Builder            // all go callsite wrappers
+	waiter_fn_definitions     strings.Builder            // waiter fns definitions
 	auto_str_funcs            strings.Builder            // function bodies of all auto generated _str funcs
 	dump_funcs                strings.Builder            // function bodies of all auto generated _str funcs
 	pcs_declarations          strings.Builder            // -prof profile counter declarations for each function
@@ -390,6 +391,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			global_g.alias_definitions.write(g.alias_definitions) or { panic(err) }
 			global_g.definitions.write(g.definitions) or { panic(err) }
 			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
+			global_g.waiter_fn_definitions.write(g.waiter_fn_definitions) or { panic(err) }
 			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
@@ -593,6 +595,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if interface_table.len > 0 {
 		b.write_string2('\n// V interface table:\n', interface_table)
 	}
+	if g.waiter_fn_definitions.len > 0 {
+		b.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.str())
+	}
 	if g.gowrappers.len > 0 {
 		b.write_string2('\n// V gowrappers:\n', g.gowrappers.str())
 	}
@@ -659,61 +664,62 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item[&ast.File](idx)
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
-		file:                 file
-		out:                  strings.new_builder(512000)
-		cheaders:             strings.new_builder(15000)
-		includes:             strings.new_builder(100)
-		typedefs:             strings.new_builder(100)
-		type_definitions:     strings.new_builder(100)
-		alias_definitions:    strings.new_builder(100)
-		definitions:          strings.new_builder(100)
-		gowrappers:           strings.new_builder(100)
-		auto_str_funcs:       strings.new_builder(100)
-		comptime_definitions: strings.new_builder(100)
-		pcs_declarations:     strings.new_builder(100)
-		cov_declarations:     strings.new_builder(100)
-		hotcode_definitions:  strings.new_builder(100)
-		embedded_data:        strings.new_builder(1000)
-		out_options_forward:  strings.new_builder(100)
-		out_options:          strings.new_builder(100)
-		out_results_forward:  strings.new_builder(100)
-		out_results:          strings.new_builder(100)
-		shared_types:         strings.new_builder(100)
-		shared_functions:     strings.new_builder(100)
-		channel_definitions:  strings.new_builder(100)
-		thread_definitions:   strings.new_builder(100)
-		json_forward_decls:   strings.new_builder(100)
-		enum_typedefs:        strings.new_builder(100)
-		sql_buf:              strings.new_builder(100)
-		cleanup:              strings.new_builder(100)
-		table:                global_g.table
-		pref:                 global_g.pref
-		fn_decl:              unsafe { nil }
-		indent:               -1
-		module_built:         global_g.module_built
-		timers:               util.new_timers(
+		file:                  file
+		out:                   strings.new_builder(512000)
+		cheaders:              strings.new_builder(15000)
+		includes:              strings.new_builder(100)
+		typedefs:              strings.new_builder(100)
+		type_definitions:      strings.new_builder(100)
+		alias_definitions:     strings.new_builder(100)
+		definitions:           strings.new_builder(100)
+		gowrappers:            strings.new_builder(100)
+		waiter_fn_definitions: strings.new_builder(100)
+		auto_str_funcs:        strings.new_builder(100)
+		comptime_definitions:  strings.new_builder(100)
+		pcs_declarations:      strings.new_builder(100)
+		cov_declarations:      strings.new_builder(100)
+		hotcode_definitions:   strings.new_builder(100)
+		embedded_data:         strings.new_builder(1000)
+		out_options_forward:   strings.new_builder(100)
+		out_options:           strings.new_builder(100)
+		out_results_forward:   strings.new_builder(100)
+		out_results:           strings.new_builder(100)
+		shared_types:          strings.new_builder(100)
+		shared_functions:      strings.new_builder(100)
+		channel_definitions:   strings.new_builder(100)
+		thread_definitions:    strings.new_builder(100)
+		json_forward_decls:    strings.new_builder(100)
+		enum_typedefs:         strings.new_builder(100)
+		sql_buf:               strings.new_builder(100)
+		cleanup:               strings.new_builder(100)
+		table:                 global_g.table
+		pref:                  global_g.pref
+		fn_decl:               unsafe { nil }
+		indent:                -1
+		module_built:          global_g.module_built
+		timers:                util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
 		)
-		inner_loop:           &ast.empty_stmt
-		field_data_type:      global_g.table.find_type('FieldData')
-		enum_data_type:       global_g.table.find_type('EnumData')
-		array_sort_fn:        global_g.array_sort_fn
-		waiter_fns:           global_g.waiter_fns
-		threaded_fns:         global_g.threaded_fns
-		str_fn_names:         global_g.str_fn_names
-		options_forward:      global_g.options_forward
-		results_forward:      global_g.results_forward
-		done_options:         global_g.done_options
-		done_results:         global_g.done_results
-		is_autofree:          global_g.pref.autofree
-		obf_table:            global_g.obf_table
-		referenced_fns:       global_g.referenced_fns
-		is_cc_msvc:           global_g.is_cc_msvc
-		use_segfault_handler: global_g.use_segfault_handler
-		has_reflection:       'v.reflection' in global_g.table.modules
-		has_debugger:         'v.debug' in global_g.table.modules
-		reflection_strings:   global_g.reflection_strings
+		inner_loop:            &ast.empty_stmt
+		field_data_type:       global_g.table.find_type('FieldData')
+		enum_data_type:        global_g.table.find_type('EnumData')
+		array_sort_fn:         global_g.array_sort_fn
+		waiter_fns:            global_g.waiter_fns
+		threaded_fns:          global_g.threaded_fns
+		str_fn_names:          global_g.str_fn_names
+		options_forward:       global_g.options_forward
+		results_forward:       global_g.results_forward
+		done_options:          global_g.done_options
+		done_results:          global_g.done_results
+		is_autofree:           global_g.pref.autofree
+		obf_table:             global_g.obf_table
+		referenced_fns:        global_g.referenced_fns
+		is_cc_msvc:            global_g.is_cc_msvc
+		use_segfault_handler:  global_g.use_segfault_handler
+		has_reflection:        'v.reflection' in global_g.table.modules
+		has_debugger:          'v.debug' in global_g.table.modules
+		reflection_strings:    global_g.reflection_strings
 	}
 	g.comptime = &comptime.ComptimeInfo{
 		resolver: g
@@ -738,6 +744,7 @@ pub fn (mut g Gen) free_builders() {
 		g.definitions.free()
 		g.cleanup.free()
 		g.gowrappers.free()
+		g.waiter_fn_definitions.free()
 		g.auto_str_funcs.free()
 		g.dump_funcs.free()
 		g.comptime_definitions.free()
@@ -1316,6 +1323,7 @@ fn (mut g Gen) register_thread_void_wait_call() {
 			return
 		}
 		g.waiter_fns << '__v_thread_wait'
+		g.waiter_fn_definitions.writeln('void __v_thread_wait(__v_thread thread);')
 	}
 	g.gowrappers.writeln('void __v_thread_wait(__v_thread thread) {')
 	if g.pref.os == .windows {
@@ -1346,6 +1354,7 @@ fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 	if should_register {
 		if is_void {
 			g.register_thread_void_wait_call()
+			g.waiter_fn_definitions.writeln('void ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 void ${fn_name}(${thread_arr_typ} a) {
 	for (int i = 0; i < a.len; ++i) {
@@ -1355,6 +1364,7 @@ void ${fn_name}(${thread_arr_typ} a) {
 	}
 }')
 		} else {
+			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
 	${ret_typ} res = __new_array_with_default(a.len, a.len, sizeof(${eltyp}), 0);
@@ -1392,6 +1402,7 @@ fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp st
 	if should_register {
 		if is_void {
 			g.register_thread_void_wait_call()
+			g.waiter_fn_definitions.writeln('void ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 void ${fn_name}(${thread_arr_typ} a) {
 	for (int i = 0; i < ${len}; ++i) {
@@ -1401,6 +1412,7 @@ void ${fn_name}(${thread_arr_typ} a) {
 	}
 }')
 		} else {
+			g.waiter_fn_definitions.writeln('${ret_typ} ${fn_name}(${thread_arr_typ} a);')
 			g.gowrappers.writeln('
 ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
 	${ret_typ} res = __new_array_with_default(${len}, ${len}, sizeof(${eltyp}), 0);
