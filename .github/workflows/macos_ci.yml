@@ -98,3 +98,7 @@ jobs:
         run: v test examples/readline/
       - name: Test vlib modules with -skip-unused
         run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
+      - name: Test cross compilation to Linux
+        run: |
+          v -d use_openssl -cc clang -showcc -gc none -o hi -os linux examples/hello_world.v
+          v -d use_openssl -cc clang -showcc -gc none -o hi -os linux examples/veb/veb_example.v

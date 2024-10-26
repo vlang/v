@@ -43,13 +43,14 @@ For a list of all features and fixes, check out the changelog.
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
+- [ ] Direct C/C++ interop without generating wrappers
 
 ## [Version 0.6]
 
 - [ ] Integrate the new parallel parser/checker/cgen
 - [ ] Incremental compilation
+- [ ] Runtime race detector
 - [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
-- [ ] Direct C/C++ interop without generating wrappers
 - [ ] `recover()` from panics
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default

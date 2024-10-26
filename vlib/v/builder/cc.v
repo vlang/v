@@ -848,7 +848,7 @@ fn (mut b Builder) cc_linux_cross() {
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
-	mut cc_args := []string{}
+	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-c'
@@ -916,7 +916,7 @@ fn (mut b Builder) cc_freebsd_cross() {
 	obj_file := b.out_name_c + '.o'
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
-	mut cc_args := []string{}
+	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-c'
