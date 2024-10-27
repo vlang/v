@@ -174,6 +174,39 @@ pub fn (t Time) format_rfc3339() string {
 	return buf.bytestr()
 }
 
+// format_rfc3339_micro returns a date string in "YYYY-MM-DDTHH:mm:ss.123456Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+@[manualfree]
+pub fn (t Time) format_rfc3339_micro() string {
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	t_ := time_with_unix(t)
+	if t_.is_local {
+		utc_time := t_.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond / 1000, mut buf, 26)
+	} else {
+		int_to_byte_array_no_pad(t_.year, mut buf, 4)
+		int_to_byte_array_no_pad(t_.month, mut buf, 7)
+		int_to_byte_array_no_pad(t_.day, mut buf, 10)
+		int_to_byte_array_no_pad(t_.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t_.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t_.second, mut buf, 19)
+		int_to_byte_array_no_pad(t_.nanosecond / 1000, mut buf, 26)
+	}
+
+	return buf.bytestr()
+}
+
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 @[manualfree]
 pub fn (t Time) format_rfc3339_nano() string {
