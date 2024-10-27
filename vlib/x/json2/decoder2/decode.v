@@ -625,36 +625,26 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		$for v in val.variants {
 			if value_info.value_kind == .string_ {
 				$if v.typ in [string, time.Time] {
-					unsafe {
-						val = T(v)
-					}
+					val = T(v)
 				}
 			} else if value_info.value_kind == .number {
 				$if v.typ in [$float, $int, $enum] {
-					unsafe {
-						val = T(v)
-					}
+					val = T(v)
 				}
 			} else if value_info.value_kind == .boolean {
 				$if v.typ is bool {
-					unsafe {
-						val = T(v)
-					}
+					val = T(v)
 				}
 			} else if value_info.value_kind == .object {
 				$if v.typ is $map {
-					unsafe {
-						val = T(v)
-					}
+					val = T(v)
 				} $else $if v.typ is $struct {
 					// Will only be supported when json object has field "_type"
 					error('cannot encode value with ${typeof(val).name} type')
 				}
 			} else if value_info.value_kind == .array {
 				$if v.typ is $array {
-					unsafe {
-						val = T(v)
-					}
+					val = T(v)
 				}
 			}
 		}
