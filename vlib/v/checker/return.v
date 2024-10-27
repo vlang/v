@@ -243,7 +243,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 				// `fn foo() !int { return Err{} }`
-				if got_type_sym.kind == .struct
+				if expected_fn_return_type_has_result && got_type_sym.kind == .struct
 					&& c.type_implements(got_type, ast.error_type, node.pos) {
 					node.exprs[expr_idxs[i]] = ast.CastExpr{
 						expr:      node.exprs[expr_idxs[i]]
