@@ -1547,7 +1547,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if node.expr.is_auto_deref_var() {
 		if mut node.expr is ast.Ident {
 			if mut node.expr.obj is ast.Var {
-				typ = c.unwrap_generic(node.expr.obj.typ)
+				typ = node.expr.obj.typ
 			}
 		}
 	}
@@ -1689,7 +1689,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		return field.typ
 	}
-	if mut method := sym.find_method_with_generic_parent(field_name) {
+	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 			// if the expected type includes the receiver, don't hide it behind a closure
@@ -1697,7 +1697,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return fn_type
 			}
 		}
-		receiver := method.params[0].typ
+		receiver := c.unwrap_generic(method.params[0].typ)
 		if receiver.nr_muls() > 0 {
 			if !c.inside_unsafe {
 				rec_sym := c.table.sym(receiver.set_nr_muls(0))
@@ -1716,7 +1716,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.has_hidden_receiver = true
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
-		node.typ = fn_type
+		node.typ = c.unwrap_generic(fn_type)
 		return fn_type
 	}
 	if sym.kind !in [.struct, .aggregate, .interface, .sum_type] {
