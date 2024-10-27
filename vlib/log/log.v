@@ -51,8 +51,8 @@ mut:
 	output_label       string
 	ofile              os.File
 	output_target      LogTarget // output to console (stdout/stderr) or file or both.
-	time_format        TimeFormat = .tf_ss_micro
-	custom_time_format string     = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
+	time_format        TimeFormat
+	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
 	always_flush       bool // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 pub mut:
@@ -136,7 +136,7 @@ pub fn (mut l Log) reopen() ! {
 
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
-	timestamp := l.time_format(time.utc())
+	timestamp := l.time_format(time.now())
 	e := tag_to_file(level, l.short_tag)
 
 	unsafe {
@@ -160,7 +160,7 @@ fn (mut l Log) log_file(s string, level Level) {
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	timestamp := l.time_format(time.utc())
+	timestamp := l.time_format(time.now())
 	e := tag_to_cli(level, l.short_tag)
 	println('${timestamp} [${e}] ${s}')
 	if l.always_flush {
