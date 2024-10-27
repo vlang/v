@@ -24,26 +24,6 @@ pub enum TimeFormat {
 	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 }
 
-// get_time_string_len returns the length of the time string for the given time format
-fn (l &Log) get_time_string_len() int {
-	match l.time_format {
-		.tf_ss_micro { return 26 }
-		.tf_default { return 16 }
-		.tf_ss { return 19 }
-		.tf_ss_milli { return 23 }
-		.tf_ss_nano { return 29 }
-		.tf_rfc3339 { return 24 }
-		.tf_rfc3339_nano { return 30 }
-		.tf_hhmm { return 5 }
-		.tf_hhmmss { return 8 }
-		.tf_hhmm12 { return 5 }
-		.tf_ymmdd { return 10 }
-		.tf_ddmmy { return 10 }
-		.tf_md { return 7 }
-		.tf_custom_format { return 30 }
-	}
-}
-
 // Log represents a logging object
 pub struct Log {
 mut:
