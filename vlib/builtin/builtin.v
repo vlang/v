@@ -78,7 +78,11 @@ pub fn (ami &VAssertMetaInfo) free() {
 fn __print_assert_failure(i &VAssertMetaInfo) {
 	eprintln('${i.fpath}:${i.line_nr + 1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
 	if i.op.len > 0 && i.op != 'call' {
-		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
+		if i.llabel == i.lvalue {
+			eprintln('  left value: ${i.llabel}')
+		} else {
+			eprintln('  left value: ${i.llabel} = ${i.lvalue}')
+		}
 		if i.rlabel == i.rvalue {
 			eprintln('  right value: ${i.rlabel}')
 		} else {
