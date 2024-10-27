@@ -8,13 +8,13 @@ import time
 
 // TimeFormat define the log time string format, come from time/format.v
 pub enum TimeFormat {
-	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h) default
+	tf_ss_micro      // YYYY-MM-DD HH:mm:ss.123456 (24h)
 	tf_default       // YYYY-MM-DD HH:mm (24h)
 	tf_ss            // YYYY-MM-DD HH:mm:ss (24h)
 	tf_ss_milli      // YYYY-MM-DD HH:mm:ss.123 (24h)
 	tf_ss_nano       // YYYY-MM-DD HH:mm:ss.123456789 (24h)
 	tf_rfc3339       // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-	tf_rfc3339_micro // YYYY-MM-DDTHH:mm:ss.123456Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_rfc3339_micro // default, YYYY-MM-DDTHH:mm:ss.123456Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 	tf_rfc3339_nano  // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 	tf_hhmm          // HH:mm (24h)
 	tf_hhmmss        // HH:mm:ss (24h)
@@ -115,11 +115,6 @@ pub fn (mut l Log) reopen() ! {
 	}
 }
 
-const space = ' '
-const lbracket = '['
-const rbracket = ']'
-const newline = '\n'
-
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := l.time_format(time.utc())
@@ -127,16 +122,16 @@ fn (mut l Log) log_file(s string, level Level) {
 
 	unsafe {
 		l.ofile.write_ptr(timestamp.str, timestamp.len)
-		l.ofile.write_ptr(space.str, space.len)
+		l.ofile.write_ptr(' '.str, 1)
 
-		l.ofile.write_ptr(lbracket.str, 1)
+		l.ofile.write_ptr('['.str, 1)
 		l.ofile.write_ptr(e.str, e.len)
-		l.ofile.write_ptr(rbracket.str, 1)
+		l.ofile.write_ptr(']'.str, 1)
 
-		l.ofile.write_ptr(space.str, space.len)
+		l.ofile.write_ptr(' '.str, 1)
 		l.ofile.write_ptr(s.str, s.len)
 
-		l.ofile.write_ptr(newline.str, 1)
+		l.ofile.write_ptr('\n'.str, 1)
 	}
 	if l.always_flush {
 		l.flush()
@@ -220,6 +215,9 @@ pub fn (mut f Log) free() {
 // time_format return a timestamp string in the pre-defined format
 fn (l Log) time_format(t time.Time) string {
 	match l.time_format {
+		.tf_rfc3339_micro { // YYYY-MM-DDTHH:mm:ss.123456Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+			return t.format_rfc3339_micro()
+		}
 		.tf_ss_micro { // YYYY-MM-DD HH:mm:ss.123456 (24h) default
 			return t.format_ss_micro()
 		}
@@ -237,9 +235,6 @@ fn (l Log) time_format(t time.Time) string {
 		}
 		.tf_rfc3339 { // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 			return t.format_rfc3339()
-		}
-		.tf_rfc3339_micro { // YYYY-MM-DDTHH:mm:ss.123456Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-			return t.format_rfc3339_micro()
 		}
 		.tf_rfc3339_nano { // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 			return t.format_rfc3339_nano()
