@@ -549,6 +549,19 @@ pub fn decode[T](val string) !T {
 	return result
 }
 
+fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
+	$if initialized_sumtype is $sumtype {
+		$for v in initialized_sumtype.variants {
+			if initialized_sumtype is v {
+				mut val := initialized_sumtype
+				decoder.decode_value(mut val)!
+				return T(val)
+			}
+		}
+	}
+	return initialized_sumtype
+}
+
 // decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
@@ -607,10 +620,37 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			val = string_buffer.bytestr()
 		}
 	} $else $if T.unaliased_typ is $sumtype {
+		value_info := decoder.current_node.value
+
 		$for v in val.variants {
-			if val is v {
-				decoder.decode_value(val)
+			if value_info.value_kind == .string_ {
+				$if v.typ in [string, time.Time] {
+					val = T(v)
+				}
+			} else if value_info.value_kind == .number {
+				$if v.typ in [$float, $int, $enum] {
+					val = T(v)
+				}
+			} else if value_info.value_kind == .boolean {
+				$if v.typ is bool {
+					val = T(v)
+				}
+			} else if value_info.value_kind == .object {
+				$if v.typ is $map {
+					val = T(v)
+				} $else $if v.typ is $struct {
+					// Will only be supported when json object has field "_type"
+					error('cannot encode value with ${typeof(val).name} type')
+				}
+			} else if value_info.value_kind == .array {
+				$if v.typ is $array {
+					val = T(v)
+				}
 			}
+		}
+		decoded_sumtype := decoder.get_decoded_sumtype_workaround(val)!
+		unsafe {
+			*val = decoded_sumtype
 		}
 	} $else $if T.unaliased_typ is time.Time {
 		time_info := decoder.current_node.value
