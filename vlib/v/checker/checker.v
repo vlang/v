@@ -1006,6 +1006,13 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 		ast.InfixExpr {
 			return '', expr.pos
 		}
+		ast.IfExpr {
+			for mut branch in expr.branches {
+				mut last_expr := (branch.stmts.last() as ast.ExprStmt).expr
+				c.fail_if_immutable(mut last_expr)
+			}
+			return '', expr.pos
+		}
 		else {
 			if !expr.is_pure_literal() {
 				c.error('unexpected expression `${expr.type_name()}`', expr.pos())
