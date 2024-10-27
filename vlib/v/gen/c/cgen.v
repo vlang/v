@@ -4028,7 +4028,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				return
 			}
 			receiver := m.params[0]
-			expr_styp := g.styp(node.expr_type.idx_type())
+			expr_styp := g.styp(g.unwrap_generic(node.expr_type).idx_type())
 			data_styp := g.styp(receiver.typ.idx_type())
 			mut sb := strings.new_builder(256)
 			name := '_V_closure_${expr_styp}_${m.name}_${node.pos.pos}'
