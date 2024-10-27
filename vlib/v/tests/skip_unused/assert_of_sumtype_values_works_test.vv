@@ -1,0 +1,10 @@
+type Sum = int | string
+
+fn test_ab() {
+	a, b := Sum(1), Sum(2)
+	assert a == b
+}
+
+fn test_sumtype_literals() {
+	assert Sum(1) == Sum(2)
+}
