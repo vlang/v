@@ -3197,8 +3197,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if mut node.expr is ast.ComptimeSelector {
 		node.expr_type = c.comptime.get_comptime_selector_type(node.expr, node.expr_type)
+	} else if node.expr is ast.Ident && c.comptime.is_comptime_variant_var(node.expr) {
+		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 	}
-
 	mut from_type := c.unwrap_generic(node.expr_type)
 	from_sym := c.table.sym(from_type)
 	final_from_sym := c.table.final_sym(from_type)

@@ -34,6 +34,12 @@ pub fn (mut ct ComptimeInfo) is_comptime_var(node ast.Expr) bool {
 	return ct.get_ct_type_var(node) != .no_comptime
 }
 
+// is_comptime_variant_var checks if the node is related to a comptime variant variable
+@[inline]
+pub fn (mut ct ComptimeInfo) is_comptime_variant_var(node ast.Ident) bool {
+	return node.name == ct.comptime_for_variant_var
+}
+
 // get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
 @[inline]
 pub fn (mut ct ComptimeInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
