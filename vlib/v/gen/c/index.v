@@ -436,9 +436,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			zero := g.type_default(info.value_type)
 			g.write('${zero} })))')
 		}
-	} else if g.inside_map_postfix || g.inside_map_infix || g.inside_map_index
-		|| g.inside_array_index
-		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types) {
+	} else if !gen_or && (g.inside_map_postfix || g.inside_map_infix
+		|| g.inside_map_index || g.inside_array_index || (g.is_assign_lhs && !g.is_arraymap_set
+		&& get_and_set_types)) {
 		zero := g.type_default(info.value_type)
 		if node.is_setter {
 			g.write('(*(${val_type_str}*)map_get_and_set((map*)')
