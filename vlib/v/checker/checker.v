@@ -1472,6 +1472,9 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						return
 					}
 				}
+				if expr_return_type.has_flag(.generic) {
+					return
+				}
 				// opt_returning_string() or { ... 123 }
 				type_name := c.table.type_to_str(stmt.typ)
 				expr_return_type_name := c.table.type_to_str(expr_return_type)
