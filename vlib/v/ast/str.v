@@ -450,7 +450,11 @@ pub fn (x &Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${global_table.type_to_str(x.typ)}(${x.expr.str()})'
+			mut type_name := global_table.type_to_str(x.typ)
+			if global_table.cur_fn != unsafe { nil } {
+				type_name = util.no_cur_mod(type_name, global_table.cur_fn.mod)
+			}
+			return '${type_name}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
