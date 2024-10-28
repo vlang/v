@@ -193,6 +193,7 @@ pub:
 // Every function without last_id() returns an optional, which returns an error if present
 // last_id returns the last inserted id of the db
 pub interface Connection {
+mut:
 	select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive
 	insert(table string, data QueryData) !
 	update(table string, data QueryData, where QueryData) !
