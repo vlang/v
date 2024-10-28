@@ -608,12 +608,14 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
-		parent_var_sym := c.table.final_sym(parent_var.typ)
-		if parent_var_sym.info is ast.FnType {
-			ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
-			if ret_typ.has_flag(.generic) {
-				c.error('original `${parent_var.name}` is a function that returns ${c.table.type_to_str(ret_typ)}. You must add the generic type to generic type list.',
-					var.pos)
+		if parent_var.typ != ast.no_type {
+			parent_var_sym := c.table.final_sym(parent_var.typ)
+			if parent_var_sym.info is ast.FnType {
+				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
+				if ret_typ.has_flag(.generic) {
+					c.error('original `${parent_var.name}` is a function that returns ${c.table.type_to_str(ret_typ)}. You must add the generic type to generic type list.',
+						var.pos)
+				}
 			}
 		}
 		if parent_var.expr is ast.IfGuardExpr {
