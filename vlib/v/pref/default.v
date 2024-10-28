@@ -138,6 +138,11 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	if p.os == .linux {
+		$if !linux {
+			p.parse_define('cross_compile')
+		}
+	}
 	if p.output_cross_c {
 		// avoid linking any GC related code, since the target may not have an usable GC system
 		p.gc_mode = .no_gc

@@ -1078,6 +1078,13 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 		ast.InfixExpr {
 			return '', expr.pos
 		}
+		ast.IfExpr {
+			for mut branch in expr.branches {
+				mut last_expr := (branch.stmts.last() as ast.ExprStmt).expr
+				c.fail_if_immutable(mut last_expr)
+			}
+			return '', expr.pos
+		}
 		else {
 			if !expr.is_pure_literal() {
 				c.error('unexpected expression `${expr.type_name()}`', expr.pos())
@@ -1484,6 +1491,9 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
 					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
+					if ret_type.has_flag(.generic) {
+						return
+					}
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',
 						stmt.expr.pos())
 				}
@@ -1761,7 +1771,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		return field.typ
 	}
-	if mut method := sym.find_method_with_generic_parent(field_name) {
+	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
 		if c.expected_type != 0 && c.expected_type != ast.none_type {
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 			// if the expected type includes the receiver, don't hide it behind a closure
@@ -1769,7 +1779,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return fn_type
 			}
 		}
-		receiver := method.params[0].typ
+		receiver := c.unwrap_generic(method.params[0].typ)
 		if receiver.nr_muls() > 0 {
 			if !c.inside_unsafe {
 				rec_sym := c.table.sym(receiver.set_nr_muls(0))
@@ -1788,7 +1798,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.has_hidden_receiver = true
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
-		node.typ = fn_type
+		node.typ = c.unwrap_generic(fn_type)
 		return fn_type
 	}
 	if sym.kind !in [.struct, .aggregate, .interface, .sum_type] {
@@ -3269,8 +3279,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if mut node.expr is ast.ComptimeSelector {
 		node.expr_type = c.comptime.get_comptime_selector_type(node.expr, node.expr_type)
+	} else if node.expr is ast.Ident && c.comptime.is_comptime_variant_var(node.expr) {
+		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 	}
-
 	mut from_type := c.unwrap_generic(node.expr_type)
 	from_sym := c.table.sym(from_type)
 	final_from_sym := c.table.final_sym(from_type)

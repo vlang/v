@@ -34,6 +34,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: Test symlink
+        run: v symlink
+      - name: Test cross compilation to Linux
+        run: |
+          v -o hw -os linux examples/hello_world.v && ls -la hw && file hw
+          v -d use_openssl -o ve -os linux examples/veb/veb_example.v && ls -la ve && file ve
       - name: Build V with -cstrict
         run: v -cg -cstrict -o v cmd/v
       - name: All code is formatted
@@ -44,8 +50,6 @@ jobs:
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
       - name: Build V using V
         run: v -o v2 cmd/v && ./v2 -o v3 cmd/v
-      - name: Test symlink
-        run: v symlink
       # - name: Set up pg database
       #   run: |
       #     pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
@@ -98,7 +102,3 @@ jobs:
         run: v test examples/readline/
       - name: Test vlib modules with -skip-unused
         run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
-      - name: Test cross compilation to Linux
-        run: |
-          v -d use_openssl -cc clang -showcc -gc none -o hi -os linux examples/hello_world.v
-          v -d use_openssl -cc clang -showcc -gc none -o hi -os linux examples/veb/veb_example.v

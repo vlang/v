@@ -179,21 +179,21 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 
 fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
-	unknown_value := '*unknown value*'
+	expr_str := '${expr}'
 	match expr {
 		ast.CastExpr {
 			if typ.is_float() || g.table.final_sym(typ).is_float() {
 				g.gen_expr_to_string(expr.expr, typ)
 			} else {
-				g.write(ctoslit(unknown_value))
+				g.write(ctoslit(expr_str))
 			}
 		}
 		ast.IfExpr, ast.MatchExpr {
-			g.write(ctoslit(unknown_value))
+			g.write(ctoslit(expr_str))
 		}
 		ast.IndexExpr {
 			if expr.index is ast.RangeExpr {
-				g.write(ctoslit(unknown_value))
+				g.write(ctoslit(expr_str))
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}
@@ -203,7 +203,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				// TODO: remove this check;
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
-				g.write(ctoslit(unknown_value))
+				g.write(ctoslit(expr_str))
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}

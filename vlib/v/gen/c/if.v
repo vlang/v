@@ -6,8 +6,8 @@ module c
 import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
-	if node.is_expr && g.inside_ternary == 0 {
-		if g.is_autofree || node.typ.has_option_or_result() || node.is_comptime {
+	if node.is_expr && (g.inside_ternary == 0 || g.is_assign_lhs) {
+		if g.is_autofree || node.typ.has_option_or_result() || node.is_comptime || g.is_assign_lhs {
 			return true
 		}
 		for branch in node.branches {

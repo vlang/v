@@ -106,20 +106,26 @@ fn (mut g Gen) dump_expr_definitions() {
 		is_ptr := typ.is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, typ)
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
+		is_option := typ.has_option_or_result()
 		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
 		mut str_dumparg_ret_type := ''
 		if dump_sym.kind == .none {
 			str_dumparg_type = 'IError' + ptr_asterisk
+		} else if dump_sym.kind == .function {
+			if is_option {
+				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
+			}
+			str_dumparg_type += g.styp(typ).replace('*', '') + ptr_asterisk
 		} else {
-			if typ.has_flag(.option) {
+			if is_option {
 				str_dumparg_type += '_option_'
 				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
 			}
 			str_dumparg_type += g.cc_type(typ, true) + ptr_asterisk
 		}
 		mut is_fixed_arr_ret := false
-		if dump_sym.kind == .function {
+		if dump_sym.kind == .function && !is_option {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_${name}'
 			tdef_pos := g.out.len
@@ -128,7 +134,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
-		} else if !typ.has_option_or_result() && dump_sym.is_array_fixed() {
+		} else if !is_option && dump_sym.is_array_fixed() {
 			match dump_sym.kind {
 				.array_fixed {
 					if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
@@ -172,7 +178,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		mut surrounder := util.new_surrounder(3)
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
-		if dump_sym.kind == .function {
+		if dump_sym.kind == .function && !is_option {
 			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
 		} else if dump_sym.kind == .none {
 			surrounder.add('\tstring value = _SLIT("none");', '\tstring_free(&value);')

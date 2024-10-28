@@ -72,6 +72,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			} else if p.inside_for_expr && p.tok.kind == .name && p.tok.lit[0].is_capital()
 				&& p.peek_tok.kind == .lcbr && p.peek_token(2).kind in [.rcbr, .name] {
 				node = p.struct_init(p.mod + '.' + p.tok.lit, .normal, false)
+			} else if p.is_generic_name() && p.peek_tok.kind == .lcbr
+				&& p.peek_token(2).kind == .rcbr && p.peek_token(2).line_nr == p.tok.line_nr {
+				node = p.struct_init(p.mod + '.' + p.tok.lit, .normal, false)
 			} else {
 				if p.inside_comptime_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}

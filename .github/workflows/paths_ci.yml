@@ -18,42 +18,40 @@ jobs:
   space-paths-linux:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
-    env:
-      MY_V_PATH: '你好 my $path, @с интервали'
     steps:
       - uses: actions/checkout@v4
         with:
-          path: ${{env.MY_V_PATH}}
+          persist-credentials: false
+          path: '你好 my $path, @с интервали'
       - name: Build V
         run: |
-          echo '${{env.MY_V_PATH}}'
+          echo '你好 my $path, @с интервали'
           ls -la
-          cd '${{env.MY_V_PATH}}'
+          cd '你好 my $path, @с интервали'
           ls -la
           make
       - name: v doctor
         run: |
-          cd '${{env.MY_V_PATH}}'
+          cd '你好 my $path, @с интервали'
           ./v doctor
       - name: v tests
         run: |
-          cd '${{env.MY_V_PATH}}'
+          cd '你好 my $path, @с интервали'
           ./v test vlib/builtin vlib/os
 
   space-paths-macos:
     runs-on: macos-14
     timeout-minutes: 30
-    env:
-      MY_V_PATH: '你好 my $path, @с интервали'
     steps:
       - uses: actions/checkout@v4
         with:
-          path: ${{env.MY_V_PATH}}
+          path: '你好 my $path, @с интервали'
+          persist-credentials: false
       - name: Build V
         run: |
-          echo '${{env.MY_V_PATH}}'
+          echo '你好 my $path, @с интервали'
           ls -la
-          cd '${{env.MY_V_PATH}}'
+          cd '你好 my $path, @с интервали'
           ls -la
           make
           ## prebuild cmd/tools/builders/js_builder, to minimise the
@@ -61,45 +59,42 @@ jobs:
           ./v -b js run examples/hello_world.v
       - name: v doctor
         run: |
-          cd '${{env.MY_V_PATH}}'
+          cd '你好 my $path, @с интервали'
           ./v doctor
       - name: v tests
         run: |
-          cd '${{env.MY_V_PATH}}'
+          cd '你好 my $path, @с интервали'
           ./v test vlib/builtin vlib/os
 
   space-paths-windows:
     runs-on: windows-2022
     timeout-minutes: 30
-    env:
-      MY_V_PATH: 'path with some $punctuation, and some spaces'
-
-      ## NB: the following paths do not work for now:
-      ##### MY_V_PATH: '你好 my $path, @с интервали'
-      ##### MY_V_PATH: 'path with some $punctuation, and some spaces '
-      ## tcc has a problem interpreting paths with non latin letters in them,
-      ## by default, but that can be solved with passing -Bthirdparty/tcc
-      ## but after that V fails self building with:
-      ####### builder error: cannot write to folder
-      ####### D:\a\v\v\你好 my $path, @с интервали: No such file or directory
-      ## and that happens even for gcc builds, not just tcc ones
-
+    ## NB: the following paths do not work for now:
+    ##### MY_V_PATH: '你好 my $path, @с интервали'
+    ##### MY_V_PATH: 'path with some $punctuation, and some spaces '
+    ## tcc has a problem interpreting paths with non latin letters in them,
+    ## by default, but that can be solved with passing -Bthirdparty/tcc
+    ## but after that V fails self building with:
+    ####### builder error: cannot write to folder
+    ####### D:\a\v\v\你好 my $path, @с интервали: No such file or directory
+    ## and that happens even for gcc builds, not just tcc ones
     steps:
       - uses: actions/checkout@v4
         with:
-          path: ${{env.MY_V_PATH}}
+          path: 'path with some $punctuation, and some spaces'
+          persist-credentials: false
       - name: Build V
         run: |
-          echo '${{env.MY_V_PATH}}'
+          echo 'path with some $punctuation, and some spaces'
           dir
-          cd '${{env.MY_V_PATH}}'
+          cd 'path with some $punctuation, and some spaces'
           dir
           .\make.bat -tcc
       - name: v doctor
         run: |
-          cd '${{env.MY_V_PATH}}'
+          cd 'path with some $punctuation, and some spaces'
           ./v doctor
       - name: v tests
         run: |
-          cd '${{env.MY_V_PATH}}'
+          cd 'path with some $punctuation, and some spaces'
           ./v test vlib/builtin vlib/os

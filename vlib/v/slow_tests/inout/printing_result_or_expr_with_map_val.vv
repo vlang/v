@@ -13,7 +13,7 @@ fn (my MyError) code() int {
 
 type MapString = map[string]string | int
 
-fn f() ?MapString {
+fn f() !MapString {
 	return MyError{
 		msg: 'String Error'
 	}

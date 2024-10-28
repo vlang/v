@@ -105,7 +105,9 @@ pub fn (cflags []CFlag) c_options_without_object_files() []string {
 pub fn (cflags []CFlag) c_options_only_object_files() []string {
 	mut args := []string{}
 	for flag in cflags {
-		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
+		// TODO figure out a better way to copy cross compiling flags to the linker
+		if flag.value.ends_with('.o') || flag.value.ends_with('.obj')
+			|| (flag.name == '-l' && flag.value == 'pq') {
 			args << flag.format()
 		}
 	}

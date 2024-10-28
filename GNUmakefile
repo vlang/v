@@ -99,8 +99,8 @@ endif
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
-	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	v2.exe -o $(VEXE) $(VFLAGS) cmd/v
+	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
+	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
 	$(RM) v1.exe
 	$(RM) v2.exe
 else

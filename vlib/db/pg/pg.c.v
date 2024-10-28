@@ -12,6 +12,7 @@ $if $pkgconfig('libpq') {
 		#flag -lpq
 	}
 	#flag linux -I/usr/include/postgresql
+	//#flag linux -Ipostgresql // cross compiling to linux
 
 	#flag darwin -I/opt/local/include/postgresql11
 	#flag darwin -L/opt/local/lib/postgresql11
@@ -32,12 +33,19 @@ $if $pkgconfig('libpq') {
 	#flag freebsd -L/usr/local/lib
 }
 
-// PostgreSQL Source Code
-// https://doxygen.postgresql.org/libpq-fe_8h.html
-#include <libpq-fe.h>
+$if cross_compile ? && linux {
+	#include <libpq/libpq-fe.h>
+	#include <libpq/pg_config.h>
 
-// for PG_VERSION_NUM, which is defined everywhere at least since PG 9.5
-#include <pg_config.h>
+	//#flag -lpq // libpq.a is located in LINUXROOT/lib/x86_64-linux-gnu/libpq.a
+} $else {
+	// PostgreSQL Source Code
+	// https://doxygen.postgresql.org/libpq-fe_8h.html
+	#include <libpq-fe.h>
+
+	// for PG_VERSION_NUM, which is defined everywhere at least since PG 9.5
+	#include <pg_config.h>
+}
 
 // for orm
 $if windows {

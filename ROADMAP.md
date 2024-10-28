@@ -43,7 +43,9 @@ For a list of all features and fixes, check out the changelog.
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
+- [x] Implicit Veb contexts passed to requests
 - [ ] Direct C/C++ interop without generating wrappers
+- [ ] Make ORM work without installing developer libs (libpq-dev etc)
 
 ## [Version 0.6]
 
