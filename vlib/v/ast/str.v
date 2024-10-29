@@ -450,7 +450,8 @@ pub fn (x &Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${util.strip_main_name(global_table.type_to_str(x.typ))}(${x.expr.str()})'
+			type_name := util.strip_main_name(global_table.type_to_str(x.typ))
+			return '${type_name}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
@@ -513,7 +514,7 @@ pub fn (x &Expr) str() string {
 				return x.cached_name
 			}
 			unsafe {
-				x.cached_name = x.name.clone()
+				x.cached_name = util.strip_main_name(x.name.clone())
 			}
 			return x.cached_name
 		}
