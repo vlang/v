@@ -68,6 +68,8 @@ fn test_number() {
 	// Test f32
 	assert json.decode[f32]('0')! == 0.0
 	assert json.decode[f32]('1')! == 1.0
+	assert json.decode[f32]('1.2')! == 1.2
+	assert json.decode[f32]('-1.2')! == -1.2
 	assert json.decode[f32]('201')! == 201.0
 
 	assert json.decode[f32]('-1')! == -1.0
@@ -79,9 +81,11 @@ fn test_number() {
 	// Test f64
 	assert json.decode[f64]('0')! == 0.0
 	assert json.decode[f64]('1')! == 1.0
+	assert json.decode[f64]('1.2')! == 1.2
 	assert json.decode[f64]('201')! == 201.0
 
 	assert json.decode[f64]('-1')! == -1.0
+	assert json.decode[f64]('-1.2')! == -1.2
 	assert json.decode[f64]('-201')! == -201.0
 
 	assert json.decode[f64]('1234567890')! == 1234567890.0
