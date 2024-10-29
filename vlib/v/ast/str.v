@@ -477,7 +477,11 @@ pub fn (x &Expr) str() string {
 			if x.name.contains('__static__') {
 				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
 			}
-			return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
+			if x.mod == 'main' {
+				return '${x.get_name()}(${sargs})${propagate_suffix}'
+			} else {
+				return '${x.mod}.${x.get_name()}(${sargs})${propagate_suffix}'
+			}
 		}
 		CharLiteral {
 			return '`${x.val}`'
