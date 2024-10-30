@@ -746,12 +746,6 @@ fn (s string) == (a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	if s.len > 0 {
-		last_idx := s.len - 1
-		if s[last_idx] != a[last_idx] {
-			return false
-		}
-	}
 	unsafe {
 		return vmemcmp(s.str, a.str, a.len) == 0
 	}
