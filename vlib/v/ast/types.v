@@ -1866,7 +1866,7 @@ pub fn (i &Interface) has_method(name string) bool {
 
 pub fn (s Struct) find_field(name string) ?StructField {
 	for mut field in unsafe { s.fields } {
-		if field.name == name {
+		if name.len == field.name.len && field.name == name {
 			return field
 		}
 	}
