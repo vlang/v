@@ -358,3 +358,12 @@ fn test_bf_printing() {
 	println(input)
 	assert true
 }
+
+fn test_bf_shift() {
+	str := '0001001101111111'
+	bf := bitfield.from_str(str)
+	bf_left := bf.shift_left(4)
+	assert bf_left.str() == '0011011111110000'
+	bf_right := bf.shift_right(4)
+	assert bf_right.str() == '0000000100110111'
+}
