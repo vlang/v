@@ -5,7 +5,7 @@ vlib/v/checker/tests/anon_missing_generic_err.vv:8:2: notice: uninitialized `fn`
       |     ~~~~~~~~~~~~~
     9 | }
    10 |
-vlib/v/checker/tests/anon_missing_generic_err.vv:21:14: error: original `factory` is a function that returns !E. You must add the generic type to generic type list.
+vlib/v/checker/tests/anon_missing_generic_err.vv:21:14: error: Add the generic type `E` to the anon fn generic list type, that is currently `[F]`
    19 | fn use_factory[F, E](factory fn (dep F) !E) Factory {
    20 |     return Factory{
    21 |         build: fn [factory] [F]() ! {
