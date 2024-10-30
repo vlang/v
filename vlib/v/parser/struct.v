@@ -91,7 +91,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut global_pos := -1
 	mut module_pos := -1
 	mut is_field_mut := false
-	mut is_field_pub := false
+	mut is_field_pub := language == .c
 	mut is_field_global := false
 	mut is_implements := false
 	mut implements_types := []ast.TypeNode{cap: 3} // ast.void_type
