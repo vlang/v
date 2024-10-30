@@ -2,7 +2,7 @@ module main
 
 import fontstash
 
-fn main() {
+fn test_c_struct_fields_are_pub() {
 	params := &C.FONSparams{
 		width:        512
 		height:       512
