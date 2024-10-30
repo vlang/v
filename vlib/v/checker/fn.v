@@ -608,6 +608,22 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
+		if parent_var.typ != ast.no_type {
+			parent_var_sym := c.table.final_sym(parent_var.typ)
+			if parent_var_sym.info is ast.FnType {
+				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
+				if ret_typ.has_flag(.generic) {
+					generic_names := c.table.generic_type_names(ret_typ)
+					curr_list := c.table.cur_fn.generic_names.join(', ')
+					for name in generic_names {
+						if name !in c.table.cur_fn.generic_names {
+							c.error('Add the generic type `${name}` to the anon fn generic list type, that is currently `[${curr_list}]`',
+								var.pos)
+						}
+					}
+				}
+			}
+		}
 		if parent_var.expr is ast.IfGuardExpr {
 			sym := c.table.sym(parent_var.expr.expr_type)
 			if sym.info is ast.MultiReturn {
