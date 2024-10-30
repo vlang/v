@@ -216,6 +216,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		g.curr_var_name = last_curr_var_name
 	}
 
+	old_is_arraymap_set := g.is_arraymap_set
+	old_is_assign_lhs := g.is_assign_lhs
+	old_assign_op := g.assign_op
+	defer {
+		g.is_arraymap_set = old_is_arraymap_set
+		g.is_assign_lhs = old_is_assign_lhs
+		g.assign_op = old_assign_op
+	}
+
 	for i, mut left in node.left {
 		mut is_auto_heap := false
 		mut var_type := node.left_types[i]
