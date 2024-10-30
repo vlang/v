@@ -1868,6 +1868,8 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 								comptime_args[k] = ctyp
 							}
 						}
+					} else if call_arg.expr.obj.ct_type_var == .generic_var {
+						comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr)
 					}
 				}
 			} else if call_arg.expr is ast.PrefixExpr {
