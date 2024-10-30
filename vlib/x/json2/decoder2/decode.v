@@ -5,6 +5,7 @@ import time
 
 // Node represents a node in a linked list to store ValueInfo.
 struct Node {
+pub:
 	value ValueInfo
 mut:
 	next &Node = unsafe { nil } // next is the next node in the linked list.
@@ -12,6 +13,7 @@ mut:
 
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
 struct ValueInfo {
+pub:
 	position   int       // The position of the value in the JSON string.
 	value_kind ValueKind // The kind of the value.
 mut:
@@ -19,9 +21,11 @@ mut:
 }
 
 // Decoder represents a JSON decoder.
-struct Decoder {
-	json string // json is the JSON data to be decoded.
-mut:
+pub struct Decoder {
+pub:
+	json_str &u8 // json is the JSON data to be decoded.
+	json_len int // json is the JSON data to be decoded.
+pub mut:
 	values_info  LinkedList // A linked list to store ValueInfo.
 	checker_idx  int        // checker_idx is the current index of the decoder.
 	current_node &Node = unsafe { nil } // The current node in the linked list.
@@ -29,7 +33,7 @@ mut:
 
 // LinkedList represents a linked list to store ValueInfo.
 struct LinkedList {
-mut:
+pub mut:
 	head &Node = unsafe { nil } // head is the first node in the linked list.
 	tail &Node = unsafe { nil } // tail is the last node in the linked list.
 	len  int // len is the length of the linked list.
@@ -95,7 +99,7 @@ pub enum ValueKind {
 }
 
 // check_if_json_match checks if the JSON string matches the expected type T.
-fn check_if_json_match[T](val string) ! {
+pub fn check_if_json_match[T](val string) ! {
 	// check if the JSON string is empty
 	if val == '' {
 		return error('empty string')
@@ -145,10 +149,10 @@ fn check_if_json_match[T](val string) ! {
 
 // error generates an error message with context from the JSON string.
 fn (mut checker Decoder) error(message string) ! {
-	json := if checker.json.len < checker.checker_idx + 5 {
-		checker.json
+	json := if checker.json_len < checker.checker_idx + 5 {
+		unsafe { tos(checker.json_str, checker.json_len) }
 	} else {
-		checker.json[0..checker.checker_idx + 5]
+		unsafe { tos(checker.json_str, checker.checker_idx + 5) }
 	}
 
 	mut error_message := '\n'
@@ -174,15 +178,15 @@ fn (mut checker Decoder) error(message string) ! {
 }
 
 // check_json_format checks if the JSON string is valid and updates the decoder state.
-fn (mut checker Decoder) check_json_format(val string) ! {
-	checker_end := checker.json.len
+pub fn (mut checker Decoder) check_json_format() ! {
+	checker_end := checker.json_len
 	// check if the JSON string is empty
-	if val == '' {
+	if checker.json_len == 0 {
 		return checker.error('empty string')
 	}
 
 	// check if generic type matches the JSON type
-	value_kind := get_value_kind(val[checker.checker_idx])
+	value_kind := get_value_kind(unsafe { u8(*(checker.json_str + checker.checker_idx)) })
 	start_idx_position := checker.checker_idx
 	checker.values_info.push(ValueInfo{
 		position:   start_idx_position
@@ -201,49 +205,55 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, 'null'.str, 4)
+				vmemcmp(checker.json_str + checker.checker_idx, 'null'.str, 4)
 			}
 
 			if is_not_ok != 0 {
-				return checker.error('invalid null value. Got `${checker.json[checker.checker_idx..
-					checker.checker_idx + 4]}` instead of `null`')
+				// return checker.error('invalid null value. Got `${checker.json[checker.checker_idx..
+				// 	checker.checker_idx + 4]}` instead of `null`')
+				return
 			}
 			checker.checker_idx += 3
 		}
 		.object {
 			checker.checker_idx++
-			for val[checker.checker_idx] != `}` {
+			for unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `}` {
 				// check if the JSON string is an empty object
 				if checker_end - checker.checker_idx <= 2 {
 					continue
 				}
 
-				if val[checker.checker_idx] != `"` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `"` {
 					checker.checker_idx++
 				}
 
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [` `, `\t`, `\n`] {
 					if checker.checker_idx >= checker_end - 1 {
 						break
 					}
 					checker.checker_idx++
 				}
 
-				if val[checker.checker_idx] == `}` {
+				// current_byte_pointer := checker.json_str + checker.checker_idx
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `}` {
 					continue
 				}
 
-				match val[checker.checker_idx] {
+				match unsafe { u8(*(checker.json_str + checker.checker_idx)) } {
 					`"` {
 						// Object key
-						checker.check_json_format(val)!
+						checker.check_json_format()!
 
-						for val[checker.checker_idx] != `:` {
+						for unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `:` {
 							if checker.checker_idx >= checker_end - 1 {
 								return checker.error('EOF error: key colon not found')
 							}
-							if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+							if unsafe { u8(*(checker.json_str + checker.checker_idx)) } !in [
+								` `,
+								`\t`,
+								`\n`,
+							] {
 								return checker.error('invalid value after object key')
 							}
 							checker.checker_idx++
@@ -265,51 +275,61 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 						return checker.error('empty object key')
 					}
 					else {
-						return checker.error('`${[val[checker.checker_idx]].bytestr()}` is an invalid object key')
+						return checker.error('`${[unsafe {
+							u8(*(checker.json_str + checker.checker_idx))
+						}].bytestr()}` is an invalid object key')
 					}
 				}
 
-				if val[checker.checker_idx] != `:` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `:` {
 					return checker.error('Expecting `:` after object key')
 				}
 				// skip `:`
 				checker.checker_idx++
 
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [` `, `\t`, `\n`] {
 					checker.checker_idx++
 				}
 
-				match val[checker.checker_idx] {
+				match unsafe { u8(*(checker.json_str + checker.checker_idx)) } {
 					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
-						for val[checker.checker_idx] != `}` {
+						for unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `}` {
 							if checker.checker_idx >= checker_end - 1 {
 								return checker.error('EOF error: object value not closed')
 							}
-							checker.check_json_format(val)!
+							checker.check_json_format()!
 							// whitespace
-							for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+							for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [
+								` `,
+								`\t`,
+								`\n`,
+							] {
 								checker.checker_idx++
 							}
-							if val[checker.checker_idx] == `}` {
+							if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `}` {
 								break
 							}
 							if checker.checker_idx >= checker_end - 1 {
 								return checker.error('EOF error: braces are not closed')
 							}
 
-							if val[checker.checker_idx] == `,` {
+							if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `,` {
 								checker.checker_idx++
-								for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+								for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [
+									` `,
+									`\t`,
+									`\n`,
+								] {
 									checker.checker_idx++
 								}
-								if val[checker.checker_idx] != `"` {
+								if unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `"` {
 									return checker.error('Expecting object key')
 								} else {
 									break
 								}
 							} else {
-								if val[checker.checker_idx] == `}` {
+								if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `}` {
 									break
 								} else {
 									return
@@ -330,23 +350,23 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			// check if the JSON string is an empty array
 			if checker_end >= checker.checker_idx + 2 {
 				checker.checker_idx++
-				if val[checker.checker_idx] == `]` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `]` {
 					return
 				}
 			} else {
 				return checker.error('EOF error: There are not enough length for an array')
 			}
 
-			for val[checker.checker_idx] != `]` {
+			for unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `]` {
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [` `, `\t`, `\n`] {
 					if checker.checker_idx >= checker_end - 1 {
 						break
 					}
 					checker.checker_idx++
 				}
 
-				if val[checker.checker_idx] == `]` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `]` {
 					return
 				}
 
@@ -354,30 +374,34 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					return checker.error('EOF error: array not closed')
 				}
 
-				checker.check_json_format(val)!
+				checker.check_json_format()!
 
 				// whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [` `, `\t`, `\n`] {
 					checker.checker_idx++
 				}
-				if val[checker.checker_idx] == `]` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `]` {
 					break
 				}
 				if checker.checker_idx >= checker_end - 1 {
 					return checker.error('EOF error: braces are not closed')
 				}
 
-				if val[checker.checker_idx] == `,` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `,` {
 					checker.checker_idx++
-					for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+					for unsafe { u8(*(checker.json_str + checker.checker_idx)) } in [
+						` `,
+						`\t`,
+						`\n`,
+					] {
 						checker.checker_idx++
 					}
-					if val[checker.checker_idx] == `]` {
+					if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `]` {
 						return checker.error('Cannot use `,`, before `]`')
 					}
 					continue
 				} else {
-					if val[checker.checker_idx] == `]` {
+					if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `]` {
 						break
 					} else {
 						return checker.error('`]` after value')
@@ -395,12 +419,13 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			checker.checker_idx++
 
 			// check if the JSON string is a valid escape sequence
-			for val[checker.checker_idx] != `"` && val[checker.checker_idx - 1] != `\\` {
-				if val[checker.checker_idx] == `\\` {
+			for unsafe { u8(*(checker.json_str + checker.checker_idx)) } != `"`
+				&& unsafe { u8(*(checker.json_str + checker.checker_idx - 1)) } != `\\` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `\\` {
 					if checker.checker_idx + 1 >= checker_end - 1 {
 						return checker.error('invalid escape sequence')
 					}
-					escaped_char := val[checker.checker_idx + 1]
+					escaped_char := unsafe { u8(*(checker.json_str + checker.checker_idx + 1)) }
 					match escaped_char {
 						`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {}
 						`u` {
@@ -412,7 +437,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 								checker.checker_idx += 2
 
 								for checker.checker_idx < escaped_char_last_index {
-									match val[checker.checker_idx] {
+									match unsafe { u8(*(checker.json_str + checker.checker_idx)) } {
 										`0`...`9`, `a`...`f`, `A`...`F` {
 											checker.checker_idx++
 										}
@@ -424,8 +449,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 								// REVIEW: Should we increment the index here?
 								continue
 							} else {
-								return checker.error('short unicode escape sequence ${checker.json[checker.checker_idx..
-									escaped_char_last_index + 1]}')
+								return
 							}
 						}
 						else {
@@ -438,7 +462,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		}
 		.number {
 			// check if the JSON string is a valid float or integer
-			mut is_negative := val[0] == `-`
+			// unsafe { u8(*(checker.json_str + checker.checker_idx + 1)) }
+			mut is_negative := unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `-`
 			mut has_dot := false
 
 			mut digits_count := 1
@@ -448,23 +473,24 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			}
 
 			for checker.checker_idx < checker_end - 1
-				&& val[checker.checker_idx + 1] !in [`,`, `}`, `]`, ` `, `\t`, `\n`]
+				&& unsafe { u8(*(checker.json_str + checker.checker_idx + 1)) } !in [`,`, `}`, `]`, ` `, `\t`, `\n`]
 				&& checker.checker_idx < checker_end - 1 {
-				if val[checker.checker_idx] == `.` {
+				if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `.` {
 					if has_dot {
 						return checker.error('invalid float. Multiple dots')
 					}
 					has_dot = true
 					checker.checker_idx++
 					continue
-				} else if val[checker.checker_idx] == `-` {
+				} else if unsafe { u8(*(checker.json_str + checker.checker_idx)) } == `-` {
 					if is_negative {
 						return checker.error('invalid float. Multiple negative signs')
 					}
 					checker.checker_idx++
 					continue
 				} else {
-					if val[checker.checker_idx] < `0` || val[checker.checker_idx] > `9` {
+					if unsafe { u8(*(checker.json_str + checker.checker_idx)) } < `0`
+						|| unsafe { u8(*(checker.json_str + checker.checker_idx)) } > `9` {
 						return checker.error('invalid number')
 					}
 				}
@@ -478,19 +504,18 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		}
 		.boolean {
 			// check if the JSON string is a valid boolean
-			match val[checker.checker_idx] {
+			match unsafe { u8(*(checker.json_str + checker.checker_idx)) } {
 				`t` {
 					if checker_end - checker.checker_idx <= 3 {
 						return checker.error('EOF error: expecting `true`')
 					}
 
 					is_not_ok := unsafe {
-						vmemcmp(checker.json.str + checker.checker_idx, 'true'.str, 4)
+						vmemcmp(checker.json_str + checker.checker_idx, 'true'.str, 4)
 					}
 
 					if is_not_ok != 0 {
-						return checker.error('invalid boolean value. Got `${checker.json[checker.checker_idx..
-							checker.checker_idx + 4]}` instead of `true`')
+						return
 					}
 					checker.checker_idx += 3
 				}
@@ -500,12 +525,11 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					is_not_ok := unsafe {
-						vmemcmp(checker.json.str + checker.checker_idx, 'false'.str, 5)
+						vmemcmp(checker.json_str + checker.checker_idx, 'false'.str, 5)
 					}
 
 					if is_not_ok != 0 {
-						return checker.error('invalid boolean value. Got `${checker.json[checker.checker_idx..
-							checker.checker_idx + 5]}` instead of `false`')
+						return
 					}
 
 					checker.checker_idx += 4
@@ -523,9 +547,10 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		checker.checker_idx++
 	}
 
-	for checker.checker_idx < checker_end - 1 && val[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
+	for checker.checker_idx < checker_end - 1
+		&& unsafe { u8(*(checker.json_str + checker.checker_idx)) } !in [`,`, `:`, `}`, `]`] {
 		// get trash characters after the value
-		if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+		if unsafe { u8(*(checker.json_str + checker.checker_idx)) } !in [` `, `\t`, `\n`] {
 			checker.error('invalid value. Unexpected character after ${value_kind} end')!
 		} else {
 			// whitespace
@@ -534,23 +559,36 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 	}
 }
 
+@[unsafe]
+pub fn (mut decoder Decoder) free() {
+	decoder.values_info.free()
+}
+
 // decode decodes a JSON string into a specified type.
+@[manualfree]
 pub fn decode[T](val string) !T {
 	mut decoder := Decoder{
-		json: val
+		json_str: val.str
+		json_len: val.len
 	}
 
-	decoder.check_json_format(val)!
+	decoder.check_json_format()!
 	check_if_json_match[T](val)!
 
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut &result)!
+
+	// Free the allocated memory
+	unsafe {
+		decoder.free()
+	}
+
 	return result
 }
 
 // decode_value decodes a value from the JSON nodes.
-fn (mut decoder Decoder) decode_value[T](mut val T) ! {
+pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
 		mut unwrapped_val := create_value_from_optional(val.$(field.name))
 		decoder.decode_value(mut unwrapped_val)!
@@ -566,7 +604,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			if escape_positions.len == 0 {
 				if string_info.length != 0 {
 					unsafe {
-						string_buffer.push_many(decoder.json.str + string_info.position + 1,
+						string_buffer.push_many(decoder.json_str + string_info.position + 1,
 							buffer_lenght)
 					}
 				}
@@ -579,27 +617,27 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						// and ends at the escape position minus one.
 						// This is used to handle escaped characters within the JSON string.
 						unsafe {
-							string_buffer.push_many(decoder.json.str + string_info.position + 1,
+							string_buffer.push_many(decoder.json_str + string_info.position + 1,
 								escape_position - string_info.position - 1)
 						}
 					} else {
 						// Pushes a substring from the JSON string into the string buffer, starting after the previous escape position
 						// and ending just before the current escape position. This handles the characters between escape sequences.
 						unsafe {
-							string_buffer.push_many(decoder.json.str + escape_positions[i - 1] + 6,
+							string_buffer.push_many(decoder.json_str + escape_positions[i - 1] + 6,
 								escape_position - escape_positions[i - 1] - 6)
 						}
 					}
 
 					unescaped_buffer := generate_unicode_escape_sequence(unsafe {
-						(decoder.json.str + escape_positions[i] + 2).vbytes(4)
+						(decoder.json_str + escape_positions[i] + 2).vbytes(4)
 					})!
 
 					unsafe { string_buffer.push_many(&unescaped_buffer[0], unescaped_buffer.len) }
 				}
 				end_of_last_escape_position := escape_positions[escape_positions.len - 1] + 6
 				unsafe {
-					string_buffer.push_many(decoder.json.str + end_of_last_escape_position,
+					string_buffer.push_many(decoder.json_str + end_of_last_escape_position,
 						string_info.length - end_of_last_escape_position - 1)
 				}
 			}
@@ -612,10 +650,20 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		time_info := decoder.current_node.value
 
 		if time_info.value_kind == .string_ {
-			string_time := decoder.json.substr_unsafe(time_info.position + 1, time_info.position +
-				time_info.length - 1)
+			// string_time := decoder.json.substr_unsafe(time_info.position + 1, time_info.position +
+			// 	time_info.length - 1)
 
-			val = time.parse_rfc3339(string_time) or { time.Time{} }
+			// val = time.parse_rfc3339(string_time) or { time.Time{} }
+
+			// time_info := decoder.current_node.value
+
+			unsafe {
+				// mut t := Time{}
+
+				time.fast_parse_rfc3339(decoder.json_str + time_info.position + 1, time_info.length - 2, mut
+					val)!
+				// return t
+			}
 		}
 	} $else $if T.unaliased_typ is $map {
 		map_info := decoder.current_node.value
@@ -636,7 +684,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					break
 				}
 
-				key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+				// key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+				key := unsafe { tos(decoder.json_str + key_info.position + 1, key_info.length - 2) }
 
 				decoder.current_node = decoder.current_node.next
 
@@ -703,7 +752,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					if key_info.length - 2 == field.name.len {
 						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
 						if unsafe {
-							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
+							vmemcmp(decoder.json_str + key_info.position + 1, field.name.str,
 								field.name.len) == 0
 						} {
 							$if field.typ is $option {
@@ -722,13 +771,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		value_info := decoder.current_node.value
 
 		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
+			val = vmemcmp(decoder.json_str + value_info.position, 'true'.str, 4) == 0
 		}
 	} $else $if T.unaliased_typ in [$float, $int, $enum] {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
-			bytes := unsafe { (decoder.json.str + value_info.position).vbytes(value_info.length) }
+			bytes := unsafe { (decoder.json_str + value_info.position).vbytes(value_info.length) }
 
 			unsafe {
 				string_buffer_to_generic_number(val, bytes)
@@ -789,8 +838,16 @@ fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
 	value_info := decoder.current_node.value
 	len := value_info.length
 
-	if len < 2 || decoder.json[value_info.position] != `"`
-		|| decoder.json[value_info.position + len - 1] != `"` {
+	// if len < 2 || decoder.json[value_info.position] != `"`
+	// 	|| decoder.json[value_info.position + len - 1] != `"` {
+	// 	return error('Invalid JSON string format')
+	// }
+
+	if len < 2 || unsafe {
+		*(decoder.json_str + value_info.position) != `"`
+	} || unsafe {
+		*(decoder.json_str + value_info.position + len - 1) != `"`
+	} {
 		return error('Invalid JSON string format')
 	}
 
@@ -799,7 +856,8 @@ fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
 	mut idx := 1 // Start after the opening quote
 
 	for idx < len - 1 {
-		current_byte := decoder.json[value_info.position + idx]
+		// current_byte := decoder.json[value_info.position + idx]
+		current_byte := unsafe { *(decoder.json_str + value_info.position + idx) }
 
 		if current_byte == `\\` {
 			// Escape sequence, handle accordingly
@@ -807,7 +865,8 @@ fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
 			if idx >= len - 1 {
 				return error('Invalid escape sequence at the end of string')
 			}
-			escaped_char := decoder.json[value_info.position + idx]
+			// escaped_char := decoder.json[value_info.position + idx]
+			escaped_char := unsafe { *(decoder.json_str + value_info.position + idx) }
 			match escaped_char {
 				// All simple escapes take 1 byte of space
 				`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {
@@ -819,8 +878,11 @@ fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
 						return error('Invalid unicode escape sequence')
 					}
 					// Extract the hex value from the \uXXXX sequence
-					hex_str := decoder.json[value_info.position + idx + 1..value_info.position +
-						idx + 5]
+					// hex_str := decoder.json[value_info.position + idx + 1..value_info.position +
+					// 	idx + 5]
+					hex_str := unsafe {
+						tos(decoder.json_str + value_info.position + idx + 1, 4)
+					}
 					unicode_value := u32(strconv.parse_int(hex_str, 16, 32)!)
 					// Determine the number of bytes needed for this Unicode character in UTF-8
 					space_required += utf8_byte_length(unicode_value)

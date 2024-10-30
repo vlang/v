@@ -69,55 +69,60 @@ fn test_check_json_format() {
 	for variable in ['""', '"string"', '123', '0', 'true'] {
 		mut checker := Decoder{
 			checker_idx: 0
-			json:        variable
+			json_str:    variable.str
+			json_len:    variable.len
 		}
 
-		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		checker.check_json_format() or { assert false, err.str() }
+		assert checker.checker_idx == checker.json_len - 1, 'Expected to reach the end of the json string ${variable}'
 	}
 
 	// simple objects
 	for variable in ['{}', '{"key": null}', '{"key": "value"}', '{"key": 123}', '{"key": true}'] {
 		mut checker := Decoder{
 			checker_idx: 0
-			json:        variable
+			json_str:    variable.str
+			json_len:    variable.len
 		}
 
-		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		checker.check_json_format() or { assert false, err.str() }
+		assert checker.checker_idx == checker.json_len - 1, 'Expected to reach the end of the json string ${variable}'
 	}
 
 	// Nested objects
 	for variable in ['{"key": {"key": 123}}'] {
 		mut checker := Decoder{
 			checker_idx: 0
-			json:        variable
+			json_str:    variable.str
+			json_len:    variable.len
 		}
 
-		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		checker.check_json_format() or { assert false, err.str() }
+		assert checker.checker_idx == checker.json_len - 1, 'Expected to reach the end of the json string ${variable}'
 	}
 
 	// simple arrays
 	for variable in ['[]', '[1, 2, 3]', '["a", "b", "c"]', '[true, false]'] {
 		mut checker := Decoder{
 			checker_idx: 0
-			json:        variable
+			json_str:    variable.str
+			json_len:    variable.len
 		}
 
-		checker.check_json_format(variable) or { assert false, err.str() }
-		assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		checker.check_json_format() or { assert false, err.str() }
+		assert checker.checker_idx == checker.json_len - 1, 'Expected to reach the end of the json string ${variable}'
 	}
 
 	// Nested arrays
 	for variable in ['[[1, 2, 3], [4, 5, 6]]'] {
 		mut checker := Decoder{
 			checker_idx: 0
-			json:        variable
+			json_str:    variable.str
+			json_len:    variable.len
 		}
 
-		checker.check_json_format(variable) or { assert false, err.str() }
-		// assert checker.checker_idx == checker.json.len - 1, 'Expected to reach the end of the json string ${checker.json}'
+		checker.check_json_format() or { assert false, err.str() }
+		// assert checker.checker_idx == checker.json_len - 1, 'Expected to reach the end of the json string ${variable}'
 	}
 
 	// Wrong jsons
@@ -169,10 +174,11 @@ fn test_check_json_format() {
 		mut has_error := false
 		mut checker := Decoder{
 			checker_idx: 0
-			json:        json_and_error['json']
+			json_str:    json_and_error['json'].str
+			json_len:    json_and_error['json'].len
 		}
 
-		checker.check_json_format(json_and_error['json']) or {
+		checker.check_json_format() or {
 			assert err.str() == json_and_error['error']
 			has_error = true
 		}
@@ -201,5 +207,50 @@ fn test_get_value_kind() {
 
 	for value in array_ {
 		assert get_value_kind(value.byte_) == value.value_kind
+	}
+}
+
+pub struct Stru {
+	val  int
+	val2 string
+	val3 Stru2
+}
+
+pub struct Stru2 {
+	a               int
+	brazilian_steak string
+}
+
+fn test_decode_from_http_request() {
+	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "brazilian_steak": "leleu"}}'
+	mut http_request := 'HTTP/1.1 200 OK\r\n'
+	http_request += 'Content-Type: application/json\r\n'
+	http_request += 'Host: localhost:8080\r\n'
+	http_request += 'User-Agent: curl/7.68.0\r\n'
+	http_request += 'Accept: */*\r\n'
+	http_request += 'Connection: close\r\n'
+	http_request += 'Content-Length: ${json_data.len}\r\n'
+	http_request += '\r\n'
+	http_request += json_data // pos: 150
+
+	mut decoder := Decoder{
+		json_str: unsafe { http_request.str + 150 }
+		json_len: json_data.len
+	}
+
+	decoder.check_json_format()!
+	check_if_json_match[Stru](json_data)!
+
+	mut result := Stru{}
+	decoder.current_node = decoder.values_info.head
+	decoder.decode_value(mut &result)!
+
+	assert result == Stru{
+		val:  1
+		val2: 'lala'
+		val3: Stru2{
+			a:               2
+			brazilian_steak: 'leleu'
+		}
 	}
 }

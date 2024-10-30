@@ -6,9 +6,22 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 	$if initialized_sumtype is $sumtype {
 		$for v in initialized_sumtype.variants {
 			if initialized_sumtype is v {
-				mut val := initialized_sumtype
-				decoder.decode_value(mut val)!
-				return T(val)
+				$if initialized_sumtype is $array {
+					unsafe {
+						// decode array
+						mut val := initialized_sumtype
+						decoder.decode_value(mut val)!
+						return T(val)
+					}
+				} $else $if initialized_sumtype is $map {
+					mut val := unsafe { initialized_sumtype }
+					decoder.decode_value(mut val)!
+					return T(val)
+				} $else {
+					mut val := initialized_sumtype
+					decoder.decode_value(mut val)!
+					return T(val)
+				}
 			}
 		}
 	}
@@ -66,7 +79,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 					}
 
 					if unsafe {
-						vmemcmp(decoder.json.str + key_info.position, type_field.str,
+						vmemcmp(decoder.json_str + key_info.position, type_field.str,
 							type_field.len) == 0
 					} {
 						// find type field
@@ -85,7 +98,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 							unsafe {
 							}
 							if unsafe {
-								vmemcmp(decoder.json.str + type_field_node.value.position + 1,
+								vmemcmp(decoder.json_str + type_field_node.value.position + 1,
 									variant_name.str, variant_name.len) == 0
 							} {
 								val = T(v)

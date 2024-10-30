@@ -3,6 +3,8 @@ import json as old_json
 import benchmark
 import time
 
+// ./../../../../../v wipe-cache && ./../../../../../v -prod bench.v -gc none -o b_out && valgrind -s ./b_out
+
 // ./v -prod crun vlib/x/json/tests/c.v
 // ./v wipe-cache && ./v -prod -cc gcc crun vlib/x/json2/decoder2/tests/bench.v
 const max_iterations = 1_000_000
@@ -51,6 +53,18 @@ fn main() {
 	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}}'
 	json_data1 := '{"val": "2"}'
 	json_data2 := '{"val": 2}'
+	json_data_timestamp := '{"val": "2022-03-11T13:54:25Z"}'
+
+	mut http_request := 'HTTP/1.1 200 OK\r\n'
+	http_request += 'Content-Type: application/json\r\n'
+	http_request += 'Host: localhost:8080\r\n'
+	http_request += 'User-Agent: curl/7.68.0\r\n'
+	http_request += 'Accept: */*\r\n'
+	http_request += 'Connection: close\r\n'
+	http_request += 'Content-Length: ${json_data.len}\r\n'
+	http_request += '\r\n'
+	// dump(http_request.len)
+	http_request += json_data // pos: 150
 
 	println('Starting benchmark...')
 	println('max_iterations: ${max_iterations}')
@@ -83,6 +97,20 @@ fn main() {
 	}
 
 	b.measure('old_json.decode(SumTypes, json_data)!\n')
+
+	// time.Time **********************************************************
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[StructType[time.Time]](json_data_timestamp)!
+	}
+
+	b.measure('decoder2.decode[StructType[time.Time]](json_data_timestamp)!')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := old_json.decode(StructType[time.Time], json_data_timestamp)! // not working // 1970-01-01 00:00:00
+	}
+
+	b.measure('old_json.decode(StructType[time.Time], json_data_timestamp)!\n')
 
 	// StructType[string] **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -170,7 +198,7 @@ fn main() {
 
 	// time.Time **********************************************************
 	for i := 0; i < max_iterations; i++ {
-		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25"')!
+		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25.000Z"')!
 	}
 
 	b.measure("decoder2.decode[time.Time]('2022-03-11T13:54:25')!")
@@ -211,4 +239,35 @@ fn main() {
 	}
 
 	b.measure('decoder2.decode[SumTypes](\'"abcdefghijklimnopqrstuv"\')!')
+
+	// // Uncomment this when #22693 is fixed
+	// for i := 0; i < max_iterations; i++ {
+	// 	_ := decoder2.decode[json2.Any](json_data2)!
+	// }
+
+	// b.measure('decoder2.decode[json2.Any](json_data)!')
+
+	for i := 0; i < max_iterations; i++ {
+		mut decoder := decoder2.Decoder{
+			json_str: unsafe { http_request.str + 150 }
+			json_len: json_data.len
+		}
+
+		decoder.check_json_format()!
+		decoder2.check_if_json_match[Stru](json_data)!
+
+		mut result := Stru{}
+		decoder.current_node = decoder.values_info.head
+		decoder.decode_value(mut &result)!
+	}
+
+	b.measure('raw decode from HTTP request')
+
+	for i := 0; i < max_iterations; i++ {
+		json_string_from_http_request := http_request[150..]
+
+		_ := decoder2.decode[Stru](json_string_from_http_request)!
+	}
+
+	b.measure('decode from HTTP request')
 }
