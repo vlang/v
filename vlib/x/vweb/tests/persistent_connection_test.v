@@ -6,7 +6,7 @@ import time
 import x.vweb
 
 const exit_after = time.second * 10
-const port = 13009
+const port = 23009
 const localserver = 'localhost:${port}'
 const tcp_r_timeout = 2 * time.second
 const tcp_w_timeout = 2 * time.second
