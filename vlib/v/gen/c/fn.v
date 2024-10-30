@@ -1210,6 +1210,12 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		'sorted' {
 			g.gen_array_sorted(node)
 		}
+		'sort_with_compare' {
+			g.gen_fixed_array_sort_with_compare(node)
+		}
+		'sorted_with_compare' {
+			g.gen_fixed_array_sorted_with_compare(node)
+		}
 		else {
 			return false
 		}
