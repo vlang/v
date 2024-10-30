@@ -3849,7 +3849,6 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 }
 
 fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
-	is_amp := g.is_amp && node.expr is ast.StructInit
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 	if node.name_type > 0 {
@@ -3917,14 +3916,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			} else {
 				node.from_embed_types[i - 1].is_ptr()
 			}
-			if is_left_ptr || is_amp {
+			if is_left_ptr {
 				g.write('->')
 			} else {
 				g.write('.')
 			}
 			g.write(embed_name)
 		}
-		if (node.expr_type.is_ptr() && node.from_embed_types.len == 0) || is_amp {
+		if node.expr_type.is_ptr() && node.from_embed_types.len == 0 {
 			g.write('->')
 		} else {
 			g.write('.')
@@ -4166,7 +4165,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
-	if field_is_opt || is_amp
+	if field_is_opt
 		|| ((node.expr_type.is_ptr() || sym.kind == .chan || alias_to_ptr)
 		&& node.from_embed_types.len == 0) {
 		g.write('->')
