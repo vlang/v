@@ -192,6 +192,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.is_method {
+		if node.receiver.name in c.global_names {
+			c.error('cannot use global variable name `${node.receiver.name}` as receiver',
+				node.receiver_pos)
+		}
 		if node.receiver.typ.has_flag(.option) {
 			c.error('option types cannot have methods', node.receiver_pos)
 		}
