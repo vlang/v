@@ -5,8 +5,7 @@ import time
 // `Any` is a sum type that lists the possible types to be decoded and used.
 // `Any` priority order for numbers: floats -> signed integers -> unsigned integers
 // `Any` priority order for strings: string -> time.Time
-pub type Any = Null
-	| []Any
+pub type Any = []Any
 	| bool
 	| f64
 	| f32
@@ -22,6 +21,7 @@ pub type Any = Null
 	| u32
 	| u16
 	| u8
+	| Null
 
 // Decodable is an interface, that allows custom implementations for decoding structs from JSON encoded values
 pub interface Decodable {

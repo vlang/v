@@ -19,7 +19,7 @@ pub struct Stru2 {
 	churrasco string
 }
 
-type SumTypes = StructType[string] | bool | int | string | time.Time
+type SumTypes = Stru | bool | int | string | time.Time
 type StringAlias = string
 type IntAlias = int
 
@@ -48,7 +48,7 @@ mut:
 }
 
 fn main() {
-	json_data := '{"val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}}'
+	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}}'
 	json_data1 := '{"val": "2"}'
 	json_data2 := '{"val": 2}'
 
@@ -71,6 +71,18 @@ fn main() {
 	}
 
 	b.measure('old_json.decode(Stru, json_data)!\n')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[SumTypes](json_data)!
+	}
+
+	b.measure('decoder2.decode[SumTypes](json_data)!')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := old_json.decode(SumTypes, json_data)!
+	}
+
+	b.measure('old_json.decode(SumTypes, json_data)!\n')
 
 	// StructType[string] **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -185,4 +197,18 @@ fn main() {
 	}
 
 	b.measure('decoder2.decode[StringAlias](\'"abcdefghijklimnopqrstuv"\')!')
+
+	println('\n***Sumtypes***')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[SumTypes]('2')!
+	}
+
+	b.measure('decoder2.decode[SumTypes](2)!')
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[SumTypes]('"abcdefghijklimnopqrstuv"')!
+	}
+
+	b.measure('decoder2.decode[SumTypes](\'"abcdefghijklimnopqrstuv"\')!')
 }

@@ -16,13 +16,13 @@ struct Price {
 	net f64
 }
 
-type Animal = Cat | Dog
+pub type Animal = Cat | Dog
 
-struct Cat {
+pub struct Cat {
 	cat_name string
 }
 
-struct Dog {
+pub struct Dog {
 	dog_name string
 }
 
@@ -73,4 +73,10 @@ fn test_any_sum_type() {
 	// 		'hello2': json2.Any('world')
 	// 	})
 	// })
+}
+
+fn test_sum_type_struct() {
+	assert json.decode[Animal]('{"cat_name": "Tom"}')! == Animal(Cat{'Tom'})
+	assert json.decode[Animal]('{"dog_name": "Rex"}')! == Animal(Cat{''})
+	assert json.decode[Animal]('{"dog_name": "Rex", "_type": "Dog"}')! == Animal(Dog{'Rex'})
 }
