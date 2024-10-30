@@ -3,23 +3,25 @@ module json2
 import time
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = Null
-	| []Any
+// `Any` priority order for numbers: floats -> signed integers -> unsigned integers
+// `Any` priority order for strings: string -> time.Time
+pub type Any = []Any
 	| bool
-	| f32
 	| f64
-	| i16
-	| i32
+	| f32
 	| i64
-	| i8
 	| int
+	| i32
+	| i16
+	| i8
 	| map[string]Any
 	| string
 	| time.Time
-	| u16
-	| u32
 	| u64
+	| u32
+	| u16
 	| u8
+	| Null
 
 // Decodable is an interface, that allows custom implementations for decoding structs from JSON encoded values
 pub interface Decodable {
