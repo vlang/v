@@ -1701,7 +1701,7 @@ pub fn (t &TypeSymbol) embed_name() string {
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
 	for mut method in unsafe { t.methods } {
-		if method.name == name {
+		if method.name.len == name.len && method.name == name {
 			return true
 		}
 	}
@@ -1715,7 +1715,7 @@ pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	for mut method in unsafe { t.methods } {
-		if method.name == name {
+		if method.name.len == name.len && method.name == name {
 			return method
 		}
 	}
