@@ -494,7 +494,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	global_g.write_shareds()
 	global_g.write_chan_pop_option_fns()
 	global_g.write_chan_push_option_fns()
-	global_g.no_eq_method_types[global_g.table.find_type('Type')] = true
 	global_g.gen_array_contains_methods()
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()

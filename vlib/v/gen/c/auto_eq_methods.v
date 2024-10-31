@@ -393,8 +393,12 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 		eq_fn := g.gen_map_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
 	} else if elem.sym.kind == .alias && !elem.typ.is_ptr() {
-		eq_fn := g.gen_alias_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
+		if g.no_eq_method_types[elem.typ] {
+			fn_builder.writeln('\t\tif (((${ptr_elem_styp}*)${left_data})[i] != ((${ptr_elem_styp}*)${right_data})[i]) {')
+		} else {
+			eq_fn := g.gen_alias_equality_fn(elem.typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i]) {')
+		}
 	} else if elem.sym.kind == .function {
 		fn_builder.writeln('\t\tif (*((voidptr*)((byte*)${left_data}+(i*${left_elem}))) != *((voidptr*)((byte*)${right_data}+(i*${right_elem})))) {')
 	} else {

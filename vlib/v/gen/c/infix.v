@@ -673,9 +673,10 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 						} else {
 							g.write('_SLIT_EQ(${var}.str, ${var}.len, "${slit}")')
 						}
-						unsafe {
-							goto end
+						if i < right.exprs.len - 1 {
+							g.write(' || ')
 						}
+						continue
 					} else if array_expr is ast.StringLiteral {
 						g.write('fast_string_eq(')
 					} else {
@@ -688,7 +689,18 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 				} else {
 					ptr_typ := g.equality_fn(right.elem_type)
 					if elem_sym.kind == .alias {
-						g.write('${ptr_typ}_alias_eq(')
+						// optimization for alias to number
+						if elem_sym.is_int() {
+							g.expr(left)
+							g.write(' == ')
+							g.expr(array_expr)
+							if i < right.exprs.len - 1 {
+								g.write(' || ')
+							}
+							continue
+						} else {
+							g.write('${ptr_typ}_alias_eq(')
+						}
 					} else if elem_sym.kind == .sum_type {
 						g.write('${ptr_typ}_sumtype_eq(')
 					} else if elem_sym.kind == .map {
@@ -712,7 +724,6 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 				g.expr(array_expr)
 			}
 		}
-		end:
 		if i < right.exprs.len - 1 {
 			g.write(' || ')
 		}
