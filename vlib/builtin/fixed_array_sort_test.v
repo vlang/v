@@ -95,6 +95,7 @@ fn test_sorted_with_compare_1() {
 		}
 		return 0
 	})
+	assert a == ['hi', '1', '5', '3']!
 	assert b == ['1', '3', '5', 'hi']!
 }
 
@@ -149,6 +150,13 @@ fn test_sorted_with_compare_2() {
 		return compare_strings(a.s, b.s)
 	}
 	b := arr.sorted_with_compare(cmp)
+	assert arr[0].s == 'bbb'
+	assert arr[0].i == 100
+	assert arr[1].s == 'aaa'
+	assert arr[1].i == 101
+	assert arr[2].s == 'ccc'
+	assert arr[2].i == 102
+
 	assert b[0].s == 'aaa'
 	assert b[0].i == 101
 	assert b[1].s == 'bbb'
