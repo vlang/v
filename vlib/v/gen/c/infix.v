@@ -193,21 +193,35 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		}
 		match kind {
 			.alias {
-				ptr_typ := g.equality_fn(left.typ)
-				if node.op == .ne {
-					g.write('!')
+				// optimize simple eq/ne operation on numbers
+				if left.unaliased_sym.is_int() {
+					if left.typ.is_ptr() {
+						g.write('*'.repeat(left.typ.nr_muls()))
+					}
+					g.expr(node.left)
+					g.write(' ${node.op} ')
+					if right.typ.is_ptr() {
+						g.write('*'.repeat(right.typ.nr_muls()))
+					}
+					g.expr(node.right)
+					g.no_eq_method_types[left.typ] = true
+				} else {
+					ptr_typ := g.equality_fn(left.typ)
+					if node.op == .ne {
+						g.write('!')
+					}
+					g.write('${ptr_typ}_alias_eq(')
+					if left.typ.is_ptr() {
+						g.write('*'.repeat(left.typ.nr_muls()))
+					}
+					g.expr(node.left)
+					g.write(', ')
+					if right.typ.is_ptr() {
+						g.write('*'.repeat(right.typ.nr_muls()))
+					}
+					g.expr(node.right)
+					g.write(')')
 				}
-				g.write('${ptr_typ}_alias_eq(')
-				if left.typ.is_ptr() {
-					g.write('*'.repeat(left.typ.nr_muls()))
-				}
-				g.expr(node.left)
-				g.write(', ')
-				if right.typ.is_ptr() {
-					g.write('*'.repeat(right.typ.nr_muls()))
-				}
-				g.expr(node.right)
-				g.write(')')
 			}
 			.array {
 				ptr_typ := g.equality_fn(left.unaliased.clear_flag(.shared_f))

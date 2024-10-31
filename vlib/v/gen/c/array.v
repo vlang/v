@@ -1012,8 +1012,12 @@ fn (mut g Gen) gen_array_contains_methods() {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(((${elem_type_str}*)a.data)[i], v)) {')
 			} else if elem_kind == .alias && elem_is_not_ptr {
-				ptr_typ := g.equality_fn(elem_type)
-				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(((${elem_type_str}*)a.data)[i], v)) {')
+				if g.no_eq_method_types[elem_type] {
+					fn_builder.writeln('\t\tif (((${elem_type_str}*)a.data)[i] == v) {')
+				} else {
+					ptr_typ := g.equality_fn(elem_type)
+					fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(((${elem_type_str}*)a.data)[i], v)) {')
+				}
 			} else {
 				fn_builder.writeln('\t\tif (((${elem_type_str}*)a.data)[i] == v) {')
 			}
@@ -1050,8 +1054,12 @@ fn (mut g Gen) gen_array_contains_methods() {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(a[i], v)) {')
 			} else if elem_kind == .alias && elem_is_not_ptr {
-				ptr_typ := g.equality_fn(elem_type)
-				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(a[i], v)) {')
+				if g.no_eq_method_types[elem_type] {
+					fn_builder.writeln('\t\tif (a[i] == v) {')
+				} else {
+					ptr_typ := g.equality_fn(elem_type)
+					fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(a[i], v)) {')
+				}
 			} else {
 				fn_builder.writeln('\t\tif (a[i] == v) {')
 			}
