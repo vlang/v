@@ -3668,6 +3668,16 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				node.receiver_type = node.left_type
 			}
 		}
+	} else if method_name in ['reverse', 'reverse_in_place'] {
+		if node.args.len != 0 {
+			c.error('`.${method_name}` does not have any arguments', node.args[0].pos)
+		} else {
+			if method_name == 'reverse' {
+				node.return_type = node.left_type
+			} else {
+				node.return_type = ast.void_type
+			}
+		}
 	}
 	return node.return_type
 }

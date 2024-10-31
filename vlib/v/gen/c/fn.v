@@ -1216,6 +1216,12 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		'sorted_with_compare' {
 			g.gen_fixed_array_sorted_with_compare(node)
 		}
+		'reverse' {
+			g.gen_fixed_array_reverse(node)
+		}
+		'reverse_in_place' {
+			g.gen_fixed_array_reverse_in_place(node)
+		}
 		else {
 			return false
 		}
