@@ -360,6 +360,7 @@ pub:
 	is_global        bool
 	is_volatile      bool
 	is_deprecated    bool
+	is_embed         bool
 pub mut:
 	is_recursive     bool
 	is_part_of_union bool
@@ -485,6 +486,7 @@ pub:
 	next_comments    []Comment
 	has_prev_newline bool
 	has_break_line   bool
+	is_embed         bool
 pub mut:
 	expr          Expr   // `val1`
 	name          string // 'field1'

@@ -340,6 +340,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				attrs:            p.attrs
 				is_pub:           is_embed || is_field_pub
 				is_mut:           is_embed || is_field_mut
+				is_embed:         is_embed
 				is_global:        is_field_global
 				is_volatile:      is_field_volatile
 				is_deprecated:    is_field_deprecated
@@ -503,6 +504,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 				parent_type:      typ
 				has_prev_newline: has_prev_newline
 				has_break_line:   has_break_line
+				is_embed:         field_name.len > 0 && field_name[0].is_capital()
 			}
 		}
 	}

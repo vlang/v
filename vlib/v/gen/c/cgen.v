@@ -1062,13 +1062,13 @@ pub fn (mut g Gen) write_typeof_functions() {
 // V type to C typecc
 @[inline]
 fn (mut g Gen) styp(t ast.Type) string {
-	if t.has_flag(.option) {
+	if !t.has_option_or_result() {
+		return g.base_type(t)
+	} else if t.has_flag(.option) {
 		// Register an optional if it's not registered yet
 		return g.register_option(t)
-	} else if t.has_flag(.result) {
-		return g.register_result(t)
 	} else {
-		return g.base_type(t)
+		return g.register_result(t)
 	}
 }
 
@@ -1098,7 +1098,7 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := g.unwrap_generic(t).nr_muls()
+	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}

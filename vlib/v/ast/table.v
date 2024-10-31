@@ -2000,7 +2000,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 							}
 						}
 						// Update type in `info.embeds`, if it's embed
-						if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
+						if fields[i].is_embed {
 							mut parent_sym := t.sym(typ)
 							mut parent_info := parent_sym.info
 							if mut parent_info is Struct {
@@ -2186,7 +2186,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									fields[i].typ = t_typ
 								}
 								// Update type in `info.embeds`, if it's embed
-								if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
+								if fields[i].is_embed {
 									for mut embed in parent_info.embeds {
 										if embed == orig_type {
 											embed = fields[i].typ
