@@ -529,10 +529,10 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 							expr:      node.left
 							expr_type: node.left_type
 						}
-						g.infix_expr_in_optimization(new_node_left, node.right)
+						g.infix_expr_in_optimization(new_node_left, node.left_type, node.right)
 					}
 				} else {
-					g.infix_expr_in_optimization(node.left, node.right)
+					g.infix_expr_in_optimization(node.left, node.left_type, node.right)
 				}
 				g.write(')')
 				return
@@ -618,7 +618,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				// `a in [1,2,3]!` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
 				g.write('(')
-				g.infix_expr_in_optimization(node.left, node.right)
+				g.infix_expr_in_optimization(node.left, node.left_type, node.right)
 				g.write(')')
 				return
 			}
@@ -656,8 +656,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 // infix_expr_in_optimization optimizes `<var> in <array>` expressions,
 // and transform them in a series of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
-fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
+fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, right ast.ArrayInit) {
 	mut elem_sym := g.table.sym(right.elem_type)
+	left_parent_idx := g.table.sym(left_type).parent_idx
 	for i, array_expr in right.exprs {
 		match elem_sym.kind {
 			.string, .alias, .sum_type, .map, .interface, .array, .struct {
@@ -693,6 +694,10 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 						if elem_sym.is_int() {
 							g.expr(left)
 							g.write(' == ')
+							if !((array_expr is ast.SelectorExpr && array_expr.typ == left_type)
+								|| (array_expr is ast.Ident && array_expr.obj.typ == left_type)) {
+								g.write('(${g.styp(left_parent_idx)})')
+							}
 							g.expr(array_expr)
 							if i < right.exprs.len - 1 {
 								g.write(' || ')
