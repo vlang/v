@@ -13,7 +13,7 @@ fn min(a u16, b u16, c u16) u16 {
 }
 
 @[inline]
-fn max2[T](a T, b T) T {
+fn max2(a int, b int) int {
 	if a < b {
 		return b
 	}
@@ -21,7 +21,7 @@ fn max2[T](a T, b T) T {
 }
 
 @[inline]
-fn min2[T](a T, b T) T {
+fn min2(a int, b int) int {
 	if a < b {
 		return a
 	}
@@ -29,7 +29,7 @@ fn min2[T](a T, b T) T {
 }
 
 @[inline]
-fn abs2[T](a T, b T) T {
+fn abs2(a int, b int) int {
 	if a < b {
 		return b - a
 	}
