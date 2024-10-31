@@ -1,6 +1,7 @@
 import os
 
 // vtest retry: 2
+// vtest hide_retries
 
 // This tests whether the V test runner, can handle retries.
 //

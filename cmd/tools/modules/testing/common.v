@@ -586,8 +586,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
-					mtc)
+				if !details.hide_retries {
+					ts.append_message(.info, '  [stats]        retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+						mtc)
+				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
 				ts.append_message(.cmd_begin, cmd, mtc)
@@ -679,8 +681,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry = 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
-					mtc)
+				if !details.hide_retries {
+					ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
+						mtc)
+				}
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
 				ts.append_message(.cmd_begin, run_cmd, mtc)
@@ -866,6 +870,8 @@ pub struct TestDetails {
 pub mut:
 	retry int
 	flaky bool // when flaky tests fail, the whole run is still considered successful, unless VTEST_FAIL_FLAKY is 1
+	//
+	hide_retries bool // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
 }
 
 pub fn get_test_details(file string) TestDetails {
@@ -877,6 +883,9 @@ pub fn get_test_details(file string) TestDetails {
 		}
 		if line.starts_with('// vtest flaky:') {
 			res.flaky = line.all_after(':').trim_space().bool()
+		}
+		if line.starts_with('// vtest hide_retries') {
+			res.hide_retries = true
 		}
 	}
 	return res
