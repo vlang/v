@@ -136,10 +136,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	g.assign_op = node.op
 	g.inside_assign = true
 	g.assign_ct_type = 0
+	g.arraymap_set_pos = 0
+	g.is_arraymap_set = false
+	g.is_assign_lhs = false
+	g.is_shared = false
 	defer {
 		g.assign_op = .unknown
 		g.inside_assign = false
 		g.assign_ct_type = 0
+		g.arraymap_set_pos = 0
+		g.is_arraymap_set = false
+		g.is_assign_lhs = false
+		g.is_shared = false
 	}
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
@@ -210,11 +218,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if node.left_types.len < node.left.len {
 		g.checker_bug('node.left_types.len < node.left.len', node.pos)
 	}
+
 	last_curr_var_name := g.curr_var_name.clone()
-	g.curr_var_name = []
 	defer {
 		g.curr_var_name = last_curr_var_name
 	}
+	g.curr_var_name = []
 
 	for i, mut left in node.left {
 		mut is_auto_heap := false
@@ -810,11 +819,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					// var = &auto_heap_var
 					old_is_auto_heap := g.is_option_auto_heap
-					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
-						&& val.right is ast.Ident && (val.right as ast.Ident).is_auto_heap()
 					defer {
 						g.is_option_auto_heap = old_is_auto_heap
 					}
+					g.is_option_auto_heap = val_type.has_flag(.option) && val is ast.PrefixExpr
+						&& val.right is ast.Ident && (val.right as ast.Ident).is_auto_heap()
 					if var_type.has_flag(.option) || gen_or {
 						g.expr_with_opt_or_block(val, val_type, left, var_type, false)
 					} else if node.has_cross_var {
