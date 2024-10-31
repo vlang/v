@@ -702,6 +702,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			full_failure_output := failure_output.str().trim_space()
 			if details.flaky && !fail_flaky {
+				ts.append_message(.info, '>>> flaky failures so far:', mtc)
+				for line in full_failure_output.split_into_lines() {
+					ts.append_message(.info, '>>>>>> ${line}', mtc)
+				}
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\n    comp_cmd: ${cmd}\n     run_cmd: ${run_cmd}',
 					mtc)
 				unsafe {
