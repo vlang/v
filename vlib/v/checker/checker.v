@@ -5360,10 +5360,10 @@ fn (c &Checker) check_import_sym_conflict(ident string) bool {
 	for import_sym in c.file.imports {
 		// Check if alias exists or not
 		if !import_sym.alias.is_blank() {
-			if import_sym.alias == ident {
+			if import_sym.alias.len == ident.len && import_sym.alias == ident {
 				return true
 			}
-		} else if import_sym.mod == ident {
+		} else if import_sym.mod.len == ident.len && import_sym.mod == ident {
 			return true
 		}
 	}

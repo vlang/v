@@ -55,12 +55,14 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 	return res
 }
 
+@[direct_array_access]
 pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
 		panic('delete: no such key: ${name}')
 	}
 	for i, _ in o.keys {
-		if o.keys[i] == name {
+		item := o.keys[i]
+		if item.len == name.len && item == name {
 			o.keys.delete(i)
 			break
 		}

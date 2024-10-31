@@ -40,6 +40,7 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 }
 */
 
+@[inline]
 fn (s &Scope) dont_lookup_parent() bool {
 	return s.parent == unsafe { nil } || s.detached_from_parent
 }
