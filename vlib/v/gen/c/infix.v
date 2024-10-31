@@ -694,7 +694,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 						if elem_sym.is_int() {
 							g.expr(left)
 							g.write(' == ')
-							if !((array_expr is ast.SelectorExpr && array_expr.typ == left_type)
+							if left_parent_idx != 0 && !((array_expr is ast.SelectorExpr
+								&& array_expr.typ == left_type)
 								|| (array_expr is ast.Ident && array_expr.obj.typ == left_type)) {
 								g.write('(${g.styp(left_parent_idx)})')
 							}
