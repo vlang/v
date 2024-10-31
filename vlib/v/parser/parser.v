@@ -2214,6 +2214,7 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression

@@ -193,21 +193,35 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		}
 		match kind {
 			.alias {
-				ptr_typ := g.equality_fn(left.typ)
-				if node.op == .ne {
-					g.write('!')
+				// optimize simple eq/ne operation on numbers
+				if left.unaliased_sym.is_int() {
+					if left.typ.is_ptr() {
+						g.write('*'.repeat(left.typ.nr_muls()))
+					}
+					g.expr(node.left)
+					g.write(' ${node.op} ')
+					if right.typ.is_ptr() {
+						g.write('*'.repeat(right.typ.nr_muls()))
+					}
+					g.expr(node.right)
+					g.no_eq_method_types[left.typ] = true
+				} else {
+					ptr_typ := g.equality_fn(left.typ)
+					if node.op == .ne {
+						g.write('!')
+					}
+					g.write('${ptr_typ}_alias_eq(')
+					if left.typ.is_ptr() {
+						g.write('*'.repeat(left.typ.nr_muls()))
+					}
+					g.expr(node.left)
+					g.write(', ')
+					if right.typ.is_ptr() {
+						g.write('*'.repeat(right.typ.nr_muls()))
+					}
+					g.expr(node.right)
+					g.write(')')
 				}
-				g.write('${ptr_typ}_alias_eq(')
-				if left.typ.is_ptr() {
-					g.write('*'.repeat(left.typ.nr_muls()))
-				}
-				g.expr(node.left)
-				g.write(', ')
-				if right.typ.is_ptr() {
-					g.write('*'.repeat(right.typ.nr_muls()))
-				}
-				g.expr(node.right)
-				g.write(')')
 			}
 			.array {
 				ptr_typ := g.equality_fn(left.unaliased.clear_flag(.shared_f))
@@ -515,10 +529,10 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 							expr:      node.left
 							expr_type: node.left_type
 						}
-						g.infix_expr_in_optimization(new_node_left, node.right)
+						g.infix_expr_in_optimization(new_node_left, node.left_type, node.right)
 					}
 				} else {
-					g.infix_expr_in_optimization(node.left, node.right)
+					g.infix_expr_in_optimization(node.left, node.left_type, node.right)
 				}
 				g.write(')')
 				return
@@ -604,7 +618,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				// `a in [1,2,3]!` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
 				g.write('(')
-				g.infix_expr_in_optimization(node.left, node.right)
+				g.infix_expr_in_optimization(node.left, node.left_type, node.right)
 				g.write(')')
 				return
 			}
@@ -642,8 +656,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 // infix_expr_in_optimization optimizes `<var> in <array>` expressions,
 // and transform them in a series of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
-fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
+fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, right ast.ArrayInit) {
 	mut elem_sym := g.table.sym(right.elem_type)
+	left_parent_idx := g.table.sym(left_type).parent_idx
 	for i, array_expr in right.exprs {
 		match elem_sym.kind {
 			.string, .alias, .sum_type, .map, .interface, .array, .struct {
@@ -659,9 +674,10 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 						} else {
 							g.write('_SLIT_EQ(${var}.str, ${var}.len, "${slit}")')
 						}
-						unsafe {
-							goto end
+						if i < right.exprs.len - 1 {
+							g.write(' || ')
 						}
+						continue
 					} else if array_expr is ast.StringLiteral {
 						g.write('fast_string_eq(')
 					} else {
@@ -674,7 +690,23 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 				} else {
 					ptr_typ := g.equality_fn(right.elem_type)
 					if elem_sym.kind == .alias {
-						g.write('${ptr_typ}_alias_eq(')
+						// optimization for alias to number
+						if elem_sym.is_int() {
+							g.expr(left)
+							g.write(' == ')
+							if left_parent_idx != 0 && !((array_expr is ast.SelectorExpr
+								&& array_expr.typ == left_type)
+								|| (array_expr is ast.Ident && array_expr.obj.typ == left_type)) {
+								g.write('(${g.styp(left_parent_idx)})')
+							}
+							g.expr(array_expr)
+							if i < right.exprs.len - 1 {
+								g.write(' || ')
+							}
+							continue
+						} else {
+							g.write('${ptr_typ}_alias_eq(')
+						}
 					} else if elem_sym.kind == .sum_type {
 						g.write('${ptr_typ}_sumtype_eq(')
 					} else if elem_sym.kind == .map {
@@ -698,7 +730,6 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 				g.expr(array_expr)
 			}
 		}
-		end:
 		if i < right.exprs.len - 1 {
 			g.write(' || ')
 		}

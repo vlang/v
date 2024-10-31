@@ -782,7 +782,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				}
 			} else {
 				// embeded
-				if name.len > 0 && name[0].is_capital() && field_sym.info is ast.Struct {
+				if field.is_embed && field_sym.info is ast.Struct {
 					for embed in info.embeds {
 						if embed == int(field.typ) {
 							prefix_embed := if embed_prefix != '' {

@@ -87,7 +87,8 @@ mut:
 	file                      &ast.File  = unsafe { nil }
 	table                     &ast.Table = unsafe { nil }
 	styp_cache                map[ast.Type]string
-	unique_file_path_hash     u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
+	no_eq_method_types        map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
+	unique_file_path_hash     u64               // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
 	tmp_count                 int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
@@ -465,6 +466,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			unsafe { g.free_builders() }
 			for k, v in g.autofree_methods {
 				global_g.autofree_methods[k] = v
+			}
+			for k, v in g.no_eq_method_types {
+				global_g.no_eq_method_types[k] = v
 			}
 		}
 	} else {
@@ -1062,13 +1066,13 @@ pub fn (mut g Gen) write_typeof_functions() {
 // V type to C typecc
 @[inline]
 fn (mut g Gen) styp(t ast.Type) string {
-	if t.has_flag(.option) {
+	if !t.has_option_or_result() {
+		return g.base_type(t)
+	} else if t.has_flag(.option) {
 		// Register an optional if it's not registered yet
 		return g.register_option(t)
-	} else if t.has_flag(.result) {
-		return g.register_result(t)
 	} else {
-		return g.base_type(t)
+		return g.register_result(t)
 	}
 }
 
@@ -1098,7 +1102,7 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
-	nr_muls := g.unwrap_generic(t).nr_muls()
+	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
