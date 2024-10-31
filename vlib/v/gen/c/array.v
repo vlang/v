@@ -776,15 +776,54 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string, is_arra
 		g.expr(node.left)
 		g.write('${deref_field}len, ')
 		g.expr(node.left)
-		g.write2('${deref_field}element_size, (int (*)(const void *, const void *))&${compare_fn});',
-			' }')
+		g.write2('${deref_field}element_size, (voidptr)${compare_fn});', ' }')
 	} else {
 		info := g.table.final_sym(node.left_type).info as ast.ArrayFixed
 		elem_styp := g.styp(info.elem_type)
 		g.write('qsort(&')
 		g.expr(node.left)
-		g.write(', ${info.size}, sizeof(${elem_styp}), (int (*)(const void *, const void *))&${compare_fn});')
+		g.write(', ${info.size}, sizeof(${elem_styp}), (voidptr)${compare_fn});')
 	}
+}
+
+fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {
+	past := g.past_tmp_var_new()
+	defer {
+		g.past_tmp_var_done(past)
+	}
+	atype := g.styp(node.return_type)
+	g.writeln('${atype} ${past.tmp_var};')
+	g.write('memcpy(&${past.tmp_var}, &')
+	g.expr(node.left)
+	g.writeln(', sizeof(${atype}));')
+
+	unsafe {
+		node.left = ast.Expr(ast.Ident{
+			name: past.tmp_var
+		})
+	}
+	g.gen_fixed_array_sort_with_compare(node)
+	g.writeln(';')
+}
+
+fn (mut g Gen) gen_fixed_array_sort_with_compare(node ast.CallExpr) {
+	mut compare_fn := ''
+	if node.args[0].expr is ast.LambdaExpr {
+		lambda_fn_name := node.args[0].expr.func.decl.name
+		compare_fn = '${lambda_fn_name}_lambda_wrapper'
+		mut lambda_node := unsafe { node.args[0].expr }
+		g.gen_anon_fn_decl(mut lambda_node.func)
+	} else if node.args[0].expr is ast.AnonFn {
+		mut fn_expr := unsafe { node.args[0].expr }
+		g.gen_anon_fn_decl(mut fn_expr)
+		compare_fn = node.args[0].expr.decl.name
+	} else if node.args[0].expr is ast.Ident {
+		compare_fn = node.args[0].expr.name
+	} else {
+		compare_fn = node.args[0].expr.str()
+	}
+	// write call to the generated function
+	g.gen_array_sort_call(node, compare_fn, false)
 }
 
 // `nums.filter(it % 2 == 0)`

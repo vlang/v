@@ -33,7 +33,7 @@ pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map'
 	'first', 'last', 'pop', 'delete', 'insert', 'prepend']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wait', 'map', 'sort',
-	'sorted']
+	'sorted', 'sort_with_compare', 'sorted_with_compare']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
 pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
