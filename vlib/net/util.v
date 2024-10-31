@@ -22,11 +22,11 @@ pub fn split_address(addr string) !(string, u16) {
 		p := validate_port(port)!
 		return address, p
 	} else if _ := addr.index('::') {
-		// ipv6 host only ::1
-		if addr.all_before_last('::') == '' {
+		if addr.count(':') == 2 && addr.all_before_last('::') == '' {
+			// ipv6 host only `::1`
 			return addr, 0
 		} else {
-			// addr:port
+			// addr:port, or `::addr:port`
 			address := addr.all_before_last(':')
 			port := addr.all_after_last(':').int()
 			p := validate_port(port)!
