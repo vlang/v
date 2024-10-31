@@ -803,7 +803,6 @@ fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {
 		})
 	}
 	g.gen_fixed_array_sort_with_compare(node)
-	g.writeln(';')
 }
 
 fn (mut g Gen) gen_fixed_array_sort_with_compare(node ast.CallExpr) {
@@ -824,6 +823,42 @@ fn (mut g Gen) gen_fixed_array_sort_with_compare(node ast.CallExpr) {
 	}
 	// write call to the generated function
 	g.gen_array_sort_call(node, compare_fn, false)
+}
+
+fn (mut g Gen) gen_fixed_array_reverse(node ast.CallExpr) {
+	past := g.past_tmp_var_new()
+	defer {
+		g.past_tmp_var_done(past)
+	}
+	atype := g.styp(node.return_type)
+	g.writeln('${atype} ${past.tmp_var};')
+	g.write('memcpy(&${past.tmp_var}, &')
+	g.expr(node.left)
+	g.writeln(', sizeof(${atype}));')
+
+	unsafe {
+		node.left = ast.Expr(ast.Ident{
+			name: past.tmp_var
+		})
+	}
+	g.gen_fixed_array_reverse_in_place(node)
+}
+
+fn (mut g Gen) gen_fixed_array_reverse_in_place(node ast.CallExpr) {
+	left_sym := g.table.final_sym(node.left_type)
+	info := left_sym.info as ast.ArrayFixed
+	elem_type := info.elem_type
+	elem_styp := g.styp(elem_type)
+	tmp_var := g.new_tmp_var()
+	g.writeln('${elem_styp} ${tmp_var};')
+	i := g.new_tmp_var()
+	left_var := g.expr_string(node.left)
+	g.empty_line = true
+	g.writeln('for (int ${i} = 0; ${i} < ${info.size}/2; ++${i}) {')
+	g.writeln('\tmemcpy(&${tmp_var}, &${left_var}[${i}], sizeof(${elem_styp}));')
+	g.writeln('\tmemcpy(&${left_var}[${i}], &${left_var}[${info.size}-${i}-1], sizeof(${elem_styp}));')
+	g.writeln('\tmemcpy(&${left_var}[${info.size}-${i}-1], &${tmp_var}, sizeof(${elem_styp}));')
+	g.writeln('}')
 }
 
 // `nums.filter(it % 2 == 0)`
