@@ -129,30 +129,25 @@ fn check_and_extract_date(s string) !(int, int, int) {
 // parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
+
+// parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
+// See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
+// the differences between ISO-8601 and RFC 3339.
+@[direct_array_access]
 pub fn parse_rfc3339(s string) !Time {
-	unsafe {
-		mut t := Time{}
-
-		fast_parse_rfc3339(s.str, s.len, mut t)!
-		return t
-	}
-}
-
-@[unsafe]
-pub fn fast_parse_rfc3339(s_str &u8, s_len int, mut val Time) ! {
-	if s_len == 0 {
+	if s.len == 0 {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
 
-	if s_len < time_format_buffer.len {
+	if s.len < time_format_buffer.len {
 		return error('string is too short to parse')
 	}
 
 	mut year, mut month, mut day := 0, 0, 0
 	mut hour_, mut minute_, mut second_, mut nanosecond_ := 0, 0, 0, 0
 
-	is_time := if s_len >= time_format_buffer.len {
-		u8(*(s_str + 2)) == u8(`:`) && u8(*(s_str + 5)) == u8(`:`)
+	is_time := if s.len >= time_format_buffer.len {
+		s[2] == u8(`:`) && s[5] == u8(`:`)
 	} else {
 		false
 	}
@@ -160,49 +155,46 @@ pub fn fast_parse_rfc3339(s_str &u8, s_len int, mut val Time) ! {
 		return error('missing date part of RFC 3339')
 	}
 
-	is_date := if s_len >= date_format_buffer.len {
-		u8(*(s_str + 4)) == u8(`-`) && u8(*(s_str + 7)) == u8(`-`)
+	is_date := if s.len >= date_format_buffer.len {
+		s[4] == u8(`-`) && s[7] == u8(`-`)
 	} else {
 		false
 	}
 
 	if is_date {
-		year, month, day = check_and_extract_date(tos(s_str, s_len))!
-		if s_len == date_format_buffer.len {
-			val = new(Time{
+		year, month, day = check_and_extract_date(s)!
+		if s.len == date_format_buffer.len {
+			return new(Time{
 				year:     year
 				month:    month
 				day:      day
 				is_local: false
 			})
-			return
 		}
 	}
 
-	is_datetime := if s_len >= date_format_buffer.len + 1 + time_format_buffer.len + 1 {
-		is_date && u8(*(s_str + 10)) == u8(`T`)
+	is_datetime := if s.len >= date_format_buffer.len + 1 + time_format_buffer.len + 1 {
+		is_date && s[10] == u8(`T`)
 	} else {
 		false
 	}
 	if is_datetime {
 		// year, month, day := check_and_extract_date(s)!
-		// hour_, minute_, second_, nanosecond_ = check_and_extract_time(s[date_format_buffer.len + 1..])!
-		hour_, minute_, second_, nanosecond_ = check_and_extract_time(tos(s_str +
-			date_format_buffer.len + 1, s_len - date_format_buffer.len - 1))!
+		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s[date_format_buffer.len + 1..])!
 	}
 
 	mut timezone_start_position := 0
 
 	if is_datetime || is_time {
 		timezone_start_position = date_format_buffer.len + 1 + time_format_buffer.len
-		if u8(*(s_str + timezone_start_position)) == u8(`.`) {
+		if s[timezone_start_position] == u8(`.`) {
 			timezone_start_position++
 
-			for u8(*(s_str + timezone_start_position)) !in [u8(`Z`), `z`, `+`, `-`] {
+			for s[timezone_start_position] !in [u8(`Z`), `z`, `+`, `-`] {
 				timezone_start_position++
-				if timezone_start_position == s_len {
+				if timezone_start_position == s.len {
 					return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${timezone_start_position}, not "${[
-						u8(*(s_str + timezone_start_position)),
+						s[timezone_start_position],
 					].bytestr()}"')
 				}
 			}
@@ -210,25 +202,18 @@ pub fn fast_parse_rfc3339(s_str &u8, s_len int, mut val Time) ! {
 	}
 
 	pos := date_format_buffer.len + time_format_buffer.len + 1
-	if pos >= s_len {
+	if pos >= s.len {
 		return error('timezone error: datetime string is too short')
 	}
-
-	if u8(*(s_str + date_format_buffer.len + time_format_buffer.len + 1)) !in [
-		u8(`Z`),
-		`z`,
-		`+`,
-		`-`,
-		`.`,
-	] {
+	if s[date_format_buffer.len + time_format_buffer.len + 1] !in [u8(`Z`), `z`, `+`, `-`, `.`] {
 		// RFC 3339 needs a timezone
 		return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${
 			date_format_buffer.len + time_format_buffer.len + 1}, not "${[
-			u8(*(s_str + date_format_buffer.len + time_format_buffer.len + 1)),
+			s[date_format_buffer.len + time_format_buffer.len + 1],
 		].bytestr()}"')
 	} else {
-		if u8(*(s_str + s_len - 1)) in [u8(`Z`), `z`] {
-			val = new(Time{
+		if s[s.len - 1] in [u8(`Z`), `z`] {
+			return new(Time{
 				year:       year
 				month:      month
 				day:        day
@@ -238,21 +223,20 @@ pub fn fast_parse_rfc3339(s_str &u8, s_len int, mut val Time) ! {
 				nanosecond: nanosecond_
 				is_local:   false
 			})
-			return
 		} else {
 			// Check if the string contains the timezone part after the time part +00:00
-			if s_len < date_format_buffer.len + 1 + time_format_buffer.len + 6 {
+			if s.len < date_format_buffer.len + 1 + time_format_buffer.len + 6 {
 				return error('datetime string is too short')
 			}
-			if u8(*(s_str + s_len - 3)) != u8(`:`) {
+			if s[s.len - 3] != u8(`:`) {
 				return error('timezone separator error: expected ":", not `${[
-					u8(*(s_str + date_format_buffer.len + time_format_buffer.len + 3)),
+					s[date_format_buffer.len + time_format_buffer.len + 3],
 				].bytestr()}` in position ${date_format_buffer.len + time_format_buffer.len + 3}')
 			}
 
 			// Check if it is UTC time
-			if unsafe { vmemcmp(s_str + s_len - 5, '00:00'.str, 5) == 0 } {
-				val = new(Time{
+			if unsafe { vmemcmp(s.str + s.len - 5, '00:00'.str, 5) == 0 } {
+				return new(Time{
 					year:       year
 					month:      month
 					day:        day
@@ -262,23 +246,21 @@ pub fn fast_parse_rfc3339(s_str &u8, s_len int, mut val Time) ! {
 					nanosecond: nanosecond_
 					is_local:   false
 				})
-				return
 			}
 
-			is_negative := u8(*(s_str + s_len - 6)) == u8(`-`)
+			is_negative := s[s.len - 6] == u8(`-`)
 
 			// To local time using the offset to add_seconds
 			mut offset_in_minutes := 0
 			mut offset_in_hours := 0
 			// offset hours
 			for i := 0; i < 2; i++ {
-				offset_in_hours = offset_in_minutes * 10 + (u8(*(s_str + s_len - 5 + i)) - u8(`0`))
+				offset_in_hours = offset_in_minutes * 10 + (s[s.len - 5 + i] - u8(`0`))
 			}
 
 			// offset minutes
 			for i := 0; i < 2; i++ {
-				offset_in_minutes = offset_in_minutes * 10 + (u8(*(s_str + s_len - 2 +
-					i)) - u8(`0`))
+				offset_in_minutes = offset_in_minutes * 10 + (s[s.len - 2 + i] - u8(`0`))
 			}
 
 			offset_in_minutes += offset_in_hours * 60
@@ -300,8 +282,7 @@ pub fn fast_parse_rfc3339(s_str &u8, s_len int, mut val Time) ! {
 
 			time_to_be_returned = time_to_be_returned.add_seconds(offset_in_minutes * 60)
 
-			val = time_to_be_returned
-			return
+			return time_to_be_returned
 		}
 	}
 

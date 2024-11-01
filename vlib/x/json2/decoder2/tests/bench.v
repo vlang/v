@@ -3,8 +3,6 @@ import json as old_json
 import benchmark
 import time
 
-// ./../../../../../v wipe-cache && ./../../../../../v -prod bench.v -gc none -o b_out && valgrind -s ./b_out
-
 // ./v -prod crun vlib/x/json/tests/c.v
 // ./v wipe-cache && ./v -prod -cc gcc crun vlib/x/json2/decoder2/tests/bench.v
 const max_iterations = 1_000_000
@@ -106,12 +104,6 @@ fn main() {
 
 	b.measure('decoder2.decode[StructType[time.Time]](json_data_timestamp)!')
 
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(StructType[time.Time], json_data_timestamp)! // not working // 1970-01-01 00:00:00
-	}
-
-	b.measure('old_json.decode(StructType[time.Time], json_data_timestamp)!\n')
-
 	// StructType[string] **********************************************************
 	for i := 0; i < max_iterations; i++ {
 		_ := decoder2.decode[StructType[string]](json_data1)!
@@ -198,10 +190,10 @@ fn main() {
 
 	// time.Time **********************************************************
 	for i := 0; i < max_iterations; i++ {
-		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25.000Z"')!
+		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25Z"')!
 	}
 
-	b.measure("decoder2.decode[time.Time]('2022-03-11T13:54:25')!")
+	b.measure("decoder2.decode[time.Time]('2022-03-11T13:54:25Z')!")
 
 	// string **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -240,7 +232,7 @@ fn main() {
 
 	b.measure('decoder2.decode[SumTypes](\'"abcdefghijklimnopqrstuv"\')!')
 
-	// // Uncomment this when #22693 is fixed
+	// // Uncomment this when #22710 is fixed
 	// for i := 0; i < max_iterations; i++ {
 	// 	_ := decoder2.decode[json2.Any](json_data2)!
 	// }

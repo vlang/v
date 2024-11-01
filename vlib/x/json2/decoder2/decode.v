@@ -650,20 +650,11 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		time_info := decoder.current_node.value
 
 		if time_info.value_kind == .string_ {
-			// string_time := decoder.json.substr_unsafe(time_info.position + 1, time_info.position +
-			// 	time_info.length - 1)
-
-			// val = time.parse_rfc3339(string_time) or { time.Time{} }
-
-			// time_info := decoder.current_node.value
-
-			unsafe {
-				// mut t := Time{}
-
-				time.fast_parse_rfc3339(decoder.json_str + time_info.position + 1, time_info.length - 2, mut
-					val)!
-				// return t
+			string_time := unsafe {
+				decoder.json_str[time_info.position + 1].vstring_with_len(time_info.length - 2)
 			}
+
+			val = time.parse_rfc3339(string_time) or { time.Time{} }
 		}
 	} $else $if T.unaliased_typ is $map {
 		map_info := decoder.current_node.value
