@@ -1609,6 +1609,22 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 				fm.handled_pos << pos + 1 // next
 			}
 			return true
+		} else if !flag_ctx.next.starts_with(used_delimiter) {
+			if field.short == flag_name {
+				trace_println('${@FN}: found match for (${field.type_name}) ${fm.dbg_match(flag_ctx,
+					field, next, '')}')
+				fm.field_map_flag[field.name] = FlagData{
+					raw:        flag_raw
+					field_name: field.name
+					delimiter:  used_delimiter
+					name:       flag_name
+					arg:        ?string(next)
+					pos:        pos
+				}
+				fm.handled_pos << pos
+				fm.handled_pos << pos + 1 // next
+				return true
+			}
 		}
 	}
 	if (fm.config.style == .short || field.hints.has(.short_only)) && first_letter == field.short {

@@ -23,3 +23,9 @@ fn test_resolve() {
 	assert x[0].str() == '[::1]:10093'
 	assert x[0].port()! == 10093
 }
+
+fn test_resolve_port_without_brackets() {
+	x := net.resolve_addrs_fuzzy('::1:48872', .udp)!
+	assert x.len > 0
+	assert x[0].port()! == 48872
+}

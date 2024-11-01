@@ -410,7 +410,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									left.obj.ct_type_var = .field_var
 									left.obj.typ = c.comptime.comptime_for_field_type
 								} else if mut right is ast.CallExpr {
-									if left.obj.ct_type_var == .no_comptime
+									if left.obj.ct_type_var in [.generic_var, .no_comptime]
 										&& c.table.cur_fn != unsafe { nil }
 										&& c.table.cur_fn.generic_names.len != 0
 										&& !right.comptime_ret_val
@@ -502,6 +502,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					// eprintln('>>> left.is_setter: ${left.is_setter:10} | left.is_map: ${left.is_map:10} | left.is_array: ${left.is_array:10}')
 					if (left.is_map || left.is_farray) && left.is_setter {
 						left.recursive_mapset_is_setter(true)
+					}
+
+					if right is ast.Ident && c.comptime.is_comptime_var(right) {
+						right_type = c.comptime.get_comptime_var_type(right)
 					}
 				}
 				if mut left is ast.InfixExpr {

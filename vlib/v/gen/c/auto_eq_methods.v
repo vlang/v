@@ -97,8 +97,12 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 			eq_fn := g.gen_map_equality_fn(typ)
 			fn_builder.writeln('\t\treturn ${eq_fn}_map_eq(*${left_arg}, *${right_arg});')
 		} else if variant.sym.kind == .alias && !typ.is_ptr() {
-			eq_fn := g.gen_alias_equality_fn(typ)
-			fn_builder.writeln('\t\treturn ${eq_fn}_alias_eq(*${left_arg}, *${right_arg});')
+			if g.no_eq_method_types[typ] {
+				fn_builder.writeln('\t\treturn *${left_arg} == *${right_arg};')
+			} else {
+				eq_fn := g.gen_alias_equality_fn(typ)
+				fn_builder.writeln('\t\treturn ${eq_fn}_alias_eq(*${left_arg}, *${right_arg});')
+			}
 		} else if variant.sym.kind == .function {
 			fn_builder.writeln('\t\treturn *((voidptr*)(*${left_arg})) == *((voidptr*)(*${right_arg}));')
 		} else {
@@ -242,8 +246,12 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				eq_fn := g.gen_map_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_map_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .alias && !field.typ.is_ptr() {
-				eq_fn := g.gen_alias_equality_fn(field.typ)
-				fn_builder.write_string('${eq_fn}_alias_eq(${left_arg}, ${right_arg})')
+				if g.no_eq_method_types[field.typ] {
+					fn_builder.write_string('${left_arg} == ${right_arg}')
+				} else {
+					eq_fn := g.gen_alias_equality_fn(field.typ)
+					fn_builder.write_string('${eq_fn}_alias_eq(${left_arg}, ${right_arg})')
+				}
 			} else if field_type.sym.kind == .function && !field.typ.has_flag(.option) {
 				fn_builder.write_string('*((voidptr*)(${left_arg})) == *((voidptr*)(${right_arg}))')
 			} else if field_type.sym.kind == .interface
@@ -385,8 +393,12 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 		eq_fn := g.gen_map_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
 	} else if elem.sym.kind == .alias && !elem.typ.is_ptr() {
-		eq_fn := g.gen_alias_equality_fn(elem.typ)
-		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
+		if g.no_eq_method_types[elem.typ] {
+			fn_builder.writeln('\t\tif (((${ptr_elem_styp}*)${left_data})[i] != ((${ptr_elem_styp}*)${right_data})[i]) {')
+		} else {
+			eq_fn := g.gen_alias_equality_fn(elem.typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(((${ptr_elem_styp}*)${left_data})[i], ((${ptr_elem_styp}*)${right_data})[i])) {')
+		}
 	} else if elem.sym.kind == .function {
 		fn_builder.writeln('\t\tif (*((voidptr*)((byte*)${left_data}+(i*${left_elem}))) != *((voidptr*)((byte*)${right_data}+(i*${right_elem})))) {')
 	} else {
