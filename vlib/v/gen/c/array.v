@@ -1300,14 +1300,18 @@ fn (mut g Gen) gen_array_index_methods() {
 // `nums.index(2)`
 fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	fn_name := g.get_array_index_method(node.left_type)
+	left_sym := g.table.final_sym(node.left_type)
 	g.write('${fn_name}(')
 	if node.left_type.is_ptr() {
 		g.write('*')
 	}
-	g.expr(node.left)
+	if left_sym.kind == .array_fixed && node.left is ast.ArrayInit {
+		g.fixed_array_init_with_cast(node.left, node.left_type)
+	} else {
+		g.expr(node.left)
+	}
 	g.write(', ')
 
-	left_sym := g.table.final_sym(node.left_type)
 	elem_typ := if left_sym.kind == .array {
 		left_sym.array_info().elem_type
 	} else {
