@@ -1150,16 +1150,20 @@ fn (mut g Gen) gen_array_contains_methods() {
 // `nums.contains(2)`
 fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type ast.Type, right ast.Expr) {
 	fn_name := g.get_array_contains_method(left_type)
+	left_sym := g.table.final_sym(left_type)
 	g.write2('${fn_name}(', strings.repeat(`*`, left_type.nr_muls()))
 	if left_type.share() == .shared_t {
 		g.go_back(1)
 	}
-	g.expr(left)
+	if left_sym.kind == .array_fixed && left is ast.ArrayInit {
+		g.fixed_array_init_with_cast(left, left_type)
+	} else {
+		g.expr(left)
+	}
 	if left_type.share() == .shared_t {
 		g.write('->val')
 	}
 	g.write(', ')
-	left_sym := g.table.final_sym(left_type)
 	elem_typ := if left_sym.kind == .array {
 		left_sym.array_info().elem_type
 	} else {
@@ -1173,7 +1177,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	}
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
 		g.expr_with_cast(right, right_type, elem_typ)
-	} else if right is ast.ArrayInit {
+	} else if right is ast.ArrayInit && g.table.final_sym(right_type).kind == .array_fixed {
 		g.fixed_array_init_with_cast(right, right_type)
 	} else {
 		g.expr(right)
@@ -1320,7 +1324,8 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	}
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
 		g.expr_with_cast(node.args[0].expr, node.args[0].typ, elem_typ)
-	} else if node.args[0].expr is ast.ArrayInit {
+	} else if node.args[0].expr is ast.ArrayInit
+		&& g.table.final_sym(node.args[0].typ).kind == .array_fixed {
 		g.fixed_array_init_with_cast(node.args[0].expr, node.args[0].typ)
 	} else {
 		g.expr(node.args[0].expr)
