@@ -342,8 +342,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	} else {
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
 		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
-		if expected_typ_sym.kind == .interface
-			&& c.type_implements(got, expected, token.Pos{}, false) {
+		if expected_typ_sym.kind == .interface && c.type_implements(got, expected, token.Pos{}) {
 			return
 		}
 

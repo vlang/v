@@ -1564,6 +1564,18 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 				}
 				continue
 			}
+			match sym.info {
+				SumType, Struct, Interface {
+					if method := sym.find_method_with_generic_parent(imethod.name) {
+						msg := t.is_same_method(imethod, method)
+						if msg.len > 0 {
+							return false
+						}
+						continue
+					}
+				}
+				else {}
+			}
 			return false
 		}
 		// verify fields

@@ -164,7 +164,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if i == 0 {
 					elem_type = expected_value_type
 					c.expected_type = elem_type
-					c.type_implements(typ, elem_type, expr.pos(), false)
+					c.type_implements(typ, elem_type, expr.pos())
 				}
 				if !typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
@@ -208,7 +208,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			if expr !is ast.TypeNode {
 				if c.table.type_kind(elem_type) == .interface {
-					if c.type_implements(typ, elem_type, expr.pos(), false) {
+					if c.type_implements(typ, elem_type, expr.pos()) {
 						continue
 					}
 				}
@@ -560,7 +560,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 					continue
 				}
 				if val_type_sym.kind == .struct
-					&& c.type_implements(val_type, map_val_type, val.pos(), false) {
+					&& c.type_implements(val_type, map_val_type, val.pos()) {
 					node.vals[i] = ast.CastExpr{
 						expr:      val
 						typname:   c.table.get_type_name(map_val_type)

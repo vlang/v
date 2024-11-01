@@ -772,13 +772,8 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 						if sym.kind != .interface {
 							c.expr(mut cond.left)
 						} else {
-							return if c.type_implements((cond.left as ast.TypeNode).typ,
-								cond.right.typ, cond.right.pos, true)
-							{
-								.eval
-							} else {
-								.skip
-							}
+							return c.check_compatible_types((cond.left as ast.TypeNode).typ,
+								cond.right)
 						}
 						return .unknown
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
