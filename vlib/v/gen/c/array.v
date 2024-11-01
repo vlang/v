@@ -1174,15 +1174,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
 		g.expr_with_cast(right, right_type, elem_typ)
 	} else if right is ast.ArrayInit {
-		if g.is_cc_msvc {
-			stmts := g.go_before_last_stmt().trim_space()
-			tmp_var := g.new_tmp_var()
-			g.write2('${g.styp(right_type)} ${tmp_var} = ${g.expr_string(right)};', stmts)
-			g.write(tmp_var)
-		} else {
-			g.write('(${g.styp(right.typ)})')
-			g.expr(right)
-		}
+		g.fixed_array_init_with_cast(right, right_type)
 	} else {
 		g.expr(right)
 	}
@@ -1329,16 +1321,7 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	if g.table.sym(elem_typ).kind in [.interface, .sum_type] {
 		g.expr_with_cast(node.args[0].expr, node.args[0].typ, elem_typ)
 	} else if node.args[0].expr is ast.ArrayInit {
-		if g.is_cc_msvc {
-			stmts := g.go_before_last_stmt().trim_space()
-			tmp_var := g.new_tmp_var()
-			g.write2('${g.styp(node.args[0].typ)} ${tmp_var} = ${g.expr_string(node.args[0].expr)};',
-				stmts)
-			g.write(tmp_var)
-		} else {
-			g.write('(${g.styp(node.args[0].typ)})')
-			g.expr(node.args[0].expr)
-		}
+		g.fixed_array_init_with_cast(node.args[0].expr, node.args[0].typ)
 	} else {
 		g.expr(node.args[0].expr)
 	}
@@ -1586,15 +1569,7 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 		g.writeln('${left_styp} ${tmp}_orig;')
 		g.write('memcpy(&${tmp}_orig, &')
 		if node.left is ast.ArrayInit {
-			if g.is_cc_msvc {
-				stmts := g.go_before_last_stmt().trim_space()
-				tmp_var := g.new_tmp_var()
-				g.write2('${left_styp} ${tmp_var} = ${g.expr_string(node.left)};', stmts)
-				g.write(tmp_var)
-			} else {
-				g.write('(${left_styp})')
-				g.expr(node.left)
-			}
+			g.fixed_array_init_with_cast(node.left, node.left_type)
 		} else {
 			if !node.left_type.has_flag(.shared_f) && node.left_type.is_ptr() {
 				g.write('*')
@@ -1631,6 +1606,20 @@ fn (mut g Gen) write_prepared_var(var_name string, elem_type ast.Type, inp_elem_
 		} else {
 			g.writeln('${inp_elem_type} ${var_name} = ${tmp}_orig[${i}];')
 		}
+	}
+}
+
+fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
+	if g.is_cc_msvc {
+		stmts := g.go_before_last_stmt().trim_space()
+		tmp_var := g.new_tmp_var()
+		g.write('${g.styp(typ)} ${tmp_var} = ')
+		g.expr(expr)
+		g.writeln(';')
+		g.write2(stmts, tmp_var)
+	} else {
+		g.write('(${g.styp(typ)})')
+		g.expr(expr)
 	}
 }
 
