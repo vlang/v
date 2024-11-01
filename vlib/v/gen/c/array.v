@@ -1585,12 +1585,24 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 		left_styp := g.styp(left_type)
 		g.writeln('${left_styp} ${tmp}_orig;')
 		g.write('memcpy(&${tmp}_orig, &')
-		if !node.left_type.has_flag(.shared_f) && node.left_type.is_ptr() {
-			g.write('*')
-		}
-		g.expr(node.left)
-		if node.left_type.has_flag(.shared_f) {
-			g.write('->val')
+		if node.left is ast.ArrayInit {
+			if g.is_cc_msvc {
+				stmts := g.go_before_last_stmt().trim_space()
+				tmp_var := g.new_tmp_var()
+				g.write2('${left_styp} ${tmp_var} = ${g.expr_string(node.left)};', stmts)
+				g.write(tmp_var)
+			} else {
+				g.write('(${left_styp})')
+				g.expr(node.left)
+			}
+		} else {
+			if !node.left_type.has_flag(.shared_f) && node.left_type.is_ptr() {
+				g.write('*')
+			}
+			g.expr(node.left)
+			if node.left_type.has_flag(.shared_f) {
+				g.write('->val')
+			}
 		}
 		g.writeln(', sizeof(${left_styp}));')
 		g.writeln('int ${tmp}_len = ${left_info.size};')
