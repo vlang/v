@@ -559,6 +559,7 @@ pub fn (mut checker Decoder) check_json_format() ! {
 	}
 }
 
+// free frees the allocated memory for the decoder.
 @[unsafe]
 pub fn (mut decoder Decoder) free() {
 	decoder.values_info.free()
