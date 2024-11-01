@@ -872,7 +872,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 		}
 		if left_sym.kind == .interface {
-			if c.type_implements(right_type, left_type, right.pos()) {
+			if c.type_implements(right_type, left_type, right.pos(), false) {
 				if !right_type.is_any_kind_of_pointer() && right_sym.kind != .interface
 					&& !c.inside_unsafe {
 					c.mark_as_referenced(mut &node.right[i], true)

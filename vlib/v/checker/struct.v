@@ -240,7 +240,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 				interface_implemented := sym.kind == .interface
-					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
+					&& c.type_implements(field.default_expr_typ, field.typ, field.pos, false)
 				c.check_expected(field.default_expr_typ, field.typ) or {
 					if sym.kind == .interface && interface_implemented {
 						if !c.inside_unsafe && !field.default_expr_typ.is_any_kind_of_pointer() {
@@ -369,7 +369,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			} else {
 				c.error('`${t_sym.name}` is not an interface type', t.pos)
 			}
-			c.type_implements(struct_type, t.typ, node.pos)
+			c.type_implements(struct_type, t.typ, node.pos, false)
 		}
 	}
 }
@@ -746,7 +746,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				if exp_type_sym.kind == .interface {
-					if c.type_implements(got_type, exp_type, init_field.pos) {
+					if c.type_implements(got_type, exp_type, init_field.pos, false) {
 						if !c.inside_unsafe && got_type_sym.kind != .interface
 							&& !got_type.is_any_kind_of_pointer() {
 							c.mark_as_referenced(mut &init_field.expr, true)

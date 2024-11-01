@@ -620,7 +620,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if left_value_sym.kind == .interface {
 					if right_final_sym.kind != .array {
 						// []Animal << Cat
-						if c.type_implements(right_type, left_value_type, right_pos) {
+						if c.type_implements(right_type, left_value_type, right_pos, false) {
 							if !right_type.is_any_kind_of_pointer() && !c.inside_unsafe
 								&& right_sym.kind != .interface {
 								c.mark_as_referenced(mut &node.right, true)
@@ -629,7 +629,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						// []Animal << []Cat
 						c.type_implements(c.table.value_type(right_type), left_value_type,
-							right_pos)
+							right_pos, false)
 					}
 					return ast.void_type
 				} else if left_value_sym.kind == .sum_type {
@@ -773,7 +773,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							right_pos)
 					}
 				} else if left_sym.info is ast.Interface {
-					if typ_sym.kind != .interface && !c.type_implements(typ, left_type, right_pos) {
+					if typ_sym.kind != .interface
+						&& !c.type_implements(typ, left_type, right_pos, false) {
 						c.error("`${typ_sym.name}` doesn't implement interface `${left_sym.name}`",
 							right_pos)
 					}

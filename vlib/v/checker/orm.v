@@ -647,7 +647,7 @@ fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 		return false
 	}
 
-	is_implemented := c.type_implements(db_expr_type, connection_typ, db_expr.pos())
+	is_implemented := c.type_implements(db_expr_type, connection_typ, db_expr.pos(), false)
 	is_option := db_expr_type.has_flag(.option)
 
 	if is_implemented && is_option {

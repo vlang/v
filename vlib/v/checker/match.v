@@ -104,7 +104,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							&& c.table.sym(stmt.typ).kind == .struct
 							&& (c.table.sym(ret_type).kind != .sum_type
 							|| !c.check_types(expr_type, ret_type))
-							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos, false) {
 							stmt.expr = ast.CastExpr{
 								expr:      stmt.expr
 								typname:   'IError'
@@ -432,7 +432,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// Current solution is to move expr.pos() to its own statement
 				// c.type_implements(expr_type, c.expected_type, expr.pos())
 				expr_pos := expr.pos()
-				if c.type_implements(expr_type, c.expected_type, expr_pos) {
+				if c.type_implements(expr_type, c.expected_type, expr_pos, false) {
 					if !expr_type.is_any_kind_of_pointer() && !c.inside_unsafe {
 						if expr_type_sym.kind != .interface {
 							c.mark_as_referenced(mut &branch.exprs[k], true)

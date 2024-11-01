@@ -773,7 +773,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 							c.expr(mut cond.left)
 						} else {
 							return if c.type_implements((cond.left as ast.TypeNode).typ,
-								cond.right.typ, cond.right.pos)
+								cond.right.typ, cond.right.pos, true)
 							{
 								.eval
 							} else {

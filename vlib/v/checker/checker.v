@@ -1028,7 +1028,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 	return to_lock, pos
 }
 
-fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
+fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos, silent bool) bool {
 	if typ == interface_type {
 		return true
 	}
@@ -1040,8 +1040,10 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
 	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
-		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
-			pos)
+		if !silent {
+			c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
+				pos)
+		}
 		return false
 	}
 
@@ -1071,7 +1073,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				// terminate early, since otherwise we get an infinite recursion/segfault:
 				return false
 			}
-			return c.type_implements(typ, inferred_type, pos)
+			return c.type_implements(typ, inferred_type, pos, false)
 		}
 	}
 	// do not check the same type more than once
@@ -1092,8 +1094,10 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	if typ_sym.kind == .interface && inter_sym.kind == .interface && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
-		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
-			pos)
+		if !silent {
+			c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
+				pos)
+		}
 	}
 	imethods := if inter_sym.kind == .interface {
 		(inter_sym.info as ast.Interface).methods
@@ -1109,20 +1113,24 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
-					c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
-						pos)
+					if !silent {
+						c.error("`${styp}` doesn't implement method `${imethod.name}` of interface `${inter_sym.name}`",
+							pos)
+					}
 					are_methods_implemented = false
 					continue
 				}
 			}
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
-				sig := c.table.fn_signature(imethod, skip_receiver: false)
-				typ_sig := c.table.fn_signature(method, skip_receiver: false)
-				c.add_error_detail('${inter_sym.name} has `${sig}`')
-				c.add_error_detail('         ${typ_sym.name} has `${typ_sig}`')
-				c.error('`${styp}` incorrectly implements method `${imethod.name}` of interface `${inter_sym.name}`: ${msg}',
-					pos)
+				if !silent {
+					sig := c.table.fn_signature(imethod, skip_receiver: false)
+					typ_sig := c.table.fn_signature(method, skip_receiver: false)
+					c.add_error_detail('${inter_sym.name} has `${sig}`')
+					c.add_error_detail('         ${typ_sym.name} has `${typ_sig}`')
+					c.error('`${styp}` incorrectly implements method `${imethod.name}` of interface `${inter_sym.name}`: ${msg}',
+						pos)
+				}
 				return false
 			}
 		}
@@ -1138,20 +1146,26 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				if ifield.typ != field.typ {
 					exp := c.table.type_to_str(ifield.typ)
 					got := c.table.type_to_str(field.typ)
-					c.error('`${styp}` incorrectly implements field `${ifield.name}` of interface `${inter_sym.name}`, expected `${exp}`, got `${got}`',
-						pos)
+					if !silent {
+						c.error('`${styp}` incorrectly implements field `${ifield.name}` of interface `${inter_sym.name}`, expected `${exp}`, got `${got}`',
+							pos)
+					}
 					return false
 				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
-					c.error('`${styp}` incorrectly implements interface `${inter_sym.name}`, field `${ifield.name}` must be mutable',
-						pos)
+					if !silent {
+						c.error('`${styp}` incorrectly implements interface `${inter_sym.name}`, field `${ifield.name}` must be mutable',
+							pos)
+					}
 					return false
 				}
 				continue
 			}
 			// voidptr is an escape hatch, it should be allowed to be passed
 			if utyp != ast.voidptr_type && utyp != ast.nil_type {
-				c.error("`${styp}` doesn't implement field `${ifield.name}` of interface `${inter_sym.name}`",
-					pos)
+				if !silent {
+					c.error("`${styp}` doesn't implement field `${ifield.name}` of interface `${inter_sym.name}`",
+						pos)
+				}
 			}
 		}
 		if utyp != ast.voidptr_type && utyp != ast.nil_type && utyp != ast.none_type
@@ -2852,7 +2866,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			} else if expr_type_sym.kind == .interface {
 				c.ensure_type_exists(node.typ, node.pos)
 				if type_sym.kind != .interface {
-					c.type_implements(node.typ, node.expr_type, node.pos)
+					c.type_implements(node.typ, node.expr_type, node.pos, false)
 				}
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
@@ -3349,7 +3363,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
 	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
-		if c.type_implements(from_type, to_type, node.pos) {
+		if c.type_implements(from_type, to_type, node.pos, false) {
 			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface
 				&& !c.inside_unsafe {
 				c.mark_as_referenced(mut &node.expr, true)

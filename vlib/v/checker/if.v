@@ -475,7 +475,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						if (node.typ.has_option_or_result())
 							&& c.table.sym(stmt.typ).kind == .struct
-							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos, false) {
 							stmt.expr = ast.CastExpr{
 								expr:      stmt.expr
 								typname:   'IError'
@@ -602,7 +602,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 				}
 				if left_sym.kind == .interface {
 					if right_sym.kind != .interface {
-						c.type_implements(right_type, expr_type, node.pos)
+						c.type_implements(right_type, expr_type, node.pos, false)
 					}
 				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)

@@ -1470,7 +1470,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface {
-			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
+			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos(), false) {
 				if !arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe
 					&& arg_typ_sym.kind != .interface {
 					c.mark_as_referenced(mut &call_arg.expr, true)
@@ -1656,7 +1656,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					utyp := c.unwrap_generic(typ)
 					unwrap_sym := c.table.sym(unwrap_typ)
 					if unwrap_sym.kind == .interface {
-						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos()) {
+						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos(), false) {
 							if !utyp.is_any_kind_of_pointer() && !c.inside_unsafe
 								&& c.table.sym(utyp).kind != .interface {
 								c.mark_as_referenced(mut &call_arg.expr, true)
@@ -2559,7 +2559,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		// Handle expected interface
 		if final_arg_sym.kind == .interface {
-			if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
+			if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos(), false) {
 				if !got_arg_typ.is_any_kind_of_pointer() && !c.inside_unsafe {
 					got_arg_typ_sym := c.table.sym(got_arg_typ)
 					if got_arg_typ_sym.kind != .interface {
