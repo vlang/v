@@ -311,10 +311,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 	} else if node.kind == .methods {
-		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
-		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
-		methods << methods_with_attrs
-
+		methods := sym.get_methods()
 		for method in methods {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
@@ -774,6 +771,14 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface {
 							c.expr(mut cond.left)
+						} else {
+							return if c.type_implements((cond.left as ast.TypeNode).typ,
+								cond.right.typ, cond.right.pos)
+							{
+								.eval
+							} else {
+								.skip
+							}
 						}
 						return .unknown
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
