@@ -12,6 +12,12 @@ pub struct Stru {
 	val  int
 	val2 string
 	val3 Stru2
+	val4 int
+	val5 int
+	val6 int
+	val7 int
+	val8 int
+	val9 int
 }
 
 pub struct Stru2 {
@@ -48,7 +54,7 @@ mut:
 }
 
 fn main() {
-	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}}'
+	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}, "val4": 2147483000, "val5": 2147483000, "val6": 2147483000, "val7": 2147483000, "val8": 2147483000, "val9": 2147483000}'
 	json_data1 := '{"val": "2"}'
 	json_data2 := '{"val": 2}'
 	json_data_timestamp := '{"val": "2022-03-11T13:54:25Z"}'
@@ -61,7 +67,7 @@ fn main() {
 	http_request += 'Connection: close\r\n'
 	http_request += 'Content-Length: ${json_data.len}\r\n'
 	http_request += '\r\n'
-	// dump(http_request.len)
+	body_position := http_request.len
 	http_request += json_data // pos: 150
 
 	println('Starting benchmark...')
@@ -241,7 +247,7 @@ fn main() {
 
 	for i := 0; i < max_iterations; i++ {
 		mut decoder := decoder2.Decoder{
-			json_str: unsafe { http_request.str + 150 }
+			json_str: unsafe { http_request.str + body_position }
 			json_len: json_data.len
 		}
 
@@ -256,7 +262,7 @@ fn main() {
 	b.measure('raw decode from HTTP request')
 
 	for i := 0; i < max_iterations; i++ {
-		json_string_from_http_request := http_request[150..]
+		json_string_from_http_request := http_request[body_position..]
 
 		_ := decoder2.decode[Stru](json_string_from_http_request)!
 	}
