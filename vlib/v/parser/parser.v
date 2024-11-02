@@ -157,8 +157,9 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		errors:    []errors.Error{}
 		warnings:  []errors.Warning{}
 	}
-	res := p.parse()
+	mut res := p.parse()
 	unsafe { p.free_scanner() }
+	res.is_template_text = true
 	return res
 }
 
@@ -178,8 +179,9 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)
-	res := p.parse()
+	mut res := p.parse()
 	unsafe { p.free_scanner() }
+	res.is_parse_text = true
 	return res
 }
 
