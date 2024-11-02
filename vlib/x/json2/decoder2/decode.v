@@ -11,7 +11,7 @@ mut:
 }
 
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
-struct ValueInfo {
+pub struct ValueInfo {
 	position   int       // The position of the value in the JSON string.
 	value_kind ValueKind // The kind of the value.
 mut:
@@ -22,9 +22,25 @@ mut:
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	values_info  LinkedList // A linked list to store ValueInfo.
-	checker_idx  int        // checker_idx is the current index of the decoder.
-	current_node &Node = unsafe { nil } // The current node in the linked list.
+	// attributes_handlers map[string]fn (?string, mut MutableFieldData, ValueInfo) ?int = default_attributes_handlers
+	attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop = unsafe { default_attributes_handlers }
+	values_info         LinkedList // A linked list to store ValueInfo.
+	checker_idx         int        // checker_idx is the current index of the decoder.
+	current_node        &Node = unsafe { nil } // The current node in the linked list.
+}
+
+pub fn new_decoder[T](json string, attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop) !Decoder {
+	mut decoder := Decoder{
+		json:                json
+		attributes_handlers: attributes_handlers
+	}
+
+	decoder.check_json_format(json)!
+	check_if_json_match[T](json)!
+
+	decoder.current_node = decoder.values_info.head
+
+	return decoder
 }
 
 // LinkedList represents a linked list to store ValueInfo.
@@ -550,7 +566,7 @@ pub fn decode[T](val string) !T {
 }
 
 // decode_value decodes a value from the JSON nodes.
-fn (mut decoder Decoder) decode_value[T](mut val T) ! {
+pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
 		mut unwrapped_val := create_value_from_optional(val.$(field.name))
 		decoder.decode_value(mut unwrapped_val)!
@@ -700,11 +716,42 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				decoder.current_node = decoder.current_node.next
 
 				$for field in T.fields {
-					if key_info.length - 2 == field.name.len {
+					mut new_field := new_mutable_from_field_data(field)
+					mut attribute_callback_response := AttributeBehaviorOnComptimeForFieldsLoop.none_
+					for attribute in field.attrs {
+						attribute_name := attribute[0..attribute.index(':') or { attribute.len }]
+
+						mut attribute_arg := '' // ?string{}
+
+						if attribute.index(':') != none {
+							attribute_arg = attribute[attribute.index(':')! + 2..attribute.len]
+						}
+
+						attribute_callback := decoder.attributes_handlers[attribute_name] or {
+							continue
+						}
+
+						attribute_callback_response = attribute_callback(attribute_arg, mut
+							new_field, key_info)
+
+						match attribute_callback_response {
+							.continue_ {
+								continue
+							}
+							.break_ {
+								unsafe {
+									goto break_decode_value_struct_fields_loop
+								}
+							}
+							else {}
+						}
+					}
+					if attribute_callback_response == .none_
+						&& key_info.length - 2 == new_field.name.len {
 						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
 						if unsafe {
-							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
-								field.name.len) == 0
+							vmemcmp(decoder.json.str + key_info.position + 1, new_field.name.str,
+								new_field.name.len) == 0
 						} {
 							$if field.typ is $option {
 								mut unwrapped_val := create_value_from_optional(val.$(field.name))
@@ -716,6 +763,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						}
 					}
 				}
+				break_decode_value_struct_fields_loop:
 			}
 		}
 	} $else $if T.unaliased_typ is bool {
