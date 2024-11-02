@@ -3,10 +3,12 @@ fn test_contains_of_ints() {
 	mut ii := ia.contains(2)
 	dump(ii)
 	assert ii
+	assert [1, 2, 3]!.contains(2)
 
 	ii = ia.contains(5)
 	dump(ii)
 	assert !ii
+	assert ![1, 2, 3]!.contains(5)
 }
 
 fn test_contains_of_strings() {
@@ -14,10 +16,12 @@ fn test_contains_of_strings() {
 	mut si := sa.contains('b')
 	dump(si)
 	assert si
+	assert ['a', 'b', 'c']!.contains('b')
 
 	si = sa.contains('v')
 	dump(si)
 	assert !si
+	assert !['a', 'b', 'c']!.contains('v')
 }
 
 fn test_contains_of_voidptrs() {
@@ -25,10 +29,12 @@ fn test_contains_of_voidptrs() {
 	mut pi := pa.contains(voidptr(45))
 	dump(pi)
 	assert pi
+	assert [voidptr(123), voidptr(45), voidptr(99)]!.contains(voidptr(45))
 
 	pi = pa.contains(unsafe { nil })
 	dump(pi)
 	assert !pi
+	assert ![voidptr(123), voidptr(45), voidptr(99)]!.contains(unsafe { nil })
 }
 
 fn a() {}
@@ -44,8 +50,10 @@ fn test_contains_of_fns() {
 	mut fi := fa.contains(b)
 	dump(fi)
 	assert fi
+	assert [a, b, c]!.contains(b)
 
 	fi = fa.contains(v)
 	dump(fi)
 	assert !fi
+	assert ![a, b, c]!.contains(v)
 }
