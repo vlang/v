@@ -918,7 +918,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 	}
 	is_generic_type := p.tok.kind == .name && p.tok.lit.len == 1 && p.tok.lit[0].is_capital()
 
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
+	types_only := p.tok.kind in [.question, .not, .amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(param_name) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
