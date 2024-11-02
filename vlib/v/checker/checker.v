@@ -4010,6 +4010,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
+			if func.generic_names.len > 0 {
+				if node.concrete_types.len == 0 {
+					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
+						node.pos)
+				}
+			}
 			return c.resolve_var_fn(func, mut node, name)
 		}
 	}
