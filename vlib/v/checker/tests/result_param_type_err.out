@@ -3,11 +3,11 @@ vlib/v/checker/tests/result_param_type_err.vv:3:13: error: Result type argument 
     2 | 
     3 | fn func(arg !string, val &int) ?int {
       |             ~~~~~~~
-    4 |     unsafe { *val = 2 }
-    5 |     return 2
-vlib/v/checker/tests/result_param_type_err.vv:9:7: error: Result type argument is not supported currently
-    7 | 
-    8 | fn main() {
-    9 |     _ := map[string]fn(!string, &int) ?int{}
-      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   10 | }
+    4 |     unsafe {
+    5 |         *val = 2
+vlib/v/checker/tests/result_param_type_err.vv:11:7: error: Result type argument is not supported currently
+    9 | 
+   10 | fn main() {
+   11 |     _ := map[string]fn (!string, &int) ?int{}
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   12 | }
