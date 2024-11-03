@@ -55,7 +55,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					branch.branch_pos)
 			}
 		}
-		if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
+		if !branch.is_else && cond_is_option && branch.exprs.any(it !is ast.None) {
 			c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
 				branch.pos)
 		}
