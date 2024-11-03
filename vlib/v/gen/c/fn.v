@@ -2740,6 +2740,22 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	}
 }
 
+// gen_tmp_var_indirections generates tmp var to fit the expected indirection number
+fn (mut g Gen) gen_tmp_var_indirections(var_typ ast.Type, var_name string, nindirections int) {
+	mut last_var := var_name
+	var_styp := g.styp(var_typ)
+	line := g.go_before_last_stmt()
+	g.empty_line = true
+	for i in 0 .. nindirections {
+		tmp_var := g.new_tmp_var()
+		ptr := '*'.repeat(i + 1)
+		g.writeln('${var_styp} ${ptr}${tmp_var} = &${last_var};')
+		last_var = tmp_var
+	}
+	g.write(line)
+	g.write(last_var)
+}
+
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
 	arg_typ := if arg.expr is ast.ComptimeSelector {
@@ -2818,6 +2834,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					} else if !(!arg.is_mut && arg_sym.kind == .alias
 						&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()) {
 						g.write('(voidptr)&/*qq*/')
+						if arg.expr is ast.Ident
+							&& expected_type.nr_muls() > (arg_typ.nr_muls() + 1) {
+							// generates temporary vars for fit the expected indirections
+							g.gen_tmp_var_indirections(arg_typ, arg.expr.name, expected_type.nr_muls() - arg_typ.nr_muls() - 1)
+							return
+						}
 					}
 				} else {
 					mut atype := expected_deref_type
