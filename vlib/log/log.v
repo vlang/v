@@ -52,13 +52,6 @@ pub fn (mut l Log) set_level(level Level) {
 	l.level = level
 }
 
-// set_output_level sets the internal logging output to `level`.
-@[deprecated: 'use .set_level(level) instead']
-@[deprecated_after: '2023-09-30']
-pub fn (mut l Log) set_output_level(level Level) {
-	l.level = level
-}
-
 // set_full_logpath sets the output label and output path from `full_log_path`.
 pub fn (mut l Log) set_full_logpath(full_log_path string) {
 	rlog_file := os.real_path(full_log_path)
