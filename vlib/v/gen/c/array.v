@@ -636,7 +636,11 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	} else {
 		g.writeln('${atype} ${past.tmp_var};')
 		g.write('memcpy(&${past.tmp_var}, &')
-		g.expr(node.left)
+		if node.left is ast.ArrayInit {
+			g.fixed_array_init_with_cast(node.left, node.left_type)
+		} else {
+			g.expr(node.left)
+		}
 		g.writeln(', sizeof(${atype}));')
 	}
 
@@ -794,7 +798,11 @@ fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {
 	atype := g.styp(node.return_type)
 	g.writeln('${atype} ${past.tmp_var};')
 	g.write('memcpy(&${past.tmp_var}, &')
-	g.expr(node.left)
+	if node.left is ast.ArrayInit {
+		g.fixed_array_init_with_cast(node.left, node.left_type)
+	} else {
+		g.expr(node.left)
+	}
 	g.writeln(', sizeof(${atype}));')
 
 	unsafe {
