@@ -1942,3 +1942,28 @@ pub fn (i Interface) get_methods() []string {
 	}
 	return []
 }
+
+pub fn (t &TypeSymbol) get_methods() []Fn {
+	mut methods := t.methods.filter(it.attrs.len == 0) // methods without attrs first
+	mut methods_with_attrs := t.methods.filter(it.attrs.len > 0) // methods with attrs second
+	match t.info {
+		Struct, Interface, SumType {
+			if t.info.parent_type.has_flag(.generic) {
+				parent_sym := global_table.sym(t.info.parent_type)
+				match parent_sym.info {
+					Struct, Interface, SumType {
+						parent_methods := parent_sym.methods
+						if parent_methods.len > 0 {
+							methods << parent_methods.filter(it.attrs.len == 0)
+							methods_with_attrs << parent_methods.filter(it.attrs.len > 0)
+						}
+					}
+					else {}
+				}
+			}
+		}
+		else {}
+	}
+	methods << methods_with_attrs
+	return methods
+}

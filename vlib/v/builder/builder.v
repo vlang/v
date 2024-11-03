@@ -241,12 +241,19 @@ pub fn (mut b Builder) parse_imports() {
 	b.resolve_deps()
 	if b.pref.print_v_files {
 		for p in b.parsed_files {
+			if p.is_parse_text {
+				println(p.path + ':parse_text')
+			}
 			println(p.path)
 		}
 		exit(0)
 	}
 	if b.pref.print_watched_files {
 		for p in b.parsed_files {
+			if p.is_parse_text {
+				// a generated snippet, `v watch` does not care about those, since they are duplicates for other files
+				continue
+			}
 			println(p.path)
 			for tp in p.template_paths {
 				println(tp)

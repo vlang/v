@@ -995,6 +995,9 @@ pub mut:
 	global_labels    []string // from `asm { .globl labelname }`
 	template_paths   []string // all the .html/.md files that were processed with $tmpl
 	unique_prefix    string   // a hash of the `.path` field, used for making anon fn generation unique
+	//
+	is_parse_text    bool // true for files, produced by parse_text
+	is_template_text bool // true for files, produced by parse_comptime
 }
 
 @[unsafe]
