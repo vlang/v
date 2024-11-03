@@ -38,9 +38,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// This is done so that all generic function calls can
 		// have a chance to populate c.table.fn_generic_types with
 		// the correct concrete types.
-		if !c.generic_fns[node.fkey()] {
+		fkey := node.fkey()
+		if !c.generic_fns[fkey] {
 			c.need_recheck_generic_fns = true
-			c.generic_fns[node.fkey()] = true
+			c.generic_fns[fkey] = true
 			c.file.generic_fns << node
 		}
 		return
