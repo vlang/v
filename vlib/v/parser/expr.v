@@ -717,6 +717,7 @@ fn (mut p Parser) gen_or_block() ast.OrExpr {
 	} else {
 		return ast.OrExpr{
 			kind: ast.OrKind.absent
+			pos:  p.tok.pos()
 		}
 	}
 }

@@ -871,9 +871,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.expr(node.left)
 			g.is_fn_index_call = old_is_fn_index_call
 		} else {
+			// map1['key']() handling
 			line := g.go_before_last_stmt()
 			g.empty_line = true
 
+			// temp var for map1['key'] where value is a fn to be called
 			left_typ := g.table.value_type(node.left.left_type)
 			tmp_res := g.new_tmp_var()
 			fn_sym := g.table.sym(left_typ).info as ast.FnType
@@ -888,10 +890,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.writeln(';')
 
 			tmp_res2 := g.new_tmp_var()
+			// uses the `tmp_res` as fn name (where it is a ptr to fn var)
 			g.write('${g.styp(node.return_type)} ${tmp_res2} = ${tmp_res}')
 			g.last_tmp_call_var << tmp_res2
 			old_inside_curry_call := g.inside_curry_call
 			g.inside_curry_call = true
+			// map1['key']()() handling
 			g.expr(node)
 			g.inside_curry_call = old_inside_curry_call
 			if node.return_type.has_flag(.option) {
