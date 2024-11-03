@@ -135,7 +135,7 @@ fn check_and_extract_date(s string) !(int, int, int) {
 // the differences between ISO-8601 and RFC 3339.
 @[direct_array_access]
 pub fn parse_rfc3339(s string) !Time {
-	if s.len == 0 {
+	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
 
