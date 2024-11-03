@@ -307,10 +307,13 @@ pub fn (s string) len_utf8() int {
 	return l
 }
 
+// is_pure_ascii returns whether the string contains only ASCII characters.
+// Note that UTF8 encodes such characters in just 1 byte:
 // 1 byte:  0xxxxxxx
 // 2 bytes: 110xxxxx 10xxxxxx
 // 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
 // 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+@[direct_array_access]
 pub fn (s string) is_pure_ascii() bool {
 	for i in 0 .. s.len {
 		if s[i] >= 0x80 {
