@@ -53,7 +53,7 @@ const essential_list = [
 	'vlib/encoding/utf8/encoding_utf8_test.v',
 	'vlib/encoding/utf8/utf8_util_test.v',
 	'vlib/flag/flag_test.v',
-	'vlib/json/json_decode_test.v',
+	'vlib/json/json_tests/json_decode_test.v',
 	'vlib/math/math_test.v',
 	'vlib/net/tcp_test.v',
 	'vlib/net/http/http_test.v',
