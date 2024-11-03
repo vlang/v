@@ -898,11 +898,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			// map1['key']()() handling
 			g.expr(node)
 			g.inside_curry_call = old_inside_curry_call
-			if node.return_type.has_flag(.option) {
-				g.write2(line, '*(${g.base_type(node.return_type)}*)${tmp_res2}.data')
-			} else {
-				g.write2(line, tmp_res2)
-			}
+			g.write2(line, '*(${g.base_type(node.return_type)}*)${tmp_res2}.data')
 			return
 		}
 	} else if !g.inside_curry_call && node.left is ast.CallExpr && node.name == '' {
