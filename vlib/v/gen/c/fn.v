@@ -2744,7 +2744,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 fn (mut g Gen) gen_tmp_var_indirections(var_typ ast.Type, var_name string, nindirections int) {
 	mut last_var := var_name
 	var_styp := g.styp(var_typ)
-	line := g.go_before_last_stmt()
+	line := g.go_before_last_stmt().trim_space()
 	g.empty_line = true
 	for i in 0 .. nindirections {
 		tmp_var := g.new_tmp_var()
