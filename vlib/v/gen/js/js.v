@@ -899,7 +899,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.CharLiteral {
-			if node.val.len_utf8() < node.val.len {
+			if !node.val.is_pure_ascii() {
 				g.write("new rune('${node.val}'.charCodeAt())")
 			} else {
 				g.write("new u8('${node.val}')")

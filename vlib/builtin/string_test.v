@@ -30,6 +30,14 @@ fn test_len_utf8() {
 	assert 'Λέξη'.len_utf8() == 4
 }
 
+fn test_is_pure_ascii() {
+	assert 'Vlang'.is_pure_ascii()
+	assert !'María'.is_pure_ascii()
+	assert !'姓名'.is_pure_ascii()
+	assert !'Слово'.is_pure_ascii()
+	assert !'Λέξη'.is_pure_ascii()
+}
+
 fn test_ends_with() {
 	a := 'browser.v'
 	assert a.ends_with('.v')
