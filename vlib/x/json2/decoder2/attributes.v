@@ -32,6 +32,7 @@ pub mut:
 	indirections u8 // 0 for `f int`, 1 for `f &int`, 2 for `f &&int` , TODO
 }
 
+// new_mutable_from_field_data creates a new MutableFieldData from a FieldData
 pub fn new_mutable_from_field_data(field_data FieldData) MutableFieldData {
 	return MutableFieldData{
 		name:          field_data.name

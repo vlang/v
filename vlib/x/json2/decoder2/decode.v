@@ -29,6 +29,7 @@ mut:
 	current_node        &Node = unsafe { nil } // The current node in the linked list.
 }
 
+// new_decoder creates a new JSON decoder.
 pub fn new_decoder[T](json string, attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop) !Decoder {
 	mut decoder := Decoder{
 		json:                json
