@@ -1062,6 +1062,100 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('}// \$for')
 }
 
+// comptime_selector_expr_type computes the expr_type for comptime var used on selector expr
+fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
+	if !(node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr)) {
+		return node.expr_type
+	}
+	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+	g.prevent_sum_type_unwrapping_once = false
+
+	mut typ := g.comptime.get_comptime_var_type(node.expr)
+	if node.expr.is_auto_deref_var() {
+		if node.expr is ast.Ident {
+			if node.expr.obj is ast.Var {
+				typ = node.expr.obj.typ
+			}
+		}
+	}
+	if g.comptime.inside_comptime_for && typ == g.enum_data_type && node.field_name == 'value' {
+		// for comp-time enum.values
+		return g.comptime.type_map['${g.comptime.comptime_for_enum_var}.typ']
+	}
+	field_name := node.field_name
+	sym := g.table.sym(typ)
+	final_sym := g.table.final_sym(typ)
+	if (typ.has_flag(.variadic) || final_sym.kind == .array_fixed) && field_name == 'len' {
+		return ast.int_type
+	}
+	if sym.kind == .chan {
+		if field_name == 'closed' {
+			return ast.bool_type
+		} else if field_name in ['len', 'cap'] {
+			return ast.u32_type
+		}
+	}
+	mut has_field := false
+	mut field := ast.StructField{}
+	if field_name.len > 0 && field_name[0].is_capital() && sym.info is ast.Struct
+		&& sym.language == .v {
+		// x.Foo.y => access the embedded struct
+		for embed in sym.info.embeds {
+			embed_sym := g.table.sym(embed)
+			if embed_sym.embed_name() == field_name {
+				return embed
+			}
+		}
+	} else {
+		if f := g.table.find_field(sym, field_name) {
+			has_field = true
+			field = f
+		} else {
+			// look for embedded field
+			has_field = true
+			g.table.find_field_from_embeds(sym, field_name) or { has_field = false }
+		}
+		if typ.has_flag(.generic) && !has_field {
+			gs := g.table.sym(g.unwrap_generic(typ))
+			if f := g.table.find_field(gs, field_name) {
+				has_field = true
+				field = f
+			} else {
+				// look for embedded field
+				has_field = true
+				g.table.find_field_from_embeds(gs, field_name) or { has_field = false }
+			}
+		}
+	}
+
+	if has_field {
+		field_sym := g.table.sym(field.typ)
+		if field_sym.kind in [.sum_type, .interface] {
+			if !prevent_sum_type_unwrapping_once {
+				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
+					return scope_field.smartcasts.last()
+				}
+			}
+		}
+		return field.typ
+	}
+	if mut method := g.table.sym(g.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {
+		method.params = method.params[1..]
+		method.name = ''
+		fn_type := ast.new_type(g.table.find_or_register_fn_type(method, false, true))
+		return fn_type
+	}
+	if sym.kind !in [.struct, .aggregate, .interface, .sum_type] {
+		if sym.kind != .placeholder {
+			unwrapped_sym := g.table.sym(g.unwrap_generic(typ))
+			if unwrapped_sym.kind == .array_fixed && node.field_name == 'len' {
+				return ast.int_type
+			}
+		}
+	}
+	return node.expr_type
+}
+
 fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !string {
 	match name {
 		// platforms/os-es:

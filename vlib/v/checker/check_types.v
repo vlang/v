@@ -1019,7 +1019,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					}
 				}
 				if arg.expr.is_auto_deref_var() {
-					typ = typ.deref()
+					if typ.is_ptr() {
+						typ = typ.deref()
+					}
 				}
 				// resolve &T &&T ...
 				if param.typ.nr_muls() > 0 && typ.nr_muls() > 0 {

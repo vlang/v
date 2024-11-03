@@ -191,8 +191,9 @@ mut:
 	array_index_types         []ast.Type
 	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
-	anon_fn_definitions       []string     // anon generated functions definition list
-	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	anon_fn_definitions       []string        // anon generated functions definition list
+	anon_fns                  shared []string // remove duplicate anon generated functions
+	sumtype_definitions       map[int]bool    // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	trace_fn_definitions      []string
 	json_types                []ast.Type           // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -713,6 +714,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		waiter_fns:            global_g.waiter_fns
 		threaded_fns:          global_g.threaded_fns
 		str_fn_names:          global_g.str_fn_names
+		anon_fns:              global_g.anon_fns
 		options_forward:       global_g.options_forward
 		results_forward:       global_g.results_forward
 		done_options:          global_g.done_options
@@ -3895,6 +3897,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
+
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	is_as_cast := node.expr is ast.AsCast
@@ -4033,53 +4036,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 			receiver := m.params[0]
 			expr_styp := g.styp(g.unwrap_generic(node.expr_type).idx_type())
-			data_styp := g.styp(receiver.typ.idx_type())
-			mut sb := strings.new_builder(256)
 			name := '_V_closure_${expr_styp}_${m.name}_${node.pos.pos}'
-			sb.write_string('${g.styp(m.return_type)} ${name}(')
-			for i in 1 .. m.params.len {
-				param := m.params[i]
-				if i != 1 {
-					sb.write_string(', ')
-				}
-				sb.write_string('${g.styp(param.typ)} a${i}')
-			}
-			sb.writeln(') {')
-			sb.writeln('\t${data_styp}* a0 = __CLOSURE_GET_DATA();')
-			if m.return_type != ast.void_type {
-				sb.write_string('\treturn ')
-			} else {
-				sb.write_string('\t')
-			}
-			mut method_name := m.name
-			rec_sym := g.table.sym(receiver.typ)
-			if rec_sym.info is ast.Struct {
-				if rec_sym.info.concrete_types.len > 0 {
-					method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
+			lock g.anon_fns {
+				if name !in g.anon_fns {
+					g.anon_fns << name
+					g.gen_closure_fn(expr_styp, m, name)
 				}
 			}
-			if rec_sym.info is ast.Interface {
-				left_cc_type := g.cc_type(g.table.unaliased_type(receiver.typ), false)
-				left_type_name := util.no_dots(left_cc_type)
-				sb.write_string('${c_name(left_type_name)}_name_table[a0->_typ]._method_${method_name}(')
-			} else {
-				sb.write_string('${expr_styp}_${method_name}(')
-				if !receiver.typ.is_ptr() {
-					sb.write_string('*')
-				}
-			}
-			for i in 0 .. m.params.len {
-				if i != 0 {
-					sb.write_string(', ')
-				}
-				sb.write_string('a${i}')
-			}
-			sb.writeln(');')
-			sb.writeln('}')
-
-			g.anon_fn_definitions << sb.str()
-			g.nr_closures++
-
 			g.write('__closure_create(${name}, ')
 			if !receiver.typ.is_ptr() {
 				g.write('memdup_uncollectable(')
@@ -4189,6 +4152,56 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if sym.kind in [.interface, .sum_type] {
 		g.write('))')
 	}
+}
+
+fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
+	receiver := m.params[0]
+	data_styp := g.styp(receiver.typ.idx_type())
+
+	mut sb := strings.new_builder(256)
+	sb.write_string('${g.styp(m.return_type)} ${name}(')
+	for i in 1 .. m.params.len {
+		param := m.params[i]
+		if i != 1 {
+			sb.write_string(', ')
+		}
+		sb.write_string('${g.styp(param.typ)} a${i}')
+	}
+	sb.writeln(') {')
+	sb.writeln('\t${data_styp}* a0 = __CLOSURE_GET_DATA();')
+	if m.return_type != ast.void_type {
+		sb.write_string('\treturn ')
+	} else {
+		sb.write_string('\t')
+	}
+	mut method_name := m.name
+	rec_sym := g.table.sym(receiver.typ)
+	if rec_sym.info is ast.Struct {
+		if rec_sym.info.concrete_types.len > 0 {
+			method_name = g.generic_fn_name(rec_sym.info.concrete_types, m.name)
+		}
+	}
+	if rec_sym.info is ast.Interface {
+		left_cc_type := g.cc_type(g.table.unaliased_type(receiver.typ), false)
+		left_type_name := util.no_dots(left_cc_type)
+		sb.write_string('${c_name(left_type_name)}_name_table[a0->_typ]._method_${method_name}(')
+	} else {
+		sb.write_string('${expr_styp}_${method_name}(')
+		if !receiver.typ.is_ptr() {
+			sb.write_string('*')
+		}
+	}
+	for i in 0 .. m.params.len {
+		if i != 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string('a${i}')
+	}
+	sb.writeln(');')
+	sb.writeln('}')
+
+	g.anon_fn_definitions << sb.str()
+	g.nr_closures++
 }
 
 fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) {
@@ -4876,7 +4889,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 						}
 					}
 				} else {
-					g.write(name)
+					if is_auto_heap {
+						g.write2('*', name)
+					} else {
+						g.write(name)
+					}
 				}
 				if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 					&& !g.is_assign_lhs) {

@@ -421,11 +421,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										fn_ret_type := c.resolve_return_type(right)
 										if fn_ret_type != ast.void_type
 											&& c.table.final_sym(fn_ret_type).kind != .multi_return {
-											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = if right.or_block.kind == .absent {
+											var_type := if right.or_block.kind == .absent {
 												fn_ret_type
 											} else {
 												fn_ret_type.clear_option_and_result()
 											}
+											if left.obj.is_mut {
+												left.obj.is_auto_heap = true
+											}
+											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 										}
 									}
 								}

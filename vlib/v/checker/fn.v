@@ -1890,6 +1890,9 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_var {
 						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						if node_.args[i].expr.is_auto_deref_var() {
+							ctyp = ctyp.deref()
+						}
 						if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
 							ctyp = ctyp.set_nr_muls(0)
 						}

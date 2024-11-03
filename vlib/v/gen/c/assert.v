@@ -204,6 +204,8 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
 				g.write(ctoslit(expr_str))
+			} else if expr.right is ast.Ident {
+				g.write(ctoslit(expr_str))
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}
