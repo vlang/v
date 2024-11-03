@@ -1062,7 +1062,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	g.writeln('}// \$for')
 }
 
-// comptime_selector_expr_type computes the expr_type for comptime var used on selector expr
+// comptime_selector_type computes the selector type from an comptime var
 fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	if !(node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr)) {
 		return node.expr_type
