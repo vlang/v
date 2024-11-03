@@ -121,8 +121,9 @@ mut:
 	is_last_stmt                     bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	using_new_err_struct             bool
-	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
-	inside_sql                       bool // to handle sql table fields pseudo variables
+	need_recheck_generic_fns         bool            // need recheck generic fns because there are cascaded nested generic fn
+	generic_fns                      map[string]bool // register generic fns that needs recheck once
+	inside_sql                       bool            // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
