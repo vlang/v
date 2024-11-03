@@ -307,6 +307,19 @@ pub fn (s string) len_utf8() int {
 	return l
 }
 
+// 1 byte:  0xxxxxxx
+// 2 bytes: 110xxxxx 10xxxxxx
+// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
+// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+pub fn (s string) is_pure_ascii() bool {
+	for i in 0 .. s.len {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
 // clone_static returns an independent copy of a given array.
 // It should be used only in -autofree generated code.
 @[inline]
@@ -1709,7 +1722,7 @@ pub fn (s string) trim(cutset string) string {
 	if s == '' || cutset == '' {
 		return s.clone()
 	}
-	if cutset.len_utf8() == cutset.len {
+	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_both)
 	} else {
 		return s.trim_runes(cutset, .trim_both)
@@ -1825,7 +1838,7 @@ pub fn (s string) trim_left(cutset string) string {
 	if s == '' || cutset == '' {
 		return s.clone()
 	}
-	if cutset.len_utf8() == cutset.len {
+	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_left)
 	} else {
 		return s.trim_runes(cutset, .trim_left)
@@ -1839,7 +1852,7 @@ pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
-	if cutset.len_utf8() == cutset.len {
+	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_right)
 	} else {
 		return s.trim_runes(cutset, .trim_right)
