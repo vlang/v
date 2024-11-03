@@ -129,10 +129,6 @@ fn check_and_extract_date(s string) !(int, int, int) {
 // parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
-
-// parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
-// See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
-// the differences between ISO-8601 and RFC 3339.
 @[direct_array_access]
 pub fn parse_rfc3339(s string) !Time {
 	if s == '' {
