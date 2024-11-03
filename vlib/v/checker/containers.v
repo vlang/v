@@ -468,6 +468,12 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 							node.pos)
 					}
 				}
+			} else if val_sym.info is ast.FnType {
+				for param in val_sym.info.func.params {
+					if param.typ.has_flag(.result) {
+						c.error('result type arguments are not supported', node.pos)
+					}
+				}
 			}
 		}
 		c.ensure_type_exists(info.key_type, node.pos)

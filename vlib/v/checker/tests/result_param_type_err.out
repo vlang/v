@@ -1,0 +1,13 @@
+vlib/v/checker/tests/result_param_type_err.vv:3:13: error: result type arguments are not supported
+    1 | module main
+    2 | 
+    3 | fn func(arg !string, val &int) ?int {
+      |             ~~~~~~~
+    4 |     unsafe {
+    5 |         *val = 2
+vlib/v/checker/tests/result_param_type_err.vv:11:7: error: result type arguments are not supported
+    9 | 
+   10 | fn main() {
+   11 |     _ := map[string]fn (!string, &int) ?int{}
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   12 | }

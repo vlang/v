@@ -264,7 +264,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					param.pos)
 			}
 			if param.typ.has_flag(.result) {
-				c.error('Result type argument is not supported currently', param.type_pos)
+				c.error('result type arguments are not supported', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
