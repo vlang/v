@@ -1803,7 +1803,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
 					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
 							param_sym := c.table.final_sym(param_typ)
@@ -1826,7 +1826,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.final_sym(call_arg.typ)
 							param_typ_sym := c.table.sym(param_typ)
@@ -1889,7 +1889,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 							}
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_var {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if node_.args[i].expr.is_auto_deref_var() {
 							ctyp = ctyp.deref()
 						}
@@ -1901,14 +1901,14 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 				}
 			} else if call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr.right)
+					comptime_args[k] = c.comptime.get_type(call_arg.expr.right)
 					comptime_args[k] = comptime_args[k].deref()
 					if comptime_args[k].nr_muls() > 0 && param_typ.nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeSelector {
-				ct_value := c.comptime.get_comptime_var_type(call_arg.expr)
+				ct_value := c.comptime.get_type(call_arg.expr)
 				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
 					arg_sym := c.table.final_sym(call_arg.typ)
@@ -1933,7 +1933,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeCall {
-				comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr)
+				comptime_args[k] = c.comptime.get_type(call_arg.expr)
 			}
 		}
 	}

@@ -4274,7 +4274,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 			if obj is ast.Var && g.check_var_scope(obj, node.pos.pos) {
 				keys.write_string('_SLIT("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
-					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })
+					g.comptime.get_type(ast.Ident{ obj: obj })
 				} else if obj.smartcasts.len > 0 {
 					obj.smartcasts.last()
 				} else {
@@ -4871,7 +4871,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs
 				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime] {
-				comptime_type := g.comptime.get_comptime_var_type(node)
+				comptime_type := g.comptime.get_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						if !g.is_assign_lhs && is_auto_heap {
@@ -4961,7 +4961,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if node.obj.smartcasts.len > 0 {
 					obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 					if node.obj.ct_type_var == .smartcast {
-						ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+						ctyp := g.unwrap_generic(g.comptime.get_type(node))
 						cur_variant_sym := g.table.sym(ctyp)
 						variant_name := g.get_sumtype_variant_name(ctyp, cur_variant_sym)
 						g.write('._${variant_name}')
@@ -4997,7 +4997,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						g.write('(')
 						if i == 0 && node.obj.is_unwrapped {
-							ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+							ctyp := g.unwrap_generic(g.comptime.get_type(node))
 							g.write('*(${g.base_type(ctyp)}*)(')
 						}
 						if obj_sym.kind == .sum_type && !is_auto_heap {
@@ -5053,7 +5053,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									}
 								}
 								if node.obj.ct_type_var == .smartcast {
-									mut ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+									mut ctyp := g.unwrap_generic(g.comptime.get_type(node))
 									cur_variant_sym := g.table.sym(ctyp)
 									if node.obj.is_unwrapped {
 										ctyp = ctyp.set_flag(.option)
@@ -5128,9 +5128,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
-	if (node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr))
-		|| node.expr is ast.ComptimeSelector {
-		expr_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.expr))
+	if g.comptime.is_comptime_expr(node.expr) {
+		expr_type = g.unwrap_generic(g.comptime.get_type(node.expr))
 	}
 	if sym.kind in [.sum_type, .interface] {
 		if node.typ.has_flag(.option) && node.expr is ast.None {

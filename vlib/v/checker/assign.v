@@ -399,7 +399,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									&& right.or_expr.kind == .absent {
 									right_obj_var := right.obj as ast.Var
 									if right_obj_var.ct_type_var != .no_comptime {
-										ctyp := c.comptime.get_comptime_var_type(right)
+										ctyp := c.comptime.get_type(right)
 										if ctyp != ast.void_type {
 											left.obj.ct_type_var = right_obj_var.ct_type_var
 											left.obj.typ = ctyp
@@ -506,7 +506,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 
 					if right is ast.Ident && c.comptime.is_comptime_var(right) {
-						right_type = c.comptime.get_comptime_var_type(right)
+						right_type = c.comptime.get_type(right)
 					}
 				}
 				if mut left is ast.InfixExpr {

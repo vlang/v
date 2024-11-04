@@ -460,7 +460,7 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 	match cond {
 		ast.Ident {
 			return if g.comptime.is_comptime_var(cond) {
-				g.unwrap_generic(g.comptime.get_comptime_var_type(cond))
+				g.unwrap_generic(g.comptime.get_type(cond))
 			} else {
 				g.unwrap_generic(cond.obj.typ)
 			}
@@ -800,8 +800,8 @@ fn (mut g Gen) pop_comptime_info() {
 }
 
 fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.Type {
-	if (node is ast.Ident && g.comptime.is_comptime_var(node)) || node is ast.ComptimeSelector {
-		return g.comptime.get_comptime_var_type(node)
+	if g.comptime.is_comptime_expr(node) {
+		return g.comptime.get_type(node)
 	} else if node is ast.SelectorExpr && node.expr_type != 0 {
 		if node.expr is ast.Ident && g.comptime.is_comptime_selector_type(node) {
 			return g.comptime.get_type_from_comptime_var(node.expr)
@@ -1070,7 +1070,7 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 
-	mut typ := g.comptime.get_comptime_var_type(node.expr)
+	mut typ := g.comptime.get_type(node.expr)
 	if node.expr.is_auto_deref_var() {
 		if node.expr is ast.Ident {
 			if node.expr.obj is ast.Var {

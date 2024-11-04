@@ -144,7 +144,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if (node.cond is ast.Ident && g.comptime.is_comptime_var(node.cond))
 		|| node.cond is ast.ComptimeSelector {
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
-		ctyp := g.comptime.get_comptime_var_type(node.cond)
+		ctyp := g.comptime.get_type(node.cond)
 		if ctyp != ast.void_type {
 			unwrapped_typ = g.unwrap_generic(ctyp)
 			is_comptime = true
@@ -223,7 +223,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 
 		if is_comptime && g.comptime.is_comptime_var(node.cond) {
 			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
-			ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node.cond))
+			ctyp := g.unwrap_generic(g.comptime.get_type(node.cond))
 			if ctyp != ast.void_type {
 				unwrapped_typ = ctyp
 			}

@@ -45,7 +45,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			}
 		}
 	} else if node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr) {
-		expr_type = g.comptime.get_comptime_var_type(node.expr)
+		expr_type = g.comptime.get_type(node.expr)
 		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident

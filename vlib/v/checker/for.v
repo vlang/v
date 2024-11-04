@@ -80,7 +80,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		mut is_comptime := false
 		if (node.cond is ast.Ident && c.comptime.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
-			ctyp := c.comptime.get_comptime_var_type(node.cond)
+			ctyp := c.comptime.get_type(node.cond)
 			if ctyp != ast.void_type {
 				is_comptime = true
 				typ = ctyp
