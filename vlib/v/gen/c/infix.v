@@ -651,13 +651,29 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write('))')
 	} else if node.right is ast.RangeExpr {
-		g.expr(node.left)
-		g.write(' >= ')
-		g.expr(node.right.low)
-		g.write(' && ')
-		g.expr(node.left)
-		g.write(' <= ')
-		g.expr(node.right.high)
+		// call() in min..max
+		if node.left is ast.CallExpr {
+			line := g.go_before_last_stmt().trim_space()
+			g.empty_line = true
+			tmp_var := g.new_tmp_var()
+			g.write('${g.styp(node.left.return_type)} ${tmp_var} = ')
+			g.expr(node.left)
+			g.writeln(';')
+			g.write(line)
+			g.write('${tmp_var} >= ')
+			g.expr(node.right.low)
+			g.write(' && ')
+			g.write('${tmp_var} <= ')
+			g.expr(node.right.high)
+		} else {
+			g.expr(node.left)
+			g.write(' >= ')
+			g.expr(node.right.low)
+			g.write(' && ')
+			g.expr(node.left)
+			g.write(' <= ')
+			g.expr(node.right.high)
+		}
 	}
 }
 
