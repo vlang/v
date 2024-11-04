@@ -2835,7 +2835,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					} else if !(!arg.is_mut && arg_sym.kind == .alias
 						&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()) {
 						g.write('(voidptr)&/*qq*/')
-						if arg.expr.is_lvalue() && arg.expr is ast.Ident
+						if arg.expr is ast.Ident && arg.expr.kind != .constant
 							&& expected_type.nr_muls() > (arg_typ.nr_muls() + 1) {
 							// generates temporary vars for fit the expected indirections
 							g.gen_tmp_var_indirections(arg_typ, arg.expr, expected_type.nr_muls() - arg_typ.nr_muls() - 1)
