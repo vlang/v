@@ -466,7 +466,7 @@ fn (c rune) map_to(mode MapMode) rune {
 	for start < end {
 		mut middle := (start + end) / 2
 		cur_map := rune_maps[middle]
-		if c >= cur_map.start && c <= cur_map.end {
+		if c >= u32(cur_map.start) && c <= u32(cur_map.end) {
 			offset := if mode == .to_upper {
 				cur_map.upper_offset
 			} else if mode == .to_lower {
