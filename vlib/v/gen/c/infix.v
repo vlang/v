@@ -517,7 +517,8 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		if node.right is ast.ArrayInit {
 			elem_type := node.right.elem_type
 			elem_sym := g.table.sym(elem_type)
-			if node.right.exprs.len > 0 {
+			// TODO: replace ast.Ident check with proper side effect analysis
+			if node.right.exprs.len > 0 && node.left is ast.Ident {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
 				g.write('(')
