@@ -487,7 +487,7 @@ fn (c rune) map_to(mode MapMode) rune {
 				return c + offset
 			}
 		}
-		if c < cur_map.start {
+		if c < u32(cur_map.start) {
 			end = middle
 		} else {
 			start = middle + 1
