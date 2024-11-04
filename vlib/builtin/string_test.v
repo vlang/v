@@ -1080,6 +1080,14 @@ fn test_upper() {
 	assert !s.is_upper()
 }
 
+fn test_runes_to_upper() {
+	assert 'água'.to_upper() == 'ÁGUA'
+}
+
+fn test_runes_to_lower() {
+	assert 'ÁGUA'.to_lower() == 'água'
+}
+
 fn test_capitalize() {
 	mut s := 'hello'
 	assert !s.is_capital()

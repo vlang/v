@@ -1527,20 +1527,27 @@ pub fn (s string) ends_with(p string) bool {
 }
 
 // to_lower returns the string in all lowercase characters.
-// TODO: only works with ASCII
 @[direct_array_access]
 pub fn (s string) to_lower() string {
-	unsafe {
-		mut b := malloc_noscan(s.len + 1)
-		for i in 0 .. s.len {
-			if s.str[i].is_capital() {
-				b[i] = s.str[i] + 32
-			} else {
-				b[i] = s.str[i]
+	if s.is_pure_ascii() {
+		unsafe {
+			mut b := malloc_noscan(s.len + 1)
+			for i in 0 .. s.len {
+				if s.str[i].is_capital() {
+					b[i] = s.str[i] + 32
+				} else {
+					b[i] = s.str[i]
+				}
 			}
+			b[s.len] = 0
+			return tos(b, s.len)
 		}
-		b[s.len] = 0
-		return tos(b, s.len)
+	} else {
+		mut runes := s.runes()
+		for i in 0 .. runes.len {
+			runes[i] = runes[i].to_lower()
+		}
+		return runes.string()
 	}
 }
 
@@ -1563,17 +1570,25 @@ pub fn (s string) is_lower() bool {
 // Example: assert 'Hello V'.to_upper() == 'HELLO V'
 @[direct_array_access]
 pub fn (s string) to_upper() string {
-	unsafe {
-		mut b := malloc_noscan(s.len + 1)
-		for i in 0 .. s.len {
-			if s.str[i] >= `a` && s.str[i] <= `z` {
-				b[i] = s.str[i] - 32
-			} else {
-				b[i] = s.str[i]
+	if s.is_pure_ascii() {
+		unsafe {
+			mut b := malloc_noscan(s.len + 1)
+			for i in 0 .. s.len {
+				if s.str[i] >= `a` && s.str[i] <= `z` {
+					b[i] = s.str[i] - 32
+				} else {
+					b[i] = s.str[i]
+				}
 			}
+			b[s.len] = 0
+			return tos(b, s.len)
 		}
-		b[s.len] = 0
-		return tos(b, s.len)
+	} else {
+		mut runes := s.runes()
+		for i in 0 .. runes.len {
+			runes[i] = runes[i].to_upper()
+		}
+		return runes.string()
 	}
 }
 
