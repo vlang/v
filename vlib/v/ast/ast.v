@@ -2205,7 +2205,8 @@ pub fn (expr Expr) pos() token.Pos {
 
 pub fn (expr Expr) is_lvalue() bool {
 	return match expr {
-		Ident, CTempVar { true }
+		Ident { expr.kind != .constant }
+		CTempVar { true }
 		IndexExpr { expr.left.is_lvalue() }
 		SelectorExpr { expr.expr.is_lvalue() }
 		ParExpr { expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}

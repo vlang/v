@@ -2741,16 +2741,17 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 }
 
 // gen_tmp_var_indirections generates tmp var to fit the expected indirection number
-fn (mut g Gen) gen_tmp_var_indirections(var_typ ast.Type, var_name string, nindirections int) {
-	mut last_var := var_name
+fn (mut g Gen) gen_tmp_var_indirections(var_typ ast.Type, var ast.Ident, nindirections int) {
+	mut last_var := g.expr_string(var)
 	var_styp := g.styp(var_typ)
 	line := g.go_before_last_stmt().trim_space()
 	g.empty_line = true
+	tmp_var := g.new_tmp_var()
 	for i in 0 .. nindirections {
-		tmp_var := g.new_tmp_var()
-		ptr := '*'.repeat(i + 1)
-		g.writeln('${var_styp} ${ptr}${tmp_var} = &${last_var};')
-		last_var = tmp_var
+		ptr := '*'.repeat(i)
+		tmp_var_v := if i == 0 { tmp_var } else { '${tmp_var}_${i}' }
+		g.writeln('${var_styp} *${ptr}${tmp_var_v} = &${last_var};')
+		last_var = tmp_var_v
 	}
 	g.write(line)
 	g.write(last_var)
@@ -2834,10 +2835,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					} else if !(!arg.is_mut && arg_sym.kind == .alias
 						&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()) {
 						g.write('(voidptr)&/*qq*/')
-						if arg.expr is ast.Ident
+						if arg.expr.is_lvalue() && arg.expr is ast.Ident
 							&& expected_type.nr_muls() > (arg_typ.nr_muls() + 1) {
 							// generates temporary vars for fit the expected indirections
-							g.gen_tmp_var_indirections(arg_typ, arg.expr.name, expected_type.nr_muls() - arg_typ.nr_muls() - 1)
+							g.gen_tmp_var_indirections(arg_typ, arg.expr, expected_type.nr_muls() - arg_typ.nr_muls() - 1)
 							return
 						}
 					}
