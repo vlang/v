@@ -21,7 +21,7 @@ fn main() {
 	platform := $if windows {
 		'windows'
 	} $else $if macos {
-		'macos-12'
+		'macos-14'
 	} $else $if linux {
 		'ubuntu'
 	} $else {

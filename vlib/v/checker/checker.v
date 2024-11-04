@@ -121,8 +121,9 @@ mut:
 	is_last_stmt                     bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	using_new_err_struct             bool
-	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
-	inside_sql                       bool // to handle sql table fields pseudo variables
+	need_recheck_generic_fns         bool            // need recheck generic fns because there are cascaded nested generic fn
+	generic_fns                      map[string]bool // register generic fns that needs recheck once
+	inside_sql                       bool            // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
@@ -3833,6 +3834,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		info := node.info as ast.IdentFn
 		if func := c.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
+				if node.concrete_types.len == 0 {
+					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
+						node.pos)
+				}
 				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 				if concrete_types.all(!it.has_flag(.generic)) {
 					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
@@ -4006,6 +4011,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
+			if func.generic_names.len > 0 {
+				if node.concrete_types.len == 0 {
+					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
+						node.pos)
+				}
+			}
 			return c.resolve_var_fn(func, mut node, name)
 		}
 	}

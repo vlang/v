@@ -38,8 +38,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// This is done so that all generic function calls can
 		// have a chance to populate c.table.fn_generic_types with
 		// the correct concrete types.
-		c.file.generic_fns << node
-		c.need_recheck_generic_fns = true
+		fkey := node.fkey()
+		if !c.generic_fns[fkey] {
+			c.need_recheck_generic_fns = true
+			c.generic_fns[fkey] = true
+			c.file.generic_fns << node
+		}
 		return
 	}
 	node.ninstances++
@@ -264,7 +268,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					param.pos)
 			}
 			if param.typ.has_flag(.result) {
-				c.error('Result type argument is not supported currently', param.type_pos)
+				c.error('result type arguments are not supported', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
@@ -2767,7 +2771,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		fkey := node.fkey()
 		all_generic_fns[fkey]++
 		if all_generic_fns[fkey] > generic_fn_cutoff_limit_per_fn {
-			c.error('generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
+			c.error('${fkey} generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
 				node.pos)
 			return error('fkey: ${fkey}')
 		}
