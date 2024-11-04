@@ -53,7 +53,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
-	is_generic_default := sym.kind != .struct && node.typ.has_flag(.generic) // T{}
+	is_generic_default := sym.kind !in [.struct, .array_fixed] && node.typ.has_flag(.generic) // T{}
 	is_array := sym.kind in [.array_fixed, .array]
 	if sym.kind == .array_fixed {
 		arr_info := sym.array_fixed_info()
