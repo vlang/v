@@ -5310,11 +5310,14 @@ fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Iden
 		}
 		if obj.is_stack_obj && !c.inside_unsafe {
 			sym := c.table.sym(obj.typ.set_nr_muls(0))
-			if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-				suggestion := if sym.kind == .struct {
+			is_heap := sym.is_heap()
+			if (!is_heap || !obj.typ.is_ptr()) && !c.pref.translated && !c.file.is_translated {
+				suggestion := if !is_heap && sym.kind == .struct {
 					'declaring `${sym.name}` as `@[heap]`'
-				} else {
+				} else if !is_heap {
 					'wrapping the `${sym.name}` object in a `struct` declared as `@[heap]`'
+				} else { // e.g. var from `for a in heap_object {`
+					'declaring `${ident.name}` mutable'
 				}
 				c.error('`${ident.name}` cannot be ${failed_action} outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 					ident.pos)

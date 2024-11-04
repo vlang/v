@@ -292,6 +292,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
 				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
+			} else if mut r_expr is ast.PrefixExpr && r_expr.op == .amp {
+				// &var
+				if mut r_expr.right is ast.Ident {
+					c.fail_if_stack_struct_action_outside_unsafe(mut r_expr.right, 'returned')
+				}
 			}
 		}
 	}
