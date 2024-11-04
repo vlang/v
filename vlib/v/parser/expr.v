@@ -750,6 +750,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			pos_high := p.tok.pos()
 			right = ast.RangeExpr{
 				low:      right
+				has_low:  true
 				high:     p.expr(0)
 				has_high: true
 				pos:      pos_high

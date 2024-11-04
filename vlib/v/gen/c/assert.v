@@ -191,15 +191,8 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 		ast.ParExpr {
 			g.gen_assert_single_expr(expr.expr, typ)
 		}
-		ast.IfExpr, ast.MatchExpr {
+		ast.IfExpr, ast.MatchExpr, ast.RangeExpr {
 			g.write(ctoslit(expr_str))
-		}
-		ast.InfixExpr {
-			if expr.right is ast.RangeExpr {
-				g.write(ctoslit(expr_str))
-			} else {
-				g.gen_expr_to_string(expr, typ)
-			}
 		}
 		ast.IndexExpr {
 			if expr.index is ast.RangeExpr {
