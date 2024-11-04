@@ -644,7 +644,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write('(')
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
 		g.write(')')
-	} else if right.unaliased_sym.kind == .string {
+	} else if right.unaliased_sym.kind == .string && node.right !is ast.RangeExpr {
 		g.write2('(', 'string_contains(')
 		g.expr(node.right)
 		g.write(', ')
@@ -660,12 +660,15 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.writeln(';')
 			g.write(line)
+			g.write('(')
 			g.write('${tmp_var} >= ')
 			g.expr(node.right.low)
 			g.write(' && ')
 			g.write('${tmp_var} <= ')
 			g.expr(node.right.high)
+			g.write(')')
 		} else {
+			g.write('(')
 			g.expr(node.left)
 			g.write(' >= ')
 			g.expr(node.right.low)
@@ -673,6 +676,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(' <= ')
 			g.expr(node.right.high)
+			g.write(')')
 		}
 	}
 }

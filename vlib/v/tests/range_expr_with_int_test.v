@@ -23,4 +23,7 @@ fn test_main() {
 		'f': 2
 	}
 	assert a['f'] in 1..3
+
+	assert `f` in `a`..`h`
+	assert `f` !in `g`..`h`
 }
