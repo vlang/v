@@ -3735,7 +3735,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.is_amp = false
 		}
 		ast.RangeExpr {
-			// Only used in IndexExpr
+			// Only used in IndexExpr and InfixExpr
 		}
 		ast.SelectExpr {
 			g.select_expr(node)
