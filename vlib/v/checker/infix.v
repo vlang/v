@@ -279,8 +279,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 				else {
-					c.error('`${node.op.str()}` can only be used with arrays and maps',
-						node.pos)
+					if node.right !is ast.RangeExpr {
+						c.error('`${node.op.str()}` can only be used with arrays and maps',
+							node.pos)
+					}
 				}
 			}
 			if mut node.left is ast.CallExpr {

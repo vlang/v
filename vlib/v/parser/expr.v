@@ -745,6 +745,17 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	if is_key_in {
+		if p.tok.kind == .dotdot {
+			p.check(.dotdot)
+			pos_high := p.tok.pos()
+			right = ast.RangeExpr{
+				low:      right
+				high:     p.expr(0)
+				has_high: true
+				pos:      pos_high
+				is_gated: false
+			}
+		}
 		p.inside_in_array = false
 	}
 	p.expecting_type = prev_expecting_type

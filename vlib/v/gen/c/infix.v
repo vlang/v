@@ -650,6 +650,14 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.left)
 		g.write('))')
+	} else if node.right is ast.RangeExpr {
+		g.expr(node.left)
+		g.write(' >= ')
+		g.expr(node.right.low)
+		g.write(' && ')
+		g.expr(node.left)
+		g.write(' <= ')
+		g.expr(node.right.high)
 	}
 }
 
