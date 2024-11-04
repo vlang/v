@@ -899,7 +899,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.CharLiteral {
-			if node.val.len_utf8() < node.val.len {
+			if !node.val.is_pure_ascii() {
 				g.write("new rune('${node.val}'.charCodeAt())")
 			} else {
 				g.write("new u8('${node.val}')")
@@ -3425,10 +3425,16 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 			if i > 0 {
 				repr += ', '
 			}
+			if arg.typ.has_flag(.option) {
+				repr += '?'
+			}
 			repr += g.table.get_type_name(arg.typ)
 		}
 		repr += ')'
 		if fn_info.return_type != ast.void_type {
+			if fn_info.return_type.has_flag(.option) {
+				repr += '?'
+			}
 			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
 		}
 		g.write('"${repr}"')

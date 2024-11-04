@@ -3795,7 +3795,7 @@ fn (mut g Gen) char_literal(node ast.CharLiteral) {
 		return
 	}
 	// TODO: optimize use L-char instead of u32 when possible
-	if node.val.len_utf8() < node.val.len {
+	if !node.val.is_pure_ascii() {
 		g.write('((rune)0x${node.val.utf32_code().hex()} /* `${node.val}` */)')
 		return
 	}
