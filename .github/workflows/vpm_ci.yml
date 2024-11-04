@@ -18,7 +18,7 @@ jobs:
   setup:
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-12]
+        os: [ubuntu-20.04, windows-2019, macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
@@ -54,8 +54,6 @@ jobs:
             cc: gcc
           - os: windows-2019
             cc: msvc
-          - os: macos-12
-            cc: clang
           - os: macos-14
             cc: clang
       fail-fast: false
