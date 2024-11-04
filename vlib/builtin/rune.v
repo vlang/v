@@ -429,6 +429,7 @@ pub fn (c rune) length_in_bytes() int {
 	return -1
 }
 
+// `to_upper` convert to uppercase mode.
 pub fn (c rune) to_upper() rune {
 	if c < 0x80 {
 		if c >= `a` && c <= `z` {
@@ -439,6 +440,7 @@ pub fn (c rune) to_upper() rune {
 	return c.map_to(.to_upper)
 }
 
+// `to_lower` convert to lowercase mode.
 pub fn (c rune) to_lower() rune {
 	if c < 0x80 {
 		if c >= `A` && c <= `Z` {
@@ -449,6 +451,7 @@ pub fn (c rune) to_lower() rune {
 	return c.map_to(.to_lower)
 }
 
+// `to_title` convert to title mode.
 pub fn (c rune) to_title() rune {
 	if c < 0x80 {
 		if c >= `a` && c <= `z` {
@@ -459,12 +462,13 @@ pub fn (c rune) to_title() rune {
 	return c.map_to(.to_title)
 }
 
+// `map_to` rune map mode: .to_upper/.to_lower/.to_title
 fn (c rune) map_to(mode MapMode) rune {
 	mut start := 0
 	mut end := rune_maps.len
 	// Binary search
 	for start < end {
-		mut middle := (start + end) / 2
+		middle := (start + end) / 2
 		cur_map := rune_maps[middle]
 		if c >= u32(cur_map.start) && c <= u32(cur_map.end) {
 			offset := if mode == .to_upper {
