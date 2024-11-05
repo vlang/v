@@ -52,6 +52,7 @@ mut:
 	inside_assign_rhs        bool // inside rhs of assignment
 	inside_return            bool // inside return expr
 	inside_cast              bool // inside cast expr
+	inside_assert            bool // inside assert
 	inside_unsafe_fn         bool
 	inside_str_interp        bool
 	inside_array_lit         bool
@@ -996,7 +997,10 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_assert {
 			p.next()
 			mut pos := p.tok.pos()
+			old_inside_assert := p.inside_assert
+			p.inside_assert = true
 			expr := p.expr(0)
+			p.inside_assert = old_inside_assert
 			pos.update_last_line(p.prev_tok.line_nr)
 			mut extra := ast.empty_expr
 			mut extra_pos := p.tok.pos()

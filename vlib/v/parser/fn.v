@@ -118,7 +118,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 // is_call_return_used checks if current context requires a CallExpr to save the return
 fn (mut p Parser) is_call_return_used() bool {
 	return p.inside_assign_rhs || p.inside_return || p.inside_cast || p.inside_if_expr
-		|| p.inside_call_args || p.inside_match || p.inside_match_case
+		|| p.inside_call_args || p.inside_match || p.inside_match_case || p.inside_assert
 }
 
 fn (mut p Parser) call_args() []ast.CallArg {
