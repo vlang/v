@@ -34,7 +34,8 @@ fn test_main() {
 		'f': 2
 	}
 	assert a['f'] in 1..3
-	assert a['f'] !in 2..3
+	assert a['f'] in 2..3
+	assert a['f'] !in 0..2
 	assert a['f'] in min..max
 }
 
