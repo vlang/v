@@ -716,7 +716,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_map[T](mut val T) ! {
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
@@ -746,7 +746,7 @@ fn (mut decoder Decoder) decode_map[T](mut val T) ! {
 				break
 			}
 
-			mut map_value := create_map_value(val)
+			mut map_value := V{}
 
 			decoder.decode_value(mut map_value)!
 
@@ -771,14 +771,6 @@ fn get_value_kind(value u8) ValueKind {
 		return .null
 	}
 	return .unknown
-}
-
-fn create_array_element[T](array []T) T {
-	return T{}
-}
-
-fn create_map_value[K, V](map_ map[K]V) V {
-	return V{}
 }
 
 fn create_value_from_optional[T](val ?T) T {
