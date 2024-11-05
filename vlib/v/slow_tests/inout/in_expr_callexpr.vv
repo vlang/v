@@ -1,10 +1,10 @@
 fn t() bool {
-	println('${@FN}')
+	println(@FN)
 	return true
 }
 
 fn t2() int {
-	println('${@FN}')
+	println(@FN)
 	return 2
 }
 
