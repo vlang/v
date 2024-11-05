@@ -20,7 +20,7 @@ fn test_main() {
 
 	assert y in 1..20
 	assert y !in 5..20
-	assert y !in 4..20
+	assert y in 4..20
 	assert y !in min..max
 
 	assert (t() !in 1..3) == false
