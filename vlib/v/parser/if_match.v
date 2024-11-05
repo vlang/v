@@ -245,11 +245,12 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
+	old_inside_match := p.inside_match
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
 	cond := p.expr(0)
-	p.inside_match = false
+	p.inside_match = old_inside_match
 	no_lcbr := p.tok.kind != .lcbr
 	if !no_lcbr {
 		p.check(.lcbr)
