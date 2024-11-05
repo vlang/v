@@ -4344,7 +4344,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			end_pos)
 	}
 	if idx == ast.invalid_type_idx {
-		enum_type = idx
+		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
+			end_pos)
+		return ast.EnumDecl{}
 	}
 
 	enum_decl := ast.EnumDecl{
