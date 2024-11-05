@@ -618,7 +618,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			tok := p.tok
 			mut pos := tok.pos()
 			p.next()
+			old_inside_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			right := p.expr(precedence - 1)
+			p.inside_assign_rhs = old_inside_assign_rhs
 			pos.update_last_line(p.prev_tok.line_nr)
 			if mut node is ast.IndexExpr {
 				node.recursive_arraymap_set_is_setter()
