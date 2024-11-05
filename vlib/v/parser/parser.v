@@ -4328,15 +4328,35 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.codegen(code_for_from_fn)
 	}
 
-	mut idx := ast.invalid_type_idx
 	if already_exists {
 		// enum redeclaration, error emited on checker
 		enum_type = ast.invalid_type_idx
 	}
 
+	idx := p.table.register_sym(ast.TypeSymbol{
+		kind:   .enum
+		name:   name
+		cname:  util.no_dots(name)
+		mod:    p.mod
+		info:   ast.Enum{
+			vals:             vals
+			is_flag:          is_flag
+			is_multi_allowed: is_multi_allowed
+			uses_exprs:       uses_exprs
+			typ:              enum_type
+			attrs:            enum_attrs
+		}
+		is_pub: is_pub
+	})
+
+	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
+		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
+			end_pos)
+	}
+
 	enum_decl := ast.EnumDecl{
 		name:             name
-		typ:              enum_type
+		typ:              if idx == ast.invalid_type_idx { ast.invalid_type } else { enum_type }
 		typ_pos:          typ_pos
 		is_pub:           is_pub
 		is_flag:          is_flag
@@ -4348,25 +4368,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 
 	if !already_exists {
-		idx = p.table.register_sym(ast.TypeSymbol{
-			kind:   .enum
-			name:   name
-			cname:  util.no_dots(name)
-			mod:    p.mod
-			info:   ast.Enum{
-				vals:             vals
-				is_flag:          is_flag
-				is_multi_allowed: is_multi_allowed
-				uses_exprs:       uses_exprs
-				typ:              enum_type
-				attrs:            enum_attrs
-			}
-			is_pub: is_pub
-		})
-		if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
-			p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
-				end_pos)
-		}
 		p.table.register_enum_decl(enum_decl)
 	}
 	return enum_decl
