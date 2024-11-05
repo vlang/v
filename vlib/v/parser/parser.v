@@ -4328,11 +4328,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.codegen(code_for_from_fn)
 	}
 
-	if already_exists {
-		// enum redeclaration, error emited on checker
-		enum_type = ast.invalid_type_idx
-	}
-
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind:   .enum
 		name:   name
@@ -4354,9 +4349,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			end_pos)
 	}
 
+	if idx == ast.invalid_type_idx {
+		enum_type = idx
+	}
+
 	enum_decl := ast.EnumDecl{
 		name:             name
-		typ:              if idx == ast.invalid_type_idx { ast.invalid_type } else { enum_type }
+		typ:              enum_type
 		typ_pos:          typ_pos
 		is_pub:           is_pub
 		is_flag:          is_flag
