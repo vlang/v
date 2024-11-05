@@ -988,7 +988,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					&& unwrapped_styp.starts_with('_v_') {
 					unwrapped_styp = unwrapped_styp[3..]
 				}
-				if g.is_assign_lhs || g.inside_call || g.inside_struct_init || g.inside_assign
+				if g.is_assign_lhs || old_inside_call || g.inside_struct_init || g.inside_assign
 					|| g.inside_return {
 					// return value is used, so we need to write the unwrapped temporary var
 					g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
