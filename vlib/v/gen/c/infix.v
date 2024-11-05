@@ -687,6 +687,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 // and transform them in a series of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, right ast.ArrayInit) {
+	tmp_var := if left is ast.CallExpr { g.new_tmp_var() } else { '' }
 	mut elem_sym := g.table.sym(right.elem_type)
 	left_parent_idx := g.table.sym(left_type).parent_idx
 	for i, array_expr in right.exprs {
@@ -749,13 +750,39 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 						g.write('${ptr_typ}_struct_eq(')
 					}
 				}
-				g.expr(left)
+				if left is ast.CallExpr {
+					if i == 0 {
+						line := g.go_before_last_stmt().trim_space()
+						g.empty_line = true
+						g.write('${g.styp(left.return_type)} ${tmp_var} = ')
+						g.expr(left)
+						g.writeln(';')
+						g.write2(line, tmp_var)
+					} else {
+						g.write(tmp_var)
+					}
+				} else {
+					g.expr(left)
+				}
 				g.write(', ')
 				g.expr(array_expr)
 				g.write(')')
 			}
 			else { // works in function kind
-				g.expr(left)
+				if left is ast.CallExpr {
+					if i == 0 {
+						line := g.go_before_last_stmt().trim_space()
+						g.empty_line = true
+						g.write('${g.styp(left.return_type)} ${tmp_var} = ')
+						g.expr(left)
+						g.writeln(';')
+						g.write2(line, tmp_var)
+					} else {
+						g.write(tmp_var)
+					}
+				} else {
+					g.expr(left)
+				}
 				g.write(' == ')
 				g.expr(array_expr)
 			}
