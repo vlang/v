@@ -484,12 +484,10 @@ fn (c rune) map_to(mode MapMode) rune {
 					return c - 1
 				} else if mode == .to_lower && !is_odd {
 					return c + 1
-				} else {
-					return c
 				}
-			} else {
-				return c + offset
+				return c
 			}
+			return c + offset
 		}
 		if c < u32(cur_map.start) {
 			end = middle
