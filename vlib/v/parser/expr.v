@@ -398,7 +398,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			spos := p.tok.pos()
 			p.next()
 			p.check(.lpar)
+			old_inside_call_args := p.inside_call_args
+			p.inside_call_args = true
 			expr := p.expr(0)
+			p.inside_call_args = old_inside_call_args
 			if p.tok.kind == .comma && p.peek_tok.kind == .rpar {
 				p.next()
 			}
