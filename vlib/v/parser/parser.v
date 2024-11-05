@@ -4347,7 +4347,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 
 	if !already_exists {
-		// Enum already exists, skip registration to avoid Enum methods error in this phase
 		idx = p.table.register_sym(ast.TypeSymbol{
 			kind:   .enum
 			name:   name
