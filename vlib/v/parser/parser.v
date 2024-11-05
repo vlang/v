@@ -4146,6 +4146,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
+	already_exists := if _ := p.table.enum_decls[name] { true } else { false }
 	mut enum_type := ast.int_type
 	mut typ_pos := token.Pos{}
 	if p.tok.kind == .key_as {
@@ -4218,8 +4219,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		all_bits_set_value := '0b' + '1'.repeat(fields.len)
-		p.codegen('
+		if !already_exists {
+			// enum already exists, skip method creation to avoid duplicate method errors
+			all_bits_set_value := '0b' + '1'.repeat(fields.len)
+			p.codegen('
 //
 @[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
 @[inline] ${pubfn} (    e &${enum_name}) has(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) != 0 }
@@ -4231,6 +4234,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 @[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag_ ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag_))) } }
 //
 ')
+		}
 	}
 	// Add the generic `Enum.from[T](x T) !T {` static method too:
 	mut isb := strings.new_builder(1024)
@@ -4299,10 +4303,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		is_pub: is_pub
 	})
+
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
 	}
+
 	if idx == ast.invalid_type_idx {
 		enum_type = idx
 	}
@@ -4320,8 +4326,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		comments:         enum_decl_comments
 	}
 
-	p.table.register_enum_decl(enum_decl)
-
+	if !already_exists {
+		p.table.register_enum_decl(enum_decl)
+	}
 	return enum_decl
 }
 
