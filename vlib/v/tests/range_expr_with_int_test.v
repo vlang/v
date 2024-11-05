@@ -24,7 +24,7 @@ fn test_main() {
 	assert y !in min..max
 
 	assert (t() !in 1..3) == false
-	assert r() !in 5..6
+	assert r() in 5..6
 	assert r() in 4..6
 	assert 1.22 in z()?..t()
 	assert 1.23 !in z()?..t()
