@@ -188,7 +188,10 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				g.write(ctoslit(expr_str))
 			}
 		}
-		ast.IfExpr, ast.MatchExpr {
+		ast.ParExpr {
+			g.gen_assert_single_expr(expr.expr, typ)
+		}
+		ast.IfExpr, ast.MatchExpr, ast.RangeExpr {
 			g.write(ctoslit(expr_str))
 		}
 		ast.IndexExpr {
