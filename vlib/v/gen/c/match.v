@@ -77,7 +77,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	} else {
 		line := if is_expr {
 			g.empty_line = true
-			g.go_before_last_stmt()
+			g.go_before_last_stmt().trim_left('\t')
 		} else {
 			''
 		}
