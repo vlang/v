@@ -2879,33 +2879,13 @@ fn (mut p Parser) name_expr() ast.Expr {
 					pos := p.tok.pos()
 					args := p.call_args()
 					p.check(.rpar)
-
-					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{}
-					mut or_pos := p.tok.pos()
-					if p.tok.kind in [.not, .question] {
-						or_kind = if p.tok.kind == .not {
-							.propagate_result
-						} else {
-							.propagate_option
-						}
-						p.next()
-					}
-					if p.tok.kind == .key_orelse {
-						// `foo() or {}``
-						or_kind = .block
-						or_stmts, or_pos = p.or_block(.with_err_var)
-					}
+					or_block := p.gen_or_block()
 					node = ast.CallExpr{
 						left:     node
 						args:     args
 						pos:      pos
 						scope:    p.scope
-						or_block: ast.OrExpr{
-							stmts: or_stmts
-							kind:  or_kind
-							pos:   or_pos
-						}
+						or_block: or_block
 					}
 				}
 			}
@@ -3341,23 +3321,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 		args := p.call_args()
 		p.check(.rpar)
-		mut or_stmts := []ast.Stmt{}
-		mut or_kind := ast.OrKind.absent
-		mut or_pos := p.tok.pos()
-		if p.tok.kind == .key_orelse {
-			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
-		}
-		// `foo()?`
-		if p.tok.kind in [.question, .not] {
-			is_not := p.tok.kind == .not
-			p.next()
-			if p.inside_defer {
-				p.error_with_pos('error propagation not allowed inside `defer` blocks',
-					p.prev_tok.pos())
-			}
-			or_kind = if is_not { .propagate_result } else { .propagate_option }
-		}
+		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
@@ -3370,11 +3334,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			is_method:         true
 			concrete_types:    concrete_types
 			concrete_list_pos: concrete_list_pos
-			or_block:          ast.OrExpr{
-				stmts: or_stmts
-				kind:  or_kind
-				pos:   or_pos
-			}
+			or_block:          or_block
 			scope:             p.scope
 			comments:          comments
 		}

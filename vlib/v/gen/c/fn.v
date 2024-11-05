@@ -864,16 +864,47 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
 		}
-	} else if node.left is ast.IndexExpr && node.name == '' {
-		g.is_fn_index_call = true
-		g.expr(node.left)
-		g.is_fn_index_call = false
+	} else if !g.inside_curry_call && node.left is ast.IndexExpr && node.name == '' {
+		if node.or_block.kind == .absent {
+			old_is_fn_index_call := g.is_fn_index_call
+			g.is_fn_index_call = true
+			g.expr(node.left)
+			g.is_fn_index_call = old_is_fn_index_call
+		} else {
+			// map1['key']() handling
+			line := g.go_before_last_stmt()
+			g.empty_line = true
+
+			// temp var for map1['key'] where value is a fn to be called
+			left_typ := g.table.value_type(node.left.left_type)
+			tmp_res := g.new_tmp_var()
+			fn_sym := g.table.sym(left_typ).info as ast.FnType
+			fn_type := g.fn_var_signature(fn_sym.func.return_type, fn_sym.func.params.map(it.typ),
+				tmp_res)
+
+			old_is_fn_index_call := g.is_fn_index_call
+			g.is_fn_index_call = true
+			g.write('${fn_type} = ')
+			g.expr(node.left)
+			g.is_fn_index_call = old_is_fn_index_call
+			g.writeln(';')
+
+			tmp_res2 := g.new_tmp_var()
+			// uses the `tmp_res` as fn name (where it is a ptr to fn var)
+			g.write('${g.styp(node.return_type)} ${tmp_res2} = ${tmp_res}')
+			g.last_tmp_call_var << tmp_res2
+			old_inside_curry_call := g.inside_curry_call
+			g.inside_curry_call = true
+			// map1['key']()() handling
+			g.expr(node)
+			g.inside_curry_call = old_inside_curry_call
+			g.write2(line, '*(${g.base_type(node.return_type)}*)${tmp_res2}.data')
+			return
+		}
 	} else if !g.inside_curry_call && node.left is ast.CallExpr && node.name == '' {
 		if node.or_block.kind == .absent {
 			g.expr(node.left)
 		} else {
-			old_inside_curry_call := g.inside_curry_call
-			g.inside_curry_call = true
 			ret_typ := node.return_type
 
 			line := g.go_before_last_stmt()
@@ -884,8 +915,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 			g.last_tmp_call_var << tmp_res
 			g.expr(node.left)
-			g.expr(node)
 
+			old_inside_curry_call := g.inside_curry_call
+			g.inside_curry_call = true
+			g.expr(node)
 			g.inside_curry_call = old_inside_curry_call
 			g.write2(line, '*(${g.base_type(ret_typ)}*)${tmp_res}.data')
 			return
