@@ -53,6 +53,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
+	is_generic_default := sym.kind !in [.struct, .array_fixed] && node.typ.has_flag(.generic) // T{}
 	is_array := sym.kind in [.array_fixed, .array]
 	if sym.kind == .array_fixed {
 		arr_info := sym.array_fixed_info()
@@ -63,7 +64,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	// detect if we need type casting on msvc initialization
 	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
 
-	if !g.inside_cinit && !is_anon && !is_array && !const_msvc_init {
+	if !g.inside_cinit && !is_anon && !is_generic_default && !is_array && !const_msvc_init {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -128,6 +129,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			}
 		} else if is_multiline {
 			g.writeln('(${styp}){')
+		} else if is_generic_default {
+			g.write(g.type_default(node.typ))
 		} else {
 			g.write('(${styp}){')
 		}
@@ -356,7 +359,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.indent--
 	}
 
-	if !initialized {
+	if !initialized && !is_generic_default {
 		if nr_fields > 0 {
 			g.write('0')
 		} else {
@@ -364,7 +367,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 
-	if !is_array_fixed_struct_init {
+	if !is_array_fixed_struct_init && !is_generic_default {
 		g.write('}')
 	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {

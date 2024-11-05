@@ -2928,7 +2928,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 
 			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 				if c.comptime.is_comptime_var(node.expr) {
-					node.expr_type = c.comptime.get_comptime_var_type(node.expr as ast.Ident)
+					node.expr_type = c.comptime.get_type(node.expr as ast.Ident)
 				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
 					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
 				}
@@ -3805,7 +3805,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
 		typ := if c.comptime.is_comptime_var(node) {
-			ctype := c.comptime.get_comptime_var_type(node)
+			ctype := c.comptime.get_type(node)
 			if ctype != ast.void_type {
 				ctype
 			} else {

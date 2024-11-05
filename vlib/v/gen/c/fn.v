@@ -1294,7 +1294,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
 			if left_node.obj.ct_type_var != .no_comptime {
-				rec_type = g.comptime.get_comptime_var_type(left_node)
+				rec_type = g.comptime.get_type(left_node)
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
 			} else if left_node.obj.smartcasts.len > 0 {
@@ -1456,7 +1456,7 @@ fn (mut g Gen) resolve_comptime_args(func &ast.Fn, mut node_ ast.CallExpr, concr
 				if mut call_arg.expr.obj is ast.Var {
 					node_.args[i].typ = call_arg.expr.obj.typ
 					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
-						mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := g.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.sym(ctyp)
 							param_sym := g.table.final_sym(param_typ)
@@ -1490,7 +1490,7 @@ fn (mut g Gen) resolve_comptime_args(func &ast.Fn, mut node_ ast.CallExpr, concr
 							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
-						mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := g.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.final_sym(call_arg.typ)
 							param_typ_sym := g.table.sym(param_typ)
@@ -1561,7 +1561,7 @@ fn (mut g Gen) resolve_comptime_args(func &ast.Fn, mut node_ ast.CallExpr, concr
 					}
 				} else if mut call_arg.expr.right is ast.Ident {
 					if g.comptime.get_ct_type_var(call_arg.expr.right) != .generic_var {
-						mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr.right)
+						mut ctyp := g.comptime.get_type(call_arg.expr.right)
 						if ctyp != ast.void_type {
 							comptime_args[k] = ctyp
 							if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
@@ -1658,7 +1658,7 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 		if node.left.obj is ast.Var {
 			if node.left.obj.smartcasts.len > 0 {
 				if node.left.obj.ct_type_var == .smartcast {
-					unwrapped_rec_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.left))
+					unwrapped_rec_type = g.unwrap_generic(g.comptime.get_type(node.left))
 				} else {
 					unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
 					cast_sym := g.table.sym(unwrapped_rec_type)
@@ -2171,7 +2171,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		mut typ := node.args[0].typ
 		if g.comptime.is_comptime_var(node.args[0].expr) {
-			ctyp := g.comptime.get_comptime_var_type(node.args[0].expr)
+			ctyp := g.comptime.get_type(node.args[0].expr)
 			if ctyp != ast.void_type {
 				typ = ctyp
 			}
@@ -2223,7 +2223,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							if cast_sym.info is ast.Aggregate {
 								typ = cast_sym.info.types[g.aggregate_type_idx]
 							} else if expr.obj.ct_type_var == .smartcast {
-								typ = g.unwrap_generic(g.comptime.get_comptime_var_type(expr))
+								typ = g.unwrap_generic(g.comptime.get_type(expr))
 							}
 						}
 						// handling println( var or { ... })
@@ -2575,7 +2575,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				if i < node.expected_arg_types.len && node.expected_arg_types[i].has_flag(.generic)
 					&& arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
 					exp_option := node.expected_arg_types[i].has_flag(.option)
-					expected_types[i] = g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+					expected_types[i] = g.unwrap_generic(g.comptime.get_type(arg.expr))
 					if !exp_option {
 						expected_types[i] = expected_types[i].clear_flag(.option)
 					}
@@ -2609,7 +2609,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		} else if arg.expr is ast.ComptimeSelector && i < node.expected_arg_types.len
 			&& node.expected_arg_types[i].has_flag(.generic) {
 			exp_option := node.expected_arg_types[i].has_flag(.option)
-			expected_types[i] = g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+			expected_types[i] = g.unwrap_generic(g.comptime.get_type(arg.expr))
 			if !exp_option {
 				expected_types[i] = expected_types[i].clear_flag(.option)
 			}
@@ -2776,7 +2776,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
 	arg_typ := if arg.expr is ast.ComptimeSelector {
-		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+		g.unwrap_generic(g.comptime.get_type(arg.expr))
 	} else {
 		g.unwrap_generic(arg.typ)
 	}
