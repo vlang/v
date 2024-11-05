@@ -134,7 +134,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
-		return c.comptime.get_comptime_var_type(node)
+		return c.comptime.get_type(node)
 	}
 	if node.method_name == 'res' {
 		if !c.inside_defer {
@@ -790,7 +790,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 						if mut cond.left is ast.SelectorExpr && cond.right is ast.ComptimeType {
 							comptime_type := cond.right as ast.ComptimeType
 							if c.comptime.is_comptime_selector_type(cond.left) {
-								checked_type := c.comptime.get_comptime_var_type(cond.left)
+								checked_type := c.comptime.get_type(cond.left)
 								return if c.comptime.is_comptime_type(checked_type, comptime_type) {
 									.eval
 								} else {

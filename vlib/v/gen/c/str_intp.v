@@ -191,7 +191,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
 			if g.comptime.get_ct_type_var(expr) == .smartcast {
-				exp_typ = g.comptime.get_comptime_var_type(expr)
+				exp_typ = g.comptime.get_type(expr)
 			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
@@ -245,7 +245,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
 		if g.comptime.is_comptime_var(expr) {
-			ctyp := g.comptime.get_comptime_var_type(expr)
+			ctyp := g.comptime.get_type(expr)
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
 				if node_.fmts[i] == `_` {

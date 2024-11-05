@@ -151,12 +151,22 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 			g.writeln('\t${metaname}.op = ${expr_op_str};')
 			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
 			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
+			left_type := if g.comptime.is_comptime_expr(node.expr.left) {
+				g.comptime.get_type(node.expr.left)
+			} else {
+				node.expr.left_type
+			}
+			right_type := if g.comptime.is_comptime_expr(node.expr.right) {
+				g.comptime.get_type(node.expr.right)
+			} else {
+				node.expr.right_type
+			}
 			if kind != .pass {
 				g.write('\t${metaname}.lvalue = ')
-				g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
+				g.gen_assert_single_expr(node.expr.left, left_type)
 				g.writeln(';')
 				g.write('\t${metaname}.rvalue = ')
-				g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
+				g.gen_assert_single_expr(node.expr.right, right_type)
 				g.writeln(';')
 			}
 		}
@@ -188,7 +198,10 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				g.write(ctoslit(expr_str))
 			}
 		}
-		ast.IfExpr, ast.MatchExpr {
+		ast.ParExpr {
+			g.gen_assert_single_expr(expr.expr, typ)
+		}
+		ast.IfExpr, ast.MatchExpr, ast.RangeExpr {
 			g.write(ctoslit(expr_str))
 		}
 		ast.IndexExpr {
@@ -203,6 +216,8 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				// TODO: remove this check;
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
+				g.write(ctoslit(expr_str))
+			} else if expr.right is ast.Ident {
 				g.write(ctoslit(expr_str))
 			} else {
 				g.gen_expr_to_string(expr, typ)

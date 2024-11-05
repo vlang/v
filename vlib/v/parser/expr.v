@@ -467,35 +467,13 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos := p.tok.pos()
 					args := p.call_args()
 					p.check(.rpar)
-					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
-					mut or_pos := p.tok.pos()
-					if p.tok.kind == .key_orelse {
-						// `foo() or {}``
-						or_kind = .block
-						or_stmts, or_pos = p.or_block(.with_err_var)
-					}
-					if p.tok.kind in [.question, .not] {
-						is_not := p.tok.kind == .not
-						// `foo()?`
-						p.next()
-						if p.inside_defer {
-							p.error_with_pos('error propagation not allowed inside `defer` blocks',
-								p.prev_tok.pos())
-						}
-						or_kind = if is_not { .propagate_result } else { .propagate_option }
-					}
-
+					or_block := p.gen_or_block()
 					node = ast.CallExpr{
 						name:           'anon'
 						left:           node
 						args:           args
 						pos:            pos
-						or_block:       ast.OrExpr{
-							stmts: or_stmts
-							kind:  or_kind
-							pos:   or_pos
-						}
+						or_block:       or_block
 						scope:          p.scope
 						is_return_used: p.is_call_return_used()
 					}
@@ -596,14 +574,30 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				pos := p.tok.pos()
 				args := p.call_args()
 				p.check(.rpar)
+				or_block := p.gen_or_block()
 				node = ast.CallExpr{
 					left:           node
 					args:           args
 					pos:            pos
 					scope:          p.scope
+					or_block:       or_block
 					is_return_used: p.is_call_return_used()
 				}
 				p.is_stmt_ident = is_stmt_ident
+				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
+					p.next()
+					pos2 := p.tok.pos()
+					args2 := p.call_args()
+					p.check(.rpar)
+					or_block2 := p.gen_or_block()
+					node = ast.CallExpr{
+						left:     node
+						args:     args2
+						pos:      pos2
+						scope:    p.scope
+						or_block: or_block2
+					}
+				}
 			}
 		} else if p.tok.kind == .key_as {
 			// sum type as cast `x := SumType as Variant`
@@ -704,6 +698,35 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	return node
 }
 
+fn (mut p Parser) gen_or_block() ast.OrExpr {
+	if p.tok.kind == .key_orelse {
+		// `foo() or {}``
+		or_stmts, or_pos := p.or_block(.with_err_var)
+		return ast.OrExpr{
+			kind:  ast.OrKind.block
+			stmts: or_stmts
+			pos:   or_pos
+		}
+	} else if p.tok.kind in [.question, .not] {
+		or_pos := p.tok.pos()
+		is_not := p.tok.kind == .not
+		// `foo()?`
+		p.next()
+		if p.inside_defer {
+			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
+		}
+		return ast.OrExpr{
+			kind: if is_not { ast.OrKind.propagate_result } else { ast.OrKind.propagate_option }
+			pos:  or_pos
+		}
+	} else {
+		return ast.OrExpr{
+			kind: ast.OrKind.absent
+			pos:  p.tok.pos()
+		}
+	}
+}
+
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	prev_inside_infix := p.inside_infix
 	p.inside_infix = true
@@ -750,6 +773,18 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	if is_key_in {
+		if p.tok.kind == .dotdot {
+			p.check(.dotdot)
+			pos_high := p.tok.pos()
+			right = ast.RangeExpr{
+				low:      right
+				has_low:  true
+				high:     p.expr(0)
+				has_high: true
+				pos:      pos_high
+				is_gated: false
+			}
+		}
 		p.inside_in_array = false
 	}
 	p.expecting_type = prev_expecting_type

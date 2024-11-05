@@ -2885,33 +2885,13 @@ fn (mut p Parser) name_expr() ast.Expr {
 					pos := p.tok.pos()
 					args := p.call_args()
 					p.check(.rpar)
-
-					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{}
-					mut or_pos := p.tok.pos()
-					if p.tok.kind in [.not, .question] {
-						or_kind = if p.tok.kind == .not {
-							.propagate_result
-						} else {
-							.propagate_option
-						}
-						p.next()
-					}
-					if p.tok.kind == .key_orelse {
-						// `foo() or {}``
-						or_kind = .block
-						or_stmts, or_pos = p.or_block(.with_err_var)
-					}
+					or_block := p.gen_or_block()
 					node = ast.CallExpr{
 						left:           node
 						args:           args
 						pos:            pos
 						scope:          p.scope
-						or_block:       ast.OrExpr{
-							stmts: or_stmts
-							kind:  or_kind
-							pos:   or_pos
-						}
+						or_block:       or_block
 						is_return_used: p.is_call_return_used()
 					}
 				}
@@ -3351,23 +3331,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 		args := p.call_args()
 		p.check(.rpar)
-		mut or_stmts := []ast.Stmt{}
-		mut or_kind := ast.OrKind.absent
-		mut or_pos := p.tok.pos()
-		if p.tok.kind == .key_orelse {
-			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
-		}
-		// `foo()?`
-		if p.tok.kind in [.question, .not] {
-			is_not := p.tok.kind == .not
-			p.next()
-			if p.inside_defer {
-				p.error_with_pos('error propagation not allowed inside `defer` blocks',
-					p.prev_tok.pos())
-			}
-			or_kind = if is_not { .propagate_result } else { .propagate_option }
-		}
+		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
@@ -3380,11 +3344,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			is_method:         true
 			concrete_types:    concrete_types
 			concrete_list_pos: concrete_list_pos
-			or_block:          ast.OrExpr{
-				stmts: or_stmts
-				kind:  or_kind
-				pos:   or_pos
-			}
+			or_block:          or_block
 			scope:             p.scope
 			comments:          comments
 			is_return_used:    p.is_call_return_used()
@@ -4200,6 +4160,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
+	already_exists := if _ := p.table.enum_decls[name] { true } else { false }
 	mut enum_type := ast.int_type
 	mut typ_pos := token.Pos{}
 	if p.tok.kind == .key_as {
@@ -4272,8 +4233,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		all_bits_set_value := '0b' + '1'.repeat(fields.len)
-		p.codegen('
+		if !already_exists {
+			// enum already exists, skip method creation to avoid duplicate method errors
+			all_bits_set_value := '0b' + '1'.repeat(fields.len)
+			p.codegen('
 //
 @[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
 @[inline] ${pubfn} (    e &${enum_name}) has(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) != 0 }
@@ -4285,6 +4248,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 @[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag_ ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag_))) } }
 //
 ')
+		}
 	}
 	// Add the generic `Enum.from[T](x T) !T {` static method too:
 	mut isb := strings.new_builder(1024)
@@ -4353,10 +4317,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		is_pub: is_pub
 	})
+
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
 	}
+
 	if idx == ast.invalid_type_idx {
 		enum_type = idx
 	}
@@ -4374,8 +4340,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		comments:         enum_decl_comments
 	}
 
-	p.table.register_enum_decl(enum_decl)
-
+	if !already_exists {
+		p.table.register_enum_decl(enum_decl)
+	}
 	return enum_decl
 }
 
