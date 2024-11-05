@@ -1979,10 +1979,13 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 		name := p.expect_name()
 		if p.tok == .assign {
 			p.next()
+			old_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			fields << ast.FieldDecl{
 				name:  name
 				value: p.expr(.lowest)
 			}
+			p.inside_assign_rhs = old_assign_rhs
 		} else {
 			fields << ast.FieldDecl{
 				name: name

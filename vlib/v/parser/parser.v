@@ -52,7 +52,6 @@ mut:
 	inside_assign_rhs        bool // inside rhs of assignment
 	inside_return            bool // inside return expr
 	inside_cast              bool // inside cast expr
-	inside_const             bool // inside constdecl expr
 	inside_assert            bool // inside assert
 	inside_unsafe_fn         bool
 	inside_str_interp        bool
@@ -3947,10 +3946,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.unexpected(got: 'eof', expecting: 'an expression')
 			return ast.ConstDecl{}
 		}
-		old_inside_const := p.inside_const
-		p.inside_const = true
+		old_inside_rhs := p.inside_assign_rhs
+		p.inside_assign_rhs = true
 		expr := p.expr(0)
-		p.inside_const = old_inside_const
+		p.inside_assign_rhs = old_inside_rhs
 		if is_block {
 			end_comments << p.eat_comments(same_line: true)
 		}
