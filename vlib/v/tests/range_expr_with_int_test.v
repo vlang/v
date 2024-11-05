@@ -39,7 +39,7 @@ fn test_main() {
 }
 
 fn test_rune() {
-	assert `a` !in `a`..`h`
+	assert `a` in `a`..`h`
 	assert `h` !in `a`..`h`
 
 	assert `f` in `a`..`h`
