@@ -4260,6 +4260,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			}
 		}
 		if !already_exists {
+			// enum already exists, skip method creation to avoid duplicate method errors
 			all_bits_set_value := '0b' + '1'.repeat(fields.len)
 			p.codegen('
 //
