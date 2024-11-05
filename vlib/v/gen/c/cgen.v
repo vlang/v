@@ -2156,7 +2156,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			eprintln('cgen: ${g.file.path:-30} | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
 		}
 	}
+	old_inside_call := g.inside_call
 	g.inside_call = false
+	defer {
+		g.inside_call = old_inside_call
+	}
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
 	}
