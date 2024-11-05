@@ -4070,7 +4070,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		mut typ_pos := token.Pos{}
 		if has_expr {
 			p.next() // =
+			old_inside_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			expr = p.expr(0)
+			p.inside_assign_rhs = old_inside_rhs
 			match mut expr {
 				ast.CastExpr, ast.StructInit, ast.ArrayInit, ast.ChanInit {
 					typ = expr.typ
