@@ -234,7 +234,7 @@ fn veb_tmpl_${fn_name}() string {
 
 	mut state := State.simple
 	template_ext := os.file_ext(template_file)
-	if template_ext.to_lower() == '.html' {
+	if template_ext.to_lower_ascii() == '.html' {
 		state = .html
 	}
 

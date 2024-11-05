@@ -200,7 +200,7 @@ fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 		// can not be a too large number, no need for more expensive checks
 		return ast.int_literal_type
 	}
-	lit := node.val.replace('_', '').all_after('-').to_upper()
+	lit := node.val.replace('_', '').all_after('-').to_upper_ascii()
 	is_neg := node.val.starts_with('-')
 	if lit.len > 2 && lit[0] == `0` && lit[1] in [`B`, `X`, `O`] {
 		if lohi := iencoding_map[lit[1]] {

@@ -159,7 +159,7 @@ fn test_big_closure_string_${i}() {
 
 	for return_type in return_types {
 		typ := return_type.name
-		styp := typ.replace_each(['?', 'option_', '!', 'result_']).to_lower()
+		styp := typ.replace_each(['?', 'option_', '!', 'result_']).to_lower_ascii()
 		init := return_type.init
 		assertion := return_type.assertion
 

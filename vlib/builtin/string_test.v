@@ -1055,6 +1055,33 @@ fn test_lower() {
 	assert !s.is_lower()
 }
 
+fn test_lower_ascii() {
+	mut s := 'A'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'a'
+	assert s.to_lower_ascii().len == 1
+	s = 'HELLO'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'hello'
+	assert s.to_lower_ascii().len == 5
+	s = 'Aloha'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'aloha'
+	s = 'Have A nice Day!'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == 'have a nice day!'
+	s = 'hi'
+	assert s.is_lower()
+	assert s.to_lower_ascii() == 'hi'
+	assert 'aloha!'[0] == `a`
+	assert 'aloha!'[5] == `!`
+	s = '123'
+	assert !s.is_lower()
+	assert s.to_lower_ascii() == '123'
+	s = ''
+	assert !s.is_lower()
+}
+
 fn test_upper() {
 	mut s := 'a'
 	assert !s.is_upper()
@@ -1076,6 +1103,31 @@ fn test_upper() {
 	s = '123'
 	assert !s.is_upper()
 	assert s.to_upper() == '123'
+	s = ''
+	assert !s.is_upper()
+}
+
+fn test_upper_ascii() {
+	mut s := 'a'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'A'
+	assert s.to_upper_ascii().len == 1
+	s = 'hello'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'HELLO'
+	assert s.to_upper_ascii().len == 5
+	s = 'Aloha'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'ALOHA'
+	s = 'have a nice day!'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == 'HAVE A NICE DAY!'
+	s = 'HI'
+	assert s.is_upper()
+	assert s.to_upper_ascii() == 'HI'
+	s = '123'
+	assert !s.is_upper()
+	assert s.to_upper_ascii() == '123'
 	s = ''
 	assert !s.is_upper()
 }
