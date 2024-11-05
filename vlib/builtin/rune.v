@@ -116,6 +116,7 @@ pub fn (c rune) to_title() rune {
 }
 
 // `map_to` rune map mode: .to_upper/.to_lower/.to_title
+@[direct_array_access]
 fn (c rune) map_to(mode MapMode) rune {
 	mut start := 0
 	mut end := rune_maps.len / 5

@@ -24,7 +24,7 @@ struct RuneMap {
 // The overhead for representing it as an array of structs was ~36KB in .c, while with the flat array of ints, it is ~12KB.
 // Given that xz can compress it to ~2.2KB, it could be probably represented in an even more compact way...
 const rune_maps = [
-	0x41, 0x5A, 0, 32, 0,
+	i32(0x41), 0x5A, 0, 32, 0,
 	0x61, 0x7A, -32, 0, -32,
 	0xB5, 0xB5, 743, 0, 743,
 	0xC0, 0xD6, 0, 32, 0,
