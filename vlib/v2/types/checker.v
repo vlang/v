@@ -1490,16 +1490,18 @@ fn (mut c Checker) resolve_call_or_cast_expr(expr ast.CallOrCastExpr) ast.Expr {
 	// expr_type := c.expr(expr.expr)
 	if lhs_type is FnType {
 		return ast.CallExpr{
-			lhs:  expr.lhs
-			args: [expr.expr]
-			pos:  expr.pos
+			lhs:            expr.lhs
+			args:           [expr.expr]
+			pos:            expr.pos
+			is_return_used: true
 		}
 	} else {
 		// c.log(expr)
 		return ast.CastExpr{
-			typ:  expr.lhs
-			expr: expr.expr
-			pos:  expr.pos
+			typ:            expr.lhs
+			expr:           expr.expr
+			pos:            expr.pos
+			is_return_used: true
 		}
 	}
 }

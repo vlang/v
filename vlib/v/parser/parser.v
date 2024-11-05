@@ -49,6 +49,9 @@ mut:
 	inside_fn_return         bool
 	inside_fn_concrete_type  bool // parsing fn_name[concrete_type]() call expr
 	inside_call_args         bool // true inside f(  ....  )
+	inside_assign_rhs        bool // inside rhs of assignment
+	inside_return            bool // inside return expr
+	inside_cast              bool // inside cast expr
 	inside_unsafe_fn         bool
 	inside_str_interp        bool
 	inside_array_lit         bool
@@ -2837,7 +2840,10 @@ fn (mut p Parser) name_expr() ast.Expr {
 			mut expr := ast.empty_expr
 			mut arg := ast.empty_expr
 			mut has_arg := false
+			old_inside_cast := p.inside_cast
+			p.inside_cast = true
 			expr = p.expr(0)
+			p.inside_cast = old_inside_cast
 			// TODO, string(b, len)
 			if p.tok.kind == .comma && to_typ.idx() == ast.string_type_idx {
 				p.next()
@@ -2897,15 +2903,16 @@ fn (mut p Parser) name_expr() ast.Expr {
 						or_stmts, or_pos = p.or_block(.with_err_var)
 					}
 					node = ast.CallExpr{
-						left:     node
-						args:     args
-						pos:      pos
-						scope:    p.scope
-						or_block: ast.OrExpr{
+						left:           node
+						args:           args
+						pos:            pos
+						scope:          p.scope
+						or_block:       ast.OrExpr{
 							stmts: or_stmts
 							kind:  or_kind
 							pos:   or_pos
 						}
+						is_return_used: p.is_call_return_used()
 					}
 				}
 			}
@@ -3011,7 +3018,10 @@ fn (mut p Parser) name_expr() ast.Expr {
 			start_pos := p.tok.pos()
 			mut to_typ := p.parse_type()
 			p.check(.lpar)
+			old_inside_cast := p.inside_cast
+			p.inside_cast = true
 			expr := p.expr(0)
+			p.inside_cast = old_inside_cast
 			end_pos := p.tok.pos()
 			p.check(.rpar)
 			node = ast.CastExpr{
@@ -3377,6 +3387,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			}
 			scope:             p.scope
 			comments:          comments
+			is_return_used:    p.is_call_return_used()
 		}
 		return mcall_expr
 	}
@@ -4024,7 +4035,10 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
+	old_inside_return := p.inside_return
+	p.inside_return = true
 	exprs := p.expr_list()
+	p.inside_return = old_inside_return
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs:    exprs

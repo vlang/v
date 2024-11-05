@@ -254,7 +254,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					typ := p.parse_type()
 					typname := p.table.sym(typ).name
 					p.check(.lpar)
+					old_inside_cast := p.inside_cast
+					p.inside_cast = true
 					expr := p.expr(0)
+					p.inside_cast = old_inside_cast
 					p.check(.rpar)
 					node = ast.CastExpr{
 						typ:     typ
@@ -484,16 +487,17 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					}
 
 					node = ast.CallExpr{
-						name:     'anon'
-						left:     node
-						args:     args
-						pos:      pos
-						or_block: ast.OrExpr{
+						name:           'anon'
+						left:           node
+						args:           args
+						pos:            pos
+						or_block:       ast.OrExpr{
 							stmts: or_stmts
 							kind:  or_kind
 							pos:   or_pos
 						}
-						scope:    p.scope
+						scope:          p.scope
+						is_return_used: p.is_call_return_used()
 					}
 				}
 				return node
@@ -593,10 +597,11 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				args := p.call_args()
 				p.check(.rpar)
 				node = ast.CallExpr{
-					left:  node
-					args:  args
-					pos:   pos
-					scope: p.scope
+					left:           node
+					args:           args
+					pos:            pos
+					scope:          p.scope
+					is_return_used: p.is_call_return_used()
 				}
 				p.is_stmt_ident = is_stmt_ident
 			}

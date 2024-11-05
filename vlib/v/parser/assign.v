@@ -186,7 +186,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	mut pos := p.tok.pos()
 	p.next()
 	mut right := []ast.Expr{cap: left.len}
+	old_inside_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
 	right = p.expr_list()
+	p.inside_assign_rhs = old_inside_assign_rhs
 	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
 	mut is_static := false

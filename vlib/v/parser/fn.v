@@ -111,11 +111,18 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		}
 		scope:              p.scope
 		comments:           comments
+		is_return_used:     p.is_call_return_used()
 	}
 }
 
+// is_call_return_used checks if current context requires a CallExpr to save the return
+fn (mut p Parser) is_call_return_used() bool {
+	return p.inside_assign_rhs || p.inside_return || p.inside_cast || p.inside_if_expr
+		|| p.inside_call_args
+}
+
 fn (mut p Parser) call_args() []ast.CallArg {
-	prev_inside_call_args := true
+	prev_inside_call_args := p.inside_call_args
 	p.inside_call_args = true
 	defer {
 		p.inside_call_args = prev_inside_call_args
@@ -1168,7 +1175,8 @@ fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	} else {
 		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
-			scope: p.scope
+			scope:          p.scope
+			is_return_used: true
 		}
 	}
 	pos := spos.extend(p.prev_tok.pos())
@@ -1189,7 +1197,8 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	} else {
 		p.error_with_pos('expression in `go` must be a function call', expr.pos())
 		ast.CallExpr{
-			scope: p.scope
+			scope:          p.scope
+			is_return_used: true
 		}
 	}
 	pos := spos.extend(p.prev_tok.pos())
