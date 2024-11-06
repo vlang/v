@@ -897,7 +897,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 			if cname in ast.valid_comptime_if_os {
 				mut is_os_target_equal := true
 				if !c.pref.output_cross_c {
-					target_os := c.pref.os.str().to_lower()
+					target_os := c.pref.os.str().to_lower_ascii()
 					is_os_target_equal = cname == target_os
 				}
 				return if is_os_target_equal { .eval } else { .skip }
