@@ -3995,7 +3995,10 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
 	exprs := p.expr_list(true)
+	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs:    exprs
