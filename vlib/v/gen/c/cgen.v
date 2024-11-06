@@ -7163,6 +7163,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (tmp.state != 0) { ... }`
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
+	if or_block.kind == .block && or_block.stmts.len == 0 {
+		// generate nothing, block is empty
+		g.write(';')
+		return
+	}
 	cvar_name := c_name(var_name)
 	mut mr_styp := g.base_type(return_type)
 	is_none_ok := return_type == ast.ovoid_type
