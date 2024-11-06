@@ -61,7 +61,7 @@ fn string_to_i64(s string) ?i64 {
 	number := s[0..index].i64()
 	suffix := if index < s.len { s[index..] } else { 'c' }
 
-	multiplier := match suffix.to_lower() {
+	multiplier := match suffix.to_lower_ascii() {
 		'b' { block }
 		'k' { kilo }
 		'kb', 'kib' { kilobyte }

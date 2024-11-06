@@ -2037,13 +2037,13 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 }
 
 fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
-	upcase_language := language.str().to_upper()
+	upcase_language := language.str().to_upper_ascii()
 	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
 		pos)
 }
 
 fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
-	upcase_language := language.str().to_upper()
+	upcase_language := language.str().to_upper_ascii()
 	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
 		pos)
 }
@@ -2756,7 +2756,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		|| p.mod.all_after_last('.') == p.tok.lit) {
 		// p.tok.lit has been recognized as a module
 		if language in [.c, .js, .wasm] {
-			mod = language.str().to_upper()
+			mod = language.str().to_upper_ascii()
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used

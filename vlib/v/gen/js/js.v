@@ -2510,7 +2510,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						tsym := g.table.sym(typ)
 						if tsym.language == .js && (tsym.name == 'JS.Number'
 							|| tsym.name == 'JS.Boolean' || tsym.name == 'JS.String') {
-							g.write(' === "${tsym.name[3..].to_lower()}"')
+							g.write(' === "${tsym.name[3..].to_lower_ascii()}"')
 						} else {
 							g.write(' instanceof ')
 							g.expr(branch.exprs[sumtype_index])
@@ -2529,7 +2529,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						tsym := g.table.sym(typ)
 						if tsym.language == .js && (tsym.name == 'Number'
 							|| tsym.name == 'Boolean' || tsym.name == 'String') {
-							g.write(' === ${tsym.name.to_lower()}')
+							g.write(' === ${tsym.name.to_lower_ascii()}')
 						} else {
 							g.write(' instanceof ')
 							g.expr(branch.exprs[sumtype_index])

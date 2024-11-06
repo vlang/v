@@ -251,7 +251,8 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		|| file.ends_with('_android_outside_termux.c.v') {
 		return false
 	}
-	if prefs.os != .wasm32_emscripten && (file.ends_with('_wasm32_emscripten.c.v') || file.ends_with('_wasm32_emscripten.v')) {
+	if prefs.os != .wasm32_emscripten
+		&& (file.ends_with('_wasm32_emscripten.c.v') || file.ends_with('_wasm32_emscripten.v')) {
 		return false
 	}
 	return true

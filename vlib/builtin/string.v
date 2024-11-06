@@ -655,7 +655,7 @@ pub fn (s string) u8_array() []u8 {
 	if tmps.len == 0 {
 		return []u8{}
 	}
-	tmps = tmps.to_lower()
+	tmps = tmps.to_lower_ascii()
 	if tmps.starts_with('0x') {
 		tmps = tmps[2..]
 		if tmps.len == 0 {
@@ -1526,14 +1526,16 @@ pub fn (s string) ends_with(p string) bool {
 	return false
 }
 
-// to_lower returns the string in all lowercase characters.
-// TODO: only works with ASCII
+// to_lower_ascii returns the string in all lowercase characters.
+// It is faster than `s.to_lower()`, but works only when the input
+// string `s` is composed *entirely* from ASCII characters.
+// Use `s.to_lower()` instead, if you are not sure.
 @[direct_array_access]
-pub fn (s string) to_lower() string {
+pub fn (s string) to_lower_ascii() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
-			if s.str[i].is_capital() {
+			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
 			} else {
 				b[i] = s.str[i]
@@ -1544,7 +1546,22 @@ pub fn (s string) to_lower() string {
 	}
 }
 
-// is_lower returns `true` if all characters in the string are lowercase.
+// to_lower returns the string in all lowercase characters.
+// Example: assert 'Hello V'.to_lower() == 'hello v'
+@[direct_array_access]
+pub fn (s string) to_lower() string {
+	if s.is_pure_ascii() {
+		return s.to_lower_ascii()
+	}
+	mut runes := s.runes()
+	for i in 0 .. runes.len {
+		runes[i] = runes[i].to_lower()
+	}
+	return runes.string()
+}
+
+// is_lower returns `true`, if all characters in the string are lowercase.
+// It only works when the input is composed entirely from ASCII characters.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
@@ -1559,10 +1576,12 @@ pub fn (s string) is_lower() bool {
 	return true
 }
 
-// to_upper returns the string in all uppercase characters.
-// Example: assert 'Hello V'.to_upper() == 'HELLO V'
+// to_upper_ascii returns the string in all UPPERCASE characters.
+// It is faster than `s.to_upper()`, but works only when the input
+// string `s` is composed *entirely* from ASCII characters.
+// Use `s.to_upper()` instead, if you are not sure.
 @[direct_array_access]
-pub fn (s string) to_upper() string {
+pub fn (s string) to_upper_ascii() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
@@ -1577,7 +1596,22 @@ pub fn (s string) to_upper() string {
 	}
 }
 
+// to_upper returns the string in all uppercase characters.
+// Example: assert 'Hello V'.to_upper() == 'HELLO V'
+@[direct_array_access]
+pub fn (s string) to_upper() string {
+	if s.is_pure_ascii() {
+		return s.to_upper_ascii()
+	}
+	mut runes := s.runes()
+	for i in 0 .. runes.len {
+		runes[i] = runes[i].to_upper()
+	}
+	return runes.string()
+}
+
 // is_upper returns `true` if all characters in the string are uppercase.
+// It only works when the input is composed entirely from ASCII characters.
 // See also: [`byte.is_capital`](#byte.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
@@ -2728,7 +2762,7 @@ pub fn (s string) camel_to_snake() string {
 		return ''
 	}
 	if s.len == 1 {
-		return s.to_lower()
+		return s.to_lower_ascii()
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
 	// Rather than checking whether the iterator variable is > 1 inside the loop,

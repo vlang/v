@@ -145,7 +145,7 @@ pub fn random_set(cfg PrimeCfg) ![]PrimeSet {
 		cfg.r.split('.'),
 		cfg.a.split('.'),
 		cfg.b.split('.'),
-	].map(random_list(it.map(it.trim_space().to_lower())))
+	].map(random_list(it.map(it.trim_space().to_lower_ascii())))
 
 	// test for empty lists
 	//
