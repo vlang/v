@@ -3328,6 +3328,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
+		mut left_node := unsafe { left }
+		if mut left_node is ast.CallExpr {
+			left_node.is_return_used = true
+		}
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
@@ -3386,7 +3390,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		scope:      p.scope
 		next_token: p.tok.kind
 	}
-
+	mut left_node := unsafe { left }
+	if mut left_node is ast.CallExpr {
+		left_node.is_return_used = true
+	}
 	return sel_expr
 }
 
