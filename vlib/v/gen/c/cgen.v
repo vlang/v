@@ -7165,7 +7165,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	if or_block.kind == .block && or_block.stmts.len == 0 {
 		// generate nothing, block is empty
-		g.write(';')
+		g.write(';\n${util.tabs(g.indent)}(void)${var_name};')
 		return
 	}
 	cvar_name := c_name(var_name)
