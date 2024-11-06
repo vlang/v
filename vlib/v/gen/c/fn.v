@@ -2428,7 +2428,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			if arg.expr is ast.CallExpr && arg.expr.name in ['json.encode', 'json.encode_pretty'] {
 				t := '_arg_expr_${arg.expr.name.replace('.', '_')}_${arg.expr.pos.pos}'
 				defer {
-					g.writeln(';\nstring_free(&${t});')
+					g.writeln(';\n\tstring_free(&${t});')
 				}
 			}
 			continue
