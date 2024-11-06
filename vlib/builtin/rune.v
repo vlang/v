@@ -124,7 +124,7 @@ fn (c rune) map_to(mode MapMode) rune {
 			} else {
 				unsafe { *(cur_map + 3) }
 			}
-			if offset == ul {
+			if offset == rune_maps_ul {
 				is_odd := (c - unsafe { *cur_map }) % 2 == 1
 				if mode == .to_upper && is_odd {
 					return c - 1
