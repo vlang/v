@@ -170,6 +170,13 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		p.open_scope()
 		stmts := p.parse_block_no_scope(false)
+		// if the last expr is a callexpr mark its return as used
+		if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
+			mut last_expr := stmts.last() as ast.ExprStmt
+			if mut last_expr.expr is ast.CallExpr {
+				last_expr.expr.is_return_used = true
+			}
+		}
 		branches << ast.IfBranch{
 			cond:     cond
 			stmts:    stmts
@@ -431,7 +438,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs := p.expr_list()
+			exprs := p.expr_list(true)
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}

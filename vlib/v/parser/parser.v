@@ -49,15 +49,12 @@ mut:
 	inside_fn_return         bool
 	inside_fn_concrete_type  bool // parsing fn_name[concrete_type]() call expr
 	inside_call_args         bool // true inside f(  ....  )
-	inside_assign_rhs        bool // inside rhs of assignment
-	inside_return            bool // inside return expr
-	inside_cast              bool // inside cast expr
-	inside_assert            bool // inside assert
 	inside_unsafe_fn         bool
 	inside_str_interp        bool
 	inside_array_lit         bool
 	inside_in_array          bool
 	inside_infix             bool
+	inside_assign_rhs        bool // rhs assignment
 	inside_match             bool // to separate `match A { }` from `Struct{}`
 	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
@@ -94,6 +91,7 @@ mut:
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
 	expecting_type           bool // `is Type`, expecting type
+	expecting_value          bool = true // true where a node value will be used
 	cur_fn_name              string
 	cur_fn_scope             &ast.Scope = unsafe { nil }
 	label_names              []string
@@ -997,10 +995,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_assert {
 			p.next()
 			mut pos := p.tok.pos()
-			old_inside_assert := p.inside_assert
-			p.inside_assert = true
 			expr := p.expr(0)
-			p.inside_assert = old_inside_assert
 			pos.update_last_line(p.prev_tok.line_nr)
 			mut extra := ast.empty_expr
 			mut extra_pos := p.tok.pos()
@@ -1864,10 +1859,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() []ast.Expr {
+fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
-		expr := p.expr(0)
+		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
 		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
@@ -2235,7 +2230,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := p.expr_list()
+	left := p.expr_list(false)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2844,10 +2839,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			mut expr := ast.empty_expr
 			mut arg := ast.empty_expr
 			mut has_arg := false
-			old_inside_cast := p.inside_cast
-			p.inside_cast = true
 			expr = p.expr(0)
-			p.inside_cast = old_inside_cast
 			// TODO, string(b, len)
 			if p.tok.kind == .comma && to_typ.idx() == ast.string_type_idx {
 				p.next()
@@ -2896,7 +2888,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 						pos:            pos
 						scope:          p.scope
 						or_block:       or_block
-						is_return_used: p.is_call_return_used()
+						is_return_used: p.expecting_value
 					}
 				}
 			}
@@ -3002,10 +2994,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			start_pos := p.tok.pos()
 			mut to_typ := p.parse_type()
 			p.check(.lpar)
-			old_inside_cast := p.inside_cast
-			p.inside_cast = true
 			expr := p.expr(0)
-			p.inside_cast = old_inside_cast
 			end_pos := p.tok.pos()
 			p.check(.rpar)
 			node = ast.CastExpr{
@@ -3351,7 +3340,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_block:          or_block
 			scope:             p.scope
 			comments:          comments
-			is_return_used:    p.is_call_return_used()
+			is_return_used:    p.expecting_value
 		}
 		return mcall_expr
 	}
@@ -3946,10 +3935,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.unexpected(got: 'eof', expecting: 'an expression')
 			return ast.ConstDecl{}
 		}
-		old_inside_rhs := p.inside_assign_rhs
-		p.inside_assign_rhs = true
 		expr := p.expr(0)
-		p.inside_assign_rhs = old_inside_rhs
 		if is_block {
 			end_comments << p.eat_comments(same_line: true)
 		}
@@ -4002,10 +3988,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	old_inside_return := p.inside_return
-	p.inside_return = true
-	exprs := p.expr_list()
-	p.inside_return = old_inside_return
+	exprs := p.expr_list(true)
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs:    exprs
@@ -4070,10 +4053,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		mut typ_pos := token.Pos{}
 		if has_expr {
 			p.next() // =
-			old_inside_rhs := p.inside_assign_rhs
-			p.inside_assign_rhs = true
 			expr = p.expr(0)
-			p.inside_assign_rhs = old_inside_rhs
 			match mut expr {
 				ast.CastExpr, ast.StructInit, ast.ArrayInit, ast.ChanInit {
 					typ = expr.typ

@@ -7144,6 +7144,10 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								&& expr_stmt.expr.or_block.kind == .absent {
 								g.write('${cvar_name} = ')
 								return_wrapped = true
+							} else if expr_stmt.expr is ast.CallExpr {
+								if expr_stmt.expr.is_return_used {
+									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+								}
 							} else {
 								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 							}
