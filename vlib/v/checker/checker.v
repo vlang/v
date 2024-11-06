@@ -3804,16 +3804,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := if c.comptime.is_comptime_var(node) {
-			ctype := c.comptime.get_type(node)
-			if ctype != ast.void_type {
-				ctype
-			} else {
-				info.typ
-			}
-		} else {
-			info.typ
-		}
+		typ := c.comptime.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !typ.has_flag(.option) {
