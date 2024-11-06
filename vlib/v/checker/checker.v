@@ -1371,7 +1371,8 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
 				last_stmt_typ := c.expr(mut stmt.expr)
-				if c.inside_assign && mut stmt.expr is ast.CallExpr && !stmt.expr.is_return_used {
+				if (c.inside_return || c.inside_assign) && mut stmt.expr is ast.CallExpr
+					&& !stmt.expr.is_return_used {
 					// last expr on if/match is a callexpr
 					stmt.expr.is_return_used = true
 				}
@@ -2218,12 +2219,12 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				}
 			}
 			if !c.inside_return {
-				// if the last expr is a callexpr mark its return as used
-				if c.inside_assign && c.is_last_stmt && mut node.expr is ast.CallExpr
-					&& !node.expr.is_return_used {
-					node.expr.is_return_used = true
-				}
 				c.check_expr_option_or_result_call(node.expr, or_typ)
+			}
+			// if the last expr is a callexpr mark its return as used
+			if (c.inside_return || c.inside_assign) && c.is_last_stmt
+				&& mut node.expr is ast.CallExpr && !node.expr.is_return_used {
+				node.expr.is_return_used = true
 			}
 			// TODO: This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_option_or_result_call(node.expr, ast.void_type)
