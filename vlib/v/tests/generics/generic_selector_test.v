@@ -28,7 +28,7 @@ pub fn (mut l List[T]) append(mut node Node[T]) ?int {
 	for {
 		if curr_node != none {
 			if next_node := curr_node?.next {
-				curr_node = next_node
+				curr_node = unsafe { next_node }
 			} else {
 				curr_node?.next = &node
 				l.size = l.size + 1
