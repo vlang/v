@@ -1084,7 +1084,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
-		if !found && node.is_static_method && fn_name.ends_with('__static__from_string') {
+		if !found && fn_name.ends_with('__static__from_string') {
 			enum_name := fn_name.all_before('__static__')
 			mut full_enum_name := if !enum_name.contains('.') {
 				c.mod + '.' + enum_name
