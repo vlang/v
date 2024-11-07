@@ -117,7 +117,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		if arg.is_mut {
 			sig += 'mut_'
 		}
-		sig += t.sym(typ).cname.to_lower()
+		sig += t.sym(typ).cname.to_lower_ascii()
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -1564,6 +1564,18 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 				}
 				continue
 			}
+			match sym.info {
+				SumType, Struct, Interface {
+					if method := sym.find_method_with_generic_parent(imethod.name) {
+						msg := t.is_same_method(imethod, method)
+						if msg.len > 0 {
+							return false
+						}
+						continue
+					}
+				}
+				else {}
+			}
 			return false
 		}
 		// verify fields
@@ -2000,7 +2012,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 							}
 						}
 						// Update type in `info.embeds`, if it's embed
-						if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
+						if fields[i].is_embed {
 							mut parent_sym := t.sym(typ)
 							mut parent_info := parent_sym.info
 							if mut parent_info is Struct {
@@ -2186,7 +2198,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									fields[i].typ = t_typ
 								}
 								// Update type in `info.embeds`, if it's embed
-								if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
+								if fields[i].is_embed {
 									for mut embed in parent_info.embeds {
 										if embed == orig_type {
 											embed = fields[i].typ

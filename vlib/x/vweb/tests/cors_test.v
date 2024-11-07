@@ -3,7 +3,7 @@ import net.http
 import os
 import time
 
-const port = 13012
+const port = 23012
 const localserver = 'http://localhost:${port}'
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'

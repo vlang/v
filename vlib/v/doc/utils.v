@@ -102,7 +102,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				continue
 			}
 			// Use own paragraph for "highlight" comments.
-			ll := l.to_lower()
+			ll := l.to_lower_ascii()
 			mut continue_line_loop := false
 			for key in highlight_keys {
 				if ll.starts_with(key) {

@@ -38,8 +38,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// This is done so that all generic function calls can
 		// have a chance to populate c.table.fn_generic_types with
 		// the correct concrete types.
-		c.file.generic_fns << node
-		c.need_recheck_generic_fns = true
+		fkey := node.fkey()
+		if !c.generic_fns[fkey] {
+			c.need_recheck_generic_fns = true
+			c.generic_fns[fkey] = true
+			c.file.generic_fns << node
+		}
 		return
 	}
 	node.ninstances++
@@ -192,6 +196,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	if node.is_method {
+		if node.receiver.name in c.global_names {
+			c.error('cannot use global variable name `${node.receiver.name}` as receiver',
+				node.receiver_pos)
+		}
 		if node.receiver.typ.has_flag(.option) {
 			c.error('option types cannot have methods', node.receiver_pos)
 		}
@@ -260,7 +268,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					param.pos)
 			}
 			if param.typ.has_flag(.result) {
-				c.error('Result type argument is not supported currently', param.type_pos)
+				c.error('result type arguments are not supported', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
@@ -608,6 +616,22 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
+		if parent_var.typ != ast.no_type {
+			parent_var_sym := c.table.final_sym(parent_var.typ)
+			if parent_var_sym.info is ast.FnType {
+				ret_typ := c.unwrap_generic(parent_var_sym.info.func.return_type)
+				if ret_typ.has_flag(.generic) {
+					generic_names := c.table.generic_type_names(ret_typ)
+					curr_list := c.table.cur_fn.generic_names.join(', ')
+					for name in generic_names {
+						if name !in c.table.cur_fn.generic_names {
+							c.error('Add the generic type `${name}` to the anon fn generic list type, that is currently `[${curr_list}]`',
+								var.pos)
+						}
+					}
+				}
+			}
+		}
 		if parent_var.expr is ast.IfGuardExpr {
 			sym := c.table.sym(parent_var.expr.expr_type)
 			if sym.info is ast.MultiReturn {
@@ -679,6 +703,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 				// (`x.field`) can't result in allocations and don't need to be assigned to
 				// temporary vars.
 				// Only expressions like `str + 'b'` need to be freed.
+				continue
+			}
+			if arg.expr is ast.CallExpr && arg.expr.name in ['json.encode', 'json.encode_pretty'] {
 				continue
 			}
 			node.args[i].is_tmp_autofree = true
@@ -1783,7 +1810,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
 					if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
 							param_sym := c.table.final_sym(param_typ)
@@ -1806,7 +1833,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
-						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.final_sym(call_arg.typ)
 							param_typ_sym := c.table.sym(param_typ)
@@ -1868,18 +1895,27 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 								comptime_args[k] = ctyp
 							}
 						}
+					} else if call_arg.expr.obj.ct_type_var == .generic_var {
+						mut ctyp := c.comptime.get_type(call_arg.expr)
+						if node_.args[i].expr.is_auto_deref_var() {
+							ctyp = ctyp.deref()
+						}
+						if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+							ctyp = ctyp.set_nr_muls(0)
+						}
+						comptime_args[k] = ctyp
 					}
 				}
 			} else if call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr.right)
+					comptime_args[k] = c.comptime.get_type(call_arg.expr.right)
 					comptime_args[k] = comptime_args[k].deref()
 					if comptime_args[k].nr_muls() > 0 && param_typ.nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeSelector {
-				ct_value := c.comptime.get_comptime_var_type(call_arg.expr)
+				ct_value := c.comptime.get_type(call_arg.expr)
 				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
 					arg_sym := c.table.final_sym(call_arg.typ)
@@ -1904,7 +1940,7 @@ fn (mut c Checker) resolve_comptime_args(func &ast.Fn, node_ ast.CallExpr, concr
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeCall {
-				comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr)
+				comptime_args[k] = c.comptime.get_type(call_arg.expr)
 			}
 		}
 	}
@@ -2738,7 +2774,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		fkey := node.fkey()
 		all_generic_fns[fkey]++
 		if all_generic_fns[fkey] > generic_fn_cutoff_limit_per_fn {
-			c.error('generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
+			c.error('${fkey} generic function visited more than ${generic_fn_cutoff_limit_per_fn} times',
 				node.pos)
 			return error('fkey: ${fkey}')
 		}
@@ -3595,6 +3631,62 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			node.return_type = ast.void_type
 		} else {
 			node.return_type = node.left_type
+		}
+	} else if method_name in ['sort_with_compare', 'sorted_with_compare'] {
+		if node.args.len != 1 {
+			c.error('`.${method_name}()` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+		} else {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+			}
+			arg_type := c.expr(mut node.args[0].expr)
+			arg_sym := c.table.sym(arg_type)
+			if arg_sym.kind == .function {
+				func_info := arg_sym.info as ast.FnType
+				if func_info.func.params.len == 2 {
+					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[0].type_pos)
+					}
+					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
+						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
+						expected_typ_str := c.table.type_to_str(elem_typ.ref())
+						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+							func_info.func.params[1].type_pos)
+					}
+				}
+			}
+			node.args[0].typ = arg_type
+			if method := c.table.find_method(left_sym, method_name) {
+				c.check_expected_call_arg(arg_type, method.params[1].typ, node.language,
+					node.args[0]) or {
+					c.error('${err.msg()} in argument 1 to `${left_sym.name}.${method_name}`',
+						node.args[0].pos)
+				}
+			}
+			for mut arg in node.args {
+				c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
+			}
+			if method_name == 'sort_with_compare' {
+				node.return_type = ast.void_type
+				node.receiver_type = node.left_type.ref()
+			} else {
+				node.return_type = node.left_type
+				node.receiver_type = node.left_type
+			}
+		}
+	} else if method_name in ['reverse', 'reverse_in_place'] {
+		if node.args.len != 0 {
+			c.error('`.${method_name}` does not have any arguments', node.args[0].pos)
+		} else {
+			if method_name == 'reverse' {
+				node.return_type = node.left_type
+			} else {
+				node.return_type = ast.void_type
+			}
 		}
 	}
 	return node.return_type

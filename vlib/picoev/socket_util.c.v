@@ -30,10 +30,7 @@ fn accept(fd int) int {
 
 @[inline]
 fn close_socket(fd int) {
-	$if trace_fd ? {
-		eprintln('close ${fd}')
-	}
-
+	trace_fd('close ${fd}')
 	$if windows {
 		C.closesocket(fd)
 	} $else {
@@ -44,11 +41,9 @@ fn close_socket(fd int) {
 @[inline]
 fn setup_sock(fd int) ! {
 	flag := 1
-
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
-
 	$if freebsd {
 		if C.fcntl(fd, C.F_SETFL, C.SOCK_NONBLOCK) != 0 {
 			return error('fcntl failed')
@@ -88,11 +83,7 @@ fn fatal_socket_error(fd int) bool {
 			return false
 		}
 	}
-
-	$if trace_fd ? {
-		eprintln('fatal error ${fd}: ${C.errno}')
-	}
-
+	trace_fd('fatal error ${fd}: ${C.errno}')
 	return true
 }
 
@@ -103,22 +94,16 @@ fn listen(config Config) !int {
 	if fd == -1 {
 		return error('Failed to create socket')
 	}
-
-	$if trace_fd ? {
-		eprintln('listen: ${fd}')
-	}
-
+	trace_fd('listen: ${fd}')
 	// Setting flags for socket
 	flag := 1
 	flag_zero := 0
 	net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)))!
-
 	if config.family == .ip6 {
 		// set socket to dualstack so connections to both ipv4 and ipv6 addresses
 		// can be accepted
 		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)))!
 	}
-
 	$if linux {
 		// epoll socket options
 		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
@@ -131,20 +116,18 @@ fn listen(config Config) !int {
 				sizeof(int)))!
 		}
 	}
-
 	// addr settings
 	saddr := '${config.host}:${config.port}'
-	addrs := net.resolve_addrs(saddr, config.family, .tcp) or { panic(err) }
+	addrs := net.resolve_addrs(saddr, config.family, .tcp) or {
+		panic('Error while resolving `${saddr}`, err: ${err}')
+	}
 	addr := addrs[0]
 	alen := addr.len()
-
 	net.socket_error_message(C.bind(fd, voidptr(&addr), alen), 'binding to ${saddr} failed')!
 	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
-
 	setup_sock(fd) or {
 		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
-
 	return fd
 }

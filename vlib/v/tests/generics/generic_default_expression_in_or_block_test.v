@@ -16,6 +16,7 @@ fn (mut s St[T]) peek_or_default() T {
 }
 
 fn (mut s St[T]) push(e T) {
+	s.peek() or { T{} }
 	x := s.peek() or { T{} } // this is deliberate
 	$if x is $array {
 		dump(x)

@@ -733,13 +733,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.expr.pos())
 						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
 						mut right := ast.CallExpr{
-							name:          'clone'
-							left:          init_field.expr
-							left_type:     got_type
-							is_method:     true
-							receiver_type: got_type.ref()
-							return_type:   got_type
-							scope:         c.fn_scope
+							name:           'clone'
+							left:           init_field.expr
+							left_type:      got_type
+							is_method:      true
+							receiver_type:  got_type.ref()
+							return_type:    got_type
+							scope:          c.fn_scope
+							is_return_used: true
 						}
 						got_type = c.expr(mut right)
 						node.init_fields[i].expr = right
@@ -806,8 +807,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 				// all the fields of initialized embedded struct are ignored, they are considered initialized
 				sym := c.table.sym(init_field.typ)
-				if init_field.name != '' && init_field.name[0].is_capital() && sym.kind == .struct
-					&& sym.language == .v {
+				if init_field.is_embed && sym.kind == .struct && sym.language == .v {
 					struct_fields := c.table.struct_fields(sym)
 					for struct_field in struct_fields {
 						inited_fields << struct_field.name
@@ -928,7 +928,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 			continue
 		}
 		sym := c.table.sym(field.typ)
-		if field.name != '' && field.name[0].is_capital() && sym.info is ast.Struct {
+		if field.is_embed && sym.info is ast.Struct {
 			// struct embeds
 			continue
 		}
@@ -957,13 +957,14 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 			}
 			continue
 		}
-		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
+		field_is_option := field.typ.has_flag(.option)
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field_is_option
 			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated {
 			c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
 				node.pos)
 			continue
 		}
-		if !field.typ.has_flag(.option) {
+		if !field_is_option {
 			if sym.kind == .struct {
 				c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
 					node.pos)
@@ -976,7 +977,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 			}
 		}
 		// Do not allow empty uninitialized interfaces
-		if sym.kind == .interface && !node.has_update_expr && !field.typ.has_flag(.option)
+		if sym.kind == .interface && !node.has_update_expr && !field_is_option
 			&& sym.language != .js && !field.attrs.contains('noinit') {
 			// TODO: should be an error instead, but first `ui` needs updating.
 			c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
@@ -996,7 +997,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 			c.error('field `${type_sym.name}.${field.name}` must be initialized', node.pos)
 		}
 		if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
-			&& !field.typ.has_flag(.option) {
+			&& !field_is_option {
 			field_final_sym := c.table.final_sym(field.typ)
 			if field_final_sym.kind == .struct {
 				mut zero_struct_init := ast.StructInit{
@@ -1063,7 +1064,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			if sym.language == .c {
 				continue
 			}
-			if field.name != '' && field.name[0].is_capital() && sym.language == .v {
+			if field.is_embed && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
@@ -1106,7 +1107,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			if sym.language == .c {
 				continue
 			}
-			if field.name != '' && field.name[0].is_capital() && sym.language == .v {
+			if field.is_embed && sym.language == .v {
 				// an embedded struct field
 				continue
 			}

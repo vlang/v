@@ -1701,7 +1701,7 @@ pub fn (t &TypeSymbol) embed_name() string {
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
 	for mut method in unsafe { t.methods } {
-		if method.name == name {
+		if method.name.len == name.len && method.name == name {
 			return true
 		}
 	}
@@ -1715,7 +1715,7 @@ pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	for mut method in unsafe { t.methods } {
-		if method.name == name {
+		if method.name.len == name.len && method.name == name {
 			return method
 		}
 	}
@@ -1830,7 +1830,7 @@ pub fn (t &TypeSymbol) has_field(name string) bool {
 
 fn (a &Aggregate) find_field(name string) ?StructField {
 	for mut field in unsafe { a.fields } {
-		if field.name == name {
+		if field.name.len == name.len && field.name == name {
 			return field
 		}
 	}
@@ -1839,7 +1839,7 @@ fn (a &Aggregate) find_field(name string) ?StructField {
 
 pub fn (i &Interface) find_field(name string) ?StructField {
 	for mut field in unsafe { i.fields } {
-		if field.name == name {
+		if field.name.len == name.len && field.name == name {
 			return field
 		}
 	}
@@ -1848,7 +1848,7 @@ pub fn (i &Interface) find_field(name string) ?StructField {
 
 pub fn (i &Interface) find_method(name string) ?Fn {
 	for mut method in unsafe { i.methods } {
-		if method.name == name {
+		if method.name.len == name.len && method.name == name {
 			return method
 		}
 	}
@@ -1857,7 +1857,7 @@ pub fn (i &Interface) find_method(name string) ?Fn {
 
 pub fn (i &Interface) has_method(name string) bool {
 	for mut method in unsafe { i.methods } {
-		if method.name == name {
+		if method.name.len == name.len && method.name == name {
 			return true
 		}
 	}
@@ -1866,7 +1866,7 @@ pub fn (i &Interface) has_method(name string) bool {
 
 pub fn (s Struct) find_field(name string) ?StructField {
 	for mut field in unsafe { s.fields } {
-		if field.name == name {
+		if name.len == field.name.len && field.name == name {
 			return field
 		}
 	}
@@ -1941,4 +1941,29 @@ pub fn (i Interface) get_methods() []string {
 		return parent_info.methods.map(it.name)
 	}
 	return []
+}
+
+pub fn (t &TypeSymbol) get_methods() []Fn {
+	mut methods := t.methods.filter(it.attrs.len == 0) // methods without attrs first
+	mut methods_with_attrs := t.methods.filter(it.attrs.len > 0) // methods with attrs second
+	match t.info {
+		Struct, Interface, SumType {
+			if t.info.parent_type.has_flag(.generic) {
+				parent_sym := global_table.sym(t.info.parent_type)
+				match parent_sym.info {
+					Struct, Interface, SumType {
+						parent_methods := parent_sym.methods
+						if parent_methods.len > 0 {
+							methods << parent_methods.filter(it.attrs.len == 0)
+							methods_with_attrs << parent_methods.filter(it.attrs.len > 0)
+						}
+					}
+					else {}
+				}
+			}
+		}
+		else {}
+	}
+	methods << methods_with_attrs
+	return methods
 }

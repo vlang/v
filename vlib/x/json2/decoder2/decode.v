@@ -549,19 +549,6 @@ pub fn decode[T](val string) !T {
 	return result
 }
 
-fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
-	$if initialized_sumtype is $sumtype {
-		$for v in initialized_sumtype.variants {
-			if initialized_sumtype is v {
-				mut val := initialized_sumtype
-				decoder.decode_value(mut val)!
-				return T(val)
-			}
-		}
-	}
-	return initialized_sumtype
-}
-
 // decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
@@ -620,38 +607,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			val = string_buffer.bytestr()
 		}
 	} $else $if T.unaliased_typ is $sumtype {
-		value_info := decoder.current_node.value
-
-		$for v in val.variants {
-			if value_info.value_kind == .string_ {
-				$if v.typ in [string, time.Time] {
-					val = T(v)
-				}
-			} else if value_info.value_kind == .number {
-				$if v.typ in [$float, $int, $enum] {
-					val = T(v)
-				}
-			} else if value_info.value_kind == .boolean {
-				$if v.typ is bool {
-					val = T(v)
-				}
-			} else if value_info.value_kind == .object {
-				$if v.typ is $map {
-					val = T(v)
-				} $else $if v.typ is $struct {
-					// Will only be supported when json object has field "_type"
-					error('cannot encode value with ${typeof(val).name} type')
-				}
-			} else if value_info.value_kind == .array {
-				$if v.typ is $array {
-					val = T(v)
-				}
-			}
-		}
-		decoded_sumtype := decoder.get_decoded_sumtype_workaround(val)!
-		unsafe {
-			*val = decoded_sumtype
-		}
+		decoder.decode_sumtype(mut val)!
 	} $else $if T.unaliased_typ is time.Time {
 		time_info := decoder.current_node.value
 
@@ -662,66 +618,15 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			val = time.parse_rfc3339(string_time) or { time.Time{} }
 		}
 	} $else $if T.unaliased_typ is $map {
-		map_info := decoder.current_node.value
-
-		if map_info.value_kind == .object {
-			map_position := map_info.position
-			map_end := map_position + map_info.length
-
-			decoder.current_node = decoder.current_node.next
-			for {
-				if decoder.current_node == unsafe { nil } {
-					break
-				}
-
-				key_info := decoder.current_node.value
-
-				if key_info.position >= map_end {
-					break
-				}
-
-				key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
-
-				decoder.current_node = decoder.current_node.next
-
-				value_info := decoder.current_node.value
-
-				if value_info.position + value_info.length >= map_end {
-					break
-				}
-
-				mut map_value := create_map_value(val)
-
-				decoder.decode_value(mut map_value)!
-
-				val[key] = map_value
-			}
-		}
+		decoder.decode_map(mut val)!
+		return
 	} $else $if T.unaliased_typ is $array {
-		array_info := decoder.current_node.value
-
-		if array_info.value_kind == .array {
-			array_position := array_info.position
-			array_end := array_position + array_info.length
-
-			decoder.current_node = decoder.current_node.next
-			for {
-				if decoder.current_node == unsafe { nil } {
-					break
-				}
-				value_info := decoder.current_node.value
-
-				if value_info.position + value_info.length >= array_end {
-					break
-				}
-
-				mut array_element := create_array_element(val)
-
-				decoder.decode_value(mut array_element)!
-
-				val << array_element
-			}
-		}
+		decoder.decode_array(mut val)!
+		// return to avoid the next increment of the current node
+		// this is because the current node is already incremented in the decode_array function
+		// remove this line will cause the current node to be incremented twice
+		// and bug recursive array decoding like `[][]int{}`
+		return
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
@@ -768,7 +673,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
 		}
-	} $else $if T.unaliased_typ in [$int, $float, $enum] {
+	} $else $if T.unaliased_typ in [$float, $int, $enum] {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {
@@ -784,6 +689,69 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 	if decoder.current_node != unsafe { nil } {
 		decoder.current_node = decoder.current_node.next
+	}
+}
+
+fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
+	array_info := decoder.current_node.value
+
+	if array_info.value_kind == .array {
+		decoder.current_node = decoder.current_node.next
+
+		array_position := array_info.position
+		array_end := array_position + array_info.length
+
+		for {
+			if decoder.current_node == unsafe { nil }
+				|| decoder.current_node.value.position >= array_end {
+				break
+			}
+
+			mut array_element := T{}
+
+			decoder.decode_value(mut array_element)!
+
+			val << array_element
+		}
+	}
+}
+
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+	map_info := decoder.current_node.value
+
+	if map_info.value_kind == .object {
+		map_position := map_info.position
+		map_end := map_position + map_info.length
+
+		decoder.current_node = decoder.current_node.next
+		for {
+			if decoder.current_node == unsafe { nil }
+				|| decoder.current_node.value.position >= map_end {
+				break
+			}
+
+			key_info := decoder.current_node.value
+
+			if key_info.position >= map_end {
+				break
+			}
+
+			key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+
+			decoder.current_node = decoder.current_node.next
+
+			value_info := decoder.current_node.value
+
+			if value_info.position + value_info.length >= map_end {
+				break
+			}
+
+			mut map_value := V{}
+
+			decoder.decode_value(mut map_value)!
+
+			val[key] = map_value
+		}
 	}
 }
 
@@ -803,14 +771,6 @@ fn get_value_kind(value u8) ValueKind {
 		return .null
 	}
 	return .unknown
-}
-
-fn create_array_element[T](array []T) T {
-	return T{}
-}
-
-fn create_map_value[K, V](map_ map[K]V) V {
-	return V{}
 }
 
 fn create_value_from_optional[T](val ?T) T {
@@ -953,7 +913,7 @@ pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
 	} $else $if T.unaliased_typ is $float {
 		mut is_negative := false
 		mut decimal_seen := false
-		mut decimal_divider := int(1)
+		mut decimal_divider := T(1)
 
 		for ch in data {
 			if ch == `-` {
@@ -965,13 +925,13 @@ pub fn string_buffer_to_generic_number[T](result &T, data []u8) {
 				continue
 			}
 
-			digit := T(ch - `0`)
+			digit := T(ch - u8(`0`))
 
 			if decimal_seen {
 				decimal_divider *= 10
 				*result += T(digit / decimal_divider)
 			} else {
-				*result = *result * 10 + digit
+				*result = T(*result * 10 + digit)
 			}
 		}
 		if is_negative {

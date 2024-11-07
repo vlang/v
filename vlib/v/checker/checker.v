@@ -33,7 +33,7 @@ pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map'
 	'first', 'last', 'pop', 'delete', 'insert', 'prepend']
 pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 pub const fixed_array_builtin_methods = ['contains', 'index', 'any', 'all', 'wait', 'map', 'sort',
-	'sorted']
+	'sorted', 'sort_with_compare', 'sorted_with_compare', 'reverse', 'reverse_in_place']
 pub const fixed_array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(fixed_array_builtin_methods)
 // TODO: remove `byte` from this list when it is no longer supported
 pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
@@ -121,8 +121,9 @@ mut:
 	is_last_stmt                     bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	using_new_err_struct             bool
-	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
-	inside_sql                       bool // to handle sql table fields pseudo variables
+	need_recheck_generic_fns         bool            // need recheck generic fns because there are cascaded nested generic fn
+	generic_fns                      map[string]bool // register generic fns that needs recheck once
+	inside_sql                       bool            // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
@@ -1442,7 +1443,6 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
 				last_stmt_typ := c.expr(mut stmt.expr)
-
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
 						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
@@ -1543,6 +1543,9 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						&& c.table.sym(stmt.typ).kind == .voidptr) {
 						return
 					}
+				}
+				if expr_return_type.has_flag(.generic) {
+					return
 				}
 				// opt_returning_string() or { ... 123 }
 				type_name := c.table.type_to_str(stmt.typ)
@@ -2996,7 +2999,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 
 			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 				if c.comptime.is_comptime_var(node.expr) {
-					node.expr_type = c.comptime.get_comptime_var_type(node.expr as ast.Ident)
+					node.expr_type = c.comptime.get_type(node.expr as ast.Ident)
 				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
 					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
 				}
@@ -3873,7 +3876,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
 		typ := if c.comptime.is_comptime_var(node) {
-			ctype := c.comptime.get_comptime_var_type(node)
+			ctype := c.comptime.get_type(node)
 			if ctype != ast.void_type {
 				ctype
 			} else {
@@ -3902,6 +3905,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		info := node.info as ast.IdentFn
 		if func := c.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
+				if node.concrete_types.len == 0 {
+					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
+						node.pos)
+				}
 				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 				if concrete_types.all(!it.has_flag(.generic)) {
 					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
@@ -4075,6 +4082,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		// Non-anon-function object (not a call), e.g. `onclick(my_click)`
 		if func := c.table.find_fn(name) {
+			if func.generic_names.len > 0 {
+				if node.concrete_types.len == 0 {
+					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
+						node.pos)
+				}
+			}
 			return c.resolve_var_fn(func, mut node, name)
 		}
 	}
@@ -4567,6 +4580,9 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		} else if mut node.right is ast.SelectorExpr {
 			if node.right.expr.is_literal() {
 				c.error('cannot take the address of a literal value', node.pos.extend(node.right.pos))
+			} else if node.right.expr is ast.StructInit {
+				c.error('should not create object instance on the heap to simply access a member',
+					node.pos.extend(node.right.pos))
 			}
 			right_sym := c.table.sym(right_type)
 			expr_sym := c.table.sym(node.right.expr_type)
@@ -5365,11 +5381,14 @@ fn (mut c Checker) fail_if_stack_struct_action_outside_unsafe(mut ident ast.Iden
 		}
 		if obj.is_stack_obj && !c.inside_unsafe {
 			sym := c.table.sym(obj.typ.set_nr_muls(0))
-			if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-				suggestion := if sym.kind == .struct {
+			is_heap := sym.is_heap()
+			if (!is_heap || !obj.typ.is_ptr()) && !c.pref.translated && !c.file.is_translated {
+				suggestion := if !is_heap && sym.kind == .struct {
 					'declaring `${sym.name}` as `@[heap]`'
-				} else {
+				} else if !is_heap {
 					'wrapping the `${sym.name}` object in a `struct` declared as `@[heap]`'
+				} else { // e.g. var from `for a in heap_object {`
+					'declaring `${ident.name}` mutable'
 				}
 				c.error('`${ident.name}` cannot be ${failed_action} outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 					ident.pos)
@@ -5426,10 +5445,10 @@ fn (c &Checker) check_import_sym_conflict(ident string) bool {
 	for import_sym in c.file.imports {
 		// Check if alias exists or not
 		if !import_sym.alias.is_blank() {
-			if import_sym.alias == ident {
+			if import_sym.alias.len == ident.len && import_sym.alias == ident {
 				return true
 			}
-		} else if import_sym.mod == ident {
+		} else if import_sym.mod.len == ident.len && import_sym.mod == ident {
 			return true
 		}
 	}

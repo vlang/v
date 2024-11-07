@@ -134,7 +134,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
-		return c.comptime.get_comptime_var_type(node)
+		return c.comptime.get_type(node)
 	}
 	if node.method_name == 'res' {
 		if !c.inside_defer {
@@ -311,10 +311,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			return
 		}
 	} else if node.kind == .methods {
-		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
-		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
-		methods << methods_with_attrs
-
+		methods := sym.get_methods()
 		for method in methods {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
@@ -774,6 +771,9 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface {
 							c.expr(mut cond.left)
+						} else {
+							return c.check_compatible_types((cond.left as ast.TypeNode).typ,
+								cond.right)
 						}
 						return .unknown
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
@@ -790,7 +790,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 						if mut cond.left is ast.SelectorExpr && cond.right is ast.ComptimeType {
 							comptime_type := cond.right as ast.ComptimeType
 							if c.comptime.is_comptime_selector_type(cond.left) {
-								checked_type := c.comptime.get_comptime_var_type(cond.left)
+								checked_type := c.comptime.get_type(cond.left)
 								return if c.comptime.is_comptime_type(checked_type, comptime_type) {
 									.eval
 								} else {
@@ -897,7 +897,7 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 			if cname in ast.valid_comptime_if_os {
 				mut is_os_target_equal := true
 				if !c.pref.output_cross_c {
-					target_os := c.pref.os.str().to_lower()
+					target_os := c.pref.os.str().to_lower_ascii()
 					is_os_target_equal = cname == target_os
 				}
 				return if is_os_target_equal { .eval } else { .skip }

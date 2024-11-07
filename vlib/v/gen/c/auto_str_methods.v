@@ -517,6 +517,9 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		if i > 0 {
 			fn_str += ', '
 		}
+		if arg.typ.has_flag(.option) {
+			fn_str += '?'
+		}
 		fn_str += util.strip_main_name(g.table.get_type_name(g.unwrap_generic(arg.typ)))
 	}
 	fn_str += ')'

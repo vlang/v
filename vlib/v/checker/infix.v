@@ -279,8 +279,15 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 				else {
-					c.error('`${node.op.str()}` can only be used with arrays and maps',
-						node.pos)
+					if mut node.right is ast.RangeExpr {
+						if !left_final_sym.is_number() && left_final_sym.kind != .rune {
+							c.error('`${left_final_sym.name}` is an invalid type for range expression',
+								node.pos)
+						}
+					} else {
+						c.error('`${node.op.str()}` can only be used with arrays and maps',
+							node.pos)
+					}
 				}
 			}
 			if mut node.left is ast.CallExpr {

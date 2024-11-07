@@ -1,0 +1,19 @@
+pub struct Post {
+	part ?u8
+}
+
+fn (p Post) get_part_1() string {
+	part := p.part or { return '' }
+	match part {
+		0 { return '' }
+		else { return '${part}' }
+	}
+}
+
+fn (p Post) get_part_2() string {
+	match p.part {
+		// Next weird line crashes compiler before sugesting 'unwrap' var?
+		none, 1 { return '' }
+		else { return '${p.part}' }
+	}
+}

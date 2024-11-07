@@ -148,6 +148,8 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'native.v',
 		'_',
+		'wasm32_emscripten.c.v',
+		'_',
 	])
 	return res
 }
@@ -247,6 +249,10 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		}
 	} else if file.ends_with('_android.c.v') || file.ends_with('_termux.c.v')
 		|| file.ends_with('_android_outside_termux.c.v') {
+		return false
+	}
+	if prefs.os != .wasm32_emscripten
+		&& (file.ends_with('_wasm32_emscripten.c.v') || file.ends_with('_wasm32_emscripten.v')) {
 		return false
 	}
 	return true

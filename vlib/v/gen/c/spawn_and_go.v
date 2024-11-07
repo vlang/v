@@ -101,6 +101,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	if expr.is_method {
 		g.write('${arg_tmp_var}${dot}arg0 = ')
+		if expr.left is ast.Ident && expr.left.obj.typ.is_ptr()
+			&& !node.call_expr.receiver_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(expr.left)
 		g.writeln(';')
 	}

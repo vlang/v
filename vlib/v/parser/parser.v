@@ -54,6 +54,7 @@ mut:
 	inside_array_lit         bool
 	inside_in_array          bool
 	inside_infix             bool
+	inside_assign_rhs        bool // rhs assignment
 	inside_match             bool // to separate `match A { }` from `Struct{}`
 	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
@@ -90,6 +91,7 @@ mut:
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
 	expecting_type           bool // `is Type`, expecting type
+	expecting_value          bool = true // true where a node value will be used
 	cur_fn_name              string
 	cur_fn_scope             &ast.Scope = unsafe { nil }
 	label_names              []string
@@ -157,8 +159,9 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 		errors:    []errors.Error{}
 		warnings:  []errors.Warning{}
 	}
-	res := p.parse()
+	mut res := p.parse()
 	unsafe { p.free_scanner() }
+	res.is_template_text = true
 	return res
 }
 
@@ -178,8 +181,9 @@ pub fn parse_text(text string, path string, mut table ast.Table, comments_mode s
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)
-	res := p.parse()
+	mut res := p.parse()
 	unsafe { p.free_scanner() }
+	res.is_parse_text = true
 	return res
 }
 
@@ -1855,10 +1859,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() []ast.Expr {
+fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
-		expr := p.expr(0)
+		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
 		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
@@ -2033,13 +2037,13 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 }
 
 fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
-	upcase_language := language.str().to_upper()
+	upcase_language := language.str().to_upper_ascii()
 	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
 		pos)
 }
 
 fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
-	upcase_language := language.str().to_upper()
+	upcase_language := language.str().to_upper_ascii()
 	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
 		pos)
 }
@@ -2214,6 +2218,7 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	}
 }
 
+@[direct_array_access]
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
@@ -2225,7 +2230,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := p.expr_list()
+	left := p.expr_list(p.inside_assign_rhs)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2751,7 +2756,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		|| p.mod.all_after_last('.') == p.tok.lit) {
 		// p.tok.lit has been recognized as a module
 		if language in [.c, .js, .wasm] {
-			mod = language.str().to_upper()
+			mod = language.str().to_upper_ascii()
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
@@ -2876,33 +2881,14 @@ fn (mut p Parser) name_expr() ast.Expr {
 					pos := p.tok.pos()
 					args := p.call_args()
 					p.check(.rpar)
-
-					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{}
-					mut or_pos := p.tok.pos()
-					if p.tok.kind in [.not, .question] {
-						or_kind = if p.tok.kind == .not {
-							.propagate_result
-						} else {
-							.propagate_option
-						}
-						p.next()
-					}
-					if p.tok.kind == .key_orelse {
-						// `foo() or {}``
-						or_kind = .block
-						or_stmts, or_pos = p.or_block(.with_err_var)
-					}
+					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						left:     node
-						args:     args
-						pos:      pos
-						scope:    p.scope
-						or_block: ast.OrExpr{
-							stmts: or_stmts
-							kind:  or_kind
-							pos:   or_pos
-						}
+						left:           node
+						args:           args
+						pos:            pos
+						scope:          p.scope
+						or_block:       or_block
+						is_return_used: p.expecting_value
 					}
 				}
 			}
@@ -3338,26 +3324,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 		args := p.call_args()
 		p.check(.rpar)
-		mut or_stmts := []ast.Stmt{}
-		mut or_kind := ast.OrKind.absent
-		mut or_pos := p.tok.pos()
-		if p.tok.kind == .key_orelse {
-			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
-		}
-		// `foo()?`
-		if p.tok.kind in [.question, .not] {
-			is_not := p.tok.kind == .not
-			p.next()
-			if p.inside_defer {
-				p.error_with_pos('error propagation not allowed inside `defer` blocks',
-					p.prev_tok.pos())
-			}
-			or_kind = if is_not { .propagate_result } else { .propagate_option }
-		}
+		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
+		mut left_node := unsafe { left }
+		if mut left_node is ast.CallExpr {
+			left_node.is_return_used = true
+		}
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
@@ -3367,13 +3341,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			is_method:         true
 			concrete_types:    concrete_types
 			concrete_list_pos: concrete_list_pos
-			or_block:          ast.OrExpr{
-				stmts: or_stmts
-				kind:  or_kind
-				pos:   or_pos
-			}
+			or_block:          or_block
 			scope:             p.scope
 			comments:          comments
+			is_return_used:    p.expecting_value
 		}
 		return mcall_expr
 	}
@@ -3419,7 +3390,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		scope:      p.scope
 		next_token: p.tok.kind
 	}
-
+	mut left_node := unsafe { left }
+	if mut left_node is ast.CallExpr {
+		left_node.is_return_used = true
+	}
 	return sel_expr
 }
 
@@ -4021,7 +3995,10 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs := p.expr_list()
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
+	exprs := p.expr_list(true)
+	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs:    exprs
@@ -4183,6 +4160,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
+	already_exists := if _ := p.table.enum_decls[name] { true } else { false }
 	mut enum_type := ast.int_type
 	mut typ_pos := token.Pos{}
 	if p.tok.kind == .key_as {
@@ -4255,8 +4233,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		all_bits_set_value := '0b' + '1'.repeat(fields.len)
-		p.codegen('
+		if !already_exists {
+			// enum already exists, skip method creation to avoid duplicate method errors
+			all_bits_set_value := '0b' + '1'.repeat(fields.len)
+			p.codegen('
 //
 @[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
 @[inline] ${pubfn} (    e &${enum_name}) has(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) != 0 }
@@ -4268,6 +4248,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 @[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag_ ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag_))) } }
 //
 ')
+		}
 	}
 	// Add the generic `Enum.from[T](x T) !T {` static method too:
 	mut isb := strings.new_builder(1024)
@@ -4336,10 +4317,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		is_pub: is_pub
 	})
+
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
 	}
+
 	if idx == ast.invalid_type_idx {
 		enum_type = idx
 	}
@@ -4357,8 +4340,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		comments:         enum_decl_comments
 	}
 
-	p.table.register_enum_decl(enum_decl)
-
+	if !already_exists {
+		p.table.register_enum_decl(enum_decl)
+	}
 	return enum_decl
 }
 

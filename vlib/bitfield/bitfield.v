@@ -600,6 +600,32 @@ pub fn (instance BitField) rotate(offset int) BitField {
 	return output
 }
 
+// shift_left shift-left the bits by `count` positions.
+pub fn (instance BitField) shift_left(count int) BitField {
+	size := instance.size
+	if count <= 0 {
+		return instance
+	} else if count >= size {
+		// return zeroes
+		return new(size)
+	}
+	zeroes := new(count)
+	return join(instance.slice(count, size), zeroes)
+}
+
+// shift_right shift-right the bits by `count` positions.
+pub fn (instance BitField) shift_right(count int) BitField {
+	size := instance.size
+	if count <= 0 {
+		return instance
+	} else if count >= size {
+		// return zeroes
+		return new(size)
+	}
+	zeroes := new(count)
+	return join(zeroes, instance.slice(0, size - count))
+}
+
 // Internal functions
 // clear_tail clears the extra bits that are not part of the bitfield, but yet are allocated
 @[inline]
