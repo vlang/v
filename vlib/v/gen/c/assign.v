@@ -1041,7 +1041,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						g.write(' = *(voidptr*)array_get(')
 					} else {
 						styp := g.styp(info.elem_type)
-						string_clone := if needs_clone { '/*1*/string_clone(' } else { '' }
+						string_clone := if needs_clone { 'string_clone(' } else { '' }
 
 						g.write('${styp} _var_${left.pos.pos} = ${string_clone}*(${styp}*)array_get(')
 					}

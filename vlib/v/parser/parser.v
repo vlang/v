@@ -54,6 +54,7 @@ mut:
 	inside_array_lit         bool
 	inside_in_array          bool
 	inside_infix             bool
+	inside_assign_rhs        bool // rhs assignment
 	inside_match             bool // to separate `match A { }` from `Struct{}`
 	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
@@ -90,6 +91,7 @@ mut:
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
 	expecting_type           bool // `is Type`, expecting type
+	expecting_value          bool = true // true where a node value will be used
 	cur_fn_name              string
 	cur_fn_scope             &ast.Scope = unsafe { nil }
 	label_names              []string
@@ -1857,10 +1859,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() []ast.Expr {
+fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
-		expr := p.expr(0)
+		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
 		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
@@ -2228,7 +2230,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := p.expr_list()
+	left := p.expr_list(p.inside_assign_rhs)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2881,11 +2883,12 @@ fn (mut p Parser) name_expr() ast.Expr {
 					p.check(.rpar)
 					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						left:     node
-						args:     args
-						pos:      pos
-						scope:    p.scope
-						or_block: or_block
+						left:           node
+						args:           args
+						pos:            pos
+						scope:          p.scope
+						or_block:       or_block
+						is_return_used: p.expecting_value
 					}
 				}
 			}
@@ -3325,6 +3328,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
+		mut left_node := unsafe { left }
+		if mut left_node is ast.CallExpr {
+			left_node.is_return_used = true
+		}
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
@@ -3337,6 +3344,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_block:          or_block
 			scope:             p.scope
 			comments:          comments
+			is_return_used:    p.expecting_value
 		}
 		return mcall_expr
 	}
@@ -3382,7 +3390,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		scope:      p.scope
 		next_token: p.tok.kind
 	}
-
+	mut left_node := unsafe { left }
+	if mut left_node is ast.CallExpr {
+		left_node.is_return_used = true
+	}
 	return sel_expr
 }
 
@@ -3984,7 +3995,10 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs := p.expr_list()
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
+	exprs := p.expr_list(true)
+	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs:    exprs

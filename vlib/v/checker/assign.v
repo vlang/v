@@ -580,13 +580,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
 						c.note('an implicit clone of the slice was done here', right.pos())
 						right = ast.CallExpr{
-							name:          'clone'
-							left:          right
-							left_type:     left_type
-							is_method:     true
-							receiver_type: left_type
-							return_type:   left_type
-							scope:         c.fn_scope
+							name:           'clone'
+							left:           right
+							left_type:      left_type
+							is_method:      true
+							receiver_type:  left_type
+							return_type:    left_type
+							scope:          c.fn_scope
+							is_return_used: true
 						}
 						right_type = c.expr(mut right)
 						node.right[i] = right

@@ -1,9 +1,9 @@
 @[flag]
 pub enum Enum {
-    a
+	a
 }
 
 @[flag]
 pub enum Enum {
-    a
+	a
 }
