@@ -705,6 +705,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 				// Only expressions like `str + 'b'` need to be freed.
 				continue
 			}
+			if arg.expr is ast.CallExpr && arg.expr.name in ['json.encode', 'json.encode_pretty'] {
+				continue
+			}
 			node.args[i].is_tmp_autofree = true
 		}
 		// TODO: copy pasta from above

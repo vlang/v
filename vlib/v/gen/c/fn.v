@@ -2078,7 +2078,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.write('cJSON* ${json_obj} = ${encode_name}(')
 			g.call_args(node)
 			g.writeln(');')
-			tmp2 = g.new_tmp_var()
+			tmp2 = if g.is_autofree {
+				'_arg_expr_${node.name.replace('.', '_')}_${node.pos.pos}'
+			} else {
+				g.new_tmp_var()
+			}
 			if is_json_encode {
 				g.writeln('string ${tmp2} = json__json_print(${json_obj});')
 			} else {
@@ -2426,6 +2430,12 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	args << node.args
 	for i, arg in args {
 		if !arg.is_tmp_autofree {
+			if arg.expr is ast.CallExpr && arg.expr.name in ['json.encode', 'json.encode_pretty'] {
+				t := '_arg_expr_${arg.expr.name.replace('.', '_')}_${arg.expr.pos.pos}'
+				defer {
+					g.writeln(';\n\tstring_free(&${t});')
+				}
+			}
 			continue
 		}
 		if arg.expr is ast.CallExpr {
