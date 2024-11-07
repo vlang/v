@@ -80,6 +80,22 @@ pub fn (mut ct ComptimeInfo) get_expr_type(node ast.Expr) ast.Type {
 	return ctyp
 }
 
+// get_type_or_default retries the comptime value if the AST node is related to comptime otherwise default_typ is returned
+pub fn (mut ct ComptimeInfo) get_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
+	match node {
+		ast.Ident {
+			if ct.is_comptime_var(node) {
+				ctyp := ct.get_type(node)
+				return if ctyp != ast.void_type { ctyp } else { default_typ }
+			}
+		}
+		else {
+			return default_typ
+		}
+	}
+	return default_typ
+}
+
 // get_type retrieves the actual type from a comptime related ast node
 @[inline]
 pub fn (mut ct ComptimeInfo) get_type(node ast.Expr) ast.Type {

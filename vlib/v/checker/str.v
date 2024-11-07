@@ -45,13 +45,8 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
 		mut ftyp := c.expr(mut expr)
-		ftyp = c.check_expr_option_or_result_call(expr, ftyp)
-		if c.comptime.is_comptime_var(expr) {
-			ctyp := c.comptime.get_type(expr)
-			if ctyp != ast.void_type {
-				ftyp = ctyp
-			}
-		}
+		ftyp = c.comptime.get_type_or_default(expr, c.check_expr_option_or_result_call(expr,
+			ftyp))
 		if ftyp == ast.void_type {
 			c.error('expression does not return a value', expr.pos())
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {

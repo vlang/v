@@ -2047,9 +2047,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		is_selector_call = true
 	}
 	mut name := node.name
-	if index := node.name.index('__static__') {
+	if node.is_static_method {
 		// resolve static call T.name()
-		if index > 0 && g.cur_fn != unsafe { nil } {
+		if g.cur_fn != unsafe { nil } {
 			name = g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 		}
@@ -2178,13 +2178,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		defer {
 			g.inside_interface_deref = false
 		}
-		mut typ := node.args[0].typ
-		if g.comptime.is_comptime_var(node.args[0].expr) {
-			ctyp := g.comptime.get_type(node.args[0].expr)
-			if ctyp != ast.void_type {
-				typ = ctyp
-			}
-		}
+		mut typ := g.comptime.get_type_or_default(node.args[0].expr, node.args[0].typ)
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}

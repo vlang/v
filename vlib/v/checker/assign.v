@@ -505,9 +505,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						left.recursive_mapset_is_setter(true)
 					}
 
-					if right is ast.Ident && c.comptime.is_comptime_var(right) {
-						right_type = c.comptime.get_type(right)
-					}
+					right_type = c.comptime.get_type_or_default(right, right_type)
 				}
 				if mut left is ast.InfixExpr {
 					c.error('cannot use infix expression on the left side of `${node.op}`',

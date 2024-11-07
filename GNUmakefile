@@ -118,6 +118,7 @@ endif
 	@$(VEXE) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE) -version
+	@$(VEXE) run .github/problem-matchers/register_all.vsh
 
 clean:
 	rm -rf $(TMPTCC)
