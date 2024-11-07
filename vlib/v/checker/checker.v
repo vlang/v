@@ -3613,7 +3613,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			if c.table.cur_fn == unsafe { nil } {
 				return ast.void_type
 			}
-			if _ := c.table.cur_fn.name.index('__static__') {
+			if c.table.cur_fn.is_static_type_method {
 				node.val = c.table.cur_fn.name.all_after_last('__static__')
 			} else {
 				node.val = c.table.cur_fn.name.all_after_last('.')
@@ -3627,7 +3627,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			if c.table.cur_fn.is_method {
 				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.') +
 					'.' + fname
-			} else if _ := fname.index('__static__') {
+			} else if c.table.cur_fn.is_static_type_method {
 				node.val = fname.all_before('__static__') + '.' + fname.all_after('__static__')
 			} else {
 				node.val = fname

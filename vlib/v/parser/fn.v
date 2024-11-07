@@ -112,6 +112,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		scope:              p.scope
 		comments:           comments
 		is_return_used:     p.expecting_value
+		is_static_method:   is_static_type_method
 	}
 }
 

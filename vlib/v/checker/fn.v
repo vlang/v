@@ -340,7 +340,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				&& node.name.after_char(`.`) in reserved_type_names {
 				c.error('top level declaration cannot shadow builtin type', node.pos)
 			}
-			if _ := node.name.index('__static__') {
+			if node.is_static_type_method {
 				if sym := c.table.find_sym(node.name.all_before('__static__')) {
 					if sym.kind == .placeholder {
 						c.error('unknown type `${sym.name}`', node.static_type_pos)
@@ -827,9 +827,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	is_va_arg := node.name == 'C.va_arg'
 	is_json_decode := node.name == 'json.decode'
 	mut fn_name := node.name
-	if index := node.name.index('__static__') {
+	if node.is_static_method {
 		// resolve static call T.name()
-		if index > 0 && c.table.cur_fn != unsafe { nil } {
+		if c.table.cur_fn != unsafe { nil } {
 			fn_name = c.table.convert_generic_static_type_name(fn_name, c.table.cur_fn.generic_names,
 				c.table.cur_concrete_types)
 		}
@@ -1045,10 +1045,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			unsafe { c.table.fns[fn_name].usages++ }
 		}
 	}
-	// already imported symbol (static Foo.new() in another module)
-	if !found && fn_name.len > 0 && fn_name[0].is_capital() {
+
+	// static method resolution
+	if !found && node.is_static_method {
 		if index := fn_name.index('__static__') {
 			owner_name := fn_name#[..index]
+			// already imported symbol (static Foo.new() in another module)
 			for import_sym in c.file.imports.filter(it.syms.any(it.name == owner_name)) {
 				qualified_name := '${import_sym.mod}.${fn_name}'
 				if f := c.table.find_fn(qualified_name) {
@@ -1059,55 +1061,76 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					break
 				}
 			}
-		}
-	}
-	// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
-	if !found && fn_name.ends_with('__static__from_string') {
-		enum_name := fn_name.all_before('__static__')
-		mut full_enum_name := if !enum_name.contains('.') {
-			c.mod + '.' + enum_name
-		} else {
-			enum_name
-		}
-		mut idx := c.table.type_idxs[full_enum_name]
-		if idx > 0 {
-			// is from another mod.
-			if enum_name.contains('.') {
-				if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
-					return ast.void_type
+			if !found {
+				// aliased static method on current mod
+				full_type_name := if !fn_name.contains('.') {
+					c.mod + '.' + owner_name
+				} else {
+					owner_name
+				}
+				typ := c.table.find_type(full_type_name)
+				if typ != 0 {
+					final_sym := c.table.final_sym(typ)
+					// try to find the unaliased static method name
+					orig_name := final_sym.name + fn_name#[index..]
+					if f := c.table.find_fn(orig_name) {
+						found = true
+						func = f
+						unsafe { c.table.fns[orig_name].usages++ }
+						node.name = orig_name
+						node.is_static_method = true
+					}
 				}
 			}
-		} else if !enum_name.contains('.') {
-			// find from another mods.
-			for import_sym in c.file.imports {
-				full_enum_name = '${import_sym.mod}.${enum_name}'
-				idx = c.table.type_idxs[full_enum_name]
-				if idx < 1 {
-					continue
-				}
-				if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
-					return ast.void_type
-				}
-				break
+		}
+		// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
+		if !found && node.is_static_method && fn_name.ends_with('__static__from_string') {
+			enum_name := fn_name.all_before('__static__')
+			mut full_enum_name := if !enum_name.contains('.') {
+				c.mod + '.' + enum_name
+			} else {
+				enum_name
 			}
-		}
-		if idx == 0 {
-			c.error('unknown enum `${enum_name}`', node.pos)
-			return ast.void_type
-		}
+			mut idx := c.table.type_idxs[full_enum_name]
+			if idx > 0 {
+				// is from another mod.
+				if enum_name.contains('.') {
+					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
+						return ast.void_type
+					}
+				}
+			} else if !enum_name.contains('.') {
+				// find from another mods.
+				for import_sym in c.file.imports {
+					full_enum_name = '${import_sym.mod}.${enum_name}'
+					idx = c.table.type_idxs[full_enum_name]
+					if idx < 1 {
+						continue
+					}
+					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
+						return ast.void_type
+					}
+					break
+				}
+			}
+			if idx == 0 {
+				c.error('unknown enum `${enum_name}`', node.pos)
+				return ast.void_type
+			}
 
-		ret_typ := ast.idx_to_type(idx).set_flag(.option)
-		if node.args.len != 1 {
-			c.error('expected 1 argument, but got ${node.args.len}', node.pos)
-		} else {
-			node.args[0].typ = c.expr(mut node.args[0].expr)
-			if node.args[0].typ != ast.string_type {
-				styp := c.table.type_to_str(node.args[0].typ)
-				c.error('expected `string` argument, but got `${styp}`', node.pos)
+			ret_typ := ast.idx_to_type(idx).set_flag(.option)
+			if node.args.len != 1 {
+				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+			} else {
+				node.args[0].typ = c.expr(mut node.args[0].expr)
+				if node.args[0].typ != ast.string_type {
+					styp := c.table.type_to_str(node.args[0].typ)
+					c.error('expected `string` argument, but got `${styp}`', node.pos)
+				}
 			}
+			node.return_type = ret_typ
+			return ret_typ
 		}
-		node.return_type = ret_typ
-		return ret_typ
 	}
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
