@@ -18,7 +18,7 @@ v:
 	./v run ./cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	./v version
-	@if [[ -n "$${GITHUB_JOB+1}" ]]; then ./v run .github/problem-matchers/register_all.vsh; fi
+	./v run .github/problem-matchers/register_all.vsh
 
 check:
 	./v test-all

@@ -118,7 +118,7 @@ endif
 	@$(VEXE) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE) -version
-	@if [[ -n "$${GITHUB_JOB+1}" ]]; then ./v run .github/problem-matchers/register_all.vsh; fi
+	@$(VEXE) run .github/problem-matchers/register_all.vsh
 
 clean:
 	rm -rf $(TMPTCC)
