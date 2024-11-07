@@ -2091,7 +2091,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
 			name := f.short_module(node.name)
-			if node.name.contains('__static__') {
+			if node.is_static_method {
 				f.write_static_method(node.name, name)
 			} else {
 				f.mark_import_as_used(name)
