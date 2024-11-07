@@ -1078,7 +1078,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						func = f
 						unsafe { c.table.fns[orig_name].usages++ }
 						node.name = orig_name
-						node.is_static_method = true
 					}
 				}
 			}
