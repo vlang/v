@@ -25,8 +25,8 @@ const c_reserved = ['asm', 'array', 'auto', 'bool', 'break', 'calloc', 'case', '
 	'exit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int',
 	'link', 'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return',
 	'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
-	'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small', 'stdout',
-	'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
+	'typeof', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
+	'stdout', 'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
 const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 // same order as in token.Kind
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
