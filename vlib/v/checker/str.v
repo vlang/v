@@ -215,9 +215,6 @@ fn (mut c Checker) int_lit(mut node ast.IntegerLiteral) ast.Type {
 
 @[direct_array_access]
 fn (mut c Checker) check_num_literal(lohi LoHiLimit, is_neg bool, lit string) ! {
-	if c.inside_integer_literal_cast {
-		return
-	}
 	limit := if is_neg { lohi.lower } else { lohi.higher }
 	if lit.len < limit.len {
 		return
