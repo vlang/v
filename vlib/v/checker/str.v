@@ -229,5 +229,8 @@ fn (mut c Checker) check_num_literal(lohi LoHiLimit, is_neg bool, lit string) ! 
 }
 
 fn (mut c Checker) num_lit_overflow_error(node &ast.IntegerLiteral) {
+	if c.inside_integer_literal_cast {
+		return
+	}
 	c.error('integer literal ${node.val} overflows int', node.pos)
 }
