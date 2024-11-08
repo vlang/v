@@ -1531,16 +1531,15 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			.name {
 				return ast.string_type
 			}
-			.unaliased_typ {
-				return ast.int_type
-			}
-			.typ {
+			.unaliased_typ, .typ, .indirections {
 				return ast.int_type
 			}
 			else {
 				if node.field_name == 'name' {
 					return ast.string_type
 				} else if node.field_name == 'idx' {
+					return ast.int_type
+				} else if node.field_name == 'indirections' {
 					return ast.int_type
 				}
 				c.error('invalid field `.${node.field_name}` for type `${node.expr}`',
