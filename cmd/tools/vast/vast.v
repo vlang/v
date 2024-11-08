@@ -1559,6 +1559,8 @@ fn (t Tree) call_expr(node ast.CallExpr) &Node {
 	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
 	obj.add_terse('is_noreturn', t.bool_node(node.is_noreturn))
 	obj.add_terse('is_ctor_new', t.bool_node(node.is_ctor_new))
+	obj.add_terse('is_return_used', t.bool_node(node.is_return_used))
+	obj.add_terse('is_static_method', t.bool_node(node.is_static_method))
 	obj.add('should_be_skipped', t.bool_node(node.should_be_skipped))
 	obj.add_terse('free_receiver', t.bool_node(node.free_receiver))
 	obj.add('scope', t.number_node(int(node.scope)))

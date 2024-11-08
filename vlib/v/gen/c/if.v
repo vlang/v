@@ -249,9 +249,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if cond is ast.IfGuardExpr {
 			if !is_guard {
 				is_guard = true
-				guard_idx = i
 				guard_vars = []string{len: node.branches.len}
 			}
+			guard_idx = i // saves the last if guard index
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
@@ -269,7 +269,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		// if last branch is `else {`
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('{')
-			// define `err` only for simple `if val := opt {...} else {`
+			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
 				cvar_name := guard_vars[guard_idx]
 				g.writeln('\tIError err = ${cvar_name}.err;')

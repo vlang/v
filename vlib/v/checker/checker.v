@@ -1371,7 +1371,6 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
 				last_stmt_typ := c.expr(mut stmt.expr)
-
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
 						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
@@ -3614,7 +3613,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			if c.table.cur_fn == unsafe { nil } {
 				return ast.void_type
 			}
-			if _ := c.table.cur_fn.name.index('__static__') {
+			if c.table.cur_fn.is_static_type_method {
 				node.val = c.table.cur_fn.name.all_after_last('__static__')
 			} else {
 				node.val = c.table.cur_fn.name.all_after_last('.')
@@ -3628,7 +3627,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			if c.table.cur_fn.is_method {
 				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.') +
 					'.' + fname
-			} else if _ := fname.index('__static__') {
+			} else if c.table.cur_fn.is_static_type_method {
 				node.val = fname.all_before('__static__') + '.' + fname.all_after('__static__')
 			} else {
 				node.val = fname
@@ -3804,16 +3803,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := if c.comptime.is_comptime_var(node) {
-			ctype := c.comptime.get_type(node)
-			if ctype != ast.void_type {
-				ctype
-			} else {
-				info.typ
-			}
-		} else {
-			info.typ
-		}
+		typ := c.comptime.get_type_or_default(node, info.typ)
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !typ.has_flag(.option) {

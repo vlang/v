@@ -25,8 +25,8 @@ const c_reserved = ['asm', 'array', 'auto', 'bool', 'break', 'calloc', 'case', '
 	'exit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int',
 	'link', 'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return',
 	'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
-	'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small', 'stdout',
-	'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
+	'typeof', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
+	'stdout', 'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
 const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 // same order as in token.Kind
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -2158,7 +2158,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			eprintln('cgen: ${g.file.path:-30} | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
 		}
 	}
+	old_inside_call := g.inside_call
 	g.inside_call = false
+	defer {
+		g.inside_call = old_inside_call
+	}
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
 	}
@@ -7140,6 +7144,10 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 								&& expr_stmt.expr.or_block.kind == .absent {
 								g.write('${cvar_name} = ')
 								return_wrapped = true
+							} else if expr_stmt.expr is ast.CallExpr {
+								if expr_stmt.expr.is_return_used {
+									g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+								}
 							} else {
 								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 							}

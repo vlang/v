@@ -805,6 +805,7 @@ pub mut:
 	is_noreturn            bool // whether the function/method is marked as [noreturn]
 	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
 	is_file_translated     bool // true, when the file it resides in is `@[translated]`
+	is_static_method       bool // it is a static method call
 	args                   []CallArg
 	expected_arg_types     []Type
 	comptime_ret_val       bool
@@ -827,6 +828,7 @@ pub mut:
 	scope                  &Scope = unsafe { nil }
 	from_embed_types       []Type // holds the type of the embed that the method is called from
 	comments               []Comment
+	is_return_used         bool // return value is used for another expr
 	//
 	is_expand_simple_interpolation bool // true, when the function/method is marked as @[expand_simple_interpolation]
 	// Calls to it with an interpolation argument like `b.f('x ${y}')`, will be converted to `b.f('x ')` followed by `b.f(y)`.

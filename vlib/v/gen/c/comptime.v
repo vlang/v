@@ -459,11 +459,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 	match cond {
 		ast.Ident {
-			return if g.comptime.is_comptime_var(cond) {
-				g.unwrap_generic(g.comptime.get_type(cond))
-			} else {
-				g.unwrap_generic(cond.obj.typ)
-			}
+			return g.unwrap_generic(g.comptime.get_type_or_default(cond, cond.obj.typ))
 		}
 		ast.TypeNode {
 			return g.unwrap_generic(cond.typ)

@@ -15,7 +15,26 @@ fn (mut p Parser) check_expr_level() ! {
 	}
 }
 
+fn (mut p Parser) expr_no_value(precedence int) ast.Expr {
+	old_expecting_value := p.expecting_value
+	p.expecting_value = false
+	defer {
+		p.expecting_value = old_expecting_value
+	}
+	return p.check_expr(precedence) or {
+		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
+			return ast.empty_expr
+		}
+		p.unexpected(prepend_msg: 'invalid expression:')
+	}
+}
+
 fn (mut p Parser) expr(precedence int) ast.Expr {
+	old_expecting_value := p.expecting_value
+	p.expecting_value = true
+	defer {
+		p.expecting_value = old_expecting_value
+	}
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
 			return ast.empty_expr
@@ -466,12 +485,13 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.check(.rpar)
 					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						name:     'anon'
-						left:     node
-						args:     args
-						pos:      pos
-						or_block: or_block
-						scope:    p.scope
+						name:           'anon'
+						left:           node
+						args:           args
+						pos:            pos
+						or_block:       or_block
+						scope:          p.scope
+						is_return_used: p.expecting_value
 					}
 				}
 				return node
@@ -572,11 +592,12 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				p.check(.rpar)
 				or_block := p.gen_or_block()
 				node = ast.CallExpr{
-					left:     node
-					args:     args
-					pos:      pos
-					scope:    p.scope
-					or_block: or_block
+					left:           node
+					args:           args
+					pos:            pos
+					scope:          p.scope
+					or_block:       or_block
+					is_return_used: p.expecting_value
 				}
 				p.is_stmt_ident = is_stmt_ident
 				if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
@@ -613,7 +634,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			tok := p.tok
 			mut pos := tok.pos()
 			p.next()
+			old_assign_rhs := p.inside_assign_rhs
+			p.inside_assign_rhs = true
 			right := p.expr(precedence - 1)
+			p.inside_assign_rhs = old_assign_rhs
 			pos.update_last_line(p.prev_tok.line_nr)
 			if mut node is ast.IndexExpr {
 				node.recursive_arraymap_set_is_setter()
@@ -757,7 +781,10 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 
 	right_op_pos := p.tok.pos()
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
 	right = p.expr(precedence)
+	p.inside_assign_rhs = old_assign_rhs
 	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
 		for mut right_expr is ast.ParExpr {
