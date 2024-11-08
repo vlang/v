@@ -107,7 +107,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			...node
 			typ: node.typ.clear_option_and_result()
 		})
-		g.writeln('}, &${tmp_var}, sizeof(${base_styp}));')
+		g.writeln('}, (${option_name}*)&${tmp_var}, sizeof(${base_styp}));')
 		g.empty_line = false
 		g.write2(s, tmp_var)
 		return
