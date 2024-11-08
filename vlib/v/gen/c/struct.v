@@ -41,7 +41,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
 		if node.typ.has_flag(.generic) && unwrapped_typ.is_ptr() {
-			g.write2('(', '&')
+			g.write('&(')
 			g.write(g.type_default_sumtype(unwrapped_typ.set_nr_muls(0), sym))
 			g.write(')')
 		} else {
