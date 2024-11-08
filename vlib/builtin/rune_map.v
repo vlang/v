@@ -3,6 +3,7 @@ module builtin
 enum MapMode {
 	to_upper
 	to_lower
+	to_title
 }
 
 // vfmt off
@@ -16,7 +17,10 @@ struct RuneMap {
 }
 */
 const rune_maps_columns_in_row = 4
+// upper, lower, upper, lower, ... sequence
 const rune_maps_ul = -3 // NOTE: this should *NOT* be used anywhere in rune_maps, as a normal offset.
+// upper, title, lower, upper, title, lower, ... sequence
+const rune_maps_utl = -2 // NOTE: this should *NOT* be used anywhere in rune_maps, as a normal offset.
 // The rune_maps table below, has rows, each containing 4 integers, equivalent to the RuneMap struct from above.
 // It is represented that way, instead of the more natural array of structs, to save on the .c encoding used for the initialisation.
 // The overhead for representing it as an array of structs was ~28KB in .c, while with the flat array of ints, it is ~7.5KB.
@@ -72,21 +76,11 @@ const rune_maps = [
 	0x1B8, 0x1B9, -3, -3,
 	0x1BC, 0x1BD, -3, -3,
 	0x1BF, 0x1BF, 56, 0,
-	0x1C4, 0x1C4, 0, 2,
-	0x1C5, 0x1C5, -1, 1,
-	0x1C6, 0x1C6, -2, 0,
-	0x1C7, 0x1C7, 0, 2,
-	0x1C8, 0x1C8, -1, 1,
-	0x1C9, 0x1C9, -2, 0,
-	0x1CA, 0x1CA, 0, 2,
-	0x1CB, 0x1CB, -1, 1,
-	0x1CC, 0x1CC, -2, 0,
+	0x1C4, 0x1CC, -2, -2,
 	0x1CD, 0x1DC, -3, -3,
 	0x1DD, 0x1DD, -79, 0,
 	0x1DE, 0x1EF, -3, -3,
-	0x1F1, 0x1F1, 0, 2,
-	0x1F2, 0x1F2, -1, 1,
-	0x1F3, 0x1F3, -2, 0,
+	0x1F1, 0x1F3, -2, -2,
 	0x1F4, 0x1F5, -3, -3,
 	0x1F6, 0x1F6, 0, -97,
 	0x1F7, 0x1F7, 0, -56,
