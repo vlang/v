@@ -2070,8 +2070,8 @@ fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind 
 
 // checks if a type from another module is as expected and visible(`is_pub`)
 fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
-	if c.check_type_sym_kind(name, type_idx, expected_kind, pos) {
-		return true
+	if !c.check_type_sym_kind(name, type_idx, expected_kind, pos) {
+		return false
 	}
 	mut sym := c.table.sym_by_idx(type_idx)
 	if !sym.is_pub {
