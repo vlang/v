@@ -4,6 +4,7 @@ import strings
 import v.ast
 import v.util
 import v.token
+import os
 
 const print_everything_fns = ['println', 'print', 'eprintln', 'eprint', 'panic']
 
@@ -1264,6 +1265,35 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.error(suggestion.say('unknown function: ${fn_name} '), node.pos)
 				return ast.void_type
 			}
+		}
+		name := node.get_name()
+		if name.starts_with('C.') {
+			println('unknown function ${name}, ' +
+				'searching for the C definition in one of the #includes')
+			mut includes := []string{cap: 5}
+			for stmt in c.file.stmts {
+				if stmt is ast.HashStmt {
+					if stmt.kind == 'include' {
+						includes << '#include ${stmt.main}'
+					}
+				}
+			}
+			mut tmp_c_file_with_includes := os.create('tmp.c') or { panic(err) }
+			tmp_c_file_with_includes.write_string(includes.join('\n')) or { panic(err) }
+			tmp_c_file_with_includes.close()
+
+			os.execute('v translate fndef ${name[2..]} tmp.c')
+			x := os.read_file('__cdefs_autogen.v') or { return ast.void_type }
+			if x.contains('fn ${name}') {
+				println(
+					'function definition for ${name} has been generated in __cdefs_autogen.v. ' +
+					'Please re-run the compilation with `v .` or `v run .`')
+				os.rm('tmp.c') or {}
+				exit(0)
+			} else {
+				println('Failed to generate function definition. Please report it via github.com/vlang/v/issues')
+			}
+			os.rm('tmp.c') or {}
 		}
 		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
