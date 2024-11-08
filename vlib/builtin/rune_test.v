@@ -48,6 +48,8 @@ fn test_to_upper() {
 	assert `Δ`.to_upper() == `Δ`
 	assert `ā`.to_upper() == `Ā`
 	assert `Ā`.to_upper() == `Ā`
+	assert `Я`.to_upper() == `Я`
+	assert `я`.to_upper() == `Я`
 }
 
 fn test_to_lower() {
@@ -57,6 +59,8 @@ fn test_to_lower() {
 	assert `δ`.to_lower() == `δ`
 	assert `Ā`.to_lower() == `ā`
 	assert `ā`.to_lower() == `ā`
+	assert `я`.to_lower() == `я`
+	assert `Я`.to_lower() == `я`
 }
 
 fn test_to_title() {
@@ -66,4 +70,6 @@ fn test_to_title() {
 	assert `Δ`.to_title() == `Δ`
 	assert `ā`.to_title() == `Ā`
 	assert `Ā`.to_title() == `Ā`
+	assert `я`.to_title() == `Я`
+	assert `Я`.to_title() == `Я`
 }
