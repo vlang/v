@@ -1093,6 +1093,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			mut idx := c.table.type_idxs[full_enum_name]
 			if idx > 0 {
+				if c.table.final_sym(idx).kind != .enum {
+					c.error('type `${enum_name}` is not an enum', node.pos)
+					return ast.void_type
+				}
 				// is from another mod.
 				if enum_name.contains('.') {
 					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
@@ -1106,6 +1110,10 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					idx = c.table.type_idxs[full_enum_name]
 					if idx < 1 {
 						continue
+					}
+					if c.table.final_sym(idx).kind != .enum {
+						c.error('type `${enum_name}` is not an enum', node.pos)
+						return ast.void_type
 					}
 					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
 						return ast.void_type
