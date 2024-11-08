@@ -66,18 +66,22 @@ pub fn (mut ct ComptimeInfo) is_generic_param_var(node ast.Expr) bool {
 		&& (node.obj as ast.Var).ct_type_var == .generic_param
 }
 
-// get_expr_type computes the ast node type regarding its or_expr
-pub fn (mut ct ComptimeInfo) get_expr_type(node ast.Expr) ast.Type {
+// get_expr_type_or_default computes the ast node type regarding its or_expr if its comptime var otherwise default_typ is returned
+pub fn (mut ct ComptimeInfo) get_expr_type_or_default(node ast.Expr, default_typ ast.Type) ast.Type {
+	if !ct.is_comptime_expr(node) {
+		return default_typ
+	}
 	ctyp := ct.get_type(node)
 	match node {
 		ast.Ident {
+			// returns the unwrapped type of the var
 			if ctyp.has_flag(.option) && node.or_expr.kind != .absent {
 				return ctyp.clear_flag(.option)
 			}
 		}
 		else {}
 	}
-	return ctyp
+	return if ctyp != ast.void_type { ctyp } else { default_typ }
 }
 
 // get_type_or_default retries the comptime value if the AST node is related to comptime otherwise default_typ is returned
