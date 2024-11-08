@@ -272,6 +272,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('result type arguments are not supported', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
+			// resolve unresolved fixed array size e.g. [mod.const]array_type
+			if arg_typ_sym.info is ast.ArrayFixed
+				&& c.array_fixed_has_unresolved_size(arg_typ_sym.info) {
+				mut size_expr := unsafe { arg_typ_sym.info.size_expr }
+				param.typ = c.eval_array_fixed_sizes(mut size_expr, 0, arg_typ_sym.info.elem_type)
+				mut v := node.scope.find_var(param.name) or { continue }
+				v.typ = param.typ
+			}
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
