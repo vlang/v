@@ -28,10 +28,12 @@ pub fn NumericString.new(s string) !NumericString {
 	}
 }
 
+// The tag of NumericString type.
 pub fn (nst NumericString) tag() Tag {
 	return default_numericstring_tag
 }
 
+// The payload of NumericString type.
 pub fn (nst NumericString) payload() ![]u8 {
 	return nst.payload_with_rule(.der)!
 }

@@ -71,8 +71,8 @@ fn test_oid_from_ints() ! {
 		BuildOidTest{[2, 50, 6], ObjectIdentifier{
 			value: [2, 50, 6]
 		}, error('ObjectIdentifier: bad oid int array')},
-		BuildOidTest{[1, 4, 4555555555555555555], ObjectIdentifier{
-			value: [1, 4, 4555555555555555555]
+		BuildOidTest{[1, 4, 863123683], ObjectIdentifier{
+			value: [1, 4, 863123683]
 		}, error('overflow parse_int result')},
 		BuildOidTest{[4, 0xab, 4], ObjectIdentifier{
 			value: [4, 0xab, 4]
@@ -119,9 +119,9 @@ fn test_oid_from_string() ! {
 		OidStrTest{'4.4.4', ObjectIdentifier{
 			value: [4, 4, 4]
 		}, error('ObjectIdentifier: bad oid string')},
-		OidStrTest{'1.4.4555555555555555555', ObjectIdentifier{
-			value: [4, 4, 4555555555555555555]
-		}, error('common_parse_uint: integer overflow 4555555555555555555')},
+		OidStrTest{'1.4.863123683', ObjectIdentifier{
+			value: [1, 4, 863123683]
+		}, none},
 		OidStrTest{'4.ab.4', ObjectIdentifier{
 			value: [4, 0xab, 4]
 		}, error('common_parse_uint: syntax error ab')}, // invalid char

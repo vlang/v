@@ -153,6 +153,7 @@ fn ObjectIdentifier.decode_with_rule(bytes []u8, rule EncodingRule) !(ObjectIden
 	return oid, next
 }
 
+// equal checks whether two ObjectIdentifier was equal.
 pub fn (oid ObjectIdentifier) equal(oth ObjectIdentifier) bool {
 	if !oid.tag().equal(oth.tag()) {
 		return false

@@ -27,7 +27,7 @@ struct TestStruct {
 }
 
 fn (t TestStruct) tag() Tag {
-	return Tag{.universal, true, u32(int(TagType.sequence))} // 0x30
+	return Tag{.universal, true, int(TagType.sequence)} // 0x30
 }
 
 fn (t TestStruct) payload() ![]u8 {

@@ -20,10 +20,12 @@ pub:
 	value string
 }
 
+// The tag of OctetString type.
 pub fn (oct OctetString) tag() Tag {
 	return default_octetstring_tag
 }
 
+// The payload of OctetString type.
 pub fn (oct OctetString) payload() ![]u8 {
 	return oct.payload_with_rule(.der)!
 }

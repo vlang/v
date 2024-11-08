@@ -196,10 +196,12 @@ pub fn GeneralizedTime.new(s string) !GeneralizedTime {
 	}
 }
 
+// The tag of GeneralizedTime element.
 pub fn (gt GeneralizedTime) tag() Tag {
 	return default_generalizedtime_tag
 }
 
+// The payload of GeneralizedTime element.
 pub fn (gt GeneralizedTime) payload() ![]u8 {
 	valid := validate_generalizedtime(gt.value)!
 	if !valid {

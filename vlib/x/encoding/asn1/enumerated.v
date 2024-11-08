@@ -99,7 +99,7 @@ fn Enumerated.decode_with_rule(bytes []u8, rule EncodingRule) !(Enumerated, int)
 }
 
 fn (e Enumerated) payload_with_rule(rule EncodingRule) ![]u8 {
-	if rule != .der || rule != .ber {
+	if rule != .der && rule != .ber {
 		return error('Enumerated.pack: unsupported rule')
 	}
 	mut n := e.enumerated_len()

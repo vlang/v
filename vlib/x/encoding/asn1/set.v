@@ -35,6 +35,7 @@ pub fn Set.new() !Set {
 	return Set.new_with_size(default_set_size)!
 }
 
+// Set.from_list creates a new Set from arrays of element in els.
 pub fn Set.from_list(els []Element) !Set {
 	if els.len > max_set_size {
 		return error('Sequence size exceed limit')
@@ -59,6 +60,7 @@ fn Set.new_with_size(size int) !Set {
 	}
 }
 
+// The tag of Set element.
 pub fn (s Set) tag() Tag {
 	return default_set_tag
 }
@@ -92,6 +94,7 @@ fn (mut s Set) payload_with_rule(rule EncodingRule) ![]u8 {
 	return out
 }
 
+// fields is the Set content, in fields.
 pub fn (set Set) fields() []Element {
 	return set.fields
 }
@@ -145,6 +148,21 @@ fn Set.from_bytes(bytes []u8) !Set {
 	return set
 }
 
+fn (s Set) equal(o Set) bool {
+	for i, item in s.fields {
+		for j, obj in o.fields {
+			if i == j {
+				if !item.equal(obj) {
+					return false
+				}
+			} else {
+				continue
+			}
+		}
+	}
+	return true
+}
+
 // by default allow add with the same tag
 pub fn (mut set Set) add_element(el Element) ! {
 	set.relaxed_add_element(el, true)!
@@ -166,7 +184,7 @@ fn (mut set Set) relaxed_add_element(el Element, relaxed bool) ! {
 	//		return error('has already in the fields')
 	//	}
 	// }
-	filtered_by_tag := set.fields.filter(it.equal_tag(el))
+	filtered_by_tag := set.fields.filter(it.tag().equal(el.tag()))
 	if filtered_by_tag.len == 0 {
 		set.fields << el
 		return
@@ -310,7 +328,7 @@ fn (mut so SetOf[T]) relaxed_add_element(el Element, relaxed bool) ! {
 		if item.equal(el) {
 			return error('has already in the fields')
 		}
-		if item.equal_tag(el) {
+		if item.tag().equal(el.tag()) {
 			// add this to filtered
 			filtered_by_tag << field
 		}

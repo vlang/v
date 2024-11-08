@@ -42,10 +42,6 @@ fn (er Asn1Error) msg() string {
 	return 'Error: ${er.kind.str()} with error ${er.msg}'
 }
 
-fn (er Asn1Error) code() int {
-	return er.code()
-}
-
 fn asn1_error(kind ErrorKind, msg string) !Asn1Error {
 	return Asn1Error{
 		kind: kind

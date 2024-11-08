@@ -6,7 +6,7 @@ module asn1
 struct TagAndLengthTest {
 	bytes     []u8
 	tag       Tag
-	explength int
+	explength i64
 	lastpos   int
 	err       IError
 }

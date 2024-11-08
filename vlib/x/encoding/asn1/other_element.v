@@ -33,12 +33,12 @@ pub fn RawElement.new(tag Tag, content []u8) !RawElement {
 		}
 		if tag.constructed {
 			if tag.number != int(TagType.sequence) && tag.number != int(TagType.set) {
-				return asn1_error(.unexpected_tag_value, 'required sequence or set number')!
+				return error('unexpected_tag_value required sequence or set number')
 			}
 		}
 		if tag.number == int(TagType.sequence) || tag.number == int(TagType.set) {
 			if !tag.constructed {
-				return asn1_error(.unexpected_tag_value, 'sequence or set number should in constructed tag')!
+				return error('unexpected_tag_value sequence or set number should in constructed tag')
 			}
 		}
 	}
@@ -46,6 +46,19 @@ pub fn RawElement.new(tag Tag, content []u8) !RawElement {
 	return RawElement{
 		tag:     tag
 		content: content
+		// Issues: without set this to `none`, when compiled with `-cstrict` options, its would bring
+		// into failed compiles error:
+		// ================= C compilation error (from clang): ==============
+		// error: incompatible pointer types passing '_option_x__encoding__asn1__Tag *'
+		// (aka 'struct _option_x__encoding__asn1__Tag *') to parameter of type '_option *'
+		// (aka 'struct _option *') [-Werror,-Wincompatible-pointer-types]
+		// cc:         _option_none(&(x__encoding__asn1__Tag[])
+		// { ((x__encoding__asn1__Tag){.__v_class =
+		// x__encoding__asn1__TagClass__universal,.constructed = 0,.number = 0,})},
+		// &_t6, sizeof(x__encoding__asn1__Tag));                                            ```
+		inner_tag:     none
+		mode:          none
+		default_value: none
 	}
 }
 
@@ -53,7 +66,7 @@ pub fn RawElement.new(tag Tag, content []u8) !RawElement {
 pub fn RawElement.from_element(el Element, cls TagClass, tagnum int, mode TaggedMode) !RawElement {
 	// wrapping into .universal is not allowed.
 	if cls == .universal {
-		return asn1_error(.unexpected_tag_value, 'wrap with universal class is unallowed')!
+		return error('wrap with universal class is unallowed')
 	}
 	inner_form := el.tag().constructed
 	constructed := if mode == .explicit { true } else { inner_form }
@@ -92,11 +105,11 @@ pub fn (mut r RawElement) set_mode(mode TaggedMode) ! {
 
 fn (mut r RawElement) set_mode_with_flag(mode TaggedMode, force bool) ! {
 	if r.tag.class == .universal {
-		return asn1_error(.unexpected_tag_value, 'No need it on universal class')!
+		return error('No need it on universal class')
 	}
 	if r.mode != none {
 		if !force {
-			return asn1_error(.unallowed_operation, 'r.mode != none')!
+			return error('unallowed_operation r.mode != none')
 		}
 		r.mode = mode
 		return
@@ -119,25 +132,25 @@ pub fn (mut r RawElement) force_set_inner_tag(inner_tag Tag) ! {
 fn (mut r RawElement) set_inner_tag_with_flag(inner_tag Tag, force bool) ! {
 	// not needed in universal class
 	if r.tag.class == .universal {
-		return asn1_error(.unexpected_tag_value, 'No need it on universal class')!
+		return error('No need it on universal class')
 	}
 	// we need mode first
-	mode := r.mode or { return asn1_error(.unmeet_requirement, 'set the mode first')! }
+	mode := r.mode or { return error('unmeet_requirement, set the mode first') }
 
 	// when its explicit, compares the provided tag with tag from the inner element.
 	if mode == .explicit {
 		if !r.tag.constructed {
-			return asn1_error(.unmeet_requirement, 'explicit should be constructed')!
+			return error('unmeet_requirement, explicit should be constructed')
 		}
 		// check inner_tag
 		itt, _ := Tag.decode(r.content)!
 		if !itt.equal(inner_tag) {
-			return asn1_error(.unmeet_requirement, 'unequal supplied tag')!
+			return error('unmeet_requirement, unequal supplied tag')
 		}
 	}
 	if r.inner_tag != none {
 		if !force {
-			return asn1_error(.unallowed_operation, 'r.inner_tag != none')!
+			return error('.unallowed_operation, r.inner_tag != none')
 		}
 		r.inner_tag = inner_tag
 		return
@@ -201,7 +214,7 @@ pub fn (r RawElement) inner_element() !Element {
 	mut p := Parser.new(r.content)
 	tag := p.peek_tag()!
 	if !tag.equal(inner_tag) {
-		asn1_error(.unexpected_tag_value, 'gets unequal inner_tag')!
+		return error('gets unequal inner_tag')
 	}
 	el := p.read_tlv()!
 	// should finish
@@ -211,7 +224,7 @@ pub fn (r RawElement) inner_element() !Element {
 
 fn (r RawElement) check_inner_tag() ! {
 	if r.tag.class == .universal {
-		return asn1_error(.unexpected_tag_value, 'Universal class does not have inner tag')!
+		return error('Universal class does not have inner tag')
 	}
 	mode := r.mode or { return error('You dont set any mode') }
 	if mode != .explicit {
@@ -221,7 +234,7 @@ fn (r RawElement) check_inner_tag() ! {
 	tag, _ := Tag.decode_with_rule(r.content, 0, .der)!
 	inner_tag := r.inner_tag or { return error('You dont set an inner_tag') }
 	if !tag.equal(inner_tag) {
-		return asn1_error(.unexpected_tag_value, 'Get unexpected inner tag from bytes')!
+		return error('Get unexpected inner tag from bytes')
 	}
 }
 
@@ -272,7 +285,7 @@ pub fn ContextElement.implicit_context(inner Element, tagnum int) !ContextElemen
 fn ContextElement.decode_raw(bytes []u8) !(ContextElement, int) {
 	tag, length_pos := Tag.decode_with_rule(bytes, 0, .der)!
 	if tag.class != .context_specific {
-		return asn1_error(.unexpected_tag_value, 'tag required to be context_specific')!
+		return error('tag required to be context_specific')
 	}
 	length, content_pos := Length.decode_with_rule(bytes, length_pos, .der)!
 	content := if length == 0 {
@@ -286,8 +299,11 @@ fn ContextElement.decode_raw(bytes []u8) !(ContextElement, int) {
 	next := content_pos + length
 	// Raw ContextElement, you should provide mode and inner tag.
 	ctx := ContextElement{
-		tag:     tag
-		content: content
+		tag:           tag
+		content:       content
+		inner_tag:     none
+		mode:          none
+		default_value: none
 	}
 	return ctx, next
 }
@@ -354,6 +370,7 @@ pub struct ApplicationElement {
 	RawElement
 }
 
+// new creates a new APPLICATION class element.
 pub fn ApplicationElement.new(tag Tag, content []u8) !ApplicationElement {
 	if tag.class != .application {
 		return error('Your tag is not .application')
@@ -362,7 +379,7 @@ pub fn ApplicationElement.new(tag Tag, content []u8) !ApplicationElement {
 	return ApplicationElement{raw}
 }
 
-// creates application class element.
+// creates application class element from some element.
 pub fn ApplicationElement.from_element(inner Element, tagnum int, mode TaggedMode) !ApplicationElement {
 	raw := RawElement.from_element(inner, .application, tagnum, mode)!
 	app := ApplicationElement{raw}
@@ -374,6 +391,7 @@ pub fn (app ApplicationElement) tag() Tag {
 	return app.RawElement.tag
 }
 
+// The payload of ApplicationElement.
 pub fn (app ApplicationElement) payload() ![]u8 {
 	return app.RawElement.content
 }

@@ -21,6 +21,7 @@ pub:
 	value string
 }
 
+// new creates new PrintableString from string s.
 pub fn PrintableString.new(s string) !PrintableString {
 	return PrintableString.from_bytes(s.bytes())!
 }
@@ -32,10 +33,12 @@ fn (pst PrintableString) str() string {
 	return 'PrintableString (${pst.value})'
 }
 
+// The tag of PrintableString element.
 pub fn (pst PrintableString) tag() Tag {
 	return default_printablestring_tag
 }
 
+// The payload of PrintableString element.
 pub fn (pst PrintableString) payload() ![]u8 {
 	if !printable_chars(pst.value.bytes()) {
 		return error('PrintableString: contains non-printable string')

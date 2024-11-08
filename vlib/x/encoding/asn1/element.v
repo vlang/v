@@ -211,17 +211,9 @@ fn (el Element) encoded_len_with_rule(rule EncodingRule) int {
 	return n
 }
 
-fn (el Element) expect_tag(t Tag) bool {
-	return el.tag() == t
-}
-
 // equal checks whether this two element equal and holds the same tag and content
 pub fn (el Element) equal(other Element) bool {
-	return el.equal_tag(other) && el.equal_payload(other)
-}
-
-fn (el Element) equal_tag(other Element) bool {
-	return el.tag() == other.tag()
+	return (el.tag().equal(other.tag())) && (el.equal_payload(other))
 }
 
 fn (el Element) equal_payload(other Element) bool {

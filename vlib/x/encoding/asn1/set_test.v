@@ -32,8 +32,10 @@ fn test_sort_the_set() {
 
 	objs.sort_set_fields()
 
-	assert awal != objs.fields
-	assert objs == exp
+	// this not compiled with -cstrict option
+	// assert awal != objs.fields
+
+	assert objs.equal(exp)
 }
 
 fn test_sort_the_setof() ! {

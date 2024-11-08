@@ -288,10 +288,10 @@ fn test_sequnce_of_sequence() {
 	assert out == [u8(0x30), 17, 5, 0, 1, 1, 0, u8(0x30), 10, 2, 1, 5, 2, 5, 0x14, 0x1f, 0x49,
 		0xd5, 0x4a]
 
-	back, n := Sequence.decode(out)!
-	assert n == out.len
+	back_seq := decode(out)!
+	assert back_seq.equal(seq)
 
-	assert back == seq
+	back := back_seq.into_object[Sequence]()!
 	assert back.fields().len == 3
 	assert back.fields()[0] is Null
 	assert back.fields()[1] is Boolean

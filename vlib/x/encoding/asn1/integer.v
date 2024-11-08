@@ -37,10 +37,7 @@ mut:
 }
 
 fn (v Integer) str() string {
-	match v.value {
-		i64 { return 'Integer ${v.value.str()}' }
-		big.Integer { return 'Integer (big) ${v.value.str()}' }
-	}
+	return 'Integer ${v.value.str()}'
 }
 
 // IntValue represents arbitrary integer value, currently we support

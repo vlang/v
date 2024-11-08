@@ -29,18 +29,22 @@ pub fn Optional.new(el Element, with_present bool) !Optional {
 	}
 }
 
+// set_present_bit sets this Optional element with flag in present.
 pub fn (mut opt Optional) set_present_bit(present bool) {
 	opt.present = present
 }
 
+// The tag of Optional element.
 pub fn (opt Optional) tag() Tag {
 	return opt.elem.tag()
 }
 
+// The payload of Optional element.
 pub fn (opt Optional) payload() ![]u8 {
 	return opt.elem.payload()!
 }
 
+// encode serializes this Optional element into bytes array.
 pub fn (opt Optional) encode() ![]u8 {
 	return opt.encode_with_rule(.der)!
 }

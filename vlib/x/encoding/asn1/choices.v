@@ -69,10 +69,13 @@ fn (c Choice) check() ! {
 
 // Choice is an ASN.1 Element
 //
+
+// The tag of choosen element from choices list.
 pub fn (c Choice) tag() Tag {
 	return c.choosen.tag()
 }
 
+// The payload of choice element
 pub fn (c Choice) payload() ![]u8 {
 	return c.choosen.payload()!
 }

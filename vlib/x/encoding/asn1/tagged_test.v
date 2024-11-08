@@ -11,11 +11,13 @@ fn test_explicit_context_null_pack_unpack() ! {
 	exp := [u8(0xa0), 0x02, 0x05, 0x00]
 	assert out == exp
 	// unpack back
-	ttback, _ := ContextElement.decode_with_options(out, 'explicit;inner:5')!
-	// ctxback := parse_context_specific_with_mode(tag Tag, content []u8, mode TaggedMode) !ContextElement {
-	assert ttback == ex1
-	itt := ttback.inner_tag?
-	assert itt.tag_number() == int(TagType.null)
+	ttback := decode(out)!
+	// , 'context_specific:0;explicit;inner:5')!
+	expc := ttback.unwrap_with_options('context_specific:0;explicit;inner:5')!
+
+	assert expc.tag().number == int(TagType.null)
+
+	assert ttback.equal(ex1)
 }
 
 fn test_explicit_context_nested_pack_unpack() ! {

@@ -35,10 +35,12 @@ fn VisibleString.from_bytes(src []u8) !VisibleString {
 	}
 }
 
+// The tag of VisibleString element.
 pub fn (vst VisibleString) tag() Tag {
 	return default_visiblestring_tag
 }
 
+// The payload of VisibleString element.
 pub fn (vst VisibleString) payload() ![]u8 {
 	if contains_ctrl_chars(vst.value.bytes()) {
 		return error('VisibleString: contains control chars')

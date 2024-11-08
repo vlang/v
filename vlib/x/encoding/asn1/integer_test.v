@@ -94,7 +94,9 @@ const integer_test_data = [
 	ASNIntegerTest{[u8(0x80)], none, Integer.from_int(-128)},
 	ASNIntegerTest{[u8(0xff), 0x7f], none, Integer.from_int(-129)},
 	ASNIntegerTest{[u8(0xff)], none, Integer.from_int(-1)},
-	ASNIntegerTest{[u8(0x80), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], none, Integer.from_i64(-9223372036854775808)},
+	ASNIntegerTest{[u8(0x80), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], none, Integer{
+		value: big.integer_from_string('-9223372036854775808') or { panic(err) }
+	}},
 	ASNIntegerTest{[u8(0x80), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], none, Integer{
 		value: big.integer_from_string('-2361183241434822606848') or { panic(err) }
 	}},
@@ -121,8 +123,12 @@ fn test_asn1_unpack_and_validate() {
 			assert err == v.err
 			continue
 		}
-
-		assert ret == v.expected
+		// compared directly, with ret == v.expected, failed with -cstrict option
+		// assert ret == v.expected
+		// > assert ret == v.expected
+		// Left value (len: 28): `Integer -9223372036854775808`
+		// Right value (len: 28):`Integer -9223372036854775808`
+		assert ret.equal(v.expected)
 	}
 }
 

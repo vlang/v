@@ -62,7 +62,7 @@ fn test_encode_decode_numericstring_advanced() ! {
 		mut exp_out := [u8(TagType.numericstring)]
 		exp_out << c.exp_bytelength
 		exp_out << c.exp_values
-		ns := NumericString.from_string(c.inp) or {
+		ns := NumericString.new(c.inp) or {
 			assert err == c.err
 			continue
 		}

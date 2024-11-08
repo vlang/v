@@ -45,6 +45,7 @@ pub fn Sequence.new() !Sequence {
 	return Sequence.new_with_size(default_sequence_size)!
 }
 
+// Sequence.from_list creates new Sequence from list of elements.
 pub fn Sequence.from_list(els []Element) !Sequence {
 	if els.len > max_sequence_size {
 		return error('Sequence size exceed limit')
@@ -69,10 +70,12 @@ fn Sequence.new_with_size(size int) !Sequence {
 	}
 }
 
+// The tag of Sequence element.
 pub fn (seq Sequence) tag() Tag {
 	return default_sequence_tag
 }
 
+// The payload of Sequence element.
 pub fn (seq Sequence) payload() ![]u8 {
 	return seq.payload_with_rule(.der)!
 }
@@ -86,6 +89,7 @@ fn (seq Sequence) payload_with_rule(rule EncodingRule) ![]u8 {
 	return out
 }
 
+// encoded_len tells the length of serialized element in bytes.
 pub fn (seq Sequence) encoded_len() int {
 	mut n := 0
 	n += seq.tag().tag_size()
@@ -97,6 +101,7 @@ pub fn (seq Sequence) encoded_len() int {
 	return n
 }
 
+// fields is the Sequences fields.
 pub fn (seq Sequence) fields() []Element {
 	return seq.fields
 }
@@ -163,7 +168,7 @@ fn Sequence.from_bytes(bytes []u8) !Sequence {
 	return seq
 }
 
-// set_size sets maximal size of this sequence fielda
+// set_size sets maximal size of this sequence fields.
 pub fn (mut seq Sequence) set_size(size int) ! {
 	if size <= 0 {
 		return error('provides with correct limit')
@@ -195,7 +200,7 @@ fn (mut seq Sequence) relaxed_add_element(el Element, relaxed bool) ! {
 	//		return error('has already in the fields')
 	//	}
 	// }
-	filtered_by_tag := seq.fields.filter(it.equal_tag(el))
+	filtered_by_tag := seq.fields.filter(it.tag().equal(el.tag()))
 	if filtered_by_tag.len == 0 {
 		seq.fields << el
 		return
@@ -261,10 +266,12 @@ pub fn SequenceOf.from_list[T](els []T) !SequenceOf[T] {
 	}
 }
 
+// The tag of SequenceOf element.
 pub fn (so SequenceOf[T]) tag() Tag {
 	return default_sequence_tag
 }
 
+// The payload of SequenceOf element.
 pub fn (so SequenceOf[T]) payload() ![]u8 {
 	return so.payload_with_rule(.der)!
 }
