@@ -2070,10 +2070,15 @@ fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind 
 
 // checks if a type from another module is as expected and visible(`is_pub`)
 fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
-	if !c.check_type_sym_kind(name, type_idx, expected_kind, pos) {
+	mut sym := c.table.sym_by_idx(type_idx)
+	if sym.kind == .alias {
+		parent_type := (sym.info as ast.Alias).parent_type
+		sym = c.table.sym(parent_type)
+	}
+	if sym.kind != expected_kind {
+		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
 		return false
 	}
-	mut sym := c.table.sym_by_idx(type_idx)
 	if !sym.is_pub {
 		c.error('module `${sym.mod}` type `${sym.name}` is private', pos)
 		return false
