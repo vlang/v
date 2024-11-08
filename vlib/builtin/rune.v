@@ -133,10 +133,10 @@ fn (c rune) map_to(mode MapMode) rune {
 			if offset == rune_maps_ul {
 				// upper, lower, upper, lower, ... sequence
 				cnt := (c - unsafe { *cur_map }) % 2
-				if mode in [.to_upper, .to_title] {
-					return c - cnt
+				if mode == .to_lower {
+					return c + 1 - cnt
 				}
-				return c + 1 - cnt
+				return c - cnt
 			} else if offset == rune_maps_utl {
 				// upper, title, lower, upper, title, lower, ... sequence
 				cnt := (c - unsafe { *cur_map }) % 3
