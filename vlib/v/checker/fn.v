@@ -1093,13 +1093,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			mut idx := c.table.type_idxs[full_enum_name]
 			if idx > 0 {
-				if c.table.final_sym(idx).kind != .enum {
-					c.error('type `${enum_name}` is not an enum', node.pos)
-					return ast.void_type
-				}
 				// is from another mod.
 				if enum_name.contains('.') {
 					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
+						return ast.void_type
+					}
+				} else {
+					if !c.check_type_sym_kind(full_enum_name, idx, .enum, node.pos) {
 						return ast.void_type
 					}
 				}
@@ -1110,10 +1110,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					idx = c.table.type_idxs[full_enum_name]
 					if idx < 1 {
 						continue
-					}
-					if c.table.final_sym(idx).kind != .enum {
-						c.error('type `${enum_name}` is not an enum', node.pos)
-						return ast.void_type
 					}
 					if !c.check_type_and_visibility(full_enum_name, idx, .enum, node.pos) {
 						return ast.void_type
@@ -2058,8 +2054,8 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 	return typ
 }
 
-// checks if a type from another module is as expected and visible(`is_pub`)
-fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+// checks if a symbol kind is an expected kind
+fn (mut c Checker) check_type_sym_kind(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
 	mut sym := c.table.sym_by_idx(type_idx)
 	if sym.kind == .alias {
 		parent_type := (sym.info as ast.Alias).parent_type
@@ -2069,6 +2065,15 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
 		return false
 	}
+	return true
+}
+
+// checks if a type from another module is as expected and visible(`is_pub`)
+fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+	if c.check_type_sym_kind(name, type_idx, expected_kind, pos) {
+		return true
+	}
+	mut sym := c.table.sym_by_idx(type_idx)
 	if !sym.is_pub {
 		c.error('module `${sym.mod}` type `${sym.name}` is private', pos)
 		return false

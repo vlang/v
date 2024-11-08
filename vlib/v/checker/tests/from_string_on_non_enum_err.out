@@ -1,4 +1,4 @@
-vlib/v/checker/tests/from_string_on_non_enum_err.vv:12:2: error: type `Foo` is not an enum
+vlib/v/checker/tests/from_string_on_non_enum_err.vv:12:2: error: expected enum, but `Foo` is struct
    10 | 
    11 | fn main() {
    12 |     Foo.from_string('foo')
