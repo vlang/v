@@ -1267,7 +1267,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		name := node.get_name()
-		if name.starts_with('C.') {
+		if c.pref.experimental && name.starts_with('C.') {
 			println('unknown function ${name}, ' +
 				'searching for the C definition in one of the #includes')
 			mut includes := []string{cap: 5}
