@@ -1274,6 +1274,8 @@ fn get_auto_field_idxs(fields []ast.StructField) []int {
 				ret << i
 			} else if attr.name == 'sql' && attr.arg == 'serial' {
 				ret << i
+			} else if attr.name == 'serial' && attr.kind == .plain && !attr.has_arg {
+				ret << i
 			}
 		}
 	}
