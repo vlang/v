@@ -2801,7 +2801,6 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		return ast.void_type
 	}
 	match mut node {
-		ast.NodeError {}
 		ast.ComptimeType {
 			c.error('incorrect use of compile-time type', node.pos)
 		}
@@ -3182,6 +3181,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			}
 			return ast.bool_type
 		}
+		ast.NodeError {}
 	}
 	return ast.void_type
 }
