@@ -3902,7 +3902,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					if node.expr is ast.TypeOf {
 						name_type = g.resolve_comptime_type(node.expr.expr, name_type)
 					}
-					// `typeof(expr).idx`
+					// `typeof(expr).unaliased_typ`
 					g.write(int(g.table.unaliased_type(g.unwrap_generic(name_type))).str())
 					return
 				} else if node.field_name == 'indirections' {
