@@ -28,7 +28,7 @@ struct Foo {
 - `[unique: 'foo']` adds the field to a `UNIQUE` group
 - `[skip]` or `[sql: '-']` field will be skipped
 - `[sql: type]` where `type` is a V type such as `int` or `f64`
-- `[sql: serial]` lets the DB backend choose a column type for an auto-increment field
+- `[serial]` or `[sql: serial]` lets the DB backend choose a column type for an auto-increment field
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
