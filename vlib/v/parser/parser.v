@@ -2923,6 +2923,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				'name' { ast.GenericKindField.name }
 				'typ' { ast.GenericKindField.typ }
 				'unaliased_typ' { ast.GenericKindField.unaliased_typ }
+				'indirections' { ast.GenericKindField.indirections }
 				else { ast.GenericKindField.unknown }
 			}
 			pos.extend(p.tok.pos())
