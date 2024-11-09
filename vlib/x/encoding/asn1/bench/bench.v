@@ -1,5 +1,5 @@
 import time
-import asn1
+import x.encoding.asn1
 
 // This Benchmark was performing serialization and deserialization from ASN.1 schema
 // This samples on README file.
