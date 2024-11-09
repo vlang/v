@@ -74,4 +74,3 @@ jobs:
         run: v run ci/macos_ci.vsh test_readline
       - name: Test vlib modules with -skip-unused
         run: v run ci/macos_ci.vsh test_vlib_skip_unused
-
