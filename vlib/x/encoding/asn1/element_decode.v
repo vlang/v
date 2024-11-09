@@ -12,7 +12,7 @@ module asn1
 //
 // Original object was Utf8String with tag == 12 (0c)
 // ```v
-// import asn1
+// import x.encoding.asn1
 //
 // original_obj := asn1.Utf8String.new('hi')!
 // bytes_data := [u8(0x0C), 0x02, 0x68, 0x69]

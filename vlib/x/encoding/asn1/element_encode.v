@@ -12,6 +12,8 @@ module asn1
 // Examples:
 //
 // ```v
+// import x.encoding.asn1
+//
 // obj := asn1.Utf8String.new('hi')!
 // out := asn1.encode(obj)!
 // assert out == [u8(0x0C), 0x02, 0x68, 0x69]

@@ -17,7 +17,7 @@ Average (Example.decode) decode time: 2 µs
 Built with `-prod` flag and rerun the bench
 ```bash
 $ v -prod benchk/bench.v
-gitpod /workspace/asn1 (dev) $ ./benchmark/bench
+gitpod /workspace/asn1 (dev) $ ./bench/bench
 Benchmarking ASN.1 encode...
 Average example encode time: 3 µs
 Benchmarking ASN.1 decode (with asn.decode)...
