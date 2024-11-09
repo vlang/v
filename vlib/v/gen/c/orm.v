@@ -865,7 +865,14 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	if node.has_order {
 		g.write('.order = _SLIT("')
-		g.expr(node.order_expr)
+		if node.order_expr is ast.Ident {
+			field := g.get_orm_current_table_field(node.order_expr.name) or {
+				verror('field "${node.order_expr.name}" does not exist on "${g.sql_table_name}"')
+			}
+			g.write(g.get_orm_column_name_from_struct_field(field))
+		} else {
+			g.expr(node.order_expr)
+		}
 		g.writeln('"),')
 		if node.has_desc {
 			g.writeln('.order_type = orm__OrderType__desc,')
