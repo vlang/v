@@ -1283,7 +1283,12 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			tmp_c_file_with_includes.close()
 
 			os.execute('v translate fndef ${name[2..]} tmp.c')
-			x := os.read_file('__cdefs_autogen.v') or { return ast.void_type }
+			x := os.read_file('__cdefs_autogen.v') or {
+				for mut arg in node.args {
+					c.expr(mut arg.expr)
+				}
+				return ast.void_type
+			}
 			if x.contains('fn ${name}') {
 				println(
 					'function definition for ${name} has been generated in __cdefs_autogen.v. ' +
@@ -1294,6 +1299,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				println('Failed to generate function definition. Please report it via github.com/vlang/v/issues')
 			}
 			os.rm('tmp.c') or {}
+		}
+		for mut arg in node.args {
+			c.expr(mut arg.expr)
 		}
 		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
