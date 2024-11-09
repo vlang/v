@@ -73,16 +73,17 @@ fn run_step(step Command) {
 
 // Helper function to execute commands and exit if they fail
 fn exec(command string) {
-	result := os.execute(command)
+	result := os.system(command)
 	// or {
 	// eprintln('Command failed: $command\nError: $err')
 	// exit(1)
 	//}
-	if result.exit_code != 0 {
-		eprintln('Command failed with code ${result.exit_code}: ${command}\nOutput: ${result.output}')
+	// if result.exit_code != 0 {
+	if result != 0 {
+		// eprintln('Command failed with code ${result.exit_code}: ${command}\nOutput: ${result.output}')
 		exit(1)
 	}
-	println(result.output)
+	// println(result.output)
 }
 
 // Map enum values to human readable step names
