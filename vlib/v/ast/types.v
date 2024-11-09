@@ -1421,6 +1421,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
 			if info.size_expr is EmptyExpr {
 				res = '[${info.size}]${elem_str}'
+			} else if info.size_expr is Ident {
+				size_str := t.shorten_user_defined_typenames(info.size_expr.name, import_aliases)
+				res = '[${size_str}]${elem_str}'
 			} else {
 				res = '[${info.size_expr}]${elem_str}'
 			}
