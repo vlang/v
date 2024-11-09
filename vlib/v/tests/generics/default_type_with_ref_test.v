@@ -13,6 +13,7 @@ fn (d Struct) a[T]() T {
 fn test_main() {
 	s := Struct{}
 	assert s.a[&int]() == 0
+	assert s.a[&int]() == unsafe { nil }
 	assert s.a[&Struct]() == Struct{}
 	assert s.a[&SumType]() is Struct
 	assert s.a[&StructAlias]() == StructAlias{}
