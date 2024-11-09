@@ -1,7 +1,6 @@
 import os
 
 enum Command {
-	build_v
 	test_symlink
 	test_cross_compilation
 	build_with_cstrict
@@ -47,7 +46,6 @@ fn main() {
 fn run_step(step Command) {
 	println('Running ${step}...')
 	match step {
-		.build_v { build_v() }
 		.test_symlink { test_symlink() }
 		.test_cross_compilation { test_cross_compilation() }
 		.build_with_cstrict { build_with_cstrict() }
@@ -89,7 +87,6 @@ fn exec(command string) {
 // Map enum values to human readable step names
 fn get_step_name(step Command) string {
 	return match step {
-		.build_v { 'Build V' }
 		.test_symlink { 'Test symlink' }
 		.test_cross_compilation { 'Test cross compilation to Linux' }
 		.build_with_cstrict { 'Build V with -cstrict' }
@@ -114,11 +111,6 @@ fn get_step_name(step Command) string {
 }
 
 // Step functions
-fn build_v() {
-	exec('make -j4')
-	exec('./v symlink')
-}
-
 fn test_symlink() {
 	exec('v symlink')
 }

@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: v run macos_ci.vsh build_v
+        run: make -j4 && ./v symlink
       - name: Test symlink
         run: v run macos_ci.vsh test_symlink
       - name: Test cross compilation to Linux
