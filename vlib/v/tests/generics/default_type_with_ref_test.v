@@ -1,19 +1,20 @@
-struct Dec {}
+struct Struct {}
 
-type Foo = Dec
+type StructAlias = Struct
 
-type Bar = Dec | int
+type SumType = Struct | int
 
-type Baz = int
+type AliasInt = int
 
-fn (d Dec) a[T]() T {
+fn (d Struct) a[T]() T {
 	return T{}
 }
 
 fn test_main() {
-	dec := Dec{}
-	dec.a[&int]()
-	dec.a[&Dec]()
-	dec.a[&Bar]()
-	dec.a[&Baz]()
+	s := Struct{}
+	assert s.a[&int]() == 0
+	assert s.a[&Struct]() == Struct{}
+	assert s.a[&SumType]() is Struct
+	assert s.a[&StructAlias]() == StructAlias{}
+	assert s.a[&AliasInt]() == AliasInt(0)
 }
