@@ -1,6 +1,6 @@
 module main
 
-import asn1
+import x.encoding.asn1
 
 // defined type KerberosString = asn1.GeneralString directly
 // produces x00000000: at ???: RUNTIME ERROR: invalid memory access

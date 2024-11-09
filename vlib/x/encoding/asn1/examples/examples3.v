@@ -1,6 +1,6 @@
 module main
 
-import asn1
+import x.encoding.asn1
 
 // This example of encode a sequence containing a UTF-8 string, an integer
 // and an explicitly tagged object identifier, conforming to the following

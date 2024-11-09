@@ -1,6 +1,6 @@
 module main
 
-import asn1
+import x.encoding.asn1
 
 // This example takes more complex scenario, in the sense of nested wrapping, the use of
 // other class Element supported in this module.

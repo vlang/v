@@ -7,13 +7,9 @@ This module provides you with the ability to generate and parse ASN.1 encoded da
 More precisely, it provides you with the ability to generate and parse data encoded 
 with ASN.1’s DER (Distinguished Encoding Rules) encoding. It does not support other than DER.
 
-## Status
-
-> **Warning**
->
-> This module is under development, its changed rapidly, and even
-> its functionality mostly and hardly tested, i'm sure there are buggy code uncovered recently,
-> so feel free to report an isdue or submit a bug report, or give a feedback.
+> [!CAUTION]
+> This module is marked as an experimental, so, its a subject to change (even rapidly).
+> Use it with caution, submit when found a bug and gives yours feedback and review.
 
 ## Supported ASN.1 Type
 
@@ -51,7 +47,7 @@ It's currently supports following basic ASN1 type:
 Here are some simple usage examples.
 
 ```v
-import asn1
+import x.encoding.asn1
 
 fn main() {
 	value := asn1.Integer.from_int(32)

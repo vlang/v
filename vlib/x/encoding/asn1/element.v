@@ -1,4 +1,4 @@
-// Copyright (c) 2022, 2023 blackshirt. All rights reserved.
+// Copyright (c) 2022, 2024 blackshirt. All rights reserved.
 // Use of this source code is governed by a MIT License
 // that can be found in the LICENSE file.
 module asn1
@@ -122,7 +122,7 @@ fn (el Element) validate_optional(fo FieldOptions) ! {
 pub type KeyDefault = map[string]Element
 
 // new_key_default creates empty KeyDefault maps.
-fn new_key_default() KeyDefault {
+pub fn new_key_default() KeyDefault {
 	return KeyDefault(map[string]Element{})
 }
 
@@ -260,6 +260,7 @@ fn Element.decode_with_rule(src []u8, loc int, rule EncodingRule) !(Element, int
 // Many places maybe required this wells, likes Sequence or Set fields.
 pub type ElementList = []Element
 
+// payload produces bytes array from arays of Element.
 pub fn (els ElementList) payload() ![]u8 {
 	return els.payload_with_rule(.der)!
 }
@@ -273,6 +274,7 @@ fn (els ElementList) payload_with_rule(rule EncodingRule) ![]u8 {
 	return out
 }
 
+// encoded_len tells the length of bytes when the ElementList was serialized.
 pub fn (els ElementList) encoded_len() int {
 	mut n := 0
 	for el in els {

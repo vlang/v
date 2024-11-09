@@ -399,8 +399,8 @@ you should call:
 ```codeblocks
 fn (el Element) set_default_value(mut fo FieldOptions, value Element) !
 ``` 
-to setup default value within the options for the current element, or would be error if `has_default` 
-flag is set but default value is not availables.
+to setup default value within the options for the current element, or would be error 
+if `has_default` flag is set but default value is not availables.
 
 See [field_options.v](src/field_options.v) for more detail on this options.
 
