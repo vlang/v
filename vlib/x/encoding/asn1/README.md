@@ -8,12 +8,12 @@ More precisely, it provides you with the ability to generate and parse data enco
 with ASN.1’s DER (Distinguished Encoding Rules) encoding. It does not support other than DER.
 
 > [!CAUTION]
-> This module is marked as an experimental, so, its a subject to change (even rapidly).
-> Use it with caution, submit when found a bug and gives yours feedback and review.
+> This module is marked as an experimental, so its subject to change (possibly rapidly).
+> Use with caution, submit bugs when found, and please gives feedback.
 
 ## Supported ASN.1 Type
 
-It's currently supports following basic ASN1 type:
+Currently supports the following basic ASN1 types:
 
 - [x] Boolean
 - [x] BitString
@@ -38,8 +38,8 @@ It's currently supports following basic ASN1 type:
 
 ---
 
-- Support mostly basic ASN.1 tag type, except for a few types.
-- Supports single and multibyte (high form) tag format for tag number > 31
+- Supports most basic ASN.1 tag types.
+- Supports single and multi-byte (high form) tag formats for tag number > 31.
 - Serializing and deserializing of ASN.1 objcet to bytes and vice versa.
 
 ## Code Examples
@@ -55,12 +55,13 @@ fn main() {
 	output := asn1.encode(value)!
 	assert output == [u8(0x02), 0x01, 0x20]
 
-	// you can encode with string options
+	// you can encode (serialize) with string options
 	output2 := asn1.encode_with_options(value, 'context_specific:5;explicit;inner:2')!
 	assert output2 == [u8(0xa5), 0x03, 0x02, 0x01, 0x20]
 
-	// You can decode (deserializes) back
+	// You can decode (deserialize) back the bytes into Element.
 	el := asn1.decode_with_options([u8(0xa5), 0x03, 0x02, 0x01, 0x20], 'context_specific:5;explicit;inner:2')!
+
 	// el is an Element, turn it into underlying object
 	int_el := el.into_object[asn1.Integer]()!
 
@@ -68,11 +69,11 @@ fn main() {
 	assert int_el_value == 32
 }
 ```
-See examples on [examples](examples/) directory for more completes examples.
+See more complete examples in the [examples](examples/) directory.
 
 ## Documentation
 
-See the [documentation](DOCS.md) for more detail information on 
+See the [documentation](DOCS.md) for more detailed information on 
 how to use functionality in this module.
 
 ## License

@@ -1,8 +1,7 @@
 import time
 import x.encoding.asn1
 
-// This Benchmark was performing serialization and deserialization from ASN.1 schema
-// This samples on README file.
+// This Benchmark was performs serialization and deserialization from ASN.1 schema defined as:
 // ```asn.1
 // Example ::= SEQUENCE {
 //    greeting    UTF8String,
@@ -22,20 +21,22 @@ fn (ex Example) tag() asn1.Tag {
 	return asn1.default_sequence_tag
 }
 
-// you can build your payload manually or use `asn1.make_payload`, but with aware,
-// if your structure contains generic, its maybe not work (currently).
+// you can build your payload manually or use `asn1.make_payload`, but be aware,
+// if your structure contains generics, its may not work (currently).
+// Updates: Thank to @felipensp. He has a great job to resolve this issue.
+// Its was resolved in [22724](https://github.com/vlang/v/pull/22724)
 fn (ex Example) payload() ![]u8 {
 	kd := asn1.KeyDefault(map[string]asn1.Element{})
 	payload := asn1.make_payload[Example](ex, kd)!
 	return payload
 }
 
-// You can write routines for deserialize Example structure. This is only examples way,
-// but its possible to use other way with the help from this module, like use
-// `Parser` codec.
+// You can write custom decode routines for the Example structure. This is only one
+// example, but its possible to do this in other ways with help from this module such
+// as using the `Parser` codec.
 fn Example.decode(bytes []u8) !Example {
 	// just call raw .decode on bytes
-	// by example, its should produce sequence type.
+	// for example, its should produce sequence type.
 	elem := asn1.decode(bytes)!
 	assert elem.tag().equal(asn1.default_sequence_tag) // should true
 
@@ -43,13 +44,13 @@ fn Example.decode(bytes []u8) !Example {
 	seq := elem.into_object[asn1.Sequence]()!
 	fields := seq.fields()
 
-	// and then, turn every field into desired object based your schema.
-	// first two field is not wrapped element, so just turn into real object
+	// and then, turn every field into desired objects based on your schema.
+	// first two field is not wrapped element, so just turn into real object.
 	greeting := fields[0].into_object[asn1.Utf8String]()!
 	answer := fields[1].into_object[asn1.Integer]()!
 
-	// the third field is context_specific wrapped element, just unwrap it with the
-	// same options used to encode
+	// the third field is a context_specific wrapped element, just unwrap it with the
+	// same options used to encode.
 	oid_tipe := fields[2].unwrap_with_options('context_specific:1;explicit; inner:6')!
 	tipe := oid_tipe.into_object[asn1.ObjectIdentifier]()!
 

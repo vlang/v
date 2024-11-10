@@ -95,10 +95,10 @@ Where `TagClass` represent class of ASN.1 type. There are four class of ASN.1 ty
 
 ```codeblocks
 enum TagClass {
-	universal = 0x00
-	application = 0x01
-	context = 0x02
-	private = 0x03
+	universal 			= 0x00
+	application 		= 0x01
+	context_specific 	= 0x02
+	private 			= 0x03
 }
 ```
 

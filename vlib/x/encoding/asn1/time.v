@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 UTCTIME type.
+// default_utctime_tag is the default tag of ASN.1 UTCTIME type.
 pub const default_utctime_tag = Tag{.universal, false, int(TagType.utctime)}
-// The default tag of ASN.1 GENERALIZEDTIME type.
+// default_generalizedtime_tag is the default tag of ASN.1 GENERALIZEDTIME type.
 pub const default_generalizedtime_tag = Tag{.universal, false, int(TagType.generalizedtime)}
 
 // ASN.1 UNIVERSAL CLASS OF UTCTIME TYPE.
@@ -34,7 +34,7 @@ pub:
 	value string
 }
 
-// new_utctime creates new UtcTime from string s.
+// new_utctime creates a new UtcTime element from string s.
 pub fn UtcTime.new(s string) !UtcTime {
 	valid := validate_utctime(s)!
 
@@ -57,12 +57,12 @@ fn (utc UtcTime) str() string {
 	return 'UtcTime (${utc.value})'
 }
 
-// the tag of UtcTime
+// tag retursn the tag of the UtcTime element.
 pub fn (utc UtcTime) tag() Tag {
 	return default_utctime_tag
 }
 
-// payload was the payload (content) of this UtcTime
+// payload returns the payload of the UtcTime element.
 pub fn (utc UtcTime) payload() ![]u8 {
 	return utc.payload_with_rule(.der)!
 }

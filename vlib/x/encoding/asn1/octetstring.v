@@ -5,8 +5,9 @@ module asn1
 
 import encoding.hex
 
-// The default tag of ASN.1 OCTETSTRING type.
+// default_octetstring_tag is the default tag of ASN.1 OCTETSTRING type.
 pub const default_octetstring_tag = Tag{.universal, false, int(TagType.octetstring)}
+
 const max_octetstring_size = 1 << 32 - 1
 
 // ASN.1 UNIVERSAL TYPE OF OCTETSTRING.
@@ -20,12 +21,12 @@ pub:
 	value string
 }
 
-// The tag of OctetString type.
+// tag returns the tag of OctetString type.
 pub fn (oct OctetString) tag() Tag {
 	return default_octetstring_tag
 }
 
-// The payload of OctetString type.
+// payload returns the payload of OctetString type.
 pub fn (oct OctetString) payload() ![]u8 {
 	return oct.payload_with_rule(.der)!
 }
@@ -44,7 +45,7 @@ fn (oct OctetString) str() string {
 	return 'OctetString (${oct.value})'
 }
 
-// OctetString.new creates new octet string
+// new creates a new OctetString element from string s.
 pub fn OctetString.new(s string) !OctetString {
 	if !valid_octet_string(s) {
 		return error('not valid octet string')
@@ -54,7 +55,7 @@ pub fn OctetString.new(s string) !OctetString {
 	}
 }
 
-// from_hexstring creates OctetString from valid hex string or error on fails.
+// from_hexstring creates a new OctetString element from valid hex string or error on fails.
 pub fn OctetString.from_hexstring(hs string) !OctetString {
 	bytes := hex.decode(hs)!
 	oct := OctetString.from_bytes(bytes)!

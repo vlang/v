@@ -9,7 +9,7 @@ mut:
 	data []u8
 }
 
-// Parser.new creates a new Parser from bytes array in data.
+// new creates a new Parser from bytes array in data.
 pub fn Parser.new(data []u8) &Parser {
 	return &Parser{
 		data: data
@@ -21,20 +21,20 @@ pub fn (mut p Parser) reset() {
 	p.data = unsafe { p.data[..0] }
 }
 
-// peek_tag lookup the tag from the parser without updates internal parser data.
+// peek_tag lookups the tag from the parser without updates internal parser data.
 pub fn (mut p Parser) peek_tag() !Tag {
 	tag, _ := Tag.from_bytes(p.data)!
 	return tag
 }
 
-// read_tag lookup the tag from the current parser and updates internal parser data.
+// read_tag lookups the tag from the current parser and updates internal parser data.
 pub fn (mut p Parser) read_tag() !Tag {
 	tag, rest := Tag.from_bytes(p.data)!
 	p.data = rest
 	return tag
 }
 
-// read_length reads and lookup Length from the current parser.
+// read_length read the Length from the current parser data.
 pub fn (mut p Parser) read_length() !Length {
 	length, rest := Length.from_bytes(p.data)!
 	p.data = rest
@@ -61,14 +61,16 @@ pub fn (mut p Parser) read_bytes(length int) ![]u8 {
 //      |               ~~~~~~~~~~~~~~
 //   60 |     return result
 //   61 | }
-// vlib/x/encoding/asn1/parser.v:59:26: error: unexpected `!`, the function `T__static__parse` does not return a Result
+// vlib/x/encoding/asn1/parser.v:59:26: error: unexpected `!`,
+// the function `T__static__parse` does not return a Result
 //   57 | // Note: somes builtin have not this method.
 //   58 | fn (mut p Parser) read_element[T]() !T {
 //   59 |     result := T.parse(mut p)!
 //      |                             ^
 //   60 |     return result
 //   61 | }
-// vlib/x/encoding/asn1/parser.v:59:9: error: assignment mismatch: 1 variable but `T.parse()` returns 0 values
+// vlib/x/encoding/asn1/parser.v:59:9: error: assignment mismatch: 1 variable
+// but `T.parse()` returns 0 values
 //   57 | // Note: somes builtin have not this method.
 //   58 | fn (mut p Parser) read_element[T]() !T {
 //   59 |     result := T.parse(mut p)!
@@ -106,7 +108,7 @@ pub fn (mut p Parser) is_empty() bool {
 	return p.data.len == 0
 }
 
-// read_from reads up to buf.len bytes from reader r, places them into buf and then appends
+// read_from read up to buf.len bytes from reader r, places them into buf and then appends
 // to current Parser data.
 fn (mut p Parser) read_from(mut r io.Reader, mut buf []u8) !int {
 	n := r.read(mut buf)!

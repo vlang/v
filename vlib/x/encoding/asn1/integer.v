@@ -4,9 +4,9 @@
 module asn1
 
 import math.big
-import crypto.internal.subtle { constant_time_compare }
+import crypto.internal.subtle
 
-// The default of ASN.1 INTEGER type.
+// default_integer_tag is the default of ASN.1 INTEGER type.
 pub const default_integer_tag = Tag{.universal, false, int(TagType.integer)}
 
 // ASN.1 INTEGER.
@@ -126,7 +126,7 @@ pub fn Integer.from_hex(x string) !Integer {
 }
 
 // from_bytes creates a new ASN.1 Integer from bytes array in b.
-// Its try to parse bytes as in two's complement form. see `unpack_from_twoscomplement_bytes`
+// Its try to parse bytes as in two's complement form.
 fn Integer.from_bytes(b []u8) !Integer {
 	return Integer.unpack_from_twoscomplement_bytes(b)!
 }
@@ -168,12 +168,12 @@ fn (v Integer) bytes_len() int {
 	return b.len
 }
 
-// The tag of Integer type
+// tag returns the tag of Integer type element
 pub fn (v Integer) tag() Tag {
 	return default_integer_tag
 }
 
-// The payload of Integer v
+// payload returns the payload of Integer type element.
 pub fn (v Integer) payload() ![]u8 {
 	bytes, _ := v.pack_into_twoscomplement_form()!
 	return bytes
@@ -243,7 +243,7 @@ pub fn (n Integer) equal(m Integer) bool {
 	mbytes := m.bytes()
 	// todo: check sign equality
 	// m.tag() == n.tag() by definition, no need to check
-	return constant_time_compare(nbytes, mbytes) == 1
+	return subtle.constant_time_compare(nbytes, mbytes) == 1
 }
 
 // Integer.unpack_and_validate deserializes bytes in b into Integer

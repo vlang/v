@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 VISIBLESTRING type.
+// default_visiblestring_tag is the default tag of ASN.1 VISIBLESTRING type.
 pub const default_visiblestring_tag = Tag{.universal, false, int(TagType.visiblestring)}
 
 // ASN.1 UNIVERSAL CLASS OF VISIBLESTRING TYPE.
@@ -15,7 +15,7 @@ pub:
 	value string
 }
 
-// from_string creates a new VisibleString from string s
+// from_string creates a new VisibleString from string s.
 pub fn VisibleString.new(s string) !VisibleString {
 	if contains_ctrl_chars(s.bytes()) {
 		return error('VisibleString: contains control chars')
@@ -35,12 +35,12 @@ fn VisibleString.from_bytes(src []u8) !VisibleString {
 	}
 }
 
-// The tag of VisibleString element.
+// tag returns the tag of VisibleString type element.
 pub fn (vst VisibleString) tag() Tag {
 	return default_visiblestring_tag
 }
 
-// The payload of VisibleString element.
+// payload returns the payload of VisibleString type element.
 pub fn (vst VisibleString) payload() ![]u8 {
 	if contains_ctrl_chars(vst.value.bytes()) {
 		return error('VisibleString: contains control chars')

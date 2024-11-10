@@ -8,6 +8,7 @@ const default_choices_size = 64
 
 // ASN.1 CHOICE
 //
+// Choice is an ASN.1 Element
 @[noinit]
 pub struct Choice {
 mut:
@@ -16,7 +17,8 @@ mut:
 	choices []Element
 }
 
-// Choice.new creates a new choice from choices list.
+// new creates a new choice element. It accepts el as a choosen element
+// and choices as a source of possible choices list.
 pub fn Choice.new(el Element, choices []Element) !Choice {
 	c := Choice{
 		choosen: el
@@ -35,7 +37,8 @@ pub fn (mut c Choice) set_size(size int) ! {
 	c.check()!
 }
 
-fn (mut c Choice) choose(some Element) ! {
+// choose chooses some element for as a choosen element for the choice c.
+pub fn (mut c Choice) choose(some Element) ! {
 	mut within := false
 	for el in c.choices {
 		if el.equal(some) {
@@ -67,15 +70,12 @@ fn (c Choice) check() ! {
 	}
 }
 
-// Choice is an ASN.1 Element
-//
-
-// The tag of choosen element from choices list.
+// tag returns the tag of choice element.
 pub fn (c Choice) tag() Tag {
 	return c.choosen.tag()
 }
 
-// The payload of choice element
+// payload returns the payload of choice element.
 pub fn (c Choice) payload() ![]u8 {
 	return c.choosen.payload()!
 }

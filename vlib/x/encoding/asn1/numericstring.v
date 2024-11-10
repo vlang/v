@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 NUMERICSTRING type.
+// default_numericstring_tag is the default tag of ASN.1 NUMERICSTRING type.
 pub const default_numericstring_tag = Tag{.universal, false, int(TagType.numericstring)}
 
 // NumericString.
@@ -18,7 +18,7 @@ pub:
 	value string
 }
 
-// NumericString.new creates new NumericString from string s
+// new creates a new NumericString element from string s.
 pub fn NumericString.new(s string) !NumericString {
 	if !all_numeric_string(s.bytes()) {
 		return error('NumericString: contains non-numeric string')
@@ -28,12 +28,12 @@ pub fn NumericString.new(s string) !NumericString {
 	}
 }
 
-// The tag of NumericString type.
+// tag returns the tag of NumericString element.
 pub fn (nst NumericString) tag() Tag {
 	return default_numericstring_tag
 }
 
-// The payload of NumericString type.
+// payload returns the payload of NumericString element.
 pub fn (nst NumericString) payload() ![]u8 {
 	return nst.payload_with_rule(.der)!
 }

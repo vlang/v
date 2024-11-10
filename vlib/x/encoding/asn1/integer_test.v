@@ -156,7 +156,7 @@ fn test_asn1_integer_simple_long_integer_pack_unpack() ! {
 	assert pos2 == 17
 }
 
-// from asnone test cases
+// from asn-one test cases
 // FIXME: Its still need a fix, remove additional 0x00 before 0x8f in unpack operation
 fn test_integer_large_int() ! {
 	bytes := [u8(0x02), 0x81, 0x81, 0x00, 0x8f, 0xe2, 0x41, 0x2a, 0x08, 0xe8, 0x51, 0xa8, 0x8c,
@@ -182,6 +182,8 @@ fn test_integer_large_int() ! {
 	// BUG?: there are some issues when compared out == expected directly, even internally its a same,
 	// but it fails to assert, so we provide and use equality check
 	// assert out == expected_integer
+	// dump(out)
+	// dump(expected_integer)
 	assert out.equal(expected_integer)
 
 	// pack back

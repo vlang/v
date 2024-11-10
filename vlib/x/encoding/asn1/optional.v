@@ -1,6 +1,6 @@
 module asn1
 
-// OPTIONAL Element.
+// ASN.1 OPTIONAL Element.
 //
 // note: At the abstract ASN.1 level the absence of a DEFAULT value in an encoding is the same as its being present.
 // Contrast this with OPTIONAL, where a value being present in the encoding is semantically distinct from its being absent.
@@ -18,7 +18,7 @@ mut:
 	present bool
 }
 
-// Optional.new creates and marked element as an Optional element.
+// new creates and marked element as an Optional element.
 pub fn Optional.new(el Element, with_present bool) !Optional {
 	if el is Optional {
 		return error('recursive optional is not allowed')
@@ -34,12 +34,12 @@ pub fn (mut opt Optional) set_present_bit(present bool) {
 	opt.present = present
 }
 
-// The tag of Optional element.
+// tag returns the tag of Optional element.
 pub fn (opt Optional) tag() Tag {
 	return opt.elem.tag()
 }
 
-// The payload of Optional element.
+// payload the payload of Optional element.
 pub fn (opt Optional) payload() ![]u8 {
 	return opt.elem.payload()!
 }
@@ -63,7 +63,7 @@ pub fn (opt Optional) into_element() !Element {
 	return parse_element(opt.tag(), opt.payload()!)!
 }
 
-// `into_object` tries to turns this optional into real underlying object T.
+// into_object tries to turns this optional into real underlying object T.
 // Its return object T on success or error on fails.
 pub fn (opt Optional) into_object[T]() !T {
 	$if T !is Element {

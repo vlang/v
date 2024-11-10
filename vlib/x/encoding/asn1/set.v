@@ -3,8 +3,9 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 SET (SET OF) type.
+// default_set_tag is the default tag of ASN.1 SET (SET OF) type.
 pub const default_set_tag = Tag{.universal, true, int(TagType.set)}
+
 const default_set_size = 64
 const max_set_size = 255
 
@@ -30,12 +31,12 @@ fn (s Set) str() string {
 	return 'SET (${s.fields.len} Elements)'
 }
 
-// creates a new Set with default size
+// creates a new Set with default size.
 pub fn Set.new() !Set {
 	return Set.new_with_size(default_set_size)!
 }
 
-// Set.from_list creates a new Set from arrays of element in els.
+// from_list creates a new Set from arrays of element in els.
 pub fn Set.from_list(els []Element) !Set {
 	if els.len > max_set_size {
 		return error('Sequence size exceed limit')
@@ -60,12 +61,14 @@ fn Set.new_with_size(size int) !Set {
 	}
 }
 
-// The tag of Set element.
+// tag returns the tag of Set element.
 pub fn (s Set) tag() Tag {
 	return default_set_tag
 }
 
-// Required for DER encoding.
+// payload returns the payload of the Set element.
+//
+// Note: Required for DER encoding.
 // The encodings of the component values of a set value shall appear in an order determined by their tags.
 // The canonical order for tags is based on the outermost tag of each type and is defined as follows:
 //   a) those elements or alternatives with universal class tags shall appear first, followed by those with
@@ -94,7 +97,7 @@ fn (mut s Set) payload_with_rule(rule EncodingRule) ![]u8 {
 	return out
 }
 
-// fields is the Set content, in fields.
+// fields return the arrays of element's content in the Set.fields.
 pub fn (set Set) fields() []Element {
 	return set.fields
 }
@@ -163,7 +166,8 @@ fn (s Set) equal(o Set) bool {
 	return true
 }
 
-// by default allow add with the same tag
+// add_element adds an element el into Set.
+// By default it allowing adds element with the same tag
 pub fn (mut set Set) add_element(el Element) ! {
 	set.relaxed_add_element(el, true)!
 }
@@ -237,7 +241,7 @@ mut:
 	fields []T
 }
 
-// creates an empty SetOf type T
+// new creates an empty SetOf type T.
 pub fn SetOf.new[T]() !SetOf[T] {
 	$if T !is Element {
 		return error('Yur T is not Element')
@@ -252,7 +256,7 @@ fn (s SetOf[T]) str() string {
 	return 'SET OF (${s.fields.len} ${typeof(s).name})'
 }
 
-// creates new SetOf type T from arrays of T.
+// from_list creates new SetOf type T from arrays of T.
 pub fn SetOf.from_list[T](els []T) !SetOf[T] {
 	$if T !is Element {
 		return error('Yur T is not Element')
@@ -265,12 +269,12 @@ pub fn SetOf.from_list[T](els []T) !SetOf[T] {
 	}
 }
 
-// the tag of SetOf[T].
+// tag returns the tag of SetOf[T] element.
 pub fn (so SetOf[T]) tag() Tag {
 	return default_set_tag
 }
 
-// the payload of SetOf[T].
+// payload returns the payload of SetOf[T] element.
 pub fn (so SetOf[T]) payload() ![]u8 {
 	mut sto := so
 	return sto.payload_with_rule(.der)!
@@ -307,7 +311,7 @@ fn (mut so SetOf[T]) sort_setof_fields() {
 	})
 }
 
-// by default allow add with the same tag
+// add_element adds an element el into SetOf[T] fields.
 pub fn (mut so SetOf[T]) add_element(el Element) ! {
 	so.relaxed_add_element(el, true)!
 }

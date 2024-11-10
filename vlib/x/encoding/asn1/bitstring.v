@@ -22,15 +22,15 @@ mut:
 	pad  u8 // numbers of unused bits
 }
 
-// The default tag of ASN.1 BITSTRING type.
+// default_bitstring_tag is the default tag of the ASN.1 BITSTRING type.
 pub const default_bitstring_tag = Tag{.universal, false, int(TagType.bitstring)}
 
-// The tag of BITSTRING type.
+// tag returns the tag of BITSTRING type.
 pub fn (bs BitString) tag() Tag {
 	return default_bitstring_tag
 }
 
-// The payload of BITSTRING instance.
+// payload returns the payload of BITSTRING instance.
 pub fn (bs BitString) payload() ![]u8 {
 	mut out := []u8{}
 	out << bs.pad
@@ -42,7 +42,7 @@ fn (bs BitString) str() string {
 	return 'BitString: ${bs.data.hex()} (${bs.pad})'
 }
 
-// parse BitString using ongoing Parser.
+// parse BitString using the given Parser.
 fn BitString.parse(mut p Parser) !BitString {
 	tag := p.read_tag()!
 	if !tag.equal(default_bitstring_tag) {
@@ -83,14 +83,16 @@ fn BitString.decode_with_rule(bytes []u8, rule EncodingRule) !(BitString, int) {
 	return bs, next
 }
 
-// BitString.from_binary_string creates a new BitString from binary bits arrays in s,
-// ie, arrays of 1 and 0. If s.len is not multiple of 8, it would contain non-null pad,
+// from_binary_string creates a new BitString from binary bits arrays in s,
+// ie, arrays of 1 and 0. If s.len is not a multiple of 8, it will contain non-null pad,
 // otherwise, the pad is null.
-// The bits string '011010001' will need two content octets: 01101000 10000000 (hexadecimal 68 80);
-// seven bits of the last octet are not used and its interpreted as a pad value.
+// The bit string '011010001' will need two content octets: 01101000 10000000 (hexadecimal 68 80);
+// seven bits of the last octet are not used and is interpreted as a pad value.
 // Example:
 // ```v
-//	bs := BitString.from_binary_string('011010001')!
+// import x.encoding.asn1
+//
+//	bs := asn1.BitString.from_binary_string('011010001')!
 // 	assert (bs.pad == 7 && bs.data == [u8(0x68), 0x80]) == true
 // ```
 pub fn BitString.from_binary_string(s string) !BitString {
@@ -98,12 +100,12 @@ pub fn BitString.from_binary_string(s string) !BitString {
 	return BitString.new_with_pad(res, u8(pad))!
 }
 
-// new creates a new BitString from regular string s
+// new creates a new BitString from regular string s.
 pub fn BitString.new(s string) !BitString {
 	return BitString.from_bytes(s.bytes())!
 }
 
-// from_bytes creates a new BitString from bytes array in src
+// from_bytes creates a new BitString from bytes array in src.
 fn BitString.from_bytes(src []u8) !BitString {
 	if src.len < 1 {
 		return error('BitString error: need more bytes')

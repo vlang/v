@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 BOOLEAN type.
+// default_boolean_tag is the default tag of ASN.1 BOOLEAN type.
 pub const default_boolean_tag = Tag{.universal, false, int(TagType.boolean)}
 
 // ASN.1 UNIVERSAL CLASS OF BOOLEAN TYPE.
@@ -38,7 +38,7 @@ fn Boolean.from_u8(value u8) Boolean {
 	}
 }
 
-// The tag of Boolean type
+// tag returns the tag of Boolean type.
 pub fn (v Boolean) tag() Tag {
 	return default_boolean_tag
 }
@@ -48,7 +48,7 @@ fn (v Boolean) str() string {
 	return res
 }
 
-// The payload of Boolean type in .der rule.
+// payload returns the payload of Boolean type in .der rule.
 pub fn (b Boolean) payload() ![]u8 {
 	return b.payload_with_rule(.der)!
 }

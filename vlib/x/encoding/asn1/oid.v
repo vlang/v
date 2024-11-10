@@ -5,7 +5,8 @@ module asn1
 
 // TODO: doing check for limiting oid array length.
 const max_oid_length = 128
-// The default tag of ASN.1 OBJECTIDENTIFIER type.
+
+// default_oid_tag is the default tag of ASN.1 OBJECTIDENTIFIER type.
 pub const default_oid_tag = Tag{.universal, false, int(TagType.oid)}
 
 // ASN.1 ObjectIdentifier type.
@@ -17,17 +18,17 @@ mut:
 	value []int
 }
 
-// The tag of ObjectIdentifier type.
+// tag returns the tag of ObjectIdentifier type.
 pub fn (oid ObjectIdentifier) tag() Tag {
 	return default_oid_tag
 }
 
-// The payload of ObjectIdentifier type
+// payload the payload of ObjectIdentifier type.
 pub fn (oid ObjectIdentifier) payload() ![]u8 {
 	return oid.pack_into_bytes()!
 }
 
-// `ObjectIdentifier.new` creates a new ObjectIdentifier type from dots (`.`) separated string.
+// new creates a new ObjectIdentifier type from dots (`.`) separated string.
 pub fn ObjectIdentifier.new(s string) !ObjectIdentifier {
 	if s.len < 2 {
 		return error('ObjectIdentifier: bad string oid length')
@@ -47,7 +48,7 @@ pub fn ObjectIdentifier.new(s string) !ObjectIdentifier {
 	return oid
 }
 
-// `ObjectIdentifier.from_ints` creates a new ObjectIdentifier type from arrays of int.
+// from_ints creates a new ObjectIdentifier type from arrays of int.
 pub fn ObjectIdentifier.from_ints(src []int) !ObjectIdentifier {
 	// allowed value of first int was 0, 1 or 2,
 	// and when first=2, second int was not limited.

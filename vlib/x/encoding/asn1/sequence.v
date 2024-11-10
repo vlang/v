@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 SEQUENCE (SEQUENCE OF) type.
+// default_sequence_tag is the default tag of ASN.1 SEQUENCE (SEQUENCE OF) type.
 pub const default_sequence_tag = Tag{.universal, true, int(TagType.sequence)}
 
 // constant for sequence(of) and set(of) internal value
@@ -40,12 +40,12 @@ fn (s Sequence) str() string {
 	return 'SEQUENCE: ${s.fields.len} elements.'
 }
 
-// new creates new Sequence with default size
+// new creates new Sequence with default size.
 pub fn Sequence.new() !Sequence {
 	return Sequence.new_with_size(default_sequence_size)!
 }
 
-// Sequence.from_list creates new Sequence from list of elements.
+// from_list creates new Sequence from list of elements.
 pub fn Sequence.from_list(els []Element) !Sequence {
 	if els.len > max_sequence_size {
 		return error('Sequence size exceed limit')
@@ -70,12 +70,12 @@ fn Sequence.new_with_size(size int) !Sequence {
 	}
 }
 
-// The tag of Sequence element.
+// tag returns the tag of Sequence element.
 pub fn (seq Sequence) tag() Tag {
 	return default_sequence_tag
 }
 
-// The payload of Sequence element.
+// payload returns the payload of Sequence element.
 pub fn (seq Sequence) payload() ![]u8 {
 	return seq.payload_with_rule(.der)!
 }
@@ -89,7 +89,7 @@ fn (seq Sequence) payload_with_rule(rule EncodingRule) ![]u8 {
 	return out
 }
 
-// encoded_len tells the length of serialized element in bytes.
+// encoded_len tells the length of serialized Sequence element in bytes.
 pub fn (seq Sequence) encoded_len() int {
 	mut n := 0
 	n += seq.tag().tag_size()
@@ -101,7 +101,7 @@ pub fn (seq Sequence) encoded_len() int {
 	return n
 }
 
-// fields is the Sequences fields.
+// fields returns the Sequences fields.
 pub fn (seq Sequence) fields() []Element {
 	return seq.fields
 }
@@ -179,8 +179,9 @@ pub fn (mut seq Sequence) set_size(size int) ! {
 	seq.size = size
 }
 
-// by default allow add with the same tag
-fn (mut seq Sequence) add_element(el Element) ! {
+// add_element adds an element el into Sequence fields.
+// By default its allows adding element with the same tag.
+pub fn (mut seq Sequence) add_element(el Element) ! {
 	seq.relaxed_add_element(el, true)!
 }
 
@@ -218,7 +219,7 @@ pub fn (seq Sequence) is_sequence_of[T]() bool {
 	return seq.fields.all(it is T)
 }
 
-// into_sequence_of[T] turns this sequence into SequenceOf[T]
+// into_sequence_of[T] turns this sequence into SequenceOf[T] element.
 pub fn (seq Sequence) into_sequence_of[T]() !SequenceOf[T] {
 	if seq.is_sequence_of[T]() {
 		return error('This sequence is not SequenceOf[T]')

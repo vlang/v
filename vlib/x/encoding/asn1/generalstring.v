@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 GENERALSTRING type.
+// default_generalstring_tag is the default tag of ASN.1 GENERALSTRING type.
 pub const default_generalstring_tag = Tag{.universal, false, int(TagType.generalstring)}
 
 // ASN.1 GENERALSTRING Handling
@@ -21,8 +21,7 @@ pub:
 	value string
 }
 
-// TODO: proper check GeneralString validation
-// new creates GeneralString from string s
+// new creates a GeneralString element from string s.
 pub fn GeneralString.new(s string) !GeneralString {
 	if !s.is_ascii() {
 		return error('GeneralString: contains non-ascii chars')
@@ -39,12 +38,12 @@ fn (gst GeneralString) str() string {
 	return 'GeneralString (${gst.value})'
 }
 
-// The tag of GeneralString
+// tag returns the tag of GeneralString type element.
 pub fn (gst GeneralString) tag() Tag {
 	return default_generalstring_tag
 }
 
-// payload of the GeneralString generated with .der rule.
+// payload returns the payload of GeneralString type element.
 pub fn (gst GeneralString) payload() ![]u8 {
 	return gst.payload_with_rule(.der)!
 }

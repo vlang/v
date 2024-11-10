@@ -5,7 +5,7 @@ module asn1
 
 import encoding.utf8
 
-// The default tag of ASN.1 UTF8STRING type.
+// default_utf8string_tag is the default tag of ASN.1 UTF8STRING type.
 pub const default_utf8string_tag = Tag{.universal, false, int(TagType.utf8string)}
 
 // ASN.1 UNIVERSAL CLASS OF UTF8STRING TYPE.
@@ -17,7 +17,7 @@ pub:
 	value string
 }
 
-// Utf8String.new creates a new Utf8String element from string s.
+// new creates a new Utf8String element from string s.
 pub fn Utf8String.new(s string) !Utf8String {
 	if !utf8.validate_str(s) {
 		return error('Utf8String: invalid UTF-8 string')
@@ -27,7 +27,7 @@ pub fn Utf8String.new(s string) !Utf8String {
 	}
 }
 
-// Utf8String.from_bytes creates a new Utf8String from bytes in src.
+// from_bytes creates a new Utf8String element from bytes in src.
 pub fn Utf8String.from_bytes(src []u8) !Utf8String {
 	if !utf8.validate_str(src.bytestr()) {
 		return error('Utf8String: invalid UTF-8 string')
@@ -37,12 +37,12 @@ pub fn Utf8String.from_bytes(src []u8) !Utf8String {
 	}
 }
 
-// The tag of Utf8String element.
+// tag returns the tag of Utf8String element.
 pub fn (uts Utf8String) tag() Tag {
 	return default_utf8string_tag
 }
 
-// The payload of Utf8String element.
+// payload returns the payload of Utf8String element.
 pub fn (uts Utf8String) payload() ![]u8 {
 	return uts.payload_with_rule(.der)!
 }

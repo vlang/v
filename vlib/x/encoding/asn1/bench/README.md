@@ -1,7 +1,7 @@
-Benchmark of `asn1` module
+Benchmark of `x.encoding.asn1` module
 --------------------------
 
-This is benchmark of `asn1` module compared with go version (on free gitpod workspace)
+This is a benchmark of `x.encoding.asn1` module compared with go version (on free gitpod workspace)
 
 Regular benchmark produces this result:
 ```bash
@@ -14,7 +14,7 @@ Benchmarking ASN.1 decode with Example.decode)...
 Average (Example.decode) decode time: 2 µs
 ```
 
-Built with `-prod` flag and rerun the bench
+Build with `-prod` flag and rerun the bench
 ```bash
 $ v -prod benchk/bench.v
 gitpod /workspace/asn1 (dev) $ ./bench/bench
@@ -26,7 +26,7 @@ Benchmarking ASN.1 decode with Example.decode)...
 Average (Example.decode) decode time: 1 µs
 ```
 
-The go version of benchmark produces following result:
+The go version produces following result:
 ```bash
 $ go run bench/bench.go
 Benchmarking golang Marshal...

@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
-// The default tag of ASN.1 NULL type.
+// default_null_tag is the default tag of ASN.1 NULL type.
 pub const default_null_tag = Tag{.universal, false, int(TagType.null)}
 
 // ASN.1 UNIVERSAL CLASS OF NULL TYPE.
@@ -13,17 +13,17 @@ pub const default_null_tag = Tag{.universal, false, int(TagType.null)}
 // The NULL type can be used in situations where the presence of a type is important, but no concrete value is needed.
 pub struct Null {}
 
-// `Null.new` creates a Null
+// new creates a Null element.
 pub fn Null.new() Null {
 	return Null{}
 }
 
-// tag is the tag of Null type.
+// tag returns the tag of Null element.
 pub fn (n Null) tag() Tag {
 	return default_null_tag
 }
 
-// payload tells the payload of the Null type, its should empty bytes.
+// payload returns the payload of the Null element, its should empty bytes.
 pub fn (n Null) payload() ![]u8 {
 	return []u8{}
 }
