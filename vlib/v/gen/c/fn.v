@@ -2495,7 +2495,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	// g.doing_autofree_tmp = true
 	// g.write('/* postgen */')
 	mut scope := g.file.scope.innermost(node_pos)
-	for _, mut obj in scope.objects {
+	for mut obj in scope.objects_value {
 		match mut obj {
 			ast.Var {
 				// if var.typ == 0 {

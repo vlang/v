@@ -3143,7 +3143,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		return
 	}
 	g.trace_autofree('// scopeobjects.len == ${scope.objects.len}')
-	for _, obj in scope.objects {
+	for obj in scope.objects_value {
 		match obj {
 			ast.Var {
 				g.trace_autofree('// var "${obj.name}" var.pos=${obj.pos.pos} var.line_nr=${obj.pos.line_nr}')

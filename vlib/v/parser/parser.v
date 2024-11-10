@@ -1500,13 +1500,14 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 fn (mut p Parser) reg_or_alias() ast.AsmArg {
 	p.check(.name)
-	if p.prev_tok.lit in p.scope.objects {
-		x := unsafe { p.scope.objects[p.prev_tok.lit] }
-		if x is ast.AsmRegister {
-			return ast.AsmArg(x as ast.AsmRegister)
-		} else {
-			p.error('non-register ast.ScopeObject found in scope')
-			return ast.AsmDisp{} // should not be reached
+	if p.prev_tok.lit in p.scope.objects_key {
+		if x := p.scope.find(p.prev_tok.lit) {
+			if x is ast.AsmRegister {
+				return ast.AsmArg(x as ast.AsmRegister)
+			} else {
+				p.error('non-register ast.ScopeObject found in scope')
+				return ast.AsmDisp{} // should not be reached
+			}
 		}
 	} else if p.prev_tok.len >= 2 && p.prev_tok.lit[0] in [`b`, `f`]
 		&& p.prev_tok.lit[1..].bytes().all(it.is_digit()) {

@@ -2469,15 +2469,15 @@ fn (mut c Checker) asm_ios(mut ios []ast.AsmIO, mut scope ast.Scope, output bool
 		}
 		if io.alias != '' {
 			aliases << io.alias
-			if io.alias in scope.objects {
-				scope.objects[io.alias] = ast.Var{
+			if io.alias in scope.objects_key {
+				scope.force_register(ast.Var{
 					name:      io.alias
 					expr:      io.expr
 					is_arg:    true
 					typ:       typ
 					orig_type: typ
 					pos:       io.pos
-				}
+				})
 			}
 		}
 	}
@@ -4055,7 +4055,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			cname_mod := node.name.all_before('.')
 			if cname_mod.len != node.name.len {
 				mut const_names_in_mod := []string{}
-				for _, so in c.table.global_scope.objects {
+				for so in c.table.global_scope.objects_value {
 					if so is ast.ConstField {
 						if so.mod == cname_mod {
 							const_names_in_mod << so.name

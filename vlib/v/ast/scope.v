@@ -7,6 +7,8 @@ module ast
 pub struct Scope {
 pub mut:
 	// mut:
+	objects_value        []ScopeObject
+	objects_key          map[string]int
 	objects              map[string]ScopeObject
 	struct_fields        map[string]ScopeStructField
 	parent               &Scope = unsafe { nil }
@@ -22,7 +24,8 @@ pub fn (s &Scope) free() {
 		return
 	}
 	unsafe {
-		s.objects.free()
+		s.objects_key.free()
+		s.objects_value.free()
 		s.struct_fields.free()
 		for child in s.children {
 			child.free()
@@ -50,8 +53,8 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 		return none
 	}
 	for sc := unsafe { s }; true; sc = sc.parent {
-		if name in sc.objects {
-			return unsafe { sc.objects[name] }
+		if key := sc.objects_key[name] {
+			return unsafe { sc.objects_value[key] }
 		}
 		if sc.dont_lookup_parent() {
 			break
@@ -124,26 +127,32 @@ pub fn (s &Scope) known_const(name string) bool {
 }
 
 pub fn (mut s Scope) update_var_type(name string, typ Type) {
-	mut obj := unsafe { s.objects[name] }
-	if mut obj is Var {
-		if obj.typ != typ {
-			obj.typ = typ
+	if key := s.objects_key[name] {
+		mut obj := unsafe { s.objects_value[key] }
+		if mut obj is Var {
+			if obj.typ != typ {
+				obj.typ = typ
+			}
 		}
 	}
 }
 
 pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
-	mut obj := unsafe { s.objects[name] }
-	if mut obj is Var {
-		obj.ct_type_var = kind
+	if key := s.objects_key[name] {
+		mut obj := unsafe { s.objects_value[key] }
+		if mut obj is Var {
+			obj.ct_type_var = kind
+		}
 	}
 }
 
 pub fn (mut s Scope) update_smartcasts(name string, typ Type, is_unwrapped bool) {
-	mut obj := unsafe { s.objects[name] }
-	if mut obj is Var {
-		obj.smartcasts = [typ]
-		obj.is_unwrapped = is_unwrapped
+	if key := s.objects_key[name] {
+		mut obj := unsafe { s.objects_value[key] }
+		if mut obj is Var {
+			obj.smartcasts = [typ]
+			obj.is_unwrapped = is_unwrapped
+		}
 	}
 }
 
@@ -158,10 +167,19 @@ pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) 
 }
 
 pub fn (mut s Scope) register(obj ScopeObject) {
-	if obj.name == '_' || obj.name in s.objects {
+	if obj.name == '_' || obj.name in s.objects_key {
 		return
 	}
-	s.objects[obj.name] = obj
+	s.objects_key[obj.name] = s.objects_value.len
+	s.objects_value << obj
+}
+
+pub fn (mut s Scope) force_register(obj ScopeObject) {
+	if key := s.objects_key[obj.name] {
+		s.objects_value[key] = obj
+	} else {
+		s.register(obj)
+	}
 }
 
 // returns the innermost scope containing pos
@@ -200,8 +218,8 @@ pub fn (s &Scope) get_all_vars() []ScopeObject {
 	}
 	mut scope_vars := []ScopeObject{}
 	for sc := unsafe { s }; true; sc = sc.parent {
-		if sc.objects.len > 0 {
-			scope_vars << sc.objects.values().filter(|it| it is Var)
+		if sc.objects_key.len > 0 {
+			scope_vars << sc.objects_value.filter(|it| it is Var)
 		}
 		if sc.dont_lookup_parent() {
 			break
@@ -216,7 +234,7 @@ pub fn (s &Scope) contains(pos int) bool {
 }
 
 pub fn (s &Scope) has_inherited_vars() bool {
-	for _, obj in s.objects {
+	for obj in s.objects_value {
 		if obj is Var {
 			if obj.is_inherited {
 				return true
@@ -227,7 +245,7 @@ pub fn (s &Scope) has_inherited_vars() bool {
 }
 
 pub fn (s &Scope) is_inherited_var(var_name string) bool {
-	for _, obj in s.objects {
+	for obj in s.objects_value {
 		if obj is Var {
 			if obj.is_inherited && obj.name == var_name {
 				return true
@@ -244,7 +262,7 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 		indent += ' '
 	}
 	out += '${indent}# ${sc.start_pos} - ${sc.end_pos}\n'
-	for _, obj in sc.objects {
+	for obj in sc.objects_value {
 		match obj {
 			ConstField { out += '${indent}  * const: ${obj.name} - ${obj.typ}\n' }
 			Var { out += '${indent}  * var: ${obj.name} - ${obj.typ}\n' }
