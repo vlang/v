@@ -249,3 +249,17 @@ fn test_integer_encoding() ! {
 	el := decode(data)!
 	assert el.equal(val)
 }
+
+// taken from https://github.com/PeculiarVentures/ASN1.js test.
+fn test_negative_number() ! {
+	value := Integer.from_string('-9150748177064392952')!
+
+	out := encode(value)!
+	assert out.hex() == '02088102030405060708'
+
+	back := decode(out)!
+	back_value := back.into_object[Integer]()!
+	assert back_value.value.str() == '-9150748177064392952'
+
+	assert back_value.value == value.value
+}
