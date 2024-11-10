@@ -216,7 +216,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				}
 			}
 			g.expr_with_cast(expr, typ, typ)
-			g.write(')')
 		} else if typ.has_flag(.option) {
 			// only Option fn receive argument
 			g.expr_with_cast(expr, typ, typ)
