@@ -1,0 +1,9 @@
+#if defined(CUSTOM_DEFINE_emscripten)
+println(_SLIT("> inside then branch of if emscripten"));
+
+#if defined(__EMSCRIPTEN__)
+println(_SLIT("> inside then branch of if wasm32_emscripten"));
+
+v__gen__c__testdata__platform_wrapper__fn_defined_in_wasm32_emscripten();
+
+v__gen__c__testdata__platform_wrapper__abc();
