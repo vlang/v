@@ -29,7 +29,7 @@ fn (video Video) extract_frames() string {
 		return 'Failed to extract frames: os.execute() cmd output'
 	}
 	// do something else
-	return ''
+	return '1234'
 }
 
 fn main() {
@@ -38,5 +38,7 @@ fn main() {
 		tmp_dir: '/tmp'
 	}
 	video.extract_frames_thread = spawn video.extract_frames()
+	println(video.extract_frames_thread.wait())
 	println(video)
+	flush_stdout()
 }

@@ -36,6 +36,8 @@ jobs:
         run: make -j4 && ./v symlink
       - name: Test symlink
         run: v run ci/macos_ci.vsh test_symlink
+      - name: v doctor
+        run: v run ci/macos_ci.vsh v_doctor
       - name: Test cross compilation to Linux
         run: v run ci/macos_ci.vsh test_cross_compilation
       - name: Build V with -cstrict
@@ -62,8 +64,8 @@ jobs:
         run: v run ci/macos_ci.vsh build_blog_autofree
       - name: Build examples with -prod
         run: v run ci/macos_ci.vsh build_examples_prod
-      - name: v doctor
-        run: v run ci/macos_ci.vsh v_doctor
+      - name: Build examples with V build with tcc
+        run: v run ci/macos_ci.vsh build_examples_v_compiled_with_tcc
       - name: V self compilation with -usecache
         run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc

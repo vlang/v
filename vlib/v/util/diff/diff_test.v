@@ -57,7 +57,6 @@ fn test_compare_files() {
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
-	// Test deprecated
 	assert res == diff.color_compare_files('diff', p1, p2)
 	// Test again using `find_working_diff_command()`.
 	zzz := diff.color_compare_files(diff.find_working_diff_command()!, p1, p2)
@@ -69,7 +68,6 @@ fn test_compare_files() {
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
-	// Test deprecated
 	assert res == term.strip_ansi(diff.color_compare_files('diff --ignore-case', p1, p2))
 
 	// Test options via env variable.
@@ -82,7 +80,6 @@ fn test_compare_files() {
 	assert res.contains("-\tversion: '0.0.0'"), res
 	assert res.contains("+\tversion: '0.1.0'"), res
 	assert res.contains("+\tlicense: 'MIT'"), res
-	// Test deprecated
 	os.setenv('VDIFF_TOOL', 'diff', true)
 	os.setenv('VDIFF_OPTIONS', '--ignore-case', true)
 	assert res == term.strip_ansi(diff.color_compare_files(diff.find_working_diff_command()!,
@@ -131,6 +128,5 @@ fn test_coloring() {
 	res := diff.compare_files(p1, p2, tool: .diff)!
 	assert res.contains('${esc}[31m-abc${esc}['), res
 	assert res.contains('${esc}[32m+abcd${esc}['), res
-	// Test deprecated
 	assert res == diff.color_compare_files('diff', p1, p2)
 }
