@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install build-essential meson -y
+          ./v retry -- sudo apt install build-essential -y
 
       - name: Clone current Vinix
         run: ./v retry -- git clone https://github.com/vlang/vinix.git
@@ -42,13 +42,39 @@ jobs:
         run: cd vinix/kernel && ./get-deps
 
       - name: Attempt to build the Vinix kernel (debug)
-        run: cd vinix/kernel && make PROD=false KCFLAGS="-D__vinix__ -O2 -g -pipe" KV="../../v" && make clean
+        run: |
+          set -e
+          cd vinix/kernel
+          make PROD=false \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
 
       - name: Attempt to build the Vinix kernel (prod)
-        run: cd vinix/kernel && make PROD=true  KCFLAGS="-D__vinix__ -O2 -g -pipe" KV="../../v" && make clean
+        run: |
+          set -e
+          cd vinix/kernel
+          make PROD=true \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
 
       - name: Attempt to build the util-vinix (debug)
-        run: cd vinix/util-vinix && make PROD=false V="$(realpath ../../v)" VFLAGS="-os vinix -gc none" KCFLAGS="-D__vinix__ -O2 -g -pipe" && make clean
+        run: |
+          set -e
+          cd vinix/util-vinix
+          make PROD=false \
+            VFLAGS="-os vinix -gc none" \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean
 
       - name: Attempt to build the util-vinix (prod)
-        run: cd vinix/util-vinix && make PROD=true V="$(realpath ../../v)" VFLAGS="-os vinix -gc none" KCFLAGS="-D__vinix__ -O2 -g -pipe" && make clean
+        run: |
+          set -e
+          cd vinix/util-vinix
+          make PROD=true \
+            VFLAGS="-os vinix -gc none" \
+            CFLAGS="-Ulinux -U__linux -U__linux__ -U__gnu_linux__ -D__vinix__ -O2 -g -pipe" \
+            V="$(realpath ../../v)"
+          make clean

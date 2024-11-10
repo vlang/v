@@ -409,50 +409,9 @@ fn (mut p Parser) parse_language() ast.Language {
 // parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
 fn (mut p Parser) parse_inline_sum_type() ast.Type {
-	if !p.pref.is_fmt {
-		p.warn(
-			'inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
-			'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
-	}
-	variants := p.parse_sum_type_variants()
-	if variants.len > 1 {
-		if variants.len > maximum_inline_sum_type_variants {
-			pos := variants[0].pos.extend(variants.last().pos)
-			p.warn_with_pos('an inline sum type expects a maximum of ${maximum_inline_sum_type_variants} types (${variants.len} were given)',
-				pos)
-		}
-		mut variant_names := []string{}
-		for variant in variants {
-			if variant.typ == 0 {
-				p.error_with_pos('unknown type for variant: ${variant}', variant.pos)
-				return ast.no_type
-			}
-			variant_names << p.table.sym(variant.typ).name
-		}
-		variant_names.sort()
-		// deterministic name
-		name := '_v_anon_sum_type_${variant_names.join('_')}'
-		variant_types := variants.map(it.typ)
-		prepend_mod_name := p.prepend_mod(name)
-		mut idx := p.table.find_type_idx(prepend_mod_name)
-		if idx > 0 {
-			return ast.new_type(idx)
-		}
-		idx = p.table.register_sym(ast.TypeSymbol{
-			kind:  .sum_type
-			name:  prepend_mod_name
-			cname: util.no_dots(prepend_mod_name)
-			mod:   p.mod
-			info:  ast.SumType{
-				is_anon:  true
-				variants: variant_types
-			}
-		})
-		return ast.new_type(idx)
-	} else if variants.len == 1 {
-		return variants[0].typ
-	}
-	return ast.no_type
+	p.error('inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
+		'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
+	return ast.void_type
 }
 
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
@@ -588,9 +547,6 @@ fn (mut p Parser) parse_type() ast.Type {
 			if !typ.has_flag(.generic) && sym.info.generic_types.len > 0 {
 				p.error_with_pos('missing concrete type on generic type', option_pos.extend(p.prev_tok.pos()))
 			}
-		}
-		if is_option && sym.info is ast.SumType && sym.info.is_anon {
-			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}
 
 		if is_option && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {

@@ -895,12 +895,18 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 			is_user_ident = false
 			ident_name = cname
 			if cname in ast.valid_comptime_if_os {
-				mut is_os_target_equal := true
+				mut ident_result := ComptimeBranchSkipState.skip
 				if !c.pref.output_cross_c {
-					target_os := c.pref.os.str().to_lower_ascii()
-					is_os_target_equal = cname == target_os
+					if cname_enum_val := pref.os_from_string(cname) {
+						if cname_enum_val == c.pref.os {
+							ident_result = .eval
+						}
+					}
 				}
-				return if is_os_target_equal { .eval } else { .skip }
+				$if trace_comptime_os_checks ? {
+					eprintln('>>> ident_name: ${ident_name} | c.pref.os: ${c.pref.os} | ident_result: ${ident_result}')
+				}
+				return ident_result
 			} else if cname in ast.valid_comptime_if_compilers {
 				return if pref.cc_from_string(cname) == c.pref.ccompiler_type {
 					.eval

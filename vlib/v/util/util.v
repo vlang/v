@@ -510,10 +510,12 @@ pub fn replace_op(s string) string {
 	}
 }
 
+// join_env_vflags_and_os_args returns all the arguments (the ones from the env variable VFLAGS too), passed on the command line.
 pub fn join_env_vflags_and_os_args() []string {
+	// TODO: use a proper parser, instead of splitting on ' '
 	vosargs := os.getenv('VOSARGS')
 	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
+		return vosargs.split(' ')
 	}
 	mut args := []string{}
 	vflags := os.getenv('VFLAGS')
@@ -523,13 +525,9 @@ pub fn join_env_vflags_and_os_args() []string {
 		if os.args.len > 1 {
 			args << os.args[1..]
 		}
-		return non_empty(args)
+		return args
 	}
 	return os.args
-}
-
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool, need_update bool) !bool {
