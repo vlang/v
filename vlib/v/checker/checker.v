@@ -3834,17 +3834,6 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
 						node.pos)
 				}
-				mut has_generic := false // foo[T] instead of foo[int]
-				for concrete_type in node.concrete_types {
-					if concrete_type.has_flag(.generic) {
-						has_generic = true
-					}
-				}
-				if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len == 0
-					&& has_generic {
-					c.error('generic fn using generic types cannot be called outside of generic fn',
-						node.pos)
-				}
 				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 				if concrete_types.all(!it.has_flag(.generic)) {
 					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
@@ -4030,7 +4019,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 				}
 				if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len == 0
-					&& has_generic {
+					&& has_generic && c.table.sym(c.expected_type).kind != .function {
 					c.error('generic fn using generic types cannot be called outside of generic fn',
 						node.pos)
 				}
