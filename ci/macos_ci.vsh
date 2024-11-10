@@ -1,57 +1,4 @@
-import os
-import log
-import term
-
-// Go to the end of this file to add/register new tasks.
-
-const is_github_job = os.getenv('GITHUB_JOB') != ''
-
-type Fn = fn ()
-
-struct Task {
-	f     Fn = unsafe { nil }
-	label string
-}
-
-fn (t Task) run() {
-	log.info(term.colorize(term.yellow, t.label))
-	t.f()
-}
-
-fn main() {
-	if os.args.len < 2 {
-		println('Usage: v run macos_ci.vsh <task_name>')
-		println('Available tasks are: ${all_tasks.keys()}')
-		exit(0)
-	}
-	task_name := os.args[1]
-	t := all_tasks[task_name] or {
-		eprintln('Unknown task: ${task_name}')
-		exit(1)
-	}
-	t.run()
-}
-
-// exec is a helper function, to execute commands and exit if they fail
-fn exec(command string) {
-	log.info('cmd: ${command}')
-	result := os.system(command)
-	if result != 0 {
-		exit(result)
-	}
-}
-
-// Task functions
-
-fn all() {
-	for k, t in all_tasks {
-		// skip ourselves
-		if k == 'all' {
-			continue
-		}
-		t.run()
-	}
-}
+import common { Task, exec }
 
 fn test_symlink() {
 	exec('v symlink')
@@ -67,7 +14,7 @@ fn build_with_cstrict() {
 }
 
 fn all_code_is_formatted() {
-	if is_github_job {
+	if common.is_github_job {
 		exec('VJOBS=1 v test-cleancode')
 	} else {
 		exec('v -progress test-cleancode')
@@ -99,7 +46,7 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
-	if is_github_job {
+	if common.is_github_job {
 		exec('VJOBS=1 v test-self vlib')
 	} else {
 		exec('v -progress test-self vlib')
@@ -107,7 +54,7 @@ fn self_tests() {
 }
 
 fn build_examples() {
-	if is_github_job {
+	if common.is_github_job {
 		exec('v build-examples')
 	} else {
 		exec('v -progress build-examples')
@@ -116,7 +63,7 @@ fn build_examples() {
 
 fn build_examples_v_compiled_with_tcc() {
 	exec('v -o vtcc -cc tcc cmd/v')
-	if is_github_job {
+	if common.is_github_job {
 		// ensure that examples/veb/veb_example.v etc compiles
 		exec('./vtcc build-examples')
 	} else {
@@ -166,7 +113,6 @@ fn test_vlib_skip_unused() {
 }
 
 const all_tasks = {
-	'all':                                Task{all, 'Run all tasks'}
 	'test_symlink':                       Task{test_symlink, 'Test symlink'}
 	'test_cross_compilation':             Task{test_cross_compilation, 'Test cross compilation to Linux'}
 	'build_with_cstrict':                 Task{build_with_cstrict, 'Build V with -cstrict'}
@@ -189,3 +135,5 @@ const all_tasks = {
 	'test_readline':                      Task{test_readline, 'Test readline'}
 	'test_vlib_skip_unused':              Task{test_vlib_skip_unused, 'Test vlib modules with -skip-unused'}
 }
+
+common.run(all_tasks)
