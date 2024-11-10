@@ -3897,6 +3897,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(name_type)).str())
 					return
+				} else if node.field_name == 'unaliased_typ' {
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						name_type = g.resolve_comptime_type(node.expr.expr, name_type)
+					}
+					// `typeof(expr).unaliased_typ`
+					g.write(int(g.table.unaliased_type(g.unwrap_generic(name_type))).str())
+					return
 				} else if node.field_name == 'indirections' {
 					mut name_type := node.name_type
 					if node.expr is ast.TypeOf {

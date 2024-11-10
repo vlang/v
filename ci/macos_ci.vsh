@@ -1,116 +1,5 @@
-import os
+import common { Task, exec }
 
-enum Command {
-	test_symlink
-	test_cross_compilation
-	build_with_cstrict
-	all_code_is_formatted
-	run_sanitizers
-	build_using_v
-	verify_v_test_works
-	install_iconv
-	test_pure_v_math_module
-	self_tests
-	build_examples
-	build_tetris_autofree
-	build_blog_autofree
-	build_examples_prod
-	v_doctor
-	v_self_compilation_usecache
-	v_self_compilation_parallel_cc
-	test_password_input
-	test_readline
-	test_vlib_skip_unused
-}
-
-fn main() {
-	if os.args.len < 2 {
-		println('Usage: v run macos_ci.vsh <step_name>')
-		return
-	}
-	arg := os.args[1]
-	if arg == 'all' {
-		$for x in Command.values {
-			println(get_step_name(x.value))
-			run_step(x.value)
-		}
-		return
-	}
-	step := Command.from_string(arg) or {
-		eprintln('Unknown step: ${arg}')
-		exit(1)
-	}
-	run_step(step)
-}
-
-fn run_step(step Command) {
-	println('Running ${step}...')
-	match step {
-		.test_symlink { test_symlink() }
-		.test_cross_compilation { test_cross_compilation() }
-		.build_with_cstrict { build_with_cstrict() }
-		.all_code_is_formatted { all_code_is_formatted() }
-		.run_sanitizers { run_sanitizers() }
-		.build_using_v { build_using_v() }
-		.verify_v_test_works { verify_v_test_works() }
-		.install_iconv { install_iconv() }
-		.test_pure_v_math_module { test_pure_v_math_module() }
-		.self_tests { self_tests() }
-		.build_examples { build_examples() }
-		.build_tetris_autofree { build_tetris_autofree() }
-		.build_blog_autofree { build_blog_autofree() }
-		.build_examples_prod { build_examples_prod() }
-		.v_doctor { v_doctor() }
-		.v_self_compilation_usecache { v_self_compilation_usecache() }
-		.v_self_compilation_parallel_cc { v_self_compilation_parallel_cc() }
-		.test_password_input { test_password_input() }
-		.test_readline { test_readline() }
-		.test_vlib_skip_unused { test_vlib_skip_unused() }
-	}
-}
-
-// Helper function to execute commands and exit if they fail
-fn exec(command string) {
-	result := os.system(command)
-	// or {
-	// eprintln('Command failed: $command\nError: $err')
-	// exit(1)
-	//}
-	// if result.exit_code != 0 {
-	if result != 0 {
-		// eprintln('Command failed with code ${result.exit_code}: ${command}\nOutput: ${result.output}')
-		exit(1)
-	}
-	// println(result.output)
-}
-
-// Map enum values to human readable step names
-fn get_step_name(step Command) string {
-	return match step {
-		.test_symlink { 'Test symlink' }
-		.test_cross_compilation { 'Test cross compilation to Linux' }
-		.build_with_cstrict { 'Build V with -cstrict' }
-		.all_code_is_formatted { 'All code is formatted' }
-		.run_sanitizers { 'Run sanitizers' }
-		.build_using_v { 'Build V using V' }
-		.verify_v_test_works { 'Verify `v test` works' }
-		.install_iconv { 'Install iconv for encoding.iconv' }
-		.test_pure_v_math_module { 'Test pure V math module' }
-		.self_tests { 'Self tests' }
-		.build_examples { 'Build examples' }
-		.build_tetris_autofree { 'Build tetris with -autofree' }
-		.build_blog_autofree { 'Build blog tutorial with -autofree' }
-		.build_examples_prod { 'Build examples with -prod' }
-		.v_doctor { 'v doctor' }
-		.v_self_compilation_usecache { 'V self compilation with -usecache' }
-		.v_self_compilation_parallel_cc { 'V self compilation with -parallel-cc' }
-		.test_password_input { 'Test password input' }
-		.test_readline { 'Test readline' }
-		.test_vlib_skip_unused { 'Test vlib modules with -skip-unused' }
-	}
-}
-
-// Step functions
 fn test_symlink() {
 	exec('v symlink')
 }
@@ -125,7 +14,11 @@ fn build_with_cstrict() {
 }
 
 fn all_code_is_formatted() {
-	exec('VJOBS=1 v test-cleancode')
+	if common.is_github_job {
+		exec('VJOBS=1 v test-cleancode')
+	} else {
+		exec('v -progress test-cleancode')
+	}
 }
 
 fn run_sanitizers() {
@@ -149,15 +42,33 @@ fn install_iconv() {
 }
 
 fn test_pure_v_math_module() {
-	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
+	exec('v -progress -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
 fn self_tests() {
-	exec('VJOBS=1 v test-self vlib')
+	if common.is_github_job {
+		exec('VJOBS=1 v test-self vlib')
+	} else {
+		exec('v -progress test-self vlib')
+	}
 }
 
 fn build_examples() {
-	exec('v build-examples')
+	if common.is_github_job {
+		exec('v build-examples')
+	} else {
+		exec('v -progress build-examples')
+	}
+}
+
+fn build_examples_v_compiled_with_tcc() {
+	exec('v -o vtcc -cc tcc cmd/v')
+	if common.is_github_job {
+		// ensure that examples/veb/veb_example.v etc compiles
+		exec('./vtcc build-examples')
+	} else {
+		exec('./vtcc -progress build-examples')
+	}
 }
 
 fn build_tetris_autofree() {
@@ -190,13 +101,39 @@ fn v_self_compilation_parallel_cc() {
 }
 
 fn test_password_input() {
-	exec('v test examples/password/')
+	exec('v -progress test examples/password/')
 }
 
 fn test_readline() {
-	exec('v test examples/readline/')
+	exec('v -progress test examples/readline/')
 }
 
 fn test_vlib_skip_unused() {
-	exec('v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/')
+	exec('v -skip-unused -progress test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/')
 }
+
+const all_tasks = {
+	'test_symlink':                       Task{test_symlink, 'Test symlink'}
+	'test_cross_compilation':             Task{test_cross_compilation, 'Test cross compilation to Linux'}
+	'build_with_cstrict':                 Task{build_with_cstrict, 'Build V with -cstrict'}
+	'all_code_is_formatted':              Task{all_code_is_formatted, 'All code is formatted'}
+	'run_sanitizers':                     Task{run_sanitizers, 'Run sanitizers'}
+	'build_using_v':                      Task{build_using_v, 'Build V using V'}
+	'verify_v_test_works':                Task{verify_v_test_works, 'Verify `v test` works'}
+	'install_iconv':                      Task{install_iconv, 'Install iconv for encoding.iconv'}
+	'test_pure_v_math_module':            Task{test_pure_v_math_module, 'Test pure V math module'}
+	'self_tests':                         Task{self_tests, 'Self tests'}
+	'build_examples':                     Task{build_examples, 'Build examples'}
+	'build_tetris_autofree':              Task{build_tetris_autofree, 'Build tetris with -autofree'}
+	'build_blog_autofree':                Task{build_blog_autofree, 'Build blog tutorial with -autofree'}
+	'build_examples_prod':                Task{build_examples_prod, 'Build examples with -prod'}
+	'build_examples_v_compiled_with_tcc': Task{build_examples_v_compiled_with_tcc, 'Build examples with V build with tcc'}
+	'v_doctor':                           Task{v_doctor, 'v doctor'}
+	'v_self_compilation_usecache':        Task{v_self_compilation_usecache, 'V self compilation with -usecache'}
+	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
+	'test_password_input':                Task{test_password_input, 'Test password input'}
+	'test_readline':                      Task{test_readline, 'Test readline'}
+	'test_vlib_skip_unused':              Task{test_vlib_skip_unused, 'Test vlib modules with -skip-unused'}
+}
+
+common.run(all_tasks)

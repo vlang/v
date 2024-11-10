@@ -1537,7 +1537,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			else {
 				if node.field_name == 'name' {
 					return ast.string_type
-				} else if node.field_name == 'idx' {
+				} else if node.field_name in ['idx', 'unaliased_typ'] {
 					return ast.int_type
 				} else if node.field_name == 'indirections' {
 					return ast.int_type

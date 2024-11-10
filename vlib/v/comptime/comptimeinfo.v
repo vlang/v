@@ -154,7 +154,9 @@ pub fn (mut ct ComptimeInfo) get_type(node ast.Expr) ast.Type {
 		}
 		return f.return_type
 	} else if node is ast.IndexExpr && ct.is_comptime_var(node.left) {
-		return ct.table.value_type(ct.resolver.unwrap_generic(ct.get_type(node.left)))
+		nltype := ct.get_type(node.left)
+		nltype_unwrapped := ct.resolver.unwrap_generic(nltype)
+		return ct.table.value_type(nltype_unwrapped)
 	}
 	return ast.void_type
 }

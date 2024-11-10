@@ -63,7 +63,7 @@ pub fn (r NormalReporter) message(index int, message string) {
 }
 
 pub fn (r NormalReporter) divider() {
-	eprintln(term.h_divider('-'))
+	h_divider()
 }
 
 //
