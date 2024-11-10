@@ -3875,6 +3875,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				g.write(int(g.table.unaliased_type(g.unwrap_generic(node.name_type))).str())
 				return
 			}
+			.indirections {
+				g.write(int(g.unwrap_generic(node.name_type).nr_muls()).str())
+				return
+			}
 			.unknown {
 				// ast.TypeOf of `typeof(string).idx` etc
 				if node.field_name == 'name' {
@@ -3892,6 +3896,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					// `typeof(expr).idx`
 					g.write(int(g.unwrap_generic(name_type)).str())
+					return
+				} else if node.field_name == 'indirections' {
+					mut name_type := node.name_type
+					if node.expr is ast.TypeOf {
+						name_type = g.resolve_comptime_type(node.expr.expr, name_type)
+					}
+					// `typeof(expr).indirections`
+					g.write(int(g.unwrap_generic(name_type).nr_muls()).str())
 					return
 				}
 				g.error('unknown generic field', node.pos)

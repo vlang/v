@@ -18,13 +18,6 @@ vlib/v/checker/tests/cast_integer_with_overflow_err.vv:6:7: error: value `300000
       |          ~~~~~~~~~~~~~~~~~~~~
     7 |     _ = c
     8 |     d := u64(300_000_000_000_000_000_000)
-vlib/v/checker/tests/cast_integer_with_overflow_err.vv:8:17: error: integer literal 300000000000000000000 overflows int
-    6 |     c := u32(300_000_000_000)
-    7 |     _ = c
-    8 |     d := u64(300_000_000_000_000_000_000)
-      |                    ~~~~~~~~~~~~~~~~~~~~~
-    9 |     _ = d
-   10 | }
 vlib/v/checker/tests/cast_integer_with_overflow_err.vv:8:7: error: value `300000000000000000000` overflows `u64`
     6 |     c := u32(300_000_000_000)
     7 |     _ = c

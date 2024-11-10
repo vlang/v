@@ -74,6 +74,7 @@ mut:
 	pe_dll_relocations map[string]i64
 
 	requires_linking bool
+	is_builtin_mod   bool // true for .v files inside `builtin`
 }
 
 interface CodeGen {

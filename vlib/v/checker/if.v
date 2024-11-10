@@ -268,6 +268,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									}
 								}
 							}
+						} else if left.expr is ast.TypeOf {
+							skip_state = if left.expr.typ.nr_muls() == right.val.i64() {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
 						}
 					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
 						&& right is ast.StringLiteral {

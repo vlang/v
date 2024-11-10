@@ -3252,13 +3252,17 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 				g.write('new int(')
 				g.write('${int(g.unwrap_generic(it.name_type))}')
 				g.write(')')
-				g.write(')')
 				return
 			}
 			.unaliased_typ {
 				g.write('new int(')
 				g.write('${int(g.table.unaliased_type(g.unwrap_generic(it.name_type)))}')
 				g.write(')')
+				return
+			}
+			.indirections {
+				g.write('new int(')
+				g.write('${int(g.unwrap_generic(it.name_type).nr_muls())}')
 				g.write(')')
 				return
 			}
