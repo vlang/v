@@ -204,13 +204,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
-		if sym.kind != .function {
-			if is_ptr && !is_var_mut {
-				g.write('isnil(')
-				g.expr_with_cast(expr, typ, typ)
-				g.write(') ? _SLIT("nil") : ')
-			}
-			g.write('${str_fn_name}(')
+		g.write('${str_fn_name}(')
+		if sym.kind != .function {			
 			if str_method_expects_ptr && !is_ptr && !typ.has_flag(.option) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
@@ -224,9 +219,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write(')')
 		} else if typ.has_flag(.option) {
 			// only Option fn receive argument
-			g.write('${str_fn_name}(')
 			g.expr_with_cast(expr, typ, typ)
-			g.write(')')
 		}
+		g.write(')')
 	}
 }
