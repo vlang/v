@@ -3,7 +3,7 @@ module testing
 import time
 import term
 
-pub const empty = term.header(' ', ' ')#[..max_header_len]
+pub const empty = term.header(' ', ' ')
 
 // NormalReporter implements the interface testing.Reporter.
 // It is used by default by `v test .`
