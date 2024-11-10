@@ -2,6 +2,7 @@ import os
 
 enum Command {
 	test_symlink
+	v_doctor
 	test_cross_compilation
 	build_with_cstrict
 	all_code_is_formatted
@@ -15,7 +16,7 @@ enum Command {
 	build_tetris_autofree
 	build_blog_autofree
 	build_examples_prod
-	v_doctor
+	build_examples_v_compiled_with_tcc
 	v_self_compilation_usecache
 	v_self_compilation_parallel_cc
 	test_password_input
@@ -47,6 +48,7 @@ fn run_step(step Command) {
 	println('Running ${step}...')
 	match step {
 		.test_symlink { test_symlink() }
+		.v_doctor { v_doctor() }
 		.test_cross_compilation { test_cross_compilation() }
 		.build_with_cstrict { build_with_cstrict() }
 		.all_code_is_formatted { all_code_is_formatted() }
@@ -60,28 +62,13 @@ fn run_step(step Command) {
 		.build_tetris_autofree { build_tetris_autofree() }
 		.build_blog_autofree { build_blog_autofree() }
 		.build_examples_prod { build_examples_prod() }
-		.v_doctor { v_doctor() }
+		.build_examples_v_compiled_with_tcc { build_examples_v_compiled_with_tcc() }
 		.v_self_compilation_usecache { v_self_compilation_usecache() }
 		.v_self_compilation_parallel_cc { v_self_compilation_parallel_cc() }
 		.test_password_input { test_password_input() }
 		.test_readline { test_readline() }
 		.test_vlib_skip_unused { test_vlib_skip_unused() }
 	}
-}
-
-// Helper function to execute commands and exit if they fail
-fn exec(command string) {
-	result := os.system(command)
-	// or {
-	// eprintln('Command failed: $command\nError: $err')
-	// exit(1)
-	//}
-	// if result.exit_code != 0 {
-	if result != 0 {
-		// eprintln('Command failed with code ${result.exit_code}: ${command}\nOutput: ${result.output}')
-		exit(1)
-	}
-	// println(result.output)
 }
 
 // Map enum values to human readable step names
@@ -101,12 +88,21 @@ fn get_step_name(step Command) string {
 		.build_tetris_autofree { 'Build tetris with -autofree' }
 		.build_blog_autofree { 'Build blog tutorial with -autofree' }
 		.build_examples_prod { 'Build examples with -prod' }
+		.build_examples_v_compiled_with_tcc { 'Build examples with V build with tcc' }
 		.v_doctor { 'v doctor' }
 		.v_self_compilation_usecache { 'V self compilation with -usecache' }
 		.v_self_compilation_parallel_cc { 'V self compilation with -parallel-cc' }
 		.test_password_input { 'Test password input' }
 		.test_readline { 'Test readline' }
 		.test_vlib_skip_unused { 'Test vlib modules with -skip-unused' }
+	}
+}
+
+// Helper function to execute commands and exit if they fail
+fn exec(command string) {
+	result := os.system(command)
+	if result != 0 {
+		exit(result)
 	}
 }
 
@@ -158,6 +154,11 @@ fn self_tests() {
 
 fn build_examples() {
 	exec('v build-examples')
+}
+
+fn build_examples_v_compiled_with_tcc() {
+	exec('v -o vtcc -cc tcc cmd/v')
+	exec('./vtcc build-examples') // ensure that examples/veb/veb_example.v etc compiles
 }
 
 fn build_tetris_autofree() {
