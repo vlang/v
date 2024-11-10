@@ -3,7 +3,7 @@ module testing
 import time
 import term
 
-pub const empty = term.header(' ', ' ')
+pub const empty = term.header(' ', ' ')#[..max_header_len]
 
 // NormalReporter implements the interface testing.Reporter.
 // It is used by default by `v test .`
@@ -63,7 +63,7 @@ pub fn (r NormalReporter) message(index int, message string) {
 }
 
 pub fn (r NormalReporter) divider() {
-	eprintln(term.h_divider('-'))
+	h_divider()
 }
 
 //
