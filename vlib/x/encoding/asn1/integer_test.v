@@ -110,7 +110,9 @@ const integer_test_data = [
 	ASNIntegerTest{[u8(0x01), 0x00], none, Integer.from_int(256)},
 	ASNIntegerTest{[u8(0x80)], none, Integer.from_int(-128)},
 	ASNIntegerTest{[u8(0xff), 0x7f], none, Integer.from_int(-129)},
-	ASNIntegerTest{[u8(0x80), 0x00, 0x00, 0x00], none, Integer.from_i64(-2147483648)},
+	ASNIntegerTest{[u8(0x80), 0x00, 0x00, 0x00], none, Integer.from_string('-2147483648') or {
+		panic(err)
+	}},
 	ASNIntegerTest{[u8(0x80), 0x00, 0x00, 0x00, 0x00], none, Integer.from_i64(-549755813888)},
 	ASNIntegerTest{[u8(0x00), 0x7f], error('Integer: check return false'), Integer.from_i64(0)},
 	ASNIntegerTest{[u8(0xff), 0xf0], error('Integer: check return false'), Integer.from_i64(0)}, // not minimally
