@@ -4020,7 +4020,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				}
 				if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len == 0
 					&& has_generic && c.table.sym(c.expected_type).kind != .function {
-					c.error('generic fn using generic types cannot be called outside of generic fn',
+					c.error('a generic fn with generic types, cannot be used outside of another generic fn',
 						node.pos)
 				}
 			}
