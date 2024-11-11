@@ -187,7 +187,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			.alias {
 				// optimize simple eq/ne operation on numbers
 				if left.unaliased_sym.is_int() {
-					if left.typ.is_ptr() {
+					if left.typ.is_ptr() && node.left.is_auto_deref_var() && !right.typ.is_pointer() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
 					g.expr(node.left)

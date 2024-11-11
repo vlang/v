@@ -37,9 +37,16 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.go_back(3)
 		return
 	}
-	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
+	unwrapped_typ := g.unwrap_generic(node.typ)
+	mut sym := g.table.final_sym(unwrapped_typ)
 	if sym.kind == .sum_type {
-		g.write(g.type_default_sumtype(g.unwrap_generic(node.typ), sym))
+		if node.typ.has_flag(.generic) && unwrapped_typ.is_ptr() {
+			g.write('&(')
+			g.write(g.type_default_sumtype(unwrapped_typ.set_nr_muls(0), sym))
+			g.write(')')
+		} else {
+			g.write(g.type_default_sumtype(unwrapped_typ, sym))
+		}
 		return
 	}
 	is_amp := g.is_amp
@@ -120,7 +127,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	} else {
 		// alias to pointer type
 		if (g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr())
-			|| (node.typ.has_flag(.generic) && g.unwrap_generic(node.typ).is_ptr()) {
+			|| (!sym.is_int() && node.typ.has_flag(.generic) && unwrapped_typ.is_ptr()) {
 			g.write('&')
 		}
 		if is_array || const_msvc_init {
@@ -349,10 +356,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.fixed_array_init(ast.ArrayInit{
 			pos:       node.pos
 			is_fixed:  true
-			typ:       g.unwrap_generic(node.typ)
+			typ:       unwrapped_typ
 			exprs:     [ast.empty_expr]
 			elem_type: arr_info.elem_type
-		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
+		}, g.unwrap(unwrapped_typ), '', g.is_amp)
 		initialized = true
 	}
 	if is_multiline {
