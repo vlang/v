@@ -1003,9 +1003,10 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				left_sym := g.table.sym(left_typ)
 				mut anon_ctx := ''
 				if g.anon_fn {
-					obj := left.scope.find(left.name)
-					if obj is ast.Var && obj.is_inherited {
-						anon_ctx = '${closure_ctx}->'
+					if obj := left.scope.find_var(left.name) {
+						if obj.is_inherited {
+							anon_ctx = '${closure_ctx}->'
+						}
 					}
 				}
 				if left_sym.kind == .function {

@@ -119,15 +119,13 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 }
 
 pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident, ptype ast.Type) {
-	if mut v := node.scope.find(pident.name) {
-		if mut v is ast.Var {
-			v.is_arg = true
-			v.typ = ptype
-			v.is_auto_deref = ptype.is_ptr()
-			v.expr = ast.empty_expr
-			if ptype.has_flag(.generic) {
-				v.ct_type_var = .generic_param
-			}
+	if mut v := node.scope.find_var(pident.name) {
+		v.is_arg = true
+		v.typ = ptype
+		v.is_auto_deref = ptype.is_ptr()
+		v.expr = ast.empty_expr
+		if ptype.has_flag(.generic) {
+			v.ct_type_var = .generic_param
 		}
 	}
 	if pident.kind != .blank_ident {
