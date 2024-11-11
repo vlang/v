@@ -49,7 +49,13 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 	if s == unsafe { nil } {
 		return none
 	}
-	for sc := unsafe { s }; true; sc = sc.parent {
+	if name in sc.objects {
+		return unsafe { sc.objects[name] }
+	}
+	if sc.dont_lookup_parent() {
+		break
+	}
+	for sc := unsafe { s.parent }; true; sc = sc.parent {
 		if name in sc.objects {
 			return unsafe { sc.objects[name] }
 		}
