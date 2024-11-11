@@ -119,8 +119,12 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	// `a = []`
 	if node.exprs.len == 0 {
 		// `a := fn_returning_opt_array() or { [] }`
-		if c.expected_type == ast.void_type && c.expected_or_type != ast.void_type {
-			c.expected_type = c.expected_or_type
+		if c.expected_type == ast.void_type {
+			if c.expected_or_type != ast.void_type {
+				c.expected_type = c.expected_or_type
+			} else if c.expected_expr_type != ast.void_type {
+				c.expected_type = c.expected_expr_type
+			}
 		}
 		mut type_sym := c.table.sym(c.expected_type)
 		if type_sym.kind != .array || type_sym.array_info().elem_type == ast.void_type {
