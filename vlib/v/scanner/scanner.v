@@ -603,14 +603,14 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 }
 
 fn (mut s Scanner) scan_remaining_text() {
+	is_skip_comments := s.comments_mode == .skip_comments
 	for {
 		t := s.text_scan()
-		if s.comments_mode == .skip_comments && t.kind == .comment {
-			continue
-		}
-		s.all_tokens << t
-		if t.kind == .eof || s.should_abort {
-			break
+		if !(is_skip_comments && t.kind == .comment) {
+			s.all_tokens << t
+			if t.kind == .eof || s.should_abort {
+				break
+			}
 		}
 	}
 }
