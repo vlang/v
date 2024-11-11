@@ -53,7 +53,7 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 		return unsafe { sc.objects[name] }
 	}
 	if sc.dont_lookup_parent() {
-		break
+		return none
 	}
 	for sc := unsafe { s.parent }; true; sc = sc.parent {
 		if name in sc.objects {
