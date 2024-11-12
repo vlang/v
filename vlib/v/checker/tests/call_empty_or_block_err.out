@@ -1,35 +1,35 @@
-vlib/v/checker/tests/call_empty_or_block_err.vv:10:2: warning: unused variable: `a`
-    8 | 
-    9 | fn test_main() {
-   10 |     a := foo() or {
+vlib/v/checker/tests/call_empty_or_block_err.vv:9:2: warning: unused variable: `a`
+    7 | 
+    8 | fn test_main() {
+    9 |     a := foo() or { foo() or {} }
       |     ^
-   11 |         foo() or {}
-   12 |     }
-vlib/v/checker/tests/call_empty_or_block_err.vv:14:2: warning: unused variable: `y`
-   12 |     }
-   13 | 
-   14 |     y := if c := foo() {
+   10 | 
+   11 |     y := if c := foo() {
+vlib/v/checker/tests/call_empty_or_block_err.vv:11:2: warning: unused variable: `y`
+    9 |     a := foo() or { foo() or {} }
+   10 | 
+   11 |     y := if c := foo() {
       |     ^
-   15 |         dump(c)
-   16 |         bar() or {}
-vlib/v/checker/tests/call_empty_or_block_err.vv:21:2: warning: unused variable: `z`
-   19 |     }
-   20 | 
-   21 |     z := if d := foo() {
+   12 |         dump(c)
+   13 |         bar() or {}
+vlib/v/checker/tests/call_empty_or_block_err.vv:18:2: warning: unused variable: `z`
+   16 |     }
+   17 | 
+   18 |     z := if d := foo() {
       |     ^
-   22 |         dump(d)
-   23 |         bar() or {}
-vlib/v/checker/tests/call_empty_or_block_err.vv:11:9: error: assignment requires a non empty `or {}` block
-    9 | fn test_main() {
-   10 |     a := foo() or {
-   11 |         foo() or {}
-      |               ~~~~~
-   12 |     }
-   13 |
-vlib/v/checker/tests/call_empty_or_block_err.vv:16:3: error: the final expression in `if` or `match`, must have a value of a non-void type
-   14 |     y := if c := foo() {
-   15 |         dump(c)
-   16 |         bar() or {}
+   19 |         dump(d)
+   20 |         bar() or {}
+vlib/v/checker/tests/call_empty_or_block_err.vv:9:24: error: assignment requires a non empty `or {}` block
+    7 | 
+    8 | fn test_main() {
+    9 |     a := foo() or { foo() or {} }
+      |                           ~~~~~
+   10 | 
+   11 |     y := if c := foo() {
+vlib/v/checker/tests/call_empty_or_block_err.vv:13:3: error: the final expression in `if` or `match`, must have a value of a non-void type
+   11 |     y := if c := foo() {
+   12 |         dump(c)
+   13 |         bar() or {}
       |         ~~~~~
-   17 |     } else {
-   18 |         false
+   14 |     } else {
+   15 |         false

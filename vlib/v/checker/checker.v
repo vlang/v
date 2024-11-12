@@ -1354,7 +1354,8 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		return
 	}
 	if node.stmts.len == 0 {
-		if ret_type.clear_option_and_result() != ast.void_type {
+		if expr is ast.CallExpr && expr.is_return_used
+			&& ret_type.clear_option_and_result() != ast.void_type {
 			// x := f() or {}
 			c.error('assignment requires a non empty `or {}` block', node.pos)
 		}
@@ -1363,7 +1364,9 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
-	c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
+	if expr !is ast.CallExpr || (expr is ast.CallExpr && expr.is_return_used) {
+		c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
+	}
 }
 
 fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
