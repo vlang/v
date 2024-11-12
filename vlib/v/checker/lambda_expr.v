@@ -3,7 +3,6 @@ module checker
 import v.ast
 
 pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) ast.Type {
-	// defer { eprintln('> line: ${@LINE} | exp_typ: $exp_typ | node: ${voidptr(node)} | node.typ: ${node.typ}') }
 	if node.is_checked {
 		return node.typ
 	}
@@ -56,8 +55,6 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				}
 			}
 		}
-		// dump(generic_types)
-		// dump(generic_names)
 
 		mut stmts := []ast.Stmt{}
 		mut has_return := false
