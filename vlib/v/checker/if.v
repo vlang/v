@@ -422,6 +422,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						continue
 					}
+					if c.expected_expr_type != ast.void_type {
+						c.expected_type = c.expected_expr_type
+					}
 					stmt.typ = c.expr(mut stmt.expr)
 					if c.table.type_kind(c.expected_type) == .multi_return
 						&& c.table.type_kind(stmt.typ) == .multi_return {
@@ -447,6 +450,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							} else {
 								node.typ = stmt.typ
 							}
+							c.expected_expr_type = node.typ
 							continue
 						} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
 							if node.typ == ast.int_literal_type {
