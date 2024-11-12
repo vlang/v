@@ -2,6 +2,18 @@ fn foo() !bool {
 	return true
 }
 
+fn unwrap_int() ?int {
+	return 1
+}
+
+fn unwrap_function1() ?int {
+	return unwrap_int() or {}
+}
+
+fn unwrap_function2() ?int {
+	return unwrap_int() or { none }
+}
+
 fn bar() ! {
 }
 

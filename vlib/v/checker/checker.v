@@ -1381,10 +1381,6 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			ast.ExprStmt {
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
-				if stmt.expr is ast.None && ret_type.has_flag(.option) {
-					// or { none } where fn returns Option
-					return
-				}
 				last_stmt_typ := c.expr(mut stmt.expr)
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {

@@ -1,56 +1,70 @@
-vlib/v/checker/tests/call_empty_or_block_err.vv:9:2: warning: unused variable: `a`
-    7 | 
-    8 | fn main() {
-    9 |     a := foo() or { foo() or {} }
+vlib/v/checker/tests/call_empty_or_block_err.vv:21:2: warning: unused variable: `a`
+   19 | 
+   20 | fn main() {
+   21 |     a := foo() or { foo() or {} }
       |     ^
-   10 | 
-   11 |     // must be error
-vlib/v/checker/tests/call_empty_or_block_err.vv:12:2: warning: unused variable: `y`
-   10 | 
-   11 |     // must be error
-   12 |     y := if c := foo() {
+   22 | 
+   23 |     // must be error
+vlib/v/checker/tests/call_empty_or_block_err.vv:24:2: warning: unused variable: `y`
+   22 | 
+   23 |     // must be error
+   24 |     y := if c := foo() {
       |     ^
-   13 |         dump(c)
-   14 |         bar() or {}
-vlib/v/checker/tests/call_empty_or_block_err.vv:20:2: warning: unused variable: `z`
-   18 | 
-   19 |     // ok
-   20 |     z := if d := foo() {
+   25 |         dump(c)
+   26 |         bar() or {}
+vlib/v/checker/tests/call_empty_or_block_err.vv:32:2: warning: unused variable: `z`
+   30 | 
+   31 |     // ok
+   32 |     z := if d := foo() {
       |     ^
-   21 |         dump(d)
-   22 |         bar() or {}
-vlib/v/checker/tests/call_empty_or_block_err.vv:29:2: warning: unused variable: `w`
-   27 | 
-   28 |     // ok
-   29 |     w := foo() or { 
+   33 |         dump(d)
+   34 |         bar() or {}
+vlib/v/checker/tests/call_empty_or_block_err.vv:41:2: warning: unused variable: `w`
+   39 | 
+   40 |     // ok
+   41 |     w := foo() or {
       |     ^
-   30 |         bar() or {}
-   31 |         false
-vlib/v/checker/tests/call_empty_or_block_err.vv:35:2: warning: unused variable: `b`
-   33 | 
-   34 |     // ok
-   35 |     b := foo() or { 
+   42 |         bar() or {}
+   43 |         false
+vlib/v/checker/tests/call_empty_or_block_err.vv:47:2: warning: unused variable: `b`
+   45 | 
+   46 |     // ok
+   47 |     b := foo() or {
       |     ^
-   36 |         foo() or {}
-   37 |         false
-vlib/v/checker/tests/call_empty_or_block_err.vv:9:24: error: expression requires a non empty `or {}` block
-    7 | 
-    8 | fn main() {
-    9 |     a := foo() or { foo() or {} }
+   48 |         foo() or {}
+   49 |         false
+vlib/v/checker/tests/call_empty_or_block_err.vv:10:22: error: expression requires a non empty `or {}` block
+    8 | 
+    9 | fn unwrap_function1() ?int {
+   10 |     return unwrap_int() or { }
+      |                         ~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/call_empty_or_block_err.vv:14:27: error: `or` block must provide a value of type `int`, not `none`
+   12 | 
+   13 | fn unwrap_function2() ?int {
+   14 |     return unwrap_int() or { none }
+      |                              ~~~~
+   15 | }
+   16 |
+vlib/v/checker/tests/call_empty_or_block_err.vv:21:24: error: expression requires a non empty `or {}` block
+   19 | 
+   20 | fn main() {
+   21 |     a := foo() or { foo() or {} }
       |                           ~~~~~
-   10 | 
-   11 |     // must be error
-vlib/v/checker/tests/call_empty_or_block_err.vv:14:9: error: expression requires a non empty `or {}` block
-   12 |     y := if c := foo() {
-   13 |         dump(c)
-   14 |         bar() or {}
+   22 | 
+   23 |     // must be error
+vlib/v/checker/tests/call_empty_or_block_err.vv:26:9: error: expression requires a non empty `or {}` block
+   24 |     y := if c := foo() {
+   25 |         dump(c)
+   26 |         bar() or {}
       |               ~~~~~
-   15 |     } else {
-   16 |         false
-vlib/v/checker/tests/call_empty_or_block_err.vv:14:3: error: the final expression in `if` or `match`, must have a value of a non-void type
-   12 |     y := if c := foo() {
-   13 |         dump(c)
-   14 |         bar() or {}
+   27 |     } else {
+   28 |         false
+vlib/v/checker/tests/call_empty_or_block_err.vv:26:3: error: the final expression in `if` or `match`, must have a value of a non-void type
+   24 |     y := if c := foo() {
+   25 |         dump(c)
+   26 |         bar() or {}
       |         ~~~~~
-   15 |     } else {
-   16 |         false
+   27 |     } else {
+   28 |         false
