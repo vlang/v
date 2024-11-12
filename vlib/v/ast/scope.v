@@ -262,6 +262,17 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 	return out
 }
 
+pub fn (mut sc Scope) mark_var_as_used(varname string) bool {
+	mut obj := sc.find(varname) or { return false }
+	if mut obj is Var {
+		obj.is_used = true
+		return true
+	} else if obj is GlobalField {
+		return true
+	}
+	return false
+}
+
 pub fn (sc &Scope) str() string {
 	return sc.show(0, 0)
 }

@@ -73,7 +73,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				ident := p.ident(.v)
 				node = ident
 				if p.peek_tok.kind != .assign && (p.inside_if_cond || p.inside_match) {
-					p.mark_var_as_used(ident.name)
+					p.scope.mark_var_as_used(ident.name)
 				}
 				p.add_defer_var(ident)
 				p.is_stmt_ident = is_stmt_ident
@@ -356,7 +356,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			} else {
 				p.check(.lpar)
 				pos := p.tok.pos()
-				mut is_known_var := p.mark_var_as_used(p.tok.lit)
+				mut is_known_var := p.scope.mark_var_as_used(p.tok.lit)
 					|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
 				//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
 				// assume `mod.` prefix leads to a type
@@ -524,7 +524,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				// variable name: type
 				ident := p.ident(.v)
 				node = ident
-				p.mark_var_as_used(ident.name)
+				p.scope.mark_var_as_used(ident.name)
 				p.add_defer_var(ident)
 				p.is_stmt_ident = is_stmt_ident
 			} else if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
