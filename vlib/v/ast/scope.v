@@ -264,7 +264,7 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 }
 
 pub fn (mut sc Scope) mark_used(varname string) bool {
-	if varname in sc.used_vars {
+	if sc.used_vars.len > 0 && varname in sc.used_vars {
 		return true
 	}
 	if mut obj := sc.find(varname) {
