@@ -64,6 +64,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
+	// original is_ptr for the typ (aliased type could overwrite it)
+	is_ptr := typ.is_ptr()
 	mut sym := g.table.sym(typ)
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !etype.has_flag(.option) {
@@ -113,7 +115,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		|| sym.kind in [.array, .array_fixed, .map, .struct, .multi_return, .sum_type, .interface] {
 		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
-		is_ptr := exp_typ.is_ptr()
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
@@ -170,7 +171,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {
-				g.write('*'.repeat(typ.nr_muls()))
+				g.write('*'.repeat(etype.nr_muls()))
 			}
 		} else if sym.is_c_struct() {
 			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
@@ -201,7 +202,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('}}}))')
 		}
 	} else {
-		is_ptr := typ.is_ptr()
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')

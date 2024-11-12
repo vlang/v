@@ -613,21 +613,19 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		mut has_inherited := false
 		mut is_ptr := false
 		var_name := c_name(var.name)
-		if obj := node.decl.scope.find(var.name) {
-			if obj is ast.Var {
-				is_ptr = obj.typ.is_ptr()
-				if obj.has_inherited {
-					has_inherited = true
-					var_sym := g.table.sym(var.typ)
-					if var_sym.info is ast.ArrayFixed {
-						g.write('.${var_name} = {')
-						for i in 0 .. var_sym.info.size {
-							g.write('${closure_ctx}->${var_name}[${i}],')
-						}
-						g.writeln('},')
-					} else {
-						g.writeln('.${var_name} = ${closure_ctx}->${var_name},')
+		if obj := node.decl.scope.find_var(var.name) {
+			is_ptr = obj.typ.is_ptr()
+			if obj.has_inherited {
+				has_inherited = true
+				var_sym := g.table.sym(var.typ)
+				if var_sym.info is ast.ArrayFixed {
+					g.write('.${var_name} = {')
+					for i in 0 .. var_sym.info.size {
+						g.write('${closure_ctx}->${var_name}[${i}],')
 					}
+					g.writeln('},')
+				} else {
+					g.writeln('.${var_name} = ${closure_ctx}->${var_name},')
 				}
 			}
 		}
@@ -2274,59 +2272,53 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.write(cur_line + ' /* <== af cur line*/')
 			// }
 			mut is_fn_var := false
-			if obj := node.scope.find(node.name) {
-				match obj {
-					ast.Var {
-						// Temp fix generate call fn error when the struct type of sumtype
-						// has the fn field and is same to the struct name.
-						mut is_cast_needed := true
-						if node.left_type != 0 {
-							left_sym := g.table.sym(node.left_type)
-							if left_sym.kind == .struct && node.name == obj.name {
-								is_cast_needed = false
-							}
-						}
-						if obj.smartcasts.len > 0 && is_cast_needed {
-							for typ in obj.smartcasts {
-								sym := g.table.sym(g.unwrap_generic(typ))
-								if obj.orig_type.has_flag(.option) && sym.kind == .function {
-									g.write('(*(${sym.cname}*)(')
-								} else {
-									g.write('(*(${sym.cname})(')
-								}
-							}
-							for i, typ in obj.smartcasts {
-								cast_sym := g.table.sym(g.unwrap_generic(typ))
-								mut is_ptr := false
-								if i == 0 {
-									if obj.is_inherited {
-										g.write(closure_ctx + '->' + c_name(node.name))
-									} else {
-										g.write(node.name)
-									}
-									if obj.orig_type.is_ptr() {
-										is_ptr = true
-									}
-								}
-								dot := if is_ptr { '->' } else { '.' }
-								if cast_sym.info is ast.Aggregate {
-									sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
-									g.write('${dot}_${sym.cname}')
-								} else if cast_sym.kind == .function
-									&& obj.orig_type.has_flag(.option) {
-									g.write('.data')
-								} else {
-									g.write('${dot}_${cast_sym.cname}')
-								}
-								g.write('))')
-							}
-							is_fn_var = true
-						} else if obj.is_inherited {
-							g.write(closure_ctx + '->' + c_name(node.name))
-							is_fn_var = true
+			if obj := node.scope.find_var(node.name) {
+				// Temp fix generate call fn error when the struct type of sumtype
+				// has the fn field and is same to the struct name.
+				mut is_cast_needed := true
+				if node.left_type != 0 {
+					left_sym := g.table.sym(node.left_type)
+					if left_sym.kind == .struct && node.name == obj.name {
+						is_cast_needed = false
+					}
+				}
+				if obj.smartcasts.len > 0 && is_cast_needed {
+					for typ in obj.smartcasts {
+						sym := g.table.sym(g.unwrap_generic(typ))
+						if obj.orig_type.has_flag(.option) && sym.kind == .function {
+							g.write('(*(${sym.cname}*)(')
+						} else {
+							g.write('(*(${sym.cname})(')
 						}
 					}
-					else {}
+					for i, typ in obj.smartcasts {
+						cast_sym := g.table.sym(g.unwrap_generic(typ))
+						mut is_ptr := false
+						if i == 0 {
+							if obj.is_inherited {
+								g.write(closure_ctx + '->' + c_name(node.name))
+							} else {
+								g.write(node.name)
+							}
+							if obj.orig_type.is_ptr() {
+								is_ptr = true
+							}
+						}
+						dot := if is_ptr { '->' } else { '.' }
+						if cast_sym.info is ast.Aggregate {
+							sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+							g.write('${dot}_${sym.cname}')
+						} else if cast_sym.kind == .function && obj.orig_type.has_flag(.option) {
+							g.write('.data')
+						} else {
+							g.write('${dot}_${cast_sym.cname}')
+						}
+						g.write('))')
+					}
+					is_fn_var = true
+				} else if obj.is_inherited {
+					g.write(closure_ctx + '->' + c_name(node.name))
+					is_fn_var = true
 				}
 			}
 			if !is_fn_var {
@@ -2448,11 +2440,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			// We do not need to declare this variable again, so just generate `t = ...`
 			// instead of `string t = ...`, and we need to mark this variable as unused,
 			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
-			if mut x := scope.find(t) {
-				match mut x {
-					ast.Var { x.is_used = false }
-					else {}
-				}
+			if mut x := scope.find_var(t) {
+				x.is_used = false
 			}
 			s = '${t} = '
 		} else {

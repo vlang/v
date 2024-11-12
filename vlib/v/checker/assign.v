@@ -439,10 +439,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 					if is_decl {
 						full_name := '${left.mod}.${left.name}'
-						if obj := c.file.global_scope.find(full_name) {
-							if obj is ast.ConstField {
-								c.warn('duplicate of a const name `${full_name}`', left.pos)
-							}
+						if _ := c.file.global_scope.find_const(full_name) {
+							c.warn('duplicate of a const name `${full_name}`', left.pos)
 						}
 						if left.name == left.mod && left.name != 'main' {
 							c.error('duplicate of a module name `${left.name}`', left.pos)

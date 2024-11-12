@@ -615,7 +615,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 					}
 				}
 			}
-		} else if p.tok.kind == .key_as {
+		} else if p.tok.kind == .key_as && p.tok.line_nr == p.prev_tok.line_nr {
 			// sum type as cast `x := SumType as Variant`
 			if !p.inside_asm {
 				pos := p.tok.pos()
@@ -649,7 +649,8 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				pos:     pos
 				is_stmt: true
 			}
-		} else if p.tok.kind.is_infix() && !(p.tok.kind in [.minus, .amp, .mul]
+		} else if p.tok.kind.is_infix()
+			&& !(p.tok.kind in [.minus, .amp, .mul, .key_as, .key_in, .key_is]
 			&& p.tok.line_nr != p.prev_tok.line_nr) {
 			// continue on infix expr
 			node = p.infix_expr(node)

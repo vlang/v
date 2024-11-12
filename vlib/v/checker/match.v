@@ -66,7 +66,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		if branch.stmts.len > 0 && node.is_expr {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
-				c.expected_type = node.expected_type
+				c.expected_type = if c.expected_expr_type != ast.void_type {
+					c.expected_expr_type
+				} else {
+					node.expected_type
+				}
 				expr_type := if stmt.expr is ast.CallExpr {
 					stmt.typ
 				} else {
@@ -92,6 +96,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 								}
 							}
 						}
+						c.expected_expr_type = expr_type
 					}
 					infer_cast_type = stmt.typ
 					if mut stmt.expr is ast.CastExpr {

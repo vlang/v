@@ -1,0 +1,21 @@
+vlib/v/checker/tests/generic_fn_generic_name_unresolved_err.vv:8:7: error: a generic fn with generic types, cannot be used outside of another generic fn
+    6 | 
+    7 | fn main() {
+    8 |     _ := func[T]
+      |          ~~~~
+    9 |     _ := {
+   10 |         'test': func[T]
+vlib/v/checker/tests/generic_fn_generic_name_unresolved_err.vv:10:11: error: a generic fn with generic types, cannot be used outside of another generic fn
+    8 |     _ := func[T]
+    9 |     _ := {
+   10 |         'test': func[T]
+      |                 ~~~~
+   11 |     }
+   12 |     _ := {
+vlib/v/checker/tests/generic_fn_generic_name_unresolved_err.vv:13:3: error: a generic fn with generic types, cannot be used outside of another generic fn
+   11 |     }
+   12 |     _ := {
+   13 |         func[T]: 'test'
+      |         ~~~~
+   14 |     }
+   15 | }

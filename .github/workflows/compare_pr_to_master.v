@@ -3,6 +3,8 @@ import time
 
 const compare_prod = '-prod' in os.args
 
+const cleanup_tmp = '-no-cleanup' !in os.args
+
 fn gbranch() string {
 	return os.execute(r'git branch --list|grep ^\*').output.trim_left('* ').trim_space()
 }
@@ -38,7 +40,7 @@ fn show_size(fpath string) {
 fn compare_size(fpath1 string, fpath2 string) {
 	size1 := os.file_size(fpath1)
 	size2 := os.file_size(fpath2)
-	diff_ := size2 - size1
+	diff_ := i64(size2) - i64(size1)
 	println('>>>>>> size("${fpath2:15}") - size("${fpath1:15}") = ${size2:10} - ${size1:10} = ${diff_:10}')
 }
 
@@ -50,11 +52,11 @@ fn vcompare(vold string, vnew string) {
 	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ohw.exe examples/hello_world.v' '${vnew} -no-parallel -o nhw.exe examples/hello_world.v'")
 	compare_size('ohw.exe', 'nhw.exe')
 
-	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax cmd/v'          '${vnew} -check-syntax          cmd/v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -check        cmd/v'          '${vnew} -check                 cmd/v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ov.c   cmd/v' '${vnew} -no-parallel -o nv.c   cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax           cmd/v' '${vnew} -check-syntax           cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -check                  cmd/v' '${vnew} -check                  cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ov.c    cmd/v' '${vnew} -no-parallel -o nv.c    cmd/v'")
 	compare_size('ov.c', 'nv.c')
-	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ov.exe cmd/v' '${vnew} -no-parallel -o nv.exe cmd/v'")
+	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ov.exe  cmd/v' '${vnew} -no-parallel -o nv.exe  cmd/v'")
 	compare_size('ov.exe', 'nv.exe')
 }
 
@@ -139,5 +141,7 @@ fn main() {
 	// After all the measurements are done, delete all the generated temporary files,
 	// except the `vold` and `vnew` compilers, so that they can be used later in manual
 	// experiments:
-	r('rm -rf ohw* nhw* nv* ov*')
+	if cleanup_tmp {
+		r('rm -rf ohw* nhw* nv* ov*')
+	}
 }

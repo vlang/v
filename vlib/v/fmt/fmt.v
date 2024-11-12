@@ -2363,15 +2363,13 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			}
 		}
 		if !is_local && !node.name.contains('.') && !f.inside_const {
-			if obj := f.file.global_scope.find('${f.cur_mod}.${node.name}') {
-				if obj is ast.ConstField {
-					const_name := node.name.all_after_last('.')
-					f.write(const_name)
-					if node.or_expr.kind == .block {
-						f.or_expr(node.or_expr)
-					}
-					return
+			if _ := f.file.global_scope.find_const('${f.cur_mod}.${node.name}') {
+				const_name := node.name.all_after_last('.')
+				f.write(const_name)
+				if node.or_expr.kind == .block {
+					f.or_expr(node.or_expr)
 				}
+				return
 			}
 		}
 		name := f.short_module(node.name)
