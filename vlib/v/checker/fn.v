@@ -739,6 +739,9 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	}
 	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
+	if node.or_block.kind == .block && node.is_return_used {
+		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+	}
 	c.expected_or_type = ast.void_type
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
