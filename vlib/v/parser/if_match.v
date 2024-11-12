@@ -170,13 +170,6 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		p.open_scope()
 		stmts := p.parse_block_no_scope(false)
-		// if the last expr is a callexpr mark its return as used
-		if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
-			mut last_expr := stmts.last() as ast.ExprStmt
-			if mut last_expr.expr is ast.CallExpr {
-				last_expr.expr.is_return_used = true
-			}
-		}
 		branches << ast.IfBranch{
 			cond:     cond
 			stmts:    stmts
@@ -361,12 +354,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		pos := branch_first_pos.extend_with_last_line(branch_last_pos, p.prev_tok.line_nr)
 		branch_pos := branch_first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
 		post_comments := p.eat_comments()
-		if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
-			mut last_expr := stmts.last() as ast.ExprStmt
-			if mut last_expr.expr is ast.CallExpr {
-				last_expr.expr.is_return_used = true
-			}
-		}
 		branches << ast.MatchBranch{
 			exprs:         exprs
 			ecmnts:        ecmnts

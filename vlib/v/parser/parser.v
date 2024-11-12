@@ -593,6 +593,8 @@ fn (mut p Parser) parse_block() []ast.Stmt {
 fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{cap: 20}
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = false
 	if p.tok.kind != .rcbr {
 		mut count := 0
 		for p.tok.kind !in [.eof, .rcbr] {
@@ -608,10 +610,18 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 			}
 		}
 	}
+	p.inside_assign_rhs = old_assign_rhs
 	if is_top_level {
 		p.top_level_statement_end()
 	}
 	p.check(.rcbr)
+	// on assignment the last callexpr must be marked as return used
+	if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
+		mut last_expr := stmts.last() as ast.ExprStmt
+		if mut last_expr.expr is ast.CallExpr {
+			last_expr.expr.is_return_used = true
+		}
+	}
 	return stmts
 }
 
@@ -3088,12 +3098,6 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 	}
 
 	stmts := p.parse_block_no_scope(false)
-	if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
-		mut last_expr := stmts.last() as ast.ExprStmt
-		if mut last_expr.expr is ast.CallExpr {
-			last_expr.expr.is_return_used = true
-		}
-	}
 	pos = pos.extend(p.prev_tok.pos())
 	return stmts, pos
 }

@@ -1354,8 +1354,7 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		return
 	}
 	if node.stmts.len == 0 {
-		if expr is ast.CallExpr && expr.is_return_used
-			&& ret_type.clear_option_and_result() != ast.void_type {
+		if expr is ast.CallExpr && expr.is_return_used {
 			// x := f() or {}
 			c.error('assignment requires a non empty `or {}` block', node.pos)
 		}

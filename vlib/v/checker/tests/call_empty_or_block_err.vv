@@ -5,9 +5,10 @@ fn foo() !bool {
 fn bar() ! {
 }
 
-fn test_main() {
+fn main() {
 	a := foo() or { foo() or {} }
 
+	// must be error
 	y := if c := foo() {
 		dump(c)
 		bar() or {}
@@ -15,11 +16,24 @@ fn test_main() {
 		false
 	}
 
+	// ok
 	z := if d := foo() {
 		dump(d)
 		bar() or {}
 		true
 	} else {
+		false
+	}
+
+	// ok
+	w := foo() or {
+		bar() or {}
+		false
+	}
+
+	// ok
+	b := foo() or {
+		foo() or {}
 		false
 	}
 }
