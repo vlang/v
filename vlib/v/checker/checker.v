@@ -1357,6 +1357,9 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		if expr is ast.CallExpr && expr.is_return_used {
 			// x := f() or {}, || f() or {} etc
 			c.error('expression requires a non empty `or {}` block', node.pos)
+		} else if expr !is ast.CallExpr && ret_type != ast.void_type {
+			// _ := sql db {... } or { }
+			c.error('expression requires a non empty `or {}` block', node.pos)
 		}
 		// allow `f() or {}`
 		return
