@@ -783,9 +783,13 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 
 	right_op_pos := p.tok.pos()
 	old_assign_rhs := p.inside_assign_rhs
-	p.inside_assign_rhs = true
+	if op in [.decl_assign, .assign] {
+		p.inside_assign_rhs = true
+	}
 	right = p.expr(precedence)
-	p.inside_assign_rhs = old_assign_rhs
+	if op in [.decl_assign, .assign] {
+		p.inside_assign_rhs = old_assign_rhs
+	}
 	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
 		for mut right_expr is ast.ParExpr {

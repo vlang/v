@@ -1019,7 +1019,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					&& unwrapped_styp.starts_with('_v_') {
 					unwrapped_styp = unwrapped_styp[3..]
 				}
-				if node.is_return_used || node.or_block.kind == .block {
+				if node.is_return_used {
 					// return value is used, so we need to write the unwrapped temporary var
 					g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 				} else {

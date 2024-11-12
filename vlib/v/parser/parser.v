@@ -615,14 +615,30 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 		p.top_level_statement_end()
 	}
 	p.check(.rcbr)
-	// on assignment the last callexpr must be marked as return used
-	if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
-		mut last_expr := stmts.last() as ast.ExprStmt
-		if mut last_expr.expr is ast.CallExpr {
-			last_expr.expr.is_return_used = true
-		}
+	// on assignment the last callexpr must be marked as return used recursively
+	if p.inside_assign_rhs && stmts.len > 0 {
+		mut last_stmt := stmts.last()
+		p.mark_last_call_return_as_used(mut last_stmt)
 	}
 	return stmts
+}
+
+fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
+	match mut last_stmt {
+		ast.ExprStmt {
+			if mut last_stmt.expr is ast.CallExpr {
+				last_stmt.expr.is_return_used = true
+			} else if mut last_stmt.expr is ast.IfExpr {
+				for mut branch in last_stmt.expr.branches {
+					if branch.stmts.len > 0 {
+						mut last_if_stmt := branch.stmts.last()
+						p.mark_last_call_return_as_used(mut last_if_stmt)
+					}
+				}
+			}
+		}
+		else {}
+	}
 }
 
 fn (mut p Parser) next() {
