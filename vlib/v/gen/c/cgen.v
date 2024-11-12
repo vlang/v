@@ -1859,7 +1859,7 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 
 fn is_noreturn_callexpr(expr ast.Expr) bool {
 	if expr is ast.CallExpr {
-		return expr.is_noreturn || expr.is_return_used == false
+		return expr.is_noreturn
 	}
 	return false
 }
