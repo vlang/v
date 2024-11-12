@@ -795,7 +795,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 					comptime_for_stmt := p.comptime_for()
 					return p.other_stmts(comptime_for_stmt)
 				} else if p.peek_tok.kind == .key_if {
-					if_expr := p.if_expr(true)
+					if_expr := p.if_expr(true, false)
 					cur_stmt := ast.ExprStmt{
 						expr: if_expr
 						pos:  if_expr.pos
@@ -1077,7 +1077,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			match p.peek_tok.kind {
 				.key_if {
 					mut pos := p.tok.pos()
-					expr := p.if_expr(true)
+					expr := p.if_expr(true, false)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
