@@ -1,0 +1,25 @@
+fn foo() !bool {
+	return true
+}
+
+fn bar() ! {
+}
+
+fn test_main() {
+	a := foo() or { foo() or {} }
+
+	y := if c := foo() {
+		dump(c)
+		bar() or {}
+	} else {
+		false
+	}
+
+	z := if d := foo() {
+		dump(d)
+		bar() or {}
+		true
+	} else {
+		false
+	}
+}
