@@ -2230,7 +2230,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := p.expr_list(p.inside_assign_rhs)
+	left := p.expr_list(p.inside_assign_rhs && !p.inside_or_expr)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -3088,6 +3088,12 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 	}
 
 	stmts := p.parse_block_no_scope(false)
+	if p.inside_assign_rhs && stmts.len > 0 && stmts.last() is ast.ExprStmt {
+		mut last_expr := stmts.last() as ast.ExprStmt
+		if mut last_expr.expr is ast.CallExpr {
+			last_expr.expr.is_return_used = true
+		}
+	}
 	pos = pos.extend(p.prev_tok.pos())
 	return stmts, pos
 }
