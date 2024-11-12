@@ -1836,10 +1836,8 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
 					// update ConstField object's type in table
-					if mut obj := c.file.global_scope.find(field.name) {
-						if mut obj is ast.ConstField {
-							obj.typ = field.typ
-						}
+					if mut obj := c.file.global_scope.find_const(field.name) {
+						obj.typ = field.typ
 					}
 					break
 				}
