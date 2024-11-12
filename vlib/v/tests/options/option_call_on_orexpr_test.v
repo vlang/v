@@ -26,8 +26,10 @@ fn test_main() {
 	var2 := find_any_startswith_string_unwrapped(['foobar', 'barfoo'], ['deadbeef', 'beefdead'],
 		'dead')
 	dump(var2)
+	assert var2 != none
 
 	var3 := find_any_startswith_string_unwrapped(['foobar', 'barfoo'], ['deadbeef', 'beefdead'],
 		'error')
-	dump(var3 == none)
+	dump(var3)
+	assert var3 == none
 }
