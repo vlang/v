@@ -126,6 +126,7 @@ mut:
 	generic_fns                      map[string]bool // register generic fns that needs recheck once
 	inside_sql                       bool            // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
+	inside_call_or_expr              bool // inside or block of CallExpr
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
@@ -1381,6 +1382,10 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			ast.ExprStmt {
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
+				if c.inside_call_or_expr && stmt.expr is ast.None && ret_type.has_flag(.option) {
+					// call() or { none } where fn returns Option
+					return
+				}
 				last_stmt_typ := c.expr(mut stmt.expr)
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
