@@ -352,7 +352,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		typ = p.parse_any_type(lang, false, true, false)
 	} else {
 		expr = p.ident(lang)
-		p.mark_var_as_used((expr as ast.Ident).name)
+		p.scope.mark_used((expr as ast.Ident).name)
 	}
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
@@ -470,7 +470,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	if p.peek_tok.kind == .lpar {
 		method_pos := p.tok.pos()
 		method_name := p.check_name()
-		p.mark_var_as_used(method_name)
+		p.scope.mark_used(method_name)
 		// `app.$action()` (`action` is a string)
 		p.check(.lpar)
 		args := p.call_args()
