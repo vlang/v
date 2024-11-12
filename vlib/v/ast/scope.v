@@ -14,6 +14,7 @@ pub mut:
 	children             []&Scope
 	start_pos            int
 	end_pos              int
+	used_vars            map[string]bool
 }
 
 @[unsafe]
@@ -260,6 +261,27 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 		}
 	}
 	return out
+}
+
+pub fn (mut sc Scope) mark_used(varname string) bool {
+	if varname in sc.used_vars {
+		return true
+	}
+	if mut obj := sc.find(varname) {
+		match mut obj {
+			Var {
+				obj.is_used = true
+				sc.used_vars[varname] = true
+				return true
+			}
+			GlobalField {
+				sc.used_vars[varname] = true
+				return true
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 pub fn (sc &Scope) str() string {
