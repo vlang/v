@@ -1851,10 +1851,8 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
 					// update ConstField object's type in table
-					if mut obj := c.file.global_scope.find(field.name) {
-						if mut obj is ast.ConstField {
-							obj.typ = field.typ
-						}
+					if mut obj := c.file.global_scope.find_const(field.name) {
+						obj.typ = field.typ
 					}
 					break
 				}
@@ -4024,6 +4022,17 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			if func.generic_names.len > 0 {
 				if node.concrete_types.len == 0 {
 					c.error('`${node.name}` is a generic fn, you should pass its concrete types, e.g. ${node.name}[int]',
+						node.pos)
+				}
+				mut has_generic := false // foo[T] instead of foo[int]
+				for concrete_type in node.concrete_types {
+					if concrete_type.has_flag(.generic) {
+						has_generic = true
+					}
+				}
+				if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len == 0
+					&& has_generic && c.table.sym(c.expected_type).kind != .function {
+					c.error('a generic fn with generic types, cannot be used outside of another generic fn',
 						node.pos)
 				}
 			}

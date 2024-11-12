@@ -1068,7 +1068,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			} else if p.peek_tok.kind == .name {
 				return p.unexpected(got: 'name `${p.tok.lit}`')
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
-				&& p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
+				&& p.peek_tok.kind in [.rcbr, .eof] && !p.scope.mark_var_as_used(p.tok.lit) {
 				return p.error_with_pos('`${p.tok.lit}` evaluated but not used', p.tok.pos())
 			}
 			return p.parse_multi_expr(is_top_level)
@@ -2636,7 +2636,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// get type position before moving to next
 		is_known_var := p.scope.known_var(p.tok.lit)
 		if is_known_var {
-			p.mark_var_as_used(p.tok.lit)
+			p.scope.mark_var_as_used(p.tok.lit)
 			return p.ident(.v)
 		} else {
 			type_pos := p.tok.pos()
@@ -2758,7 +2758,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	known_var := if p.peek_tok.kind.is_assign() {
 		p.scope.known_var(p.tok.lit)
 	} else {
-		p.mark_var_as_used(p.tok.lit)
+		p.scope.mark_var_as_used(p.tok.lit)
 	}
 	// Handle modules
 	mut is_mod_cast := false
@@ -4592,27 +4592,6 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 			break
 		}
 	}
-}
-
-// returns true if `varname` is known
-fn (mut p Parser) mark_var_as_used(varname string) bool {
-	if mut obj := p.scope.find(varname) {
-		match mut obj {
-			ast.Var {
-				obj.is_used = true
-				return true
-			}
-			ast.GlobalField {
-				// obj.is_used = true
-				return true
-			}
-			// ast.ConstField {
-			// return true
-			//}
-			else {}
-		}
-	}
-	return false
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
