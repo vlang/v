@@ -24,7 +24,7 @@ jobs:
   clang:
     strategy:
       matrix:
-        os: [macos-12, macos-14]
+        os: [macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 121
@@ -35,70 +35,44 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Test symlink
-        run: v symlink
-      - name: Test cross compilation to Linux
-        run: |
-          v -o hw -os linux examples/hello_world.v && ls -la hw && file hw
-          v -d use_openssl -o ve -os linux examples/veb/veb_example.v && ls -la ve && file ve
-      - name: Build V with -cstrict
-        run: v -cg -cstrict -o v cmd/v
-      - name: All code is formatted
-        run: VJOBS=1 v test-cleancode
-      - name: Run sanitizers
-        run: |
-          v -o v2 cmd/v -cflags -fsanitize=undefined
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
-      - name: Build V using V
-        run: v -o v2 cmd/v && ./v2 -o v3 cmd/v
-      # - name: Set up pg database
-      #   run: |
-      #     pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
-      #     psql -d postgres -c 'select rolname from pg_roles'
-      #     psql -d postgres -c 'create database customerdb;'
-      #     psql -d customerdb -f examples/database/pg/mydb.sql
-      # - name: Test v->c
-      #   run: v test-all
-      # - name: Test v binaries
-      #   run: v build-vbinaries
-      # - name: Test v->js
-      #   run: v -o hi.js examples/hello_v_js.v && node hi.js
-      - name: Verify `v test` works
-        run: |
-          echo $VFLAGS
-          v cmd/tools/test_if_v_test_system_works.v
-          ./cmd/tools/test_if_v_test_system_works
-      - name: Install iconv for encoding.iconv
-        run: brew install libiconv
-      - name: Test pure V math module
-        run: v -exclude @vlib/math/*.c.v test vlib/math/
-      - name: Self tests
-        run: VJOBS=1 v test-self vlib
-      - name: Build examples
-        run: v build-examples
-      - name: Build tetris with -autofree
-        run: v -autofree -o tetris examples/tetris/tetris.v
-      - name: Build blog tutorial with -autofree
-        run: v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
-      - name: Build examples with -prod
-        run: |
-          v -prod examples/news_fetcher.v
+        run: v run ci/macos_ci.vsh test_symlink
       - name: v doctor
-        run: |
-          v doctor
+        run: v run ci/macos_ci.vsh v_doctor
+      - name: Test cross compilation to Linux
+        run: v run ci/macos_ci.vsh test_cross_compilation
+      - name: Build V with -cstrict
+        run: v run ci/macos_ci.vsh build_with_cstrict
+      - name: All code is formatted
+        run: v run ci/macos_ci.vsh all_code_is_formatted
+      - name: Run sanitizers
+        run: v run ci/macos_ci.vsh run_sanitizers
+      - name: Build V using V
+        run: v run ci/macos_ci.vsh build_using_v
+      - name: Verify `v test` works
+        run: v run ci/macos_ci.vsh verify_v_test_works
+      - name: Install iconv for encoding.iconv
+        run: v run ci/macos_ci.vsh install_iconv
+      - name: Test pure V math module
+        run: v run ci/macos_ci.vsh test_pure_v_math_module
+      - name: Self tests
+        run: v run ci/macos_ci.vsh self_tests
+      - name: Build examples
+        run: v run ci/macos_ci.vsh build_examples
+      - name: Build tetris with -autofree
+        run: v run ci/macos_ci.vsh build_tetris_autofree
+      - name: Build blog tutorial with -autofree
+        run: v run ci/macos_ci.vsh build_blog_autofree
+      - name: Build examples with -prod
+        run: v run ci/macos_ci.vsh build_examples_prod
+      - name: Build examples with V build with tcc
+        run: v run ci/macos_ci.vsh build_examples_v_compiled_with_tcc
       - name: V self compilation with -usecache
-        run: |
-          unset VFLAGS
-          v -usecache examples/hello_world.v && examples/hello_world
-          v  -o v2 -usecache cmd/v
-          ./v2 -o v3 -usecache cmd/v
-          ./v3 version
-          ./v3 -o tetris  -usecache examples/tetris/tetris.v
+        run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc
-        run: |
-          v -o v2 -parallel-cc cmd/v
+        run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
       - name: Test password input
-        run: v test examples/password/
+        run: v run ci/macos_ci.vsh test_password_input
       - name: Test readline
-        run: v test examples/readline/
+        run: v run ci/macos_ci.vsh test_readline
       - name: Test vlib modules with -skip-unused
-        run: v -skip-unused test vlib/builtin/ vlib/math vlib/flag/ vlib/os/ vlib/strconv/
+        run: v run ci/macos_ci.vsh test_vlib_skip_unused

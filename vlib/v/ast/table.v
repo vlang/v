@@ -117,7 +117,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		if arg.is_mut {
 			sig += 'mut_'
 		}
-		sig += t.sym(typ).cname.to_lower()
+		sig += t.sym(typ).cname.to_lower_ascii()
 		if i < f.params.len - 1 {
 			sig += '_'
 		}

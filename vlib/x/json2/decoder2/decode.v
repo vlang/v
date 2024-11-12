@@ -618,66 +618,15 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			val = time.parse_rfc3339(string_time) or { time.Time{} }
 		}
 	} $else $if T.unaliased_typ is $map {
-		map_info := decoder.current_node.value
-
-		if map_info.value_kind == .object {
-			map_position := map_info.position
-			map_end := map_position + map_info.length
-
-			decoder.current_node = decoder.current_node.next
-			for {
-				if decoder.current_node == unsafe { nil } {
-					break
-				}
-
-				key_info := decoder.current_node.value
-
-				if key_info.position >= map_end {
-					break
-				}
-
-				key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
-
-				decoder.current_node = decoder.current_node.next
-
-				value_info := decoder.current_node.value
-
-				if value_info.position + value_info.length >= map_end {
-					break
-				}
-
-				mut map_value := create_map_value(val)
-
-				decoder.decode_value(mut map_value)!
-
-				val[key] = map_value
-			}
-		}
+		decoder.decode_map(mut val)!
+		return
 	} $else $if T.unaliased_typ is $array {
-		array_info := decoder.current_node.value
-
-		if array_info.value_kind == .array {
-			array_position := array_info.position
-			array_end := array_position + array_info.length
-
-			decoder.current_node = decoder.current_node.next
-			for {
-				if decoder.current_node == unsafe { nil } {
-					break
-				}
-				value_info := decoder.current_node.value
-
-				if value_info.position + value_info.length >= array_end {
-					break
-				}
-
-				mut array_element := create_array_element(val)
-
-				decoder.decode_value(mut array_element)!
-
-				val << array_element
-			}
-		}
+		decoder.decode_array(mut val)!
+		// return to avoid the next increment of the current node
+		// this is because the current node is already incremented in the decode_array function
+		// remove this line will cause the current node to be incremented twice
+		// and bug recursive array decoding like `[][]int{}`
+		return
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
@@ -743,6 +692,69 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
+fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
+	array_info := decoder.current_node.value
+
+	if array_info.value_kind == .array {
+		decoder.current_node = decoder.current_node.next
+
+		array_position := array_info.position
+		array_end := array_position + array_info.length
+
+		for {
+			if decoder.current_node == unsafe { nil }
+				|| decoder.current_node.value.position >= array_end {
+				break
+			}
+
+			mut array_element := T{}
+
+			decoder.decode_value(mut array_element)!
+
+			val << array_element
+		}
+	}
+}
+
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+	map_info := decoder.current_node.value
+
+	if map_info.value_kind == .object {
+		map_position := map_info.position
+		map_end := map_position + map_info.length
+
+		decoder.current_node = decoder.current_node.next
+		for {
+			if decoder.current_node == unsafe { nil }
+				|| decoder.current_node.value.position >= map_end {
+				break
+			}
+
+			key_info := decoder.current_node.value
+
+			if key_info.position >= map_end {
+				break
+			}
+
+			key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+
+			decoder.current_node = decoder.current_node.next
+
+			value_info := decoder.current_node.value
+
+			if value_info.position + value_info.length >= map_end {
+				break
+			}
+
+			mut map_value := V{}
+
+			decoder.decode_value(mut map_value)!
+
+			val[key] = map_value
+		}
+	}
+}
+
 // get_value_kind returns the kind of a JSON value.
 fn get_value_kind(value u8) ValueKind {
 	if value == u8(`"`) {
@@ -759,14 +771,6 @@ fn get_value_kind(value u8) ValueKind {
 		return .null
 	}
 	return .unknown
-}
-
-fn create_array_element[T](array []T) T {
-	return T{}
-}
-
-fn create_map_value[K, V](map_ map[K]V) V {
-	return V{}
 }
 
 fn create_value_from_optional[T](val ?T) T {

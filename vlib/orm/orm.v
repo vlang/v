@@ -473,7 +473,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					}
 				}
 				'primary' {
-					primary = field.name
+					primary = field_name
 					primary_typ = field.typ
 				}
 				'unique' {
@@ -592,7 +592,14 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 fn sql_field_type(field TableField) int {
 	mut typ := field.typ
 	for attr in field.attrs {
+		// @[serial]
+		if attr.name == 'serial' && attr.kind == .plain && !attr.has_arg {
+			typ = serial
+			break
+		}
+
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
+			// @[sql: serial]
 			if attr.arg.to_lower() == 'serial' {
 				typ = serial
 				break

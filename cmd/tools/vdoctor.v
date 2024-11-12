@@ -122,8 +122,8 @@ fn (mut a App) collect_info() {
 	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.println('')
-
 	a.line('CC version', a.cmd(command: 'cc --version'))
+	a.line('emcc version', a.cmd(command: 'emcc --version'))
 	a.report_tcc_version('thirdparty/tcc')
 }
 
@@ -134,7 +134,7 @@ struct CmdConfig {
 
 fn (mut a App) cmd(c CmdConfig) string {
 	x := os.execute(c.command)
-	if x.exit_code < 0 {
+	if x.exit_code < 0 || x.exit_code == 127 {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {

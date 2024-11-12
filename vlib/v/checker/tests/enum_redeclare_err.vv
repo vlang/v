@@ -1,0 +1,9 @@
+@[flag]
+pub enum Enum {
+	a
+}
+
+@[flag]
+pub enum Enum {
+	a
+}

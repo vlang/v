@@ -19,7 +19,7 @@ already compiling functions:
 	MessageError.code
 	MessageError.free
 	u64.hex
-	VAssertMetaInfo.free"
+	VAssertMetaInfo.free
 	__new_array
 	new_array_from_c_array
 	new_array_from_c_array_no_alloc

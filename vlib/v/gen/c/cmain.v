@@ -134,7 +134,9 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 fn (mut g Gen) gen_c_main_function_header() {
 	g.gen_c_main_function_only_header()
 	g.gen_c_main_trace_calls_hook()
-	g.writeln2('\tg_main_argc = ___argc;', '\tg_main_argv = ___argv;')
+	if !g.pref.no_builtin {
+		g.writeln2('\tg_main_argc = ___argc;', '\tg_main_argv = ___argv;')
+	}
 	if g.nr_closures > 0 {
 		g.writeln('\t__closure_init(); // main()')
 	}
@@ -158,7 +160,9 @@ fn (mut g Gen) gen_c_main_header() {
 		}
 		g.writeln('#endif')
 	}
-	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	if !g.pref.no_builtin {
+		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	}
 	g.gen_c_main_profile_hook()
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
@@ -166,7 +170,9 @@ fn (mut g Gen) gen_c_main_header() {
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {
-	g.writeln('\t_vcleanup();')
+	if !g.pref.no_builtin {
+		g.writeln('\t_vcleanup();')
+	}
 	g.writeln2('\treturn 0;', '}')
 }
 
@@ -208,9 +214,9 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 		}
 		g.writeln('#endif')
 	}
-	g.writeln('\t_vinit(argc, (voidptr)argv);
-	')
-
+	if !g.pref.no_builtin {
+		g.writeln('\t_vinit(argc, (voidptr)argv);')
+	}
 	g.gen_c_main_profile_hook()
 	g.writeln('\tmain__main();')
 	if g.is_autofree {
@@ -290,7 +296,9 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		}
 		g.writeln('#endif')
 	}
-	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	if !g.pref.no_builtin {
+		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	}
 	g.writeln('\tmain__vtest_init();')
 	g.gen_c_main_profile_hook()
 

@@ -268,6 +268,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									}
 								}
 							}
+						} else if left.expr is ast.TypeOf {
+							skip_state = if left.expr.typ.nr_muls() == right.val.i64() {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
 						}
 					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
 						&& right is ast.StringLiteral {
@@ -557,7 +563,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			c.smartcast_if_conds(mut node.right, mut scope, control_expr)
 		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
 			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
-				node.left_type = c.comptime.get_comptime_var_type(node.left)
+				node.left_type = c.comptime.get_type(node.left)
 				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
 					scope, true)
 			} else {
@@ -566,7 +572,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			}
 		} else if node.op == .key_is {
 			if node.left is ast.Ident && c.comptime.is_comptime_var(node.left) {
-				node.left_type = c.comptime.get_comptime_var_type(node.left)
+				node.left_type = c.comptime.get_type(node.left)
 			} else {
 				node.left_type = c.expr(mut node.left)
 			}
@@ -650,7 +656,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			if first_cond.left is ast.Ident && first_cond.op == .eq && first_cond.right is ast.None {
 				if first_cond.left is ast.Ident
 					&& c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
-					first_cond.left_type = c.comptime.get_comptime_var_type(first_cond.left)
+					first_cond.left_type = c.comptime.get_type(first_cond.left)
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
 						scope, true)
 				} else {

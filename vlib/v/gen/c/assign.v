@@ -259,7 +259,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if mut left.obj is ast.Var {
 				if val is ast.Ident && g.comptime.is_comptime_var(val) {
-					ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(val))
+					ctyp := g.unwrap_generic(g.comptime.get_type(val))
 					if ctyp != ast.void_type {
 						var_type = ctyp
 						val_type = var_type
@@ -1041,7 +1041,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 						g.write(' = *(voidptr*)array_get(')
 					} else {
 						styp := g.styp(info.elem_type)
-						string_clone := if needs_clone { '/*1*/string_clone(' } else { '' }
+						string_clone := if needs_clone { 'string_clone(' } else { '' }
 
 						g.write('${styp} _var_${left.pos.pos} = ${string_clone}*(${styp}*)array_get(')
 					}

@@ -111,11 +111,13 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		}
 		scope:              p.scope
 		comments:           comments
+		is_return_used:     p.expecting_value
+		is_static_method:   is_static_type_method
 	}
 }
 
 fn (mut p Parser) call_args() []ast.CallArg {
-	prev_inside_call_args := true
+	prev_inside_call_args := p.inside_call_args
 	p.inside_call_args = true
 	defer {
 		p.inside_call_args = prev_inside_call_args
@@ -918,7 +920,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 	}
 	is_generic_type := p.tok.kind == .name && p.tok.lit.len == 1 && p.tok.lit[0].is_capital()
 
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
+	types_only := p.tok.kind in [.question, .not, .amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(param_name) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
@@ -1168,7 +1170,8 @@ fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	} else {
 		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
-			scope: p.scope
+			scope:          p.scope
+			is_return_used: true
 		}
 	}
 	pos := spos.extend(p.prev_tok.pos())
@@ -1189,7 +1192,8 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 	} else {
 		p.error_with_pos('expression in `go` must be a function call', expr.pos())
 		ast.CallExpr{
-			scope: p.scope
+			scope:          p.scope
+			is_return_used: true
 		}
 	}
 	pos := spos.extend(p.prev_tok.pos())
