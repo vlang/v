@@ -1363,8 +1363,8 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
-	if expr is ast.CallExpr && expr.is_return_used {
-		// requires a block returning an unwrapped type of callexpr return type
+	if expr !is ast.CallExpr || (expr is ast.CallExpr && expr.is_return_used) {
+		// requires a block returning an unwrapped type of expr return type
 		c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
 	} else {
 		// allow f() or { var = 123 }
