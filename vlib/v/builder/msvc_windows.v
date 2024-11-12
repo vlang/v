@@ -401,7 +401,11 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	}
 	println('${obj_path} not found, building it (with msvc)...')
 	flush_stdout()
-	cfile := '${path_without_o_postfix}.c'
+	cfile := if os.exists('${path_without_o_postfix}.c') {
+		'${path_without_o_postfix}.c'
+	} else {
+		'${path_without_o_postfix}.cpp'
+	}
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')

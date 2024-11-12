@@ -42,7 +42,11 @@ fn test_array_of_strings() {
 	// assert json.decode[map[string]int]('{"val": 2}')! == {"val": 2}
 
 	// // nested map
-	// assert json.decode[map[string]map[string]string]('{"val": {"val2": "2"}}')! == {"val": {"val2": "2"}}
+	// assert json.decode[map[string]map[string]string]('{"val": {"val2": "2"}}')! == {
+	// 	'val': {
+	// 		'val2': '2'
+	// 	}
+	// }
 
 	// nested struct
 	assert json.decode[Stru]('{"val": 1, "val2": "lala", "val3": {"a": 2, "brazilian_steak": "leleu"}}')! == Stru{

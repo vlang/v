@@ -81,3 +81,79 @@ pub fn (c rune) length_in_bytes() int {
 	}
 	return -1
 }
+
+// `to_upper` convert to uppercase mode.
+pub fn (c rune) to_upper() rune {
+	if c < 0x80 {
+		if c >= `a` && c <= `z` {
+			return c - 32
+		}
+		return c
+	}
+	return c.map_to(.to_upper)
+}
+
+// `to_lower` convert to lowercase mode.
+pub fn (c rune) to_lower() rune {
+	if c < 0x80 {
+		if c >= `A` && c <= `Z` {
+			return c + 32
+		}
+		return c
+	}
+	return c.map_to(.to_lower)
+}
+
+// `to_title` convert to title mode.
+pub fn (c rune) to_title() rune {
+	if c < 0x80 {
+		if c >= `a` && c <= `z` {
+			return c - 32
+		}
+		return c
+	}
+	return c.map_to(.to_title)
+}
+
+// `map_to` rune map mode: .to_upper/.to_lower/.to_title
+@[direct_array_access]
+fn (c rune) map_to(mode MapMode) rune {
+	mut start := 0
+	mut end := rune_maps.len / rune_maps_columns_in_row
+	// Binary search
+	for start < end {
+		middle := (start + end) / 2
+		cur_map := unsafe { &rune_maps[middle * rune_maps_columns_in_row] }
+		if c >= u32(unsafe { *cur_map }) && c <= u32(unsafe { *(cur_map + 1) }) {
+			offset := if mode in [.to_upper, .to_title] {
+				unsafe { *(cur_map + 2) }
+			} else {
+				unsafe { *(cur_map + 3) }
+			}
+			if offset == rune_maps_ul {
+				// upper, lower, upper, lower, ... sequence
+				cnt := (c - unsafe { *cur_map }) % 2
+				if mode == .to_lower {
+					return c + 1 - cnt
+				}
+				return c - cnt
+			} else if offset == rune_maps_utl {
+				// upper, title, lower, upper, title, lower, ... sequence
+				cnt := (c - unsafe { *cur_map }) % 3
+				if mode == .to_upper {
+					return c - cnt
+				} else if mode == .to_lower {
+					return c + 2 - cnt
+				}
+				return c + 1 - cnt
+			}
+			return c + offset
+		}
+		if c < u32(unsafe { *cur_map }) {
+			end = middle
+		} else {
+			start = middle + 1
+		}
+	}
+	return c
+}

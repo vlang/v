@@ -13,6 +13,8 @@ import runtime
 import rand
 import strings
 
+pub const max_header_len = get_max_header_len()
+
 pub const host_os = pref.get_host_os()
 
 pub const github_job = os.getenv('GITHUB_JOB')
@@ -45,7 +47,8 @@ pub const is_go_present = os.execute('go version').exit_code == 0
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
-pub const separator = '-'.repeat(100)
+
+pub const separator = '-'.repeat(max_header_len)
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
@@ -226,7 +229,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/consts/const_comptime_eval_before_vinit_test.v' // _constructor used
-			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
 			skip_files << 'examples/pico/pico.v'
@@ -677,7 +679,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				details.retry++
 			}
 			failure_output.write_string(separator)
-			failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			failure_output.writeln('\n retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
 			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry = 1; retry <= details.retry; retry++ {
@@ -700,7 +702,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				}
 				trimmed_output = r.output.trim_space()
 				failure_output.write_string(separator)
-				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+				failure_output.writeln('\n retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
 				failure_output.writeln(trimmed_output)
 				time.sleep(fail_retry_delay_ms)
 			}
@@ -851,9 +853,13 @@ pub fn building_any_v_binaries_failed() bool {
 		}
 	}
 	bmark.stop()
-	eprintln(term.h_divider('-'))
+	h_divider()
 	eprintln(bmark.total_message('building v binaries'))
 	return failed
+}
+
+pub fn h_divider() {
+	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
@@ -900,15 +906,28 @@ pub fn find_started_process(pname string) !string {
 	return error('could not find process matching ${pname}')
 }
 
+fn limited_header(msg string) string {
+	return term.header_left(msg, '-')#[..max_header_len]
+}
+
 pub fn eheader(msg string) {
-	eprintln(term.header_left(msg, '-'))
+	eprintln(limited_header(msg))
 }
 
 pub fn header(msg string) {
-	println(term.header_left(msg, '-'))
+	println(limited_header(msg))
 	flush_stdout()
 }
 
 fn random_sleep_ms(min_ms int, random_add_ms int) {
-	time.sleep((100 + rand.intn(100) or { 0 }) * time.millisecond)
+	time.sleep((50 + rand.intn(50) or { 0 }) * time.millisecond)
+}
+
+fn get_max_header_len() int {
+	maximum := 140
+	cols, _ := term.get_terminal_size()
+	if cols > maximum {
+		return maximum
+	}
+	return cols
 }

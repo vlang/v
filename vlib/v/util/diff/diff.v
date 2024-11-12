@@ -162,9 +162,6 @@ fn run_tool(cmd string, dbg_location string) string {
 	return res.output.trim_right('\r\n')
 }
 
-// find_working_diff_command returns the first available command from a list of known diff cli tools.
-@[deprecated_after: '2024-06-30']
-@[deprecated]
 pub fn find_working_diff_command() !string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
@@ -194,8 +191,6 @@ pub fn find_working_diff_command() !string {
 }
 
 // color_compare_files returns a colored diff between two files.
-@[deprecated: 'use `compare_files` instead']
-@[deprecated_after: '2024-06-30']
 pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 	tool := diff_cmd.all_before(' ')
 	os.find_abs_path_of_executable(tool) or { return 'comparison command: `${tool}` not found' }
@@ -213,8 +208,6 @@ pub fn color_compare_files(diff_cmd string, path1 string, path2 string) string {
 }
 
 // color_compare_strings returns a colored diff between two strings.
-@[deprecated: 'use `compare_text` instead']
-@[deprecated_after: '2024-06-30']
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
 	tmp_dir := os.join_path_single(os.vtmp_dir(), unique_prefix)
 	os.mkdir(tmp_dir) or {}

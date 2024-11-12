@@ -260,6 +260,7 @@ echo  ^> To add V to your PATH, run `%V_EXE% symlink`.
 echo.
 echo | set /p="V version: "
 "%V_EXE%" version
+"%V_EXE%" run .github/problem-matchers/register_all.vsh
 goto :eof
 
 :usage

@@ -399,7 +399,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									&& right.or_expr.kind == .absent {
 									right_obj_var := right.obj as ast.Var
 									if right_obj_var.ct_type_var != .no_comptime {
-										ctyp := c.comptime.get_comptime_var_type(right)
+										ctyp := c.comptime.get_type(right)
 										if ctyp != ast.void_type {
 											left.obj.ct_type_var = right_obj_var.ct_type_var
 											left.obj.typ = ctyp
@@ -421,11 +421,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										fn_ret_type := c.resolve_return_type(right)
 										if fn_ret_type != ast.void_type
 											&& c.table.final_sym(fn_ret_type).kind != .multi_return {
-											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = if right.or_block.kind == .absent {
+											var_type := if right.or_block.kind == .absent {
 												fn_ret_type
 											} else {
 												fn_ret_type.clear_option_and_result()
 											}
+											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 										}
 									}
 								}
@@ -504,9 +505,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						left.recursive_mapset_is_setter(true)
 					}
 
-					if right is ast.Ident && c.comptime.is_comptime_var(right) {
-						right_type = c.comptime.get_comptime_var_type(right)
-					}
+					right_type = c.comptime.get_type_or_default(right, right_type)
 				}
 				if mut left is ast.InfixExpr {
 					c.error('cannot use infix expression on the left side of `${node.op}`',
@@ -579,13 +578,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
 						c.note('an implicit clone of the slice was done here', right.pos())
 						right = ast.CallExpr{
-							name:          'clone'
-							left:          right
-							left_type:     left_type
-							is_method:     true
-							receiver_type: left_type
-							return_type:   left_type
-							scope:         c.fn_scope
+							name:           'clone'
+							left:           right
+							left_type:      left_type
+							is_method:      true
+							receiver_type:  left_type
+							return_type:    left_type
+							scope:          c.fn_scope
+							is_return_used: true
 						}
 						right_type = c.expr(mut right)
 						node.right[i] = right

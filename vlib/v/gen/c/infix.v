@@ -96,16 +96,8 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left_type := if node.left is ast.ComptimeSelector {
-		g.comptime.get_comptime_var_type(node.left)
-	} else {
-		node.left_type
-	}
-	right_type := if node.right is ast.ComptimeSelector {
-		g.comptime.get_comptime_var_type(node.right)
-	} else {
-		node.right_type
-	}
+	left_type := g.comptime.get_expr_type_or_default(node.left, node.left_type)
+	right_type := g.comptime.get_expr_type_or_default(node.right, node.right_type)
 	left := g.unwrap(left_type)
 	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
@@ -195,7 +187,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			.alias {
 				// optimize simple eq/ne operation on numbers
 				if left.unaliased_sym.is_int() {
-					if left.typ.is_ptr() {
+					if left.typ.is_ptr() && node.left.is_auto_deref_var() && !right.typ.is_pointer() {
 						g.write('*'.repeat(left.typ.nr_muls()))
 					}
 					g.expr(node.left)
@@ -517,7 +509,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		if node.right is ast.ArrayInit {
 			elem_type := node.right.elem_type
 			elem_sym := g.table.sym(elem_type)
-			if node.right.exprs.len > 0 {
+			// TODO: replace ast.Ident check with proper side effect analysis
+			if node.right.exprs.len > 0 && (node.left is ast.Ident
+				|| node.left is ast.IndexExpr || node.left is ast.SelectorExpr) {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
 				g.write('(')
@@ -644,12 +638,40 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 		g.write('(')
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
 		g.write(')')
-	} else if right.unaliased_sym.kind == .string {
+	} else if right.unaliased_sym.kind == .string && node.right !is ast.RangeExpr {
 		g.write2('(', 'string_contains(')
 		g.expr(node.right)
 		g.write(', ')
 		g.expr(node.left)
 		g.write('))')
+	} else if node.right is ast.RangeExpr {
+		// call() in min..max
+		if node.left is ast.CallExpr {
+			line := g.go_before_last_stmt().trim_space()
+			g.empty_line = true
+			tmp_var := g.new_tmp_var()
+			g.write('${g.styp(node.left.return_type)} ${tmp_var} = ')
+			g.expr(node.left)
+			g.writeln(';')
+			g.write(line)
+			g.write('(')
+			g.write('${tmp_var} >= ')
+			g.expr(node.right.low)
+			g.write(' && ')
+			g.write('${tmp_var} < ')
+			g.expr(node.right.high)
+			g.write(')')
+		} else {
+			g.write('(')
+			g.expr(node.left)
+			g.write(' >= ')
+			g.expr(node.right.low)
+			g.write(' && ')
+			g.expr(node.left)
+			g.write(' < ')
+			g.expr(node.right.high)
+			g.write(')')
+		}
 	}
 }
 
@@ -657,6 +679,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 // and transform them in a series of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, right ast.ArrayInit) {
+	tmp_var := if left is ast.CallExpr { g.new_tmp_var() } else { '' }
 	mut elem_sym := g.table.sym(right.elem_type)
 	left_parent_idx := g.table.sym(left_type).parent_idx
 	for i, array_expr in right.exprs {
@@ -719,13 +742,39 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 						g.write('${ptr_typ}_struct_eq(')
 					}
 				}
-				g.expr(left)
+				if left is ast.CallExpr {
+					if i == 0 {
+						line := g.go_before_last_stmt().trim_space()
+						g.empty_line = true
+						g.write('${g.styp(left.return_type)} ${tmp_var} = ')
+						g.expr(left)
+						g.writeln(';')
+						g.write2(line, tmp_var)
+					} else {
+						g.write(tmp_var)
+					}
+				} else {
+					g.expr(left)
+				}
 				g.write(', ')
 				g.expr(array_expr)
 				g.write(')')
 			}
 			else { // works in function kind
-				g.expr(left)
+				if left is ast.CallExpr {
+					if i == 0 {
+						line := g.go_before_last_stmt().trim_space()
+						g.empty_line = true
+						g.write('${g.styp(left.return_type)} ${tmp_var} = ')
+						g.expr(left)
+						g.writeln(';')
+						g.write2(line, tmp_var)
+					} else {
+						g.write(tmp_var)
+					}
+				} else {
+					g.expr(left)
+				}
 				g.write(' == ')
 				g.expr(array_expr)
 			}
@@ -738,11 +787,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	mut left_sym := if g.comptime.is_comptime_var(node.left) {
-		g.table.sym(g.unwrap_generic(g.comptime.get_comptime_var_type(node.left)))
-	} else {
-		g.table.sym(node.left_type)
-	}
+	mut left_sym := g.table.sym(g.unwrap_generic(g.comptime.get_type_or_default(node.left,
+		node.left_type)))
 	is_aggregate := left_sym.kind == .aggregate
 	if is_aggregate {
 		parent_left_type := (left_sym.info as ast.Aggregate).sum_type

@@ -61,7 +61,7 @@ jobs:
           fi
 
   macos:
-    runs-on: macos-12
+    runs-on: macos-14
     strategy:
       matrix:
         cc: [clang]

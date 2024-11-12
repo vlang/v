@@ -11,6 +11,7 @@ import time
 import v.pref
 import v.vmod
 import v.util.recompilation
+import v.util.vflags
 import runtime
 
 // math.bits is needed by strconv.ftoa
@@ -441,11 +442,7 @@ pub fn quote_path(s string) string {
 }
 
 pub fn args_quote_paths(args []string) string {
-	mut res := []string{}
-	for a in args {
-		res << quote_path(a)
-	}
-	return res.join(' ')
+	return args.map(quote_path(it)).join(' ')
 }
 
 pub fn path_of_executable(path string) string {
@@ -510,26 +507,9 @@ pub fn replace_op(s string) string {
 	}
 }
 
+// join_env_vflags_and_os_args returns all the arguments (the ones from the env variable VFLAGS too), passed on the command line.
 pub fn join_env_vflags_and_os_args() []string {
-	vosargs := os.getenv('VOSARGS')
-	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
-	}
-	mut args := []string{}
-	vflags := os.getenv('VFLAGS')
-	if vflags != '' {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-		return non_empty(args)
-	}
-	return os.args
-}
-
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
+	return vflags.join_env_vflags_and_os_args()
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool, need_update bool) !bool {

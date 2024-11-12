@@ -1187,7 +1187,7 @@ pub fn cc_from_string(s string) CompilerType {
 	if s == '' {
 		return .gcc
 	}
-	cc := os.file_name(s).to_lower()
+	cc := os.file_name(s).to_lower_ascii()
 	return match true {
 		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
 		cc.contains('gcc') { .gcc }
