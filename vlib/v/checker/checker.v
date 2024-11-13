@@ -126,6 +126,7 @@ mut:
 	generic_fns                      map[string]bool // register generic fns that needs recheck once
 	inside_sql                       bool            // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
+	inside_or_block_value            bool // true inside or-block where its value is used `f(g() or { true })`
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
@@ -1354,16 +1355,25 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		return
 	}
 	if node.stmts.len == 0 {
-		if ret_type != ast.void_type {
-			// x := f() or {}
-			c.error('assignment requires a non empty `or {}` block', node.pos)
+		if expr is ast.CallExpr && expr.is_return_used {
+			// x := f() or {}, || f() or {} etc
+			c.error('expression requires a non empty `or {}` block', node.pos)
+		} else if expr !is ast.CallExpr && ret_type != ast.void_type {
+			// _ := sql db {... } or { }
+			c.error('expression requires a non empty `or {}` block', node.pos)
 		}
 		// allow `f() or {}`
 		return
 	}
 	mut valid_stmts := node.stmts.filter(it !is ast.SemicolonStmt)
 	mut last_stmt := if valid_stmts.len > 0 { valid_stmts.last() } else { node.stmts.last() }
-	c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
+	if expr !is ast.CallExpr || (expr is ast.CallExpr && expr.is_return_used) {
+		// requires a block returning an unwrapped type of expr return type
+		c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
+	} else {
+		// allow f() or { var = 123 }
+		c.check_or_last_stmt(mut last_stmt, ast.void_type, expr_return_type.clear_option_and_result())
+	}
 }
 
 fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
@@ -1372,6 +1382,10 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			ast.ExprStmt {
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
+				if c.inside_or_block_value && stmt.expr is ast.None && ret_type.has_flag(.option) {
+					// return call() or { none } where fn returns an Option type
+					return
+				}
 				last_stmt_typ := c.expr(mut stmt.expr)
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
@@ -1437,9 +1451,11 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			}
 			ast.Return {}
 			else {
-				expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
-				c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
-					stmt.pos)
+				if stmt !is ast.AssertStmt || c.inside_or_block_value {
+					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
+					c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
+						stmt.pos)
+				}
 			}
 		}
 	} else if mut stmt is ast.ExprStmt {

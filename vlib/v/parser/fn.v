@@ -872,7 +872,10 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind == .lcbr {
 		tmp := p.label_names
 		p.label_names = []
+		old_assign_rhs := p.inside_assign_rhs
+		p.inside_assign_rhs = false
 		stmts = p.parse_block_no_scope(false)
+		p.inside_assign_rhs = old_assign_rhs
 		label_names = p.label_names.clone()
 		p.label_names = tmp
 	}
@@ -1164,16 +1167,19 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	p.next()
 	spos := p.tok.pos()
+	old_inside_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = false
 	expr := p.expr(0)
-	call_expr := if expr is ast.CallExpr {
+	p.inside_assign_rhs = old_inside_assign_rhs
+	mut call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
 		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
 		ast.CallExpr{
-			scope:          p.scope
-			is_return_used: true
+			scope: p.scope
 		}
 	}
+	call_expr.is_return_used = true
 	pos := spos.extend(p.prev_tok.pos())
 	p.register_auto_import('sync.threads')
 	p.table.gostmts++
@@ -1186,16 +1192,19 @@ fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 fn (mut p Parser) go_expr() ast.GoExpr {
 	p.next()
 	spos := p.tok.pos()
+	old_inside_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = false
 	expr := p.expr(0)
-	call_expr := if expr is ast.CallExpr {
+	p.inside_assign_rhs = old_inside_assign_rhs
+	mut call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
 		p.error_with_pos('expression in `go` must be a function call', expr.pos())
 		ast.CallExpr{
-			scope:          p.scope
-			is_return_used: true
+			scope: p.scope
 		}
 	}
+	call_expr.is_return_used = true
 	pos := spos.extend(p.prev_tok.pos())
 	// p.register_auto_import('coroutines')
 	p.table.gostmts++

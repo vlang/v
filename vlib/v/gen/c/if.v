@@ -184,7 +184,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := g.need_tmp_var_in_if(node)
 	needs_conds_order := g.needs_conds_order(node)
-	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+	tmp := if node.typ != ast.void_type && needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
@@ -206,7 +206,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
-		g.writeln('${styp} ${tmp}; /* if prepend */')
+		if tmp != '' {
+			g.writeln('${styp} ${tmp}; /* if prepend */')
+		}
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')
 			g.indent++

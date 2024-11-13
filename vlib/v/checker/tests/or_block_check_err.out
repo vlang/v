@@ -1,11 +1,11 @@
-vlib/v/checker/tests/or_block_check_err.vv:6:36: error: assignment requires a non empty `or {}` block
+vlib/v/checker/tests/or_block_check_err.vv:6:36: error: expression requires a non empty `or {}` block
     4 | 
     5 | fn main() {
     6 |     _ = callexpr_with_or_block_call() or {}.replace('a', 'b')
       |                                       ~~~~~
     7 |     _ = (callexpr_with_or_block_call() or {}).replace('a', 'b')
     8 |
-vlib/v/checker/tests/or_block_check_err.vv:7:37: error: assignment requires a non empty `or {}` block
+vlib/v/checker/tests/or_block_check_err.vv:7:37: error: expression requires a non empty `or {}` block
     5 | fn main() {
     6 |     _ = callexpr_with_or_block_call() or {}.replace('a', 'b')
     7 |     _ = (callexpr_with_or_block_call() or {}).replace('a', 'b')
