@@ -176,10 +176,6 @@ fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
-	if node.is_comptime {
-		g.comptime_if(node)
-		return
-	}
 	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much

@@ -25,17 +25,14 @@ pub mut:
 @[direct_array_access]
 pub fn (km &KeywordsMatcherTrie) find(word string) int {
 	wlen := word.len
-	if wlen < km.min_len {
-		return -1
-	}
-	if wlen > km.max_len {
+	if wlen < km.min_len || wlen > km.max_len {
 		return -1
 	}
 	node := km.nodes[wlen]
-	if node == unsafe { nil } {
-		return -1
+	if node != unsafe { nil } {
+		return node.find(word)
 	}
-	return node.find(word)
+	return -1
 }
 
 // matches returns true when the word was already added, i.e. when it was found.

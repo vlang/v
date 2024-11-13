@@ -2182,10 +2182,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.stmts(node.stmts)
 			g.writeln('}')
 		}
-		ast.AsmStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.asm_stmt(node)
-		}
 		ast.AssignStmt {
 			g.write_v_source_line_info_stmt(node)
 			g.assign_stmt(node)
@@ -2350,6 +2346,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.GotoStmt {
 			g.write_v_source_line_info_stmt(node)
 			g.writeln('goto ${c_name(node.name)};')
+		}
+		ast.AsmStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.asm_stmt(node)
 		}
 		ast.HashStmt {
 			g.hash_stmt(node)
@@ -3555,7 +3555,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.ident(node)
 		}
 		ast.IfExpr {
-			g.if_expr(node)
+			if !node.is_comptime {
+				g.if_expr(node)
+			} else {
+				g.comptime_if(node)
+			}
 		}
 		ast.IfGuardExpr {
 			g.write('/* guard */')
