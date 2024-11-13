@@ -626,15 +626,29 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 	match mut last_stmt {
 		ast.ExprStmt {
-			if mut last_stmt.expr is ast.CallExpr {
-				last_stmt.expr.is_return_used = true
-			} else if mut last_stmt.expr is ast.IfExpr {
-				for mut branch in last_stmt.expr.branches {
-					if branch.stmts.len > 0 {
-						mut last_if_stmt := branch.stmts.last()
-						p.mark_last_call_return_as_used(mut last_if_stmt)
+			match mut last_stmt.expr {
+				ast.CallExpr {
+					// last stmt on block is CallExpr
+					last_stmt.expr.is_return_used = true
+				}
+				ast.IfExpr {
+					// last stmt on block is: if .. { foo() } else { bar() }
+					for mut branch in last_stmt.expr.branches {
+						if branch.stmts.len > 0 {
+							mut last_if_stmt := branch.stmts.last()
+							p.mark_last_call_return_as_used(mut last_if_stmt)
+						}
 					}
 				}
+				ast.ConcatExpr {
+					// last stmt on block is: a, b, c := ret1(), ret2(), ret3()
+					for mut expr in last_stmt.expr.vals {
+						if mut expr is ast.CallExpr {
+							expr.is_return_used = true
+						}
+					}
+				}
+				else {}
 			}
 		}
 		else {}
