@@ -65,6 +65,9 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				is_expr: false
 				typ:     return_type
 			}
+			if mut node.expr is ast.CallExpr && node.expr.is_return_used {
+				node.expr.is_return_used = false
+			}
 		} else {
 			stmts << ast.Return{
 				pos:   node.pos

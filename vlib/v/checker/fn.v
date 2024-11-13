@@ -737,9 +737,17 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			}
 		}
 	}
+	old_expected_or_type := c.expected_or_type
 	c.expected_or_type = node.return_type.clear_flag(.result)
 	c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
-	c.expected_or_type = ast.void_type
+
+	if node.or_block.kind == .block {
+		old_inside_or_block_value := c.inside_or_block_value
+		c.inside_or_block_value = true
+		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
+		c.inside_or_block_value = old_inside_or_block_value
+	}
+	c.expected_or_type = old_expected_or_type
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
 		&& !c.table.cur_fn.is_test {
