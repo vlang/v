@@ -846,9 +846,6 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 					return p.unexpected()
 				}
 			}
-			.key_asm {
-				return p.asm_stmt(true)
-			}
 			.hash {
 				return p.hash()
 			}
@@ -866,6 +863,9 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 			.semicolon {
 				return p.semicolon_stmt()
+			}
+			.key_asm {
+				return p.asm_stmt(true)
 			}
 			else {
 				return p.other_stmts(ast.empty_stmt)
@@ -1032,28 +1032,6 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			}
 		}
-		.key_assert {
-			p.next()
-			mut pos := p.tok.pos()
-			expr := p.expr(0)
-			pos.update_last_line(p.prev_tok.line_nr)
-			mut extra := ast.empty_expr
-			mut extra_pos := p.tok.pos()
-			if p.tok.kind == .comma {
-				p.next()
-				extra_pos = p.tok.pos()
-				extra = p.expr(0)
-				// dump(extra)
-				extra_pos = extra_pos.extend(p.tok.pos())
-			}
-			return ast.AssertStmt{
-				expr:      expr
-				extra:     extra
-				extra_pos: extra_pos
-				pos:       pos.extend(p.tok.pos())
-				is_used:   p.inside_test_file || !p.pref.is_prod
-			}
-		}
 		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
@@ -1165,6 +1143,28 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.hash {
 			return p.hash()
+		}
+		.key_assert {
+			p.next()
+			mut pos := p.tok.pos()
+			expr := p.expr(0)
+			pos.update_last_line(p.prev_tok.line_nr)
+			mut extra := ast.empty_expr
+			mut extra_pos := p.tok.pos()
+			if p.tok.kind == .comma {
+				p.next()
+				extra_pos = p.tok.pos()
+				extra = p.expr(0)
+				// dump(extra)
+				extra_pos = extra_pos.extend(p.tok.pos())
+			}
+			return ast.AssertStmt{
+				expr:      expr
+				extra:     extra
+				extra_pos: extra_pos
+				pos:       pos.extend(p.tok.pos())
+				is_used:   p.inside_test_file || !p.pref.is_prod
+			}
 		}
 		.key_defer {
 			if !p.inside_defer {
@@ -1899,25 +1899,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list_no_value() []ast.Expr {
+fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
-		expr := p.expr_no_value(0)
-		if expr !is ast.Comment {
-			exprs << expr
-			if p.tok.kind != .comma {
-				break
-			}
-			p.next()
-		}
-	}
-	return exprs
-}
-
-fn (mut p Parser) expr_list() []ast.Expr {
-	mut exprs := []ast.Expr{}
-	for {
-		expr := p.expr(0)
+		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
 		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
@@ -2285,7 +2270,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := if p.inside_assign_rhs { p.expr_list() } else { p.expr_list_no_value() }
+	left := p.expr_list(p.inside_assign_rhs)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -4053,7 +4038,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	// return exprs
 	old_assign_rhs := p.inside_assign_rhs
 	p.inside_assign_rhs = true
-	exprs := p.expr_list()
+	exprs := p.expr_list(true)
 	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
