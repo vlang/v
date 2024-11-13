@@ -1127,9 +1127,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.hash()
 		}
 		.key_defer {
-			if p.inside_defer {
-				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
-			} else {
+			if !p.inside_defer {
 				p.next()
 				spos := p.tok.pos()
 				p.inside_defer = true
@@ -1141,6 +1139,8 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					defer_vars: p.defer_vars.clone()
 					pos:        spos.extend_with_last_line(p.tok.pos(), p.prev_tok.line_nr)
 				}
+			} else {
+				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
 			}
 		}
 		.key_go, .key_spawn {
