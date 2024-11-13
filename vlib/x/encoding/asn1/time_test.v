@@ -23,15 +23,23 @@ fn test_serialize_utctime_basic() ! {
 }
 
 fn test_create_utctime_from_std_time() ! {
-	now := time.utc()
+	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
+
 	utb := UtcTime.from_time(now)!
 	utc := UtcTime.from_time(now)!
 
 	assert utb.value == utc.value
 
 	tt := utc.into_utctime()!
-	// assert tt == now would fails because nanosecond part of Time would different beast
-	assert now.format_ss() == tt.format_ss()
+	assert now == tt
+
+	inp := '191215190210Z'
+	t_inp := UtcTime.new(inp)!
+	t_inp_utc := t_inp.into_utctime()!
+
+	// time to UtcTime back
+	tinp_back := UtcTime.from_time(t_inp_utc)!
+	assert tinp_back.value == inp
 }
 
 fn test_serialize_utctime_error_without_z() ! {
@@ -89,13 +97,21 @@ fn test_serialize_decode_generalizedtime() ! {
 }
 
 fn test_create_generalizedtime_from_std_time() ! {
-	now := time.utc()
+	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
+
 	gtb := GeneralizedTime.from_time(now)!
 	gtc := GeneralizedTime.from_time(now)!
 
 	assert gtb.value == gtc.value
 
 	tt := gtc.into_utctime()!
-	// assert tt == now would fails because nanosecond part of Time would different beast
-	assert now.format_ss() == tt.format_ss()
+	assert now == tt
+
+	s := '20100102030405Z'
+	gt := GeneralizedTime.new(s)!
+
+	g_utc := gt.into_utctime()!
+	g_utc_back := GeneralizedTime.from_time(g_utc)!
+
+	assert g_utc_back.value == s
 }

@@ -54,9 +54,8 @@ fn UtcTime.from_time(t time.Time) !UtcTime {
 	// changes into utc time
 	utime := t.local_to_utc()
 	s := utime.custom_format(default_utctime_format) //  20241113060446+0
-	// TODO: add supports for this
-	// Its rather a hack, not efieient as should be
-	// todo: makes its better
+	// Its rather a hack, not efieient as should be.
+	// TODO: make it better
 	str := s.split('+')
 	val := str[0] + 'Z'
 	utc := UtcTime.new(val)!
