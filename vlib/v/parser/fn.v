@@ -872,7 +872,10 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind == .lcbr {
 		tmp := p.label_names
 		p.label_names = []
+		old_assign_rhs := p.inside_assign_rhs
+		p.inside_assign_rhs = false
 		stmts = p.parse_block_no_scope(false)
+		p.inside_assign_rhs = old_assign_rhs
 		label_names = p.label_names.clone()
 		p.label_names = tmp
 	}
