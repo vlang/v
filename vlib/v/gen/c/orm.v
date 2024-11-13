@@ -319,7 +319,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if field.typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			arrs << unsafe { node.sub_structs[int(field.typ)] }
+			if node.sub_structs.len > 0 {
+				arrs << unsafe { node.sub_structs[int(field.typ)] }
+			}
 			field_names << field.name
 		}
 	}
