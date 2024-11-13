@@ -2169,13 +2169,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		g.set_current_pos_as_last_stmt_pos()
 	}
 	match node {
-		ast.AsmStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.asm_stmt(node)
-		}
-		ast.AssertStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.assert_stmt(node)
+		ast.FnDecl {
+			g.fn_decl(node)
 		}
 		ast.Block {
 			g.write_v_source_line_info_stmt(node)
@@ -2187,9 +2182,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.stmts(node.stmts)
 			g.writeln('}')
 		}
+		ast.AsmStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.asm_stmt(node)
+		}
 		ast.AssignStmt {
 			g.write_v_source_line_info_stmt(node)
 			g.assign_stmt(node)
+		}
+		ast.AssertStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.assert_stmt(node)
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info_stmt(node)
@@ -2201,15 +2204,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.BranchStmt {
 			g.write_v_source_line_info_stmt(node)
 			g.branch_stmt(node)
-		}
-		ast.DeferStmt {
-			mut defer_stmt := node
-			defer_stmt.ifdef = g.defer_ifdef
-			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
-			g.defer_stmts << defer_stmt
-		}
-		ast.EnumDecl {
-			g.enum_decl(node)
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info_stmt(node)
@@ -2241,9 +2235,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln(';')
 				}
 			}
-		}
-		ast.FnDecl {
-			g.fn_decl(node)
 		}
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
@@ -2293,21 +2284,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.labeled_loops.delete(node.label)
 			g.inner_loop = save_inner_loop
 		}
-		ast.GlobalDecl {
-			g.global_decl(node)
-		}
 		ast.Return {
 			g.return_stmt(node)
 		}
-		ast.GotoLabel {
-			g.writeln('${c_name(node.name)}: {}')
+		ast.DeferStmt {
+			mut defer_stmt := node
+			defer_stmt.ifdef = g.defer_ifdef
+			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
+			g.defer_stmts << defer_stmt
 		}
-		ast.GotoStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.writeln('goto ${c_name(node.name)};')
+		ast.EnumDecl {
+			g.enum_decl(node)
 		}
-		ast.HashStmt {
-			g.hash_stmt(node)
+		ast.GlobalDecl {
+			g.global_decl(node)
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
@@ -2325,17 +2315,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 				}
 			}
-		}
-		ast.Module {
-			g.is_builtin_mod = util.module_is_builtin(node.name)
-			g.cur_mod = node
-		}
-		ast.NodeError {}
-		ast.SemicolonStmt {
-			g.writeln(';')
-		}
-		ast.SqlStmt {
-			g.sql_stmt(node)
 		}
 		ast.StructDecl {
 			name := if node.language == .c {
@@ -2365,15 +2344,36 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 			}
 		}
+		ast.GotoLabel {
+			g.writeln('${c_name(node.name)}: {}')
+		}
+		ast.GotoStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.writeln('goto ${c_name(node.name)};')
+		}
+		ast.HashStmt {
+			g.hash_stmt(node)
+		}
 		ast.TypeDecl {
 			if !g.pref.skip_unused {
 				g.writeln('// TypeDecl')
 			}
 		}
+		ast.SemicolonStmt {
+			g.writeln(';')
+		}
+		ast.SqlStmt {
+			g.sql_stmt(node)
+		}
+		ast.Module {
+			g.is_builtin_mod = util.module_is_builtin(node.name)
+			g.cur_mod = node
+		}
 		ast.EmptyStmt {}
 		ast.DebuggerStmt {
 			g.debugger_stmt(node)
 		}
+		ast.NodeError {}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
