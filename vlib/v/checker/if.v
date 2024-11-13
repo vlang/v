@@ -32,6 +32,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		stmts := node.branches[0].stmts
 		if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
 			node_is_expr = true
+		} else if node.is_expr {
+			node_is_expr = true
 		}
 	}
 	if c.expected_type == ast.void_type && node_is_expr {
@@ -520,8 +522,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 					}
 				} else if !node.is_comptime && stmt !in [ast.Return, ast.BranchStmt] {
+					pos := if node_is_expr { stmt.pos } else { branch.pos }
 					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
-						branch.pos)
+						pos)
 				}
 			} else if !node.is_comptime {
 				c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
