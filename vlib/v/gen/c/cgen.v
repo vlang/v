@@ -3568,12 +3568,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.index_expr(node)
 		}
 		ast.InfixExpr {
-			if node.op in [.left_shift, .plus_assign, .minus_assign] {
+			if node.op !in [.left_shift, .plus_assign, .minus_assign] {
+				g.infix_expr(node)
+			} else {
 				g.inside_map_infix = true
 				g.infix_expr(node)
 				g.inside_map_infix = false
-			} else {
-				g.infix_expr(node)
 			}
 		}
 		ast.IntegerLiteral {
