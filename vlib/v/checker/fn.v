@@ -1719,7 +1719,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			} else {
 				func.params[i]
 			}
-			c.expected_type = param.typ
+			if param.typ.has_flag(.generic) {
+				if unwrap_typ := c.table.convert_generic_type(param.typ, func.generic_names,
+					concrete_types)
+				{
+					c.expected_type = unwrap_typ
+				}
+			} else {
+				c.expected_type = param.typ
+			}
 			already_checked := node.language != .js && call_arg.expr is ast.CallExpr
 			typ := c.check_expr_option_or_result_call(call_arg.expr, if already_checked
 				&& mut call_arg.expr is ast.CallExpr {
