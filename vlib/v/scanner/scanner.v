@@ -623,10 +623,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		if cidx >= s.all_tokens.len || s.should_abort {
 			return s.end_of_file()
 		}
-		if s.all_tokens[cidx].kind == .comment {
-			if !s.should_parse_comment() {
-				continue
-			}
+		if s.all_tokens[cidx].kind == .comment && !s.should_parse_comment() {
+			continue
 		}
 		return s.all_tokens[cidx]
 	}
