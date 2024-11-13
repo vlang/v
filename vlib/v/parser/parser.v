@@ -764,9 +764,6 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				p.attributes()
 				continue
 			}
-			.key_asm {
-				return p.asm_stmt(true)
-			}
 			.key_interface {
 				return p.interface_decl()
 			}
@@ -808,6 +805,9 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				} else {
 					return p.unexpected()
 				}
+			}
+			.key_asm {
+				return p.asm_stmt(true)
 			}
 			.hash {
 				return p.hash()
@@ -1859,10 +1859,25 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
+fn (mut p Parser) expr_list_no_value() []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
-		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
+		expr := p.expr_no_value(0)
+		if expr !is ast.Comment {
+			exprs << expr
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
+		}
+	}
+	return exprs
+}
+
+fn (mut p Parser) expr_list() []ast.Expr {
+	mut exprs := []ast.Expr{}
+	for {
+		expr := p.expr(0)
 		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
@@ -2230,7 +2245,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := p.expr_list(p.inside_assign_rhs)
+	left := if p.inside_assign_rhs { p.expr_list() } else { p.expr_list_no_value() }
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -3998,7 +4013,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	// return exprs
 	old_assign_rhs := p.inside_assign_rhs
 	p.inside_assign_rhs = true
-	exprs := p.expr_list(true)
+	exprs := p.expr_list()
 	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{

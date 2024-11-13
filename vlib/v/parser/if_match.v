@@ -444,7 +444,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs := p.expr_list(true)
+			exprs := p.expr_list()
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}
