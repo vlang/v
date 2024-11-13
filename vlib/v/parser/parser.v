@@ -1014,9 +1014,6 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				is_used:   p.inside_test_file || !p.pref.is_prod
 			}
 		}
-		.key_for {
-			return p.for_stmt()
-		}
 		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
@@ -1063,14 +1060,17 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
+		.key_for {
+			return p.for_stmt()
+		}
 		.comment {
 			return p.comment_stmt()
 		}
 		.key_return {
-			if p.inside_defer {
-				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.pos())
-			} else {
+			if !p.inside_defer {
 				return p.return_stmt()
+			} else {
+				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.pos())
 			}
 		}
 		.dollar {

@@ -2177,23 +2177,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.write_v_source_line_info_stmt(node)
 			g.assert_stmt(node)
 		}
-		ast.AssignStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.assign_stmt(node)
-		}
 		ast.Block {
 			g.write_v_source_line_info_stmt(node)
-			if node.is_unsafe {
-				g.writeln('{ // Unsafe block')
-			} else {
+			if !node.is_unsafe {
 				g.writeln('{')
+			} else {
+				g.writeln('{ // Unsafe block')
 			}
 			g.stmts(node.stmts)
 			g.writeln('}')
 		}
-		ast.BranchStmt {
+		ast.AssignStmt {
 			g.write_v_source_line_info_stmt(node)
-			g.branch_stmt(node)
+			g.assign_stmt(node)
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info_stmt(node)
@@ -2202,8 +2198,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ComptimeFor {
 			g.comptime_for(node)
 		}
-		ast.DebuggerStmt {
-			g.debugger_stmt(node)
+		ast.BranchStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.branch_stmt(node)
 		}
 		ast.DeferStmt {
 			mut defer_stmt := node
@@ -2211,7 +2208,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			g.defer_stmts << defer_stmt
 		}
-		ast.EmptyStmt {}
 		ast.EnumDecl {
 			g.enum_decl(node)
 		}
@@ -2300,6 +2296,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.GlobalDecl {
 			g.global_decl(node)
 		}
+		ast.Return {
+			g.return_stmt(node)
+		}
 		ast.GotoLabel {
 			g.writeln('${c_name(node.name)}: {}')
 		}
@@ -2332,9 +2331,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.cur_mod = node
 		}
 		ast.NodeError {}
-		ast.Return {
-			g.return_stmt(node)
-		}
 		ast.SemicolonStmt {
 			g.writeln(';')
 		}
@@ -2373,6 +2369,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if !g.pref.skip_unused {
 				g.writeln('// TypeDecl')
 			}
+		}
+		ast.EmptyStmt {}
+		ast.DebuggerStmt {
+			g.debugger_stmt(node)
 		}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
