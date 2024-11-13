@@ -28,10 +28,10 @@ const max_integer_length = 2048
 // then the bits of the first octet and bit 8 of the second octet.
 // 	a) shall not all be ones; and.
 // 	b) shall not all be zero.
-// NOTE – These rules ensure that an integer value is always encoded in the smallest possible number of octets.
-@[heap; noinit]
+// NOTE – These rules ensure that an integer value is always encoded in
+// the smallest possible number of octets.
 pub struct Integer {
-mut:
+pub:
 	// underlying integer value with support from `i64` and `big.Integer`
 	value IntValue
 }

@@ -12,7 +12,6 @@ pub const default_numericstring_tag = Tag{.universal, false, int(TagType.numeric
 // restricted to sequences of zero, one or more characters from some
 // specified collection of characters.
 // That was : digit : 0,1,..9 and spaces char (0x20)
-@[noinit]
 pub struct NumericString {
 pub:
 	value string

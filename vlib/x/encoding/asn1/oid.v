@@ -12,7 +12,6 @@ pub const default_oid_tag = Tag{.universal, false, int(TagType.oid)}
 // ASN.1 ObjectIdentifier type.
 //
 // The ASN. 1 OBJECT IDENTIFIER type is used when you need to provide a unique identifier.
-@[noinit]
 pub struct ObjectIdentifier {
 mut:
 	value []int

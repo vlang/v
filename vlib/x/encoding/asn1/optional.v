@@ -8,7 +8,6 @@ module asn1
 // (except for primitive type values in PER which are required by the PER standard to be absent in the encoding),
 // while with others (like DER) the DEFAULT value is NEVER encoded. For all encoding rules,
 // if the component that has a DEFAULT value is not encoded the receiving application must behave as though the DEFAULT value had been encoded.
-@[noinit]
 pub struct Optional {
 	// underlying element marked as an optional
 	elem Element

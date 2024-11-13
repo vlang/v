@@ -9,7 +9,6 @@ const default_choices_size = 64
 // ASN.1 CHOICE
 //
 // Choice is an ASN.1 Element
-@[noinit]
 pub struct Choice {
 mut:
 	size    int = default_choices_size

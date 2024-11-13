@@ -3,10 +3,15 @@
 // that can be found in the LICENSE file.
 module asn1
 
+import time
+
 // default_utctime_tag is the default tag of ASN.1 UTCTIME type.
 pub const default_utctime_tag = Tag{.universal, false, int(TagType.utctime)}
 // default_generalizedtime_tag is the default tag of ASN.1 GENERALIZEDTIME type.
 pub const default_generalizedtime_tag = Tag{.universal, false, int(TagType.generalizedtime)}
+
+const default_utctime_format = 'YYMMDDHHmmssZ'
+const default_genztime_format = 'YYYYMMDDHHmmssZ'
 
 // ASN.1 UNIVERSAL CLASS OF UTCTIME TYPE.
 //
@@ -28,7 +33,6 @@ pub const default_generalizedtime_tag = Tag{.universal, false, int(TagType.gener
 // TODO:
 // - check for invalid representation of date and hhmmss part.
 // - represented UtcTime in time.Time
-@[noinit]
 pub struct UtcTime {
 pub:
 	value string
@@ -44,6 +48,18 @@ pub fn UtcTime.new(s string) !UtcTime {
 	return UtcTime{
 		value: s
 	}
+}
+
+fn UtcTime.from_time(t time.Time) !UtcTime {
+	// changes into utc time
+	utime := t.local_to_utc()
+	s := utime.custom_format(default_utctime_format) //  20241113060446+0
+	// Its rather a hack, not efieient as should be.
+	// TODO: make it better
+	str := s.split('+')
+	val := str[0] + 'Z'
+	utc := UtcTime.new(val)!
+	return utc
 }
 
 fn UtcTime.from_bytes(b []u8) !UtcTime {
@@ -65,6 +81,20 @@ pub fn (utc UtcTime) tag() Tag {
 // payload returns the payload of the UtcTime element.
 pub fn (utc UtcTime) payload() ![]u8 {
 	return utc.payload_with_rule(.der)!
+}
+
+// into_utctime turns this UtcTime into corresponding UTC time.
+pub fn (utc UtcTime) into_utctime() !time.Time {
+	valid := validate_utctime(utc.value)!
+
+	if !valid {
+		return error('UtcTime: fail on validate utctime value')
+	}
+
+	st := time.parse_format(utc.value, default_utctime_format)!
+	utime := st.local_to_utc()
+
+	return utime
 }
 
 fn (utc UtcTime) payload_with_rule(rule EncodingRule) ![]u8 {
@@ -194,6 +224,32 @@ pub fn GeneralizedTime.new(s string) !GeneralizedTime {
 	return GeneralizedTime{
 		value: s
 	}
+}
+
+// from_time creates GeneralizedTime element from tine.Time (as an UTC time).
+pub fn GeneralizedTime.from_time(t time.Time) !GeneralizedTime {
+	u := t.local_to_utc()
+	s := u.custom_format(default_genztime_format)
+	// adds support directly from time.Time
+	src := s.split('+')
+	val := src[0] + 'Z'
+	gt := GeneralizedTime.new(val)!
+
+	return gt
+}
+
+// into_utctime turns this GeneralizedTime into corresponding UTC time.
+pub fn (gt GeneralizedTime) into_utctime() !time.Time {
+	valid := validate_generalizedtime(gt.value)!
+
+	if !valid {
+		return error('GeneralizedTime: fail on validate value')
+	}
+
+	st := time.parse_format(gt.value, default_genztime_format)!
+	utime := st.local_to_utc()
+
+	return utime
 }
 
 // The tag of GeneralizedTime element.

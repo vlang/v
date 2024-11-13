@@ -15,7 +15,6 @@ const max_set_size = 255
 // This differs from a SEQUENCE which contains an ordered list.
 // in DER encoding, SET types elements are sorted into tag order, and,
 // for SET OF types elements are sorted into ascending order of encoding.
-@[noinit]
 pub struct Set {
 mut:
 	//	maximal size of this set fields
@@ -234,7 +233,6 @@ fn (mut set Set) sort_set_fields() {
 
 // ASN.1 SET OF
 //
-@[heap; noinit]
 pub struct SetOf[T] {
 mut:
 	size   int = default_set_size
@@ -272,6 +270,11 @@ pub fn SetOf.from_list[T](els []T) !SetOf[T] {
 // tag returns the tag of SetOf[T] element.
 pub fn (so SetOf[T]) tag() Tag {
 	return default_set_tag
+}
+
+// fields returns underlying arrays of T from the SetOf[T].
+pub fn (so SetOf[T]) fields() []T {
+	return so.fields
 }
 
 // payload returns the payload of SetOf[T] element.

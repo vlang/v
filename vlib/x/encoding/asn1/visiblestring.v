@@ -9,7 +9,6 @@ pub const default_visiblestring_tag = Tag{.universal, false, int(TagType.visible
 // ASN.1 UNIVERSAL CLASS OF VISIBLESTRING TYPE.
 //
 // The ASN.1 VisibleString type supports a subset of ASCII characters that does not include control characters.
-@[noinit]
 pub struct VisibleString {
 pub:
 	value string

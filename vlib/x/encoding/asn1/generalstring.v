@@ -15,10 +15,15 @@ pub const default_generalstring_tag = Tag{.universal, false, int(TagType.general
 // For historical reasons, the characters SPACE (number 32) and DELETE (number 127)
 // are not considered to be in either the C set or the G set, but instead stand on their own
 // We only treated GeneralString as an us-ascii charset
-@[noinit]
 pub struct GeneralString {
 pub:
 	value string
+}
+
+fn (g GeneralString) check() ! {
+	if !g.value.is_ascii() {
+		return error('GeneralString: contains non-ascii chars')
+	}
 }
 
 // new creates a GeneralString element from string s.
@@ -52,9 +57,7 @@ fn (gst GeneralString) payload_with_rule(rule EncodingRule) ![]u8 {
 	if rule != .der && rule != .ber {
 		return error('GeneralString: not supported rule')
 	}
-	if !gst.value.is_ascii() {
-		return error('GeneralString: contains non-ascii chars')
-	}
+	gst.check()!
 	return gst.value.bytes()
 }
 

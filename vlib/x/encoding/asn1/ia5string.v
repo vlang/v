@@ -8,7 +8,6 @@ pub const default_ia5string_tag = Tag{.universal, false, int(TagType.ia5string)}
 
 // ASN.1 IA5String type handling routine.
 // IA5String is a standard ASCII characters
-@[noinit]
 pub struct IA5String {
 pub:
 	value string
