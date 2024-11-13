@@ -1450,11 +1450,12 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 				}
 			}
 			ast.Return {}
-			ast.AssertStmt {}
 			else {
-				expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
-				c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
-					stmt.pos)
+				if stmt !is ast.AssertStmt || c.inside_assign {
+					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
+					c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
+						stmt.pos)
+				}
 			}
 		}
 	} else if mut stmt is ast.ExprStmt {
