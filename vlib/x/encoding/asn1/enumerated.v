@@ -9,9 +9,8 @@ const default_enumerated_tag = Tag{.universal, false, int(TagType.enumerated)}
 // ASN.1 ENUMERATED TYPE.
 //
 // Enumerated type treated as ordinary integer, only differs on tag value.
-// The encoding of an enumerated value shall be that of the integer value with which it is associated.
-// NOTE: It is primitive.
-@[noinit]
+// The encoding of an enumerated value shall be that of the integer value
+// with which it is associated. In DER rule, Enumerated type should be primitive type.
 pub struct Enumerated {
 pub:
 	value int

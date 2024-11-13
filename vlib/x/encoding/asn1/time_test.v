@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module asn1
 
+import time
+
 fn test_serialize_utctime_basic() ! {
 	inp := '191215190210Z'
 
@@ -18,6 +20,18 @@ fn test_serialize_utctime_basic() ! {
 	assert back.tag().tag_number() == int(TagType.utctime)
 	assert back == ut
 	assert back.value == inp
+}
+
+fn test_create_utctime_from_std_time() ! {
+	now := time.utc()
+	utb := UtcTime.from_time(now)!
+	utc := UtcTime.from_time(now)!
+
+	assert utb.value == utc.value
+
+	tt := utc.into_utctime()!
+	// assert tt == now would fails because nanosecond part of Time would different beast
+	assert now.format_ss() == tt.format_ss()
 }
 
 fn test_serialize_utctime_error_without_z() ! {
@@ -72,4 +86,16 @@ fn test_serialize_decode_generalizedtime() ! {
 	assert back == gt
 	assert back.value == s
 	assert back.tag().tag_number() == int(TagType.generalizedtime)
+}
+
+fn test_create_generalizedtime_from_std_time() ! {
+	now := time.utc()
+	gtb := GeneralizedTime.from_time(now)!
+	gtc := GeneralizedTime.from_time(now)!
+
+	assert gtb.value == gtc.value
+
+	tt := gtc.into_utctime()!
+	// assert tt == now would fails because nanosecond part of Time would different beast
+	assert now.format_ss() == tt.format_ss()
 }

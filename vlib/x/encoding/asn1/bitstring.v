@@ -5,6 +5,9 @@ module asn1
 
 import arrays
 
+// default_bitstring_tag is the default tag of the ASN.1 BITSTRING type.
+pub const default_bitstring_tag = Tag{.universal, false, int(TagType.bitstring)}
+
 // ASN.1 UNIVERSAL CLASS OF BITSTRING TYPE.
 //
 // The BIT STRING type denotes an arbitrary string of bits (ones and zeroes).
@@ -14,16 +17,27 @@ import arrays
 // However, in DER all types that have an encoding choice between primitive and constructed
 // must use the primitive encoding. DER restricts the encoding to primitive only.
 // The same applies for BITSTRING. ie, For BIT STRING and OCTET STRING types,
-// DER does not allow the constructed form (breaking a string into multiple TLVs) or the indefinite length form.
-@[noinit]
+// DER does not allow the constructed form (breaking a string into multiple TLVs)
+// or the indefinite length form.
 pub struct BitString {
 mut:
 	data []u8
 	pad  u8 // numbers of unused bits
 }
 
-// default_bitstring_tag is the default tag of the ASN.1 BITSTRING type.
-pub const default_bitstring_tag = Tag{.universal, false, int(TagType.bitstring)}
+// check performs check internal validity of the BitString data.
+fn (bs BitString) check() ! {
+	// to align with octet size, ie, 8 in length, pad bits only need maximum 7 bits
+	// and when the data.len is multiples of 8, no need to pad, ie, pad should 0.
+	if bs.pad > 7 || (bs.data.len == 0 && bs.pad != 0) {
+		return error('BitString: bad pad bits or zero length')
+	}
+	// this check if the pad != 0, whether the last `pad` number of bits of the last byte
+	// is all bits cleared, and it was not used in the BitString data.
+	if bs.pad > 0 && (bs.data[bs.data.len - 1]) & ((1 << bs.pad) - 1) != 0 {
+		return error('BitString: bad args')
+	}
+}
 
 // tag returns the tag of BITSTRING type.
 pub fn (bs BitString) tag() Tag {
@@ -32,6 +46,7 @@ pub fn (bs BitString) tag() Tag {
 
 // payload returns the payload of BITSTRING instance.
 pub fn (bs BitString) payload() ![]u8 {
+	bs.check()!
 	mut out := []u8{}
 	out << bs.pad
 	out << bs.data
@@ -106,6 +121,7 @@ pub fn BitString.new(s string) !BitString {
 }
 
 // from_bytes creates a new BitString from bytes array in src.
+// Note: Your first byte of the src as a pad bit.
 fn BitString.from_bytes(src []u8) !BitString {
 	if src.len < 1 {
 		return error('BitString error: need more bytes')
@@ -113,23 +129,15 @@ fn BitString.from_bytes(src []u8) !BitString {
 	return BitString.new_with_pad(src[1..], src[0])!
 }
 
-// new_with_pad creates a new BitString from bytes array in bytes with specific
-// padding bits in pad
+// new_with_pad creates a new BitString from bytes array in bytes with
+// specific padding bits in pad
 fn BitString.new_with_pad(bytes []u8, pad u8) !BitString {
-	// to align with octet size, ie, 8 in length, pad bits only need maximum 7 bits
-	// and when the bytes.len is multiples of 8, no need to pad, ie, pad should 0.
-	if pad > 7 || (bytes.len == 0 && pad != 0) {
-		return error('BitString: bad pad bits or zero length')
-	}
-	// this check if the pad != 0, whether the last `pad` number of bits of the last byte
-	// is all bits cleared, and it was not used in the BitString data.
-	if pad > 0 && (bytes[bytes.len - 1]) & ((1 << pad) - 1) != 0 {
-		return error('BitString: bad args')
-	}
-	return BitString{
+	bs := BitString{
 		data: bytes
 		pad:  pad
 	}
+	bs.check()!
+	return bs
 }
 
 fn (bs BitString) bytes_len() int {

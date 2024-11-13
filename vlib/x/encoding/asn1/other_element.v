@@ -8,7 +8,6 @@ module asn1
 //
 
 // ASN.1 Raw Element.
-@[noinit]
 pub struct RawElement {
 mut:
 	// The tag is the (outer) tag of the TLV, if this a wrpper.
@@ -244,7 +243,6 @@ fn (r RawElement) check_inner_tag() ! {
 }
 
 // ContextSpecific tagged type element.
-@[noinit]
 pub struct ContextElement {
 	RawElement
 }
@@ -370,7 +368,6 @@ fn ContextElement.decode_with_options(bytes []u8, opt string) !(ContextElement, 
 }
 
 // Limited support for APPLICATION CLASS Element.
-@[noinit]
 pub struct ApplicationElement {
 	RawElement
 }
@@ -402,7 +399,6 @@ pub fn (app ApplicationElement) payload() ![]u8 {
 }
 
 // Limited support for PRIVATE CLASS Element.
-@[noinit]
 pub struct PrivateELement {
 	RawElement
 }

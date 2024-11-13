@@ -13,9 +13,9 @@ const max_octetstring_size = 1 << 32 - 1
 // ASN.1 UNIVERSAL TYPE OF OCTETSTRING.
 //
 // The ASN.1 OCTET STRING type contains arbitrary strings of octets.
-// This type is very similar to BIT STRING, except that all values must be an integral number of eight bits.
+// This type is very similar to BIT STRING, except that all values must
+// be an integral number of eight bits.
 // You can use constraints to specify a maximum length for an OCTET STRING type.
-@[noinit]
 pub struct OctetString {
 pub:
 	value string

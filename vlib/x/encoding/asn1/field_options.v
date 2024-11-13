@@ -13,8 +13,8 @@ const max_attributes_length = 5
 //
 // - `class:number`, for wrapping the element with other non-universal class, for examole: `private:100`.
 // - `explicit` or `implicit` mode.
-// - `inner:5` the tag number of element being wrapped, should in UNIVERSAL class.
-// - `optional` tagging for element with OPTIONAL behaviour.
+// - `inner:5` for universal class form or `inner:class,constructed,number` for extended form.
+// - `optional` or `optional:present' tagging for element with OPTIONAL behaviour.
 // - `has_default` tagging for element with DEFAULT behaviour.
 //
 // Field options attributes handling.
@@ -24,20 +24,17 @@ const max_attributes_length = 5
 // For example, you can tagging your fields of some element with tagging
 // like `@[context_specific:10; explicit; inner:5; optional]`.
 // Its will be parsed and can be used to drive encoding or decoding of Element.
-@[heap; noinit]
 pub struct FieldOptions {
 mut:
 	// The fields `cls`, `tagnum`, `mode` and `inner` was used
 	// for wrapping (and unwrapping) purposes. turn some element
 	// into another element configured with this options.
-	// This fields currently strictly applied to UNIVERSAL element.
 	// In the encoding (decoding) phase, it would be checked
 	// if this options meet required criteria.
 	// Limitation applied on the wrapper fields:
 	// 1. Wrap into UNIVERSAL is not allowed (cls != universal)
-	// 2. Wrapped element should have UNIVERSAL class.
-	// 3. You should provide mode for wrapping, explicit or implicit.
-	// 4. If cls == '', no wrapping is performed, discarding all wrapper options
+	// 2. You should provide mode for wrapping, explicit or implicit.
+	// 3. If cls == '', no wrapping is performed, discarding all wrapper options
 	cls    string // should cls != 'universal'
 	tagnum int = -1 // Provides with wrapper tag number, as n outer tag number.
 	mode   string // explicit or implicit, depends on definition schema.
@@ -54,13 +51,15 @@ mut:
 
 	// This field applied to element with DEFAULT keyword behaviour.
 	// Its applied into wrapping of element or optionality of the element.
-	// If some element has DEFAULT keyword, set this field to true and gives default element into `default_value` field.
+	// If some element has DEFAULT keyword, set this field to true and gives default element
+	// into `default_value` field.
 	has_default   bool
 	default_value ?Element
 }
 
 // `from_string` parses string as an attribute of field options.
-// Its allows string similar to `application:4; optional; has_default` to be treated as an field options.
+// Its allows string similar to `application:4; optional; has_default`
+// to be treated as an field options.
 // See FieldOptions in `field_options.v` for more detail.
 pub fn FieldOptions.from_string(s string) !FieldOptions {
 	if s.len == 0 {

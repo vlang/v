@@ -69,11 +69,11 @@ fn main() {
 	assert int_el_value == 32
 }
 ```
-See more complete examples in the [examples](examples/) directory.
+See more complete examples in the [examples](https://github.com/vlang/v/tree/master/vlib/x/encoding/asn1/examples/) directory.
 
 ## Documentation
 
-See the [documentation](DOCS.md) for more detailed information on 
+See the [documentation](https://github.com/vlang/v/blob/master/vlib/x/encoding/asn1/DOCS.md) for more detailed information on 
 how to use functionality in this module.
 
 ## License

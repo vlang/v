@@ -12,7 +12,6 @@ pub const default_boolean_tag = Tag{.universal, false, int(TagType.boolean)}
 // ASN.1 DER encoding restricts encoding of boolean true value into 0xff
 // and otherwise, encodes into zero (0x00) for false value.
 // The encoding of a boolean value shall be primitive. The contents octets shall consist of a single octet.
-@[noinit]
 pub struct Boolean {
 mut:
 	// boolean value represented in single  byte to allow stores multiple value represents

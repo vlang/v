@@ -16,7 +16,6 @@ pub const default_printablestring_tag = Tag{.universal, false, int(TagType.print
 // Digits 0, 1, ... 9
 // symbols:  (space) ' ( ) + , - . / : = ?
 //
-@[noinit]
 pub struct PrintableString {
 pub:
 	value string

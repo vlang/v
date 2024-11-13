@@ -33,7 +33,6 @@ const max_universal_tagnumber = 255
 // Its big enough to accomodate and represent different of yours own tag number.
 // Its represents 2 bytes length where maximum bytes arrays to represent tag number
 // in multibyte (long) form is `[u8(0x1f), 0xff, 0x7f]` or 16383 in base 128.
-@[noinit]
 pub struct Tag {
 mut:
 	class       TagClass = .universal

@@ -24,7 +24,6 @@ const default_sequence_size 	= 64 // default size
 // Sequence structure can represents both SEQUENCE and SEQUENCE OF type.
 // The encoding of a sequence value shall be constructed.
 // in DER encoded of SEQUENCE or SET, never encode a default value.
-@[noinit]
 pub struct Sequence {
 mut:
 	//	maximal size of this sequence fields
@@ -235,7 +234,6 @@ pub fn (seq Sequence) into_sequence_of[T]() !SequenceOf[T] {
 // ASN.1 SEQUENCE OF TYPE.
 // SequenceOf[T] is an arrays of generic T, so the generic T should fullfill Element interface.
 // We dont use generic aliases because generic type aliases are not yet implemented.
-@[heap; noinit]
 pub struct SequenceOf[T] {
 mut:
 	size   int = default_sequence_size
@@ -290,4 +288,9 @@ fn (so SequenceOf[T]) payload_with_rule(rule EncodingRule) ![]u8 {
 		out << obj
 	}
 	return out
+}
+
+// fields returns underlying arrays of T from the SequenceOf[T].
+pub fn (so SequenceOf[T]) fields() []T {
+	return so.fields
 }

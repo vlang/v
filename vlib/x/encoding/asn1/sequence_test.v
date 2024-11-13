@@ -318,7 +318,7 @@ fn test_sequnce_of_sequence() {
 // was serialized into: 30 0d 06 09 2a 86 48 86 f7 0d 01 01 0b 05 00
 struct AlgorithmIdentifier {
 	algorithm  ObjectIdentifier
-	parameters Any
+	parameters AnyDefinedBy
 }
 
 fn (a AlgorithmIdentifier) tag() Tag {
@@ -338,7 +338,7 @@ fn test_sequence_algorithm_identifier() ! {
 		0x05, 0x00]
 	algo := AlgorithmIdentifier{
 		algorithm:  ObjectIdentifier.new('1.2.840.113549.1.1.11')!
-		parameters: Any.new('null', Null.new())
+		parameters: AnyDefinedBy.new(Null.new())
 	}
 	out := encode(algo)!
 	assert out == expected
@@ -349,7 +349,7 @@ fn test_sequence_algorithm_identifier() ! {
 	assert s0 == algo.algorithm
 
 	s1 := seq.fields[1] as Null
-	prm := algo.parameters.params() as Null
+	prm := algo.parameters.params as Null
 	assert s1 == prm
 }
 

@@ -11,7 +11,6 @@ pub const default_utf8string_tag = Tag{.universal, false, int(TagType.utf8string
 // ASN.1 UNIVERSAL CLASS OF UTF8STRING TYPE.
 //
 // UTF8STRING is UTF8 unicode charset
-@[noinit]
 pub struct Utf8String {
 pub:
 	value string
