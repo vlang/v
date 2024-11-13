@@ -126,7 +126,7 @@ mut:
 	generic_fns                      map[string]bool // register generic fns that needs recheck once
 	inside_sql                       bool            // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
-	inside_call_or_expr              bool // inside or block of CallExpr
+	inside_or_block_value            bool // true inside or-block where its value is used `f(g() or { true })`
 	inside_interface_deref           bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
@@ -1382,8 +1382,8 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			ast.ExprStmt {
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_option_and_result()
-				if c.inside_call_or_expr && stmt.expr is ast.None && ret_type.has_flag(.option) {
-					// call() or { none } where fn returns Option
+				if c.inside_or_block_value && stmt.expr is ast.None && ret_type.has_flag(.option) {
+					// return call() or { none } where fn returns an Option type
 					return
 				}
 				last_stmt_typ := c.expr(mut stmt.expr)
@@ -1451,7 +1451,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			}
 			ast.Return {}
 			else {
-				if stmt !is ast.AssertStmt || c.inside_assign {
+				if stmt !is ast.AssertStmt || c.inside_or_block_value {
 					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 					c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
 						stmt.pos)

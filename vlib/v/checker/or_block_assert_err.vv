@@ -1,17 +1,12 @@
-fn f() !int {
-	return error('')
+fn g(x int) {
+	dump(x)
 }
 
-fn ff() ?int {
+fn f() ?int {
 	return none
 }
 
-fn main() {
-	a := f() or { assert true }
-	dump(a)
-	f() or { assert true }
-
-	b := ff() or { assert true }
-	dump(b)
-	ff() or { assert true }
-}
+f() or { assert true }
+a := f() or { assert true }
+dump(a)
+g(f() or { assert true })
