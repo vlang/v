@@ -16,7 +16,11 @@ mut:
 	retries             int
 	delay               time.Duration
 	urls                []string
+	should_run          bool
+	delete_after_run    bool
 }
+
+const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 fn main() {
 	mut ctx := Context{}
@@ -34,6 +38,8 @@ fn main() {
 	ctx.continue_on_failure = fp.bool('continue', `c`, false, 'Continue on download failures. If you download 5 URLs, and several of them fail, continue without error. False by default.')
 	ctx.retries = fp.int('retries', `r`, 10, 'Number of retries, when an URL fails to download.')
 	ctx.delay = time.Duration(u64(fp.float('delay', `d`, 1.0, 'Delay in seconds, after each retry.') * time.second))
+	ctx.should_run = fp.bool('run', `R`, false, 'Run, after the script/program is completely downloaded.')
+	ctx.delete_after_run = fp.bool('delete-after-run', `D`, false, 'Delete the downloaded script/program, after it has been run.')
 	if ctx.show_help {
 		println(fp.usage())
 		exit(0)
@@ -86,6 +92,15 @@ fn main() {
 		log.info(' Finished downloading file: ${fpath} .')
 		log.info('                      size: ${fstat.size} bytes')
 
+		if ctx.should_run {
+			run_cmd := '${os.quoted_path(vexe)} run ${os.quoted_path(fpath)}'
+			log.info(' Executing: ${run_cmd}')
+			os.system(run_cmd)
+		}
+		if ctx.delete_after_run {
+			log.info(' Removing: ${fpath}')
+			os.rm(fpath) or {}
+		}
 		if !ctx.show_sha256 && !ctx.show_sha1 {
 			continue
 		}
