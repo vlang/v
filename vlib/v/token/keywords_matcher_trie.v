@@ -29,10 +29,10 @@ pub fn (km &KeywordsMatcherTrie) find(word string) int {
 		return -1
 	}
 	node := km.nodes[wlen]
-	if node != unsafe { nil } {
-		return node.find(word)
+	if node == unsafe { nil } {
+		return -1
 	}
-	return -1
+	return node.find(word)
 }
 
 // matches returns true when the word was already added, i.e. when it was found.
