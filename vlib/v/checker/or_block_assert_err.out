@@ -1,0 +1,14 @@
+vlib/v/checker/or_block_assert_err.vv:7:23: error: last statement in the `or {}` block should be an expression of type `int` or exit parent scope
+    5 | 
+    6 | fn main() {
+    7 |     a := f() or { assert true }
+      |                          ~~~~~~
+    8 |     dump(a)
+    9 |     f() or { assert true }
+vlib/v/checker/or_block_assert_err.vv:11:24: error: last statement in the `or {}` block should be an expression of type `int` or exit parent scope
+    9 |     f() or { assert true }
+   10 | 
+   11 |     b := ff() or { assert true }
+      |                           ~~~~~~
+   12 |     dump(b)
+   13 |     ff() or { assert true }

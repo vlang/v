@@ -1,0 +1,17 @@
+fn f() !int {
+	return error('')
+}
+
+fn ff() ?int {
+	return none
+}
+
+fn main() {
+	a := f() or { assert true }
+	dump(a)
+	f() or { assert true }
+
+	b := ff() or { assert true }
+	dump(b)
+	ff() or { assert true }
+}
