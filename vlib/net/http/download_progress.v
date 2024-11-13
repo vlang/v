@@ -56,6 +56,11 @@ pub fn download_file_with_progress(url string, path string, params DownloaderPar
 	mut req := prepare(config)!
 	d.on_start(mut req, path)!
 	response := req.do()!
+	$if windows && !no_vschannel ? {
+		// TODO: remove this, when windows supports streaming properly through vschannel
+		// For now though, just ensure that the complete body is "received" in one big chunk:
+		d.on_chunk(req, response.body.bytes(), 0, u64(response.body.len))!
+	}
 	d.on_finish(req, response)!
 	return response
 }
