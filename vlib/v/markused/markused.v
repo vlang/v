@@ -13,6 +13,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	defer {
 		util.timing_measure(@METHOD)
 	}
+	mut allow_noscan := true
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
@@ -27,36 +28,21 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		ref_array_idx_str := '${int(ast.array_type.ref())}'
 		mut core_fns := [
 			'main.main',
-			'__new_array',
-			'str_intp',
-			'format_sb',
-			'__new_array_with_default',
-			'__new_array_with_multi_default',
-			'__new_array_with_array_default',
+			//'format_sb',
 			'init_global_allocator', // needed for linux_bare and wasm_bare
 			'v_realloc', // needed for _STR
 			'malloc',
 			'malloc_noscan',
 			'vcalloc',
 			'vcalloc_noscan',
-			'new_array_from_c_array',
 			'memdup',
 			'vstrlen',
 			'tos',
 			'tos2',
-			'tos3',
-			'isnil',
 			'_option_ok',
 			'_result_ok',
 			'error',
 			'builtin_init',
-			// byteptr and charptr
-			byteptr_idx_str + '.vstring',
-			byteptr_idx_str + '.vstring_with_len',
-			byteptr_idx_str + '.vstring_literal',
-			charptr_idx_str + '.vstring',
-			charptr_idx_str + '.vstring_with_len',
-			charptr_idx_str + '.vstring_literal',
 			// byte. methods
 			u8_idx_str + '.str_escaped',
 			// string. methods
@@ -96,40 +82,80 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// 'os.getwd',
 			// 'v.embed_file.find_index_entry_by_path',
 		]
-		if table.used_features.index {
-			core_fns << 'v_fixed_index'
-			core_fns << string_idx_str + '.at_with_check'
-			core_fns << string_idx_str + '.clone'
-			core_fns << string_idx_str + '.clone_static'
-			core_fns << string_idx_str + '.at'
-			core_fns << array_idx_str + '.slice'
-			core_fns << array_idx_str + '.get'
-			core_fns << array_idx_str + '.set'
-			core_fns << ref_array_idx_str + '.push'
-			core_fns << ref_array_idx_str + '.set'
-			core_fns << map_idx_str + '.get'
-			core_fns << map_idx_str + '.set'
-		}
-		if table.used_features.range_index {
-			core_fns << string_idx_str + '.substr_with_check'
-			core_fns << string_idx_str + '.substr_ni'
-			core_fns << array_idx_str + '.slice_ni'
-			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
-			core_fns << array_idx_str + '.clone_static_to_depth'
-			core_fns << array_idx_str + '.clone_to_depth'
-			core_fns << string_idx_str + '.substr'
-		}
-		if table.used_features.cast_ptr {
-			core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
+		if table.used_features.builtin_types {
+			// println('used builtin')
+			core_fns << '__new_array'
+			core_fns << '__new_array_with_default'
+			core_fns << '__new_array_with_multi_default'
+			core_fns << '__new_array_with_array_default'
+			core_fns << 'new_array_from_c_array'
+			core_fns << 'str_intp'
+			// byteptr and charptr
+			core_fns << byteptr_idx_str + '.vstring'
+			core_fns << byteptr_idx_str + '.vstring_with_len'
+			core_fns << byteptr_idx_str + '.vstring_literal'
+			core_fns << charptr_idx_str + '.vstring'
+			core_fns << charptr_idx_str + '.vstring_with_len'
+			core_fns << charptr_idx_str + '.vstring_literal'
+
+			// real world apps
+			if table.used_features.index {
+				core_fns << 'v_fixed_index'
+				core_fns << string_idx_str + '.at_with_check'
+				core_fns << string_idx_str + '.clone'
+				core_fns << string_idx_str + '.clone_static'
+				core_fns << string_idx_str + '.at'
+				core_fns << array_idx_str + '.slice'
+				core_fns << array_idx_str + '.get'
+				core_fns << array_idx_str + '.set'
+				core_fns << ref_array_idx_str + '.push'
+				core_fns << ref_array_idx_str + '.set'
+				core_fns << map_idx_str + '.get'
+				core_fns << map_idx_str + '.set'
+			}
+			if table.used_features.range_index {
+				core_fns << string_idx_str + '.substr_with_check'
+				core_fns << string_idx_str + '.substr_ni'
+				core_fns << array_idx_str + '.slice_ni'
+				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+				core_fns << array_idx_str + '.clone_static_to_depth'
+				core_fns << array_idx_str + '.clone_to_depth'
+				core_fns << string_idx_str + '.substr'
+			}
+			if table.used_features.cast_ptr {
+				core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
+			}
+			if table.used_features.auto_str {
+				core_fns << string_idx_str + '.repeat'
+				core_fns << 'tos3'
+			}
+			if table.used_features.auto_str_ptr {
+				core_fns << 'isnil'
+			}
+		} else {
+			// hello world apps
+			if pref_.ccompiler_type == .tinyc {
+				all_fns.delete(ref_array_idx_str + '.ensure_cap')
+				all_fns.delete(ref_array_idx_str + '.prepend_noscan')
+				all_fns.delete(ref_array_idx_str + '.push_many_noscan')
+				allow_noscan = false
+			} else {
+				core_fns << ref_array_idx_str + '.push_many_noscan'
+				core_fns << '__new_array_with_default'
+				core_fns << '__new_array_with_default_noscan'
+				core_fns << 'str_intp'
+				core_fns << ref_array_idx_str + '.push'
+				core_fns << string_idx_str + '.substr'
+				core_fns << array_idx_str + '.slice'
+				core_fns << array_idx_str + '.get'
+				core_fns << 'v_fixed_index'
+			}
 		}
 		if table.used_features.as_cast {
 			core_fns << '__as_cast'
 		}
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
-		}
-		if table.used_features.auto_str {
-			core_fns << string_idx_str + '.repeat'
 		}
 		core_fns
 	}
@@ -152,7 +178,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			println('k: ${k} | mfn: ${mfn.name}')
 		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
-		if is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
+		if allow_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
 			all_fn_root_names << k
 			continue
 		}
@@ -165,14 +191,14 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&strings.Builder' {
+		if method_receiver_typename == '&strings.Builder' && table.used_features.builtin_types {
 			// implicit string builders are generated in auto_eq_methods.v
 			all_fn_root_names << k
 			continue
 		}
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
-		if k.ends_with('.str') || k.ends_with('.auto_str') {
+		if table.used_features.builtin_types && (k.ends_with('.str') || k.ends_with('.auto_str')) {
 			all_fn_root_names << k
 			continue
 		}
@@ -180,7 +206,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if k.ends_with('.free') {
+		if table.used_features.builtin_types && k.ends_with('.free') {
 			all_fn_root_names << k
 			continue
 		}
@@ -255,8 +281,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
-	all_fn_root_names << 'panic_option_not_set'
-	all_fn_root_names << 'panic_result_not_set'
+	if table.used_features.builtin_types {
+		all_fn_root_names << 'panic_option_not_set'
+		all_fn_root_names << 'panic_result_not_set'
+	}
 	if pref_.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'

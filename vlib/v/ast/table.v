@@ -19,6 +19,7 @@ pub mut:
 	as_cast       bool // expr as Type
 	anon_fn       bool // fn () { }
 	auto_str      bool // auto str fns
+	auto_str_ptr  bool // auto str fns for ptr type
 }
 
 @[heap; minify]

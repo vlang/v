@@ -1392,6 +1392,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if node.args.len > 0 && fn_name in print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
 		c.table.used_features.auto_str = true
+		if node.args[0].typ.is_ptr() {
+			c.table.used_features.auto_str_ptr = true
+		}
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
@@ -2133,6 +2136,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.expected_type = c.expr(mut last_stmt.expr)
 			}
 		}
+	}
+	if !c.is_builtin_mod && c.mod != 'strings' {
+		c.table.used_features.builtin_types = true
 	}
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
