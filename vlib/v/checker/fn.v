@@ -3301,6 +3301,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				return ast.void_type
 			}
 		}
+		c.check_for_mut_receiver(mut node.left)
 		info := left_sym.info as ast.Array
 		mut arg_expr := if method_name == 'insert' {
 			node.args[1].expr
@@ -3362,6 +3363,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				}
 			}
 			if method_name == 'sort_with_compare' {
+				c.check_for_mut_receiver(mut node.left)
 				node.return_type = ast.void_type
 				node.receiver_type = node.left_type.ref()
 			} else {
@@ -3773,6 +3775,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 				c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 			}
 			if method_name == 'sort_with_compare' {
+				c.check_for_mut_receiver(mut node.left)
 				node.return_type = ast.void_type
 				node.receiver_type = node.left_type.ref()
 			} else {
@@ -3787,6 +3790,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			if method_name == 'reverse' {
 				node.return_type = node.left_type
 			} else {
+				c.check_for_mut_receiver(mut node.left)
 				node.return_type = ast.void_type
 			}
 		}
