@@ -59,7 +59,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 	println(os.read_file(topic_path) or {
 		eprintln('error: failed reading topic file: ${err}')
 		exit(fail_code)
-	})
+	}.trim_space())
 	exit(opts.exit_code)
 }
 
