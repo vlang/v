@@ -18,7 +18,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	mut all_fn_root_names := if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		['main.main']
-	} else if !table.use_builtin_type {
+	} else if pref_.skip_unused_more && !table.use_builtin_type {
 		core_fns := ['main.main', 'new_array_from_c_array', '_write_buf_to_fd', '_writeln_to_fd',
 			'eprint', 'eprintln', 'free', 'C.free', 'v_realloc', 'malloc', 'malloc_noscan', 'vcalloc',
 			'vcalloc_noscan', 'panic', 'print_backtrace_skipping_top_frames_linux']
@@ -297,7 +297,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	if table.use_builtin_type {
+	if pref_.skip_unused || (pref_.skip_unused_more && table.use_builtin_type) {
 		// handle interface implementation methods:
 		for isym in table.type_symbols {
 			if isym.kind != .interface {
