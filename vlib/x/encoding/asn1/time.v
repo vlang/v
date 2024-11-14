@@ -56,7 +56,7 @@ fn UtcTime.from_time(t time.Time) !UtcTime {
 	s := utime.custom_format(default_utctime_format) //  20241113060446+0
 	// Its rather a hack, not efieient as should be.
 	// TODO: make it better
-	str := s.split('+')
+	str := s.split_any('+-')
 	val := str[0] + 'Z'
 	utc := UtcTime.new(val)!
 	return utc
@@ -231,7 +231,7 @@ pub fn GeneralizedTime.from_time(t time.Time) !GeneralizedTime {
 	u := t.local_to_utc()
 	s := u.custom_format(default_genztime_format)
 	// adds support directly from time.Time
-	src := s.split('+')
+	src := s.split_any('+-')
 	val := src[0] + 'Z'
 	gt := GeneralizedTime.new(val)!
 
