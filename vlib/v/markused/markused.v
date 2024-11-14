@@ -18,18 +18,17 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	mut all_fn_root_names := if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		['main.main']
-	} else if pref_.skip_unused_more && !table.use_builtin_type {
+	} else if pref_.skip_unused_more {
 		core_fns := ['main.main', 'new_array_from_c_array', '_write_buf_to_fd', '_writeln_to_fd',
 			'eprint', 'eprintln', 'free', 'C.free', 'v_realloc', 'malloc', 'malloc_noscan', 'vcalloc',
 			'vcalloc_noscan', 'panic', 'print_backtrace_skipping_top_frames_linux']
 		all_globals_root_names = ['g_main_argc', 'g_main_argv', 'v_memory_panic']
 		for k, _ in all_fns {
 			if k !in core_fns {
-				// println('>>> del fn ${k}')
 				all_fns.delete(k)
 			}
 		}
-		if table.use_interface {
+		if table.used_features.interfaces {
 			all_globals_root_names << 'as_cast_type_indexes'
 		}
 		for k, _ in all_globals {
@@ -297,7 +296,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	if pref_.skip_unused || (pref_.skip_unused_more && table.use_builtin_type) {
+	if pref_.skip_unused || (pref_.skip_unused_more && table.used_features.builtin_types) {
 		// handle interface implementation methods:
 		for isym in table.type_symbols {
 			if isym.kind != .interface {

@@ -484,7 +484,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		util.timing_start('cgen unification')
 	}
 
-	if global_g.table.use_builtin_type {
+	if !global_g.pref.skip_unused_more || global_g.table.used_features.builtin_types {
 		global_g.gen_jsons()
 		global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
 		for i := 0; i < global_g.str_types.len; i++ {
@@ -598,7 +598,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			}
 		}
 	}
-	if g.table.use_builtin_type {
+	if !g.pref.skip_unused_more || g.table.used_features.builtin_types {
 		interface_table := g.interface_table()
 		if interface_table.len > 0 {
 			b.write_string2('\n// V interface table:\n', interface_table)
@@ -862,7 +862,7 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
-	if g.table.use_builtin_type {
+	if !g.pref.skip_unused_more || g.table.used_features.builtin_types {
 		g.options_pos_forward = g.type_definitions.len
 		g.write_typedef_types()
 		g.write_typeof_functions()
@@ -6586,7 +6586,7 @@ fn (mut g Gen) write_init_function() {
 		g.write('\tas_cast_type_indexes = ')
 		g.writeln(g.as_cast_name_table())
 	}
-	if !g.pref.is_shared && g.table.use_builtin_type {
+	if !g.pref.is_shared && (!g.pref.skip_unused_more || g.table.used_features.builtin_types) {
 		// shared object does not need this
 		g.writeln('\tbuiltin_init();')
 	}
