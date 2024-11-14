@@ -1,0 +1,13 @@
+v retry 0.0.1
+-----------------------------------------------
+Usage: v retry [options] CMD
+
+Description: Run the command CMD in a loop, until it succeeds, or until a predetermined amount of seconds pass.
+
+The arguments should be at least 1 in number.
+
+Options:
+  -h, --help                Show this help screen.
+  -t, --timeout <float>     Timeout in seconds (for all retries). Default: 600.0 seconds (10 minutes).
+  -d, --delay <float>       Delay between each retry in seconds. Default: 1.0 second.
+  -r, --retries <int>       Maximum number of retries. Default: 10.
