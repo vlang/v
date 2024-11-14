@@ -1,0 +1,33 @@
+fn main() {
+	a0 := [1, 2]
+	a1 := [3, 4]
+	a2 := [5, 6]
+	a3 := ['aa', 'bb']
+
+	a2.prepend(a1)
+	a1.insert(0, a0)
+	a3.sort_with_compare(fn (a &string, b &string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	a3.delete(0)
+	a2.pop()
+	a3.sort()
+
+	b0 := ['aa', 'bb']!
+	b0.sort_with_compare(fn (a &string, b &string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	b0.sort()
+}
