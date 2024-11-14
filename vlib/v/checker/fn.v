@@ -3303,6 +3303,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				}
 			}
 		} else {
+			c.table.used_features.arr_prepend = true
 			if node.args.len != 1 {
 				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
 					node.pos)

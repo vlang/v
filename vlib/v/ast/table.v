@@ -20,6 +20,7 @@ pub mut:
 	anon_fn       bool // fn () { }
 	auto_str      bool // auto str fns
 	auto_str_ptr  bool // auto str fns for ptr type
+	arr_prepend   bool // arr.prepend()
 }
 
 @[heap; minify]

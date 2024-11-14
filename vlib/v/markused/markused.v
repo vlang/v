@@ -71,7 +71,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// ref_array_idx_str + '.last',
 			// ref_array_idx_str + '.pop',
 			// ref_array_idx_str + '.insert_many',
-			// ref_array_idx_str + '.prepend_many',
 			// ref_array_idx_str + '.reverse',
 			// ref_array_idx_str + '.set_unsafe',
 			// TODO: process the _vinit const initializations automatically too
@@ -82,7 +81,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// 'os.getwd',
 			// 'v.embed_file.find_index_entry_by_path',
 		]
-		if table.used_features.builtin_types {
+		if table.used_features.builtin_types || table.used_features.as_cast {
 			// println('used builtin')
 			core_fns << '__new_array'
 			core_fns << '__new_array_with_default'
@@ -131,6 +130,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			}
 			if table.used_features.auto_str_ptr {
 				core_fns << 'isnil'
+			}
+			if table.used_features.arr_prepend {
+				core_fns << ref_array_idx_str + '.prepend_many'
 			}
 		} else {
 			// hello world apps
