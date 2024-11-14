@@ -12,7 +12,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	is_js := node.language == .js
 	if mut decl_sym.info is ast.Interface {
 		mut has_generic_types := false
-		if c.pref.skip_unused_more && decl_sym.mod == 'main' {
+		if c.pref.skip_unused && decl_sym.mod == 'main' {
 			c.table.used_features.interfaces = true
 		}
 		if node.embeds.len > 0 {

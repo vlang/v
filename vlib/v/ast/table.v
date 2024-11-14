@@ -10,9 +10,11 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	interfaces    bool
-	dump          bool
+	interfaces    bool // interface
+	dump          bool // dump()
 	builtin_types bool
+	index         bool // string[0]
+	range_index   bool // string[0..1]
 }
 
 @[heap; minify]
@@ -38,7 +40,7 @@ pub mut:
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_features      UsedFeatures    // filled in by the checker, when pref.skip_unused_more = true;
+	used_features      UsedFeatures    // filled in by the checker, when pref.skip_unused = true;
 	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
 	veb_res_idx_cache  int             // Cache of `veb.Result` type
 	veb_ctx_idx_cache  int             // Cache of `veb.Context` type

@@ -226,7 +226,6 @@ pub mut:
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
 	skip_unused       bool // skip generating C code for functions, that are not used
-	skip_unused_more  bool // skip also generating unused V core features
 
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
@@ -599,10 +598,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-skip-unused' {
 				res.skip_unused = true
-			}
-			'-skip-unused-more' {
-				res.skip_unused = true
-				res.skip_unused_more = true
 			}
 			'-no-skip-unused' {
 				res.skip_unused = false

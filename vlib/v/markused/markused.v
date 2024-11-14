@@ -25,7 +25,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		array_idx_str := '${ast.array_type_idx}'
 		map_idx_str := '${ast.map_type_idx}'
 		ref_array_idx_str := '${int(ast.array_type.ref())}'
-		[
+		mut core_fns := [
 			'main.main',
 			'__new_array',
 			'str_intp',
@@ -54,13 +54,13 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'error',
 			'ptr_str', // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
 			// utf8_str_visible_length is used by c/str.v
-			'utf8_str_visible_length',
-			'compare_ints',
-			'compare_u64s',
-			'compare_strings',
-			'compare_ints_reverse',
-			'compare_u64s_reverse',
-			'compare_strings_reverse',
+			//'utf8_str_visible_length',
+			//'compare_ints',
+			//'compare_u64s',
+			//'compare_strings',
+			//'compare_ints_reverse',
+			//'compare_u64s_reverse',
+			//'compare_strings_reverse',
 			'builtin_init',
 			// byteptr and charptr
 			byteptr_idx_str + '.vstring',
@@ -72,18 +72,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// byte. methods
 			u8_idx_str + '.str_escaped',
 			// string. methods
-			string_idx_str + '.add',
-			string_idx_str + '.trim_space',
-			string_idx_str + '.repeat',
-			string_idx_str + '.replace',
-			string_idx_str + '.clone',
-			string_idx_str + '.clone_static',
-			string_idx_str + '.trim',
-			string_idx_str + '.substr',
-			// string_idx_str + '.substr_ni',
-			// string_idx_str + '.substr_with_check',
-			// string_idx_str + '.at',
-			// string_idx_str + '.at_with_check',
+			// string_idx_str + '.add',
+			// string_idx_str + '.trim_space',
+			// string_idx_str + '.repeat',
+			// string_idx_str + '.replace',
+			// string_idx_str + '.trim',
 			// string_idx_str + '.index_kmp',
 			// string. ==, !=, etc...
 			// string_idx_str + '.eq',
@@ -94,50 +87,62 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// string_idx_str + '.ge',
 			'fast_string_eq',
 			// other array methods
-			array_idx_str + '.get',
-			// array_idx_str + '.set',
 			// array_idx_str + '.get_unsafe',
-			// array_idx_str + '.set_unsafe',
-			// array_idx_str + '.get_with_check', // used for `x := a[i] or {}`
-			// array_idx_str + '.clone_static_to_depth',
-			// array_idx_str + '.clone_to_depth',
+			// array_idx_str + '.set_unsafe',			
 			// array_idx_str + '.first',
 			// array_idx_str + '.last',
 			// array_idx_str + '.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
 			// array_idx_str + '.reverse',
 			// array_idx_str + '.repeat_to_depth',
-			array_idx_str + '.slice',
-			// array_idx_str + '.slice_ni',
-			// map methods
-			map_idx_str + '.get',
-			map_idx_str + '.set',
 			// reference array methods
-			ref_array_idx_str + '.last',
-			ref_array_idx_str + '.pop',
-			ref_array_idx_str + '.push',
-			ref_array_idx_str + '.insert_many',
-			ref_array_idx_str + '.prepend_many',
-			ref_array_idx_str + '.reverse',
-			ref_array_idx_str + '.set',
-			ref_array_idx_str + '.set_unsafe',
+			// ref_array_idx_str + '.last',
+			// ref_array_idx_str + '.pop',
+			// ref_array_idx_str + '.insert_many',
+			// ref_array_idx_str + '.prepend_many',
+			// ref_array_idx_str + '.reverse',
+			// ref_array_idx_str + '.set_unsafe',
 			// TODO: process the _vinit const initializations automatically too
-			'json.decode_string',
-			'json.decode_int',
-			'json.decode_bool',
-			'json.decode_u64',
-			'json.encode_int',
-			'json.encode_string',
-			'json.encode_bool',
-			'json.encode_u64',
-			'json.json_print',
-			'json.json_parse',
-			'main.nasserts',
-			'main.vtest_init',
-			'main.vtest_new_metainfo',
-			'main.vtest_new_filemetainfo',
-			'os.getwd',
-			'v.embed_file.find_index_entry_by_path',
+			// 'json.decode_string',
+			// 'json.decode_int',
+			// 'json.decode_bool',
+			// 'json.decode_u64',
+			// 'json.encode_int',
+			// 'json.encode_string',
+			// 'json.encode_bool',
+			// 'json.encode_u64',
+			// 'json.json_print',
+			// 'json.json_parse',
+			// 'main.nasserts',
+			// 'main.vtest_init',
+			// 'main.vtest_new_metainfo',
+			// 'main.vtest_new_filemetainfo',
+			// 'os.getwd',
+			// 'v.embed_file.find_index_entry_by_path',
 		]
+		if table.used_features.index {
+			core_fns << string_idx_str + '.at_with_check'
+			core_fns << string_idx_str + '.clone'
+			core_fns << string_idx_str + '.clone_static'
+			core_fns << string_idx_str + '.at'
+			core_fns << array_idx_str + '.slice'
+			core_fns << array_idx_str + '.get'
+			core_fns << array_idx_str + '.set'
+			core_fns << ref_array_idx_str + '.push'
+			core_fns << ref_array_idx_str + '.set'
+			// map methods
+			core_fns << map_idx_str + '.get'
+			core_fns << map_idx_str + '.set'
+		}
+		if table.used_features.range_index {
+			core_fns << string_idx_str + '.substr_with_check'
+			core_fns << string_idx_str + '.substr_ni'
+			core_fns << array_idx_str + '.slice_ni'
+			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+			core_fns << array_idx_str + '.clone_static_to_depth'
+			core_fns << array_idx_str + '.clone_to_depth'
+			core_fns << string_idx_str + '.substr'
+		}
+		core_fns
 	}
 
 	if pref_.is_bare {
