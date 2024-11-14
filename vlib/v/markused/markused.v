@@ -13,31 +13,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	mut all_globals_root_names := []string{}
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		['main.main']
-	} else if pref_.skip_unused_more {
-		core_fns := ['main.main', 'new_array_from_c_array', '_write_buf_to_fd', '_writeln_to_fd',
-			'eprint', 'eprintln', 'free', 'C.free', 'v_realloc', 'malloc', 'malloc_noscan', 'vcalloc',
-			'vcalloc_noscan', 'panic', 'print_backtrace_skipping_top_frames_linux']
-		all_globals_root_names = ['g_main_argc', 'g_main_argv', 'v_memory_panic']
-		for k, _ in all_fns {
-			if k !in core_fns {
-				all_fns.delete(k)
-			}
-		}
-		if table.used_features.interfaces {
-			all_globals_root_names << 'as_cast_type_indexes'
-		}
-		for k, _ in all_globals {
-			if k !in all_globals_root_names {
-				all_globals.delete(k)
-			}
-		}
-		all_consts.clear()
-		core_fns
 	} else {
 		byteptr_idx_str := '${ast.byteptr_type_idx}'
 		charptr_idx_str := '${ast.charptr_type_idx}'
@@ -101,34 +80,34 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			string_idx_str + '.clone_static',
 			string_idx_str + '.trim',
 			string_idx_str + '.substr',
-			string_idx_str + '.substr_ni',
-			string_idx_str + '.substr_with_check',
-			string_idx_str + '.at',
-			string_idx_str + '.at_with_check',
-			string_idx_str + '.index_kmp',
+			// string_idx_str + '.substr_ni',
+			// string_idx_str + '.substr_with_check',
+			// string_idx_str + '.at',
+			// string_idx_str + '.at_with_check',
+			// string_idx_str + '.index_kmp',
 			// string. ==, !=, etc...
-			string_idx_str + '.eq',
-			string_idx_str + '.ne',
-			string_idx_str + '.lt',
-			string_idx_str + '.gt',
-			string_idx_str + '.le',
-			string_idx_str + '.ge',
+			// string_idx_str + '.eq',
+			// string_idx_str + '.ne',
+			// string_idx_str + '.lt',
+			// string_idx_str + '.gt',
+			// string_idx_str + '.le',
+			// string_idx_str + '.ge',
 			'fast_string_eq',
 			// other array methods
 			array_idx_str + '.get',
-			array_idx_str + '.set',
-			array_idx_str + '.get_unsafe',
-			array_idx_str + '.set_unsafe',
-			array_idx_str + '.get_with_check', // used for `x := a[i] or {}`
-			array_idx_str + '.clone_static_to_depth',
-			array_idx_str + '.clone_to_depth',
-			array_idx_str + '.first',
-			array_idx_str + '.last',
-			array_idx_str + '.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
-			array_idx_str + '.reverse',
-			array_idx_str + '.repeat_to_depth',
+			// array_idx_str + '.set',
+			// array_idx_str + '.get_unsafe',
+			// array_idx_str + '.set_unsafe',
+			// array_idx_str + '.get_with_check', // used for `x := a[i] or {}`
+			// array_idx_str + '.clone_static_to_depth',
+			// array_idx_str + '.clone_to_depth',
+			// array_idx_str + '.first',
+			// array_idx_str + '.last',
+			// array_idx_str + '.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
+			// array_idx_str + '.reverse',
+			// array_idx_str + '.repeat_to_depth',
 			array_idx_str + '.slice',
-			array_idx_str + '.slice_ni',
+			// array_idx_str + '.slice_ni',
 			// map methods
 			map_idx_str + '.get',
 			map_idx_str + '.set',
@@ -296,7 +275,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	if pref_.skip_unused || (pref_.skip_unused_more && table.used_features.builtin_types) {
+	if pref_.skip_unused {
 		// handle interface implementation methods:
 		for isym in table.type_symbols {
 			if isym.kind != .interface {
@@ -416,11 +395,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			walker.mark_const_as_used(kcon)
 		}
 	}
-
-	for name in all_globals_root_names {
-		walker.mark_global_as_used(name)
-	}
-
 	table.used_fns = walker.used_fns.move()
 	table.used_consts = walker.used_consts.move()
 	table.used_globals = walker.used_globals.move()

@@ -484,25 +484,23 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		util.timing_start('cgen unification')
 	}
 
-	if !global_g.pref.skip_unused_more || global_g.table.used_features.builtin_types {
-		global_g.gen_jsons()
-		global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
-		for i := 0; i < global_g.str_types.len; i++ {
-			global_g.final_gen_str(global_g.str_types[i])
-		}
-		for sumtype_casting_fn in global_g.sumtype_casting_fns {
-			global_g.write_sumtype_casting_fn(sumtype_casting_fn)
-		}
-		global_g.write_shareds()
-		global_g.write_chan_pop_option_fns()
-		global_g.write_chan_push_option_fns()
-		global_g.gen_array_contains_methods()
-		global_g.gen_array_index_methods()
-		global_g.gen_equality_fns()
-		global_g.gen_free_methods()
-		global_g.write_results()
-		global_g.write_options()
+	global_g.gen_jsons()
+	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
+	for i := 0; i < global_g.str_types.len; i++ {
+		global_g.final_gen_str(global_g.str_types[i])
 	}
+	for sumtype_casting_fn in global_g.sumtype_casting_fns {
+		global_g.write_sumtype_casting_fn(sumtype_casting_fn)
+	}
+	global_g.write_shareds()
+	global_g.write_chan_pop_option_fns()
+	global_g.write_chan_push_option_fns()
+	global_g.gen_array_contains_methods()
+	global_g.gen_array_index_methods()
+	global_g.gen_equality_fns()
+	global_g.gen_free_methods()
+	global_g.write_results()
+	global_g.write_options()
 	global_g.sort_globals_consts()
 	util.timing_measure('cgen unification')
 
@@ -598,30 +596,28 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			}
 		}
 	}
-	if !g.pref.skip_unused_more || g.table.used_features.builtin_types {
-		interface_table := g.interface_table()
-		if interface_table.len > 0 {
-			b.write_string2('\n// V interface table:\n', interface_table)
-		}
-		if g.waiter_fn_definitions.len > 0 {
-			b.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.str())
-		}
-		if g.gowrappers.len > 0 {
-			b.write_string2('\n// V gowrappers:\n', g.gowrappers.str())
-		}
-		if g.hotcode_definitions.len > 0 {
-			b.write_string2('\n// V hotcode definitions:\n', g.hotcode_definitions.str())
-		}
-		if g.embedded_data.len > 0 {
-			b.write_string2('\n// V embedded data:\n', g.embedded_data.str())
-		}
-		if g.shared_functions.len > 0 {
-			b.writeln('\n// V shared type functions:\n')
-			b.write_string2(g.shared_functions.str(), c_concurrency_helpers)
-		}
-		if g.channel_definitions.len > 0 {
-			b.write_string2('\n// V channel code:\n', g.channel_definitions.str())
-		}
+	interface_table := g.interface_table()
+	if interface_table.len > 0 {
+		b.write_string2('\n// V interface table:\n', interface_table)
+	}
+	if g.waiter_fn_definitions.len > 0 {
+		b.write_string2('\n// V gowrappers waiter fns:\n', g.waiter_fn_definitions.str())
+	}
+	if g.gowrappers.len > 0 {
+		b.write_string2('\n// V gowrappers:\n', g.gowrappers.str())
+	}
+	if g.hotcode_definitions.len > 0 {
+		b.write_string2('\n// V hotcode definitions:\n', g.hotcode_definitions.str())
+	}
+	if g.embedded_data.len > 0 {
+		b.write_string2('\n// V embedded data:\n', g.embedded_data.str())
+	}
+	if g.shared_functions.len > 0 {
+		b.writeln('\n// V shared type functions:\n')
+		b.write_string2(g.shared_functions.str(), c_concurrency_helpers)
+	}
+	if g.channel_definitions.len > 0 {
+		b.write_string2('\n// V channel code:\n', g.channel_definitions.str())
 	}
 	if g.auto_str_funcs.len > 0 {
 		b.write_string2('\n// V auto str functions:\n', g.auto_str_funcs.str())
@@ -862,15 +858,13 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
-	if !g.pref.skip_unused_more || g.table.used_features.builtin_types {
-		g.options_pos_forward = g.type_definitions.len
-		g.write_typedef_types()
-		g.write_typeof_functions()
-		g.write_sorted_types()
-		g.write_array_fixed_return_types()
-		g.write_multi_return_types()
-		g.definitions.writeln('// end of definitions #endif')
-	}
+	g.options_pos_forward = g.type_definitions.len
+	g.write_typedef_types()
+	g.write_typeof_functions()
+	g.write_sorted_types()
+	g.write_array_fixed_return_types()
+	g.write_multi_return_types()
+	g.definitions.writeln('// end of definitions #endif')
 	if g.pref.compile_defines_all.len > 0 {
 		g.comptime_definitions.writeln('// V compile time defines by -d or -define flags:')
 		g.comptime_definitions.writeln('//     All custom defines      : ' +
