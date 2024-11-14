@@ -113,9 +113,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// 'json.json_print',
 			// 'json.json_parse',
 			// 'main.nasserts',
-			// 'main.vtest_init',
-			// 'main.vtest_new_metainfo',
-			// 'main.vtest_new_filemetainfo',
+			'main.vtest_init',
+			'main.vtest_new_metainfo',
+			'main.vtest_new_filemetainfo',
 			// 'os.getwd',
 			// 'v.embed_file.find_index_entry_by_path',
 		]
@@ -280,32 +280,30 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	if pref_.skip_unused {
-		// handle interface implementation methods:
-		for isym in table.type_symbols {
-			if isym.kind != .interface {
-				continue
-			}
-			if isym.info !is ast.Interface {
-				// Do not remove this check, isym.info could be &IError.
-				continue
-			}
-			interface_info := isym.info as ast.Interface
-			if interface_info.methods.len == 0 {
-				continue
-			}
-			for itype in interface_info.types {
-				ptype := itype.set_nr_muls(1)
-				ntype := itype.set_nr_muls(0)
-				interface_types := [ptype, ntype]
-				for method in interface_info.methods {
-					for typ in interface_types {
-						interface_implementation_method_name := '${int(typ)}.${method.name}'
-						$if trace_skip_unused_interface_methods ? {
-							eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
-						}
-						all_fn_root_names << interface_implementation_method_name
+	// handle interface implementation methods:
+	for isym in table.type_symbols {
+		if isym.kind != .interface {
+			continue
+		}
+		if isym.info !is ast.Interface {
+			// Do not remove this check, isym.info could be &IError.
+			continue
+		}
+		interface_info := isym.info as ast.Interface
+		if interface_info.methods.len == 0 {
+			continue
+		}
+		for itype in interface_info.types {
+			ptype := itype.set_nr_muls(1)
+			ntype := itype.set_nr_muls(0)
+			interface_types := [ptype, ntype]
+			for method in interface_info.methods {
+				for typ in interface_types {
+					interface_implementation_method_name := '${int(typ)}.${method.name}'
+					$if trace_skip_unused_interface_methods ? {
+						eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
 					}
+					all_fn_root_names << interface_implementation_method_name
 				}
 			}
 		}
