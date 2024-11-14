@@ -68,15 +68,15 @@ fn print_topic_unknown(topic string) {
 }
 
 fn print_known_topics() {
-	mut res := 'Known help topics: '
 	topic_paths := os.walk_ext(help_dir(), '.txt')
-	for i, path in topic_paths {
+	mut res := []string{}
+	for path in topic_paths {
 		topic := os.file_name(path).all_before('.txt')
 		if topic != 'default' {
-			res += topic + if i != topic_paths.len - 1 { ', ' } else { '.' }
+			res << topic
 		}
 	}
-	println(res)
+	println('Known help topics: ${res.sorted()}')
 }
 
 fn get_vexe() string {
