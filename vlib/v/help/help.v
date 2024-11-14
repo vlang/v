@@ -56,10 +56,13 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		print_known_topics()
 		exit(fail_code)
 	}
-	println(os.read_file(topic_path) or {
-		eprintln('error: failed reading topic file: ${err}')
+	topic_content := os.read_file(topic_path) or {
+		msg := err.str()
+		eprintln('error: failed reading topic file: ${msg}')
 		exit(fail_code)
-	}.trim_space())
+	}
+	cleaned := topic_content.trim_space()
+	println(cleaned)
 	exit(opts.exit_code)
 }
 
@@ -76,7 +79,8 @@ fn print_known_topics() {
 			res << topic
 		}
 	}
-	println('Known help topics: ${res.sorted()}')
+	sorted_topics := res.sorted()
+	println('Known help topics: ${sorted_topics}')
 }
 
 fn get_vexe() string {
