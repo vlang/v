@@ -1016,6 +1016,7 @@ pub fn write_file_array(path string, buffer array) ! {
 	f.close()
 }
 
+@[manualfree]
 pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}
 	for pattern in patterns {
@@ -1025,6 +1026,8 @@ pub fn glob(patterns ...string) ![]string {
 	return matches
 }
 
+// last_error returns a V error, formed by the last libc error (from GetLastError() on windows and from `errno` on !windows)
+@[manualfree]
 pub fn last_error() IError {
 	$if windows {
 		code := int(C.GetLastError())
@@ -1050,7 +1053,7 @@ pub:
 // Return a POSIX error:
 // Code defaults to last error (from C.errno)
 // Message defaults to POSIX error message for the error code
-@[inline]
+@[inline; manualfree]
 pub fn error_posix(e SystemError) IError {
 	code := if e.code == error_code_not_set { C.errno } else { e.code }
 	message := if e.msg == '' { posix_get_error_msg(code) } else { e.msg }
@@ -1060,7 +1063,7 @@ pub fn error_posix(e SystemError) IError {
 // Return a Win32 API error:
 // Code defaults to last error (calling C.GetLastError())
 // Message defaults to Win 32 API error message for the error code
-@[inline]
+@[inline; manualfree]
 pub fn error_win32(e SystemError) IError {
 	$if windows {
 		code := if e.code == error_code_not_set { int(C.GetLastError()) } else { e.code }
