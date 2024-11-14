@@ -12,7 +12,7 @@ pub struct UsedFeatures {
 pub mut:
 	interfaces    bool // interface
 	dump          bool // dump()
-	builtin_types bool
+	builtin_types bool // uses any builtin type
 	index         bool // string[0]
 	range_index   bool // string[0..1]
 	cast_ptr      bool // &u8(...)
