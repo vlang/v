@@ -18,6 +18,7 @@ pub mut:
 	cast_ptr      bool // &u8(...)
 	as_cast       bool // expr as Type
 	anon_fn       bool // fn () { }
+	auto_str      bool // auto str fns
 }
 
 @[heap; minify]

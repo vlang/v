@@ -1391,6 +1391,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// println / eprintln / panic can print anything
 	if node.args.len > 0 && fn_name in print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
+		c.table.used_features.auto_str = true
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`

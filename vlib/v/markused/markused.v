@@ -40,7 +40,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'vcalloc',
 			'vcalloc_noscan',
 			'new_array_from_c_array',
-			'v_fixed_index',
 			'memdup',
 			'vstrlen',
 			'tos',
@@ -63,7 +62,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// string. methods
 			// string_idx_str + '.add',
 			// string_idx_str + '.trim_space',
-			// string_idx_str + '.repeat',
 			// string_idx_str + '.replace',
 			// string_idx_str + '.trim',
 			// string_idx_str + '.index_kmp',
@@ -99,6 +97,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// 'v.embed_file.find_index_entry_by_path',
 		]
 		if table.used_features.index {
+			core_fns << 'v_fixed_index'
 			core_fns << string_idx_str + '.at_with_check'
 			core_fns << string_idx_str + '.clone'
 			core_fns << string_idx_str + '.clone_static'
@@ -108,7 +107,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << array_idx_str + '.set'
 			core_fns << ref_array_idx_str + '.push'
 			core_fns << ref_array_idx_str + '.set'
-			// map methods
 			core_fns << map_idx_str + '.get'
 			core_fns << map_idx_str + '.set'
 		}
@@ -129,6 +127,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
+		}
+		if table.used_features.auto_str {
+			core_fns << string_idx_str + '.repeat'
 		}
 		core_fns
 	}
