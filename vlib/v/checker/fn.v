@@ -2137,6 +2137,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('cannot call a method using an invalid expression', node.pos)
 		return ast.void_type
 	}
+	if !c.is_builtin_mod && left_type != 0 && left_type == ast.string_type && c.mod != 'strings' {
+		c.table.use_builtin_type = true
+	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
 	node.left_type = left_type

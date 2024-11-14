@@ -8,15 +8,37 @@ import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
-	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
+	mut all_fns, mut all_consts, mut all_globals := all_fn_const_and_global(ast_files)
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
+	mut all_globals_root_names := []string{}
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
 		['main.main']
+	} else if !table.use_builtin_type {
+		core_fns := ['main.main', 'new_array_from_c_array', '_write_buf_to_fd', '_writeln_to_fd',
+			'eprint', 'eprintln', 'free', 'C.free', 'v_realloc', 'malloc', 'malloc_noscan', 'vcalloc',
+			'vcalloc_noscan', 'panic', 'print_backtrace_skipping_top_frames_linux']
+		all_globals_root_names = ['g_main_argc', 'g_main_argv', 'v_memory_panic']
+		for k, _ in all_fns {
+			if k !in core_fns {
+				// println('>>> del fn ${k}')
+				all_fns.delete(k)
+			}
+		}
+		if table.use_interface {
+			all_globals_root_names << 'as_cast_type_indexes'
+		}
+		for k, _ in all_globals {
+			if k !in all_globals_root_names {
+				all_globals.delete(k)
+			}
+		}
+		all_consts.clear()
+		core_fns
 	} else {
 		byteptr_idx_str := '${ast.byteptr_type_idx}'
 		charptr_idx_str := '${ast.charptr_type_idx}'
@@ -275,30 +297,32 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
-	// handle interface implementation methods:
-	for isym in table.type_symbols {
-		if isym.kind != .interface {
-			continue
-		}
-		if isym.info !is ast.Interface {
-			// Do not remove this check, isym.info could be &IError.
-			continue
-		}
-		interface_info := isym.info as ast.Interface
-		if interface_info.methods.len == 0 {
-			continue
-		}
-		for itype in interface_info.types {
-			ptype := itype.set_nr_muls(1)
-			ntype := itype.set_nr_muls(0)
-			interface_types := [ptype, ntype]
-			for method in interface_info.methods {
-				for typ in interface_types {
-					interface_implementation_method_name := '${int(typ)}.${method.name}'
-					$if trace_skip_unused_interface_methods ? {
-						eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
+	if table.use_builtin_type {
+		// handle interface implementation methods:
+		for isym in table.type_symbols {
+			if isym.kind != .interface {
+				continue
+			}
+			if isym.info !is ast.Interface {
+				// Do not remove this check, isym.info could be &IError.
+				continue
+			}
+			interface_info := isym.info as ast.Interface
+			if interface_info.methods.len == 0 {
+				continue
+			}
+			for itype in interface_info.types {
+				ptype := itype.set_nr_muls(1)
+				ntype := itype.set_nr_muls(0)
+				interface_types := [ptype, ntype]
+				for method in interface_info.methods {
+					for typ in interface_types {
+						interface_implementation_method_name := '${int(typ)}.${method.name}'
+						$if trace_skip_unused_interface_methods ? {
+							eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
+						}
+						all_fn_root_names << interface_implementation_method_name
 					}
-					all_fn_root_names << interface_implementation_method_name
 				}
 			}
 		}
@@ -392,6 +416,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if !pref_.is_shared && con.is_pub && con.name.starts_with('main.') {
 			walker.mark_const_as_used(kcon)
 		}
+	}
+
+	for name in all_globals_root_names {
+		walker.mark_global_as_used(name)
 	}
 
 	table.used_fns = walker.used_fns.move()

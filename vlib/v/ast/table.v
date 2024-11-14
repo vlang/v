@@ -30,6 +30,8 @@ pub mut:
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	use_builtin_type   bool            // builtin type was used on user code
+	use_interface      bool            // interface was used on user code
 	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
 	veb_res_idx_cache  int             // Cache of `veb.Result` type
 	veb_ctx_idx_cache  int             // Cache of `veb.Context` type
