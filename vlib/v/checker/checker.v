@@ -2855,6 +2855,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
 			type_sym := c.table.sym(c.unwrap_generic(node.typ))
+			c.table.used_features.as_cast = true
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
@@ -3245,7 +3246,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		to_type
 	}
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
-
+	if to_type.is_ptr() {
+		c.table.used_features.cast_ptr = true
+	}
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
 	}

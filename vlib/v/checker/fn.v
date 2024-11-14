@@ -600,6 +600,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
 	keep_anon_fn := c.cur_anon_fn
+	c.table.used_features.anon_fn = true
 	defer {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon

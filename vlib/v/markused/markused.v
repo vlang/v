@@ -42,9 +42,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'new_array_from_c_array',
 			'v_fixed_index',
 			'memdup',
-			'memdup_uncollectable',
 			'vstrlen',
-			'__as_cast',
 			'tos',
 			'tos2',
 			'tos3',
@@ -52,15 +50,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'_option_ok',
 			'_result_ok',
 			'error',
-			'ptr_str', // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
-			// utf8_str_visible_length is used by c/str.v
-			//'utf8_str_visible_length',
-			//'compare_ints',
-			//'compare_u64s',
-			//'compare_strings',
-			//'compare_ints_reverse',
-			//'compare_u64s_reverse',
-			//'compare_strings_reverse',
 			'builtin_init',
 			// byteptr and charptr
 			byteptr_idx_str + '.vstring',
@@ -102,16 +91,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// ref_array_idx_str + '.reverse',
 			// ref_array_idx_str + '.set_unsafe',
 			// TODO: process the _vinit const initializations automatically too
-			// 'json.decode_string',
-			// 'json.decode_int',
-			// 'json.decode_bool',
-			// 'json.decode_u64',
-			// 'json.encode_int',
-			// 'json.encode_string',
-			// 'json.encode_bool',
-			// 'json.encode_u64',
-			// 'json.json_print',
-			// 'json.json_parse',
 			// 'main.nasserts',
 			'main.vtest_init',
 			'main.vtest_new_metainfo',
@@ -141,6 +120,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << array_idx_str + '.clone_static_to_depth'
 			core_fns << array_idx_str + '.clone_to_depth'
 			core_fns << string_idx_str + '.substr'
+		}
+		if table.used_features.cast_ptr {
+			core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
+		}
+		if table.used_features.as_cast {
+			core_fns << '__as_cast'
+		}
+		if table.used_features.anon_fn {
+			core_fns << 'memdup_uncollectable'
 		}
 		core_fns
 	}

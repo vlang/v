@@ -15,6 +15,9 @@ pub mut:
 	builtin_types bool
 	index         bool // string[0]
 	range_index   bool // string[0..1]
+	cast_ptr      bool // &u8(...)
+	as_cast       bool // expr as Type
+	anon_fn       bool // fn () { }
 }
 
 @[heap; minify]
