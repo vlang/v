@@ -1391,10 +1391,18 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			_, name := g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 			if func := g.table.find_fn(name) {
-				return func.return_type
+				return if node.or_block.kind == .absent {
+					func.return_type
+				} else {
+					func.return_type.clear_option_and_result()
+				}
 			}
 		}
-		return node.return_type
+		return if node.or_block.kind == .absent {
+			node.return_type
+		} else {
+			node.return_type.clear_option_and_result()
+		}
 	} else {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
