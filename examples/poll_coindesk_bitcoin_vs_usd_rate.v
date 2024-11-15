@@ -41,7 +41,7 @@ fn show_result(i u64, res PriceResult, delta f64) {
 		term.red
 	}
 	cdelta := term.colorize(color, sdelta)
-	log.info('cycle: ${i:5} | ${res.chart_name} | updated_iso: ${res.time.updated_iso} | USD rate: ${res.bpi['USD'].rate_float:10.3f} | delta: ${cdelta}')
+	log.info('${cdelta}, ${res.bpi['USD'].rate_float:10.3f} USD/BTC, ${res.time.updated_iso}, cycle: ${i:5}')
 }
 
 struct PriceTime {
