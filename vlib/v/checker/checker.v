@@ -2949,7 +2949,17 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.DumpExpr {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
-
+			if c.pref.skip_unused && !c.is_builtin_mod {
+				if !c.table.sym(c.unwrap_generic(node.expr_type)).has_method('str') {
+					c.table.used_features.auto_str = true
+					if node.expr_type.is_ptr() {
+						c.table.used_features.auto_str_ptr = true
+					}
+				} else {
+					c.table.used_features.print_types[node.expr_type.idx()] = true
+				}
+				c.table.used_features.print_types[ast.int_type_idx] = true
+			}
 			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 				if c.comptime.is_comptime_var(node.expr) {
 					node.expr_type = c.comptime.get_type(node.expr as ast.Ident)
