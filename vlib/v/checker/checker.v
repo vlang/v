@@ -1724,6 +1724,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 			// if the expected type includes the receiver, don't hide it behind a closure
 			if c.check_types(fn_type, c.expected_type) {
+				c.table.used_features.anon_fn = true
 				return fn_type
 			}
 		}
@@ -1747,6 +1748,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 		node.typ = c.unwrap_generic(fn_type)
+		c.table.used_features.anon_fn = true
 		return fn_type
 	}
 	if sym.kind !in [.struct, .aggregate, .interface, .sum_type] {

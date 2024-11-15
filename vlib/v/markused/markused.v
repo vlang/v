@@ -81,7 +81,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// 'os.getwd',
 			// 'v.embed_file.find_index_entry_by_path',
 		]
-		if table.used_features.builtin_types || table.used_features.as_cast {
+		if table.used_features.builtin_types || table.used_features.as_cast
+			|| table.used_features.auto_str {
 			// println('used builtin')
 			core_fns << '__new_array'
 			core_fns << '__new_array_with_default'
@@ -193,7 +194,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&strings.Builder' && table.used_features.builtin_types {
+		if method_receiver_typename == '&strings.Builder'
+			&& (table.used_features.builtin_types || table.used_features.auto_str) {
 			// implicit string builders are generated in auto_eq_methods.v
 			all_fn_root_names << k
 			continue
