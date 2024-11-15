@@ -10,17 +10,19 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	interfaces    bool // interface
-	dump          bool // dump()
-	builtin_types bool // uses any builtin type
-	index         bool // string[0]
-	range_index   bool // string[0..1]
-	cast_ptr      bool // &u8(...)
-	as_cast       bool // expr as Type
-	anon_fn       bool // fn () { }
-	auto_str      bool // auto str fns
-	auto_str_ptr  bool // auto str fns for ptr type
-	arr_prepend   bool // arr.prepend()
+	interfaces       bool         // interface
+	dump             bool         // dump()
+	builtin_types    bool         // uses any builtin type
+	index            bool         // string[0]
+	range_index      bool         // string[0..1]
+	cast_ptr         bool         // &u8(...)
+	as_cast          bool         // expr as Type
+	anon_fn          bool         // fn () { }
+	auto_str         bool         // auto str fns
+	auto_str_ptr     bool         // auto str fns for ptr type
+	arr_prepend      bool         // arr.prepend()
+	option_or_result bool         // has panic call
+	print_types      map[int]bool // print() idx types
 }
 
 @[heap; minify]

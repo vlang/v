@@ -86,7 +86,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		// real world apps
 		if table.used_features.builtin_types || table.used_features.as_cast
-			|| table.used_features.auto_str {
+			|| table.used_features.auto_str || table.used_features.option_or_result {
 			// println('used builtin')
 			core_fns << '__new_array'
 			core_fns << '__new_array_with_default'
@@ -217,8 +217,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
-		if table.used_features.builtin_types && (k.ends_with('.str') || k.ends_with('.auto_str')) {
-			all_fn_root_names << k
+		if k.ends_with('.str') || k.ends_with('.auto_str') {
+			if table.used_features.auto_str
+				|| table.used_features.print_types[mfn.receiver.typ.idx()] {
+				all_fn_root_names << k
+			}
 			continue
 		}
 		if k.ends_with('.init') {
@@ -300,7 +303,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
-	if table.used_features.builtin_types {
+	if table.used_features.option_or_result {
 		all_fn_root_names << 'panic_option_not_set'
 		all_fn_root_names << 'panic_result_not_set'
 	}

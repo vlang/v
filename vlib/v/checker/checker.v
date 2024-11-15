@@ -1318,6 +1318,9 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 }
 
 fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
+	if c.pref.skip_unused && !c.is_builtin_mod && node.kind != .absent && c.mod != 'strings' {
+		c.table.used_features.option_or_result = true
+	}
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
