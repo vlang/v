@@ -302,6 +302,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	// handle assertions and testing framework callbacks:
 	if pref_.is_debug {
 		all_fn_root_names << 'panic_debug'
+		all_fn_root_names << 'tos3'
 	}
 	if table.used_features.option_or_result {
 		all_fn_root_names << 'panic_option_not_set'

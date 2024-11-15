@@ -6576,7 +6576,7 @@ fn (mut g Gen) write_init_function() {
 	// Note: the as_cast table should be *before* the other constant initialize calls,
 	// because it may be needed during const initialization of builtin and during
 	// calling module init functions too, just in case they do fail...
-	if g.table.used_consts['as_cast_type_indexes'] {
+	if g.as_cast_type_names.len > 0 {
 		g.write('\tas_cast_type_indexes = ')
 		g.writeln(g.as_cast_name_table())
 	}
