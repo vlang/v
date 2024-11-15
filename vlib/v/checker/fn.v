@@ -3849,12 +3849,6 @@ fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr) ast.T
 					concrete_types)
 			}
 		}
-	} else if node.is_static_method {
-		if node.return_type_generic.has_flag(.generic) {
-			return c.unwrap_generic(node.return_type_generic)
-		} else {
-			return func.return_type
-		}
 	} else {
 		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 		// generic func called from non-generic func
