@@ -2169,31 +2169,26 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		g.set_current_pos_as_last_stmt_pos()
 	}
 	match node {
-		ast.AsmStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.asm_stmt(node)
+		ast.FnDecl {
+			g.fn_decl(node)
 		}
-		ast.AssertStmt {
+		ast.Block {
 			g.write_v_source_line_info_stmt(node)
-			g.assert_stmt(node)
+			if !node.is_unsafe {
+				g.writeln('{')
+			} else {
+				g.writeln('{ // Unsafe block')
+			}
+			g.stmts(node.stmts)
+			g.writeln('}')
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info_stmt(node)
 			g.assign_stmt(node)
 		}
-		ast.Block {
+		ast.AssertStmt {
 			g.write_v_source_line_info_stmt(node)
-			if node.is_unsafe {
-				g.writeln('{ // Unsafe block')
-			} else {
-				g.writeln('{')
-			}
-			g.stmts(node.stmts)
-			g.writeln('}')
-		}
-		ast.BranchStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.branch_stmt(node)
+			g.assert_stmt(node)
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info_stmt(node)
@@ -2202,18 +2197,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ComptimeFor {
 			g.comptime_for(node)
 		}
-		ast.DebuggerStmt {
-			g.debugger_stmt(node)
-		}
-		ast.DeferStmt {
-			mut defer_stmt := node
-			defer_stmt.ifdef = g.defer_ifdef
-			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
-			g.defer_stmts << defer_stmt
-		}
-		ast.EmptyStmt {}
-		ast.EnumDecl {
-			g.enum_decl(node)
+		ast.BranchStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.branch_stmt(node)
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info_stmt(node)
@@ -2245,9 +2231,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln(';')
 				}
 			}
-		}
-		ast.FnDecl {
-			g.fn_decl(node)
 		}
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
@@ -2297,18 +2280,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.labeled_loops.delete(node.label)
 			g.inner_loop = save_inner_loop
 		}
+		ast.Return {
+			g.return_stmt(node)
+		}
+		ast.DeferStmt {
+			mut defer_stmt := node
+			defer_stmt.ifdef = g.defer_ifdef
+			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
+			g.defer_stmts << defer_stmt
+		}
+		ast.EnumDecl {
+			g.enum_decl(node)
+		}
 		ast.GlobalDecl {
 			g.global_decl(node)
-		}
-		ast.GotoLabel {
-			g.writeln('${c_name(node.name)}: {}')
-		}
-		ast.GotoStmt {
-			g.write_v_source_line_info_stmt(node)
-			g.writeln('goto ${c_name(node.name)};')
-		}
-		ast.HashStmt {
-			g.hash_stmt(node)
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
@@ -2326,20 +2311,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 				}
 			}
-		}
-		ast.Module {
-			g.is_builtin_mod = util.module_is_builtin(node.name)
-			g.cur_mod = node
-		}
-		ast.NodeError {}
-		ast.Return {
-			g.return_stmt(node)
-		}
-		ast.SemicolonStmt {
-			g.writeln(';')
-		}
-		ast.SqlStmt {
-			g.sql_stmt(node)
 		}
 		ast.StructDecl {
 			name := if node.language == .c {
@@ -2369,11 +2340,40 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 			}
 		}
+		ast.GotoLabel {
+			g.writeln('${c_name(node.name)}: {}')
+		}
+		ast.GotoStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.writeln('goto ${c_name(node.name)};')
+		}
+		ast.AsmStmt {
+			g.write_v_source_line_info_stmt(node)
+			g.asm_stmt(node)
+		}
+		ast.HashStmt {
+			g.hash_stmt(node)
+		}
 		ast.TypeDecl {
 			if !g.pref.skip_unused {
 				g.writeln('// TypeDecl')
 			}
 		}
+		ast.SemicolonStmt {
+			g.writeln(';')
+		}
+		ast.SqlStmt {
+			g.sql_stmt(node)
+		}
+		ast.Module {
+			g.is_builtin_mod = util.module_is_builtin(node.name)
+			g.cur_mod = node
+		}
+		ast.EmptyStmt {}
+		ast.DebuggerStmt {
+			g.debugger_stmt(node)
+		}
+		ast.NodeError {}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
@@ -3555,7 +3555,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.ident(node)
 		}
 		ast.IfExpr {
-			g.if_expr(node)
+			if !node.is_comptime {
+				g.if_expr(node)
+			} else {
+				g.comptime_if(node)
+			}
 		}
 		ast.IfGuardExpr {
 			g.write('/* guard */')
@@ -3564,12 +3568,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.index_expr(node)
 		}
 		ast.InfixExpr {
-			if node.op in [.left_shift, .plus_assign, .minus_assign] {
+			if node.op !in [.left_shift, .plus_assign, .minus_assign] {
+				g.infix_expr(node)
+			} else {
 				g.inside_map_infix = true
 				g.infix_expr(node)
 				g.inside_map_infix = false
-			} else {
-				g.infix_expr(node)
 			}
 		}
 		ast.IntegerLiteral {

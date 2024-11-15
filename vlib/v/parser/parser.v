@@ -804,9 +804,6 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				p.attributes()
 				continue
 			}
-			.key_asm {
-				return p.asm_stmt(true)
-			}
 			.key_interface {
 				return p.interface_decl()
 			}
@@ -866,6 +863,9 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 			.semicolon {
 				return p.semicolon_stmt()
+			}
+			.key_asm {
+				return p.asm_stmt(true)
 			}
 			else {
 				return p.other_stmts(ast.empty_stmt)
@@ -1032,31 +1032,6 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			}
 		}
-		.key_assert {
-			p.next()
-			mut pos := p.tok.pos()
-			expr := p.expr(0)
-			pos.update_last_line(p.prev_tok.line_nr)
-			mut extra := ast.empty_expr
-			mut extra_pos := p.tok.pos()
-			if p.tok.kind == .comma {
-				p.next()
-				extra_pos = p.tok.pos()
-				extra = p.expr(0)
-				// dump(extra)
-				extra_pos = extra_pos.extend(p.tok.pos())
-			}
-			return ast.AssertStmt{
-				expr:      expr
-				extra:     extra
-				extra_pos: extra_pos
-				pos:       pos.extend(p.tok.pos())
-				is_used:   p.inside_test_file || !p.pref.is_prod
-			}
-		}
-		.key_for {
-			return p.for_stmt()
-		}
 		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
@@ -1103,14 +1078,17 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
+		.key_for {
+			return p.for_stmt()
+		}
 		.comment {
 			return p.comment_stmt()
 		}
 		.key_return {
-			if p.inside_defer {
-				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.pos())
-			} else {
+			if !p.inside_defer {
 				return p.return_stmt()
+			} else {
+				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.pos())
 			}
 		}
 		.dollar {
@@ -1166,10 +1144,30 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.hash {
 			return p.hash()
 		}
+		.key_assert {
+			p.next()
+			mut pos := p.tok.pos()
+			expr := p.expr(0)
+			pos.update_last_line(p.prev_tok.line_nr)
+			mut extra := ast.empty_expr
+			mut extra_pos := p.tok.pos()
+			if p.tok.kind == .comma {
+				p.next()
+				extra_pos = p.tok.pos()
+				extra = p.expr(0)
+				// dump(extra)
+				extra_pos = extra_pos.extend(p.tok.pos())
+			}
+			return ast.AssertStmt{
+				expr:      expr
+				extra:     extra
+				extra_pos: extra_pos
+				pos:       pos.extend(p.tok.pos())
+				is_used:   p.inside_test_file || !p.pref.is_prod
+			}
+		}
 		.key_defer {
-			if p.inside_defer {
-				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
-			} else {
+			if !p.inside_defer {
 				p.next()
 				spos := p.tok.pos()
 				p.inside_defer = true
@@ -1181,6 +1179,8 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					defer_vars: p.defer_vars.clone()
 					pos:        spos.extend_with_last_line(p.tok.pos(), p.prev_tok.line_nr)
 				}
+			} else {
+				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
 			}
 		}
 		.key_go, .key_spawn {

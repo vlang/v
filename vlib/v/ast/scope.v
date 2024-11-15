@@ -158,10 +158,9 @@ pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) 
 }
 
 pub fn (mut s Scope) register(obj ScopeObject) {
-	if obj.name == '_' || obj.name in s.objects {
-		return
+	if !(obj.name == '_' || obj.name in s.objects) {
+		s.objects[obj.name] = obj
 	}
-	s.objects[obj.name] = obj
 }
 
 // returns the innermost scope containing pos
