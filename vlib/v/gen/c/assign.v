@@ -324,11 +324,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						}
 					} else if val.is_static_method && val.left_type.has_flag(.generic) {
 						fn_ret_type := g.resolve_return_type(val)
-						var_type = if val.or_block.kind == .absent {
-							fn_ret_type
-						} else {
-							fn_ret_type.clear_option_and_result()
-						}
+						var_type = fn_ret_type
 						val_type = var_type
 						left.obj.typ = var_type
 						g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type

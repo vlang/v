@@ -429,11 +429,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 											}
 										} else if right.is_static_method
 											&& right.left_type.has_flag(.generic) {
-											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = if right.or_block.kind == .absent {
+											fn_ret_type := if right.or_block.kind == .absent {
 												right.return_type
 											} else {
 												right.return_type.clear_option_and_result()
 											}
+											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = fn_ret_type
 										}
 									}
 								}
