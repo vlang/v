@@ -1391,7 +1391,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// println / eprintln / panic can print anything
 	if node.args.len > 0 && fn_name in print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
-		if c.pref.skip_unused && node.args[0].expr !is ast.StringLiteral {
+		if c.pref.skip_unused && !c.is_builtin_mod && node.args[0].expr !is ast.StringLiteral {
 			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
 				c.table.used_features.auto_str = true
 				if node.args[0].typ.is_ptr() {
