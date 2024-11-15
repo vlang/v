@@ -1790,9 +1790,6 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		node.return_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
-		if node.is_static_method {
-			println('>>> ${node.fkey()} | ${c.table.type_to_str(func.return_type)}')
-		}
 		node.return_type = func.return_type
 	}
 	if func.return_type.has_flag(.generic) {
@@ -3852,6 +3849,8 @@ fn (mut c Checker) resolve_fn_return_type(func &ast.Fn, node ast.CallExpr) ast.T
 					concrete_types)
 			}
 		}
+	} else if node.is_static_method {
+		return func.return_type
 	} else {
 		concrete_types := node.concrete_types.map(c.unwrap_generic(it))
 		// generic func called from non-generic func
@@ -3903,6 +3902,14 @@ fn (mut c Checker) resolve_return_type(node ast.CallExpr) ast.Type {
 		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
 		if method := c.table.find_method(left_sym, node.name) {
 			return c.resolve_fn_return_type(method, node)
+		}
+	} else if node.is_static_method {
+		if c.table.cur_fn != unsafe { nil } {
+			_, name := c.table.convert_generic_static_type_name(node.name, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+			if func := c.table.find_fn(name) {
+				return c.resolve_fn_return_type(func, node)
+			}
 		}
 	} else {
 		if func := c.table.find_fn(node.name) {

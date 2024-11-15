@@ -1391,7 +1391,6 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 			_, name := g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 			if func := g.table.find_fn(name) {
-				println('>>>> ${node.fkey()} rets ${g.table.type_to_str(func.return_type)}')
 				return func.return_type
 			}
 		}

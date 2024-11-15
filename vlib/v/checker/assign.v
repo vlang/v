@@ -413,8 +413,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									if left.obj.ct_type_var in [.generic_var, .no_comptime]
 										&& c.table.cur_fn != unsafe { nil }
 										&& c.table.cur_fn.generic_names.len != 0
-										&& !right.comptime_ret_val && c.is_generic_expr(right) //&& right.return_type_generic.has_flag(.generic)
-									  {
+										&& !right.comptime_ret_val
+										&& c.is_generic_expr(right) //&& right.return_type_generic.has_flag(.generic) {
 										// mark variable as generic var because its type changes according to fn return generic resolution type
 										left.obj.ct_type_var = .generic_var
 										if right.return_type_generic.has_flag(.generic) {
@@ -430,7 +430,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 											}
 										} else if right.is_static_method
 											&& right.left_type.has_flag(.generic) {
-											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = right.return_type
+											c.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = if right.or_block.kind == .absent {
+												right.return_type
+											} else {
+												right.return_type.clear_option_and_result()
+											}
 										}
 									}
 								}
