@@ -81,6 +81,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// 'os.getwd',
 			// 'v.embed_file.find_index_entry_by_path',
 		]
+		$if debug_used_features ? {
+			dump(table.used_features)
+		}
 		if table.used_features.builtin_types || table.used_features.as_cast
 			|| table.used_features.auto_str {
 			// println('used builtin')
@@ -143,15 +146,45 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				all_fns.delete(ref_array_idx_str + '.push_many_noscan')
 				allow_noscan = false
 			} else {
-				core_fns << ref_array_idx_str + '.push_many_noscan'
-				core_fns << '__new_array_with_default'
-				core_fns << '__new_array_with_default_noscan'
-				core_fns << 'str_intp'
-				core_fns << ref_array_idx_str + '.push'
-				core_fns << string_idx_str + '.substr'
-				core_fns << array_idx_str + '.slice'
-				core_fns << array_idx_str + '.get'
-				core_fns << 'v_fixed_index'
+				if 'no_backtrace' in pref_.compile_defines {
+					all_fns.delete(ref_array_idx_str + '.ensure_cap')
+					all_fns.delete(ref_array_idx_str + '.ensure_cap_noscan')
+					all_fns.delete(ref_array_idx_str + '.prepend_noscan')
+					all_fns.delete(ref_array_idx_str + '.push_noscan')
+					all_fns.delete(ref_array_idx_str + '.push_many_noscan')
+					all_fns.delete(ref_array_idx_str + '.insert_noscan')
+					all_fns.delete(ref_array_idx_str + '.slice')
+					all_fns.delete(ref_array_idx_str + '.reverse_noscan')
+					all_fns.delete(ref_array_idx_str + '.grow_cap_noscan')
+					all_fns.delete(ref_array_idx_str + '.grow_len_noscan')
+					all_fns.delete(ref_array_idx_str + '.insert_many_noscan')
+					all_fns.delete(ref_array_idx_str + '.prepend_many_noscan')
+					all_fns.delete(ref_array_idx_str + '.repeat_to_depth_noscan')
+					all_fns.delete(ref_array_idx_str + '.repeat_to_depth_noscan')
+					all_fns.delete('new_array_from_c_array_noscan')
+					all_fns.delete('__new_array_with_array_default_noscan')
+					all_fns.delete('__new_array_with_multi_default_noscan')
+					all_fns.delete('__new_array_with_default_noscan')
+					all_fns.delete('__new_array_noscan')
+					all_fns.delete(array_idx_str + '.repeat_to_depth_noscan')
+					all_fns.delete(array_idx_str + '.reverse_noscan')
+					all_fns.delete(array_idx_str + '.clone_static_to_depth_noscan')
+					all_fns.delete(ref_array_idx_str + '.clone_to_depth_noscan')
+					all_fns.delete(array_idx_str + '.get_unsafe')
+					all_fns.delete('new_dense_array_noscan')
+					all_fns.delete('memdup_noscan')
+					all_fns.delete(ref_array_idx_str + '.pop_noscan')
+				} else {
+					core_fns << ref_array_idx_str + '.push_many_noscan'
+					core_fns << '__new_array_with_default'
+					core_fns << '__new_array_with_default_noscan'
+					core_fns << 'str_intp'
+					core_fns << ref_array_idx_str + '.push'
+					core_fns << string_idx_str + '.substr'
+					core_fns << array_idx_str + '.slice'
+					core_fns << array_idx_str + '.get'
+					core_fns << 'v_fixed_index'
+				}
 			}
 		}
 		if table.used_features.as_cast {

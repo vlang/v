@@ -2291,6 +2291,9 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 }
 
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
+	if node.is_used {
+		c.table.used_features.auto_str = true
+	}
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
