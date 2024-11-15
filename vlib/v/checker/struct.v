@@ -745,6 +745,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						got_type = c.expr(mut right)
 						node.init_fields[i].expr = right
 					}
+					// disallow `mut a: b`, when b is const array
+					if field_info.is_mut
+						&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField)
+						&& !c.inside_unsafe {
+						c.error('cannot assign a const array to mut struct field, call `clone` method (or use `unsafe`)',
+							init_field.expr.pos())
+					}
 				}
 				if exp_type_sym.kind == .interface {
 					if c.type_implements(got_type, exp_type, init_field.pos) {
