@@ -1,4 +1,4 @@
-name: sdl CI
+name: Shy and PV CI
 
 on:
   workflow_dispatch:
