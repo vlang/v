@@ -2620,7 +2620,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				// Do not allocate for `Interface(unsafe{nil})` casts
 				is_nil_cast := expr is ast.UnsafeExpr && expr.expr is ast.Nil
 				if is_nil_cast {
-					g.write2('/*nili*/', '((void*)0)')
+					g.write2('/*nil*/', '((void*)0)')
 					return
 				}
 			}
@@ -6901,7 +6901,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 											base)};')
 									}
 								}
-							} else {
+							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}
