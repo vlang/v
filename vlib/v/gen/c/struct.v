@@ -229,8 +229,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.is_shared = field.typ.has_flag(.shared_f)
 			if mut sym.info is ast.Struct {
 				mut found_equal_fields := 0
+				field_name, field_name_len := field.name, field.name.len
 				for mut sifield in sym.info.fields {
-					if sifield.name == field.name {
+					if sifield.name.len == field_name_len && sifield.name == field_name {
 						found_equal_fields++
 						break
 					}

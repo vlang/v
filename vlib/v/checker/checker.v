@@ -1512,10 +1512,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 
 	using_new_err_struct_save := c.using_new_err_struct
 	// TODO: remove; this avoids a breaking change in syntax
-	if node.expr is ast.Ident {
-		if node.expr.str() == 'err' {
-			c.using_new_err_struct = true
-		}
+	if node.expr is ast.Ident && node.expr.name == 'err' {
+		c.using_new_err_struct = true
 	}
 
 	// T.name, typeof(expr).name
