@@ -385,11 +385,11 @@ pub fn (t Kind) str() string {
 }
 
 @[inline]
-pub fn (t Token) is_next_to(pre_token Token) bool {
+pub fn (t &Token) is_next_to(pre_token Token) bool {
 	return t.pos - pre_token.pos == pre_token.len
 }
 
-pub fn (t Token) str() string {
+pub fn (t &Token) str() string {
 	mut s := t.kind.str()
 	if s.len == 0 {
 		eprintln('missing token kind string')
@@ -493,7 +493,7 @@ const precedences = build_precedences()
 
 // precedence returns a tokens precedence if defined, otherwise 0
 @[direct_array_access; inline]
-pub fn (tok Token) precedence() int {
+pub fn (tok &Token) precedence() int {
 	return int(precedences[tok.kind])
 }
 
@@ -505,13 +505,13 @@ pub fn (kind Kind) precedence() int {
 
 // is_scalar returns true if the token is a scalar
 @[inline]
-pub fn (tok Token) is_scalar() bool {
+pub fn (tok &Token) is_scalar() bool {
 	return tok.kind in [.number, .string]
 }
 
 // is_unary returns true if the token can be in a unary expression
 @[inline]
-pub fn (tok Token) is_unary() bool {
+pub fn (tok &Token) is_unary() bool {
 	// `+` | `-` | `!` | `~` | `*` | `&` | `<-`
 	return tok.kind in [.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
