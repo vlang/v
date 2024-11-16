@@ -5831,7 +5831,7 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 @[callconv: 'fastcall']
 type FastFn = fn (int) bool
 
-// Windows only:
+// Windows only (and obsolete; instead of it, use `-subsystem windows` when compiling)
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
 // If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no
