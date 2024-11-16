@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module asn1
 
+import os
 import time
 
 fn test_serialize_utctime_basic() ! {
@@ -40,6 +41,18 @@ fn test_create_utctime_from_std_time() ! {
 	// time to UtcTime back
 	tinp_back := UtcTime.from_time(t_inp_utc)!
 	assert tinp_back.value == inp
+}
+
+fn test_create_utctime_from_std_time_with_negative_offset() ! {
+	tz := os.getenv('TZ')
+	os.setenv('TZ', 'utc 1', true)
+
+	defer {
+		os.setenv('TZ', tz, true)
+	}
+
+	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
+	UtcTime.from_time(now)!
 }
 
 fn test_serialize_utctime_error_without_z() ! {
@@ -114,4 +127,16 @@ fn test_create_generalizedtime_from_std_time() ! {
 	g_utc_back := GeneralizedTime.from_time(g_utc)!
 
 	assert g_utc_back.value == s
+}
+
+fn test_create_generalizedtime_from_std_time_with_negative_offset() ! {
+	tz := os.getenv('TZ')
+	os.setenv('TZ', 'utc 1', true)
+
+	defer {
+		os.setenv('TZ', tz, true)
+	}
+
+	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
+	GeneralizedTime.from_time(now)!
 }
