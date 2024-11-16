@@ -1944,9 +1944,7 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
 		}
 		Struct, Interface, SumType {
-			// alias to generic type needs to be rechecked
-			// e.g. type Vec4 = vec.Vec4[f64]
-			if !ts.info.is_generic { // && !(generic_names.len > 0 && recheck_concrete_types) {
+			if !ts.info.is_generic {
 				return typ
 			}
 			mut t_generic_names := generic_names.clone()
