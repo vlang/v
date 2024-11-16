@@ -107,6 +107,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					if expr.obj.smartcasts.len > 0 {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
+					if expr.obj.ct_type_var != .no_comptime {
+						typ = c.comptime.get_type_or_default(expr, typ)
+					}
 				}
 			}
 			got_types << typ

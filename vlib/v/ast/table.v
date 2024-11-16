@@ -1630,7 +1630,7 @@ pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	return false
 }
 
-pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) string {
+pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) (Type, string) {
 	if index := fn_name.index('__static__') {
 		if index > 0 {
 			generic_name := fn_name[0..index]
@@ -1639,12 +1639,12 @@ pub fn (mut t Table) convert_generic_static_type_name(fn_name string, generic_na
 			if valid_generic {
 				name_type := t.find_type(generic_name).set_flag(.generic)
 				if typ := t.convert_generic_type(name_type, generic_names, concrete_types) {
-					return '${t.type_to_str(typ)}${fn_name[index..]}'
+					return name_type, '${t.type_to_str(typ)}${fn_name[index..]}'
 				}
 			}
 		}
 	}
-	return fn_name
+	return void_type, fn_name
 }
 
 // convert_generic_type convert generics to real types (T => int) or other generics type.

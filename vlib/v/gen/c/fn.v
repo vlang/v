@@ -1386,6 +1386,23 @@ fn (mut g Gen) resolve_return_type(node ast.CallExpr) ast.Type {
 				}
 			}
 		}
+	} else if node.is_static_method {
+		if g.cur_fn != unsafe { nil } {
+			_, name := g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
+				g.cur_concrete_types)
+			if func := g.table.find_fn(name) {
+				return if node.or_block.kind == .absent {
+					func.return_type
+				} else {
+					func.return_type.clear_option_and_result()
+				}
+			}
+		}
+		return if node.or_block.kind == .absent {
+			node.return_type
+		} else {
+			node.return_type.clear_option_and_result()
+		}
 	} else {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
@@ -2014,7 +2031,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// will be `0` for `foo()`
 	mut is_interface_call := false
 	mut is_selector_call := false
-	if node.left_type != 0 {
+	if node.is_method && node.left_type != 0 {
 		mut fn_typ := ast.no_type
 		left_sym := g.table.sym(node.left_type)
 		if node.is_field {
@@ -2048,7 +2065,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if node.is_static_method {
 		// resolve static call T.name()
 		if g.cur_fn != unsafe { nil } {
-			name = g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
+			_, name = g.table.convert_generic_static_type_name(node.name, g.cur_fn.generic_names,
 				g.cur_concrete_types)
 		}
 	}
@@ -2276,7 +2293,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				// Temp fix generate call fn error when the struct type of sumtype
 				// has the fn field and is same to the struct name.
 				mut is_cast_needed := true
-				if node.left_type != 0 {
+				if node.is_method && node.left_type != 0 {
 					left_sym := g.table.sym(node.left_type)
 					if left_sym.kind == .struct && node.name == obj.name {
 						is_cast_needed = false

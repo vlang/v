@@ -322,6 +322,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
 							// eprintln('>> ${func.name} > resolve ${left.name}.${left.obj.pos.pos}.generic to ${g.table.type_to_str(var_type)}')
 						}
+					} else if val.is_static_method && val.left_type.has_flag(.generic) {
+						fn_ret_type := g.resolve_return_type(val)
+						var_type = fn_ret_type
+						val_type = var_type
+						left.obj.typ = var_type
+						g.comptime.type_map['g.${left.name}.${left.obj.pos.pos}'] = var_type
+						g.assign_ct_type = var_type
 					}
 				}
 				is_auto_heap = left.obj.is_auto_heap
