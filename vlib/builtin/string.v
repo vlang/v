@@ -2659,6 +2659,9 @@ pub fn (name string) match_glob(pattern string) bool {
 	nlen := name.len
 	for px < plen || nx < nlen {
 		if px < plen {
+			if nx == nlen {
+				break
+			}
 			c := pattern[px]
 			match c {
 				`?` {
@@ -2674,8 +2677,8 @@ pub fn (name string) match_glob(pattern string) bool {
 					// Try to match at nx.
 					// If that doesn't work out, restart at nx+1 next.
 					next_px = px
-					next_nx = nx + 1
-					px++
+					next_nx = nx
+					nx++
 					continue
 				}
 				`[` {
@@ -2731,7 +2734,7 @@ pub fn (name string) match_glob(pattern string) bool {
 		if 0 < next_nx && next_nx <= nlen {
 			// A mismatch, try restarting:
 			px = next_px
-			nx = next_nx
+			nx = next_nx + 1
 			continue
 		}
 		return false
