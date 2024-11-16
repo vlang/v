@@ -1,3 +1,10 @@
+vlib/v/checker/tests/fn_call_arg_array_mismatch_err.vv:19:12: notice: unused parameter: `arr`
+   17 | }
+   18 | 
+   19 | fn bar(mut arr [][]int) {
+      |            ~~~
+   20 | }
+   21 |
 vlib/v/checker/tests/fn_call_arg_array_mismatch_err.vv:7:36: error: cannot use `string` as `array` in argument 2 to `os.write_file_array`
     5 | 
     6 | fn main() {

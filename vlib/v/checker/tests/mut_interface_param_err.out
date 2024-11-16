@@ -1,3 +1,24 @@
+vlib/v/checker/tests/mut_interface_param_err.vv:8:9: notice: unused parameter: `b`
+    6 | struct Button {}
+    7 | 
+    8 | fn (mut b Button) init() {}
+      |         ^
+    9 | 
+   10 | struct Window {
+vlib/v/checker/tests/mut_interface_param_err.vv:15:9: notice: unused parameter: `w`
+   13 | }
+   14 | 
+   15 | fn (mut w Window) add(mut widget Widget) {}
+      |         ^
+   16 | 
+   17 | fn main() {
+vlib/v/checker/tests/mut_interface_param_err.vv:15:27: notice: unused parameter: `widget`
+   13 | }
+   14 | 
+   15 | fn (mut w Window) add(mut widget Widget) {}
+      |                           ~~~~~~
+   16 | 
+   17 | fn main() {
 vlib/v/checker/tests/mut_interface_param_err.vv:20:10: error: method `add` parameter `widget` is `mut`, so use `mut btn` instead
    18 |     mut win := Window{}
    19 |     mut btn := Button{}

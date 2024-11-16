@@ -1,20 +1,33 @@
+vlib/v/checker/tests/implements_keyword.vv:8:5: notice: unused parameter: `e`
+    6 | }
+    7 | 
+    8 | fn (e CustomError) print_error2() {
+      |     ^
+    9 | }
+   10 |
+vlib/v/checker/tests/implements_keyword.vv:18:5: notice: unused parameter: `e`
+   16 | }
+   17 | 
+   18 | fn (e CustomError2) print_error3() {
+      |     ^
+   19 | }
 vlib/v/checker/tests/implements_keyword.vv:5:1: error: `CustomError` doesn't implement method `print_error` of interface `MyError`
     3 | }
-    4 |
+    4 | 
     5 | struct CustomError implements MyError {
       | ~~~~~~~~~~~~~~~~~~
     6 | }
     7 |
 vlib/v/checker/tests/implements_keyword.vv:15:1: error: `CustomError2` doesn't implement method `print_error` of interface `MyError`
    13 | }
-   14 |
+   14 | 
    15 | struct CustomError2 implements MyError, MyError2 {
       | ~~~~~~~~~~~~~~~~~~~
    16 | }
    17 |
 vlib/v/checker/tests/implements_keyword.vv:15:1: error: `CustomError2` doesn't implement method `print_error2` of interface `MyError2`
    13 | }
-   14 |
+   14 | 
    15 | struct CustomError2 implements MyError, MyError2 {
       | ~~~~~~~~~~~~~~~~~~~
    16 | }

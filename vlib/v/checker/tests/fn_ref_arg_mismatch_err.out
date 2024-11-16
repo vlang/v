@@ -1,13 +1,20 @@
+vlib/v/checker/tests/fn_ref_arg_mismatch_err.vv:5:5: notice: unused parameter: `f`
+    3 | struct Foo[T] {}
+    4 | 
+    5 | fn (f &Foo[T]) foo(a &T) {
+      |     ^
+    6 |     println(a)
+    7 | }
 vlib/v/checker/tests/fn_ref_arg_mismatch_err.vv:15:10: error: literal argument cannot be passed as reference parameter `&T`
    13 | fn main() {
    14 |     foo := Foo[int]{}
    15 |     foo.foo(12)
       |             ~~
-   16 |
+   16 | 
    17 |     bar[int](12)
 vlib/v/checker/tests/fn_ref_arg_mismatch_err.vv:17:11: error: literal argument cannot be passed as reference parameter `&T`
    15 |     foo.foo(12)
-   16 |
+   16 | 
    17 |     bar[int](12)
       |              ~~
    18 | }

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/array_init_without_init_value_err.vv:35:5: notice: unused parameter: `a`
+   33 | }
+   34 | 
+   35 | fn (a LeStruct) give_string() string {
+      |     ^
+   36 |     return 'V'
+   37 | }
 vlib/v/checker/tests/array_init_without_init_value_err.vv:5:7: warning: arrays of sumtypes need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
     3 | 
     4 | fn main_sum_type() {

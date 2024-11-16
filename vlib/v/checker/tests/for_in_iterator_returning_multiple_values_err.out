@@ -1,3 +1,10 @@
+vlib/v/checker/tests/for_in_iterator_returning_multiple_values_err.vv:3:5: notice: unused parameter: `t`
+    1 | struct TestStruct {}
+    2 | 
+    3 | fn (t TestStruct) next() ?(string, string) {
+      |     ^
+    4 |     return 'foo', 'bar'
+    5 | }
 vlib/v/checker/tests/for_in_iterator_returning_multiple_values_err.vv:8:10: error: iterator method `next()` must not return multiple values
     6 | 
     7 | t := TestStruct{}

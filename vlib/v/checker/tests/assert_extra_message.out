@@ -1,3 +1,8 @@
+vlib/v/checker/tests/assert_extra_message.vv:1:8: notice: unused parameter: `i`
+    1 | fn abc(i int) {
+      |        ^
+    2 | }
+    3 |
 vlib/v/checker/tests/assert_extra_message.vv:12:24: error: assert allows only a single string as its second argument, but found `void` instead
    10 |     assert 2 == 6 / 3, 'math works'
    11 |     assert 10 == i - 120, 'i: ${i}'

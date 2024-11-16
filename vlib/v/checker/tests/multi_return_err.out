@@ -1,3 +1,55 @@
+vlib/v/checker/tests/multi_return_err.vv:1:12: notice: unused parameter: `a1`
+    1 | fn my_func(a1 int, a2 int) {}
+      |            ~~
+    2 | 
+    3 | fn my_func2() (int, f64) {
+vlib/v/checker/tests/multi_return_err.vv:1:20: notice: unused parameter: `a2`
+    1 | fn my_func(a1 int, a2 int) {}
+      |                    ~~
+    2 | 
+    3 | fn my_func2() (int, f64) {
+vlib/v/checker/tests/multi_return_err.vv:7:13: notice: unused parameter: `a1`
+    5 | }
+    6 | 
+    7 | fn my_func3(a1 int, a2 int, a3 string) {}
+      |             ~~
+    8 | 
+    9 | fn my_func4(a0 string, a1 int, a2 int) {}
+vlib/v/checker/tests/multi_return_err.vv:7:21: notice: unused parameter: `a2`
+    5 | }
+    6 | 
+    7 | fn my_func3(a1 int, a2 int, a3 string) {}
+      |                     ~~
+    8 | 
+    9 | fn my_func4(a0 string, a1 int, a2 int) {}
+vlib/v/checker/tests/multi_return_err.vv:7:29: notice: unused parameter: `a3`
+    5 | }
+    6 | 
+    7 | fn my_func3(a1 int, a2 int, a3 string) {}
+      |                             ~~
+    8 | 
+    9 | fn my_func4(a0 string, a1 int, a2 int) {}
+vlib/v/checker/tests/multi_return_err.vv:9:13: notice: unused parameter: `a0`
+    7 | fn my_func3(a1 int, a2 int, a3 string) {}
+    8 | 
+    9 | fn my_func4(a0 string, a1 int, a2 int) {}
+      |             ~~
+   10 | 
+   11 | fn my_func5() {}
+vlib/v/checker/tests/multi_return_err.vv:9:24: notice: unused parameter: `a1`
+    7 | fn my_func3(a1 int, a2 int, a3 string) {}
+    8 | 
+    9 | fn my_func4(a0 string, a1 int, a2 int) {}
+      |                        ~~
+   10 | 
+   11 | fn my_func5() {}
+vlib/v/checker/tests/multi_return_err.vv:9:32: notice: unused parameter: `a2`
+    7 | fn my_func3(a1 int, a2 int, a3 string) {}
+    8 | 
+    9 | fn my_func4(a0 string, a1 int, a2 int) {}
+      |                                ~~
+   10 | 
+   11 | fn my_func5() {}
 vlib/v/checker/tests/multi_return_err.vv:18:10: error: cannot use `f64` as `int` in argument 2 to `my_func` from (int, f64)
    16 | 
    17 | fn main() {

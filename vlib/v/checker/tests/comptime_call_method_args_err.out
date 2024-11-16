@@ -1,5 +1,12 @@
+vlib/v/checker/tests/comptime_call_method_args_err.vv:13:5: notice: unused parameter: `t`
+   11 | }
+   12 | 
+   13 | fn (t S1) method_hello() string {
+      |     ^
+   14 |     return 'Hello'
+   15 | }
 vlib/v/checker/tests/comptime_call_method_args_err.vv:9:14: cgen error: expected 0 arguments to method S1.method_hello, but got 1
-    7 |
+    7 | 
     8 |     $for method in S1.methods {
     9 |         println(s1.$method('yo'))
       |                    ~~~~~~~~~~~~~

@@ -1,3 +1,8 @@
+vlib/v/checker/tests/unwrapped_result_infix_err.vv:1:6: notice: unused parameter: `k`
+    1 | fn f(k string) !bool {
+      |      ^
+    2 |     return true
+    3 | }
 vlib/v/checker/tests/unwrapped_result_infix_err.vv:7:9: error: unwrapped Result cannot be used in an infix expression
     5 | fn g() ! {
     6 |     assert f('1')! == true

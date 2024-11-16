@@ -1,3 +1,10 @@
+vlib/v/checker/tests/static_method_not_found_err.vv:5:5: notice: unused parameter: `f`
+    3 | }
+    4 | 
+    5 | fn (f TestStruct) static_method() string {
+      |     ^
+    6 |     return 'hello'
+    7 | }
 vlib/v/checker/tests/static_method_not_found_err.vv:10:9: error: unknown function: TestStruct.static_method
     8 | 
     9 | fn main() {

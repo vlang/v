@@ -1,0 +1,7 @@
+vlib/v/checker/tests/no_method_must_be_called_from_unsafe_in_translated.vv:7:5: notice: unused parameter: `s`
+    5 | 
+    6 | @[unsafe]
+    7 | fn (s S1) f() {}
+      |     ^
+    8 | 
+    9 | fn main() {

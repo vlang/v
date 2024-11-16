@@ -1,3 +1,24 @@
+vlib/v/checker/tests/any_return_type_err.vv:4:5: notice: unused parameter: `f`
+    2 | }
+    3 | 
+    4 | fn (f Test) abc() any {
+      |     ^
+    5 |     return 0
+    6 | }
+vlib/v/checker/tests/any_return_type_err.vv:8:5: notice: unused parameter: `f`
+    6 | }
+    7 | 
+    8 | fn (f Test) abc2() ?any {
+      |     ^
+    9 |     return 0
+   10 | }
+vlib/v/checker/tests/any_return_type_err.vv:12:5: notice: unused parameter: `f`
+   10 | }
+   11 | 
+   12 | fn (f Test) abc3() !any {
+      |     ^
+   13 |     return 0
+   14 | }
 vlib/v/checker/tests/any_return_type_err.vv:4:19: error: cannot use type `any` here
     2 | }
     3 | 

@@ -1,3 +1,10 @@
+vlib/v/parser/tests/method_call_receiver_err.vv:13:5: notice: unused parameter: `t`
+   11 | }
+   12 | 
+   13 | fn (t S1) method_hello() string {
+      |     ^
+   14 |     return 'Hello'
+   15 | }
 vlib/v/parser/tests/method_call_receiver_err.vv:6:2: warning: unused variable: `s1`
     4 | 
     5 | fn main() {

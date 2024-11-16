@@ -1,3 +1,17 @@
+vlib/v/checker/tests/comptime_call_method_void_err.vv:5:5: notice: unused parameter: `d`
+    3 | struct Dummy {}
+    4 | 
+    5 | fn (d Dummy) sample2(file_name string) int {
+      |     ^
+    6 |     println(file_name)
+    7 |     return 22
+vlib/v/checker/tests/comptime_call_method_void_err.vv:10:5: notice: unused parameter: `d`
+    8 | }
+    9 | 
+   10 | fn (d Dummy) sample1(file_name string) {
+      |     ^
+   11 |     println(file_name)
+   12 | }
 vlib/v/checker/tests/comptime_call_method_void_err.vv:17:4: error: `println` can not print void expressions
    15 |     $for method in Dummy.methods {
    16 |         if os.args.len >= 1 {

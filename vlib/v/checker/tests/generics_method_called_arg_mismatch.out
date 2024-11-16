@@ -1,3 +1,13 @@
+vlib/v/checker/tests/generics_method_called_arg_mismatch.vv:14:9: notice: unused parameter: `o`
+   12 | struct Obj {}
+   13 | 
+   14 | fn (mut o Obj) set[T](val T) {}
+      |         ^
+vlib/v/checker/tests/generics_method_called_arg_mismatch.vv:14:23: notice: unused parameter: `val`
+   12 | struct Obj {}
+   13 | 
+   14 | fn (mut o Obj) set[T](val T) {}
+      |                       ~~~
 vlib/v/checker/tests/generics_method_called_arg_mismatch.vv:3:15: error: cannot use `Foo` as `Bar` in argument 1 to `Obj.set`
     1 | fn main() {
     2 |     mut obj := Obj{}

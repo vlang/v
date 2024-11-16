@@ -1,3 +1,8 @@
+vlib/v/checker/tests/arraydecompose_arg_err.vv:1:27: notice: unused parameter: `s`
+    1 | fn test_arr(i int, f f64, s string) string {
+      |                           ^
+    2 |     return '${i} : ${f}'
+    3 | }
 vlib/v/checker/tests/arraydecompose_arg_err.vv:7:2: error: cannot have parameter after array decompose
     5 | fn test_main() {
     6 |     var := [0.0]

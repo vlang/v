@@ -4,3 +4,10 @@ vlib/v/checker/tests/interface_init_err.vv:15:7: notice: interface field `Server
    15 |     _ := Server{}
       |          ~~~~~~~~
    16 | }
+vlib/v/checker/tests/interface_init_err.vv:10:5: notice: unused parameter: `s`
+    8 | }
+    9 | 
+   10 | fn (s Server) handle(x int) int {
+      |     ^
+   11 |     return x
+   12 | }

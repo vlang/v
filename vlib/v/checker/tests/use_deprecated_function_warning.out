@@ -1,3 +1,10 @@
+vlib/v/checker/tests/use_deprecated_function_warning.vv:19:5: notice: unused parameter: `s`
+   17 | 
+   18 | @[deprecated: 'use bar instead']
+   19 | fn (s S1) m() {}
+      |     ^
+   20 | 
+   21 | fn method() {
 vlib/v/checker/tests/use_deprecated_function_warning.vv:12:2: warning: function `xyz` has been deprecated
    10 | 
    11 | fn main() {

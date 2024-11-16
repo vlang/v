@@ -1,3 +1,10 @@
+vlib/v/checker/tests/infix_is_notis_interface_unimplemented_err.vv:23:5: notice: unused parameter: `s`
+   21 | struct Struct {}
+   22 | 
+   23 | fn (s Struct) some_method() {}
+      |     ^
+   24 | 
+   25 | fn type_unimplemented_interface() {
 vlib/v/checker/tests/infix_is_notis_interface_unimplemented_err.vv:8:14: error: `int` doesn't implement method `msg` of interface `IError`
     6 |     if _ := f() {
     7 |     } else {

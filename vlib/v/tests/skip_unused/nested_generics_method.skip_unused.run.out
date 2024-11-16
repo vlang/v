@@ -1,1 +1,29 @@
+vlib/v/tests/skip_unused/nested_generics_method.vv:18:9: notice: unused parameter: `t`
+   16 | }
+   17 | 
+   18 | fn (mut t TypeA) next[T](input T) f64 {
+      |         ^
+   19 |     return 10
+   20 | }
+vlib/v/tests/skip_unused/nested_generics_method.vv:18:26: notice: unused parameter: `input`
+   16 | }
+   17 | 
+   18 | fn (mut t TypeA) next[T](input T) f64 {
+      |                          ~~~~~
+   19 |     return 10
+   20 | }
+vlib/v/tests/skip_unused/nested_generics_method.vv:22:9: notice: unused parameter: `t`
+   20 | }
+   21 | 
+   22 | fn (mut t TypeB) next[T](input T) f64 {
+      |         ^
+   23 |     return 11
+   24 | }
+vlib/v/tests/skip_unused/nested_generics_method.vv:22:26: notice: unused parameter: `input`
+   20 | }
+   21 | 
+   22 | fn (mut t TypeB) next[T](input T) f64 {
+      |                          ~~~~~
+   23 |     return 11
+   24 | }
 OK!!

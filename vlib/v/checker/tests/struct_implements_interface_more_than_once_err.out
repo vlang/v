@@ -1,3 +1,31 @@
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:7:5: notice: unused parameter: `a`
+    5 | }
+    6 | 
+    7 | fn (a Abc) write(buf []u8) !int {
+      |     ^
+    8 |     return 42
+    9 | }
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:7:18: notice: unused parameter: `buf`
+    5 | }
+    6 | 
+    7 | fn (a Abc) write(buf []u8) !int {
+      |                  ~~~
+    8 |     return 42
+    9 | }
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:17:5: notice: unused parameter: `a`
+   15 | // vfmt on
+   16 | 
+   17 | fn (a Def) write(buf []u8) !int {
+      |     ^
+   18 |     return 42
+   19 | }
+vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:17:18: notice: unused parameter: `buf`
+   15 | // vfmt on
+   16 | 
+   17 | fn (a Def) write(buf []u8) !int {
+      |                  ~~~
+   18 |     return 42
+   19 | }
 vlib/v/checker/tests/struct_implements_interface_more_than_once_err.vv:3:31: error: struct type Abc cannot implement interface `io.Writer more than once`
     1 | import io { Writer }
     2 | 

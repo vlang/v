@@ -1,3 +1,8 @@
+vlib/v/checker/tests/generic_fn_infinite_loop_limit_err.vv:1:15: notice: unused parameter: `i`
+    1 | fn f1[T](x T, i int) T {
+      |               ^
+    2 |     return x
+    3 | }
 vlib/v/checker/tests/generic_fn_infinite_loop_limit_err.vv:6:2: warning: unused variable: `ff1`
     4 | 
     5 | fn main() {

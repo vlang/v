@@ -1,3 +1,10 @@
+vlib/v/checker/tests/function_missing_return_type.vv:8:5: notice: unused parameter: `s`
+    6 | }
+    7 | 
+    8 | fn (s Abc) panic(message string) {
+      |     ^
+    9 |     println('called ${@METHOD} with message: ${message}')
+   10 | }
 vlib/v/checker/tests/function_missing_return_type.vv:1:1: error: missing return at end of function `h`
     1 | fn h() int {
       | ~~~~~~~~~~

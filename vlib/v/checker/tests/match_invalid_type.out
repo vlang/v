@@ -1,3 +1,10 @@
+vlib/v/checker/tests/match_invalid_type.vv:17:5: notice: unused parameter: `d`
+   15 | struct Dog {}
+   16 | 
+   17 | fn (d Dog) speak() {}
+      |     ^
+   18 | 
+   19 | struct Cat {}
 vlib/v/checker/tests/match_invalid_type.vv:5:3: error: `IoS` has no variant `u8`.
 2 possibilities: `int`, `string`.
     3 | fn sum() {

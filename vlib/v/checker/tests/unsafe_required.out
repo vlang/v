@@ -1,3 +1,10 @@
+vlib/v/checker/tests/unsafe_required.vv:4:5: notice: unused parameter: `s`
+    2 | 
+    3 | @[unsafe]
+    4 | fn (s S1) f() {}
+      |     ^
+    5 | 
+    6 | fn test_funcs() {
 vlib/v/checker/tests/unsafe_required.vv:8:4: warning: method `S1.f` must be called from an `unsafe` block
     6 | fn test_funcs() {
     7 |     s := S1{}

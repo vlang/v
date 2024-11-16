@@ -1,3 +1,10 @@
+vlib/v/checker/tests/unimplemented_interface_f.vv:7:5: notice: unused parameter: `c`
+    5 | struct Cat {}
+    6 | 
+    7 | fn (c Cat) speak() {}
+      |     ^
+    8 | 
+    9 | fn main() {
 vlib/v/checker/tests/unimplemented_interface_f.vv:11:13: error: `Cat` incorrectly implements method `speak` of interface `Animal`: expected 2 parameter(s), not 1
     9 | fn main() {
    10 |     mut animals := []Animal{}

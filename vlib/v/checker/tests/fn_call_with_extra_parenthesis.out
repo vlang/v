@@ -1,3 +1,8 @@
+vlib/v/checker/tests/fn_call_with_extra_parenthesis.vv:1:9: notice: unused parameter: `i`
+    1 | fn doit(i int) {
+      |         ^
+    2 | }
+    3 |
 vlib/v/checker/tests/fn_call_with_extra_parenthesis.vv:5:2: error: expected 1 argument, but got 0
     3 | 
     4 | fn main() {

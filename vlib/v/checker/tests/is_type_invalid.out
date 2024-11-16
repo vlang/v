@@ -1,3 +1,10 @@
+vlib/v/checker/tests/is_type_invalid.vv:9:5: notice: unused parameter: `d`
+    7 | struct Dog {}
+    8 | 
+    9 | fn (d Dog) speak() {}
+      |     ^
+   10 | 
+   11 | struct Cat {}
 vlib/v/checker/tests/is_type_invalid.vv:14:15: error: `IoS` has no variant `u8`
    12 | 
    13 | fn main() {

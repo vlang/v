@@ -1,3 +1,10 @@
+vlib/v/checker/tests/generic_closure_fn_decl_err_b.vv:4:5: notice: unused parameter: `p`
+    2 | }
+    3 | 
+    4 | fn (p MyPlugin) on_update() {
+      |     ^
+    5 |     println('[MyPlugin.on_update]')
+    6 | }
 vlib/v/checker/tests/generic_closure_fn_decl_err_b.vv:13:2: error: generic closure fn must specify type parameter, e.g. fn [foo] [T]()
    11 |     println(typeof(my_plugin).name) // MyPlugin
    12 | 

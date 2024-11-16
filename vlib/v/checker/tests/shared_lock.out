@@ -1,3 +1,45 @@
+vlib/v/checker/tests/shared_lock.vv:6:12: notice: unused parameter: `s`
+    4 | }
+    5 | 
+    6 | fn (shared s St) r(x St) {
+      |            ^
+    7 | }
+    8 |
+vlib/v/checker/tests/shared_lock.vv:6:20: notice: unused parameter: `x`
+    4 | }
+    5 | 
+    6 | fn (shared s St) r(x St) {
+      |                    ^
+    7 | }
+    8 |
+vlib/v/checker/tests/shared_lock.vv:9:5: notice: unused parameter: `s`
+    7 | }
+    8 | 
+    9 | fn (s St) m(shared x St) {
+      |     ^
+   10 | }
+   11 |
+vlib/v/checker/tests/shared_lock.vv:9:20: notice: unused parameter: `x`
+    7 | }
+    8 | 
+    9 | fn (s St) m(shared x St) {
+      |                    ^
+   10 | }
+   11 |
+vlib/v/checker/tests/shared_lock.vv:12:6: notice: unused parameter: `w`
+   10 | }
+   11 | 
+   12 | fn f(w int, shared x St) {
+      |      ^
+   13 | }
+   14 |
+vlib/v/checker/tests/shared_lock.vv:12:20: notice: unused parameter: `x`
+   10 | }
+   11 | 
+   12 | fn f(w int, shared x St) {
+      |                    ^
+   13 | }
+   14 |
 vlib/v/checker/tests/shared_lock.vv:20:5: error: method with `shared` receiver cannot be called inside `lock`/`rlock` block
    18 |     }
    19 |     lock x {

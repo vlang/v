@@ -1,3 +1,10 @@
+vlib/v/checker/tests/map_result_callback_fn_err.vv:13:13: notice: unused parameter: `cmd`
+   11 | }
+   12 | 
+   13 | fn execsync(cmd cli.Command) ! {
+      |             ~~~
+   14 |     dens := os.read_lines('/etc/fox/dens')!.map(urllib.parse(it)!)
+   15 |     mut threads := []thread !{}
 vlib/v/checker/tests/map_result_callback_fn_err.vv:19:17: error: cannot use Result type in `map`
    17 |         threads << spawn update(den)
    18 |     }

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:7:5: notice: unused parameter: `f`
+    5 | struct Foo {}
+    6 | 
+    7 | fn (f Foo) get_name[A, B](a A, b B) string {
+      |     ^
+    8 |     return '${a}, ${b}'
+    9 | }
 vlib/v/checker/tests/generics_fn_arguments_count_err.vv:12:18: error: expected 2 generic parameters, got 1
    10 | 
    11 | fn main() {

@@ -1,1 +1,8 @@
+vlib/v/checker/tests/run/noreturn_method_can_be_used_instead_of_panic.vv:4:9: notice: unused parameter: `t`
+    2 | 
+    3 | @[noreturn]
+    4 | fn (mut t Test) zz_exit() {
+      |         ^
+    5 |     println('${@METHOD} called, as it should')
+    6 |     flush_stdout()
 Test.zz_exit called, as it should

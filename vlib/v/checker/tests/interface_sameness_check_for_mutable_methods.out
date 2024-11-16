@@ -1,5 +1,12 @@
+vlib/v/checker/tests/interface_sameness_check_for_mutable_methods.vv:8:5: notice: unused parameter: `st`
+    6 | struct St {}
+    7 | 
+    8 | fn (st St) method() int {
+      |     ~~
+    9 |     panic('')
+   10 | }
 vlib/v/checker/tests/interface_sameness_check_for_mutable_methods.vv:15:6: error: `St` incorrectly implements method `method` of interface `Interface`: expected return type `u32`
-   13 |
+   13 | 
    14 | fn bar() {
    15 |     foo(St{})
       |         ~~~~

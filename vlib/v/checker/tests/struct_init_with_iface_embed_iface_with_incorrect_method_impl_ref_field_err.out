@@ -1,3 +1,17 @@
+vlib/v/checker/tests/struct_init_with_iface_embed_iface_with_incorrect_method_impl_ref_field_err.vv:16:5: notice: unused parameter: `a`
+   14 | 
+   15 | // Implementation is missing the return type.
+   16 | fn (a Stream) read(buf []u8) {}
+      |     ^
+   17 | 
+   18 | fn test_struct_init_with_interface_field() {
+vlib/v/checker/tests/struct_init_with_iface_embed_iface_with_incorrect_method_impl_ref_field_err.vv:16:20: notice: unused parameter: `buf`
+   14 | 
+   15 | // Implementation is missing the return type.
+   16 | fn (a Stream) read(buf []u8) {}
+      |                    ~~~
+   17 | 
+   18 | fn test_struct_init_with_interface_field() {
 vlib/v/checker/tests/struct_init_with_iface_embed_iface_with_incorrect_method_impl_ref_field_err.vv:21:3: error: `&Stream` incorrectly implements method `read` of interface `Refresher`: expected return type `!int`
    19 |     s := &Stream{}
    20 |     _ := &Server{

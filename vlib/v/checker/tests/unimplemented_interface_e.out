@@ -1,3 +1,24 @@
+vlib/v/checker/tests/unimplemented_interface_e.vv:7:5: notice: unused parameter: `c`
+    5 | struct Cat {}
+    6 | 
+    7 | fn (c Cat) speak(s &string) {}
+      |     ^
+    8 | 
+    9 | fn foo(a Animal) {}
+vlib/v/checker/tests/unimplemented_interface_e.vv:7:18: notice: unused parameter: `s`
+    5 | struct Cat {}
+    6 | 
+    7 | fn (c Cat) speak(s &string) {}
+      |                  ^
+    8 | 
+    9 | fn foo(a Animal) {}
+vlib/v/checker/tests/unimplemented_interface_e.vv:9:8: notice: unused parameter: `a`
+    7 | fn (c Cat) speak(s &string) {}
+    8 | 
+    9 | fn foo(a Animal) {}
+      |        ^
+   10 | 
+   11 | fn main() {
 vlib/v/checker/tests/unimplemented_interface_e.vv:12:6: error: `Cat` incorrectly implements method `speak` of interface `Animal`: expected `string`, not `&string` for parameter 1
    10 | 
    11 | fn main() {

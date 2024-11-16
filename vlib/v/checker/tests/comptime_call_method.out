@@ -1,3 +1,17 @@
+vlib/v/checker/tests/comptime_call_method.vv:3:5: notice: unused parameter: `t`
+    1 | struct S1 {}
+    2 | 
+    3 | fn (t S1) m(s string) int {
+      |     ^
+    4 |     return 7
+    5 | }
+vlib/v/checker/tests/comptime_call_method.vv:3:13: notice: unused parameter: `s`
+    1 | struct S1 {}
+    2 | 
+    3 | fn (t S1) m(s string) int {
+      |             ^
+    4 |     return 7
+    5 | }
 vlib/v/checker/tests/comptime_call_method.vv:10:14: error: undefined ident: `wrong`
     8 |     s1 := S1{}
     9 |     $for method in S1.methods {

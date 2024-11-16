@@ -1,3 +1,10 @@
+vlib/v/checker/tests/alias_map_unknown_op_overloading_err.vv:9:5: notice: unused parameter: `a`
+    7 | }
+    8 | 
+    9 | fn (a Map) + (b Map) Map {
+      |     ^
+   10 |     str := b['23']
+   11 |     return Map({
 vlib/v/checker/tests/alias_map_unknown_op_overloading_err.vv:19:10: error: undefined operation `Map` - `Map`
    17 |     mut a := new_map()
    18 |     b := new_map()

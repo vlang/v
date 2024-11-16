@@ -1,3 +1,10 @@
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:18:11: notice: unused parameter: `player`
+   16 | }
+   17 | 
+   18 | fn prompt(player string) (int, int) {
+      |           ~~~~~~
+   19 |     return 0, 0
+   20 | }
 vlib/v/checker/tests/with_check_option/v_tictactoe.vv:4:31: error: `len` and `cap` are invalid attributes for fixed array dimension
     2 | 
     3 | fn new_board() [][]string {

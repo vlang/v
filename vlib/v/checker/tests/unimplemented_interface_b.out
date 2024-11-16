@@ -1,3 +1,17 @@
+vlib/v/checker/tests/unimplemented_interface_b.vv:7:5: notice: unused parameter: `c`
+    5 | struct Cat {}
+    6 | 
+    7 | fn (c Cat) name() {}
+      |     ^
+    8 | 
+    9 | fn foo(a Animal) {}
+vlib/v/checker/tests/unimplemented_interface_b.vv:9:8: notice: unused parameter: `a`
+    7 | fn (c Cat) name() {}
+    8 | 
+    9 | fn foo(a Animal) {}
+      |        ^
+   10 | 
+   11 | fn main() {
 vlib/v/checker/tests/unimplemented_interface_b.vv:13:6: error: `Cat` incorrectly implements method `name` of interface `Animal`: expected return type `string`
    11 | fn main() {
    12 |     c := Cat{}

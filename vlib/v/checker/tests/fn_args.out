@@ -1,3 +1,29 @@
+vlib/v/checker/tests/fn_args.vv:1:8: notice: unused parameter: `a`
+    1 | fn uu8(a u8) {}
+      |        ^
+    2 | 
+    3 | fn arr(a []int) {}
+vlib/v/checker/tests/fn_args.vv:3:8: notice: unused parameter: `a`
+    1 | fn uu8(a u8) {}
+    2 | 
+    3 | fn arr(a []int) {}
+      |        ^
+    4 | 
+    5 | fn fun(a fn (int)) {}
+vlib/v/checker/tests/fn_args.vv:5:8: notice: unused parameter: `a`
+    3 | fn arr(a []int) {}
+    4 | 
+    5 | fn fun(a fn (int)) {}
+      |        ^
+    6 | 
+    7 | fn basic() {
+vlib/v/checker/tests/fn_args.vv:18:6: notice: unused parameter: `p`
+   16 | }
+   17 | 
+   18 | fn f(p &S1) {}
+      |      ^
+   19 | 
+   20 | fn ptr() {
 vlib/v/checker/tests/fn_args.vv:9:6: error: cannot use `&int` as `u8` in argument 1 to `uu8`
     7 | fn basic() {
     8 |     v := 4

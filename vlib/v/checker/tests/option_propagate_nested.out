@@ -1,3 +1,10 @@
+vlib/v/checker/tests/option_propagate_nested.vv:19:9: notice: unused parameter: `s`
+   17 | }
+   18 | 
+   19 | fn (mut s St) raise() !f64 {
+      |         ^
+   20 |     return error('some error')
+   21 | }
 vlib/v/checker/tests/option_propagate_nested.vv:10:18: error: to propagate the Option call, `xx_prop` must return an Option
     8 | 
     9 | fn xx_prop() string {

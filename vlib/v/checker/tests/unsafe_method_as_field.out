@@ -1,3 +1,24 @@
+vlib/v/checker/tests/unsafe_method_as_field.vv:4:5: notice: unused parameter: `f`
+    2 | }
+    3 | 
+    4 | fn (f Foo) no_ref() int {
+      |     ^
+    5 |     return 1
+    6 | }
+vlib/v/checker/tests/unsafe_method_as_field.vv:8:5: notice: unused parameter: `f`
+    6 | }
+    7 | 
+    8 | fn (f &Foo) ref() int {
+      |     ^
+    9 |     return 1
+   10 | }
+vlib/v/checker/tests/unsafe_method_as_field.vv:16:5: notice: unused parameter: `f`
+   14 | }
+   15 | 
+   16 | fn (f &Bar) ref() int {
+      |     ^
+   17 |     return 1
+   18 | }
 vlib/v/checker/tests/unsafe_method_as_field.vv:23:7: error: method `Foo.ref` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `Foo` as `@[heap]`.
    21 |     f := Foo{}
    22 |     _ := f.no_ref // no error

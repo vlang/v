@@ -1,3 +1,10 @@
+vlib/v/checker/tests/interface_implementing_own_interface_method.vv:5:5: notice: unused parameter: `a`
+    3 | }
+    4 | 
+    5 | fn (a Animal) speak() {
+      |     ^
+    6 |     println('speaking')
+    7 | }
 vlib/v/checker/tests/interface_implementing_own_interface_method.vv:5:1: error: interface `Animal` cannot implement its own interface method `speak`
     3 | }
     4 | 

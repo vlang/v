@@ -1,3 +1,10 @@
+vlib/v/checker/tests/interface_too_many_embedding_levels.vv:421:5: notice: unused parameter: `s`
+  419 | }
+  420 | 
+  421 | fn (s Abc) m999() int {
+      |     ^
+  422 |     return 999
+  423 | }
 vlib/v/checker/tests/interface_too_many_embedding_levels.vv:9:1: error: too many interface embedding levels: 101, for interface `I103`
     7 | }
     8 | 

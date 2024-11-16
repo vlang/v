@@ -1,3 +1,24 @@
+vlib/v/checker/tests/method_call_with_empty_struct_init.vv:5:5: notice: unused parameter: `s`
+    3 | }
+    4 | 
+    5 | fn (s Abc) abc(x int, param Abc) {
+      |     ^
+    6 | }
+    7 |
+vlib/v/checker/tests/method_call_with_empty_struct_init.vv:5:16: notice: unused parameter: `x`
+    3 | }
+    4 | 
+    5 | fn (s Abc) abc(x int, param Abc) {
+      |                ^
+    6 | }
+    7 |
+vlib/v/checker/tests/method_call_with_empty_struct_init.vv:5:23: notice: unused parameter: `param`
+    3 | }
+    4 | 
+    5 | fn (s Abc) abc(x int, param Abc) {
+      |                       ~~~~~
+    6 | }
+    7 |
 vlib/v/checker/tests/method_call_with_empty_struct_init.vv:10:11: error: `{}` can not be used for initialising empty structs any more. Use `Abc{}` instead.
     8 | fn main() {
     9 |     s := Abc{}

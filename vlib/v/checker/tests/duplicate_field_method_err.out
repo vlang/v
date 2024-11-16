@@ -1,3 +1,10 @@
+vlib/v/checker/tests/duplicate_field_method_err.vv:5:5: notice: unused parameter: `s`
+    3 | }
+    4 | 
+    5 | fn (s St) attr() {}
+      |     ^
+    6 | 
+    7 | interface Foo {
 vlib/v/checker/tests/duplicate_field_method_err.vv:5:1: error: type `St` has both field and method named `attr`
     3 | }
     4 | 

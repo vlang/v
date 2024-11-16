@@ -1,0 +1,7 @@
+vlib/v/checker/tests/sync_receiver_decl.vv:3:12: notice: unused parameter: `b`
+    1 | struct St {}
+    2 | 
+    3 | fn (shared b St) g() {}
+      |            ^
+    4 | 
+    5 | println('ok')

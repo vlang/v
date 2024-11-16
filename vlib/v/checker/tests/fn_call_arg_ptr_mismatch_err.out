@@ -1,3 +1,10 @@
+vlib/v/checker/tests/fn_call_arg_ptr_mismatch_err.vv:10:51: notice: unused parameter: `s_`
+    8 | }
+    9 | 
+   10 | fn (s SomethingImplemented) get_value_implemented(s_ &ISomething) int {
+      |                                                   ~~
+   11 |     return s.value
+   12 | }
 vlib/v/checker/tests/fn_call_arg_ptr_mismatch_err.vv:31:29: error: cannot use `&&SomethingImplemented` as `&ISomething` in argument 1 to `get_value_implemented`
    29 |     }
    30 |     // fn call

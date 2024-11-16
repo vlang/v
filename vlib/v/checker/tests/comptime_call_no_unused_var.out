@@ -1,3 +1,10 @@
+vlib/v/checker/tests/comptime_call_no_unused_var.vv:3:5: notice: unused parameter: `test`
+    1 | struct Test {}
+    2 | 
+    3 | fn (test Test) print() {
+      |     ~~~~
+    4 |     println('test')
+    5 | }
 vlib/v/checker/tests/comptime_call_no_unused_var.vv:11:8: error: unknown identifier `w`
     9 |     abc := 'print'
    10 |     test.$abc() // OK

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:11: notice: unused parameter: `t`
+   30 | }
+   31 | 
+   32 | fn handle(t T) {
+      |           ^
+   33 |     println('hi')
+   34 | }
 vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:26:1: error: generic function declaration must specify generic type names
    24 | }
    25 | 

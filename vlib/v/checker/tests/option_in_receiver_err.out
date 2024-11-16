@@ -1,3 +1,17 @@
+vlib/v/checker/tests/option_in_receiver_err.vv:6:9: notice: unused parameter: `f`
+    4 | }
+    5 | 
+    6 | fn (mut f Foo) t0(arr ?[]int) ?string {
+      |         ^
+    7 |     return arr?.len.str()
+    8 | }
+vlib/v/checker/tests/option_in_receiver_err.vv:10:9: notice: unused parameter: `f`
+    8 | }
+    9 | 
+   10 | fn (mut f ?Foo) t1(arr ?[]int) ?string {
+      |         ^
+   11 |     return arr?.len.str()
+   12 | }
 vlib/v/checker/tests/option_in_receiver_err.vv:10:9: error: option types cannot have methods
     8 | }
     9 | 

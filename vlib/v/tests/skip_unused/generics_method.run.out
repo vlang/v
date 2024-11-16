@@ -1,1 +1,15 @@
+vlib/v/tests/skip_unused/generics_method.vv:13:9: notice: unused parameter: `self`
+   11 | }
+   12 | 
+   13 | fn (mut self App[M]) next[M, T](input T) f64 {
+      |         ~~~~
+   14 |     $if M is Something {
+   15 |         return 0
+vlib/v/tests/skip_unused/generics_method.vv:13:33: notice: unused parameter: `input`
+   11 | }
+   12 | 
+   13 | fn (mut self App[M]) next[M, T](input T) f64 {
+      |                                 ~~~~~
+   14 |     $if M is Something {
+   15 |         return 0
 0.0

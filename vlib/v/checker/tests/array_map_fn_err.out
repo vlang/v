@@ -1,3 +1,9 @@
+vlib/v/checker/tests/array_map_fn_err.vv:33:15: notice: unused parameter: `a`
+   31 | }
+   32 | 
+   33 | fn do_nothing(a string) {
+      |               ^
+   34 | }
 vlib/v/checker/tests/array_map_fn_err.vv:2:25: error: function needs exactly 1 argument
     1 | fn main() {
     2 |     a1 := [1, 2, 3, 4].map(fn (a int, b int) int {

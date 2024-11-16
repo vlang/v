@@ -1,3 +1,38 @@
+vlib/v/checker/tests/method_op_err.vv:11:5: notice: unused parameter: `u`
+    9 | }
+   10 | 
+   11 | fn (u User) % () {
+      |     ^
+   12 | }
+   13 |
+vlib/v/checker/tests/method_op_err.vv:18:9: notice: unused parameter: `u`
+   16 | }
+   17 | 
+   18 | fn (mut u User) * (u1 User) User {
+      |         ^
+   19 |     return User{}
+   20 | }
+vlib/v/checker/tests/method_op_err.vv:18:20: notice: unused parameter: `u1`
+   16 | }
+   17 | 
+   18 | fn (mut u User) * (u1 User) User {
+      |                    ~~
+   19 |     return User{}
+   20 | }
+vlib/v/checker/tests/method_op_err.vv:22:5: notice: unused parameter: `u`
+   20 | }
+   21 | 
+   22 | fn (u User) / (mut u1 User) User {
+      |     ^
+   23 |     return User{}
+   24 | }
+vlib/v/checker/tests/method_op_err.vv:22:20: notice: unused parameter: `u1`
+   20 | }
+   21 | 
+   22 | fn (u User) / (mut u1 User) User {
+      |                    ~~
+   23 |     return User{}
+   24 | }
 vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods should have exactly 1 argument
     9 | }
    10 | 

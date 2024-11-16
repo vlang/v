@@ -1,3 +1,10 @@
+vlib/v/checker/tests/struct_field_init_with_void_expr_err.vv:6:5: notice: unused parameter: `a`
+    4 | struct App {}
+    5 | 
+    6 | fn (a App) test_func() {}
+      |     ^
+    7 | 
+    8 | fn main() {
 vlib/v/checker/tests/struct_field_init_with_void_expr_err.vv:19:3: error: `app.test_func()` (no value) used as value
    17 |         name:        'add'
    18 |         description: 'Add something.'

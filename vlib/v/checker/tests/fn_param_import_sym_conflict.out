@@ -16,6 +16,83 @@ vlib/v/checker/tests/fn_param_import_sym_conflict.vv:3:8: warning: module 'strs 
       |        ~~~~~~~
     4 | 
     5 | // FnDecl
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:6:6: notice: unused parameter: `arrays`
+    4 | 
+    5 | // FnDecl
+    6 | fn x(arrays []int) {
+      |      ~~~~~~
+    7 | }
+    8 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:12:9: notice: unused parameter: `arrays`
+   10 | }
+   11 | 
+   12 | fn maps(arrays []int) {
+      |         ~~~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:24:5: notice: unused parameter: `arrays`
+   22 | struct Foo {}
+   23 | 
+   24 | fn (arrays Foo) x() {
+      |     ~~~~~~
+   25 | }
+   26 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:27:5: notice: unused parameter: `arrays`
+   25 | }
+   26 | 
+   27 | fn (arrays Foo) y(maps []int) {
+      |     ~~~~~~
+   28 | }
+   29 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:27:19: notice: unused parameter: `maps`
+   25 | }
+   26 | 
+   27 | fn (arrays Foo) y(maps []int) {
+      |                   ~~~~
+   28 | }
+   29 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:30:5: notice: unused parameter: `foo`
+   28 | }
+   29 | 
+   30 | fn (foo Foo) z(arrays []int) {
+      |     ~~~
+   31 | }
+   32 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:30:16: notice: unused parameter: `arrays`
+   28 | }
+   29 | 
+   30 | fn (foo Foo) z(arrays []int) {
+      |                ~~~~~~
+   31 | }
+   32 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:33:5: notice: unused parameter: `arrays`
+   31 | }
+   32 | 
+   33 | fn (arrays Foo) maps() {
+      |     ~~~~~~
+   34 | }
+   35 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:36:5: notice: unused parameter: `foo`
+   34 | }
+   35 | 
+   36 | fn (foo Foo) arrays() {
+      |     ~~~
+   37 | }
+   38 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:39:5: notice: unused parameter: `foo`
+   37 | }
+   38 | 
+   39 | fn (foo Foo) strings() {
+      |     ~~~
+   40 | }
+   41 |
+vlib/v/checker/tests/fn_param_import_sym_conflict.vv:42:5: notice: unused parameter: `foo`
+   40 | }
+   41 | 
+   42 | fn (foo Foo) strs() {
+      |     ~~~
+   43 | }
+   44 |
 vlib/v/checker/tests/fn_param_import_sym_conflict.vv:6:6: error: duplicate of an import symbol `arrays`
     4 | 
     5 | // FnDecl

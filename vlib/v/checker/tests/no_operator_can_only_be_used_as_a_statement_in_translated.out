@@ -1,0 +1,7 @@
+vlib/v/checker/tests/no_operator_can_only_be_used_as_a_statement_in_translated.vv:4:6: notice: unused parameter: `i`
+    2 | module main
+    3 | 
+    4 | fn f(i int) {}
+      |      ^
+    5 | 
+    6 | fn main() {

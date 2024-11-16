@@ -1,12 +1,38 @@
+vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:9:15: notice: unused parameter: `b`
+    7 | }
+    8 | 
+    9 | fn foo_str[T](b T, a string) {
+      |               ^
+   10 | }
+   11 |
+vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:9:20: notice: unused parameter: `a`
+    7 | }
+    8 | 
+    9 | fn foo_str[T](b T, a string) {
+      |                    ^
+   10 | }
+   11 |
+vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:16:5: notice: unused parameter: `f`
+   14 | }
+   15 | 
+   16 | fn (f Foo[T]) info(a string) {
+      |     ^
+   17 | }
+vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:16:20: notice: unused parameter: `a`
+   14 | }
+   15 | 
+   16 | fn (f Foo[T]) info(a string) {
+      |                    ^
+   17 | }
 vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:3:13: error: cannot use `[]rune` as `string` in argument 2 to `foo_str`
     1 | fn main() {
     2 |     x := 'ab'.runes()[..1]
     3 |     foo_str(1, x)
       |                ^
-    4 |
+    4 | 
     5 |     foo := Foo[int]{}
 vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:6:11: error: cannot use `[]rune` as `string` in argument 1 to `Foo[int].info`
-    4 |
+    4 | 
     5 |     foo := Foo[int]{}
     6 |     foo.info(x)
       |              ^

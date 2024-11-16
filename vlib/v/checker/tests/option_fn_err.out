@@ -1,3 +1,10 @@
+vlib/v/checker/tests/option_fn_err.vv:7:11: notice: unused parameter: `v`
+    5 | }
+    6 | 
+    7 | fn bar[T](v T) ?T {
+      |           ^
+    8 |     return none
+    9 | }
 vlib/v/checker/tests/option_fn_err.vv:32:16: error: cannot use `?int` as `int`, it must be unwrapped first in argument 1 to `twice`
    30 |     foo()
    31 |     _ := bar(0)

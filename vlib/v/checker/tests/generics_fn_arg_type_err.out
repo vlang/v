@@ -1,6 +1,27 @@
+vlib/v/checker/tests/generics_fn_arg_type_err.vv:10:9: notice: unused parameter: `list`
+    8 | }
+    9 | 
+   10 | fn (mut list LinkedList[T]) add(e T) {
+      |         ~~~~
+   11 |     // ...
+   12 | }
+vlib/v/checker/tests/generics_fn_arg_type_err.vv:10:33: notice: unused parameter: `e`
+    8 | }
+    9 | 
+   10 | fn (mut list LinkedList[T]) add(e T) {
+      |                                 ^
+   11 |     // ...
+   12 | }
+vlib/v/checker/tests/generics_fn_arg_type_err.vv:14:18: notice: unused parameter: `list`
+   12 | }
+   13 | 
+   14 | fn do_list_thing(list List) { // <--- Error here
+      |                  ~~~~
+   15 |     // ...
+   16 | }
 vlib/v/checker/tests/generics_fn_arg_type_err.vv:14:23: error: generic interface `List` in fn declaration must specify the generic type names, e.g. List[T]
    12 | }
-   13 |
+   13 | 
    14 | fn do_list_thing(list List) { // <--- Error here
       |                       ~~~~
    15 |     // ...
