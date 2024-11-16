@@ -649,7 +649,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	header += '\n#endif\n'
 	out_str := g.out.str()
 	b.write_string(out_str)
-	b.writeln('\n// THE END.')
+	b.writeln('// THE END.')
 	util.timing_measure('cgen common')
 	res := b.str()
 	$if trace_all_generic_fn_keys ? {
