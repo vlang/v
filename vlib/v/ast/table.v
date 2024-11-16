@@ -21,6 +21,9 @@ pub mut:
 	auto_str         bool         // auto str fns
 	auto_str_ptr     bool         // auto str fns for ptr type
 	arr_prepend      bool         // arr.prepend()
+	arr_first        bool         // arr.first()
+	arr_last         bool         // arr.last()
+	arr_pop          bool         // arr.pop()
 	option_or_result bool         // has panic call
 	print_types      map[int]bool // print() idx types
 }

@@ -3548,6 +3548,17 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
+		if c.pref.skip_unused {
+			if method_name == 'first' {
+				c.table.used_features.arr_first = true
+			}
+			if method_name == 'last' {
+				c.table.used_features.arr_last = true
+			}
+			if method_name == 'pop' {
+				c.table.used_features.arr_pop = true
+			}
+		}
 		if node.args.len != 0 {
 			c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 		}

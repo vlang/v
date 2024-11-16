@@ -15,9 +15,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 	mut allow_noscan := true
 	// Functions that must be generated and can't be skipped
-	mut all_fn_root_names := if pref_.backend == .native {
+	mut all_fn_root_names := []string{}
+	if pref_.backend == .native {
 		// Note: this is temporary, until the native backend supports more features!
-		['main.main']
+		all_fn_root_names << 'main.main'
 	} else {
 		byteptr_idx_str := '${ast.byteptr_type_idx}'
 		charptr_idx_str := '${ast.charptr_type_idx}'
@@ -138,7 +139,17 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			if table.used_features.arr_prepend {
 				core_fns << ref_array_idx_str + '.prepend_many'
 			}
+			if table.used_features.arr_pop {
+				core_fns << ref_array_idx_str + '.pop'
+			}
+			if table.used_features.arr_first {
+				core_fns << array_idx_str + '.first'
+			}
+			if table.used_features.arr_last {
+				core_fns << array_idx_str + '.last'
+			}
 		} else {
+			// TODO: this *should not* depend on the used compiler, which is brittle, but only on info in the AST...
 			// hello world apps
 			if pref_.ccompiler_type == .tinyc {
 				// unused on tcc
@@ -175,7 +186,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
 		}
-		core_fns
+		all_fn_root_names << core_fns
 	}
 
 	if pref_.is_bare {
@@ -349,9 +360,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
+	handle_vweb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'vweb.Result', 'vweb.filter', 'vweb.Context')
 	handle_vweb(mut table, mut all_fn_root_names, 'x.vweb.Result', 'x.vweb.filter', 'x.vweb.Context')
-	handle_vweb(mut table, mut all_fn_root_names, 'veb.Result', 'veb.filter', 'veb.Context')
 
 	// handle ORM drivers:
 	orm_connection_implementations := table.iface_types['orm.Connection'] or { []ast.Type{} }
