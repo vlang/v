@@ -1407,7 +1407,7 @@ pub fn (s string) last_index_u8(c u8) int {
 // count returns the number of occurrences of `substr` in the string.
 // count returns -1 if no `substr` could be found.
 @[direct_array_access]
-pub fn (s string) count(substr string) int {
+pub fn (s &string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
 		return 0
 	}

@@ -1183,6 +1183,7 @@ fn (mut s Scanner) invalid_character() {
 	s.error('invalid character `${c}`')
 }
 
+@[inline]
 fn (s &Scanner) current_column() int {
 	return s.pos - s.last_nl_pos
 }
