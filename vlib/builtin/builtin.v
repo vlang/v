@@ -24,6 +24,7 @@ struct VCastTypeIndexName {
 // will be filled in cgen
 __global as_cast_type_indexes []VCastTypeIndexName
 
+@[direct_array_access]
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
 		mut obj_name := as_cast_type_indexes[0].tname.clone()
