@@ -2245,9 +2245,19 @@ pub fn (expr Expr) is_pure_literal() bool {
 
 pub fn (expr Expr) is_auto_deref_var() bool {
 	return match expr {
-		Ident { expr.obj is Var && expr.obj.is_auto_deref }
-		PrefixExpr { expr.op == .amp && expr.right.is_auto_deref_var() }
-		else { false }
+		Ident {
+			if expr.obj is Var {
+				expr.obj.is_auto_deref
+			} else {
+				false
+			}
+		}
+		PrefixExpr {
+			expr.op == .amp && expr.right.is_auto_deref_var()
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -2669,7 +2679,6 @@ pub fn (e Expr) is_nil() bool {
 	return e is Nil || (e is UnsafeExpr && e.expr is Nil)
 }
 
-@[direct_array_access]
 pub fn type_can_start_with_token(tok &token.Token) bool {
 	return match tok.kind {
 		.name {
