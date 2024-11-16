@@ -801,7 +801,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
 						'assigned')
 				}
-				if field_info.typ in ast.unsigned_integer_type_idxs
+				if c.table.unaliased_type(exp_type) in ast.unsigned_integer_type_idxs
 					&& mut init_field.expr is ast.IntegerLiteral
 					&& (init_field.expr as ast.IntegerLiteral).val[0] == `-` {
 					c.error('cannot assign negative value to unsigned integer type', init_field.expr.pos)
