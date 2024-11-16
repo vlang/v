@@ -22,14 +22,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	} else {
 		byteptr_idx_str := '${ast.byteptr_type_idx}'
 		charptr_idx_str := '${ast.charptr_type_idx}'
-		u8_idx_str := '${ast.u8_type_idx}'
 		string_idx_str := '${ast.string_type_idx}'
 		array_idx_str := '${ast.array_type_idx}'
 		map_idx_str := '${ast.map_type_idx}'
 		ref_array_idx_str := '${int(ast.array_type.ref())}'
 		mut core_fns := [
 			'main.main',
-			//'format_sb',
 			'init_global_allocator', // needed for linux_bare and wasm_bare
 			'v_realloc', // needed for _STR
 			'malloc',
@@ -40,55 +38,20 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'vstrlen',
 			'tos',
 			'tos2',
-			'_option_ok',
-			'_result_ok',
 			'error',
 			'builtin_init',
-			// byte. methods
-			u8_idx_str + '.str_escaped',
-			// string. methods
-			// string_idx_str + '.add',
-			// string_idx_str + '.trim_space',
-			// string_idx_str + '.replace',
-			// string_idx_str + '.trim',
-			// string_idx_str + '.index_kmp',
-			// string. ==, !=, etc...
-			// string_idx_str + '.eq',
-			// string_idx_str + '.ne',
-			// string_idx_str + '.lt',
-			// string_idx_str + '.gt',
-			// string_idx_str + '.le',
-			// string_idx_str + '.ge',
 			'fast_string_eq',
-			// other array methods
-			// array_idx_str + '.get_unsafe',
-			// array_idx_str + '.set_unsafe',			
-			// array_idx_str + '.first',
-			// array_idx_str + '.last',
-			// array_idx_str + '.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
-			// array_idx_str + '.reverse',
-			// array_idx_str + '.repeat_to_depth',
-			// reference array methods
-			// ref_array_idx_str + '.last',
-			// ref_array_idx_str + '.pop',
-			// ref_array_idx_str + '.insert_many',
-			// ref_array_idx_str + '.reverse',
-			// ref_array_idx_str + '.set_unsafe',
 			// TODO: process the _vinit const initializations automatically too
-			// 'main.nasserts',
 			'main.vtest_init',
 			'main.vtest_new_metainfo',
 			'main.vtest_new_filemetainfo',
-			// 'os.getwd',
-			// 'v.embed_file.find_index_entry_by_path',
 		]
 		$if debug_used_features ? {
 			dump(table.used_features)
 		}
 		// real world apps
 		if table.used_features.builtin_types || table.used_features.as_cast
-			|| table.used_features.auto_str || table.used_features.option_or_result {
-			// println('used builtin')
+			|| table.used_features.auto_str {
 			core_fns << '__new_array'
 			core_fns << '__new_array_with_default'
 			core_fns << '__new_array_with_multi_default'
@@ -151,34 +114,23 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		} else {
 			// TODO: this *should not* depend on the used compiler, which is brittle, but only on info in the AST...
 			// hello world apps
-			if pref_.ccompiler_type == .tinyc {
-				// unused on tcc
-				all_fns.delete(ref_array_idx_str + '.ensure_cap')
-				all_fns.delete(u8_idx_str + '.str_escaped')
-				all_fns.delete(u8_idx_str + '.ascii_str')
-				allow_noscan = false
+			if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
+				// with backtrace on gcc/clang more code needs be generated
+				allow_noscan = true
+				core_fns << '__new_array_with_default'
+				core_fns << 'str_intp'
+				core_fns << ref_array_idx_str + '.push'
+				core_fns << string_idx_str + '.substr'
+				core_fns << array_idx_str + '.slice'
+				core_fns << array_idx_str + '.get'
+				core_fns << 'v_fixed_index'
 			} else {
-				if 'no_backtrace' in pref_.compile_defines {
-					// with -d no_backtrace on gcc/clang
-					allow_noscan = false
-					all_fns.delete(ref_array_idx_str + '.slice')
-					all_fns.delete(ref_array_idx_str + '.ensure_cap')
-					all_fns.delete(array_idx_str + '.get_unsafe')
-					all_fns.delete(u8_idx_str + '.str_escaped')
-					all_fns.delete(u8_idx_str + '.ascii_str')
-				} else {
-					// with backtrace on gcc/clang
-					core_fns << ref_array_idx_str + '.push_many_noscan'
-					core_fns << '__new_array_with_default'
-					core_fns << '__new_array_with_default_noscan'
-					core_fns << 'str_intp'
-					core_fns << ref_array_idx_str + '.push'
-					core_fns << string_idx_str + '.substr'
-					core_fns << array_idx_str + '.slice'
-					core_fns << array_idx_str + '.get'
-					core_fns << 'v_fixed_index'
-				}
+				allow_noscan = false
 			}
+		}
+		if table.used_features.option_or_result {
+			core_fns << '_option_ok'
+			core_fns << '_result_ok'
 		}
 		if table.used_features.as_cast {
 			core_fns << '__as_cast'
