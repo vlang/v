@@ -36,7 +36,7 @@ fn lsystem(cmd string) int {
 
 fn lexec(cmd string) string {
 	elog('  lexec: ${cmd}')
-	return os.execute_or_exit(cmd).output.trim_right('\r\n')
+	return os.execute(cmd).output.trim_right('\r\n')
 }
 
 fn main() {
@@ -205,12 +205,12 @@ fn main() {
 fn measure(cmd string, description string) int {
 	elog('  Measuring ${description}, warmups: ${warmup_samples}, samples: ${max_samples}, discard: ${discard_highest_samples}, with cmd: `${cmd}`')
 	for _ in 0 .. warmup_samples {
-		os.execute_or_exit(cmd)
+		os.system(cmd)
 	}
 	mut runs := []int{}
 	for r in 0 .. max_samples {
 		sw := time.new_stopwatch()
-		os.execute_or_exit(cmd)
+		os.execute(cmd)
 		sample := int(sw.elapsed().milliseconds())
 		runs << sample
 		elog('  Sample ${r + 1:2}/${max_samples:2} ... ${sample} ms')
@@ -246,7 +246,7 @@ fn measure_steps_minimal(vdir string) !(int, int, int, int, int) {
 
 fn measure_steps_one_sample(vdir string) (int, int, int, int, int, string) {
 	cmd := '${vdir}/vprod ${voptions} -o v.c cmd/v'
-	resp := os.execute_or_exit(cmd)
+	resp := os.execute(cmd)
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()
