@@ -17,11 +17,11 @@ pub mut:
 pub fn (mut p Pos) free() {
 }
 
-pub fn (p Pos) line_str() string {
+pub fn (p &Pos) line_str() string {
 	return '{l: ${p.line_nr + 1:5}, c: ${p.col:3}, p: ${p.pos:5}, ll: ${p.last_line + 1:5}}'
 }
 
-pub fn (pos Pos) extend(end Pos) Pos {
+pub fn (pos &Pos) extend(end Pos) Pos {
 	return Pos{
 		...pos
 		len:       end.pos - pos.pos + end.len
@@ -29,7 +29,7 @@ pub fn (pos Pos) extend(end Pos) Pos {
 	}
 }
 
-pub fn (pos Pos) extend_with_last_line(end Pos, last_line int) Pos {
+pub fn (pos &Pos) extend_with_last_line(end Pos, last_line int) Pos {
 	return Pos{
 		len:       end.pos - pos.pos + end.len
 		line_nr:   pos.line_nr
