@@ -49,15 +49,23 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		$if debug_used_features ? {
 			dump(table.used_features)
 		}
+		panic_deps := [
+			'__new_array_with_default',
+			'str_intp',
+			ref_array_idx_str + '.push',
+			string_idx_str + '.substr',
+			array_idx_str + '.slice',
+			array_idx_str + '.get',
+			'v_fixed_index',
+		]
 		// real world apps
 		if table.used_features.builtin_types || table.used_features.as_cast
 			|| table.used_features.auto_str {
+			core_fns << panic_deps
 			core_fns << '__new_array'
-			core_fns << '__new_array_with_default'
 			core_fns << '__new_array_with_multi_default'
 			core_fns << '__new_array_with_array_default'
 			core_fns << 'new_array_from_c_array'
-			core_fns << 'str_intp'
 			// byteptr and charptr
 			core_fns << byteptr_idx_str + '.vstring'
 			core_fns << byteptr_idx_str + '.vstring_with_len'
@@ -67,15 +75,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << charptr_idx_str + '.vstring_literal'
 
 			if table.used_features.index {
-				core_fns << 'v_fixed_index'
 				core_fns << string_idx_str + '.at_with_check'
 				core_fns << string_idx_str + '.clone'
 				core_fns << string_idx_str + '.clone_static'
 				core_fns << string_idx_str + '.at'
-				core_fns << array_idx_str + '.slice'
-				core_fns << array_idx_str + '.get'
 				core_fns << array_idx_str + '.set'
-				core_fns << ref_array_idx_str + '.push'
 				core_fns << ref_array_idx_str + '.set'
 				core_fns << map_idx_str + '.get'
 				core_fns << map_idx_str + '.set'
@@ -87,7 +91,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
 				core_fns << array_idx_str + '.clone_static_to_depth'
 				core_fns << array_idx_str + '.clone_to_depth'
-				core_fns << string_idx_str + '.substr'
 			}
 			if table.used_features.cast_ptr {
 				core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
@@ -117,13 +120,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
 				// with backtrace on gcc/clang more code needs be generated
 				allow_noscan = true
-				core_fns << '__new_array_with_default'
-				core_fns << 'str_intp'
-				core_fns << ref_array_idx_str + '.push'
-				core_fns << string_idx_str + '.substr'
-				core_fns << array_idx_str + '.slice'
-				core_fns << array_idx_str + '.get'
-				core_fns << 'v_fixed_index'
+				core_fns << panic_deps
 			} else {
 				allow_noscan = false
 			}
@@ -131,6 +128,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.option_or_result {
 			core_fns << '_option_ok'
 			core_fns << '_result_ok'
+			if !allow_noscan {
+				core_fns << panic_deps
+				allow_noscan = true
+			}
 		}
 		if table.used_features.as_cast {
 			core_fns << '__as_cast'
