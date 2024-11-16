@@ -679,33 +679,54 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 
 		field_unwrap_typ := g.unwrap_generic(sfield.typ)
 		field_unwrap_sym := g.table.final_sym(field_unwrap_typ)
-		if field_unwrap_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
-			info := field_unwrap_sym.info as ast.ArrayFixed
-			g.fixed_array_var_init(g.expr_string(sfield.expr), sfield.expr.is_auto_deref_var(),
-				info.elem_type, info.size)
-		} else if field_unwrap_sym.kind == .array_fixed && (sfield.expr is ast.CallExpr
-			|| (sfield.expr is ast.ArrayInit && sfield.expr.has_index)) {
-			info := field_unwrap_sym.info as ast.ArrayFixed
-			tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
-			g.fixed_array_var_init(tmp_var, false, info.elem_type, info.size)
+		is_auto_deref_var := sfield.expr.is_auto_deref_var()
+		if field_unwrap_sym.info is ast.ArrayFixed {
+			match sfield.expr {
+				ast.Ident, ast.SelectorExpr {
+					g.fixed_array_var_init(g.expr_string(sfield.expr), is_auto_deref_var,
+						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
+				}
+				ast.CallExpr {
+					tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
+					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
+						field_unwrap_sym.info.size)
+				}
+				ast.ArrayInit {
+					if sfield.expr.has_index
+						|| (sfield.expr.exprs.len > 0 && sfield.expr.exprs.any(it is ast.CallExpr)) {
+						tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
+						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
+							field_unwrap_sym.info.size)
+					} else {
+						g.struct_init_field_default(field_unwrap_typ, sfield)
+					}
+				}
+				else {
+					g.struct_init_field_default(field_unwrap_typ, sfield)
+				}
+			}
 		} else {
-			if field_unwrap_typ != ast.voidptr_type && field_unwrap_typ != ast.nil_type
-				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
-				&& !sfield.expected_type.has_flag(.option)
-				&& !field_unwrap_typ.is_any_kind_of_pointer() && !field_unwrap_typ.is_number() {
-				g.write('/* autoref */&')
-			}
-
-			if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
-				|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
-				g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
-			} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
-				g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
-			} else {
-				g.left_is_opt = true
-				g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
-			}
+			g.struct_init_field_default(field_unwrap_typ, sfield)
 		}
 		g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
+	}
+}
+
+fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.StructInitField) {
+	if field_unwrap_typ != ast.voidptr_type && field_unwrap_typ != ast.nil_type
+		&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
+		&& !sfield.expected_type.has_flag(.option) && !field_unwrap_typ.is_any_kind_of_pointer()
+		&& !field_unwrap_typ.is_number() {
+		g.write('/* autoref */&')
+	}
+
+	if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
+		|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
+		g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
+	} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
+		g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
+	} else {
+		g.left_is_opt = true
+		g.expr_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	}
 }
