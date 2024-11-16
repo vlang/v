@@ -47,10 +47,12 @@ fn test_create_utctime_from_std_time_with_negative_offset() ! {
 	tz := os.getenv('TZ')
 	os.setenv('TZ', 'utc 1', true)
 
+	defer {
+		os.setenv('TZ', tz, true)
+	}
+
 	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
 	UtcTime.from_time(now)!
-
-	os.setenv('TZ', tz, true)
 }
 
 fn test_serialize_utctime_error_without_z() ! {
@@ -131,8 +133,10 @@ fn test_create_generalizedtime_from_std_time_with_negative_offset() ! {
 	tz := os.getenv('TZ')
 	os.setenv('TZ', 'utc 1', true)
 
+	defer {
+		os.setenv('TZ', tz, true)
+	}
+
 	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
 	GeneralizedTime.from_time(now)!
-
-	os.setenv('TZ', tz, true)
 }
