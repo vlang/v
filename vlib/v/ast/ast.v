@@ -2665,10 +2665,12 @@ pub fn (expr Expr) is_literal() bool {
 	}
 }
 
+@[inline]
 pub fn (e Expr) is_nil() bool {
 	return e is Nil || (e is UnsafeExpr && e.expr is Nil)
 }
 
+@[direct_array_access]
 pub fn type_can_start_with_token(tok &token.Token) bool {
 	return match tok.kind {
 		.name {

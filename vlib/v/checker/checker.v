@@ -485,6 +485,7 @@ fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 	return has_main_fn
 }
 
+@[direct_array_access]
 fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos token.Pos) {
 	if c.pref.translated || c.file.is_translated {
 		return
