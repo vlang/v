@@ -159,7 +159,7 @@ NB: the build flags are shared with the run command too:
     Note: the same effect can be achieved by setting the environment variable VNORUN to 1.
 
   -skip-unused
-    Skip generating C/JS code for functions, that are provably not used by your project.
+    Skip generating C/JS code for functions, that are probably not used by your project.
     This speeds up compilation, and reduces the generated output size.
     It is still experimental, due to historical reasons, but please do try it,
     and report issues, if compilation breaks with that option for your program.
