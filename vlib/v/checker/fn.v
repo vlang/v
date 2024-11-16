@@ -600,6 +600,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	keep_fn := c.table.cur_fn
 	keep_inside_anon := c.inside_anon_fn
 	keep_anon_fn := c.cur_anon_fn
+	c.table.used_features.anon_fn = true
 	defer {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
@@ -1390,6 +1391,16 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// println / eprintln / panic can print anything
 	if node.args.len > 0 && fn_name in print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
+		if c.pref.skip_unused && !c.is_builtin_mod && node.args[0].expr !is ast.StringLiteral {
+			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
+				c.table.used_features.auto_str = true
+				if node.args[0].typ.is_ptr() {
+					c.table.used_features.auto_str_ptr = true
+				}
+			} else {
+				c.table.used_features.print_types[node.args[0].typ.idx()] = true
+			}
+		}
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
@@ -2136,6 +2147,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if left_type == ast.void_type {
 		// c.error('cannot call a method using an invalid expression', node.pos)
 		return ast.void_type
+	}
+	if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
+		c.table.used_features.builtin_types = true
 	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
@@ -3295,6 +3309,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				}
 			}
 		} else {
+			c.table.used_features.arr_prepend = true
 			if node.args.len != 1 {
 				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
 					node.pos)

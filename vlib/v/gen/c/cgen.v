@@ -6580,9 +6580,11 @@ fn (mut g Gen) write_init_function() {
 	// Note: the as_cast table should be *before* the other constant initialize calls,
 	// because it may be needed during const initialization of builtin and during
 	// calling module init functions too, just in case they do fail...
-	g.write('\tas_cast_type_indexes = ')
-	g.writeln(g.as_cast_name_table())
-	if !g.pref.is_shared {
+	if g.as_cast_type_names.len > 0 {
+		g.write('\tas_cast_type_indexes = ')
+		g.writeln(g.as_cast_name_table())
+	}
+	if !g.pref.is_shared && (!g.pref.skip_unused || g.table.used_features.builtin_types) {
 		// shared object does not need this
 		g.writeln('\tbuiltin_init();')
 	}

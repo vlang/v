@@ -1318,6 +1318,9 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 }
 
 fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type, expr ast.Expr) {
+	if c.pref.skip_unused && !c.is_builtin_mod && node.kind != .absent && c.mod != 'strings' {
+		c.table.used_features.option_or_result = true
+	}
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.option)
 			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
@@ -1724,6 +1727,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 			// if the expected type includes the receiver, don't hide it behind a closure
 			if c.check_types(fn_type, c.expected_type) {
+				c.table.used_features.anon_fn = true
 				return fn_type
 			}
 		}
@@ -1747,6 +1751,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		method.name = ''
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(method, false, true))
 		node.typ = c.unwrap_generic(fn_type)
+		c.table.used_features.anon_fn = true
 		return fn_type
 	}
 	if sym.kind !in [.struct, .aggregate, .interface, .sum_type] {
@@ -2289,6 +2294,9 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 }
 
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
+	if node.is_used {
+		c.table.used_features.auto_str = true
+	}
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
@@ -2853,6 +2861,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
 			type_sym := c.table.sym(c.unwrap_generic(node.typ))
+			if !c.is_builtin_mod {
+				c.table.used_features.as_cast = true
+			}
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
@@ -2936,7 +2947,17 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.DumpExpr {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
-
+			if c.pref.skip_unused && !c.is_builtin_mod {
+				if !c.table.sym(c.unwrap_generic(node.expr_type)).has_method('str') {
+					c.table.used_features.auto_str = true
+					if node.expr_type.is_ptr() {
+						c.table.used_features.auto_str_ptr = true
+					}
+				} else {
+					c.table.used_features.print_types[node.expr_type.idx()] = true
+				}
+				c.table.used_features.print_types[ast.int_type_idx] = true
+			}
 			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 				if c.comptime.is_comptime_var(node.expr) {
 					node.expr_type = c.comptime.get_type(node.expr as ast.Ident)
@@ -3243,7 +3264,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		to_type
 	}
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
-
+	if to_type.is_ptr() {
+		c.table.used_features.cast_ptr = true
+	}
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
 	}
@@ -4734,6 +4757,10 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 		}
 		else {}
+	}
+	c.table.used_features.index = true
+	if node.index is ast.RangeExpr {
+		c.table.used_features.range_index = true
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0

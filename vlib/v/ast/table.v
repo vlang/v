@@ -8,6 +8,24 @@ import v.cflag
 import v.util
 
 @[heap; minify]
+pub struct UsedFeatures {
+pub mut:
+	interfaces       bool         // interface
+	dump             bool         // dump()
+	builtin_types    bool         // uses any builtin type
+	index            bool         // string[0]
+	range_index      bool         // string[0..1]
+	cast_ptr         bool         // &u8(...)
+	as_cast          bool         // expr as Type
+	anon_fn          bool         // fn () { }
+	auto_str         bool         // auto str fns
+	auto_str_ptr     bool         // auto str fns for ptr type
+	arr_prepend      bool         // arr.prepend()
+	option_or_result bool         // has panic call
+	print_types      map[int]bool // print() idx types
+}
+
+@[heap; minify]
 pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
@@ -30,6 +48,7 @@ pub mut:
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_features      UsedFeatures    // filled in by the checker, when pref.skip_unused = true;
 	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
 	veb_res_idx_cache  int             // Cache of `veb.Result` type
 	veb_ctx_idx_cache  int             // Cache of `veb.Context` type
