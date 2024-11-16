@@ -599,12 +599,6 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 						}
 					}
 				}
-
-				// Recheck generic type with its supplied concrete type
-				if parent_typ_sym.info.generic_types.len > 0 {
-					c.table.unwrap_generic_type_ex(node.parent_type, parent_typ_sym.info.generic_types.map(c.table.type_to_str(it)),
-						parent_typ_sym.info.concrete_types, true)
-				}
 			}
 		}
 		.array {
