@@ -52,8 +52,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if (expected == ast.rune_type && got_is_int) || (got == ast.rune_type && exp_is_int) {
 			return true
 		}
-		got_sym := c.table.sym(got)
-		expected_sym := c.table.sym(expected)
+		got_sym, expected_sym := c.table.sym2(got, expected)
 
 		// Allow `[N]anyptr` as `[N]anyptr`
 		if got_sym.info is ast.Array && expected_sym.info is ast.Array {
@@ -132,8 +131,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 
 	if (exp_idx == ast.nil_type_idx && got_idx == ast.string_type_idx)
 		|| (got_idx == ast.nil_type_idx && exp_idx == ast.string_type_idx) {
-		got_sym := c.table.sym(got)
-		exp_sym := c.table.sym(expected)
+		got_sym, exp_sym := c.table.sym2(got, expected)
 
 		if expected.is_ptr() || got.is_ptr() {
 			return true
@@ -340,8 +338,7 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			return
 		}
 	} else {
-		got_typ_sym := c.table.sym(c.unwrap_generic(got))
-		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
+		got_typ_sym, expected_typ_sym := c.table.sym2(c.unwrap_generic(got), c.unwrap_generic(expected))
 		if expected_typ_sym.kind == .interface && c.type_implements(got, expected, token.Pos{}) {
 			return
 		}
@@ -418,7 +415,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		|| (got.idx() == ast.array_type_idx && c.table.final_sym(expected).kind == .array) {
 		return true
 	}
-	got_sym, exp_sym := c.table.sym(got), c.table.sym(expected)
+	got_sym, exp_sym := c.table.sym2(got, expected)
 	// multi return
 	if exp_sym.kind == .multi_return && got_sym.kind == .multi_return {
 		exp_types := exp_sym.mr_info().types
@@ -570,8 +567,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 		return ast.void_type
 	}
 	if !right_type.is_int() && !c.pref.translated {
-		left_sym := c.table.sym(left_type)
-		right_sym := c.table.sym(right_type)
+		left_sym, right_sym := c.table.sym2(left_type, right_type)
 		c.error('cannot shift non-integer type `${right_sym.name}` into type `${left_sym.name}`',
 			node.right.pos())
 		return ast.void_type
@@ -795,12 +791,14 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.Array {
 								mut init_elem_typ, mut field_elem_typ := init_sym.info.elem_type, field_sym.info.elem_type
-								mut init_elem_sym, mut field_elem_sym := c.table.sym(init_elem_typ), c.table.sym(field_elem_typ)
+								mut init_elem_sym, mut field_elem_sym := c.table.sym2(init_elem_typ,
+									field_elem_typ)
 								for {
 									if mut init_elem_sym.info is ast.Array
 										&& mut field_elem_sym.info is ast.Array {
 										init_elem_typ, field_elem_typ = init_elem_sym.info.elem_type, field_elem_sym.info.elem_type
-										init_elem_sym, field_elem_sym = c.table.sym(init_elem_typ), c.table.sym(field_elem_typ)
+										init_elem_sym, field_elem_sym = c.table.sym2(init_elem_typ,
+											field_elem_typ)
 									} else {
 										if field_elem_sym.name == gt_name {
 											mut elem_typ := init_elem_typ
@@ -823,12 +821,14 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.ArrayFixed {
 								mut init_elem_typ, mut field_elem_typ := init_sym.info.elem_type, field_sym.info.elem_type
-								mut init_elem_sym, mut field_elem_sym := c.table.sym(init_elem_typ), c.table.sym(field_elem_typ)
+								mut init_elem_sym, mut field_elem_sym := c.table.sym2(init_elem_typ,
+									field_elem_typ)
 								for {
 									if mut init_elem_sym.info is ast.ArrayFixed
 										&& mut field_elem_sym.info is ast.ArrayFixed {
 										init_elem_typ, field_elem_typ = init_elem_sym.info.elem_type, field_elem_sym.info.elem_type
-										init_elem_sym, field_elem_sym = c.table.sym(init_elem_typ), c.table.sym(field_elem_typ)
+										init_elem_sym, field_elem_sym = c.table.sym2(init_elem_typ,
+											field_elem_typ)
 									} else {
 										if field_elem_sym.name == gt_name {
 											mut elem_typ := init_elem_typ
@@ -1036,14 +1036,16 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					typ = ast.mktyp(arg_typ)
 				} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
-					mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+					mut arg_elem_sym, mut param_elem_sym := c.table.sym2(arg_elem_typ,
+						param_elem_typ)
 					for {
 						if mut arg_elem_sym.info is ast.Array
 							&& mut param_elem_sym.info is ast.Array
 							&& c.table.cur_fn != unsafe { nil }
 							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
-							arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+							arg_elem_sym, param_elem_sym = c.table.sym2(arg_elem_typ,
+								param_elem_typ)
 						} else {
 							if param_elem_sym.name == gt_name {
 								typ = arg_elem_typ
@@ -1056,14 +1058,16 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 					}
 				} else if arg_sym.info is ast.ArrayFixed && param_sym.info is ast.ArrayFixed {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
-					mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+					mut arg_elem_sym, mut param_elem_sym := c.table.sym2(arg_elem_typ,
+						param_elem_typ)
 					for {
 						if mut arg_elem_sym.info is ast.ArrayFixed
 							&& mut param_elem_sym.info is ast.ArrayFixed
 							&& c.table.cur_fn != unsafe { nil }
 							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
-							arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+							arg_elem_sym, param_elem_sym = c.table.sym2(arg_elem_typ,
+								param_elem_typ)
 						} else {
 							if param_elem_sym.name == gt_name {
 								typ = arg_elem_typ

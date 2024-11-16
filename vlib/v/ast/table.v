@@ -738,6 +738,22 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	return invalid_type_symbol
 }
 
+@[direct_array_access]
+pub fn (t &Table) sym2(typ Type, typ2 Type) (&TypeSymbol, &TypeSymbol) {
+	idx, idx2 := typ.idx(), typ2.idx()
+	if idx > 0 && idx2 > 0 && idx < t.type_symbols.len && idx2 < t.type_symbols.len {
+		return t.type_symbols[idx], t.type_symbols[idx2]
+	}
+	// this should never happen
+	if idx <= 0 {
+		t.panic('table.sym2: invalid type (typ=${typ} idx=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
+	}
+	if idx2 <= 0 {
+		t.panic('table.sym2: invalid type (typ2=${typ} idx2=${idx}). Compiler bug. This should never happen. Please report the bug using `v bug file.v`.')
+	}
+	return invalid_type_symbol, invalid_type_symbol
+}
+
 // final_sym follows aliases until it gets to a "real" Type
 @[direct_array_access]
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {

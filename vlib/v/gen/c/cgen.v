@@ -2570,8 +2570,7 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, got_type_raw ast.Type, expected_type
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := ast.mktyp(got_type_raw)
-	exp_sym := g.table.sym(expected_type)
-	got_sym := g.table.sym(got_type)
+	exp_sym, got_sym := g.table.sym2(expected_type, got_type)
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
 	// allow using the new Error struct as a string, to avoid a breaking change
@@ -2641,9 +2640,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
-		unwrapped_exp_sym := g.table.sym(unwrapped_expected_type)
 		mut unwrapped_got_type := g.unwrap_generic(got_type)
-		mut unwrapped_got_sym := g.table.sym(unwrapped_got_type)
+		unwrapped_exp_sym, mut unwrapped_got_sym := g.table.sym2(unwrapped_expected_type,
+			unwrapped_got_type)
 
 		expected_deref_type := if expected_is_ptr {
 			unwrapped_expected_type.deref()
