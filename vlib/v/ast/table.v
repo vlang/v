@@ -204,8 +204,7 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 		// don't check receiver for `.typ`
 		has_unexpected_type := i > 0 && f.params[i].typ != func.params[i].typ
 		// temporary hack for JS ifaces
-		lsym := t.sym(f.params[i].typ)
-		rsym := t.sym(func.params[i].typ)
+		lsym, rsym := t.sym2(f.params[i].typ, func.params[i].typ)
 		if lsym.language == .js && rsym.language == .js {
 			return ''
 		}
@@ -1071,8 +1070,7 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 // e. g. map[string]int
 @[inline]
 pub fn (t &Table) map_name(key_type Type, value_type Type) string {
-	key_type_sym := t.sym(key_type)
-	value_type_sym := t.sym(value_type)
+	key_type_sym, value_type_sym := t.sym2(key_type, value_type)
 	ptr := if value_type.is_ptr() { '&'.repeat(value_type.nr_muls()) } else { '' }
 	opt := if value_type.has_flag(.option) { '?' } else { '' }
 	res := if value_type.has_flag(.result) { '!' } else { '' }
@@ -1081,8 +1079,7 @@ pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 
 @[inline]
 pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
-	key_type_sym := t.sym(key_type)
-	value_type_sym := t.sym(value_type)
+	key_type_sym, value_type_sym := t.sym2(key_type, value_type)
 	suffix := if value_type.is_ptr() { '_ptr'.repeat(value_type.nr_muls()) } else { '' }
 	opt := if value_type.has_flag(.option) { '_option_' } else { '' }
 	res := if value_type.has_flag(.result) { '_result_' } else { '' }

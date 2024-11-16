@@ -214,8 +214,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				exprv.pos)
 		}
 		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
-			got_type_sym := c.table.sym(got_type)
-			exp_type_sym := c.table.sym(exp_type)
+			got_type_sym, exp_type_sym := c.table.sym2(got_type, exp_type)
 			pos := node.exprs[expr_idxs[i]].pos()
 			if c.check_types(got_type, exp_type) {
 				if exp_type.is_unsigned() && got_type.is_int_literal() {

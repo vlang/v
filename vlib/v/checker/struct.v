@@ -133,8 +133,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 
 				// disallow map `mut a = b`
-				field_sym := c.table.sym(field.typ)
-				expr_sym := c.table.sym(field.default_expr_typ)
+				field_sym, expr_sym := c.table.sym2(field.typ, field.default_expr_typ)
 				if field_sym.kind == .map && expr_sym.kind == .map && field.default_expr.is_lvalue()
 					&& field.is_mut
 					&& (!field.default_expr_typ.is_ptr() || field.default_expr is ast.Ident) {
@@ -389,8 +388,7 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	}
 
 	mut t := global_table
-	a_sym := t.sym(a.typ)
-	b_sym := t.sym(b.typ)
+	a_sym, b_sym := t.sym2(a.typ, b.typ)
 
 	// push all non-flag enums to the end too, just before the bool fields
 	// TODO: support enums with custom field values as well
@@ -853,8 +851,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
-			from_sym := c.table.sym(update_type)
-			to_sym := c.table.sym(node.typ)
+			from_sym, to_sym := c.table.sym2(update_type, node.typ)
 			from_info := from_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO: this check is too strict

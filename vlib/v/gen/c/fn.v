@@ -1624,8 +1624,8 @@ fn (mut g Gen) resolve_comptime_args(func &ast.Fn, mut node_ ast.CallExpr, concr
 					}
 				}
 			} else if mut call_arg.expr is ast.CastExpr {
-				cparam_type_sym := g.table.sym(g.unwrap_generic(call_arg.expr.typ))
-				param_typ_sym := g.table.sym(param_typ)
+				cparam_type_sym, param_typ_sym := g.table.sym2(g.unwrap_generic(call_arg.expr.typ),
+					param_typ)
 				if param_typ_sym.kind == .map && cparam_type_sym.info is ast.Map {
 					comptime_args[k] = cparam_type_sym.info.key_type
 					comptime_args[k + 1] = cparam_type_sym.info.value_type

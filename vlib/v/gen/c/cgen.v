@@ -2415,8 +2415,7 @@ struct SumtypeCastingFn {
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	mut got, exp := got_.idx_type(), exp_.idx_type()
 	i := got | int(u32(exp) << 17) | int(u32(exp_.has_flag(.option)) << 16)
-	exp_sym := g.table.sym(exp)
-	mut got_sym := g.table.sym(got)
+	exp_sym, mut got_sym := g.table.sym2(exp, got)
 	cname := if exp == ast.int_type_idx {
 		ast.int_type_name
 	} else {
@@ -2451,7 +2450,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 
 fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	got, exp := fun.got, fun.exp
-	got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
+	got_sym, exp_sym := g.table.sym2(got, exp)
 	mut got_cname, exp_cname := g.get_sumtype_variant_type_name(got, got_sym), exp_sym.cname
 	mut type_idx := g.type_sidx(got)
 	mut sb := strings.new_builder(128)
@@ -4310,9 +4309,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 					obj.typ
 				}
 				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
-				obj_sym := g.table.sym(obj.typ)
-				cast_sym := g.table.sym(var_typ)
-
+				obj_sym, cast_sym := g.table.sym2(obj.typ, var_typ)
 				mut param_var := strings.new_builder(50)
 				if obj.smartcasts.len > 0 {
 					is_option_unwrap := obj.typ.has_flag(.option)
@@ -7624,8 +7621,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// are the same), otherwise panic.
 	unwrapped_node_typ := g.unwrap_generic(node.typ)
 	styp := g.styp(unwrapped_node_typ)
-	sym := g.table.sym(unwrapped_node_typ)
-	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	sym, mut expr_type_sym := g.table.sym2(unwrapped_node_typ, g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.is_cc_msvc {

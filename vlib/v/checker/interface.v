@@ -238,9 +238,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 
 fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Pos) ast.Type {
 	utyp := c.unwrap_generic(typ)
-	typ_sym := c.table.sym(utyp)
-	mut inter_sym := c.table.sym(interface_type)
-
+	typ_sym, mut inter_sym := c.table.sym2(utyp, interface_type)
 	if mut inter_sym.info is ast.Interface {
 		if inter_sym.info.is_generic {
 			mut inferred_types := []ast.Type{}
@@ -262,8 +260,7 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 						return 0
 					}
 					if imethod.return_type.has_flag(.generic) {
-						imret_sym := c.table.sym(imethod.return_type)
-						mret_sym := c.table.sym(method.return_type)
+						imret_sym, mret_sym := c.table.sym2(imethod.return_type, method.return_type)
 						if method.return_type == ast.void_type
 							&& imethod.return_type != method.return_type {
 							c.error('interface method `${imethod.name}` returns `${imret_sym.name}`, but implementation method `${method.name}` returns no value',
@@ -323,18 +320,19 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							need_inferred_type = true
 						}
 						if iparam.typ.has_flag(.generic) || need_inferred_type {
-							param_sym := c.table.sym(iparam.typ)
-							arg_sym := c.table.sym(param.typ)
+							param_sym, arg_sym := c.table.sym2(iparam.typ, param.typ)
 							if c.table.get_type_name(iparam.typ) == gt_name || need_inferred_type {
 								inferred_type = param.typ
 							} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
-								mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+								mut arg_elem_sym, mut param_elem_sym := c.table.sym2(arg_elem_typ,
+									param_elem_typ)
 								for {
 									if mut arg_elem_sym.info is ast.Array
 										&& mut param_elem_sym.info is ast.Array {
 										arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
-										arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+										arg_elem_sym, param_elem_sym = c.table.sym2(arg_elem_typ,
+											param_elem_typ)
 									} else {
 										if param_elem_sym.name == gt_name {
 											inferred_type = arg_elem_typ
@@ -345,12 +343,14 @@ fn (mut c Checker) unwrap_generic_interface(typ ast.Type, interface_type ast.Typ
 							} else if arg_sym.info is ast.ArrayFixed
 								&& param_sym.info is ast.ArrayFixed {
 								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
-								mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+								mut arg_elem_sym, mut param_elem_sym := c.table.sym2(arg_elem_typ,
+									param_elem_typ)
 								for {
 									if mut arg_elem_sym.info is ast.ArrayFixed
 										&& mut param_elem_sym.info is ast.ArrayFixed {
 										arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
-										arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+										arg_elem_sym, param_elem_sym = c.table.sym2(arg_elem_typ,
+											param_elem_typ)
 									} else {
 										if param_elem_sym.name == gt_name {
 											inferred_type = arg_elem_typ

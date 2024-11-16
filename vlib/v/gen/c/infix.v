@@ -849,9 +849,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.sym(node.left_type)
-	right_sym := g.table.sym(node.right_type)
-
+	mut left_sym, right_sym := g.table.sym2(node.left_type, node.right_type)
 	mut info := left_sym.info as ast.Interface
 	lock info.conversions {
 		common_variants := info.conversions[node.right_type] or {

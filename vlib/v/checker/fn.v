@@ -1669,8 +1669,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if param_type.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
 					continue
 				}
-				unaliased_param_sym := c.table.sym(c.table.unaliased_type(param_type))
-				unaliased_arg_sym := c.table.sym(c.table.unaliased_type(arg_typ))
+				unaliased_param_sym, unaliased_arg_sym := c.table.sym2(c.table.unaliased_type(param_type),
+					c.table.unaliased_type(arg_typ))
 				// Allow `[32]i8` as `&i8` etc
 				if ((unaliased_arg_sym.kind == .array_fixed || unaliased_arg_sym.kind == .array)
 					&& (param_is_number
@@ -2722,8 +2722,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 			// continue
 			// }
-			param_typ_sym := c.table.sym(exp_arg_typ)
-			arg_typ_sym := c.table.sym(got_arg_typ)
+			param_typ_sym, arg_typ_sym := c.table.sym2(exp_arg_typ, got_arg_typ)
 			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
 				param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
 				arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)

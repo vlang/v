@@ -492,8 +492,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.check_div_mod_by_zero(node.right, node.op)
 				}
 
-				left_sym = c.table.sym(unwrapped_left_type)
-				right_sym = c.table.sym(unwrapped_right_type)
+				left_sym, right_sym = c.table.sym2(unwrapped_left_type, unwrapped_right_type)
 				if left_sym.info is ast.Alias && left_final_sym.is_primitive() {
 					if left_sym.has_method(node.op.str()) {
 						if method := left_sym.find_method(node.op.str()) {

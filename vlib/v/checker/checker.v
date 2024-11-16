@@ -1041,8 +1041,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	}
 	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
-	typ_sym := c.table.sym(utyp)
-	mut inter_sym := c.table.sym(interface_type)
+	typ_sym, mut inter_sym := c.table.sym2(utyp, interface_type)
 	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
 		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
 			pos)
@@ -2859,8 +2858,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		}
 		ast.AsCast {
 			node.expr_type = c.expr(mut node.expr)
-			expr_type_sym := c.table.sym(node.expr_type)
-			type_sym := c.table.sym(c.unwrap_generic(node.typ))
+			expr_type_sym, type_sym := c.table.sym2(node.expr_type, c.unwrap_generic(node.typ))
 			if !c.is_builtin_mod {
 				c.table.used_features.as_cast = true
 			}
@@ -4554,8 +4552,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				c.error('should not create object instance on the heap to simply access a member',
 					node.pos.extend(node.right.pos))
 			}
-			right_sym := c.table.sym(right_type)
-			expr_sym := c.table.sym(node.right.expr_type)
+			right_sym, expr_sym := c.table.sym2(right_type, node.right.expr_type)
 			if expr_sym.kind == .struct && (expr_sym.info as ast.Struct).is_minify
 				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum
 				&& !(right_sym.info as ast.Enum).is_flag

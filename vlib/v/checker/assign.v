@@ -542,9 +542,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left_type_unwrapped == 0 {
 			continue
 		}
-		left_sym := c.table.sym(left_type_unwrapped)
-		right_sym := c.table.sym(right_type_unwrapped)
-
+		left_sym, right_sym := c.table.sym2(left_type_unwrapped, right_type_unwrapped)
 		if left_sym.kind == .array && !c.inside_unsafe && right_sym.kind == .array
 			&& left is ast.Ident && !left.is_blank_ident() && right in [ast.Ident, ast.SelectorExpr]
 			&& ((node.op == .decl_assign && left.is_mut) || node.op == .assign) {

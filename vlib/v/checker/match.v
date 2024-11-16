@@ -126,8 +126,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						}
 					}
 					if stmt.typ != ast.error_type {
-						ret_sym := c.table.sym(ret_type)
-						stmt_sym := c.table.sym(stmt.typ)
+						ret_sym, stmt_sym := c.table.sym2(ret_type, stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface]
 							&& stmt_sym.kind in [.sum_type, .interface] {
 							c.error('return type mismatch, it should be `${ret_sym.name}`',
