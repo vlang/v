@@ -288,7 +288,9 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 			match obj {
 				ast.Var {
 					if !obj.is_used && obj.name[0] != `_` {
-						if !c.pref.translated && !c.file.is_translated {
+						if obj.is_arg {
+							c.note('unused parameter: `${obj.name}`', obj.pos)
+						} else if !c.pref.translated && !c.file.is_translated {
 							c.warn('unused variable: `${obj.name}`', obj.pos)
 						}
 					}
