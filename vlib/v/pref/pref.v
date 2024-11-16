@@ -950,6 +950,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.parse_line_info(res.line_info)
 				i++
 			}
+			'-check-unused-fn-args' {
+				res.show_unused_params = true
+			}
 			'-use-coroutines' {
 				res.use_coroutines = true
 				$if macos || linux {
