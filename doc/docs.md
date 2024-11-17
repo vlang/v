@@ -8019,6 +8019,7 @@ for
 go
 goto
 if
+implements
 import
 in
 interface
