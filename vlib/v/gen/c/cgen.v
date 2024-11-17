@@ -4043,7 +4043,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 					for i, typ in field.smartcasts {
 						if i == 0 && is_option_unwrap {
-							g.write('*(${g.styp(typ)}*)')
+							g.write('(*(${g.styp(typ)}*)')
 						}
 						g.write('(')
 						if field_sym.kind == .sum_type && !is_option {
@@ -4203,7 +4203,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	g.write(field_name)
 	if is_option_unwrap {
-		g.write('.data)')
+		g.write('.data))')
 	}
 	if sum_type_deref_field != '' {
 		g.write('${sum_type_dot}${sum_type_deref_field})')
