@@ -353,7 +353,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		g.write(util.tabs(g.indent))
 		styp := g.styp(node.typ)
 		g.writeln('${styp} ${tmp_var};')
-		stmt_str.trim_space()
+		stmt_str
 	} else {
 		''
 	}

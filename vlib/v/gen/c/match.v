@@ -160,7 +160,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write('${tmp_var}')
+		g.write(tmp_var)
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')
