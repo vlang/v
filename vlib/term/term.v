@@ -14,12 +14,8 @@ pub mut:
 	y int
 }
 
-__global can_show_color_on_stdout_cache = init_can_show_color_cache()
-__global can_show_color_on_stderr_cache = init_can_show_color_cache()
-
-fn init_can_show_color_cache() ?bool {
-	return none
-}
+__global can_show_color_on_stdout_cache = ?bool(none)
+__global can_show_color_on_stderr_cache = ?bool(none)
 
 // can_show_color_on_stdout returns true if colors are allowed in stdout;
 // returns false otherwise.
