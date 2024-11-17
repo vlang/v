@@ -1910,7 +1910,6 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, concrete_types []Type, recheck_concrete_types bool) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
-	mut needs_unwrap_types := []Type{}
 	mut nrt := ''
 	mut c_nrt := ''
 	ts := t.sym(typ)
@@ -2008,6 +2007,17 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 								recheck_concrete_types)
 						}
 					}
+					// update concrete types
+					for i in 0 .. ts.info.generic_types.len {
+						if t_typ := t.convert_generic_type(ts.info.generic_types[i], t_generic_names,
+							t_concrete_types)
+						{
+							final_concrete_types << t_typ
+						}
+					}
+					if final_concrete_types.len > 0 {
+						t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
+					}
 				}
 				return new_type(idx).derive(typ).clear_flag(.generic)
 			} else {
@@ -2056,27 +2066,6 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 						final_concrete_types << t_typ
 					}
 				}
-				if final_concrete_types.len > 0 {
-					for method in ts.methods {
-						for i in 1 .. method.params.len {
-							if method.params[i].typ.has_flag(.generic)
-								&& method.params[i].typ != method.params[0].typ {
-								if method.params[i].typ !in needs_unwrap_types {
-									needs_unwrap_types << method.params[i].typ
-								}
-							}
-							if method.return_type.has_flag(.generic)
-								&& method.return_type != method.params[0].typ {
-								if method.return_type !in needs_unwrap_types {
-									needs_unwrap_types << method.return_type
-								}
-							}
-						}
-						if final_concrete_types.len == method.generic_names.len {
-							t.register_fn_concrete_types(method.fkey(), final_concrete_types)
-						}
-					}
-				}
 			}
 		}
 		else {}
@@ -2096,8 +2085,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				info:   info
 				is_pub: ts.is_pub
 			)
-			for typ_ in needs_unwrap_types {
-				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			if final_concrete_types.len > 0 {
+				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -2132,8 +2121,8 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 				info:   info
 				is_pub: ts.is_pub
 			)
-			for typ_ in needs_unwrap_types {
-				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			if final_concrete_types.len > 0 {
+				t.unwrap_method_types(ts, generic_names, concrete_types, final_concrete_types)
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
@@ -2185,6 +2174,31 @@ pub fn (mut t Table) unwrap_generic_type_ex(typ Type, generic_names []string, co
 		else {}
 	}
 	return typ
+}
+
+fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, concrete_types []Type, final_concrete_types []Type) {
+	mut needs_unwrap_types := []Type{}
+	for method in ts.get_methods() {
+		for i in 1 .. method.params.len {
+			if method.params[i].typ.has_flag(.generic)
+				&& method.params[i].typ != method.params[0].typ {
+				if method.params[i].typ !in needs_unwrap_types {
+					needs_unwrap_types << method.params[i].typ
+				}
+			}
+			if method.return_type.has_flag(.generic) && method.return_type != method.params[0].typ {
+				if method.return_type !in needs_unwrap_types {
+					needs_unwrap_types << method.return_type
+				}
+			}
+		}
+		if final_concrete_types.len == method.generic_names.len {
+			t.register_fn_concrete_types(method.fkey(), final_concrete_types)
+		}
+	}
+	for typ_ in needs_unwrap_types {
+		t.unwrap_generic_type(typ_, generic_names, concrete_types)
+	}
 }
 
 // generic struct instantiations to concrete types
