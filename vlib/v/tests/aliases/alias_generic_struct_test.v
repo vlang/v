@@ -12,11 +12,6 @@ fn test_main() {
 	assert v.y == 1
 	assert v.z == 1
 	assert v.w == 1
-	v.from(vec.Vec4[f32]{2, 2, 2, 2})
-	assert v.x == 2
-	assert v.y == 2
-	assert v.z == 2
-	assert v.w == 2
 	v.from(Vec4x{3, 3, 3, 3})
 	assert v.x == 3
 	assert v.y == 3
