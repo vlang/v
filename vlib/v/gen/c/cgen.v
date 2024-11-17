@@ -5528,7 +5528,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
-	fn_return_is_fixed_array := sym.is_array_fixed() && !fn_ret_type.has_option_or_result()
+	fn_return_is_fixed_array := sym.is_array_fixed()
+	fn_return_is_fixed_array_non_result := fn_return_is_fixed_array
+		&& !fn_ret_type.has_option_or_result()
 
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
@@ -5574,7 +5576,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
 		|| (fn_return_is_multi && node.exprs.len >= 1 && fn_return_is_option)
-		|| fn_return_is_fixed_array
+		|| fn_return_is_fixed_array_non_result
 		|| (fn_return_is_multi && node.types.any(g.table.final_sym(it).kind == .array_fixed))
 	// handle promoting none/error/function returning _option'
 	if fn_return_is_option {
@@ -5789,17 +5791,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write('*')
 				}
 			}
-			for i, expr in node.exprs {
-				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
-					info := return_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
-						info.elem_type, info.size)
-				} else {
-					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_option_and_result())
-				}
-				if i < node.exprs.len - 1 {
-					g.write(', ')
-				}
+			if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
+				info := return_sym.info as ast.ArrayFixed
+				g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
+					info.elem_type, info.size)
+			} else {
+				g.expr_with_cast(expr0, node.types[0], fn_ret_type.clear_option_and_result())
 			}
 			g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
@@ -5816,30 +5813,32 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_result && !expr_type_is_result && return_sym.name != result_name {
-			styp := g.base_type(fn_ret_type)
-			g.writeln('${ret_typ} ${tmpvar};')
-			g.write('_result_ok(&(${styp}[]) { ')
-			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
-				if !((node.exprs[0] is ast.Ident && !g.is_amp) || sym.kind == .interface) {
-					g.write('*')
+			g.writeln('${ret_typ} ${tmpvar} = {0};')
+			if fn_return_is_fixed_array {
+				styp := g.styp(fn_ret_type.clear_option_and_result())
+				g.write('memcpy(${tmpvar}.data, ')
+				g.expr(expr0)
+				g.writeln(', sizeof(${styp}));')
+			} else {
+				styp := g.base_type(fn_ret_type)
+				g.write('_result_ok(&(${styp}[]) { ')
+				if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
+					if !((node.exprs[0] is ast.Ident && !g.is_amp) || sym.kind == .interface) {
+						g.write('*')
+					}
 				}
-			}
-			for i, expr in node.exprs {
 				if fn_ret_type.has_flag(.option) {
-					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
-				} else if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
+					g.expr_with_opt(expr0, node.types[0], fn_ret_type.clear_flag(.result))
+				} else if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
 					info := return_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
 						info.elem_type, info.size)
 				} else {
-					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
+					g.expr_with_cast(expr0, node.types[0], fn_ret_type.clear_flag(.result))
 				}
-				if i < node.exprs.len - 1 {
-					g.write(', ')
-				}
+				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
+				g.write_defer_stmts_when_needed()
 			}
-			g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
-			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
@@ -7181,7 +7180,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					if is_option {
-						is_array_fixed = expr_stmt.expr is ast.ArrayInit
+						is_array_fixed = expr_stmt.expr in [ast.ArrayInit, ast.CastExpr]
 							&& g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
