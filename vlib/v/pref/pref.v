@@ -146,6 +146,7 @@ pub mut:
 	show_c_output          bool   // -show-c-output, print all cc output even if the code was compiled correctly
 	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
+	show_unused_params     bool   // NOTE: temporary until making it a default.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
@@ -948,6 +949,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.line_info = cmdline.option(args[i..], arg, '')
 				res.parse_line_info(res.line_info)
 				i++
+			}
+			'-check-unused-fn-args' {
+				res.show_unused_params = true
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true

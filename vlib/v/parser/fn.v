@@ -442,33 +442,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_variadic = true
 	}
 	params << params_t
-	if !are_params_type_only {
-		for k, param in params {
-			if p.scope.known_var(param.name) {
-				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
-				return ast.FnDecl{
-					scope: unsafe { nil }
-				}
-			}
-			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
-			p.scope.register(ast.Var{
-				name:          param.name
-				typ:           param.typ
-				is_mut:        param.is_mut
-				is_auto_deref: param.is_mut
-				is_stack_obj:  is_stack_obj
-				pos:           param.pos
-				is_used:       true
-				is_arg:        true
-				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
-					&& !param.typ.has_flag(.variadic) {
-					.generic_param
-				} else {
-					.no_comptime
-				}
-			})
-		}
-	}
 	// Return type
 	mut return_type_pos := p.tok.pos()
 	mut return_type := ast.void_type
@@ -515,6 +488,34 @@ run them via `v file.v` instead',
 		p.error_with_pos('cannot declare a static function as a receiver method', name_pos)
 	}
 	// Register
+	if !are_params_type_only {
+		for k, param in params {
+			if p.scope.known_var(param.name) {
+				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
+				return ast.FnDecl{
+					scope: unsafe { nil }
+				}
+			}
+			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
+			p.scope.register(ast.Var{
+				name:          param.name
+				typ:           param.typ
+				is_mut:        param.is_mut
+				is_auto_deref: param.is_mut
+				is_stack_obj:  is_stack_obj
+				pos:           param.pos
+				is_used:       is_pub || no_body
+					|| (is_method && rec.type_pos == param.type_pos) || p.builtin_mod
+				is_arg:        true
+				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
+					&& !param.typ.has_flag(.variadic) {
+					.generic_param
+				} else {
+					.no_comptime
+				}
+			})
+		}
+	}
 	if is_method {
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
