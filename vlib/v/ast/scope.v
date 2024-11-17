@@ -165,6 +165,7 @@ pub fn (mut s Scope) register(obj ScopeObject) {
 
 // returns the innermost scope containing pos
 // pub fn (s &Scope) innermost(pos int) ?&Scope {
+@[direct_array_access]
 pub fn (s &Scope) innermost(pos int) &Scope {
 	if s.contains(pos) {
 		// binary search

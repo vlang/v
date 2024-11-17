@@ -177,8 +177,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			sym := c.table.sym(field.typ)
+			field_name, field_name_len := field.name, field.name.len
 			for j in 0 .. i {
-				if field.name == node.fields[j].name {
+				if field_name_len == node.fields[j].name.len && field_name == node.fields[j].name {
 					c.error('field name `${field.name}` duplicate', field.pos)
 				}
 			}

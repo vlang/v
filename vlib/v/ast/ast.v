@@ -2245,9 +2245,19 @@ pub fn (expr Expr) is_pure_literal() bool {
 
 pub fn (expr Expr) is_auto_deref_var() bool {
 	return match expr {
-		Ident { expr.obj is Var && expr.obj.is_auto_deref }
-		PrefixExpr { expr.op == .amp && expr.right.is_auto_deref_var() }
-		else { false }
+		Ident {
+			if expr.obj is Var {
+				expr.obj.is_auto_deref
+			} else {
+				false
+			}
+		}
+		PrefixExpr {
+			expr.op == .amp && expr.right.is_auto_deref_var()
+		}
+		else {
+			false
+		}
 	}
 }
 

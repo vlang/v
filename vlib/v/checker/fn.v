@@ -2875,6 +2875,7 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 	}
 }
 
+@[direct_array_access]
 fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.Fn) {
 	if node.expected_arg_types.len == 0 {
 		start_idx := if func.is_method { 1 } else { 0 }
