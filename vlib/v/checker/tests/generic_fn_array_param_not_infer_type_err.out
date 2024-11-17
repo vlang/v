@@ -1,0 +1,5 @@
+vlib/v/checker/tests/generic_fn_array_param_not_infer_type_err.vv:3:8: error: could not infer generic type `T` in call to `arrays.sum`
+    1 | import arrays
+    2 | 
+    3 | arrays.sum([]) or { panic(err) }
+      |        ~~~~~~~

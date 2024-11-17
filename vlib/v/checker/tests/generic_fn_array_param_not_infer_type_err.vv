@@ -1,0 +1,3 @@
+import arrays
+
+arrays.sum([]) or { panic(err) }
