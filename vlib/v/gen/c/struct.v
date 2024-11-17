@@ -692,8 +692,11 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 						field_unwrap_sym.info.size)
 				}
 				ast.ArrayInit {
-					if sfield.expr.has_index
-						|| (sfield.expr.exprs.len > 0 && sfield.expr.exprs.any(it is ast.CallExpr)) {
+					if sfield.expr.has_index {
+						tmp_var := g.expr_with_var(sfield.expr, sfield.typ, sfield.expected_type)
+						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
+							field_unwrap_sym.info.size)
+					} else if sfield.expr.exprs.len > 0 && sfield.expr.exprs.any(it is ast.CallExpr) {
 						tmp_var := g.expr_with_fixed_array(sfield.expr, sfield.typ, sfield.expected_type)
 						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 							field_unwrap_sym.info.size)
