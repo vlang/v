@@ -158,7 +158,14 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			mut typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			if expr is ast.CallExpr {
+				ret_sym := c.table.sym(typ)
+				if ret_sym.kind == .array_fixed {
+					typ = c.cast_fixed_array_ret(typ, ret_sym)
+				}
+				node.has_callexpr = true
+			}
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
 			}
