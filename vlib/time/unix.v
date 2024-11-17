@@ -24,13 +24,6 @@ pub fn unix(epoch i64) Time {
 	}
 }
 
-// unix2 returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
-@[deprecated: 'use unix_microsecond(unix_ts, us) instead']
-@[deprecated_after: '2023-09-05']
-pub fn unix2(epoch i64, microsecond int) Time {
-	return unix_nanosecond(epoch, microsecond * 1000)
-}
-
 // unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
 pub fn unix_microsecond(epoch i64, microsecond int) Time {
 	return unix_nanosecond(epoch, microsecond * 1000)
