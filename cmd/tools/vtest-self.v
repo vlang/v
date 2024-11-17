@@ -30,7 +30,6 @@ const essential_list = [
 	//
 	'vlib/builtin/int_test.v',
 	'vlib/builtin/array_test.v',
-	'vlib/builtin/array_sorted_test.v',
 	'vlib/builtin/float_test.v',
 	'vlib/builtin/byte_test.v',
 	'vlib/builtin/rune_test.v',
