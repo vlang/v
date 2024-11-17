@@ -22,15 +22,20 @@ fn r(cmd string) {
 }
 
 fn xtime(cmd string) {
-	$if windows {
-		before := time.now()
-		r(cmd)
-		after := time.now()
-		delta_time := after - before
-		println('> Elapsed time: ${delta_time.milliseconds()} ms, for cmd: ${cmd}')
-	} $else {
+	$if linux {
 		r('/usr/bin/time -f "CPU: %Us\tReal: %es\tElapsed: %E\tRAM: %MKB\t%C" ${cmd}')
+		return
 	}
+	$if macos {
+		r('/opt/homebrew/bin/gtime -f "CPU: %Us\tReal: %es\tElapsed: %E\tRAM: %MKB\t%C" ${cmd}')
+		return
+	}
+	// Pure V fallback - no memory stats, but better than nothing ...
+	before := time.now()
+	r(cmd)
+	after := time.now()
+	delta_time := after - before
+	println('> Elapsed time: ${delta_time.milliseconds()} ms, for cmd: ${cmd}')
 }
 
 fn show_size(fpath string) {
