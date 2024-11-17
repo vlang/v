@@ -2559,10 +2559,29 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, got_type_raw ast.Type, expected_type
 	g.empty_line = true
 	tmp_var := g.new_tmp_var()
 	styp := g.styp(expected_type)
+
 	g.writeln('${styp} ${tmp_var};')
 	g.write('memcpy(&${tmp_var}, ')
 	g.expr(expr)
 	g.writeln(', sizeof(${styp}));')
+	g.write(stmt_str)
+	return tmp_var
+}
+
+// expr_with_fixed_array generates code for fixed array initialization with expr which requires tmp var
+fn (mut g Gen) expr_with_fixed_array(expr ast.ArrayInit, got_type_raw ast.Type, expected_type ast.Type) string {
+	stmt_str := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+	tmp_var := g.new_tmp_var()
+	styp := g.styp(expected_type)
+	g.writeln('${styp} ${tmp_var};')
+	// [ foo(), foo() ]!
+	val_typ := g.table.value_type(got_type_raw)
+	for i, item_expr in expr.exprs {
+		g.write('memcpy(${tmp_var}[${i}], ')
+		g.expr(item_expr)
+		g.writeln(', sizeof(${g.styp(val_typ)}));')
+	}
 	g.write(stmt_str)
 	return tmp_var
 }
@@ -2620,7 +2639,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				// Do not allocate for `Interface(unsafe{nil})` casts
 				is_nil_cast := expr is ast.UnsafeExpr && expr.expr is ast.Nil
 				if is_nil_cast {
-					g.write2('/*nili*/', '((void*)0)')
+					g.write2('/*nil*/', '((void*)0)')
 					return
 				}
 			}
@@ -6901,7 +6920,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 											base)};')
 									}
 								}
-							} else {
+							} else if !(elem_sym.info is ast.ArrayFixed && elem_sym.info.is_fn_ret) {
 								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 							}
 						}
