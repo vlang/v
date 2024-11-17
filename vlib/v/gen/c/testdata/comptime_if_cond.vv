@@ -1,3 +1,4 @@
+// vtest vflags: -g
 struct TaggedSource {}
 
 type SumType = TaggedSource | int
@@ -21,4 +22,5 @@ fn f() {
 		}
 	}
 	assert path == 'c'
+	println('done')
 }
