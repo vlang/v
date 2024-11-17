@@ -461,6 +461,13 @@ fn test_omit_empty() {
 	// println(json.encode_pretty(foo))
 }
 
+fn test_encode_struct_expression() {
+	assert json.encode(Foo2{'Foo'}) == '{"name":"Foo"}'
+	assert json.encode_pretty(Foo2{'Bar'}) == '{
+	"name":	"Bar"
+}'
+}
+
 struct Asdasd {
 	data GamePacketData
 }
