@@ -1044,16 +1044,17 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
 							arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
-						} else if arg.expr is ast.ArrayInit && arg.expr.exprs.len == 0 {
-							c.error('could not infer generic type `${gt_name}` in call to `${func.name}`',
-								node.pos)
-							return
 						} else {
 							if param_elem_sym.name == gt_name {
 								typ = arg_elem_typ
 								if param_elem_typ.nr_muls() > 0 && typ.nr_muls() > 0 {
 									typ = typ.set_nr_muls(0)
 								}
+							}
+							if arg_elem_sym.kind == .any {
+								c.error('could not infer generic type `${gt_name}` in call to `${func.name}`',
+									node.pos)
+								return
 							}
 							break
 						}
