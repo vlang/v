@@ -75,7 +75,7 @@ fn main() {
 	// *not* using v self here is deliberate, so that the `v` executable itself, is not changed after running this script
 	xtime('./v     -o vnew1 cmd/v')
 	xtime('./vnew1 -o vnew2 cmd/v')
-	xtime('./vnew2 -no-parallel -o vnew  cmd/v')
+	xtime('./vnew2 -no-parallel -o vnew cmd/v')
 	xtime('./vnew -no-parallel -o nhw_current.c examples/hello_world.v')
 	xtime('./vnew -no-parallel -o nv_current.c cmd/v')
 	if compare_prod {
@@ -94,8 +94,8 @@ fn main() {
 	hline('    Compiling old V executables from branch: ${master_branch}, commit: ${gcommit()} ...')
 	xtime('./v     -o vold1 cmd/v')
 	xtime('./vold1 -o vold2 cmd/v')
-	xtime('./vold2 -no-parallel -o vold  cmd/v')
-	xtime('./vnew -no-parallel -o ohw_master.c examples/hello_world.v')
+	xtime('./vold2 -no-parallel -o vold cmd/v')
+	xtime('./vold -no-parallel -o ohw_master.c examples/hello_world.v')
 	xtime('./vold -no-parallel -o ov_master.c  cmd/v')
 	if compare_prod {
 		xtime('./vold -no-parallel -prod -o vold_prod cmd/v')
