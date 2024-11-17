@@ -1394,7 +1394,7 @@ pub fn (s string) index_u8_last(c u8) int {
 }
 
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
-@[inline]
+@[direct_array_access; inline]
 pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if s[i] == c {
