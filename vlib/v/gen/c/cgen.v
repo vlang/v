@@ -4023,23 +4023,30 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut sum_type_deref_field := ''
 	mut sum_type_dot := '.'
 	mut field_typ := ast.void_type
+	mut is_option_unwrap := false
 	if f := g.table.find_field_with_embeds(sym, node.field_name) {
 		field_sym := g.table.sym(f.typ)
 		field_typ = f.typ
 		if sym.kind in [.interface, .sum_type] {
 			g.write('(*(')
 		}
-		if field_sym.kind in [.sum_type, .interface] {
+		is_option := field_typ.has_flag(.option)
+		if field_sym.kind in [.sum_type, .interface] || is_option {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
 				if field := scope.find_struct_field(node.expr.str(), node.expr_type, node.field_name) {
+					is_option_unwrap = is_option && field.smartcasts.len > 0
+						&& field.typ.clear_flag(.option) == field.smartcasts.last()
 					if field.orig_type.is_ptr() {
 						sum_type_dot = '->'
 					}
 					for i, typ in field.smartcasts {
+						if i == 0 && is_option_unwrap {
+							g.write('*(${g.styp(typ)}*)')
+						}
 						g.write('(')
-						if field_sym.kind == .sum_type {
+						if field_sym.kind == .sum_type && !is_option {
 							g.write('*')
 						}
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
@@ -4048,7 +4055,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.expr}${dot}${node.field_name}))')
 							return
-						} else {
+						} else if !is_option_unwrap {
 							if i != 0 {
 								dot := if field.typ.is_ptr() { '->' } else { '.' }
 								sum_type_deref_field += ')${dot}'
@@ -4195,6 +4202,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `${node.expr}` | field: `${node.field_name}` | file: ${g.file.path} | line: ${node.pos.line_nr}')
 	}
 	g.write(field_name)
+	if is_option_unwrap {
+		g.write('.data)')
+	}
 	if sum_type_deref_field != '' {
 		g.write('${sum_type_dot}${sum_type_deref_field})')
 	}
