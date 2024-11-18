@@ -99,7 +99,7 @@ ${dec_fn_dec} {
 			const int error_pos = (int)cJSON_GetErrorPos();
 			int maxcontext_chars = 30;
 			byte *buf = vcalloc_noscan(maxcontext_chars + 10);
-			if(error_pos > 0) {
+			if (error_pos > 0) {
 				int backlines = 1;
 				int backchars = error_pos < maxcontext_chars-7 ? (int)error_pos : maxcontext_chars-7 ;
 				char *prevline_ptr = (char*)error_ptr;
@@ -119,9 +119,12 @@ ${dec_fn_dec} {
 				int maxchars = vstrlen_char(prevline_ptr);
 				vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
 			}
-			string colon;
-			colon = (buf[0] == \'\\0\') ? _SLIT("") : _SLIT(": ");
-			return (${result_name}_${ret_styp}){.is_error = true,.err = _v_error(string_plus_two(_SLIT("failed to decode JSON string"), colon, tos2(buf))),.data = {0}};
+			string msg;
+			msg = _SLIT("failed to decode JSON string");
+			if (buf[0] != \'\\0\') {
+				msg = string__plus(msg, _SLIT(": "));
+			}
+			return (${result_name}_${ret_styp}){.is_error = true,.err = _v_error(string__plus(msg, tos2(buf))),.data = {0}};
 		}
 	}
 ')
