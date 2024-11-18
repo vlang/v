@@ -1563,8 +1563,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			|| final_param_sym.idx == ast.voidptr_type_idx
 			|| param.typ == ast.nil_type || final_param_sym.idx == ast.nil_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
-			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated
-			&& !c.file.is_translated {
+			&& !call_arg.expr.is_lvalue() && !c.pref.translated && !c.file.is_translated
+			&& func.name !in ['json.encode', 'json.encode_pretty'] {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
 		// Handle expected interface
