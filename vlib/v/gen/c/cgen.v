@@ -7955,7 +7955,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 					parent_sym := g.table.sym(st_sym.info.parent_type)
 					match parent_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							t_method_names := methods.map(it.name)
+							mut t_method_names := methods.map(it.name)
 							for method in parent_sym.methods {
 								if method.name in methodidx {
 									parent_method := parent_sym.find_method_with_generic_parent(method.name) or {
@@ -7967,6 +7967,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 									if parent_method.name !in t_method_names {
 										methods << parent_method
 										aliased_method_names << parent_method.name
+										t_method_names << parent_method.name
 									}
 								}
 							}
@@ -7977,10 +7978,11 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				else {}
 			}
 			t_methods := g.table.get_embed_methods(st_sym)
-			t_method_names := methods.map(it.name)
+			mut t_method_names := methods.map(it.name)
 			for t_method in t_methods {
 				if t_method.name !in t_method_names {
 					methods << t_method
+					t_method_names << t_method.name
 				}
 			}
 
