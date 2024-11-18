@@ -2583,11 +2583,14 @@ fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expec
 			g.expr(item_expr)
 			g.writeln(', sizeof(${g.styp(val_typ)}));')
 		}
-	} else {
+	} else if expr is ast.CallExpr {
+		// return AliasToFixedArray(...)
 		g.writeln('${styp} ${tmp_var} = {0};')
 		g.write('memcpy(&${tmp_var}.data, ')
 		g.expr(expr)
 		g.writeln(', sizeof(${g.base_type(expected_type)}));')
+	} else {
+		g.expr(expr)
 	}
 	g.write(stmt_str)
 	return tmp_var
