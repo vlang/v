@@ -1048,7 +1048,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	${fixed_array_idx}
 	cJSON_ArrayForEach(jsval, root)
 	{
-	    ${s}
+		${s}
 		${array_element_assign}
 		${fixed_array_idx_increment}
 	}
