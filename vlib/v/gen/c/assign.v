@@ -411,13 +411,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		unwrapped_val_type := g.unwrap_generic(val_type)
 		right_sym := g.table.sym(unwrapped_val_type)
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
-		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && (
+		is_fixed_array_var := !g.pref.translated && unaliased_right_sym.kind == .array_fixed && (
 			(val is ast.ArrayInit && val.has_tmp_var)
 			|| (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr])
 			|| (val is ast.CastExpr && (val.expr !is ast.ArrayInit|| (val.expr is ast.ArrayInit && val.expr.has_tmp_var)))
 			|| (val is ast.PrefixExpr && val.op == .arrow)
 			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident]))
-			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
