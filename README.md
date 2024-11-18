@@ -80,7 +80,7 @@ Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essentia
 
 To get started, execute the following in your terminal/shell:
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
 ```
@@ -168,7 +168,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 ```bash
 # xbps-install -Su base-devel
 # xbps-install libatomic-devel
-$ git clone https://github.com/vlang/v
+$ git clone --depth=1 https://github.com/vlang/v
 $ cd v
 $ make
 ```
@@ -179,7 +179,7 @@ $ make
 
 
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
@@ -188,7 +188,7 @@ docker run --rm -it vlang:latest
 ### Docker with Alpine/musl
 
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 docker build -t vlang_alpine - < Dockerfile.alpine
 alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
@@ -219,7 +219,7 @@ Linux/macos:
 
 ```bash
 pkg install clang libexecinfo libgc libgc-static make git
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
 ```

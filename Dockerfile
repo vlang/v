@@ -14,7 +14,7 @@ RUN apt update && \
 COPY . /vlang-local
 
 RUN if [ -z "${USE_LOCAL}" ] ; then \
-      git clone https://github.com/vlang/v/ /opt/vlang && \
+      git clone --depth=1 https://github.com/vlang/v /opt/vlang && \
       rm -rf /vlang-local ; \
     else \
       mv /vlang-local/* . && \
