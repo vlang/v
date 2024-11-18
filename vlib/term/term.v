@@ -1,3 +1,4 @@
+@[has_globals]
 module term
 
 import os
@@ -13,16 +14,29 @@ pub mut:
 	y int
 }
 
+__global can_show_color_on_stdout_cache = ?bool(none)
+__global can_show_color_on_stderr_cache = ?bool(none)
+
 // can_show_color_on_stdout returns true if colors are allowed in stdout;
 // returns false otherwise.
 pub fn can_show_color_on_stdout() bool {
-	return supports_escape_sequences(1)
+	if status := can_show_color_on_stdout_cache {
+		return status
+	}
+	status := supports_escape_sequences(1)
+	can_show_color_on_stdout_cache = status
+	return status
 }
 
 // can_show_color_on_stderr returns true if colors are allowed in stderr;
 // returns false otherwise.
 pub fn can_show_color_on_stderr() bool {
-	return supports_escape_sequences(2)
+	if status := can_show_color_on_stderr_cache {
+		return status
+	}
+	status := supports_escape_sequences(2)
+	can_show_color_on_stderr_cache = status
+	return status
 }
 
 // failed returns a bold white on red version of the string `s`
