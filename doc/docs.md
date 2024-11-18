@@ -24,7 +24,7 @@ Anything you can do in other languages, you can do in V.
 The best way to get the latest and greatest V, is to install it from source.
 It is easy, and it takes only a few seconds:
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
 ```

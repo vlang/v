@@ -123,7 +123,7 @@ accordingly in the steps below.)
    Let's say that the forked repository is at
    `https://github.com/YOUR_GITHUB_USERNAME/v` .
 2. Clone the main v repository https://github.com/vlang/v to a local folder on
-   your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
+   your computer, say named nv/ (`git clone --depth=1 https://github.com/vlang/v nv`)
 3. `cd nv`
    3.1 (optional) Run these commands, which ensure that all your code will be
    automatically formatted, before committing:
