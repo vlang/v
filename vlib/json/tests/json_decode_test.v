@@ -90,7 +90,7 @@ struct DbConfig {
 
 fn test_decode_error_message_should_have_enough_context_empty() {
 	json.decode(DbConfig, '') or {
-		assert err.msg().len < 2
+		assert err.msg() == 'failed to decode JSON string'
 		return
 	}
 	assert false
@@ -98,7 +98,7 @@ fn test_decode_error_message_should_have_enough_context_empty() {
 
 fn test_decode_error_message_should_have_enough_context_just_brace() {
 	json.decode(DbConfig, '{') or {
-		assert err.msg() == '{'
+		assert err.msg() == 'failed to decode JSON string: {'
 		return
 	}
 	assert false
@@ -111,7 +111,7 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
     "user": "alex",
 }'
 	json.decode(DbConfig, txt) or {
-		assert err.msg() == '    "user": "alex",\n}'
+		assert err.msg().contains('    "user": "alex",\n}')
 		return
 	}
 	assert false
@@ -120,7 +120,7 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
 fn test_decode_error_message_should_have_enough_context_in_the_middle() {
 	txt := '{"host": "localhost", "dbname": "alex" "user": "alex", "port": "1234"}'
 	json.decode(DbConfig, txt) or {
-		assert err.msg() == 'ost", "dbname": "alex" "user":'
+		assert err.msg().contains('ost", "dbname": "alex" "user":')
 		return
 	}
 	assert false
