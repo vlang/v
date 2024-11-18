@@ -164,7 +164,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if ret_sym.kind == .array_fixed {
 					typ = c.cast_fixed_array_ret(typ, ret_sym)
 				}
-				node.has_callexpr = true
+				node.has_tmp_var = true
+			} else if expr is ast.CastExpr {
+				node.has_tmp_var = true
 			}
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
