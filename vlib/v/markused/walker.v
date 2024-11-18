@@ -528,6 +528,17 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		}
 		return
 	}
+	if node.is_method && node.left_type != 0 {
+		left_sym := w.table.sym(node.left_type)
+		if left_sym.info is ast.Aggregate {
+			for types in left_sym.info.types {
+				fn_name := '${types.idx()}.${node.name}'
+				if !w.used_fns[fn_name] {
+					w.mark_aggregate_call_used(fn_name, types)
+				}
+			}
+		}
+	}
 	w.expr(node.left)
 	w.or_block(node.or_block)
 
@@ -564,6 +575,16 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			w.stmts(stmt.stmts)
 		}
 	}
+}
+
+// visit aggregate type method declaration
+pub fn (mut w Walker) mark_aggregate_call_used(fn_name string, left_type ast.Type) {
+	if w.used_fns[fn_name] {
+		return
+	}
+	w.mark_fn_as_used(fn_name)
+	stmt := w.all_fns[fn_name] or { return }
+	w.stmts(stmt.stmts)
 }
 
 pub fn (mut w Walker) fn_by_name(fn_name string) {
