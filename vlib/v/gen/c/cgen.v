@@ -5814,10 +5814,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		if fn_return_is_result && !expr_type_is_result && return_sym.name != result_name {
 			g.writeln('${ret_typ} ${tmpvar} = {0};')
-			if fn_return_is_fixed_array {
+			if fn_return_is_fixed_array && expr0 !is ast.ArrayInit
+				&& g.table.final_sym(node.types[0]).kind == .array_fixed {
 				styp := g.styp(fn_ret_type.clear_option_and_result())
 				g.write('memcpy(${tmpvar}.data, ')
-				g.expr(expr0)
+				if expr0 in [ast.CallExpr, ast.StructInit] {
+					g.expr_with_opt(expr0, node.types[0], fn_ret_type)
+					g.write('.data')
+				} else {
+					g.expr(expr0)
+				}
 				g.writeln(', sizeof(${styp}));')
 			} else {
 				styp := g.base_type(fn_ret_type)
@@ -5837,8 +5843,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.expr_with_cast(expr0, node.types[0], fn_ret_type.clear_flag(.result))
 				}
 				g.writeln(' }, (${result_name}*)(&${tmpvar}), sizeof(${styp}));')
-				g.write_defer_stmts_when_needed()
 			}
+			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
