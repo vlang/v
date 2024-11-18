@@ -154,8 +154,15 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.fn_decl(mut node)
 		}
 		ast.ForCStmt {
-			w.expr(node.cond)
-			w.stmt(node.inc)
+			if node.has_init {
+				w.stmt(node.init)
+			}
+			if node.has_cond {
+				w.expr(node.cond)
+			}
+			if node.has_inc {
+				w.stmt(node.inc)
+			}
 			w.stmts(node.stmts)
 		}
 		ast.ForInStmt {
@@ -179,7 +186,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			}
 		}
 		ast.ForStmt {
-			w.expr(node.cond)
+			if !node.is_inf {
+				w.expr(node.cond)
+			}
 			w.stmts(node.stmts)
 		}
 		ast.Return {
