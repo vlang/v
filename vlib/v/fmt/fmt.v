@@ -499,7 +499,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := ast.empty_stmt
 	f.indent++
 	for i, stmt in stmts {
-		if i > 0 && !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
+		if i > 0 && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
