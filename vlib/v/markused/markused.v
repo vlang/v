@@ -336,6 +336,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 	}
 
+	if 'C.cJSON_Parse' in all_fns {
+		all_fn_root_names << 'tos5'
+	
+	}
 	mut walker := Walker{
 		table:       table
 		files:       ast_files
