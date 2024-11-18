@@ -5782,22 +5782,36 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			styp := g.base_type(fn_ret_type)
-			g.writeln('${ret_typ} ${tmpvar};')
-			g.write('_option_ok(&(${styp}[]) { ')
-			if !g.unwrap_generic(fn_ret_type).is_ptr() && node.types[0].is_ptr() {
-				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
-					g.write('*')
+			if fn_return_is_fixed_array && expr0 !is ast.ArrayInit
+				&& g.table.final_sym(node.types[0]).kind == .array_fixed {
+				g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
+				styp := g.styp(fn_ret_type.clear_option_and_result())
+				g.write('memcpy(${tmpvar}.data, ')
+				if expr0 in [ast.CallExpr, ast.StructInit] {
+					g.expr_with_opt(expr0, node.types[0], fn_ret_type)
+					g.write('.data')
+				} else {
+					g.expr(expr0)
 				}
-			}
-			if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
-				info := return_sym.info as ast.ArrayFixed
-				g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
-					info.elem_type, info.size)
+				g.writeln(', sizeof(${styp}));')
 			} else {
-				g.expr_with_cast(expr0, node.types[0], fn_ret_type.clear_option_and_result())
+				g.writeln('${ret_typ} ${tmpvar};')
+				styp := g.base_type(fn_ret_type)
+				g.write('_option_ok(&(${styp}[]) { ')
+				if !g.unwrap_generic(fn_ret_type).is_ptr() && node.types[0].is_ptr() {
+					if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+						g.write('*')
+					}
+				}
+				if return_sym.kind == .array_fixed && expr0 !is ast.ArrayInit {
+					info := return_sym.info as ast.ArrayFixed
+					g.fixed_array_var_init(g.expr_string(expr0), expr0.is_auto_deref_var(),
+						info.elem_type, info.size)
+				} else {
+					g.expr_with_cast(expr0, node.types[0], fn_ret_type.clear_option_and_result())
+				}
+				g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			}
-			g.writeln(' }, (${option_name}*)(&${tmpvar}), sizeof(${styp}));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
