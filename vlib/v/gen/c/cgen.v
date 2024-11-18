@@ -7936,6 +7936,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 			}
 			mut methods := st_sym.methods.clone()
+			mut aliased_method_names := []string{}
 			method_names := methods.map(it.name)
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {
@@ -7950,11 +7951,35 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 						}
 					}
 				}
+				ast.Alias {
+					parent_sym := g.table.sym(st_sym.info.parent_type)
+					match parent_sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							t_method_names := methods.map(it.name)
+							for method in parent_sym.methods {
+								if method.name in methodidx {
+									parent_method := parent_sym.find_method_with_generic_parent(method.name) or {
+										continue
+									}
+									if parent_method.name !in methodidx {
+										continue
+									}
+									if parent_method.name !in t_method_names {
+										methods << parent_method
+										aliased_method_names << parent_method.name
+									}
+								}
+							}
+						}
+						else {}
+					}
+				}
 				else {}
 			}
 			t_methods := g.table.get_embed_methods(st_sym)
+			t_method_names := methods.map(it.name)
 			for t_method in t_methods {
-				if t_method.name !in methods.map(it.name) {
+				if t_method.name !in t_method_names {
 					methods << t_method
 				}
 			}
@@ -7984,7 +8009,11 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
 				if !method.params[0].typ.is_ptr() {
-					method_call = '${cctype}_${name}'
+					if method.name !in aliased_method_names {
+						method_call = '${cctype}_${name}'
+					} else {
+						method_call = '${styp}_${name}'
+					}
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					methods_wrapper.write_string('static inline ${g.ret_styp(method.return_type)} ${cctype}_${name}${iwpostfix}(')
