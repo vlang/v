@@ -155,6 +155,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				elem_info := elem_sym.array_fixed_info()
 				g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 					elem_info.elem_type, elem_info.size)
+			} else if elem_sym.kind == .array_fixed && expr is ast.CallExpr
+				&& g.table.final_sym(expr.return_type).kind == .array_fixed {
+				elem_info := elem_sym.array_fixed_info()
+				tmp_var := g.expr_with_var(expr, node.expr_types[i], node.expr_types[i])
+				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
 				if expr.is_auto_deref_var() {
 					g.write('*')
