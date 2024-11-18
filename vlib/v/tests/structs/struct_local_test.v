@@ -1,5 +1,4 @@
 fn test_main() {
-
 	struct Foobar {
 		foo int
 	}
@@ -10,7 +9,6 @@ fn test_main() {
 }
 
 fn x() {
-
 	struct Foobar {
 		baz string
 	}

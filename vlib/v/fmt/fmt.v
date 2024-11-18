@@ -443,6 +443,13 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 			ast.Import {
 				return false
 			}
+			ast.Block {
+				if node is ast.Block && !node.is_unsafe && node.pos.line_nr - prev_line_nr > 0 {
+					return true
+				} else {
+					return false
+				}
+			}
 			ast.ConstDecl {
 				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
 					return true
@@ -489,10 +496,10 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
+	mut prev_stmt := ast.empty_stmt
 	f.indent++
-	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
+	for i, stmt in stmts {
+		if i > 0 && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
