@@ -10,9 +10,9 @@ struct Bar {}
 fn (mut f Foo[T]) method(arg T) {
 	mut b := false
 	if f.f != none {
-		b = f.f or { panic(err) }
+		b = f.f
 	} else {
-		b = true
+		assert false
 	}
 	if b {
 	}
