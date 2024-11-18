@@ -119,9 +119,9 @@ ${dec_fn_dec} {
 				int maxchars = vstrlen_char(prevline_ptr);
 				vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
 			}
-			const char *colon;
-			colon = (buf[0] == \'\\0\') ? "" : ": ";
-			return (${result_name}_${ret_styp}){.is_error = true,.err = _v_error(string_plus_two(_SLIT("failed to decode JSON string"), tos2(colon), tos2(buf))),.data = {0}};
+			string colon;
+			colon = (buf[0] == \'\\0\') ? _SLIT("") : _SLIT(": ");
+			return (${result_name}_${ret_styp}){.is_error = true,.err = _v_error(string_plus_two(_SLIT("failed to decode JSON string"), colon, tos2(buf))),.data = {0}};
 		}
 	}
 ')
