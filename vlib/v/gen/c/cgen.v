@@ -5801,14 +5801,18 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.writeln('${ret_typ} ${tmpvar} = ${tmp_var};')
 				} else {
 					g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
-					g.write('memcpy(${tmpvar}.data, ')
 					if expr0 is ast.StructInit {
-						g.expr_with_opt(expr0, node.types[0], fn_ret_type)
-						g.write('.data')
+						g.write('memcpy(${tmpvar}.data, ')
+						tmp_var := g.expr_with_opt(expr0, node.types[0], fn_ret_type)
+						g.writeln('.data, sizeof(${styp}));')
+						if tmp_var != '' {
+							g.writeln('${tmpvar}.state = ${tmp_var}.state;')
+						}
 					} else {
+						g.write('memcpy(${tmpvar}.data, ')
 						g.expr(expr0)
+						g.writeln(', sizeof(${styp}));')
 					}
-					g.writeln(', sizeof(${styp}));')
 				}
 			} else {
 				g.writeln('${ret_typ} ${tmpvar};')
