@@ -2569,18 +2569,25 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type) string {
 }
 
 // expr_with_fixed_array generates code for fixed array initialization with expr which requires tmp var
-fn (mut g Gen) expr_with_fixed_array(expr ast.ArrayInit, got_type_raw ast.Type, expected_type ast.Type) string {
+fn (mut g Gen) expr_with_fixed_array(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) string {
 	stmt_str := g.go_before_last_stmt().trim_space()
 	g.empty_line = true
 	tmp_var := g.new_tmp_var()
 	styp := g.styp(expected_type)
-	g.writeln('${styp} ${tmp_var};')
-	// [ foo(), foo() ]!
-	val_typ := g.table.value_type(got_type_raw)
-	for i, item_expr in expr.exprs {
-		g.write('memcpy(${tmp_var}[${i}], ')
-		g.expr(item_expr)
-		g.writeln(', sizeof(${g.styp(val_typ)}));')
+	if expr is ast.ArrayInit {
+		g.writeln('${styp} ${tmp_var};')
+		// [ foo(), foo() ]!
+		val_typ := g.table.value_type(got_type_raw)
+		for i, item_expr in expr.exprs {
+			g.write('memcpy(${tmp_var}[${i}], ')
+			g.expr(item_expr)
+			g.writeln(', sizeof(${g.styp(val_typ)}));')
+		}
+	} else {
+		g.writeln('${styp} ${tmp_var} = {0};')
+		g.write('memcpy(&${tmp_var}.data, ')
+		g.expr(expr)
+		g.writeln(', sizeof(${g.base_type(expected_type)}));')
 	}
 	g.write(stmt_str)
 	return tmp_var
@@ -5782,18 +5789,24 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			if fn_return_is_fixed_array && expr0 !is ast.ArrayInit
+			if fn_return_is_fixed_array && (expr0 in [ast.StructInit, ast.CallExpr]
+				|| (expr0 is ast.ArrayInit && expr0.has_callexpr))
 				&& g.table.final_sym(node.types[0]).kind == .array_fixed {
-				g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
 				styp := g.styp(fn_ret_type.clear_option_and_result())
-				g.write('memcpy(${tmpvar}.data, ')
-				if expr0 in [ast.CallExpr, ast.StructInit] {
-					g.expr_with_opt(expr0, node.types[0], fn_ret_type)
-					g.write('.data')
+				if expr0 is ast.CallExpr {
+					tmp_var := g.expr_with_fixed_array(expr0, node.types[0], fn_ret_type)
+					g.writeln('${ret_typ} ${tmpvar} = ${tmp_var};')
 				} else {
-					g.expr(expr0)
+					g.writeln('${ret_typ} ${tmpvar} = (${ret_typ}){ .state=0, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
+					g.write('memcpy(${tmpvar}.data, ')
+					if expr0 is ast.StructInit {
+						g.expr_with_opt(expr0, node.types[0], fn_ret_type)
+						g.write('.data')
+					} else {
+						g.expr(expr0)
+					}
+					g.writeln(', sizeof(${styp}));')
 				}
-				g.writeln(', sizeof(${styp}));')
 			} else {
 				g.writeln('${ret_typ} ${tmpvar};')
 				styp := g.base_type(fn_ret_type)

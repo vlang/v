@@ -687,7 +687,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 					g.fixed_array_var_init(g.expr_string(sfield.expr), is_auto_deref_var,
 						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
 				}
-				ast.CallExpr {
+				ast.CastExpr, ast.CallExpr {
 					tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type)
 					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 						field_unwrap_sym.info.size)
