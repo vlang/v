@@ -22,7 +22,7 @@ mut:
 
 pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
-fn empty_cb(mut p PoolProcessor, idx int, task_id int) voidptr {
+fn empty_cb(mut _p PoolProcessor, _idx int, _task_id int) voidptr {
 	unsafe {
 		return nil
 	}

@@ -2554,7 +2554,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 }
 
 // use instead of expr() when you need a var to use as reference
-fn (mut g Gen) expr_with_var(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) string {
+fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type) string {
 	stmt_str := g.go_before_last_stmt().trim_space()
 	g.empty_line = true
 	tmp_var := g.new_tmp_var()
@@ -3201,8 +3201,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					// Do not free vars that were declared after this scope
 					continue
 				}
-				is_option := obj.typ.has_flag(.option)
-				g.autofree_variable(obj, is_option)
+				g.autofree_variable(obj)
 			}
 			else {}
 		}
@@ -3226,7 +3225,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	}
 }
 
-fn (mut g Gen) autofree_variable(v ast.Var, is_option bool) {
+fn (mut g Gen) autofree_variable(v ast.Var) {
 	// filter out invalid variables
 	if v.typ == 0 {
 		return

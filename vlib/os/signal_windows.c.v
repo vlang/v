@@ -14,5 +14,5 @@ pub fn is_main_thread() bool {
 }
 
 // The windows platform does not need to be handled.
-fn signal_ignore_internal(args ...Signal) {
+fn signal_ignore_internal(_args ...Signal) {
 }

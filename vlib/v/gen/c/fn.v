@@ -1223,7 +1223,7 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 	return true
 }
 
-fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
+fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type) bool {
 	match node.name {
 		'index' {
 			g.gen_array_index(node)
@@ -1773,7 +1773,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	if final_left_sym.kind == .array_fixed && !(left_sym.kind == .alias
 		&& left_sym.has_method(node.name)) {
-		if g.gen_fixed_array_method_call(node, left_type, final_left_sym) {
+		if g.gen_fixed_array_method_call(node, left_type) {
 			return
 		}
 	}
@@ -2504,11 +2504,6 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	for _, mut obj in scope.objects {
 		match mut obj {
 			ast.Var {
-				// if var.typ == 0 {
-				// // TODO: why 0?
-				// continue
-				// }
-				is_option := obj.typ.has_flag(.option)
 				is_result := obj.typ.has_flag(.result)
 				if is_result {
 					// TODO: free results
@@ -2522,7 +2517,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 					continue
 				}
 				obj.is_used = true // TODO: bug? sets all vars is_used to true
-				g.autofree_variable(obj, is_option)
+				g.autofree_variable(obj)
 				// g.nr_vars_to_free--
 			}
 			else {}

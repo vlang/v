@@ -106,7 +106,7 @@ pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
 
 pub type FnPanicHandler = fn (&Table, string)
 
-fn default_table_panic_handler(t &Table, message string) {
+fn default_table_panic_handler(_t &Table, message string) {
 	panic(message)
 }
 

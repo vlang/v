@@ -195,7 +195,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			af = false
 		}
 	}
-	g.gen_assign_vars_autofree(node)
+	// TODO: g.gen_assign_vars_autofree(node)
 	// json_test failed w/o this check
 	if return_type != ast.void_type && return_type != 0 {
 		sym := g.table.sym(return_type)
@@ -957,48 +957,6 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	if g.is_arraymap_set {
 		g.is_arraymap_set = false
 	}
-}
-
-fn (mut g Gen) gen_assign_vars_autofree(node &ast.AssignStmt) {
-	// Autofree tmp arg vars
-	// first_right := node.right[0]
-	// af := g.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
-	// if af {
-	// g.autofree_call_pregen(first_right as ast.CallExpr)
-	// }
-	//
-	//
-	// Handle options. We need to declare a temp variable for them, that's why they are handled
-	// here, not in call_expr().
-	// `pos := s.index('x') or { return }`
-	// ==========>
-	// Option_int _t190 = string_index(s, _STR("x")); // _STR() no more used!!
-	// if (_t190.state != 2) {
-	// Error err = _t190.err;
-	// return;
-	// }
-	// int pos = *(int*)_t190.data;
-	// mut tmp_opt := ''
-	/*
-	is_option := false && g.is_autofree && (node.op in [.decl_assign, .assign])
-		&& node.left_types.len == 1 && node.right[0] is ast.CallExpr
-	if is_option {
-		// g.write('/* option assignment */')
-		call_expr := node.right[0] as ast.CallExpr
-		if call_expr.or_block.kind != .absent {
-			styp := g.styp(call_expr.return_type.set_flag(.option))
-			tmp_opt = g.new_tmp_var()
-			g.write('/*AF opt*/$styp $tmp_opt = ')
-			g.expr(node.right[0])
-			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
-			g.writeln('/*=============ret*/')
-			// if af && is_option {
-			// g.autofree_call_postgen()
-			// }
-			// return
-		}
-	}
-	*/
 }
 
 fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {

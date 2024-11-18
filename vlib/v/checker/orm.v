@@ -36,8 +36,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 
 	info := table_sym.info as ast.Struct
-	mut fields := c.fetch_and_check_orm_fields(info, node.table_expr.pos, table_sym.name,
-		node)
+	mut fields := c.fetch_and_check_orm_fields(info, node.table_expr.pos, table_sym.name)
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 	mut sub_structs := map[int]ast.SqlExpr{}
 
@@ -269,8 +268,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	info := table_sym.info as ast.Struct
-	mut fields := c.fetch_and_check_orm_fields(info, node.table_expr.pos, table_sym.name,
-		ast.SqlExpr{})
+	mut fields := c.fetch_and_check_orm_fields(info, node.table_expr.pos, table_sym.name)
 
 	for field in fields {
 		c.check_orm_struct_field_attrs(node, field)
@@ -397,7 +395,7 @@ fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructFi
 	}
 }
 
-fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, table_name string, sql_expr ast.SqlExpr) []ast.StructField {
+fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, table_name string) []ast.StructField {
 	if cache := c.orm_table_fields[table_name] {
 		return cache
 	}
