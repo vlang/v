@@ -9,7 +9,8 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table        &ast.Table = unsafe { nil }
+	table        &ast.Table        = unsafe { nil }
+	features     &ast.UsedFeatures = unsafe { nil }
 	used_fns     map[string]bool // used_fns['println'] == true
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
@@ -21,6 +22,14 @@ mut:
 	all_fns     map[string]ast.FnDecl
 	all_consts  map[string]ast.ConstField
 	all_globals map[string]ast.GlobalField
+}
+
+pub fn Walker.new(params Walker) &Walker {
+	mut new_walker := &Walker{
+		...params
+	}
+	new_walker.features = params.table.used_features
+	return new_walker
 }
 
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
@@ -77,7 +86,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	for fn_name in all_fn_root_names {
 		if fn_name !in w.used_fns {
 			$if trace_skip_unused_roots ? {
-				println('>>>> ${fn_name} uses: ')
+				println('>>>> walking root func: ${fn_name} ...')
 			}
 			unsafe { w.fn_decl(mut w.all_fns[fn_name]) }
 		}
@@ -87,6 +96,9 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 pub fn (mut w Walker) mark_exported_fns() {
 	for _, mut func in w.all_fns {
 		if func.is_exported {
+			$if trace_skip_unused_exported_fns ? {
+				println('>>>> walking exported func: ${func.name} ...')
+			}
 			w.fn_decl(mut func)
 		}
 	}
@@ -95,6 +107,9 @@ pub fn (mut w Walker) mark_exported_fns() {
 pub fn (mut w Walker) mark_markused_fns() {
 	for _, mut func in w.all_fns {
 		if func.is_markused {
+			$if trace_skip_unused_markused_fns ? {
+				println('>>>> walking markused func: ${func.name} ...')
+			}
 			w.fn_decl(mut func)
 		}
 	}
@@ -103,6 +118,9 @@ pub fn (mut w Walker) mark_markused_fns() {
 pub fn (mut w Walker) mark_markused_consts() {
 	for ckey, mut constfield in w.all_consts {
 		if constfield.is_markused {
+			$if trace_skip_unused_markused_consts ? {
+				println('>>>> walking markused const: ${ckey}')
+			}
 			w.mark_const_as_used(ckey)
 		}
 	}
@@ -111,6 +129,9 @@ pub fn (mut w Walker) mark_markused_consts() {
 pub fn (mut w Walker) mark_markused_globals() {
 	for gkey, mut globalfield in w.all_globals {
 		if globalfield.is_markused || globalfield.is_exported {
+			$if trace_skip_unused_markused_globals ? {
+				println('>>>> walking markused global: ${gkey}')
+			}
 			w.mark_global_as_used(gkey)
 		}
 	}
@@ -170,9 +191,10 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			w.expr(node.high)
 			w.stmts(node.stmts)
 			if node.kind == .map {
-				w.table.used_maps++
-			}
-			if node.kind == .struct {
+				w.features.used_maps++
+			} else if node.kind == .array {
+				w.features.used_arrays++
+			} else if node.kind == .struct {
 				if node.cond_type == 0 {
 					return
 				}
@@ -268,6 +290,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
+			w.features.used_arrays++
 		}
 		ast.Assoc {
 			w.exprs(node.exprs)
@@ -325,7 +348,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 			sym := w.table.final_sym(node.left_type)
 			if sym.kind == .map {
-				w.table.used_maps++
+				w.features.used_maps++
+			} else if sym.kind == .array {
+				w.features.used_arrays++
 			}
 		}
 		ast.InfixExpr {
@@ -347,8 +372,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				return
 			}
 			right_sym := w.table.sym(node.right_type)
-			if node.op in [.not_in, .key_in] && right_sym.kind == .map {
-				w.table.used_maps++
+			if node.op in [.not_in, .key_in] {
+				if right_sym.kind == .map {
+					w.features.used_maps++
+				} else if right_sym.kind == .array {
+					w.features.used_arrays++
+				}
 			}
 		}
 		ast.IfGuardExpr {
@@ -387,7 +416,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.MapInit {
 			w.exprs(node.keys)
 			w.exprs(node.vals)
-			w.table.used_maps++
+			w.features.used_maps++
 		}
 		ast.MatchExpr {
 			w.expr(node.cond)
@@ -503,9 +532,10 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		if ifield.typ != 0 {
 			fsym := w.table.sym(ifield.typ)
 			if fsym.kind == .map {
-				w.table.used_maps++
-			}
-			if fsym.kind == .struct {
+				w.features.used_maps++
+			} else if fsym.kind == .array {
+				w.features.used_arrays++
+			} else if fsym.kind == .struct {
 				w.a_struct_info(fsym.name, fsym.struct_info())
 			}
 		}
@@ -518,8 +548,6 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	}
 	fkey := node.fkey()
 	if w.used_fns[fkey] {
-		// This function is already known to be called, meaning it has been processed already.
-		// Save CPU time and do nothing.
 		return
 	}
 	w.mark_fn_as_used(fkey)
@@ -533,7 +561,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	if node.language == .c {
 		if node.name in ['C.wyhash', 'C.wyhash64'] {
-			w.table.used_maps++
+			w.features.used_maps++
 		}
 		return
 	}

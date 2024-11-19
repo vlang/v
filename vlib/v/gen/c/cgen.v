@@ -849,7 +849,7 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		if !g.pref.skip_unused || g.table.used_maps > 0 {
+		if !g.pref.skip_unused || g.table.used_features.used_maps > 0 {
 			g.cheaders.writeln(c_wyhash_headers)
 		}
 	}
@@ -936,11 +936,11 @@ pub fn (mut g Gen) init() {
 	// and this is being called in the main thread, so we can mutate the table
 	mut muttable := unsafe { &ast.Table(g.table) }
 	if g.use_segfault_handler {
-		muttable.used_fns['v_segmentation_fault_handler'] = true
+		muttable.used_features.used_fns['v_segmentation_fault_handler'] = true
 	}
-	muttable.used_fns['eprintln'] = true
-	muttable.used_fns['print_backtrace'] = true
-	muttable.used_fns['exit'] = true
+	muttable.used_features.used_fns['eprintln'] = true
+	muttable.used_features.used_fns['print_backtrace'] = true
+	muttable.used_features.used_fns['exit'] = true
 }
 
 pub fn (mut g Gen) finish() {
@@ -6009,7 +6009,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 	for field in node.fields {
 		if g.pref.skip_unused {
-			if field.name !in g.table.used_consts {
+			if field.name !in g.table.used_features.used_consts {
 				$if trace_skip_unused_consts ? {
 					eprintln('>> skipping unused const name: ${field.name}')
 				}
@@ -6413,7 +6413,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	}
 	for field in node.fields {
 		if g.pref.skip_unused {
-			if field.name !in g.table.used_globals {
+			if field.name !in g.table.used_features.used_globals {
 				$if trace_skip_unused_globals ? {
 					eprintln('>> skipping unused global name: ${field.name}')
 				}

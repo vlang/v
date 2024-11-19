@@ -339,14 +339,14 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if 'C.cJSON_Parse' in all_fns {
 		all_fn_root_names << 'tos5'
 	}
-	mut walker := Walker{
+	mut walker := Walker.new(
 		table:       table
 		files:       ast_files
 		all_fns:     all_fns
 		all_consts:  all_consts
 		all_globals: all_globals
 		pref:        pref_
-	}
+	)
 	// println( all_fns.keys() )
 	walker.mark_markused_fns() // tagged with `@[markused]`
 	walker.mark_markused_consts() // tagged with `@[markused]`
@@ -357,7 +357,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	if walker.n_asserts > 0 {
 		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }
 	}
-	if table.used_maps > 0 {
+	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {
 			mut method_receiver_typename := ''
 			if mfn.is_method {
@@ -405,15 +405,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			walker.mark_const_as_used(kcon)
 		}
 	}
-	table.used_fns = walker.used_fns.move()
-	table.used_consts = walker.used_consts.move()
-	table.used_globals = walker.used_globals.move()
+	table.used_features.used_fns = walker.used_fns.move()
+	table.used_features.used_consts = walker.used_consts.move()
+	table.used_features.used_globals = walker.used_globals.move()
 
 	$if trace_skip_unused ? {
-		eprintln('>> t.used_fns: ${table.used_fns.keys()}')
-		eprintln('>> t.used_consts: ${table.used_consts.keys()}')
-		eprintln('>> t.used_globals: ${table.used_globals.keys()}')
-		eprintln('>> walker.table.used_maps: ${walker.table.used_maps}')
+		eprintln('>> t.used_fns: ${table.used_features.used_fns.keys()}')
+		eprintln('>> t.used_consts: ${table.used_features.used_consts.keys()}')
+		eprintln('>> t.used_globals: ${table.used_features.used_globals.keys()}')
+		eprintln('>> walker.table.used_features.used_maps: ${walker.table.used_features.used_maps}')
 	}
 }
 
@@ -460,7 +460,7 @@ fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name 
 		all_fn_root_names << filter_name
 		typ_vweb_context := table.find_type(context_name).set_nr_muls(1)
 		all_fn_root_names << '${int(typ_vweb_context)}.html'
-		for vgt in table.used_veb_types {
+		for vgt in table.used_features.used_veb_types {
 			sym_app := table.sym(vgt)
 			for m in sym_app.methods {
 				mut skip := true

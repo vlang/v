@@ -10,22 +10,39 @@ import v.util
 @[heap; minify]
 pub struct UsedFeatures {
 pub mut:
-	interfaces       bool         // interface
-	dump             bool         // dump()
-	builtin_types    bool         // uses any builtin type
-	index            bool         // string[0]
-	range_index      bool         // string[0..1]
-	cast_ptr         bool         // &u8(...)
-	as_cast          bool         // expr as Type
-	anon_fn          bool         // fn () { }
-	auto_str         bool         // auto str fns
-	auto_str_ptr     bool         // auto str fns for ptr type
-	arr_prepend      bool         // arr.prepend()
-	arr_first        bool         // arr.first()
-	arr_last         bool         // arr.last()
-	arr_pop          bool         // arr.pop()
-	option_or_result bool         // has panic call
-	print_types      map[int]bool // print() idx types
+	interfaces       bool            // interface
+	dump             bool            // dump()
+	builtin_types    bool            // uses any builtin type
+	index            bool            // string[0]
+	range_index      bool            // string[0..1]
+	cast_ptr         bool            // &u8(...)
+	as_cast          bool            // expr as Type
+	anon_fn          bool            // fn () { }
+	auto_str         bool            // auto str fns
+	auto_str_ptr     bool            // auto str fns for ptr type
+	arr_prepend      bool            // arr.prepend()
+	arr_first        bool            // arr.first()
+	arr_last         bool            // arr.last()
+	arr_pop          bool            // arr.pop()
+	option_or_result bool            // has panic call
+	print_types      map[int]bool    // print() idx types
+	used_fns         map[string]bool // filled in by markused
+	used_consts      map[string]bool // filled in by markused
+	used_globals     map[string]bool // filled in by markused
+	used_veb_types   []Type          // veb context types, filled in by checker
+	used_maps        int             // how many times maps were used, filled in by markused
+	used_arrays      int             // how many times arrays were used, filled in by markused
+}
+
+@[unsafe]
+pub fn (mut uf UsedFeatures) free() {
+	unsafe {
+		uf.print_types.free()
+		uf.used_fns.free()
+		uf.used_consts.free()
+		uf.used_globals.free()
+		uf.used_veb_types.free()
+	}
 }
 
 @[heap; minify]
@@ -48,14 +65,9 @@ pub mut:
 	sumtypes           map[int]SumTypeDecl
 	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt             bool
-	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_features      UsedFeatures    // filled in by the checker, when pref.skip_unused = true;
-	used_veb_types     []Type          // veb context types, filled in by checker, when pref.skip_unused = true;
-	veb_res_idx_cache  int             // Cache of `veb.Result` type
-	veb_ctx_idx_cache  int             // Cache of `veb.Context` type
-	used_maps          int             // how many times maps were used, filled in by checker, when pref.skip_unused = true;
+	used_features      &UsedFeatures = &UsedFeatures{} // filled in by the checker/markused, when pref.skip_unused = true;
+	veb_res_idx_cache  int // Cache of `veb.Result` type
+	veb_ctx_idx_cache  int // Cache of `veb.Context` type
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
@@ -94,10 +106,7 @@ pub fn (mut t Table) free() {
 		t.redefined_fns.free()
 		t.fn_generic_types.free()
 		t.cmod_prefix.free()
-		t.used_fns.free()
-		t.used_consts.free()
-		t.used_globals.free()
-		t.used_veb_types.free()
+		t.used_features.free()
 	}
 }
 

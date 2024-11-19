@@ -624,7 +624,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
-	c.table.used_veb_types = c.vweb_gen_types
+	c.table.used_features.used_veb_types = c.vweb_gen_types
 	typ_vweb_result := c.table.find_type('vweb.Result')
 	old_file := c.file
 	for vgt in c.vweb_gen_types {
