@@ -5792,7 +5792,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != option_name {
-			if fn_return_is_fixed_array && (expr0 in [ast.StructInit, ast.CallExpr]
+			if fn_return_is_fixed_array && (expr0 in [ast.StructInit, ast.CallExpr, ast.CastExpr]
 				|| (expr0 is ast.ArrayInit && expr0.has_callexpr))
 				&& g.table.final_sym(node.types[0]).kind == .array_fixed {
 				styp := g.styp(fn_ret_type.clear_option_and_result())
