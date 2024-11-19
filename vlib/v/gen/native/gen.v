@@ -993,7 +993,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut used := true
 	if g.pref.skip_unused {
 		fkey := node.fkey()
-		used = g.table.used_fns[fkey]
+		used = g.table.used_features.used_fns[fkey]
 	}
 	return used
 }
