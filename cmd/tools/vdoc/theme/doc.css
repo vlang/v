@@ -312,7 +312,7 @@ hr {
 	text-decoration: underline;
 }
 .doc-nav .search {
-	overflow: scroll;
+	overflow-y: auto;
 }
 .doc-nav .search.hidden {
 	display: none;
