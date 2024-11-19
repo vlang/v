@@ -2394,10 +2394,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			kind:     .blank_ident
 			pos:      pos
 			info:     ast.IdentVar{
-				is_mut:      false
-				is_static:   false
-				is_volatile: false
-				is_option:   is_option
+				is_option: is_option
 			}
 			scope:    p.scope
 		}
