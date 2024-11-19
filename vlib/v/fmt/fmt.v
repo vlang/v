@@ -443,11 +443,6 @@ fn (f &Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node)
 			ast.Import {
 				return false
 			}
-			ast.Block {
-				if node is ast.Block && !node.is_unsafe && node.pos.line_nr - prev_line_nr > 1 {
-					return true
-				}
-			}
 			ast.ConstDecl {
 				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
 					return true
