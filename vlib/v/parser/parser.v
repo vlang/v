@@ -1026,7 +1026,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			} else {
 				stmts := p.parse_block()
-				pos.last_line = p.prev_tok.line_nr
+				pos.update_last_line(p.prev_tok.line_nr)
 				return ast.Block{
 					stmts: stmts
 					pos:   pos
