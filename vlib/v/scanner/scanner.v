@@ -26,7 +26,7 @@ pub mut:
 	file_path                   string // '/path/to/file.v'
 	file_base                   string // 'file.v'
 	text                        string // the whole text of the file
-	pos                         int    // current position in the file, first character is s.text[0]
+	pos                         int = -1    // current position in the file, first character is s.text[0]
 	line_nr                     int    // current line number
 	last_nl_pos                 int = -1 // for calculating column
 	is_crlf                     bool // special check when computing columns
@@ -38,7 +38,6 @@ pub mut:
 	is_nested_enclosed_inter    bool
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
-	is_started                  bool
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
@@ -662,11 +661,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 	// That optimization mostly matters for long sections
 	// of comments and string literals.
 	for {
-		if s.is_started {
-			s.pos++
-		} else {
-			s.is_started = true
-		}
+		s.pos++
 		if !s.is_inside_string {
 			s.skip_whitespace()
 		}
@@ -1839,7 +1834,6 @@ pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.is_crlf = false
 	s.is_inside_string = false
 	s.is_nested_string = false
-	s.is_started = false
 	s.is_inter_start = false
 	s.is_inter_end = false
 	s.is_enclosed_inter = false
