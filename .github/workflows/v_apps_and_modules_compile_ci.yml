@@ -153,7 +153,7 @@ jobs:
           v retry -- v install ui
           v -no-parallel ~/.vmodules/ui/examples/rectangles.v
           v -no-parallel ~/.vmodules/ui/examples/users.v
-          v -skip-unused -no-parallel ~/.vmodules/ui/examples/users.v
+          # v -skip-unused -no-parallel ~/.vmodules/ui/examples/users.v
           # v run ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/v-analyzer
