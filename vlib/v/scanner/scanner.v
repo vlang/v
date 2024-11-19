@@ -26,8 +26,8 @@ pub mut:
 	file_path                   string // '/path/to/file.v'
 	file_base                   string // 'file.v'
 	text                        string // the whole text of the file
-	pos                         int = -1    // current position in the file, first character is s.text[0]
-	line_nr                     int    // current line number
+	pos                         int = -1 // current position in the file, first character is s.text[0]
+	line_nr                     int // current line number
 	last_nl_pos                 int = -1 // for calculating column
 	is_crlf                     bool // special check when computing columns
 	is_inside_string            bool // set to true in a string, *at the start* of an $var or ${expr}
