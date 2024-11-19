@@ -504,8 +504,7 @@ run them via `v file.v` instead',
 				is_auto_deref: param.is_mut
 				is_stack_obj:  is_stack_obj
 				pos:           param.pos
-				is_used:       is_pub || no_body
-					|| (is_method && rec.type_pos == param.type_pos) || p.builtin_mod
+				is_used:       is_pub || no_body || (is_method && k == 0) || p.builtin_mod
 				is_arg:        true
 				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
 					&& !param.typ.has_flag(.variadic) {
