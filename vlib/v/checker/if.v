@@ -568,7 +568,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 		if node.op == .and {
 			c.smartcast_if_conds(mut node.left, mut scope, control_expr)
 			c.smartcast_if_conds(mut node.right, mut scope, control_expr)
-		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
+		} else if node.left in [ast.Ident, ast.SelectorExpr] && node.op == .ne
+			&& node.right is ast.None {
 			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
 				node.left_type = c.comptime.get_type(node.left)
 				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut

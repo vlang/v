@@ -6,7 +6,7 @@ pub mut:
 
 fn set_trace(n &Node) int {
 	if n.parent != none {
-		set_trace(n.parent or { &Node{} })
+		set_trace(n.parent)
 		assert n.id != 0
 	} else {
 		assert n.id == 1
