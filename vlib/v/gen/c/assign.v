@@ -414,8 +414,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		is_fixed_array_var := !g.pref.translated && unaliased_right_sym.kind == .array_fixed
 			&& val !is ast.ArrayInit
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
-			|| (val is ast.CastExpr && (val.expr !is ast.ArrayInit
-			|| (val.expr is ast.ArrayInit && val.expr.has_tmp_var)))
+			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
 			|| (val is ast.UnsafeExpr && val.expr in [ast.SelectorExpr, ast.Ident]))
 		g.is_assign_lhs = true
@@ -451,13 +450,19 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if node.op == .assign && !g.pref.translated
-			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
+		} else if node.op == .assign && !g.pref.translated && (is_fixed_array_init
+			|| (unaliased_right_sym.kind == .array_fixed && val in [ast.Ident, ast.CastExpr])) {
 			// Fixed arrays
 			if is_fixed_array_init && var_type.has_flag(.option) {
 				g.expr(left)
 				g.write(' = ')
 				g.expr_with_opt(val, val_type, var_type)
+			} else if unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr {
+				g.write('memcpy(')
+				g.expr(left)
+				g.write(', ')
+				g.expr(val)
+				g.writeln(', sizeof(${g.styp(var_type)}));')
 			} else {
 				mut v_var := ''
 				arr_typ := styp.trim('*')
