@@ -269,6 +269,7 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			sock:        net.tcp_socket_from_handle_raw(fd)
 			handle:      fd
 			is_blocking: false
+			write_timeout: params.timeout_in_seconds * time.second			
 		}
 
 		params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
