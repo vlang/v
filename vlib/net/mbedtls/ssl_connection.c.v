@@ -371,7 +371,7 @@ fn (mut s SSLConn) init() ! {
 	if ret != 0 {
 		return error_with_code('Failed to set SSL configuration', ret)
 	}
-	C.mbedtls_ssl_conf_read_timeout(&s.conf, 317)
+	C.mbedtls_ssl_conf_read_timeout(&s.conf, 550)
 
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)
