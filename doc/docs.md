@@ -1583,21 +1583,21 @@ println('Your OS is ${current_os}.')
 > [!NOTE]
 > This section is valid when .v files are not in the project's root directory.
 
-modules names in .v files, must match their directory.
+Modules names in .v files, must match the name of their directory.
  
 A .v file `./abc/source.v`  must start with `module abc`. All other .v files in this directory 
-belong to the same module abc and should start with `module abc`.
+belong to the same module `abc`. They should also start with `module abc`.
 
-If you have `abc/def/`, with .v files in both folders you can `import abc`, but you will have 
-to `import abc.def` too, to get to the symbols in the subfolder.
+If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have 
+to `import abc.def` too, to get to the symbols in the subfolder. It is independent.
 
 In `module name` statement, name never repeats directory's hierarchy, but only its directory.
-So in `abc/def/source.v`  first line will be `module def`, and never `module abc.def`.
+So in `abc/def/source.v` the first line will be `module def`, and not `module abc.def`.
 
-`import module_name` statements must respect file hierarchy, also you cannot import def, only
-abc.def
+`import module_name` statements must respect file hierarchy, you cannot `import def`, only
+`abc.def`
 
-Refering to a module symbol such function or variable only requires module name as prefix:
+Refering to a module symbol such as a function or const, only needs module name as prefix:
 
 ```v ignore
 module def
@@ -1608,7 +1608,7 @@ pub fn func() {
 }
 ```
 
-will be called:
+can be called like this:
 
 ```v ignore
 module main
@@ -1620,11 +1620,11 @@ fn main() {
 }
 ```
 
-A function, located in `abc/def/source.v`,  is called with `def.func()`, not `abc.def.func()`
+A function, located in `abc/def/source.v`, is called with `def.func()`, not `abc.def.func()`
 
-This always implies a single prefix, whatever sub-module depth. This behavior flattens 
-modules/sub-modules hierarchy. Should you have two modules with the same name in differents
-directories then you should use Module import aliasing.
+This always implies a *single prefix*, whatever sub-module depth. This behavior flattens 
+modules/sub-modules hierarchy. Should you have two modules with the same name in different
+directories, then you should use Module import aliasing (see below).
 
 
 ### Module import aliasing
