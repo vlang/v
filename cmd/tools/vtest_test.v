@@ -71,7 +71,7 @@ fn test_partial_failure() {
 	assert res.exit_code == 1
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
-	assert res.output.contains('Failed command'), res.output
+	assert res.output.contains('To reproduce just failure'), res.output
 }
 
 fn test_with_stats_and_partial_failure() {
@@ -79,5 +79,5 @@ fn test_with_stats_and_partial_failure() {
 	assert res.exit_code == 1
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
-	assert res.output.contains('Failed command'), res.output
+	assert res.output.contains('To reproduce just failure'), res.output
 }

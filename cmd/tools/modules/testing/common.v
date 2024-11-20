@@ -48,7 +48,7 @@ pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
 
-pub const separator = '-'.repeat(max_header_len)
+pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
@@ -531,6 +531,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		fname_without_extension
 	}
+	reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
@@ -548,6 +549,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		skip_running = ''
 	}
+	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
@@ -620,7 +622,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	} else {
@@ -650,7 +652,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 		tls_bench.step_restart()
@@ -678,8 +680,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				// retry running at least 1 more time, to avoid CI false positives as much as possible
 				details.retry++
 			}
-			failure_output.write_string(separator)
-			failure_output.writeln('\n retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			if details.retry != 0 {
+				failure_output.write_string(separator)
+				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			}
 			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry = 1; retry <= details.retry; retry++ {
@@ -702,7 +706,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				}
 				trimmed_output = r.output.trim_space()
 				failure_output.write_string(separator)
-				failure_output.writeln('\n retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
 				failure_output.writeln(trimmed_output)
 				time.sleep(fail_retry_delay_ms)
 			}
@@ -722,11 +726,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
-				'${normalised_relative_file}\n         retry: ${retry}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure code: ${r.exit_code}; foutput.len: ${full_failure_output.len}; failure output:\n${full_failure_output}',
-				cmd_duration,
+				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
 		}
 	}
