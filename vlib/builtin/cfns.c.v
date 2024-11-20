@@ -326,6 +326,7 @@ fn C._wsystem(command &u16) int
 
 fn C._wgetenv(varname &u16) voidptr
 
+fn C._putenv(envstring &char) int
 fn C._wputenv(envstring &u16) int
 
 fn C._waccess(path &u16, mode int) int
