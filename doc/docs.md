@@ -1585,7 +1585,7 @@ println('Your OS is ${current_os}.')
 
 Modules names in .v files, must match the name of their directory.
  
-A .v file `./abc/source.v`  must start with `module abc`. All other .v files in this directory 
+A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory 
 belong to the same module `abc`. They should also start with `module abc`.
 
 If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have 
