@@ -1903,7 +1903,9 @@
  *
  * Uncomment this to enable pthread mutexes.
  */
+#ifdef __linux__
 #define MBEDTLS_THREADING_PTHREAD
+#endif
 
 /**
  * \def MBEDTLS_USE_PSA_CRYPTO
@@ -3283,7 +3285,9 @@
  *
  * Enable this layer to allow use of mutexes within mbed TLS
  */
+#ifdef __linux__
 #define MBEDTLS_THREADING_C
+#endif
 
 /**
  * \def MBEDTLS_TIMING_C
