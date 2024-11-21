@@ -2420,9 +2420,6 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	if c.pref.backend.is_js() {
 		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
-	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
-		c.error('msvc compiler does not support inline assembly', stmt.pos)
-	}
 	mut aliases := c.asm_ios(mut stmt.output, mut stmt.scope, true)
 	aliases2 := c.asm_ios(mut stmt.input, mut stmt.scope, false)
 	aliases << aliases2
