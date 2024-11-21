@@ -6,7 +6,7 @@
 // PEXTRD, PEXTRQ, PMOVSXBW, PMOVZXBW, PMOVSXBD, PMOVZXBD, PMOVSXBQ, PMOVZXBQ, PMOVSXWD,
 // PMOVZXWD, PMOVSXWQ, PMOVZXWQ, PMOVSXDQ, PMOVZXDQ, PTEST, PCMPEQQ, PACKUSDW, MOVNTDQA
 
-@[if amd64 && !tinyc]
+@[if amd64 && !tinyc && !msvc]
 fn round_floats_sse4_1(a &f32, result &f32) {
 	unsafe {
 		asm volatile amd64 {

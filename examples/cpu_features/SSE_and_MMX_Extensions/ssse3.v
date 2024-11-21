@@ -4,7 +4,7 @@
 // PHADDD, PALIGNR, PABSW, PABSD, PABSB
 // The PSIGNW instruction negates or leaves elements unchanged based on another vector's signs.
 
-@[if amd64 && !tinyc]
+@[if amd64 && !tinyc && !msvc]
 fn psignw_example(a &i16, b &i16, result &i16) {
 	unsafe {
 		asm volatile amd64 {
