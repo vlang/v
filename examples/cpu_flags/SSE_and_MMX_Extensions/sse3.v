@@ -1,12 +1,9 @@
-module main
-
 // SSE Instruction Set
-/*
-SSE3: Added with later Pentium 4
-ADDSUBPD, ADDSUBPS, HADDPD, HADDPS, HSUBPD, HSUBPS, MOVDDUP, MOVSHDUP, MOVSLDUP
-*/
+// SSE3: Added with later Pentium 4
+// ADDSUBPD, ADDSUBPS, HADDPD, HADDPS, HSUBPD, HSUBPS, MOVDDUP, MOVSHDUP, MOVSLDUP
+// The HADDPS instruction performs horizontal addition of two vectors of floats using SSE3
+// instructions.
 
-// The HADDPS instruction performs horizontal addition of two vectors of floats using SSE3 instructions.
 @[if amd64]
 fn horizontal_add_sse3(a &f32, b &f32, result &f32) {
 	unsafe {
@@ -28,11 +25,8 @@ fn main() {
 	a := [f32(1.0), 2.0, 3.0, 4.0]
 	b := [f32(5.0), 6.0, 7.0, 8.0]
 	result := []f32{len: 4}
-
 	horizontal_add_sse3(&a[0], &b[0], &result[0])
-
 	println(result)
-
 	// The result should be [3.0, 7.0, 11.0, 15.0] due to horizontal addition.
 	// 1.0 + 2.0 = 3.0
 	// 3.0 + 4.0 = 7.0
