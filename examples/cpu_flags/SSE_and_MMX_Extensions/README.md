@@ -59,3 +59,5 @@ instructions that can process multiple data elements in parallel.
 To use these extensions in your project, ensure that your compiler supports them and that you have
 enabled the appropriate flags.
 On Linux, you can run the command `lscpu`
+
+Note: the examples here will compile, but not run on CPU architectures != amd64, like ARM or RISCV .

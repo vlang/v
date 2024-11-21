@@ -13,6 +13,7 @@ ANDNPS, ANDPS, ORPS, PAVGB, PAVGW, PEXTRW, PINSRW, PMAXSW, PMAXUB, PMINSW, PMINU
 */
 
 // The ADDPS instruction adds two vectors of floats using SSE instructions.
+@[if amd64]
 fn add_vectors_sse(a &f32, b &f32, result &f32) {
 	unsafe {
 		asm volatile amd64 {

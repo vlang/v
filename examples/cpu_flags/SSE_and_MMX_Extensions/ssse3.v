@@ -7,6 +7,7 @@ PSIGNW, PSIGND, PSIGNB, PSHUFB, PMULHRSW, PMADDUBSW, PHSUBW, PHSUBSW, PHSUBD, PH
 */
 
 // The PSIGNW instruction negates or leaves elements unchanged based on another vector's signs.
+@[if amd64]
 fn psignw_example(a &i16, b &i16, result &i16) {
 	unsafe {
 		asm volatile amd64 {
