@@ -5791,7 +5791,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.pos)
 		}
 		// normal return
-		return_sym := g.table.sym(g.unwrap_generic(node.types[0]))
+		return_sym := g.table.final_sym(g.unwrap_generic(node.types[0]))
 		expr0 := node.exprs[0]
 		// `return opt_ok(expr)` for functions that expect an option
 		expr_type_is_opt := match expr0 {
@@ -7230,8 +7230,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					mut is_array_fixed := false
 					mut return_wrapped := false
 					if is_option {
-						is_array_fixed = expr_stmt.expr in [ast.ArrayInit, ast.CastExpr]
-							&& g.table.final_sym(return_type).kind == .array_fixed
+						is_array_fixed = g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
 								&& expr_stmt.expr is ast.CallExpr&& (expr_stmt.expr as ast.CallExpr).return_type.has_option_or_result()
