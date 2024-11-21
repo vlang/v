@@ -224,11 +224,6 @@ fn (el Element) equal_payload(other Element) bool {
 	return constant_time_compare(x, y) == 1
 }
 
-fn Element.parse(mut p Parser) !Element {
-	el := p.read_tlv()!
-	return el
-}
-
 fn Element.decode(src []u8) !(Element, int) {
 	el, pos := Element.decode_with_rule(src, 0, .der)!
 	return el, pos
@@ -304,23 +299,4 @@ pub fn ElementList.from_bytes(src []u8) ![]Element {
 		return error('The src contains unprocessed bytes')
 	}
 	return els
-}
-
-// Utility function
-//
-// is_element check whethers T is fullfills Element
-fn is_element[T]() bool {
-	s := $if T is Element { true } $else { false }
-	return s
-}
-
-fn has_tag_method[T]() bool {
-	$for method in T.methods {
-		$if method.name == 'tag' {
-			$if method.return_type is Tag {
-				return true
-			}
-		}
-	}
-	return false
 }

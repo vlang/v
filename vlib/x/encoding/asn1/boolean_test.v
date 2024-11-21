@@ -36,10 +36,6 @@ fn test_parse_boolean_with_parser() ! {
 	// out := p.read_element[Boolean]()!
 	// assert out.str() == 'Boolean (TRUE)'
 
-	// this is OK
-	out_2nd := parse[Boolean](data, parse_boolean)!
-	assert out_2nd.str() == 'Boolean (TRUE)'
-
 	// THis is ok
 	mut p2 := Parser.new(data)
 	out_3th := Boolean.parse(mut p2)!

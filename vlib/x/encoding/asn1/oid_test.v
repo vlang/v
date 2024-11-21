@@ -210,7 +210,7 @@ fn test_oid_encode_decode() ! {
 
 	oidback, _ := ObjectIdentifier.decode(out)!
 
-	assert oidback.str() == 'OID ' + '(${inp})'
+	assert oidback.str() == '${inp}'
 	assert oidback.tag().tag_number() == 6
 }
 

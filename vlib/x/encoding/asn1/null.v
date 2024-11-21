@@ -13,11 +13,6 @@ pub const default_null_tag = Tag{.universal, false, int(TagType.null)}
 // The NULL type can be used in situations where the presence of a type is important, but no concrete value is needed.
 pub struct Null {}
 
-// new creates a Null element.
-pub fn Null.new() Null {
-	return Null{}
-}
-
 // tag returns the tag of Null element.
 pub fn (n Null) tag() Tag {
 	return default_null_tag
@@ -42,9 +37,7 @@ fn Null.parse(mut p Parser) !Null {
 	if length != 0 {
 		return error('Get unexpected non-null length for Null type')
 	}
-	null := Null.new()
-
-	return null
+	return Null{}
 }
 
 // Null.decode read Null from bytes.
@@ -62,10 +55,6 @@ fn Null.decode(bytes []u8) !(Null, int) {
 }
 
 fn Null.from_bytes(b []u8) !Null {
-	return Null.from_bytes_with_rule(b, .der)!
-}
-
-fn Null.from_bytes_with_rule(b []u8, rule EncodingRule) !Null {
 	if b.len != 0 {
 		return error('Null: bad non-null bytes')
 	}

@@ -9,7 +9,7 @@ fn test_sort_the_set() {
 	val12 := Integer.from_i64(12)
 	val32 := Integer.from_i64(32)
 	valbol := Boolean.new(false)
-	valnull := Null.new()
+	valnull := Null{}
 	valapp := RawElement.new(Tag{.application, false, 34}, [u8(44), 45])!
 	valctx := RawElement.new(Tag{.context_specific, false, 35}, [u8(50), 55])!
 
@@ -74,7 +74,7 @@ fn test_set_encode() ! {
 	mut set1 := Set.new()!
 
 	set1.add_element(Boolean.new(false))!
-	set1.add_element(Null.new())!
+	set1.add_element(Null{})!
 	set1.add_element(Integer.from_int(4))!
 	// boolean tag:1 length: 3, integer tag:2 length: 3, null tag: 5 length: 2, total length: 8
 	// so, it should sort to

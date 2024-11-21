@@ -19,7 +19,8 @@ module asn1
 // assert out == [u8(0x0C), 0x02, 0x68, 0x69]
 // ```
 pub fn encode(el Element) ![]u8 {
-	return encode_with_options(el, '')!
+	// without options, we call `.encode_with_rule` directly on element.
+	return encode_with_rule(el, .der)!
 }
 
 // `encode_with_options` serializes element into bytes array with options string passed to drive the result.

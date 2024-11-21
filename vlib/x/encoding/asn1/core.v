@@ -210,11 +210,6 @@ fn (t Tag) str() string {
 	return '${cls}-${form}-${number}'
 }
 
-// uniqid_with_id the id of this tag for special purposes identifying in decode
-fn (t Tag) uniqid_with_id(id string) string {
-	return '${t.str()}-${id}'
-}
-
 // bytes_len tells amount of bytes needed to store tag in base 128
 fn (t Tag) bytes_len() int {
 	if t.number == 0 {
@@ -522,24 +517,6 @@ fn universal_tag_from_int(v int) !Tag {
 			return Tag{.universal, false, v}
 		}
 		// vfmt on
-	}
-}
-
-// Params is optional params passed to encode or decodeing
-// of tag, length or ASN.1 element to drive how encoding works.
-@[params]
-struct Params {
-mut:
-	rule EncodingRule = .der
-}
-
-fn default_params() &Params {
-	return &Params{}
-}
-
-fn params_with_rule(rule EncodingRule) &Params {
-	return &Params{
-		rule: .der
 	}
 }
 

@@ -17,6 +17,11 @@ mut:
 	value []int
 }
 
+// value returns underlying ObjectIdentifier values as arrays of int.
+pub fn (o ObjectIdentifier) value() []int {
+	return o.value
+}
+
 // tag returns the tag of ObjectIdentifier type.
 pub fn (oid ObjectIdentifier) tag() Tag {
 	return default_oid_tag
@@ -179,7 +184,7 @@ fn (oid ObjectIdentifier) str() string {
 	}
 	res := s.join('.')
 
-	return 'OID (${res})'
+	return '${res}'
 }
 
 fn (oid ObjectIdentifier) validate() bool {
