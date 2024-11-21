@@ -165,12 +165,20 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		if eq_operator_expects_ptr {
 			g.write('&')
 		}
-		g.expr(node.left)
+		if node.left is ast.ArrayInit && g.table.sym(node.left_type).kind == .array_fixed {
+			g.fixed_array_init_with_cast(node.left, node.left_type)
+		} else {
+			g.expr(node.left)
+		}
 		g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 		if eq_operator_expects_ptr {
 			g.write('&')
 		}
-		g.expr(node.right)
+		if node.right is ast.ArrayInit && g.table.sym(node.right_type).kind == .array_fixed {
+			g.fixed_array_init_with_cast(node.right, node.right_type)
+		} else {
+			g.expr(node.right)
+		}
 		g.write(')')
 	} else if left.unaliased.idx() == right.unaliased.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct, .sum_type, .interface] {
@@ -414,7 +422,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if left.sym.kind == right.sym.kind && has_operator_overloading {
+	} else if left.unaliased_sym.kind == right.unaliased_sym.kind && has_operator_overloading {
 		if node.op in [.le, .ge] {
 			g.write('!')
 		}
@@ -424,12 +432,20 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 			if operator_expects_ptr {
 				g.write('&')
 			}
-			g.expr(node.left)
+			if node.left is ast.ArrayInit && g.table.sym(node.left_type).kind == .array_fixed {
+				g.fixed_array_init_with_cast(node.left, node.left_type)
+			} else {
+				g.expr(node.left)
+			}
 			g.write2(', ', '*'.repeat(right.typ.nr_muls()))
 			if operator_expects_ptr {
 				g.write('&')
 			}
-			g.expr(node.right)
+			if node.right is ast.ArrayInit && g.table.sym(node.right_type).kind == .array_fixed {
+				g.fixed_array_init_with_cast(node.right, node.right_type)
+			} else {
+				g.expr(node.right)
+			}
 			g.write(')')
 		} else {
 			g.write2('(', '*'.repeat(right.typ.nr_muls()))
