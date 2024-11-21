@@ -217,11 +217,6 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sexpr);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
-		if is_ptr {
-			for i := 0; i < typ.nr_muls(); i++ {
-				dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '&');")
-			}
-		}
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
 		surrounder.builder_write_afters(mut dump_fns)
