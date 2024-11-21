@@ -166,31 +166,11 @@ fn EmployeeNumber.new(val asn1.Integer) !asn1.ApplicationElement {
 	return asn1.ApplicationElement.from_element(val, 2, .implicit)!
 }
 
-// Issues: without defines this required tag and payload, this leads into panic RUNTIME ERROR
-// 0x00000000: at ???: RUNTIME ERROR: invalid memory access
-fn (e EmployeeNumber) tag() asn1.Tag {
-	return e.RawElement.tag()
-}
-
-fn (e EmployeeNumber) payload() ![]u8 {
-	return e.RawElement.payload()!
-}
-
-// // Date ::= [APPLICATION 3] IMPLICIT VisibleString -- YYYYMMDD
+// Date ::= [APPLICATION 3] IMPLICIT VisibleString -- YYYYMMDD
 type Date = asn1.ApplicationElement
 
 fn Date.new(val asn1.VisibleString) !asn1.ApplicationElement {
 	return asn1.ApplicationElement.from_element(val, 3, .implicit)!
-}
-
-// Issues: without defines this required tag and payload, this leads into panic RUNTIME ERROR
-// 0x00000000: at ???: RUNTIME ERROR: invalid memory access
-fn (d Date) tag() asn1.Tag {
-	return d.RawElement.tag()
-}
-
-fn (d Date) payload() ![]u8 {
-	return d.RawElement.payload()!
 }
 
 // Name ::= [APPLICATION 1] IMPLICIT SEQUENCE {
@@ -202,15 +182,6 @@ type Name = asn1.ApplicationElement
 
 fn Name.new(el NameEntry) !asn1.ApplicationElement {
 	return asn1.ApplicationElement.from_element(el, 1, .implicit)!
-}
-
-// Issues: without defines this required tag and payload, this leads into panic RUNTIME ERROR
-fn (n Name) tag() asn1.Tag {
-	return n.RawElement.tag()
-}
-
-fn (n Name) payload() ![]u8 {
-	return n.RawElement.payload()!
 }
 
 struct NameEntry {
