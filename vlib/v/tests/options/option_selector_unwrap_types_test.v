@@ -1,5 +1,9 @@
 type SumType = int | string
 
+interface Interface {
+	a int
+}
+
 struct Struct {
 	a int
 }
@@ -9,6 +13,7 @@ struct Foo {
 	b ?string
 	c ?SumType
 	d ?Struct
+	e ?Interface
 }
 
 fn test_main() {
@@ -18,6 +23,9 @@ fn test_main() {
 		c: SumType(123)
 		d: Struct{
 			a: 123
+		}
+		e: Struct{
+			a: 456
 		}
 	}
 	if w.a != none {
@@ -41,6 +49,12 @@ fn test_main() {
 	if w.d != none {
 		dump(w.d)
 		assert w.d.a == 123
+	} else {
+		assert false
+	}
+	if w.e != none {
+		dump(w.e)
+		assert w.e.a == 456
 	} else {
 		assert false
 	}
