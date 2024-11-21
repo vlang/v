@@ -33,7 +33,7 @@ fn test_sequence_contains_other_seq() ! {
 	mut seq1 := Sequence{}
 	// add two primitive elements to the sequence
 	seq1.add_element(Boolean.new(true))!
-	seq1.add_element(Null.new())!
+	seq1.add_element(Null{})!
 	seq1.add_element(Boolean.new(false))!
 
 	// lets create another sequences, where it contains primitive element and first sequence created above.
@@ -88,7 +88,7 @@ fn test_sequence_der_decode() ! {
 fn test_sequence_add_and_encode_boolean() {
 	o1 := Boolean.new(false)
 	o2 := Boolean.new(true)
-	o3 := Null.new()
+	o3 := Null{}
 	mut seq := Sequence{}
 	seq.add_element(o1)!
 	seq.add_element(o2)!
@@ -204,7 +204,7 @@ fn test_sequence_integer_bigint() ! {
 
 	o1 := Integer.from_bigint(inp)
 	o2 := Boolean.new(true)
-	o3 := Null.new()
+	o3 := Null{}
 	seq.add_element(o1)!
 	seq.add_element(o2)!
 	seq.add_element(o3)!
@@ -240,7 +240,7 @@ fn test_sequence_integer_bigint() ! {
 fn test_sequence_of_string() ! {
 	str := 'iloveyou' // 8
 	mut seq := Sequence.new()!
-	o1 := Null.new()
+	o1 := Null{}
 	o2 := Utf8String.new(str)!
 	o3 := IA5String.new(str)!
 	seq.add_element(o1)!
@@ -266,7 +266,7 @@ fn test_sequence_of_string() ! {
 fn test_sequnce_of_sequence() {
 	mut seq := Sequence.new()!
 
-	seq.add_element(Null.new())!
+	seq.add_element(Null{})!
 	seq.add_element(Boolean.new(false))!
 
 	mut out := encode(seq)!
@@ -338,7 +338,7 @@ fn test_sequence_algorithm_identifier() ! {
 		0x05, 0x00]
 	algo := AlgorithmIdentifier{
 		algorithm:  ObjectIdentifier.new('1.2.840.113549.1.1.11')!
-		parameters: AnyDefinedBy.new(Null.new())
+		parameters: AnyDefinedBy.new(Null{})
 	}
 	out := encode(algo)!
 	assert out == expected

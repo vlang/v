@@ -58,7 +58,7 @@ fn Example.decode(bytes []u8) !Example {
 	oid_tipe := fields[2].unwrap_with_options('context_specific:1;explicit; inner:6')!
 	tipe := oid_tipe.into_object[asn1.ObjectIdentifier]()!
 
-	// then build your Example struc
+	// then build your Example structure
 	ex := Example{
 		greeting: greeting
 		answer:   answer

@@ -2,35 +2,16 @@ module main
 
 import x.encoding.asn1
 
-// defined type KerberosString = asn1.GeneralString directly
-// produces x00000000: at ???: RUNTIME ERROR: invalid memory access
-// /tmp/v_0/examples_0.01JBJNNT0EJVN2FRKJ3ZM83EC9.tmp.c:22858: by asn1__Element_encode_with_options
-// /tmp/v_0/examples_0.01JBJNNT0EJVN2FRKJ3ZM83EC9.tmp.c:22838: by asn1__encode_with_options
-// /tmp/v_0/examples_0.01JBJNNT0EJVN2FRKJ3ZM83EC9.tmp.c:22825: by asn1__encode
-// /tmp/v_0/examples_0.01JBJNNT0EJVN2FRKJ3ZM83EC9.tmp.c:28683: by main__KerberosStringList_payload
-// /tmp/v_0/examples_0.01JBJNNT0EJVN2FRKJ3ZM83EC9.tmp.c:4319: by main__KerberosStringList_payload_Interface_asn1__Element_method_wrapper
-struct KerberosString {
-	val asn1.GeneralString
-}
-
-fn (k KerberosString) tag() asn1.Tag {
-	return asn1.default_generalstring_tag
-}
+// Previously, defined type KerberosString = asn1.GeneralString directly
+// without reduplicating required Element methods, would produces
+// RUNTIME ERROR: invalid memory access.
+// **Updates**
+// Its has been resolved in [22901](https://github.com/vlang/v/issues/22901)
+// Thanks to @felipensp
+type KerberosString = asn1.GeneralString
 
 fn KerberosString.new(s string) !KerberosString {
-	return KerberosString{
-		val: asn1.GeneralString.new(s)!
-	}
-}
-
-fn KerberosString.from_bytes(b []u8) !KerberosString {
-	return KerberosString{
-		val: asn1.GeneralString.new(b.bytestr())!
-	}
-}
-
-fn (k KerberosString) payload() ![]u8 {
-	return k.val.payload()!
+	return KerberosString(asn1.GeneralString.new(s)!)
 }
 
 type KerberosStringList = []KerberosString
@@ -70,9 +51,7 @@ fn (pn PrincipalName) tag() asn1.Tag {
 }
 
 fn (pn PrincipalName) payload() ![]u8 {
-	kd := asn1.KeyDefault(map[string]asn1.Element{})
-	// there are some issues with make_payload when your structure contains generic.
-	// see https://github.com/vlang/v/issues/22721
+	kd := asn1.new_key_default()
 	payload := asn1.make_payload[PrincipalName](pn, kd)!
 	return payload
 }
@@ -100,7 +79,7 @@ fn PrincipalName.decode(bytes []u8) !PrincipalName {
 	mut a := []KerberosString{}
 	for item in el_seq.fields() {
 		gst := item.into_object[asn1.GeneralString]()!
-		obj := KerberosString{gst}
+		obj := KerberosString(gst)
 		a << obj
 	}
 

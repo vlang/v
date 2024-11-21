@@ -151,7 +151,7 @@ pub fn (el Element) unwrap_with_field_options(fo FieldOptions) !Element {
 		// checks inner tag from payload
 		tag, _ := Tag.decode_with_rule(el.payload()!, 0, .der)!
 		if !tag.equal(inner_tag) {
-			asn1_error(.unexpected_tag_value, 'Get unexpected inner tag from payload')!
+			return error('Get unexpected inner tag from payload')
 		}
 	}
 	inner_form := inner_tag.constructed
@@ -177,25 +177,6 @@ pub fn (el Element) unwrap_with_field_options(fo FieldOptions) !Element {
 
 // unwrap the provided element, turn into inner element.
 fn unwrap(el Element, mode TaggedMode, inner_tag Tag) !Element {
-	if el.tag().class == .universal {
-		return error('you cant unwrap universal element')
-	}
-	if mode == .explicit {
-		if !el.tag().constructed {
-			return error('explicit mode should have constructed tag')
-		}
-		// checks inner tag within payload
-		tag, _ := Tag.decode_with_rule(el.payload()!, 0, .der)!
-		if !tag.equal(inner_tag) {
-			asn1_error(.unexpected_tag_value, 'Get unexpected inner tag from payload')!
-		}
-	}
-	if mode == .implicit {
-		// the form should derived from inner element
-		if el.tag().constructed != inner_tag.constructed {
-			return error('Different form between element and provided inner_tag')
-		}
-	}
 	match mode {
 		.explicit {
 			// el.payload is serialized of inner element

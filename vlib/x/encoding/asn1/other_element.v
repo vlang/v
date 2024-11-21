@@ -190,7 +190,7 @@ fn (mut r RawElement) set_default_value_with_flag(value Element, force bool) ! {
 
 // inner_tag returns the inner tag of the RawElement if it exists, or error on fails.
 pub fn (r RawElement) inner_tag() !Tag {
-	inner_tag := r.inner_tag or { return asn1_error(.unexpected_value, ' r.inner_tag is not set')! }
+	inner_tag := r.inner_tag or { return error(' r.inner_tag is not set') }
 
 	return inner_tag
 }
@@ -198,14 +198,14 @@ pub fn (r RawElement) inner_tag() !Tag {
 // inner_element returns the inner element of the RawElement if its exists.
 pub fn (r RawElement) inner_element() !Element {
 	if r.tag.class == .universal {
-		asn1_error(.unallowed_operation, 'inner element from universal class is not availables')!
+		return error('inner element from universal class is not availables')
 	}
 	mode := r.mode or { return err }
 	inner_tag := r.inner_tag or { return err }
 
 	if mode == .explicit {
 		if !r.tag.constructed {
-			asn1_error(.unmeet_requirement, 'tag should be constructed when in explicit')!
+			return error('tag should be constructed when in explicit')
 		}
 	}
 	// in implicit, r.content is inner element content with inner tag

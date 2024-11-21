@@ -4,7 +4,7 @@
 module asn1
 
 fn test_explicit_context_null_pack_unpack() ! {
-	el := Null.new()
+	el := Null{}
 	ex1 := ContextElement.from_element(el, 0, .explicit)!
 
 	out := encode(ex1)!
@@ -21,7 +21,7 @@ fn test_explicit_context_null_pack_unpack() ! {
 }
 
 fn test_explicit_context_nested_pack_unpack() ! {
-	el := Null.new()
+	el := Null{}
 
 	ex1 := ContextElement.from_element(el, 1, .explicit)!
 

@@ -25,6 +25,16 @@ mut:
 	pad  u8 // numbers of unused bits
 }
 
+// data returns underlying BitString data.
+pub fn (bs BitString) data() []u8 {
+	return bs.data
+}
+
+// pad returns underlying BitString pad byte.
+pub fn (bs BitString) pad() u8 {
+	return bs.pad
+}
+
 // check performs check internal validity of the BitString data.
 fn (bs BitString) check() ! {
 	// to align with octet size, ie, 8 in length, pad bits only need maximum 7 bits
@@ -147,7 +157,7 @@ fn (bs BitString) bytes_len() int {
 // Utility function
 
 // maximum allowed binary bits string length
-const max_bitstring_len = 8192
+const max_bitstring_len = 65536
 
 // valid_bitstring checks whether this s string is a valid of arrays of binary string `0` and `1`.
 fn valid_bitstring(s string) bool {

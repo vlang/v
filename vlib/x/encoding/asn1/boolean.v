@@ -62,12 +62,8 @@ fn (b Boolean) payload_with_rule(rule EncodingRule) ![]u8 {
 	return [b.value]
 }
 
-fn parse_boolean(mut p Parser) !Boolean {
-	return Boolean.parse(mut p)!
-}
-
 // parse tries to read a Boolean type from parser or return error on fails
-fn Boolean.parse(mut p Parser) !Boolean {
+pub fn Boolean.parse(mut p Parser) !Boolean {
 	tag := p.read_tag()!
 	if !tag.equal(default_boolean_tag) {
 		return error('Get unexpected non boolean tag')

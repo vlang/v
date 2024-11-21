@@ -36,6 +36,20 @@ pub:
 	value IntValue
 }
 
+// hex returns Integer value as a hex string.
+pub fn (v Integer) hex() string {
+	match v.value {
+		i64 {
+			val := v.value as i64
+			return val.hex_full()
+		}
+		big.Integer {
+			val := v.value as big.Integer
+			return val.hex()
+		}
+	}
+}
+
 fn (v Integer) str() string {
 	return 'Integer ${v.value.str()}'
 }
