@@ -1011,7 +1011,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				if needs_clone {
 					g.write('string_clone(')
 				}
-				g.expr_with_cast(node.right, right.typ, array_info.elem_type)
+				if node.right is ast.CastExpr && node.right.expr is ast.ArrayInit {
+					g.expr(node.right.expr)
+				} else {
+					g.expr_with_cast(node.right, right.typ, array_info.elem_type)
+				}
 				if needs_clone {
 					g.write(')')
 				}
