@@ -12,7 +12,7 @@
 // POR, PSLLD, PSLLQ, PSLLW, PSRAD, PSRAW, PSRLD, PSRLQ, PSRLW, PSUBB, PSUBD, PSUBSB, PSUBSW, PSUBUSB,
 // PSUBUSW, PSUBW, PUNPCKHBW, PUNPCKHDQ, PUNPCKHWD, PUNPCKLBW, PUNPCKLDQ, PUNPCKLWD, PXOR
 
-@[if amd64]
+@[if amd64 && !tinyc]
 fn add_vectors_mmx(a &u8, b &u8, result &u8) {
 	unsafe {
 		asm volatile amd64 {

@@ -4,7 +4,7 @@
 // The HADDPS instruction performs horizontal addition of two vectors of floats using SSE3
 // instructions.
 
-@[if amd64]
+@[if amd64 && !tinyc]
 fn horizontal_add_sse3(a &f32, b &f32, result &f32) {
 	unsafe {
 		asm volatile amd64 {
