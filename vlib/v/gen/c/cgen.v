@@ -4059,7 +4059,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							g.write('*')
 						}
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						if field_sym.kind == .interface && cast_sym.kind == .interface && !is_option_unwrap {
+						if field_sym.kind == .interface && cast_sym.kind == .interface
+							&& !is_option_unwrap {
 							ptr := '*'.repeat(field.typ.nr_muls())
 							dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.expr}${dot}${node.field_name}))')
