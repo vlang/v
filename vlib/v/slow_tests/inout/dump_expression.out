@@ -27,7 +27,7 @@
     y: 2
     z: 3
 }
-[vlib/v/slow_tests/inout/dump_expression.vv:37] p_ptr: &Point{
+[vlib/v/slow_tests/inout/dump_expression.vv:37] p_ptr: Point{
     x: 1
     y: 2
     z: 3
