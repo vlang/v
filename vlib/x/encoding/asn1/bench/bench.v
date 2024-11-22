@@ -9,7 +9,6 @@ import x.encoding.asn1
 //    type        [1] EXPLICIT OBJECT IDENTIFIER
 // }
 // ```
-
 struct Example {
 	greeting asn1.Utf8String
 	answer   asn1.Integer
@@ -28,6 +27,7 @@ fn (ex Example) tag() asn1.Tag {
 fn (ex Example) payload() ![]u8 {
 	kd := asn1.KeyDefault(map[string]asn1.Element{})
 	payload := asn1.make_payload[Example](ex, kd)!
+
 	return payload
 }
 
@@ -69,7 +69,7 @@ fn main() {
 	ex := Example{
 		greeting: asn1.Utf8String.new('Hello')!
 		answer:   asn1.Integer.from_int(42)
-		tipe:     asn1.ObjectIdentifier.new('1.3.6.1.3')!
+		tipe:     asn1.ObjectIdentifier.from_ints([1, 3, 6, 1, 3])!
 	}
 	iterations := 1000
 
@@ -84,7 +84,7 @@ fn main() {
 	avg_enc_time := total_enc_time / iterations
 	println('Average example encode time: ${avg_enc_time} µs')
 
-	println('Benchmarking ASN.1 decode (with asn.decode)...')
+	println('Benchmarking ASN.1 decode (with asn1.decode)...')
 	mut total_dec_time := i64(0)
 	for _ in 0 .. iterations {
 		sw := time.new_stopwatch()

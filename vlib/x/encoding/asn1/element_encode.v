@@ -44,18 +44,16 @@ pub fn encode_with_options(el Element, opt string) ![]u8 {
 
 // `encode_with_field_options` serializes this element into bytes array with options defined in fo.
 pub fn encode_with_field_options(el Element, fo FieldOptions) ![]u8 {
-	return el.encode_with_field_options(fo)
+	return el.encode_with_field_options(fo)!
 }
 
 fn (el Element) encode_with_options(opt string) ![]u8 {
 	// treated as without option when nil
 	if opt.len == 0 {
-		out := encode_with_rule(el, .der)!
-		return out
+		return encode_with_rule(el, .der)!
 	}
 	fo := FieldOptions.from_string(opt)!
-	out := el.encode_with_field_options(fo)!
-	return out
+	return el.encode_with_field_options(fo)!
 }
 
 // encode_with_field_options serializes element into bytes arrays with supplied FieldOptions.
@@ -121,8 +119,7 @@ fn (el Element) into_optional(with_present bool) !Element {
 	if el is Optional {
 		return error('already optional element')
 	}
-	opt := Optional.new(el, with_present)!
-	return opt
+	return Optional.new(el, with_present)!
 }
 
 // apply_field_options applies rules in field options into current element
