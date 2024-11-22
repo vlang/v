@@ -998,7 +998,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		} else {
 			// push a single element
 			elem_type_str := g.styp(array_info.elem_type)
-			elem_sym := g.table.sym(array_info.elem_type)
+			elem_sym := g.table.final_sym(array_info.elem_type)
 			elem_is_array_var := elem_sym.kind in [.array, .array_fixed] && node.right is ast.Ident
 			g.write('array_push${noscan}((array*)')
 			if !left.typ.is_ptr()
@@ -1029,6 +1029,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				}
 				if node.right is ast.CastExpr && node.right.expr is ast.ArrayInit {
 					g.expr(node.right.expr)
+				} else if elem_sym.kind == .array_fixed
+					&& node.right in [ast.CallExpr, ast.DumpExpr] {
+					info := elem_sym.info as ast.ArrayFixed
+					tmpvar := g.expr_with_var(node.right, array_info.elem_type)
+					g.fixed_array_var_init(tmpvar, false, info.elem_type, info.size)
 				} else {
 					g.expr_with_cast(node.right, right.typ, array_info.elem_type)
 				}
