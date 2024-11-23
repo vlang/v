@@ -76,8 +76,8 @@ pub fn FieldOptions.from_string(s string) !FieldOptions {
 	}
 	attrs := trimmed.split(';')
 	opt := FieldOptions.from_attrs(attrs)!
-	// checks
-	opt.check_wrapper()!
+	// no need to check, from_attrs already called it internally.
+	// opt.check_wrapper()!
 
 	return opt
 }
@@ -113,8 +113,8 @@ pub fn FieldOptions.from_attrs(attrs []string) !FieldOptions {
 		return error('max allowed filtered.len')
 	}
 
-	for attr in filtered {
-		item := attr.trim_space()
+	// The item has space-trimmed
+	for item in filtered {
 		if !is_tag_marker(item) && !is_optional_marker(item) && !is_default_marker(item)
 			&& !is_mode_marker(item) && !is_inner_tag_marker(item) {
 			return error('unsupported keyword')
@@ -274,13 +274,13 @@ fn (fo FieldOptions) check_wrapper() ! {
 		if fo.inner == '' {
 			return error('You provides incorrect inner number')
 		}
-		inner := fo.inner.trim_space()
-		if !valid_inner_universal_form(inner) && !valid_extended_inner_form(inner) {
+		// inner := fo.inner.trim_space()
+		if !valid_inner_universal_form(fo.inner) && !valid_extended_inner_form(fo.inner) {
 			return error('invalid inner value format')
 		}
 		if valid_inner_universal_form(fo.inner) {
-			val := fo.inner.trim_space()
-			num := val.int()
+			// val := fo.inner.trim_space()
+			num := fo.inner.int()
 			if num > max_universal_tagnumber {
 				return error('Inner number exceed universal limit')
 			}
@@ -355,8 +355,7 @@ fn valid_mode_value(s string) bool {
 // support two format:
 // - unviersal inner format in the form `inner:number`, where number is universal class number.
 // - extended inner format in the form 'inner:class,form,number' for more broad support of the inner class.
-fn parse_inner_tag_marker(attr string) !(string, string) {
-	src := attr.trim_space()
+fn parse_inner_tag_marker(src string) !(string, string) {
 	if is_inner_tag_marker(src) {
 		item := src.split(':')
 		if item.len != 2 {
@@ -414,46 +413,37 @@ fn valid_inner_tag_key(s string) bool {
 	return s == 'inner'
 }
 
-fn valid_inner_universal_form(s string) bool {
+fn valid_inner_universal_form(value string) bool {
 	// 'inner: number' part
-	value := s.trim_space()
 	return valid_string_tag_number(value)
 }
 
-fn valid_extended_inner_form(s string) bool {
-	// 'inner:class,form,number' part
-	value := s.trim_space()
-	// comma separated value.
+fn valid_extended_inner_form(value string) bool {
+	// 'inner:class,form,number' part in comma separated value.
 	items := value.split(',')
 	if items.len != 3 {
 		return false
 	}
-	cls := items[0].trim_space()
-	if !is_extended_inner_cls_marker(cls) {
+	if !is_extended_inner_cls_marker(items[0].trim_space()) {
 		return false
 	}
-	if !valid_extended_inner_cls_marker(cls) {
+	if !valid_extended_inner_cls_marker(items[0].trim_space()) {
 		return false
 	}
 	// second form should be 'true' or 'false'
-	form := items[1].trim_space()
-	if !valid_extended_inner_form_marker(form) {
+	if !valid_extended_inner_form_marker(items[1].trim_space()) {
 		return false
 	}
-
 	// third item should be a number
-	third := items[2].trim_space()
-	if !valid_extended_inner_number_marker(third) {
+	if !valid_extended_inner_number_marker(items[2].trim_space()) {
 		return false
 	}
 	return true
 }
 
 fn parse_inner_extended_form(s string) !(string, string, string) {
-	// 'inner:class,form,number' part
-	value := s.trim_space()
-	// comma separated value.
-	items := value.split(',')
+	// 'inner:class,form,number' part in comma separated value.
+	items := s.split(',')
 	if items.len != 3 {
 		return error('invalid extended form length')
 	}
@@ -469,7 +459,6 @@ fn parse_inner_extended_form(s string) !(string, string, string) {
 	if !valid_extended_inner_form_marker(form) {
 		return error('Your ext inner form is invalid')
 	}
-
 	// third item should be a number
 	third := items[2].trim_space()
 	if !valid_extended_inner_number_marker(third) {
@@ -487,13 +476,11 @@ fn valid_extended_inner_cls_marker(attr string) bool {
 	return valid_tagclass_name(attr) || attr == 'universal'
 }
 
-fn valid_extended_inner_form_marker(attr string) bool {
-	s := attr.trim_space()
+fn valid_extended_inner_form_marker(s string) bool {
 	return s == 'true' || s == 'false'
 }
 
-fn valid_extended_inner_number_marker(attr string) bool {
-	s := attr.trim_space()
+fn valid_extended_inner_number_marker(s string) bool {
 	return valid_string_tag_number(s)
 }
 
@@ -503,8 +490,7 @@ fn valid_extended_inner_number_marker(attr string) bool {
 // - the only optional key 'optional' marker, and
 // - extended bit of presence of optional, 'optional:present'
 fn parse_optional_marker(attr string) !(string, string) {
-	opt := attr.trim_space()
-	values := opt.split(':')
+	values := attr.split(':')
 	if values.len != 1 && values.len != 2 {
 		return error('Bad optional length')
 	}
@@ -576,8 +562,8 @@ fn valid_default_marker(attr string) bool {
 // UTILTIY
 //
 // is_asn1_options_marker checks if provided string is valid supported field options string.
-fn is_asn1_options_marker(s string) bool {
-	item := s.trim_space()
+fn is_asn1_options_marker(item string) bool {
+	// item := s.trim_space()
 	// belowng to one of five supported marker.
 	valid := is_tag_marker(item) || is_mode_marker(item) || is_inner_tag_marker(item)
 		|| is_optional_marker(item) || is_default_marker(item)

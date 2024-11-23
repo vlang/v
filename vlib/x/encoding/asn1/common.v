@@ -33,9 +33,6 @@ fn parse_universal(tag Tag, content []u8) !Element {
 }
 
 fn parse_universal_primitive(tag Tag, content []u8) !Element {
-	if tag.class != .universal {
-		return error('parse on non-universal type')
-	}
 	if tag.constructed {
 		return error('parse on constructed type')
 	}
@@ -93,10 +90,7 @@ fn parse_universal_primitive(tag Tag, content []u8) !Element {
 }
 
 fn parse_universal_constructed(tag Tag, content []u8) !Element {
-	if tag.tag_class() != .universal {
-		return error('parse on non-universal class')
-	}
-	if !tag.is_constructed() {
+	if !tag.constructed {
 		return error('parse on non-constructed type')
 	}
 	match tag.tag_number() {

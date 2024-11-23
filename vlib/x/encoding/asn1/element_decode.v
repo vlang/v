@@ -19,8 +19,13 @@ module asn1
 // decoded_obj := asn1.decode(bytes_data)!
 // assert decoded_obj.equal(original_obj)
 // ```
-pub fn decode(src []u8) !Element {
-	return decode_with_options(src, '')
+pub fn decode(bytes []u8) !Element {
+	// call Element.decode_with_rule directly
+	el, pos := Element.decode_with_rule(bytes, 0, .der)!
+	if pos > bytes.len {
+		return error('decode on data with trailing data')
+	}
+	return el
 }
 
 // decode_with_options decodes single element from bytes with options support, its not allowing trailing data.
@@ -49,8 +54,9 @@ pub fn decode(src []u8) !Element {
 // dump(obj_3) // output: obj_3: asn1.Element(Utf8String: (hi))
 // ```
 pub fn decode_with_options(bytes []u8, opt string) !Element {
+	// if null-option length, call Element.decode_with_rule directly
 	if opt.len == 0 {
-		el, pos := Element.decode(bytes)!
+		el, pos := Element.decode_with_rule(bytes, 0, .der)!
 		if pos > bytes.len {
 			return error('decode on data with trailing data')
 		}
@@ -136,7 +142,7 @@ pub fn (el Element) unwrap_with_field_options(fo FieldOptions) !Element {
 	if el.tag().class == .universal {
 		return error('you cant unwrap universal element')
 	}
-	// its also happens to fo.cls, should not universal class
+	// its also happens to fo.cls, should not be an universal class
 	if fo.cls == 'universal' {
 		return error('you cant unwrap universal element')
 	}
@@ -170,9 +176,8 @@ pub fn (el Element) unwrap_with_field_options(fo FieldOptions) !Element {
 		return error('Element tag unequal with tag from options')
 	}
 
-	inner_el := unwrap(el, mode, inner_tag)!
-
-	return inner_el
+	// return unwrapped element
+	return unwrap(el, mode, inner_tag)!
 }
 
 // unwrap the provided element, turn into inner element.
