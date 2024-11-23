@@ -438,6 +438,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+				res.compile_defines << 'nofloat'
 			}
 			'-fast-math' {
 				res.fast_math = true
