@@ -3239,7 +3239,7 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-See also [Array methods](#array-methods).
+See also [String interpolation](#string-interpolation).
 
 <a id='custom-print-of-types'></a>
 
