@@ -11,3 +11,13 @@ fn test_main() {
 	}
 	assert !res
 }
+
+fn test_non_none() {
+	mut entrykey := ?string('foobar')
+	if entrykey != none {
+		println(entrykey)
+		assert entrykey.len == 6
+	} else {
+		assert false
+	}
+}
