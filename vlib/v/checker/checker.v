@@ -4172,7 +4172,7 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope,
-	is_comptime bool) {
+	is_comptime bool, is_option_unwrap bool) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface && c.table.sym(to_type_).kind != .interface {
 		to_type_.ref()
@@ -4201,8 +4201,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if !is_mut || expr.is_mut
-				|| (cur_type.has_flag(.option) && cur_type.clear_flag(.option) == to_type_) {
+			if !is_mut || expr.is_mut || is_option_unwrap {
 				smartcasts << to_type
 				scope.register_struct_field(expr.expr.str(), ast.ScopeStructField{
 					struct_type: expr.expr_type
@@ -4238,7 +4237,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				}
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
-			if (!is_mut || expr.is_mut) && !is_already_casted {
+			if (!is_mut || expr.is_mut || is_option_unwrap) && !is_already_casted {
 				smartcasts << to_type
 				if var := scope.find_var(expr.name) {
 					if is_comptime && var.ct_type_var == .smartcast {
