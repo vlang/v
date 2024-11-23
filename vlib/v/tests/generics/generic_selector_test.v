@@ -26,14 +26,15 @@ pub fn (mut l List[T]) append(mut node Node[T]) ?int {
 
 	mut curr_node := l.head
 	for {
-		if curr_node != none {
-			if next_node := curr_node?.next {
-				curr_node = next_node
-			} else {
-				curr_node?.next = &node
-				l.size = l.size + 1
-				break
-			}
+		if curr_node == none {
+			break
+		}
+		if next_node := curr_node?.next {
+			curr_node = next_node
+		} else {
+			curr_node?.next = &node
+			l.size = l.size + 1
+			break
 		}
 	}
 	return l.size
