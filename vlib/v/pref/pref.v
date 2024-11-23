@@ -1228,11 +1228,10 @@ fn (mut prefs Preferences) parse_define(define string) {
 	prefs.compile_values[dname] = dvalue
 	prefs.compile_defines_all << dname
 	match dvalue {
-		'0' {}
-		'1' {
+		'' {}
+		else {
 			prefs.compile_defines << dname
 		}
-		else {}
 	}
 }
 

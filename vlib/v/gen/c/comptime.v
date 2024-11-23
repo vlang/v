@@ -1324,7 +1324,7 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		}
 		else {
 			if is_comptime_option
-				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
+				|| (g.pref.compile_defines.len > 0 && name in g.pref.compile_defines) {
 				return 'CUSTOM_DEFINE_${name}'
 			}
 			return error('bad os ifdef name "${name}"') // should never happen, caught in the checker
