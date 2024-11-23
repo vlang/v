@@ -763,6 +763,25 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	return invalid_type_symbol
 }
 
+// final_type returns the underlying type, if the final type is an Enum it returns the enum defined type (int one) otherwise the aliased/real type is returned
+pub fn (t &Table) final_type(typ Type) Type {
+	mut idx := typ.idx()
+	if idx > 0 && idx < t.type_symbols.len {
+		cur_sym := t.type_symbols[idx]
+		if cur_sym.info is Alias {
+			idx = cur_sym.info.parent_type.idx()
+			aliased_sym := t.type_symbols[idx]
+			if aliased_sym.info is Enum {
+				return aliased_sym.info.typ
+			}
+			return cur_sym.info.parent_type
+		} else if cur_sym.info is Enum {
+			return cur_sym.info.typ
+		}
+	}
+	return typ
+}
+
 @[inline]
 pub fn (t &Table) get_type_name(typ Type) string {
 	return t.sym(typ).name
