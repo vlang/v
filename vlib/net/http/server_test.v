@@ -248,3 +248,31 @@ fn test_my_counting_handler_on_random_port() {
 	}
 	assert true
 }
+
+//
+
+struct MyCustomHttpHostHandler {}
+
+fn (mut handler MyCustomHttpHostHandler) handle(req http.Request) http.Response {
+	dump(req.header)
+	return http.Response{
+		body: 'Host was: ${req.header.get(.host) or { '-' }}'
+	}
+}
+
+fn test_host_header_sent_to_server() {
+	port := 54671
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut server := &http.Server{
+		handler: MyCustomHttpHostHandler{}
+		addr:    ':${port}'
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running()!
+	defer { server.stop() }
+	dump(server.addr)
+	x := http.get('http://${server.addr}/')!
+	dump(x)
+	assert x.body.ends_with(':${port}')
+}
