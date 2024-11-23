@@ -33,7 +33,7 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		break
 	}
 
-	req_headers := req.build_request_headers(method, host_name, path)
+	req_headers := req.build_request_headers(method, host_name, port, path)
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(req_headers)

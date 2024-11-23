@@ -53,11 +53,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()
 	}
-	sym := g.table.sym(typ)
-
-	if sym.kind == .alias {
-		typ = (sym.info as ast.Alias).parent_type
-	}
+	typ = g.table.final_type(typ)
 	mut remove_tail_zeros := false
 	fspec := fmts[i]
 	mut fmt_type := StrIntpType.si_no_str

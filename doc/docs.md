@@ -3239,7 +3239,7 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-See also [Array methods](#array-methods).
+See also [String interpolation](#string-interpolation).
 
 <a id='custom-print-of-types'></a>
 
@@ -3440,18 +3440,17 @@ The enum type can be any integer type, but can be omitted, if it is `int`: `enum
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
-Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
-with an @.
+Enum fields can re-use reserved keywords:
 
 ```v
 enum Color {
-	@none
+	none
 	red
 	green
 	blue
 }
 
-color := Color.@none
+color := Color.none
 println(color)
 ```
 

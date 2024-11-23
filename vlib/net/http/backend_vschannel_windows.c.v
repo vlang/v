@@ -20,7 +20,7 @@ fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, pat
 	C.vschannel_init(&ctx)
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
 	addr := host_name
-	sdata := req.build_request_headers(method, host_name, path)
+	sdata := req.build_request_headers(method, host_name, port, path)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}

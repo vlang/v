@@ -688,7 +688,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	mut continue_check := true
 	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
-		c.method_call(mut node)
+		c.method_call(mut node, mut continue_check)
 	} else {
 		c.fn_call(mut node, mut continue_check)
 	}
@@ -2133,7 +2133,7 @@ fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected
 	return true
 }
 
-fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
+fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	// `(if true { 'foo.bar' } else { 'foo.bar.baz' }).all_after('foo.')`
 	mut left_expr := node.left
 	for mut left_expr is ast.ParExpr {
@@ -2150,6 +2150,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
 		// c.error('cannot call a method using an invalid expression', node.pos)
+		continue_check = false
 		return ast.void_type
 	}
 	if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
@@ -2190,6 +2191,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// No need to print this error, since this means that the variable is unknown,
 		// and there already was an error before.
 		// c.error('`void` type has no methods', node.left.pos())
+		continue_check = false
 		return ast.void_type
 	}
 	if final_left_sym.kind == .array && array_builtin_methods_chk.matches(method_name)
