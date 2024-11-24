@@ -21,7 +21,7 @@ pub mut:
 	scale     f32 = 1.0
 }
 
-const buff_size = 2048
+const buff_size = int($d('gg_text_buff_size', 2048))
 
 fn clear_atlas_callback(uptr voidptr, error int, val int) {
 	if error == 1 { // atlas overflow error code
