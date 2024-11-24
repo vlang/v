@@ -4983,7 +4983,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_option && !(g.is_assign_lhs && g.right_is_opt) {
-			if node.obj is ast.Var && node.obj.smartcasts.len > 0 {
+			has_smartcast := node.obj is ast.Var && node.obj.smartcasts.len > 0
+				&& !(node.obj.ct_type_var == .no_comptime && node.obj.is_unwrapped)
+			if has_smartcast {
 				g.write('*(')
 			}
 			if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
@@ -5030,7 +5032,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write(stmt_str)
 			}
 			if node.obj is ast.Var {
-				if node.obj.smartcasts.len > 0 {
+				if has_smartcast {
 					obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 					if node.obj.ct_type_var == .smartcast {
 						ctyp := g.unwrap_generic(g.comptime.get_type(node))
@@ -5068,7 +5070,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for i, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						g.write('(')
-						if i == 0 && node.obj.is_unwrapped {
+						if i == 0 && node.obj.is_unwrapped && node.obj.ct_type_var == .smartcast {
 							ctyp := g.unwrap_generic(g.comptime.get_type(node))
 							g.write('*(${g.base_type(ctyp)}*)(')
 						}
@@ -5104,7 +5106,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									g.write(closure_ctx + '->')
 								}
 								if node.obj.typ.nr_muls() > 1 {
-									g.write2('(', '*'.repeat(node.obj.typ.nr_muls() - 1))
+									g.write2('/**/(', '*'.repeat(node.obj.typ.nr_muls() - 1))
 									g.write2(name, ')')
 								} else {
 									g.write(name)
@@ -5141,6 +5143,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 									g.write('${dot}_${cast_sym.cname}')
 								}
 							}
+						}
+						if node.obj.ct_type_var != .smartcast && node.obj.is_unwrapped {
+							g.write('.data')
 						}
 						g.write(')')
 					}

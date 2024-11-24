@@ -140,8 +140,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op != .key_is {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
-				if node.left.is_mut {
-					c.error('the `mut` keyword is invalid here', node.left.mut_pos)
+				// mut foo != none is allowed for unwrapping option
+				if !(node.op == .ne && node.right is ast.None) {
+					if node.left.is_mut {
+						c.error('the `mut` keyword is invalid here', node.left.mut_pos)
+					}
 				}
 			}
 			else {}
