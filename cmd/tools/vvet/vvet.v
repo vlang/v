@@ -95,7 +95,7 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		filtered_out := arrays.distinct(vt.errors.map(it.file_path.str()))
+		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
 		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
