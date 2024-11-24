@@ -152,10 +152,7 @@ pub fn read_file(s string) !string {
 }
 
 pub fn getwd() string {
-	res := ''
-	#res.str = $process.cwd()
-
-	return res
+	return get_current_dir()
 }
 
 pub fn get_current_dir() string {
