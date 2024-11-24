@@ -146,7 +146,6 @@ fn (mut g Gen) dot_or_ptr(val_type ast.Type) string {
 	}
 }
 
-@[inline]
 fn (mut g Gen) unwrap_option_type(typ ast.Type, name string, is_auto_heap bool) {
 	styp := g.base_type(typ)
 	if is_auto_heap {

@@ -7792,6 +7792,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 				} else {
 					g.expr(node.expr)
 				}
+			} else {
+				g.expr(node.expr)
 			}
 		} else {
 			g.expr(node.expr)
