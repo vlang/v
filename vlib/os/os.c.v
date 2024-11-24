@@ -758,24 +758,8 @@ pub fn chdir(path string) ! {
 // getwd returns the absolute path of the current directory.
 @[deprecated: 'use `get_current_dir()` instead']
 @[deprecated_after: '2024-11-24']
-@[manualfree]
 pub fn getwd() string {
-	unsafe {
-		buf := [max_path_buffer_size]u8{}
-		$if windows {
-			if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
-				return ''
-			}
-			res := string_from_wide(&u16(&buf[0]))
-			return res
-		} $else {
-			if C.getcwd(&char(&buf[0]), max_path_len) == 0 {
-				return ''
-			}
-			res := tos_clone(&buf[0])
-			return res
-		}
-	}
+	return get_current_dir()
 }
 
 // get_current_dir returns the absolute path of the current directory.
