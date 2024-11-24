@@ -47,6 +47,10 @@ fn (mut g Gen) past_tmp_var_done(p &PastTmpVar) {
 		} else {
 			g.write(p.s)
 		}
-		g.write2(' ', p.tmp_var)
+		if g.inside_return {
+			g.write2(' ', p.tmp_var)
+		} else {
+			g.write(p.tmp_var)
+		}
 	}
 }
