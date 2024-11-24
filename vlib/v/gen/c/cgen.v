@@ -5322,15 +5322,15 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 		g.write('(${styp}){')
 		for i, expr in node.vals {
 			g.write('.arg${i}=')
-			if types[i].has_flag(.option) {
-				old_left_is_opt := g.left_is_opt
-				g.left_is_opt = true
+			if types[i].has_flag(.option) && expr.is_literal() {
 				g.write('{.data=')
 				g.expr(expr)
 				g.write('}')
-				g.left_is_opt = old_left_is_opt
 			} else {
+				old_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
 				g.expr(expr)
+				g.left_is_opt = old_left_is_opt
 			}
 			if i < node.vals.len - 1 {
 				g.write(',')
