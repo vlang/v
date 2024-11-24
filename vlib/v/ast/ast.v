@@ -1086,6 +1086,7 @@ pub fn (mut i Ident) full_name() string {
 	return i.full_name
 }
 
+@[inline]
 pub fn (i &Ident) is_auto_heap() bool {
 	return match i.obj {
 		Var { i.obj.is_auto_heap }
@@ -1093,6 +1094,7 @@ pub fn (i &Ident) is_auto_heap() bool {
 	}
 }
 
+@[inline]
 pub fn (i &Ident) is_mut() bool {
 	match i.obj {
 		Var { return i.obj.is_mut }

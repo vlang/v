@@ -205,7 +205,7 @@ fn test_opt_none() {
 	t7 := {
 		'foo': 'bar'
 	}
-	t6 := if t5 != none { t5?.clone() } else { t7 }
+	t6 := if t5 != none { t5.clone() } else { t7 }
 	assert t5 == none
 	assert t6.len == 1
 }
