@@ -438,6 +438,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+				res.compile_defines << 'nofloat'
 			}
 			'-fast-math' {
 				res.fast_math = true
@@ -1228,11 +1229,10 @@ fn (mut prefs Preferences) parse_define(define string) {
 	prefs.compile_values[dname] = dvalue
 	prefs.compile_defines_all << dname
 	match dvalue {
-		'0' {}
-		'1' {
+		'' {}
+		else {
 			prefs.compile_defines << dname
 		}
-		else {}
 	}
 }
 

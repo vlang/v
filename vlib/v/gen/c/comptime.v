@@ -511,12 +511,17 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return is_cond_true, false
 		}
 		ast.PostfixExpr {
-			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
+			dname := (cond.expr as ast.Ident).name
+			ifdef := g.comptime_if_to_ifdef(dname, true) or {
 				verror(err.str())
 				return false, true
 			}
 			g.write('defined(${ifdef})')
-			return true, false
+			if dname in g.pref.compile_defines_all && dname !in g.pref.compile_defines {
+				return false, true
+			} else {
+				return true, false
+			}
 		}
 		ast.InfixExpr {
 			match cond.op {

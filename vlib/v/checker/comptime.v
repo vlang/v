@@ -742,7 +742,15 @@ fn (mut c Checker) comptime_if_cond(mut cond ast.Expr, pos token.Pos) ComptimeBr
 				should_record_ident = true
 				is_user_ident = true
 				ident_name = cond.expr.name
-				return if cond.expr.name in c.pref.compile_defines_all { .eval } else { .skip }
+				return if cond.expr.name in c.pref.compile_defines {
+					.eval
+				} else {
+					if cond.expr.name in c.pref.compile_defines_all {
+						ComptimeBranchSkipState.unknown
+					} else {
+						ComptimeBranchSkipState.skip
+					}
+				}
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
