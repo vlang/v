@@ -36,7 +36,7 @@ fn test_getpid() {
 
 fn test_set_work_folder() {
 	new_work_folder := os.real_path(os.temp_dir())
-	parent_working_folder := os.getwd()
+	parent_working_folder := os.get_current_dir()
 	dump(new_work_folder)
 	dump(parent_working_folder)
 	if new_work_folder == parent_working_folder {
@@ -57,7 +57,7 @@ fn test_set_work_folder() {
 	child_work_folder := output.find_between('stdout, WORK_DIR=', '\n').trim_space()
 	dump(child_work_folder)
 	assert child_work_folder == new_work_folder
-	new_parent_work_folder := os.getwd()
+	new_parent_work_folder := os.get_current_dir()
 	dump(new_parent_work_folder)
 	assert new_parent_work_folder == parent_working_folder
 	assert new_parent_work_folder != child_work_folder

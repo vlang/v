@@ -405,7 +405,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}
 	module_lookup_paths << b.module_search_paths
-	module_lookup_paths << os.getwd()
+	module_lookup_paths << os.get_current_dir()
 	// go up through parents looking for modules a folder.
 	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
 	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {

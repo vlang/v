@@ -422,7 +422,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// After the main checker run, run the line info check, print line info, and exit (if it's present)
 	if !c.pref.linfo.is_running && c.pref.line_info != '' { //'' && c.pref.linfo.line_nr == 0 {
 		// c.do_line_info(c.pref.line_info, ast_files)
-		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
+		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.get_current_dir())
 		c.pref.linfo.is_running = true
 		for i, file in ast_files {
 			// println(file.path)
@@ -432,7 +432,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				exit(0)
 			} else if file.path.starts_with('./') {
 				// Maybe it's a "./foo.v", linfo.path has an absolute path
-				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO: join_path shouldn't have /./
+				abs_path := os.join_path(os.get_current_dir(), file.path).replace('/./', '/') // TODO: join_path shouldn't have /./
 				if abs_path == c.pref.linfo.path {
 					c.check_files([ast_files[i]])
 					exit(0)

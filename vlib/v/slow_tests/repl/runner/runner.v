@@ -25,7 +25,7 @@ pub fn full_path_to_v(dirs_in int) string {
 	args := os.args
 	vreal  := os.real_path('v')
 	myself := os.real_path( os.executable() )
-	wd := os.getwd()
+	wd := os.get_current_dir()
 	println('args are: $args')
 	println('vreal   : $vreal')
 	println('myself  : $myself')
@@ -90,13 +90,13 @@ pub fn run_prod_file(wd string, vexec string, file string) !string {
 
 pub fn new_options() RunnerOptions {
 	vexec := full_path_to_v(5)
-	mut wd := os.getwd()
+	mut wd := os.get_current_dir()
 	mut files := []string{}
 	if os.args.len > 1 {
 		files = os.args[1..].clone()
 	} else {
 		os.chdir(os.dir(vexec)) or {}
-		wd = os.getwd()
+		wd = os.get_current_dir()
 		files = os.walk_ext('.', '.repl')
 	}
 	return RunnerOptions{
@@ -107,7 +107,7 @@ pub fn new_options() RunnerOptions {
 }
 
 pub fn new_prod_options() RunnerOptions {
-	wd := os.getwd()
+	wd := os.get_current_dir()
 	vexec := full_path_to_v(4)
 	mut files := []string{}
 	if os.args.len > 1 {

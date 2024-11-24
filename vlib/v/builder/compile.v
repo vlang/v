@@ -28,7 +28,7 @@ fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
 	// without a folder component, just use the current folder instead:
 	mut output_folder := odir
 	if odir.len == pref_.out_name.len {
-		output_folder = os.getwd()
+		output_folder = os.get_current_dir()
 	}
 	os.ensure_folder_is_writable(output_folder) or {
 		// An early error here, is better than an unclear C error later:

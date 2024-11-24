@@ -445,7 +445,7 @@ fn test_realpath_removes_dots() {
 }
 
 fn test_realpath_absolutizes_existing_relative_paths() {
-	old_wd := os.getwd()
+	old_wd := os.get_current_dir()
 	defer {
 		os.chdir(old_wd) or { panic(err) }
 	}

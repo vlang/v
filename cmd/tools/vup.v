@@ -173,12 +173,12 @@ fn (app App) install_git() {
 	}
 	println('Downloading git 32 bit for Windows, please wait.')
 	// We'll use 32 bit because maybe someone out there is using 32-bit windows
-	res_download := os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.getwd()}/git32.exe"')
+	res_download := os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.get_current_dir()}/git32.exe"')
 	if res_download.exit_code != 0 {
 		eprintln('Unable to install git automatically: please install git manually')
 		panic(res_download.output)
 	}
-	res_git32 := os.execute(os.quoted_path(os.join_path_single(os.getwd(), 'git32.exe')))
+	res_git32 := os.execute(os.quoted_path(os.join_path_single(os.get_current_dir(), 'git32.exe')))
 	if res_git32.exit_code != 0 {
 		eprintln('Unable to install git automatically: please install git manually')
 		panic(res_git32.output)

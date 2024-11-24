@@ -158,6 +158,13 @@ pub fn getwd() string {
 	return res
 }
 
+pub fn get_current_dir() string {
+	res := ''
+	#res.str = $process.cwd()
+
+	return res
+}
+
 pub fn getuid() int {
 	res := 0
 	#if (process.getuid) res.val = process.getuid();

@@ -25,7 +25,7 @@ mut:
 
 fn new_context() Context {
 	return Context{
-		cwd:          os.getwd()
+		cwd:          os.get_current_dir()
 		commit_after: 'master'
 		warmups:      4
 	}
