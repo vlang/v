@@ -5,6 +5,13 @@ vlib/v/checker/tests/fixed_array_conv.vv:6:5: warning: cannot cast a fixed array
       |     ~~~~~~~~~
     7 | _ = p
     8 | _ = ip
+vlib/v/checker/tests/fixed_array_conv.vv:3:5: error: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
+    1 | arr := [2, 3]!
+    2 | mut p := unsafe { nil }
+    3 | p = arr
+      |     ~~~
+    4 | mut ip := &int(0)
+    5 | ip = arr
 vlib/v/checker/tests/fixed_array_conv.vv:3:3: error: mismatched types `voidptr` and `[2]int`
     1 | arr := [2, 3]!
     2 | mut p := unsafe { nil }
@@ -19,6 +26,13 @@ vlib/v/checker/tests/fixed_array_conv.vv:3:5: error: cannot assign to `p`: expec
       |     ~~~
     4 | mut ip := &int(0)
     5 | ip = arr
+vlib/v/checker/tests/fixed_array_conv.vv:5:6: error: left-side of assignment expects a mutable reference, but variable `arr` is immutable, declare it with `mut` to make it mutable or clone it
+    3 | p = arr
+    4 | mut ip := &int(0)
+    5 | ip = arr
+      |      ~~~
+    6 | _ = &int(arr)
+    7 | _ = p
 vlib/v/checker/tests/fixed_array_conv.vv:5:4: error: mismatched types `&int` and `[2]int`
     3 | p = arr
     4 | mut ip := &int(0)

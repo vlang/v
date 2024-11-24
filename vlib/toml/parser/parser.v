@@ -344,7 +344,7 @@ pub fn (mut p Parser) find_sub_table(key DottedKey) !&map[string]ast.Value {
 	ky << p.root_map_key
 	ky << key
 	if p.root_map_key.len == 0 {
-		ky = key
+		ky = unsafe { key }
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${ky}" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { &p.root_map }
@@ -1047,7 +1047,7 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 					// Parse `[d.e.f]`
 					p.ignore_while(space_formatting)
 					dotted_key := p.dotted_key()!
-					implicit_allocation_key = dotted_key
+					implicit_allocation_key = unsafe { dotted_key }
 					if dotted_key.len > 2 {
 						implicit_allocation_key = dotted_key[2..]
 					}

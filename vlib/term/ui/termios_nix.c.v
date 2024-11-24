@@ -258,12 +258,12 @@ fn (mut ctx Context) parse_events() {
 		mut event := &Event(unsafe { nil })
 		if ctx.read_buf[0] == 0x1b {
 			e, len := escape_sequence(ctx.read_buf.bytestr())
-			event = e
+			event = unsafe { e }
 			ctx.shift(len)
 		} else {
 			if ctx.read_all_bytes {
 				e, len := multi_char(ctx.read_buf.bytestr())
-				event = e
+				event = unsafe { e }
 				ctx.shift(len)
 			} else {
 				event = single_char(ctx.read_buf.bytestr())

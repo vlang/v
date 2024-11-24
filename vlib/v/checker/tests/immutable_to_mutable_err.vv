@@ -1,0 +1,31 @@
+struct Test {
+pub:
+	bar []int = [1, 2, 3]
+pub mut:
+	foo []int = [1, 2, 3]
+}
+
+fn main() {
+	arr := [1, 2, 3] // declared as immutable!
+	mut arr_mut := if true { arr } else { []int{} }
+	mut arr_mut2 := match true {
+		true { arr }
+		else { [0] }
+	}
+	arr_mut[0] = 999
+	arr_mut2[1] = 999
+	println(arr)
+	println(arr)
+	assert arr == [1, 2, 3]
+
+	a := Test{}
+	mut arr_mut3 := a.foo
+	arr_mut3[0] = 999
+	assert a.foo == [1, 2, 3]
+
+	mut arr_mut4 := a.bar
+	arr_mut4[0] = 999
+	assert a.bar == [1, 2, 3]
+
+	_ := a.bar
+}
