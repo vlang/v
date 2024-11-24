@@ -7332,7 +7332,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
-			if g.fn_decl.return_type == ast.void_type {
+			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
 			} else {
 				styp := g.styp(g.fn_decl.return_type)
@@ -7360,7 +7360,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
-			if g.fn_decl.return_type == ast.void_type {
+			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
 				g.writeln('\treturn;')
 			} else {
 				styp := g.styp(g.fn_decl.return_type).replace('*', '_ptr')
