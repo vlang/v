@@ -9,6 +9,7 @@ import v.parser
 import v.ast
 import v.help
 import term
+import arrays
 
 struct Vet {
 mut:
@@ -94,7 +95,8 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		eprintln('Note: You can run `v fmt -w file.v` to fix these errors automatically')
+		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
+		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
 		exit(1)
