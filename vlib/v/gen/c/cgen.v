@@ -5919,7 +5919,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			// Just in case of defer statements exists, that the return values cannot
 			// be modified.
-			if use_tmp_var || g.return_needs_tmp_var(node.exprs[0]) {
+			if use_tmp_var {
 				use_tmp_var = true
 				g.write('${ret_typ} ${tmpvar} = ')
 			} else {
@@ -6012,41 +6012,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	if !has_semicolon {
 		g.writeln(';')
-	}
-}
-
-fn (mut g Gen) return_needs_tmp_var(expr ast.Expr) bool {
-	return match expr {
-		ast.InfixExpr {
-			g.return_needs_tmp_var(expr.left) || g.return_needs_tmp_var(expr.right)
-		}
-		ast.CastExpr {
-			false
-		}
-		ast.CallExpr {
-			if expr.is_method {
-				if g.return_needs_tmp_var(expr.left) {
-					return true
-				}
-			}
-			if expr.args.len > 0 && expr.args.any(g.return_needs_tmp_var(it.expr)) {
-				return true
-			}
-			expr.or_block.kind != .absent
-		}
-		ast.IndexExpr, ast.Ident, ast.IfExpr, ast.MatchExpr, ast.StructInit, ast.ArrayInit,
-		ast.PostfixExpr {
-			false
-		}
-		ast.PrefixExpr {
-			g.return_needs_tmp_var(expr.right)
-		}
-		ast.SelectorExpr {
-			expr.or_block.kind != .absent
-		}
-		else {
-			return !expr.is_literal()
-		}
 	}
 }
 
