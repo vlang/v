@@ -21,10 +21,23 @@ pub mut:
 	scale     f32 = 1.0
 }
 
+const buff_size = 2048
+
+pub fn (s &C.FONScontext) set_error_callback(callback fn (voidptr, int, int), uptr voidptr) {
+	C.fonsSetErrorCallback(s, callback, uptr)
+}
+
+pub fn clear_atlas_callback(uptr voidptr, error int, val int) {
+	if error == 1 { // atlas overflow error code
+		fons := unsafe { &fontstash.Context(uptr) }
+		C.fonsResetAtlas(fons, buff_size, buff_size)
+	}
+}
+
 fn new_ft(c FTConfig) ?&FT {
 	if c.font_path == '' {
 		if c.bytes_normal.len > 0 {
-			fons := sfons.create(512, 512, 1)
+			fons := sfons.create(buff_size, buff_size, 1)
 			bytes_normal := c.bytes_normal
 			bytes_bold := if c.bytes_bold.len > 0 {
 				c.bytes_bold
@@ -44,7 +57,7 @@ fn new_ft(c FTConfig) ?&FT {
 				debug_font_println('setting italic variant to normal')
 				bytes_normal
 			}
-
+			fons.set_error_callback(clear_atlas_callback, fons)
 			return &FT{
 				fons:        fons
 				font_normal: fons.add_font_mem('sans', bytes_normal, false)
@@ -105,11 +118,12 @@ fn new_ft(c FTConfig) ?&FT {
 		italic_path = c.font_path
 		bytes
 	}
-	fons := sfons.create(512, 512, 1)
+	fons := sfons.create(buff_size, buff_size, 1)
 	debug_font_println('Font used for font_normal : ${normal_path}')
 	debug_font_println('Font used for font_bold   : ${bold_path}')
 	debug_font_println('Font used for font_mono   : ${mono_path}')
 	debug_font_println('Font used for font_italic : ${italic_path}')
+	fons.set_error_callback(clear_atlas_callback, fons)
 	return &FT{
 		fons:        fons
 		font_normal: fons.add_font_mem('sans', bytes, false)
