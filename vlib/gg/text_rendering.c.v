@@ -23,7 +23,7 @@ pub mut:
 
 const buff_size = 2048
 
-pub fn clear_atlas_callback(uptr voidptr, error int, val int) {
+fn clear_atlas_callback(uptr voidptr, error int, val int) {
 	if error == 1 { // atlas overflow error code
 		fons := unsafe { &fontstash.Context(uptr) }
 		fons.reset_atlas(buff_size, buff_size)
