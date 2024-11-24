@@ -7785,17 +7785,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	} else {
+		mut is_optional_ident_var := false
 		if node.expr is ast.Ident {
-			if node.expr.info is ast.IdentVar {
-				if node.expr.info.is_option {
-					g.unwrap_option_type(unwrapped_node_typ, node.expr.name, node.expr.is_auto_heap())
-				} else {
-					g.expr(node.expr)
-				}
-			} else {
-				g.expr(node.expr)
+			if node.expr.info is ast.IdentVar && node.expr.info.is_option {
+				g.unwrap_option_type(unwrapped_node_typ, node.expr.name, node.expr.is_auto_heap())
+				is_optional_ident_var = true
 			}
-		} else {
+		}
+		if !is_optional_ident_var {
 			g.expr(node.expr)
 		}
 	}
