@@ -1086,15 +1086,6 @@ pub fn (mut i Ident) full_name() string {
 	return i.full_name
 }
 
-// is_unwrapped returns true if the variable is related to `var != none` block
-@[inline]
-pub fn (i &Ident) is_unwrapped() bool {
-	return match i.obj {
-		Var { i.obj.ct_type_var != .smartcast && i.obj.is_unwrapped }
-		else { false }
-	}
-}
-
 @[inline]
 pub fn (i &Ident) is_auto_heap() bool {
 	return match i.obj {
