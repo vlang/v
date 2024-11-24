@@ -391,7 +391,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 		first_variant_name := fv_sym.cname
 		// println('KIND=${fv_sym.kind}')
 		if fv_sym.kind == .struct && !is_option && field_op != '->' {
-			dec.writeln('/*sum type ${fv_sym.name} ret_styp=${ret_styp}*/\tif (root->type == cJSON_NULL) { ')
+			dec.writeln('\tif (root->type == cJSON_NULL) { ')
 			dec.writeln('\t\tstruct ${first_variant_name} empty = {0};')
 			dec.writeln('res = ${variant_typ}_to_sumtype_${ret_styp}(&empty); } \n else ')
 			// dec.writeln('res = ${variant_typ}_to_sumtype_${sym.cname}(&empty); } \n else ')
@@ -909,9 +909,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				if !field.typ.is_any_kind_of_pointer() {
 					if field_sym.kind == .alias && field.typ.has_flag(.option) {
 						parent_type := g.table.unaliased_type(field.typ).set_flag(.option)
-						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(*(${g.styp(parent_type)}*)&${prefix_enc}${op}${c_name(field.name)})); /*?A*/')
+						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(*(${g.styp(parent_type)}*)&${prefix_enc}${op}${c_name(field.name)}));')
 					} else {
-						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)})); /*A*/')
+						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)}));')
 					}
 				} else {
 					arg_prefix := if field.typ.is_ptr() { '' } else { '*' }
@@ -951,7 +951,7 @@ fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, n
 	// dec.writeln('\t\tif (jsonroot_${tmp}->type == cJSON_NULL) { puts("${name} IS JSON_NULL"); }')
 	dec.writeln('\t\t${tmp} = ${dec_name}(jsonroot_${tmp});')
 	dec.writeln('\t\tif (${tmp}.is_error) {')
-	dec.writeln('\t\t\treturn (${result_name}_${styp}){ /*A*/ .is_error = true, .err = ${tmp}.err, .data = {0} };')
+	dec.writeln('\t\t\treturn (${result_name}_${styp}){ .is_error = true, .err = ${tmp}.err, .data = {0} };')
 	dec.writeln('\t\t}')
 	dec.writeln('\t}')
 }

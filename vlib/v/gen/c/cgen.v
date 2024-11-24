@@ -985,7 +985,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if sum_info.is_generic {
 				continue
 			}
-			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) { /* ${sym.name} */ ')
+			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) {')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
@@ -1011,7 +1011,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t}')
 			}
 			g.writeln2('}', '')
-			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
+			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) {')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
 				for v in sum_info.variants {
@@ -1042,7 +1042,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				continue
 			}
 			g.definitions.writeln('static char * v_typeof_interface_${sym.cname}(int sidx);')
-			g.writeln('static char * v_typeof_interface_${sym.cname}(int sidx) { /* ${sym.name} */ ')
+			g.writeln('static char * v_typeof_interface_${sym.cname}(int sidx) {')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
@@ -1051,7 +1051,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
 			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
-			g.writeln2('', 'static int v_typeof_interface_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
+			g.writeln2('', 'static int v_typeof_interface_idx_${sym.cname}(int sidx) {')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.info is ast.Struct && sub_sym.info.is_unresolved_generic() {
@@ -3745,7 +3745,6 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.write(')')
 				if gen_or {
 					if !node.is_option {
-						g.write('/*JJJ*/')
 						g.or_block(tmp_opt, node.or_block, elem_type)
 					}
 					if is_gen_or_and_assign_rhs {
@@ -3877,7 +3876,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		g.write('charptr_vstring_literal( /* ${sym.name} */ v_typeof_sumtype_${sym.cname}( (')
+		g.write('charptr_vstring_literal(v_typeof_sumtype_${sym.cname}( (')
 		g.expr(node.expr)
 		g.write(')._typ ))')
 	} else if sym.kind == .array_fixed {
@@ -4851,7 +4850,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		g.writeln('}));\n')
 	}
 	select_result := g.new_tmp_var()
-	g.write('int ${select_result} = sync__channel_select(&/*arr*/${chan_array}, ${directions_array}, &/*arr*/${objs_array}, ')
+	g.write('int ${select_result} = sync__channel_select(&${chan_array}, ${directions_array}, &${objs_array}, ')
 	if has_timeout {
 		g.expr(timeout_expr)
 	} else if has_else {
@@ -4952,7 +4951,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 							g.write(name)
 						}
 					} else {
-						g.write('/*opt*/')
 						styp := g.base_type(comptime_type)
 						if is_auto_heap {
 							g.write('(*(${styp}*)${name}->data)')
@@ -4998,7 +4996,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write(name)
 				}
 			} else {
-				g.write('/*opt*/')
 				styp := g.base_type(node.info.typ)
 				if is_auto_heap {
 					g.write('(*(${styp}*)${name}->data)')
@@ -5106,7 +5103,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									g.write(closure_ctx + '->')
 								}
 								if node.obj.typ.nr_muls() > 1 {
-									g.write2('/**/(', '*'.repeat(node.obj.typ.nr_muls() - 1))
+									g.write2('(', '*'.repeat(node.obj.typ.nr_muls() - 1))
 									g.write2(name, ')')
 								} else {
 									g.write(name)
@@ -7310,9 +7307,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			mr_styp = 'voidptr'
 		}
 		if return_type.has_flag(.result) {
-			g.writeln('if (${cvar_name}.is_error) {') // /*or block*/ ')
+			g.writeln('if (${cvar_name}.is_error) {')
 		} else {
-			g.writeln('if (${cvar_name}.state != 0) {') // /*or block*/ ')
+			g.writeln('if (${cvar_name}.state != 0) {')
 		}
 	}
 	if or_block.kind == .block {
@@ -7711,9 +7708,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.expr(node.expr)
 			g.write('; ')
 			if sym.info is ast.FnType {
-				g.write('/* as */ (${styp})__as_cast(')
+				g.write('(${styp})__as_cast(')
 			} else {
-				g.write('/* as */ *(${styp}*)__as_cast(')
+				g.write('*(${styp}*)__as_cast(')
 			}
 			g.write2(tmp_var, dot)
 			g.write2('_${sym.cname},', tmp_var)
@@ -7722,9 +7719,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write('_typ, ${sidx}); })')
 		} else {
 			if sym.info is ast.FnType {
-				g.write('/* as */ (${styp})__as_cast(')
+				g.write('(${styp})__as_cast(')
 			} else {
-				g.write('/* as */ *(${styp}*)__as_cast(')
+				g.write('*(${styp}*)__as_cast(')
 			}
 			g.write('(')
 			g.expr(node.expr)
@@ -7771,9 +7768,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.expr(node.expr)
 			g.write('; ')
 			if sym.info is ast.FnType {
-				g.write('/* as */ (${styp})__as_cast(')
+				g.write('(${styp})__as_cast(')
 			} else {
-				g.write('/* as */ *(${styp}*)__as_cast(')
+				g.write('*(${styp}*)__as_cast(')
 			}
 			g.write2(tmp_var, dot)
 			g.write('_${sym.cname},v_typeof_interface_idx_${expr_type_sym.cname}(')
@@ -7782,9 +7779,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write('_typ), ${sidx}); })')
 		} else {
 			if sym.info is ast.FnType {
-				g.write('/* as */ (${styp})__as_cast(')
+				g.write('(${styp})__as_cast(')
 			} else {
-				g.write('/* as */ *(${styp}*)__as_cast(')
+				g.write('*(${styp}*)__as_cast(')
 			}
 			g.write('(')
 			g.expr(node.expr)
@@ -7927,9 +7924,7 @@ fn (mut g Gen) interface_table() string {
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.${cname} = (${field_styp}*)((char*)x')
-						if st == ast.voidptr_type || st == ast.nil_type {
-							cast_struct.write_string('/*.... ast.voidptr_type */')
-						} else {
+						if st != ast.voidptr_type && st != ast.nil_type {
 							if st_sym.kind == .struct {
 								if _, embeds := g.table.find_field_from_embeds(st_sym,
 									field.name)

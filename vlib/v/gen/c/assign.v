@@ -795,7 +795,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.expr(left)
 							g.write(', ${final_ref_str}')
 							g.expr(val)
-							g.write(', sizeof(${typ_str})) /*assign*/')
+							g.write(', sizeof(${typ_str}))')
 						}
 					}
 				} else if is_decl {
@@ -1045,7 +1045,7 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					}
 					needs_clone := info.elem_type == ast.string_type && g.is_autofree
 					if needs_clone {
-						g.write('/*2*/string_clone(')
+						g.write('string_clone(')
 					}
 					g.expr(left)
 					if needs_clone {
