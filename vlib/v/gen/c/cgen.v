@@ -5306,24 +5306,32 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	mut styp := g.styp(node.return_type.clear_option_and_result())
+	mut typ := node.return_type.clear_option_and_result()
 	if g.inside_return {
-		styp = g.styp(g.fn_decl.return_type.clear_option_and_result())
+		typ = g.fn_decl.return_type.clear_option_and_result()
 	} else if g.inside_or_block {
-		styp = g.styp(g.or_expr_return_type.clear_option_and_result())
+		typ = g.or_expr_return_type.clear_option_and_result()
 	}
+	styp := g.styp(typ)
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
 	if !is_multi {
 		g.expr(node.vals[0])
 	} else {
+		types := (g.table.sym(typ).info as ast.MultiReturn).types
 		g.write('(${styp}){')
 		for i, expr in node.vals {
 			g.write('.arg${i}=')
-			old_left_is_opt := g.left_is_opt
-			g.left_is_opt = true
-			g.expr(expr)
-			g.left_is_opt = old_left_is_opt
+			if types[i].has_flag(.option) {
+				old_left_is_opt := g.left_is_opt
+				g.left_is_opt = true
+				g.write('{.data=')
+				g.expr(expr)
+				g.write('}')
+				g.left_is_opt = old_left_is_opt
+			} else {
+				g.expr(expr)
+			}
 			if i < node.vals.len - 1 {
 				g.write(',')
 			}
