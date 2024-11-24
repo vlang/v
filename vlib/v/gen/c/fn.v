@@ -1791,14 +1791,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		match node.name {
 			'type_name' {
 				if left_sym.kind in [.sum_type, .interface] {
-					g.conversion_function_call('charptr_vstring_literal( /* ${left_sym.name} */ v_typeof_${prefix_name}_${typ_sym.cname}',
+					g.conversion_function_call('charptr_vstring_literal(v_typeof_${prefix_name}_${typ_sym.cname}',
 						')', node)
 					return
 				}
 			}
 			'type_idx' {
 				if left_sym.kind in [.sum_type, .interface] {
-					g.conversion_function_call('/* ${left_sym.name} */ v_typeof_${prefix_name}_idx_${typ_sym.cname}',
+					g.conversion_function_call('v_typeof_${prefix_name}_idx_${typ_sym.cname}',
 						'', node)
 					return
 				}
@@ -2817,24 +2817,24 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			if exp_sym.kind == .array {
 				if (arg.expr is ast.Ident && arg.expr.kind == .variable)
 					|| arg.expr is ast.SelectorExpr {
-					g.write('&/*arr*/')
+					g.write('&')
 					g.expr(arg.expr)
 				} else {
 					// Special case for mutable arrays. We can't `&` function
 					// results,	have to use `(array[]){ expr }[0]` hack.
-					g.write('&/*111*/(array[]){')
+					g.write('&(array[]){')
 					g.expr(arg.expr)
 					g.write('}[0]')
 				}
 				return
 			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type
 				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
-				g.write('&/*sum*/')
+				g.write('&')
 				g.expr(arg.expr)
 				return
 			} else if arg_sym.kind == .interface && exp_sym.kind == .interface
 				&& arg.expr in [ast.Ident, ast.SelectorExpr] {
-				g.write('&/*iface*/')
+				g.write('&')
 				g.expr(arg.expr)
 				return
 			}
@@ -2860,7 +2860,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						g.write('(voidptr)')
 					} else if !(!arg.is_mut && arg_sym.kind == .alias
 						&& g.table.unaliased_type(arg_typ).is_any_kind_of_pointer()) {
-						g.write('(voidptr)&/*qq*/')
+						g.write('(voidptr)&')
 					}
 				} else {
 					mut atype := expected_deref_type
@@ -2868,7 +2868,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						atype = g.unwrap_generic(atype)
 					}
 					if atype.has_flag(.generic) || arg.expr is ast.StructInit {
-						g.write('(voidptr)&/*qq2*/')
+						g.write('(voidptr)&')
 					} else if arg.expr is ast.None {
 						g.expr_with_opt(arg.expr, arg_typ, expected_type)
 						return
@@ -2879,18 +2879,18 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						if arg_typ_sym.kind in [.sum_type, .interface] {
 							atype = arg_typ
 						}
-						g.write('ADDR(${g.styp(atype)}/*qq*/, ')
+						g.write('ADDR(${g.styp(atype)}, ')
 					}
 				}
 			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type {
 				// Automatically passing sum types by reference if the argument expects it,
 				// not only the argument is mutable.
 				if arg.expr is ast.SelectorExpr {
-					g.write('&/*sum*/')
+					g.write('&')
 					g.expr(arg.expr)
 					return
 				} else if arg.expr is ast.CastExpr {
-					g.write('ADDR(${g.styp(expected_deref_type)}/*sum*/, ')
+					g.write('ADDR(${g.styp(expected_deref_type)}, ')
 					g.expr_with_cast(arg.expr, arg_typ, expected_type)
 					g.write(')')
 					return
