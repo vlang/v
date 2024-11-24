@@ -4996,25 +4996,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write(name)
 				}
 			} else {
-				styp := g.base_type(node.info.typ)
-				if is_auto_heap {
-					g.write('(*(${styp}*)${name}->data)')
-				} else {
-					type_sym := g.table.sym(node.info.typ)
-					if type_sym.kind == .alias {
-						// Alias to Option type
-						parent_typ := (type_sym.info as ast.Alias).parent_type
-						if parent_typ.has_flag(.option) {
-							g.write('*((${g.base_type(parent_typ)}*)')
-						}
-						g.write('(*(${styp}*)${name}.data)')
-						if parent_typ.has_flag(.option) {
-							g.write('.data)')
-						}
-					} else {
-						g.write('(*(${styp}*)${name}.data)')
-					}
-				}
+				g.unwrap_option_type(node.info.typ, name, is_auto_heap)
 			}
 			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 				&& !g.is_assign_lhs) {
@@ -7803,7 +7785,16 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	} else {
-		g.expr(node.expr)
+		mut is_optional_ident_var := false
+		if node.expr is ast.Ident {
+			if node.expr.info is ast.IdentVar && node.expr.info.is_option {
+				g.unwrap_option_type(unwrapped_node_typ, node.expr.name, node.expr.is_auto_heap())
+				is_optional_ident_var = true
+			}
+		}
+		if !is_optional_ident_var {
+			g.expr(node.expr)
+		}
 	}
 }
 
