@@ -94,7 +94,8 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		eprintln('Note: You can run `v fmt -w ${vt.errors.map(it.file_path.str()).join(" ")}` to fix these errors automatically')
+		filtered_out := remove_duplicates(vt.errors.map(it.file_path.str()).clone())
+		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
 		exit(1)
@@ -145,6 +146,16 @@ fn (mut vt Vet) vet_space_usage(line string, lnumber int) {
 			vt.error('Looks like you have trailing whitespace.', lnumber, .unknown)
 		}
 	}
+}
+
+fn remove_duplicates[T](arr []T) []T {
+	mut results := []T{}
+	for val in arr {
+		if !results.contains(val) {
+			results << val
+		}
+	}
+	return results
 }
 
 fn collect_tags(line string) []string {
