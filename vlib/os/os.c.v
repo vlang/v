@@ -757,7 +757,7 @@ pub fn chdir(path string) ! {
 
 // getwd returns the absolute path of the current directory.
 @[deprecated: 'use `get_current_dir()` instead']
-@[deprecated_after: '2024-11-24']
+@[deprecated_after: '2024-12-24']
 pub fn getwd() string {
 	return get_current_dir()
 }
