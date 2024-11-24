@@ -187,26 +187,32 @@ pub mut:
 	len int
 }
 
+@[inline]
 fn map_eq_string(a voidptr, b voidptr) bool {
 	return fast_string_eq(*unsafe { &string(a) }, *unsafe { &string(b) })
 }
 
+@[inline]
 fn map_eq_int_1(a voidptr, b voidptr) bool {
 	return unsafe { *&u8(a) == *&u8(b) }
 }
 
+@[inline]
 fn map_eq_int_2(a voidptr, b voidptr) bool {
 	return unsafe { *&u16(a) == *&u16(b) }
 }
 
+@[inline]
 fn map_eq_int_4(a voidptr, b voidptr) bool {
 	return unsafe { *&u32(a) == *&u32(b) }
 }
 
+@[inline]
 fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) == *&u64(b) }
 }
 
+@[inline]
 fn map_clone_string(dest voidptr, pkey voidptr) {
 	unsafe {
 		s := *&string(pkey)
@@ -214,36 +220,42 @@ fn map_clone_string(dest voidptr, pkey voidptr) {
 	}
 }
 
+@[inline]
 fn map_clone_int_1(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u8(dest) = *&u8(pkey)
 	}
 }
 
+@[inline]
 fn map_clone_int_2(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u16(dest) = *&u16(pkey)
 	}
 }
 
+@[inline]
 fn map_clone_int_4(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u32(dest) = *&u32(pkey)
 	}
 }
 
+@[inline]
 fn map_clone_int_8(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u64(dest) = *&u64(pkey)
 	}
 }
 
+@[inline]
 fn map_free_string(pkey voidptr) {
 	unsafe {
 		(*&string(pkey)).free()
 	}
 }
 
+@[inline]
 fn map_free_nop(_ voidptr) {
 }
 
