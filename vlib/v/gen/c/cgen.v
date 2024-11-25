@@ -5528,9 +5528,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	g.set_current_pos_as_last_stmt_pos()
 	g.write_v_source_line_info_stmt(node)
 
+	old_inside_return := g.inside_return
 	g.inside_return = true
 	defer {
-		g.inside_return = false
+		g.inside_return = old_inside_return
 	}
 
 	if node.exprs.len > 0 {
