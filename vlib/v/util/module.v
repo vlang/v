@@ -64,8 +64,8 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: 2022-01-30: That makes lookup dependent on fragile environment factors.
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
-	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
-		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
+	if clean_file_path.replace(os.get_current_dir() + os.path_separator, '') == mod {
+		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - get_current_dir == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}
 	if m1 := mod_path_to_full_name(pref_, mod, clean_file_path) {

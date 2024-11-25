@@ -176,7 +176,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 }
 
 fn (mut b Builder) v_build_module(vexe string, imp_path string) {
-	pwd := os.getwd()
+	pwd := os.get_current_dir()
 	defer {
 		os.chdir(pwd) or {}
 	}

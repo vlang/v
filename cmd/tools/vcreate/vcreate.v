@@ -131,7 +131,7 @@ fn init_project(cmd Command) ! {
 	mut c := Create{
 		template: get_template(cmd)
 	}
-	dir_name := check_name(os.file_name(os.getwd()))
+	dir_name := check_name(os.file_name(os.get_current_dir()))
 	if !os.exists('v.mod') {
 		mod_dir_has_hyphens := dir_name.contains('-')
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }

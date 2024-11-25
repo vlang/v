@@ -149,7 +149,7 @@ fn normalize_path(path string) string {
 
 fn main() {
 	mut ctx := Context{}
-	ctx.working_folder = normalize_path(os.real_path(os.getwd()))
+	ctx.working_folder = normalize_path(os.real_path(os.get_current_dir()))
 	mut fp := flag.new_flag_parser(os.args#[1..])
 	fp.application('v cover')
 	fp.version('0.0.2')

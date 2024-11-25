@@ -111,7 +111,7 @@ fn test_norm_path() {
 }
 
 fn test_abs_path() {
-	wd := getwd()
+	wd := get_current_dir()
 	wd_w_sep := wd + path_separator
 	$if windows {
 		assert abs_path('path/to/file.v') == '${wd_w_sep}path\\to\\file.v'
@@ -147,7 +147,7 @@ fn test_abs_path() {
 }
 
 fn test_existing_path() {
-	wd := getwd()
+	wd := get_current_dir()
 	$if windows {
 		assert existing_path('') or { '' } == ''
 		assert existing_path('..') or { '' } == '..'

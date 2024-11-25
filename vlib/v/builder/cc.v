@@ -636,7 +636,7 @@ pub fn (mut v Builder) cc() {
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
 	mut tcc_output := os.Result{}
-	original_pwd := os.getwd()
+	original_pwd := os.get_current_dir()
 	for {
 		// try to compile with the chosen compiler
 		// if compilation fails, retry again with another
@@ -1109,7 +1109,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		println(rebuild_reason_message)
 	}
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
-	current_folder := os.getwd()
+	current_folder := os.get_current_dir()
 	os.chdir(v.pref.vroot) or {}
 
 	mut all_options := []string{}
