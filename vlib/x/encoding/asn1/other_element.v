@@ -104,9 +104,9 @@ pub fn (mut r RawElement) set_inner_tag(inner_tag Tag, force bool) ! {
 	if r.tag.class == .universal {
 		return error('No need it on universal class')
 	}
-
+	mode := r.mode or { return error('You dont set any mode') }
 	// when its in explicit mode, compares the provided tag with tag from the inner element.
-	if r.mode? == .explicit {
+	if mode == .explicit {
 		if !r.tag.constructed {
 			return error('unmeet_requirement, explicit should be constructed')
 		}
@@ -154,14 +154,14 @@ pub fn (r RawElement) inner_element() !Element {
 		return error('inner element from universal class is not availables')
 	}
 	inner_tag := r.inner_tag or { return err }
-
-	if r.mode? == .explicit {
+	mode := r.mode or { return error('You dont set any mode') }
+	if mode == .explicit {
 		if !r.tag.constructed {
 			return error('tag should be constructed when in explicit')
 		}
 	}
 	// in implicit, r.content is inner element content with inner tag
-	if r.mode? == .implicit {
+	if mode == .implicit {
 		elem := parse_element(inner_tag, r.content)!
 		return elem
 	}
@@ -182,8 +182,8 @@ fn (r RawElement) check_inner_tag() ! {
 	if r.tag.class == .universal {
 		return error('Universal class does not have inner tag')
 	}
-	// This option unwrap handling already has been fixed in latest v.
-	if r.mode? != .explicit {
+	mode := r.mode or { return error('You dont set any mode') }
+	if mode != .explicit {
 		return
 	}
 	// read an inner tag from content

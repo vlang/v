@@ -116,6 +116,8 @@ fn test_create_generalizedtime_from_std_time() ! {
 	gtc := GeneralizedTime.from_time(now)!
 
 	assert gtb.value == gtc.value
+	assert gtb.value == '20241113174550Z'
+	assert gtc.value == '20241113174550Z'
 
 	tt := gtc.into_utctime()!
 	assert now == tt

@@ -115,11 +115,6 @@ pub fn FieldOptions.from_attrs(attrs []string) !FieldOptions {
 
 	// The item has space-trimmed
 	for item in filtered {
-		// no need to check this again, its already filtered
-		// if !is_tag_marker(item) && !is_optional_marker(item) && !is_default_marker(item)
-		//		&& !is_mode_marker(item) && !is_inner_tag_marker(item) {
-		//		return error('unsupported keyword')
-		// }
 		if is_tag_marker(item) {
 			cls, num := parse_tag_marker(item)!
 			tag_ctr += 1
