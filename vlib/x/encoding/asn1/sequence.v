@@ -32,13 +32,6 @@ mut:
 	fields []Element
 }
 
-fn (s Sequence) str() string {
-	if s.fields.len == 0 {
-		return 'SEQUENCE: <empty>'
-	}
-	return 'SEQUENCE: ${s.fields.len} elements.'
-}
-
 // new creates new Sequence with default size.
 pub fn Sequence.new() !Sequence {
 	return Sequence.new_with_size(default_sequence_size)!
@@ -238,13 +231,6 @@ pub struct SequenceOf[T] {
 mut:
 	size   int = default_sequence_size
 	fields []T
-}
-
-fn (s SequenceOf[T]) str() string {
-	if s.fields.len == 0 {
-		return 'SEQUENCE OF (<empty>)'
-	}
-	return 'SEQUENCE OF (${s.fields.len} ${typeof(s).name})'
 }
 
 // SequenceOf.new creates a new SequenceOf[T]

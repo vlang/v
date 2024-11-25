@@ -67,8 +67,7 @@ pub fn (el Element) into_object[T]() !T {
 
 // length tells the payload length of this element.
 pub fn (el Element) length() !int {
-	payload := el.payload()!
-	return payload.len
+	return el.payload()!.len
 }
 
 // UTILITY HELPER FOR ELEMENT
@@ -225,8 +224,7 @@ fn (el Element) equal_payload(other Element) bool {
 }
 
 fn Element.decode(src []u8) !(Element, int) {
-	el, pos := Element.decode_with_rule(src, 0, .der)!
-	return el, pos
+	return Element.decode_with_rule(src, 0, .der)!
 }
 
 // decode deserializes back bytes in src from offet `loc` into Element.

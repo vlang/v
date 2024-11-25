@@ -59,8 +59,8 @@ Example ::= SEQUENCE {
 	assert els[1] is Integer
 	mut els2 := els[2] as ContextElement
 
-	els2.set_mode(.explicit)!
-	els2.set_inner_tag(default_oid_tag)!
+	els2.set_mode(.explicit, true)!
+	els2.set_inner_tag(default_oid_tag, true)!
 
 	out.clear()
 	out = encode(els2)!

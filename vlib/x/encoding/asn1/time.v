@@ -50,7 +50,8 @@ pub fn UtcTime.new(s string) !UtcTime {
 	}
 }
 
-fn UtcTime.from_time(t time.Time) !UtcTime {
+// from_time creates a new UtcTime element from standard `time.Time` in UTC time format.
+pub fn UtcTime.from_time(t time.Time) !UtcTime {
 	// changes into utc time
 	utime := t.local_to_utc()
 	s := utime.custom_format(default_utctime_format) //  20241113060446+0
@@ -226,7 +227,7 @@ pub fn GeneralizedTime.new(s string) !GeneralizedTime {
 	}
 }
 
-// from_time creates GeneralizedTime element from tine.Time (as an UTC time).
+// from_time creates GeneralizedTime element from standard `time.Time` (as an UTC time).
 pub fn GeneralizedTime.from_time(t time.Time) !GeneralizedTime {
 	u := t.local_to_utc()
 	s := u.custom_format(default_genztime_format)
