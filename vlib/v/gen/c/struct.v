@@ -471,23 +471,11 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 				tmp_var)
 			return true
 		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
-			tmp_var := g.new_tmp_var()
-			s := g.go_before_last_stmt()
-			g.empty_line = true
-			styp := g.styp(field.typ)
-			g.writeln('${styp} ${tmp_var} = {0};')
-			g.write('memcpy(${tmp_var}, ')
-			g.expr(field.default_expr)
-			g.writeln(', sizeof(${styp}));')
-			g.empty_line = false
-			g.write2(s, '{')
-			for i in 0 .. final_sym.info.size {
-				g.write('${tmp_var}[${i}]')
-				if i != final_sym.info.size - 1 {
-					g.write(', ')
-				}
-			}
-			g.write('}')
+			old_inside_memset := g.inside_memset
+			g.inside_memset = true
+			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ, true)
+			g.fixed_array_var_init(tmp_var, false, final_sym.info.elem_type, final_sym.info.size)
+			g.inside_memset = old_inside_memset
 			return true
 		}
 		g.expr(field.default_expr)
@@ -696,13 +684,14 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 						field_unwrap_sym.info.elem_type, field_unwrap_sym.info.size)
 				}
 				ast.CastExpr, ast.CallExpr {
-					tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type)
+					tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type, false)
 					g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 						field_unwrap_sym.info.size)
 				}
 				ast.ArrayInit {
 					if sfield.expr.has_index {
-						tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type)
+						tmp_var := g.expr_with_var(sfield.expr, sfield.expected_type,
+							false)
 						g.fixed_array_var_init(tmp_var, false, field_unwrap_sym.info.elem_type,
 							field_unwrap_sym.info.size)
 					} else if sfield.expr.has_callexpr {

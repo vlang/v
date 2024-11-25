@@ -135,7 +135,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.set_current_pos_as_last_stmt_pos()
 		return
 	}
-	if g.inside_struct_init && g.inside_cast {
+	if g.inside_struct_init && g.inside_cast && !g.inside_memset {
 		ret_typ_str := g.styp(node.typ)
 		g.write('(${ret_typ_str})')
 	}
@@ -158,7 +158,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			} else if elem_sym.kind == .array_fixed && expr is ast.CallExpr
 				&& g.table.final_sym(expr.return_type).kind == .array_fixed {
 				elem_info := elem_sym.array_fixed_info()
-				tmp_var := g.expr_with_var(expr, node.expr_types[i])
+				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
 				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
 				if expr.is_auto_deref_var() {
@@ -1650,6 +1650,7 @@ fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
 }
 
 fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Type, field_name string, is_auto_deref bool, elem_type ast.Type, size int) {
+	elem_sym := g.table.sym(elem_type)
 	if !g.inside_array_fixed_struct {
 		g.write('{')
 		defer {
@@ -1657,15 +1658,27 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 		}
 	}
 	for i in 0 .. size {
-		g.write(expr_str)
-		if field_type.is_ptr() {
-			g.write('->')
+		if elem_sym.info is ast.ArrayFixed {
+			init_str := if g.inside_array_fixed_struct {
+				'${expr_str}'
+			} else {
+				'${expr_str}->${c_name(field_name)}[${i}]'
+			}
+			g.fixed_array_update_expr_field(init_str, field_type, field_name, is_auto_deref,
+				elem_sym.info.elem_type, elem_sym.info.size)
 		} else {
-			g.write('.')
-		}
-		g.write(c_name(field_name))
-		if !expr_str.starts_with('(') && !expr_str.starts_with('{') {
-			g.write('[${i}]')
+			g.write(expr_str)
+			if !expr_str.ends_with(']') {
+				if field_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(c_name(field_name))
+			}
+			if !expr_str.starts_with('(') && !expr_str.starts_with('{') {
+				g.write('[${i}]')
+			}
 		}
 		if i != size - 1 {
 			g.write(', ')

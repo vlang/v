@@ -154,6 +154,7 @@ mut:
 	inside_for_c_stmt         bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
+	inside_memset             bool
 	inside_const              bool
 	inside_array_item         bool
 	inside_const_opt_or_res   bool
@@ -1626,6 +1627,7 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 }
 
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
+	mut levels := 0
 	parent := g.table.type_symbols[sym.parent_idx]
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 	mut is_fixed_array_of_non_builtin := false
@@ -1639,9 +1641,29 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 			parent_styp = g.styp(sym.info.parent_type)
 			parent_sym := g.table.sym(sym.info.parent_type)
 			if parent_sym.info is ast.ArrayFixed {
-				elem_sym := g.table.sym(parent_sym.info.elem_type)
+				mut elem_sym := g.table.sym(parent_sym.info.elem_type)
 				if !elem_sym.is_builtin() {
 					is_fixed_array_of_non_builtin = true
+				}
+
+				mut parent_elem_info := parent_sym.info as ast.ArrayFixed
+				mut parent_elem_styp := g.styp(sym.info.parent_type)
+				mut out := ''
+				for {
+					if mut elem_sym.info is ast.ArrayFixed {
+						out =
+							'typedef ${elem_sym.cname} ${parent_elem_styp} [${parent_elem_info.size}]; //\n' +
+							out
+						parent_elem_styp = elem_sym.cname
+						parent_elem_info = elem_sym.info as ast.ArrayFixed
+						elem_sym = g.table.sym(elem_sym.info.elem_type)
+						levels++
+					} else {
+						break
+					}
+				}
+				if out != '' {
+					g.type_definitions.writeln(out)
 				}
 			}
 		}
@@ -1650,7 +1672,7 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 		// TODO: remove this check; it is here just to fix V rebuilding in -cstrict mode with clang-12
 		return
 	}
-	if is_fixed_array_of_non_builtin {
+	if is_fixed_array_of_non_builtin && levels == 0 {
 		g.alias_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
 	} else {
 		g.type_definitions.writeln('typedef ${parent_styp} ${sym.cname};')
@@ -2557,7 +2579,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 }
 
 // use instead of expr() when you need a var to use as reference
-fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type) string {
+fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type, do_cast bool) string {
 	stmt_str := g.go_before_last_stmt().trim_space()
 	g.empty_line = true
 	tmp_var := g.new_tmp_var()
@@ -2565,6 +2587,9 @@ fn (mut g Gen) expr_with_var(expr ast.Expr, expected_type ast.Type) string {
 
 	g.writeln('${styp} ${tmp_var};')
 	g.write('memcpy(&${tmp_var}, ')
+	if do_cast {
+		g.write('(${styp})')
+	}
 	g.expr(expr)
 	g.writeln(', sizeof(${styp}));')
 	g.write(stmt_str)
