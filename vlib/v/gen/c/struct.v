@@ -301,36 +301,45 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				continue
 			}
 			if node.has_update_expr {
+				mut is_arr_fixed := false
 				g.write('.${field_name} = ')
 				if is_update_tmp_var {
 					g.write(tmp_update_var)
+				} else if g.table.final_sym(field.typ).kind == .array_fixed {
+					is_arr_fixed = true
+					arr_info := g.table.final_sym(field.typ).array_fixed_info()
+					g.fixed_array_update_expr_field(g.expr_string(node.update_expr), node.update_expr_type,
+						field.name, node.update_expr.is_auto_deref_var(), arr_info.elem_type,
+						arr_info.size)
 				} else {
 					g.write('(')
 					g.expr(node.update_expr)
 					g.write(')')
 				}
-				if node.update_expr_type.is_ptr() {
-					g.write('->')
-				} else {
-					g.write('.')
-				}
-				if node.is_update_embed {
-					update_sym := g.table.sym(node.update_expr_type)
-					_, embeds := g.table.find_field_from_embeds(update_sym, field.name) or {
-						ast.StructField{}, []ast.Type{}
+				if !is_arr_fixed {
+					if node.update_expr_type.is_ptr() {
+						g.write('->')
+					} else {
+						g.write('.')
 					}
-					for embed in embeds {
-						esym := g.table.sym(embed)
-						ename := esym.embed_name()
-						g.write(ename)
-						if embed.is_ptr() {
-							g.write('->')
-						} else {
-							g.write('.')
+					if node.is_update_embed {
+						update_sym := g.table.sym(node.update_expr_type)
+						_, embeds := g.table.find_field_from_embeds(update_sym, field.name) or {
+							ast.StructField{}, []ast.Type{}
+						}
+						for embed in embeds {
+							esym := g.table.sym(embed)
+							ename := esym.embed_name()
+							g.write(ename)
+							if embed.is_ptr() {
+								g.write('->')
+							} else {
+								g.write('.')
+							}
 						}
 					}
+					g.write(c_name(field.name))
 				}
-				g.write(c_name(field.name))
 			} else {
 				if !g.zero_struct_field(field) {
 					nr_fields--

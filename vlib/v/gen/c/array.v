@@ -1649,6 +1649,30 @@ fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
 	}
 }
 
+fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Type, field_name string, is_auto_deref bool, elem_type ast.Type, size int) {
+	if !g.inside_array_fixed_struct {
+		g.write('{')
+		defer {
+			g.write('}')
+		}
+	}
+	for i in 0 .. size {
+		g.write(expr_str)
+		if field_type.is_ptr() {
+			g.write('->')
+		} else {
+			g.write('.')
+		}
+		g.write(c_name(field_name))
+		if !expr_str.starts_with('(') && !expr_str.starts_with('{') {
+			g.write('[${i}]')
+		}
+		if i != size - 1 {
+			g.write(', ')
+		}
+	}
+}
+
 fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_type ast.Type, size int) {
 	elem_sym := g.table.sym(elem_type)
 	if !g.inside_array_fixed_struct {
