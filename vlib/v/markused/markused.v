@@ -196,6 +196,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
+		// if mfn.name == 'before_request' {
+		// all_fn_root_names << k
+		//}
 
 		// sync:
 		if k == 'sync.new_channel_st' {
@@ -338,6 +341,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	if 'C.cJSON_Parse' in all_fns {
 		all_fn_root_names << 'tos5'
+		all_fn_root_names << 'time.unix' // used by json
+		table.used_features.used_maps++ // json needs new_map etc
 	}
 	mut walker := Walker.new(
 		table:       table
@@ -349,6 +354,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	)
 	// println( all_fns.keys() )
 	walker.mark_markused_fns() // tagged with `@[markused]`
+
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_exported_fns()
@@ -405,6 +411,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			walker.mark_const_as_used(kcon)
 		}
 	}
+
 	table.used_features.used_fns = walker.used_fns.move()
 	table.used_features.used_consts = walker.used_consts.move()
 	table.used_features.used_globals = walker.used_globals.move()

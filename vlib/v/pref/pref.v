@@ -335,6 +335,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.use_cache = true
 		res.skip_unused = true
 	} */
+	mut no_skip_unused := false
 
 	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
@@ -602,6 +603,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.skip_unused = true
 			}
 			'-no-skip-unused' {
+				no_skip_unused = true
 				res.skip_unused = false
 			}
 			'-compress' {
@@ -1134,6 +1136,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
+	if res.backend == .c {
+		// res.skip_unused = true
+		if no_skip_unused {
+			res.skip_unused = false
+		}
+	}
+
 	return res, command
 }
 
