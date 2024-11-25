@@ -7799,6 +7799,12 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 				g.unwrap_option_type(unwrapped_node_typ, node.expr.name, node.expr.is_auto_heap())
 				is_optional_ident_var = true
 			}
+		} else if node.expr is ast.SelectorExpr {
+			if node.expr.expr is ast.Ident && node.expr.typ.has_flag(.option) {
+				g.unwrap_option_type(node.expr.typ, '${node.expr.expr.name}.${node.expr.field_name}',
+					node.expr.expr.is_auto_heap())
+				is_optional_ident_var = true
+			}
 		}
 		if !is_optional_ident_var {
 			g.expr(node.expr)
