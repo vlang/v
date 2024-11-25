@@ -19,6 +19,7 @@ const default_paths = [
 	'/usr/local/libdata/pkgconfig', // FreeBSD
 	'/usr/libdata/pkgconfig', // FreeBSD
 	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
+	'/data/data/com.termux/files/usr/lib/pkgconfig', // Termux
 ]
 
 pub struct Options {
