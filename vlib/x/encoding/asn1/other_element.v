@@ -46,19 +46,6 @@ pub fn RawElement.new(tag Tag, content []u8) !RawElement {
 	return RawElement{
 		tag:     tag
 		content: content
-		// Issues: without set this to `none`, when compiled with `-cstrict` options, its would bring
-		// into failed compiles error:
-		// ================= C compilation error (from clang): ==============
-		// error: incompatible pointer types passing '_option_x__encoding__asn1__Tag *'
-		// (aka 'struct _option_x__encoding__asn1__Tag *') to parameter of type '_option *'
-		// (aka 'struct _option *') [-Werror,-Wincompatible-pointer-types]
-		// cc:         _option_none(&(x__encoding__asn1__Tag[])
-		// { ((x__encoding__asn1__Tag){.__v_class =
-		// x__encoding__asn1__TagClass__universal,.constructed = 0,.number = 0,})},
-		// &_t6, sizeof(x__encoding__asn1__Tag));                                            ```
-		inner_tag:     none
-		mode:          none
-		default_value: none
 	}
 }
 
@@ -93,19 +80,9 @@ pub fn (r RawElement) payload() ![]u8 {
 	return r.content
 }
 
-// force_set_mode forces to change tagged mode of RawElement into mode.
-// It will change how the element was interpreted.
-pub fn (mut r RawElement) force_set_mode(mode TaggedMode) ! {
-	r.set_mode_with_flag(mode, true)!
-}
-
-// set_mode sets the tagged mode of the RawElement into mode.
-// If you want force it to use the mode, use `force_set_mode`.
-pub fn (mut r RawElement) set_mode(mode TaggedMode) ! {
-	r.set_mode_with_flag(mode, false)!
-}
-
-fn (mut r RawElement) set_mode_with_flag(mode TaggedMode, force bool) ! {
+// set_mode sets the RawElement tagged mode, in explicit or implicit mode. If the mode has been set,
+// it would drop into error until you forces it by setting force flag into true value, ie, replaces the old one.
+pub fn (mut r RawElement) set_mode(mode TaggedMode, force bool) ! {
 	if r.tag.class == .universal {
 		return error('No need it on universal class')
 	}
@@ -120,28 +97,15 @@ fn (mut r RawElement) set_mode_with_flag(mode TaggedMode, force bool) ! {
 	r.mode = mode
 }
 
-// set_inner_tag sets the inner tag of the RawElement into inner_tag.
-// If its already set, it would return error.
-// Use `force_set_inner_tag` instead to force it.
-pub fn (mut r RawElement) set_inner_tag(inner_tag Tag) ! {
-	r.set_inner_tag_with_flag(inner_tag, false)!
-}
-
-// force_set_inner_tag forces to set the inner tag of the RawElement into inner_tag
-// even its has been set previously.
-pub fn (mut r RawElement) force_set_inner_tag(inner_tag Tag) ! {
-	r.set_inner_tag_with_flag(inner_tag, true)!
-}
-
-fn (mut r RawElement) set_inner_tag_with_flag(inner_tag Tag, force bool) ! {
+// set_inner_tag sets the inner tag of the RawElement into inner_tag value. If it has been already set,
+// it would be an error until you setting force flag into true value to replace the old one.
+pub fn (mut r RawElement) set_inner_tag(inner_tag Tag, force bool) ! {
 	// not needed in universal class
 	if r.tag.class == .universal {
 		return error('No need it on universal class')
 	}
-	// we need mode first
-	mode := r.mode or { return error('unmeet_requirement, set the mode first') }
-
-	// when its explicit, compares the provided tag with tag from the inner element.
+	mode := r.mode or { return error('You dont set any mode') }
+	// when its in explicit mode, compares the provided tag with tag from the inner element.
 	if mode == .explicit {
 		if !r.tag.constructed {
 			return error('unmeet_requirement, explicit should be constructed')
@@ -164,17 +128,8 @@ fn (mut r RawElement) set_inner_tag_with_flag(inner_tag Tag, force bool) ! {
 }
 
 // force_set_default_value forces set default value of this RawElement into value.
-pub fn (mut r RawElement) force_set_default_value(value Element) ! {
-	r.set_default_value_with_flag(value, true)!
-}
-
-// set_default_value sets the default value of this RawElement to some value.
-pub fn (mut r RawElement) set_default_value(value Element) ! {
-	r.set_default_value_with_flag(value, false)!
-}
-
-fn (mut r RawElement) set_default_value_with_flag(value Element, force bool) ! {
-	// default value of this element should have equal tag.
+fn (mut r RawElement) set_default_value(value Element, force bool) ! {
+	// default value of this element should have an equal tag.
 	if !value.tag().equal(r.tag) {
 		return error('You provides unequal tag for default value')
 	}
@@ -189,10 +144,8 @@ fn (mut r RawElement) set_default_value_with_flag(value Element, force bool) ! {
 }
 
 // inner_tag returns the inner tag of the RawElement if it exists, or error on fails.
-pub fn (r RawElement) inner_tag() !Tag {
-	inner_tag := r.inner_tag or { return error(' r.inner_tag is not set') }
-
-	return inner_tag
+pub fn (r RawElement) inner_tag() ?Tag {
+	return r.inner_tag
 }
 
 // inner_element returns the inner element of the RawElement if its exists.
@@ -200,9 +153,8 @@ pub fn (r RawElement) inner_element() !Element {
 	if r.tag.class == .universal {
 		return error('inner element from universal class is not availables')
 	}
-	mode := r.mode or { return err }
 	inner_tag := r.inner_tag or { return err }
-
+	mode := r.mode or { return error('You dont set any mode') }
 	if mode == .explicit {
 		if !r.tag.constructed {
 			return error('tag should be constructed when in explicit')
@@ -302,11 +254,8 @@ fn ContextElement.decode_raw(bytes []u8) !(ContextElement, int) {
 	next := content_pos + length
 	// Raw ContextElement, you should provide mode and inner tag.
 	ctx := ContextElement{
-		tag:           tag
-		content:       content
-		inner_tag:     none
-		mode:          none
-		default_value: none
+		tag:     tag
+		content: content
 	}
 	return ctx, next
 }

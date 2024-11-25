@@ -39,25 +39,16 @@ pub fn encode(el Element) ![]u8 {
 // assert explicit_out == [u8(0xA5), 0x04, 0x0C, 0x02, 0x68, 0x69]
 // ```
 pub fn encode_with_options(el Element, opt string) ![]u8 {
-	return el.encode_with_options(opt)!
-}
-
-// `encode_with_field_options` serializes this element into bytes array with options defined in fo.
-pub fn encode_with_field_options(el Element, fo FieldOptions) ![]u8 {
-	return el.encode_with_field_options(fo)!
-}
-
-fn (el Element) encode_with_options(opt string) ![]u8 {
-	// treated as without option when nil
+	// treated as without option when empty
 	if opt.len == 0 {
 		return encode_with_rule(el, .der)!
 	}
 	fo := FieldOptions.from_string(opt)!
-	return el.encode_with_field_options(fo)!
+	return encode_with_field_options(el, fo)!
 }
 
-// encode_with_field_options serializes element into bytes arrays with supplied FieldOptions.
-fn (el Element) encode_with_field_options(fo FieldOptions) ![]u8 {
+// `encode_with_field_options` serializes this element into bytes array with options defined in fo.
+pub fn encode_with_field_options(el Element, fo FieldOptions) ![]u8 {
 	// validates options again this element.
 	el.validate_options(fo)!
 
@@ -81,33 +72,7 @@ fn (el Element) encode_with_field_options(fo FieldOptions) ![]u8 {
 		return new_el.encode()!
 	}
 	// otherwise, just serializing it
-	out := encode_with_rule(new_el, .der)!
-
-	return out
-}
-
-// encode_with_rule encodes element into bytes array with rule.
-fn encode_with_rule(el Element, rule EncodingRule) ![]u8 {
-	if rule != .der && rule != .ber {
-		return error('Element: unsupported rule')
-	}
-	mut dst := []u8{}
-
-	// when this element is Optional without presence flag, by default would
-	// serialize this element into empty bytes otherwise, would serialize underlying element.
-	if el is Optional {
-		return el.encode()!
-	}
-	// otherwise, just serializes as normal
-	el.tag().encode_with_rule(mut dst, rule)!
-	// calculates the length of element,  and serialize this length
-	payload := el.payload()!
-	length := Length.new(payload.len)!
-	length.encode_with_rule(mut dst, rule)!
-	// append the element payload to destination
-	dst << payload
-
-	return dst
+	return encode_with_rule(new_el, .der)!
 }
 
 // Helper for wrapping element
@@ -200,4 +165,28 @@ fn wrap(el Element, cls TagClass, number int, mode TaggedMode) !Element {
 			return error('Wraps to the wrong class')
 		}
 	}
+}
+
+// encode_with_rule encodes element into bytes array with rule.
+fn encode_with_rule(el Element, rule EncodingRule) ![]u8 {
+	if rule != .der && rule != .ber {
+		return error('Element: unsupported rule')
+	}
+	mut dst := []u8{}
+
+	// when this element is Optional without presence flag, by default would
+	// serialize this element into empty bytes otherwise, would serialize underlying element.
+	if el is Optional {
+		return el.encode()!
+	}
+	// otherwise, just serializes as normal
+	el.tag().encode_with_rule(mut dst, rule)!
+	// calculates the length of element,  and serialize this length
+	payload := el.payload()!
+	length := Length.new(payload.len)!
+	length.encode_with_rule(mut dst, rule)!
+	// append the element payload to destination
+	dst << payload
+
+	return dst
 }

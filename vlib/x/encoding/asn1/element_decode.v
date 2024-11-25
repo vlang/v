@@ -99,8 +99,7 @@ pub fn decode_with_field_options(bytes []u8, fo FieldOptions) !Element {
 		return error('Get different tag number')
 	}
 	// TODO: default
-	el := tlv.unwrap_with_field_options(fo)!
-	return el
+	return tlv.unwrap_with_field_options(fo)!
 }
 
 fn decode_optional(bytes []u8, expected_tag Tag) !Element {
