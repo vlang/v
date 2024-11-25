@@ -5515,9 +5515,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	g.set_current_pos_as_last_stmt_pos()
 	g.write_v_source_line_info_stmt(node)
 
+	old_inside_return := g.inside_return
 	g.inside_return = true
 	defer {
-		g.inside_return = false
+		g.inside_return = old_inside_return
 	}
 
 	if node.exprs.len > 0 {
@@ -5896,8 +5897,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
+			if !use_tmp_var && !g.is_builtin_mod {
+				use_tmp_var = expr is ast.CallExpr
+			}
 		}
-		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
 		if use_tmp_var || !g.is_builtin_mod {
 			// `return foo(a, b, c)`
@@ -5906,11 +5909,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			// Just in case of defer statements exists, that the return values cannot
 			// be modified.
-			if use_tmp_var || !(node.exprs[0].is_literal() || node.exprs[0] is ast.Ident) {
+			if use_tmp_var {
 				use_tmp_var = true
 				g.write('${ret_typ} ${tmpvar} = ')
 			} else {
-				use_tmp_var = false
 				if !g.is_builtin_mod {
 					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				}
@@ -6893,7 +6895,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					if variant in idxs {
 						continue
 					}
-					g.type_definitions.writeln('//          | ${variant:4d} = ${g.styp(variant.idx_type()):-20s}')
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.styp(variant.idx_type())}')
 					idxs << variant
 				}
 				idxs.clear()

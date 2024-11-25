@@ -256,7 +256,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		}
 	}
-	g.write2(' str_intp(', node.vals.len.str())
+	g.write2('str_intp(', node.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node.vals {
 		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
