@@ -1021,7 +1021,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				}
 				if node.is_return_used {
 					// return value is used, so we need to write the unwrapped temporary var
-					g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
+					g.write('\n ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
 				} else {
 					g.write('\n ${cur_line}')
 				}

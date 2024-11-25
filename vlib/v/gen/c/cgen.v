@@ -6908,7 +6908,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					if variant in idxs {
 						continue
 					}
-					g.type_definitions.writeln('//          | ${variant:4d} = ${g.styp(variant.idx_type()):-20s}')
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.styp(variant.idx_type())}')
 					idxs << variant
 				}
 				idxs.clear()

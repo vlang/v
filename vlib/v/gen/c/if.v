@@ -427,6 +427,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.set_current_pos_as_last_stmt_pos()
 		}
 		g.empty_line = false
-		g.write('${cur_line} ${tmp}')
+		g.write('${cur_line}${tmp}')
 	}
 }

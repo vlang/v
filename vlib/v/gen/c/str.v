@@ -140,7 +140,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				} else {
 					g.expr(expr)
 				}
-				g.write2('.data', ') ? _SLIT("Option(&nil)") : ')
+				g.write('.data) ? _SLIT("Option(&nil)") : ')
 			} else {
 				inside_interface_deref_old := g.inside_interface_deref
 				g.inside_interface_deref = false

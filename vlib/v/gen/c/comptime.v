@@ -452,7 +452,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	g.defer_ifdef = ''
 	g.writeln('#endif')
 	if node.is_expr {
-		g.write('${line} ${tmp_var}')
+		g.write('${line}${tmp_var}')
 	}
 }
 
