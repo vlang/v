@@ -305,16 +305,18 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				g.write('.${field_name} = ')
 				if is_update_tmp_var {
 					g.write(tmp_update_var)
-				} else if g.table.final_sym(field.typ).kind == .array_fixed {
-					is_arr_fixed = true
-					arr_info := g.table.final_sym(field.typ).array_fixed_info()
-					g.fixed_array_update_expr_field(g.expr_string(node.update_expr), node.update_expr_type,
-						field.name, node.update_expr.is_auto_deref_var(), arr_info.elem_type,
-						arr_info.size)
 				} else {
-					g.write('(')
-					g.expr(node.update_expr)
-					g.write(')')
+					update_expr_sym := g.table.final_sym(field.typ)
+					if update_expr_sym.info is ast.ArrayFixed {
+						is_arr_fixed = true
+						g.fixed_array_update_expr_field(g.expr_string(node.update_expr),
+							node.update_expr_type, field.name, node.update_expr.is_auto_deref_var(),
+							update_expr_sym.info.elem_type, update_expr_sym.info.size)
+					} else {
+						g.write('(')
+						g.expr(node.update_expr)
+						g.write(')')
+					}
 				}
 				if !is_arr_fixed {
 					if node.update_expr_type.is_ptr() {

@@ -1648,12 +1648,13 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 
 				mut parent_elem_info := parent_sym.info as ast.ArrayFixed
 				mut parent_elem_styp := g.styp(sym.info.parent_type)
-				mut out := ''
+				mut out := strings.new_builder(50)
 				for {
 					if mut elem_sym.info is ast.ArrayFixed {
-						out =
-							'typedef ${elem_sym.cname} ${parent_elem_styp} [${parent_elem_info.size}]; //\n' +
-							out
+						old := out.str()
+						out.clear()
+						out.writeln('typedef ${elem_sym.cname} ${parent_elem_styp} [${parent_elem_info.size}];')
+						out.writeln(old)
 						parent_elem_styp = elem_sym.cname
 						parent_elem_info = elem_sym.info as ast.ArrayFixed
 						elem_sym = g.table.sym(elem_sym.info.elem_type)
@@ -1662,8 +1663,8 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 						break
 					}
 				}
-				if out != '' {
-					g.type_definitions.writeln(out)
+				if out.len != 0 {
+					g.type_definitions.writeln(out.str())
 				}
 			}
 		}
