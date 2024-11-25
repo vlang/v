@@ -5910,8 +5910,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
+			if !use_tmp_var && !g.is_builtin_mod {
+				use_tmp_var = expr is ast.CallExpr
+			}
 		}
-		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
 		if use_tmp_var || !g.is_builtin_mod {
 			// `return foo(a, b, c)`
@@ -5924,7 +5926,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				use_tmp_var = true
 				g.write('${ret_typ} ${tmpvar} = ')
 			} else {
-				use_tmp_var = false
 				if !g.is_builtin_mod {
 					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				}
