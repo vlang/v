@@ -14,7 +14,7 @@ step := os.args[3] or { '500_000' }.int()
 os.chdir(os.dir(@VEXE))!
 vcmd := 'v ${flags} cmd/tools/bench/map_clear.v'
 
-println('>> start: ${start} | end: ${end} | step: ${step} | workdir: "${os.get_current_dir()}" | flags: "${flags}" | vcmd: "${vcmd}"')
+println('>> start: ${start} | end: ${end} | step: ${step} | workdir: "${os.getwd()}" | flags: "${flags}" | vcmd: "${vcmd}"')
 assert os.system(vcmd) == 0
 
 println('running...')

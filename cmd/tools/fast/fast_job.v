@@ -53,7 +53,7 @@ fn main() {
 	elog('fast_job PATH: ${os.getenv('PATH')}')
 
 	os.chdir(fast_dir)!
-	elog('fast_job start in os.get_current_dir(): ${os.get_current_dir()}')
+	elog('fast_job start in os.getwd(): ${os.getwd()}')
 
 	defer {
 		elog('fast_job end')

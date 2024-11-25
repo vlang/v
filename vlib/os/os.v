@@ -7,7 +7,7 @@ import strings
 
 pub const max_path_len = 4096
 
-pub const wd_at_startup = get_current_dir()
+pub const wd_at_startup = getwd()
 
 const f_ok = 0
 

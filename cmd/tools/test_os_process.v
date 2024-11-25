@@ -78,7 +78,7 @@ fn main() {
 		eprintln('> args: ${args} | context: ${ctx}')
 	}
 	if ctx.show_wd {
-		ctx.println('WORK_DIR=${os.get_current_dir()}')
+		ctx.println('WORK_DIR=${os.getwd()}')
 	}
 	if ctx.show_env {
 		all := os.environ()

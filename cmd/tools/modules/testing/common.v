@@ -370,7 +370,7 @@ pub fn (mut ts TestSession) add(file string) {
 pub fn (mut ts TestSession) test() {
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
-	current_wd := os.get_current_dir()
+	current_wd := os.getwd()
 	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
 		ts.root_relative = true
 	}

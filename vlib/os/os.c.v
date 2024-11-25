@@ -756,16 +756,8 @@ pub fn chdir(path string) ! {
 }
 
 // getwd returns the absolute path of the current directory.
-// @[deprecated: 'use `get_current_dir()` instead']
-// TODO: uncomment the deprecation here, after 2024-11-27
-@[deprecated_after: '2024-12-24']
-pub fn getwd() string {
-	return get_current_dir()
-}
-
-// get_current_dir returns the absolute path of the current directory.
 @[manualfree]
-pub fn get_current_dir() string {
+pub fn getwd() string {
 	unsafe {
 		buf := [max_path_buffer_size]u8{}
 		$if windows {

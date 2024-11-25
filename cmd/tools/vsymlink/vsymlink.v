@@ -35,6 +35,6 @@ fn setup_symlink_github() {
 		eprintln('    On windows, use `.\\v.exe symlink` instead.')
 		exit(1)
 	}
-	content += '\n${os.get_current_dir()}\n'
+	content += '\n${os.getwd()}\n'
 	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
 }

@@ -31,7 +31,7 @@ pub fn is_abs_path(path string) bool {
 // with the given `path` (if the `path` is relative)
 // and returns the absolute path representation.
 pub fn abs_path(path string) string {
-	wd := get_current_dir()
+	wd := getwd()
 	if path == '' {
 		return wd
 	}

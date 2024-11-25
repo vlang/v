@@ -109,7 +109,7 @@ fn (mut c Context) amalgamate() ! {
 	if c.config.input_files.len == 0 {
 		// source += '/* ########## stdin */\n'
 		// if there are no input files, read from stdin
-		local_dir := os.get_current_dir()
+		local_dir := os.getwd()
 		source += c.handle_includes(local_dir, os.get_raw_lines_joined())!
 		// source += '/* ########## stdin end */\n'
 	} else {

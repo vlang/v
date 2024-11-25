@@ -10,7 +10,7 @@ fn test_find_abs_path_of_executable() {
 	}
 
 	original_path := os.getenv('PATH')
-	original_wdir := os.get_current_dir()
+	original_wdir := os.getwd()
 	defer {
 		os.chdir(original_wdir) or {}
 	}

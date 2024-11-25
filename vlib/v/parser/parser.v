@@ -202,7 +202,7 @@ fn (mut p Parser) free_scanner() {
 	}
 }
 
-const normalised_working_folder = (os.real_path(os.get_current_dir()) + os.path_separator).replace('\\',
+const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator).replace('\\',
 	'/')
 
 pub fn (mut p Parser) set_path(path string) {
