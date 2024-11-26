@@ -63,6 +63,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		]
 		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
 			core_fns << panic_deps
+			core_fns << 'isnil'
 			core_fns << '__new_array'
 			core_fns << '__new_array_noscan'
 			core_fns << '__new_array_with_multi_default'
@@ -78,7 +79,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << charptr_idx_str + '.vstring_with_len'
 			core_fns << charptr_idx_str + '.vstring_literal'
 		}
-		if table.used_features.index {
+		if table.used_features.index || pref_.is_shared {
 			core_fns << string_idx_str + '.at_with_check'
 			core_fns << string_idx_str + '.clone'
 			core_fns << string_idx_str + '.clone_static'
@@ -91,7 +92,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << ref_array_idx_str + '.push_noscan'
 			core_fns << ref_array_idx_str + '.push_many_noscan'
 		}
-		if table.used_features.range_index {
+		if table.used_features.range_index || pref_.is_shared {
 			core_fns << string_idx_str + '.substr_with_check'
 			core_fns << string_idx_str + '.substr_ni'
 			core_fns << array_idx_str + '.slice_ni'
@@ -138,8 +139,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			]
 		}
 		if table.used_features.arr_init {
+			core_fns << '__new_array'
 			core_fns << 'new_array_from_c_array'
 			core_fns << 'new_array_from_c_array_noscan'
+			core_fns << '__new_array_with_multi_default'
+			core_fns << '__new_array_with_multi_default_noscan'
 		}
 		if table.used_features.option_or_result {
 			core_fns << '_option_ok'

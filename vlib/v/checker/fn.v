@@ -2940,6 +2940,9 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			c.table.used_features.arr_init = true
+		}
 	} else {
 		has_decompose := node.args.any(it.expr is ast.ArrayDecompose)
 		if has_decompose {
