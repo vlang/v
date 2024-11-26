@@ -33,6 +33,8 @@ pub mut:
 	used_maps        int             // how many times maps were used, filled in by markused
 	used_arrays      int             // how many times arrays were used, filled in by markused
 	// json             bool            // json is imported
+	debugger       bool            // debugger is used
+	comptime_calls map[string]bool // resolved $method() names
 }
 
 @[unsafe]

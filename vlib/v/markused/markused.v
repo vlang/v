@@ -159,6 +159,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		$if trace_skip_unused_all_fns ? {
 			println('k: ${k} | mfn: ${mfn.name}')
 		}
+		if k in table.used_features.comptime_calls {
+			all_fn_root_names << k
+		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
 		if allow_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
 			all_fn_root_names << k
@@ -183,7 +186,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		// call .str or .auto_str methods for user types:
 		if k.ends_with('.str') || k.ends_with('.auto_str') {
 			if table.used_features.auto_str
-				|| table.used_features.print_types[mfn.receiver.typ.idx()] {
+				|| table.used_features.print_types[mfn.receiver.typ.idx()]
+				|| table.used_features.debugger {
 				all_fn_root_names << k
 			}
 			continue
