@@ -30,12 +30,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'main.main',
 			'init_global_allocator', // needed for linux_bare and wasm_bare
 			'v_realloc', // needed for _STR
-			'malloc',
-			'malloc_noscan',
-			'vcalloc',
-			'vcalloc_noscan',
+			//'malloc',
+			//'malloc_noscan',
+			//'vcalloc',
+			//'vcalloc_noscan',
 			'memdup',
-			'vstrlen',
+			//'vstrlen',
 			'tos',
 			'tos2',
 			'error',
