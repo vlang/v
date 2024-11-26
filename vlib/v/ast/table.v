@@ -35,6 +35,7 @@ pub mut:
 	used_veb_types   []Type          // veb context types, filled in by checker
 	used_maps        int             // how many times maps were used, filled in by markused
 	used_arrays      int             // how many times arrays were used, filled in by markused
+	used_modules     map[string]bool // filled in checker
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved $method() names

@@ -754,6 +754,10 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	}
 	c.expected_or_type = old_expected_or_type
 
+	if c.pref.skip_unused && node.mod == 'main' && node.name.contains('.') {
+		c.table.used_features.used_modules[node.name.all_before('.')] = true
+	}
+
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
 		&& !c.table.cur_fn.is_test {
 		// TODO: use just `if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result) {` after the deprecation for ?!Type

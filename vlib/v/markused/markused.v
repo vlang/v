@@ -61,6 +61,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			array_idx_str + '.get',
 			'v_fixed_index',
 		]
+		if table.used_features.used_modules.len > 0 {
+			core_fns << panic_deps
+		}
 		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
 			core_fns << panic_deps
 			core_fns << 'isnil'
