@@ -56,7 +56,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'v_fixed_index']
 		// real world apps
 		if table.used_features.builtin_types || table.used_features.as_cast
-			|| table.used_features.auto_str {
+			|| table.used_features.auto_str || pref_.is_shared {
 			core_fns << panic_deps
 			core_fns << '__new_array'
 			core_fns << '__new_array_with_multi_default'

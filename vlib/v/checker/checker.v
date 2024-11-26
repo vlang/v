@@ -3269,7 +3269,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		to_type
 	}
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
-	if to_type.is_ptr() {
+	if c.pref.skip_unused && !c.is_builtin_mod && c.mod !in ['strings', 'math.bits']
+		&& to_type.is_ptr() {
 		c.table.used_features.cast_ptr = true
 	}
 	if to_type.has_flag(.result) {
@@ -4764,9 +4765,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		else {}
 	}
-	c.table.used_features.index = true
-	if node.index is ast.RangeExpr {
-		c.table.used_features.range_index = true
+	if !c.is_builtin_mod {
+		if node.index is ast.RangeExpr {
+			c.table.used_features.range_index = true
+		}
+		c.table.used_features.index = true
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
