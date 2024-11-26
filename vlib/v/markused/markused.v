@@ -125,6 +125,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				allow_noscan = false
 			}
 		}
+		if table.used_features.arr_init {
+			core_fns << 'new_array_from_c_array_noscan'
+		}
 		if table.used_features.option_or_result {
 			core_fns << '_option_ok'
 			core_fns << '_result_ok'
