@@ -363,6 +363,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
+	walker.mark_veb_actions()
 
 	if walker.n_asserts > 0 {
 		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }

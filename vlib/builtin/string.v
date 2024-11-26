@@ -134,7 +134,7 @@ pub fn tos2(s &u8) string {
 // It will panic, when the pointer `s` is 0.
 // It is the same as `tos2`, but for &char pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos3(s &char) string {
 	if s == 0 {
 		panic('tos3: nil string')
@@ -151,7 +151,7 @@ pub fn tos3(s &char) string {
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
 // It is the same as `tos5`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos4(s &u8) string {
 	if s == 0 {
 		return ''
@@ -168,7 +168,7 @@ pub fn tos4(s &u8) string {
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
 // It is the same as `tos4`, but for &char pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos5(s &char) string {
 	if s == 0 {
 		return ''
