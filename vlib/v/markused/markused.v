@@ -13,7 +13,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	// println('>>>> ${all_fns}')
 	mut allow_noscan := true
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := []string{}
@@ -143,8 +142,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_fn_root_names << core_fns
 	}
 
-	// all_fn_root_names << ['115.from_toml', '115.to_toml', '133.to_toml','136.to_toml', '138.to_toml', '131.to_toml']
-
 	if pref_.is_bare {
 		all_fn_root_names << [
 			'strlen',
@@ -158,7 +155,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	is_noscan_whitelisted := pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
 
-	println(table.used_features.comptime_calls)
 	for k, mut mfn in all_fns {
 		$if trace_skip_unused_all_fns ? {
 			println('k: ${k} | mfn: ${mfn.name}')
