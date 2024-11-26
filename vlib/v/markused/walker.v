@@ -117,7 +117,7 @@ pub fn (mut w Walker) mark_exported_fns() {
 	}
 }
 
-pub fn (mut w Walker) mark_markused_fns() {
+pub fn (mut w Walker) mark_markused_fn_decls() {
 	for _, mut func in w.all_fns {
 		if func.is_markused {
 			$if trace_skip_unused_markused_fns ? {

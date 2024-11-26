@@ -88,7 +88,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-@[inline]
+@[inline; markused]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -103,18 +103,18 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	}
 }
 
-@[inline]
+@[inline; markused]
 fn (d &DenseArray) key(i int) voidptr {
 	return unsafe { voidptr(d.keys + i * d.key_bytes) }
 }
 
 // for cgen
-@[inline]
+@[inline; markused]
 fn (d &DenseArray) value(i int) voidptr {
 	return unsafe { voidptr(d.values + i * d.value_bytes) }
 }
 
-@[inline]
+@[inline; markused]
 fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
