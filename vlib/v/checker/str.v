@@ -62,6 +62,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			} else {
 				c.table.used_features.print_types[ftyp.idx()] = true
 			}
+			c.table.used_features.interpolation = true
 		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp

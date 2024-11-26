@@ -25,6 +25,7 @@ pub mut:
 	arr_last         bool            // arr.last()
 	arr_pop          bool            // arr.pop()
 	arr_init         bool            // [1, 2, 3]
+	interpolation    bool            // '${foo} ${bar}'
 	option_or_result bool            // has panic call
 	print_types      map[int]bool    // print() idx types
 	used_fns         map[string]bool // filled in by markused
