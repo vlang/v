@@ -64,8 +64,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
 			core_fns << panic_deps
 			core_fns << '__new_array'
+			core_fns << '__new_array_noscan'
 			core_fns << '__new_array_with_multi_default'
+			core_fns << '__new_array_with_multi_default_noscan'
 			core_fns << '__new_array_with_array_default'
+			core_fns << '__new_array_with_array_default_noscan'
 			core_fns << 'new_array_from_c_array'
 			// byteptr and charptr
 			core_fns << byteptr_idx_str + '.vstring'
@@ -170,7 +173,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	}
 
 	is_noscan_whitelisted := pref_.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
-
+	has_noscan := all_fn_root_names.any(it.contains('noscan')
+		&& it !in ['vcalloc_noscan', 'malloc_noscan'])
 	for k, mut mfn in all_fns {
 		$if trace_skip_unused_all_fns ? {
 			println('k: ${k} | mfn: ${mfn.name}')
@@ -179,10 +183,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
-		// if is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
-		// 	all_fn_root_names << k
-		// 	continue
-		// }
+		if has_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
+			all_fn_root_names << k
+			continue
+		}
 		mut method_receiver_typename := ''
 		if mfn.is_method {
 			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
