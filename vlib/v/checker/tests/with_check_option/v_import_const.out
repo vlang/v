@@ -1,0 +1,156 @@
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:85: notice: script mode started here
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                     ~~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:78: error: import syntax error, no closing `}`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                              ~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:83: error: cannot import multiple modules at a time
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                   ^
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:103: error: invalid expression: unexpected token `}`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                                       ^
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:103: error: expression evaluated but not used
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                                       ^
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:4:4: error: all definitions must occur before code in script mode
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 | 
+    4 | fn abc() {
+      |    ~~~
+    5 | }
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:18: error: module `qbe.low` has no type `Add`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                  ~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:23: error: module `qbe.low` has no type `Call`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                       ~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:29: error: module `qbe.low` has no type `DConst`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                             ~~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:37: error: module `qbe.low` has no type `DStr`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                     ~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:43: error: module `qbe.low` has no type `DataItem`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                           ~~~~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:53: error: module `qbe.low` has no type `Instr`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                     ~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:60: error: module `qbe.low` has no type `Param`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                            ~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:67: error: module `qbe.low` has no type `Ret`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                   ~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:72: error: module `qbe.low` has no type `Type`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                        ~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:85: error: undefined ident: `global`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                     ~~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:93: error: undefined ident: `temporary`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                             ~~~~~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:85: error: type `void` cannot be used in multi-return
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      |                                                                                     ~~~~~~
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:8: error: undefined ident: `qbe`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |        ~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:12: error: `qbe` does not return a value
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |            ~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:19: error: undefined ident: `DataDef`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                   ~~~~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:28: error: undefined ident: `DataDefItem`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                            ~~~~~~~~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:41: error: undefined ident: `Function`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                                         ~~~~~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:51: error: undefined ident: `Linkage`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                                                   ~~~~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:60: error: undefined ident: `Module`
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                                                            ~~~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:19: error: type `void` cannot be used in multi-return
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                   ~~~~~~~
+    3 | 
+    4 | fn abc() {
+vlib/v/checker/tests/with_check_option/v_import_const.vv:1:1: error: invalid return type in fn ``
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+      | ^
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 |
+vlib/v/checker/tests/with_check_option/v_import_const.vv:4:8: error: unknown function: 
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+    3 | 
+    4 | fn abc() {
+      |        ^
+    5 | }
+vlib/v/checker/tests/with_check_option/v_import_const.vv:2:19: warning: expression evaluated but not used
+    1 | import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+    2 | import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+      |                   ~~~~~~~
+    3 | 
+    4 | fn abc() {

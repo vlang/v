@@ -1,0 +1,5 @@
+import qbe.low { Add, Call, DConst, DStr, DataItem, Instr, Param, Ret, Type, const, global, temporary }
+import qbe.high { DataDef, DataDefItem, Function, Linkage, Module }
+
+fn abc() {
+}
