@@ -470,6 +470,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.fn_by_name(method.fkey())
 				}
 			}
+			w.or_block(node.or_block)
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)
