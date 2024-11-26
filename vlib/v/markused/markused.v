@@ -25,6 +25,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		string_idx_str := '${ast.string_type_idx}'
 		array_idx_str := '${ast.array_type_idx}'
 		map_idx_str := '${ast.map_type_idx}'
+		ref_map_idx_str := '${int(ast.map_type.ref())}'
+		ref_densearray_idx_str := '${int(table.find_type('DenseArray').ref())}'
 		ref_array_idx_str := '${int(ast.array_type.ref())}'
 		mut core_fns := [
 			'main.main',
@@ -134,7 +136,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.dump {
 			core_fns << panic_deps
-			builderptr_idx := int(table.find_type('strings.Builder').set_nr_muls(1))
+			builderptr_idx := int(table.find_type('strings.Builder').ref())
 			core_fns << [
 				'${builderptr_idx}.str',
 				'${builderptr_idx}.free',
@@ -164,6 +166,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.arr_map {
 			core_fns << '__new_array_with_map_default'
+			core_fns << 'new_map_noscan_key'
+			core_fns << ref_map_idx_str + '.clone'
+			core_fns << ref_densearray_idx_str + '.clone'
+			core_fns << map_idx_str + '.clone'
+			table.used_features.used_maps++
 		}
 		all_fn_root_names << core_fns
 	}
@@ -188,6 +195,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if k in table.used_features.comptime_calls {
 			all_fn_root_names << k
+			continue
 		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
 		if has_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {

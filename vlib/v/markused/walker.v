@@ -629,7 +629,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
 		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
 		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
-		w.used_fns[fkey] = true
+		w.mark_fn_as_used(fkey)
 	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
