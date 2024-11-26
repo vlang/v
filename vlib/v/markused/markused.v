@@ -150,6 +150,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.anon_fn {
 			core_fns << 'memdup_uncollectable'
 		}
+		if table.used_features.arr_map {
+			core_fns << '__new_array_with_map_default'
+		}
 		all_fn_root_names << core_fns
 	}
 

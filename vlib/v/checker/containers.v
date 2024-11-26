@@ -64,6 +64,11 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
 					}
 				}
+				ast.Map {
+					if c.pref.skip_unused && !c.is_builtin_mod {
+						c.table.used_features.arr_map = true
+					}
+				}
 				else {}
 			}
 		}
