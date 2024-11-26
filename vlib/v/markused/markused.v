@@ -13,7 +13,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	mut allow_noscan := true
+	mut allow_noscan := false
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := []string{}
 	if pref_.backend == .native {
@@ -45,18 +45,23 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'main.vtest_init',
 			'main.vtest_new_metainfo',
 			'main.vtest_new_filemetainfo',
+			'println',
 		]
 		$if debug_used_features ? {
 			dump(table.used_features)
 		}
-		panic_deps := ['__new_array_with_default', '__new_array_with_default_noscan', 'str_intp',
-			ref_array_idx_str + '.push', ref_array_idx_str + '.push_noscan',
-			string_idx_str +
-				'.substr', array_idx_str + '.slice', array_idx_str + '.get',
-			'v_fixed_index']
-		// real world apps
-		if table.used_features.builtin_types || table.used_features.as_cast
-			|| table.used_features.auto_str || pref_.is_shared {
+		panic_deps := [
+			'__new_array_with_default',
+			'__new_array_with_default_noscan',
+			'str_intp',
+			ref_array_idx_str + '.push',
+			ref_array_idx_str + '.push_noscan',
+			string_idx_str + '.substr',
+			array_idx_str + '.slice',
+			array_idx_str + '.get',
+			'v_fixed_index',
+		]
+		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
 			core_fns << panic_deps
 			core_fns << '__new_array'
 			core_fns << '__new_array_with_multi_default'
@@ -69,56 +74,53 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << charptr_idx_str + '.vstring'
 			core_fns << charptr_idx_str + '.vstring_with_len'
 			core_fns << charptr_idx_str + '.vstring_literal'
-
-			if table.used_features.index {
-				core_fns << string_idx_str + '.at_with_check'
-				core_fns << string_idx_str + '.clone'
-				core_fns << string_idx_str + '.clone_static'
-				core_fns << string_idx_str + '.at'
-				core_fns << array_idx_str + '.set'
-				core_fns << ref_array_idx_str + '.set'
-				core_fns << map_idx_str + '.get'
-				core_fns << map_idx_str + '.set'
-			}
-			if table.used_features.range_index {
-				core_fns << string_idx_str + '.substr_with_check'
-				core_fns << string_idx_str + '.substr_ni'
-				core_fns << array_idx_str + '.slice_ni'
-				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
-				core_fns << array_idx_str + '.clone_static_to_depth'
-				core_fns << array_idx_str + '.clone_to_depth'
-			}
-			if table.used_features.cast_ptr {
-				core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
-			}
-			if table.used_features.auto_str {
-				core_fns << string_idx_str + '.repeat'
-				core_fns << 'tos3'
-			}
-			if table.used_features.auto_str_ptr {
-				core_fns << 'isnil'
-			}
-			if table.used_features.arr_prepend {
-				core_fns << ref_array_idx_str + '.prepend_many'
-			}
-			if table.used_features.arr_pop {
-				core_fns << ref_array_idx_str + '.pop'
-			}
-			if table.used_features.arr_first {
-				core_fns << array_idx_str + '.first'
-			}
-			if table.used_features.arr_last {
-				core_fns << array_idx_str + '.last'
-			}
-		} else {
-			// TODO: this *should not* depend on the used compiler, which is brittle, but only on info in the AST...
-			// hello world apps
-			if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
-				// with backtrace on gcc/clang more code needs be generated
-				core_fns << panic_deps
-			} else {
-				allow_noscan = false
-			}
+		}
+		if table.used_features.index {
+			core_fns << string_idx_str + '.at_with_check'
+			core_fns << string_idx_str + '.clone'
+			core_fns << string_idx_str + '.clone_static'
+			core_fns << string_idx_str + '.at'
+			core_fns << array_idx_str + '.set'
+			core_fns << ref_array_idx_str + '.set'
+			core_fns << map_idx_str + '.get'
+			core_fns << map_idx_str + '.set'
+			core_fns << '__new_array_noscan'
+			core_fns << ref_array_idx_str + '.push_noscan'
+			core_fns << ref_array_idx_str + '.push_many_noscan'
+		}
+		if table.used_features.range_index {
+			core_fns << string_idx_str + '.substr_with_check'
+			core_fns << string_idx_str + '.substr_ni'
+			core_fns << array_idx_str + '.slice_ni'
+			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+			core_fns << array_idx_str + '.clone_static_to_depth'
+			core_fns << array_idx_str + '.clone_to_depth'
+		}
+		if table.used_features.cast_ptr {
+			core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
+		}
+		if table.used_features.auto_str {
+			core_fns << string_idx_str + '.repeat'
+			core_fns << 'tos3'
+		}
+		if table.used_features.auto_str_ptr {
+			core_fns << 'isnil'
+		}
+		if table.used_features.arr_prepend {
+			core_fns << ref_array_idx_str + '.prepend_many'
+		}
+		if table.used_features.arr_pop {
+			core_fns << ref_array_idx_str + '.pop'
+		}
+		if table.used_features.arr_first {
+			core_fns << array_idx_str + '.first'
+		}
+		if table.used_features.arr_last {
+			core_fns << array_idx_str + '.last'
+		}
+		if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
+			// with backtrace on gcc/clang more code needs be generated
+			core_fns << panic_deps
 		}
 		if table.used_features.interpolation {
 			core_fns << panic_deps
@@ -177,10 +179,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
-		if allow_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
-			all_fn_root_names << k
-			continue
-		}
+		// if is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
+		// 	all_fn_root_names << k
+		// 	continue
+		// }
 		mut method_receiver_typename := ''
 		if mfn.is_method {
 			method_receiver_typename = table.type_to_str(mfn.receiver.typ)

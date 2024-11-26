@@ -4765,7 +4765,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 		else {}
 	}
-	if !c.is_builtin_mod {
+	if !c.is_builtin_mod && c.mod !in ['strings', 'math.bits'] {
 		if node.index is ast.RangeExpr {
 			c.table.used_features.range_index = true
 		}

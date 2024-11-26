@@ -88,7 +88,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-@[inline; markused]
+@[inline]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -103,18 +103,18 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	}
 }
 
-@[inline; markused]
+@[inline]
 fn (d &DenseArray) key(i int) voidptr {
 	return unsafe { voidptr(d.keys + i * d.key_bytes) }
 }
 
 // for cgen
-@[inline; markused]
+@[inline]
 fn (d &DenseArray) value(i int) voidptr {
 	return unsafe { voidptr(d.values + i * d.value_bytes) }
 }
 
-@[inline; markused]
+@[inline]
 fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
@@ -259,7 +259,6 @@ fn map_free_string(pkey voidptr) {
 fn map_free_nop(_ voidptr) {
 }
 
-@[markused]
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string

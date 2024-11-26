@@ -250,7 +250,13 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			}
 		}
 		ast.BranchStmt {}
-		ast.EnumDecl {}
+		ast.EnumDecl {
+			for field in node.fields {
+				if field.has_expr {
+					w.expr(field.expr)
+				}
+			}
+		}
 		ast.GotoLabel {}
 		ast.GotoStmt {}
 		ast.HashStmt {}
