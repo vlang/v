@@ -49,15 +49,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		$if debug_used_features ? {
 			dump(table.used_features)
 		}
-		panic_deps := [
-			'__new_array_with_default',
-			'str_intp',
-			ref_array_idx_str + '.push',
-			string_idx_str + '.substr',
-			array_idx_str + '.slice',
-			array_idx_str + '.get',
-			'v_fixed_index',
-		]
+		panic_deps := ['__new_array_with_default', 'str_intp', ref_array_idx_str + '.push',
+			string_idx_str + '.substr', array_idx_str + '.slice', array_idx_str + '.get',
+			'v_fixed_index']
 		// real world apps
 		if table.used_features.builtin_types || table.used_features.as_cast
 			|| table.used_features.auto_str {
@@ -129,12 +123,24 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << panic_deps
 			allow_noscan = true
 		}
+		if table.used_features.dump {
+			core_fns << panic_deps
+			builderptr_idx := int(table.find_type('strings.Builder').set_nr_muls(1))
+			core_fns << [
+				'${builderptr_idx}.str',
+				'${builderptr_idx}.free',
+				'${builderptr_idx}.write_rune',
+			]
+			allow_noscan = true
+		}
 		if table.used_features.arr_init {
+			core_fns << 'new_array_from_c_array'
 			core_fns << 'new_array_from_c_array_noscan'
 		}
 		if table.used_features.option_or_result {
 			core_fns << '_option_ok'
 			core_fns << '_result_ok'
+			core_fns << charptr_idx_str + '.vstring_literal'
 			if !allow_noscan {
 				core_fns << panic_deps
 				allow_noscan = true
@@ -374,6 +380,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 
 	if walker.n_asserts > 0 {
 		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }
+		unsafe { walker.fn_decl(mut all_fns['isnil']) }
 	}
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {

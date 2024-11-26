@@ -2949,6 +2949,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.concat_expr(mut node)
 		}
 		ast.DumpExpr {
+			c.table.used_features.dump = true
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
 			if c.pref.skip_unused && !c.is_builtin_mod {
