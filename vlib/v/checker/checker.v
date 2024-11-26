@@ -2150,7 +2150,9 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
-		ast.DebuggerStmt {}
+		ast.DebuggerStmt {
+			c.table.used_features.debugger = true
+		}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
