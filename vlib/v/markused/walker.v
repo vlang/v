@@ -609,8 +609,12 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				else {}
 			}
 		}
+	} else if node.is_fn_a_const {
+		const_fn_name := '${node.mod}.${fn_name}'
+		if const_fn_name in w.all_consts {
+			w.mark_const_as_used(const_fn_name)
+		}
 	}
-
 	w.mark_fn_as_used(fn_name)
 	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
 		&& !node.receiver_concrete_type.has_flag(.generic) {
