@@ -250,13 +250,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			}
 		}
 		ast.BranchStmt {}
-		ast.EnumDecl {
-			for field in node.fields {
-				if field.has_expr {
-					w.expr(field.expr)
-				}
-			}
-		}
+		ast.EnumDecl {}
 		ast.GotoLabel {}
 		ast.GotoStmt {}
 		ast.HashStmt {}
@@ -517,7 +511,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.orig)
 		}
 		ast.Comment {}
-		ast.EnumVal {}
+		ast.EnumVal {
+			if e := w.table.enum_decls[node.enum_name] {
+				filtered := e.fields.filter(it.name == node.val)
+				if filtered.len != 0 && filtered[0].expr !is ast.EmptyExpr {
+					w.expr(filtered[0].expr)
+				}
+			}
+		}
 		ast.LockExpr {
 			w.stmts(node.stmts)
 		}
