@@ -299,6 +299,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_decl(mut node.decl)
 		}
 		ast.ArrayInit {
+			sym := w.table.final_sym(node.elem_type)
+			if sym.info is ast.Struct {
+				w.a_struct_info(sym.name, sym.info)
+			}
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
