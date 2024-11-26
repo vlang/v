@@ -49,8 +49,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		$if debug_used_features ? {
 			dump(table.used_features)
 		}
-		panic_deps := ['__new_array_with_default', 'str_intp', ref_array_idx_str + '.push',
-			string_idx_str + '.substr', array_idx_str + '.slice', array_idx_str + '.get',
+		panic_deps := ['__new_array_with_default', '__new_array_with_default_noscan', 'str_intp',
+			ref_array_idx_str + '.push', ref_array_idx_str + '.push_noscan',
+			string_idx_str +
+				'.substr', array_idx_str + '.slice', array_idx_str + '.get',
 			'v_fixed_index']
 		// real world apps
 		if table.used_features.builtin_types || table.used_features.as_cast
@@ -113,7 +115,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			// hello world apps
 			if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
 				// with backtrace on gcc/clang more code needs be generated
-				allow_noscan = true
 				core_fns << panic_deps
 			} else {
 				allow_noscan = false
@@ -121,7 +122,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.interpolation {
 			core_fns << panic_deps
-			allow_noscan = true
 		}
 		if table.used_features.dump {
 			core_fns << panic_deps
@@ -131,7 +131,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				'${builderptr_idx}.free',
 				'${builderptr_idx}.write_rune',
 			]
-			allow_noscan = true
 		}
 		if table.used_features.arr_init {
 			core_fns << 'new_array_from_c_array'
@@ -143,7 +142,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << charptr_idx_str + '.vstring_literal'
 			if !allow_noscan {
 				core_fns << panic_deps
-				allow_noscan = true
 			}
 		}
 		if table.used_features.as_cast {
