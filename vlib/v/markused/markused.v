@@ -13,7 +13,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	defer {
 		util.timing_measure(@METHOD)
 	}
-	mut allow_noscan := false
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := []string{}
 	if pref_.backend == .native {
@@ -155,9 +154,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << '_option_ok'
 			core_fns << '_result_ok'
 			core_fns << charptr_idx_str + '.vstring_literal'
-			if !allow_noscan {
-				core_fns << panic_deps
-			}
+			core_fns << panic_deps
 		}
 		if table.used_features.as_cast {
 			core_fns << '__as_cast'
