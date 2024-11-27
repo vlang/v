@@ -30,6 +30,7 @@ pub fn set_level(level Level) {
 }
 
 // fatal logs a `fatal` message, using the default Logger instance
+@[noreturn]
 pub fn fatal(s string) {
 	default_logger.fatal(s)
 }
