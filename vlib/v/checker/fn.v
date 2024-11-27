@@ -769,7 +769,6 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 				node.or_block.pos)
 		}
 	}
-
 	return typ
 }
 
@@ -987,6 +986,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	mut func := ast.Fn{}
 	mut found := false
 	mut found_in_args := false
+	defer {
+		if found {
+			c.check_must_use_call_result(node, func, 'function')
+		}
+	}
 	// anon fn direct call
 	if node.left is ast.AnonFn {
 		// it was set to anon for checker errors, clear for gen
@@ -1332,6 +1336,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
+
 	node.is_file_translated = func.is_file_translated
 	node.is_noreturn = func.is_noreturn
 	node.is_expand_simple_interpolation = func.is_expand_simple_interpolation
@@ -2238,6 +2243,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	mut method := ast.Fn{}
 	mut has_method := false
 	mut is_method_from_embed := false
+	defer {
+		if has_method && node.is_method {
+			c.check_must_use_call_result(node, method, 'method')
+		}
+	}
 	if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
@@ -3952,4 +3962,21 @@ fn (mut c Checker) resolve_return_type(node ast.CallExpr) ast.Type {
 		}
 	}
 	return node.return_type
+}
+
+fn (mut c Checker) check_must_use_call_result(node &ast.CallExpr, f &ast.Fn, label string) {
+	if node.is_return_used {
+		return
+	}
+	if f.return_type == ast.void_type {
+		return
+	}
+	if f.is_must_use {
+		c.warn('return value must be used, ${label} `${f.name}` was tagged with `@[must_use]`',
+			node.pos)
+		return
+	}
+	if c.pref.is_check_return {
+		c.note('return value must be used', node.pos)
+	}
 }

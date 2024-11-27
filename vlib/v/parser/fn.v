@@ -194,6 +194,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_keep_alive := false
 	mut is_exported := false
 	mut is_unsafe := false
+	mut is_must_use := false
 	mut is_trusted := false
 	mut is_noreturn := false
 	mut is_ctor_new := false
@@ -227,6 +228,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			'unsafe' {
 				is_unsafe = true
+			}
+			'must_use' {
+				is_must_use = true
 			}
 			'trusted' {
 				is_trusted = true
@@ -544,6 +548,7 @@ run them via `v file.v` instead',
 			is_deprecated: is_deprecated
 			is_noreturn:   is_noreturn
 			is_unsafe:     is_unsafe
+			is_must_use:   is_must_use
 			is_main:       is_main
 			is_test:       is_test
 			is_keep_alive: is_keep_alive
@@ -597,6 +602,7 @@ run them via `v file.v` instead',
 			is_noreturn:           is_noreturn
 			is_ctor_new:           is_ctor_new
 			is_unsafe:             is_unsafe
+			is_must_use:           is_must_use
 			is_main:               is_main
 			is_test:               is_test
 			is_keep_alive:         is_keep_alive
@@ -676,6 +682,7 @@ run them via `v file.v` instead',
 		is_test:            is_test
 		is_keep_alive:      is_keep_alive
 		is_unsafe:          is_unsafe
+		is_must_use:        is_must_use
 		is_markused:        is_markused
 		is_file_translated: p.is_translated
 		//

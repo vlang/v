@@ -126,6 +126,7 @@ pub mut:
 	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
 	is_coverage        bool     // turn on code coverage stats
+	is_check_return    bool     // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -955,6 +956,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-check-unused-fn-args' {
 				res.show_unused_params = true
+			}
+			'-check-return' {
+				res.is_check_return = true
 			}
 			'-use-coroutines' {
 				res.use_coroutines = true

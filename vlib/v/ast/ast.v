@@ -583,6 +583,7 @@ pub:
 	is_exported           bool        // true for `@[export: 'exact_C_name']`
 	is_keep_alive         bool        // passed memory must not be freed (by GC) before function returns
 	is_unsafe             bool        // true, when @[unsafe] is used on a fn
+	is_must_use           bool        // true, when @[must_use] is used on a fn. Calls to such functions, that ignore the return value, will cause warnings.
 	is_markused           bool        // true, when an explicit `@[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	is_file_translated    bool        // true, when the file it resides in is `@[translated]`
 	receiver              StructField // TODO: this is not a struct field
@@ -674,6 +675,7 @@ pub:
 	is_deprecated         bool // `@[deprecated] fn abc(){}`
 	is_noreturn           bool // `@[noreturn] fn abc(){}`
 	is_unsafe             bool // `@[unsafe] fn abc(){}`
+	is_must_use           bool // `@[must_use] fn abc(){}`
 	is_placeholder        bool
 	is_main               bool // `fn main(){}`
 	is_test               bool // `fn test_abc(){}`
