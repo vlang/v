@@ -5896,6 +5896,18 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 @[callconv: 'fastcall']
 type FastFn = fn (int) bool
 
+// Calls to the following function, will have to use its return value somehow.
+// Ignoring it, will emit warnings.
+@[must_use]
+fn f() int {
+	return 42
+}
+
+fn g() {
+	// just calling `f()` here, will produce a warning
+	println(f()) // this is fine, because the return value was used as an argument
+}
+
 // Windows only (and obsolete; instead of it, use `-subsystem windows` when compiling)
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
