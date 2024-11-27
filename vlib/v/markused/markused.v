@@ -226,8 +226,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if method_receiver_typename == '&strings.Builder'
-			&& (table.used_features.builtin_types || table.used_features.auto_str) {
+		if method_receiver_typename == '&strings.Builder' && table.used_features.auto_str {
 			// implicit string builders are generated in auto_eq_methods.v
 			all_fn_root_names << k
 			continue
