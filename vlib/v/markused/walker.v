@@ -599,6 +599,17 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 					w.mark_aggregate_call_used(fn_name, types)
 				}
 			}
+		} else if left_sym.info is ast.Interface {
+			for typ in left_sym.info.types {
+				sym := w.table.sym(typ)
+				_, embed_types := w.table.find_method_from_embeds(sym, node.name) or {
+					ast.Fn{}, []ast.Type{}
+				}
+				if embed_types.len != 0 {
+					fn_embed := '${int(embed_types.last())}.${node.name}'
+					w.fn_by_name(fn_embed)
+				}
+			}
 		}
 	}
 	w.expr(node.left)
