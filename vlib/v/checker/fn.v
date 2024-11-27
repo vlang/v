@@ -753,9 +753,16 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	c.expected_or_type = old_expected_or_type
-
-	if c.pref.skip_unused && node.mod == 'main' && node.name.contains('.') {
-		c.table.used_features.used_modules[node.name.all_before('.')] = true
+	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main' {
+		if node.is_method {
+			type_str := c.table.type_to_str(node.left_type)
+			if c.table.sym(node.left_type).is_builtin()
+				&& type_str !in c.table.used_features.used_modules {
+				c.table.used_features.used_modules[type_str] = true
+			}
+		} else if node.name.contains('.') {
+			c.table.used_features.used_modules[node.name.all_before('.')] = true
+		}
 	}
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
@@ -2161,9 +2168,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// c.error('cannot call a method using an invalid expression', node.pos)
 		continue_check = false
 		return ast.void_type
-	}
-	if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
-		c.table.used_features.builtin_types = true
 	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
@@ -3585,6 +3589,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			c.table.used_features.arr_delete = true
+		}
 		c.check_for_mut_receiver(mut node.left)
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {

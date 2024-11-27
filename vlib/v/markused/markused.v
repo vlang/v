@@ -126,6 +126,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if table.used_features.arr_last {
 			core_fns << array_idx_str + '.last'
 		}
+		if table.used_features.arr_delete {
+			core_fns << panic_deps
+		}
 		if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
 			// with backtrace on gcc/clang more code needs be generated
 			core_fns << panic_deps
@@ -245,7 +248,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if table.used_features.builtin_types && k.ends_with('.free') {
+		if table.used_features.used_modules.len > 0 && k.ends_with('.free') {
 			all_fn_root_names << k
 			continue
 		}
