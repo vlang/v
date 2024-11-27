@@ -667,6 +667,11 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 
 fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 	file := p.get_item[&ast.File](idx)
+	timing_label_for_thread := 'C GEN thread ${wid}'
+	util.timing_start(timing_label_for_thread)
+	defer {
+		util.timing_measure_cumulative(timing_label_for_thread)
+	}
 	mut global_g := unsafe { &Gen(p.get_shared_context()) }
 	mut g := &Gen{
 		file:                  file
