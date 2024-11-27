@@ -10,7 +10,6 @@ import v.pref
 import v.util
 import v.errors
 import v.ast
-import v.mathutil
 
 const single_quote = `'`
 const double_quote = `"`
@@ -1173,7 +1172,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
-	end := mathutil.min(s.pos + len, s.text.len)
+	end := int_min(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `${c}`')
 }

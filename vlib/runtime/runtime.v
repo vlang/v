@@ -11,6 +11,12 @@ import os
 // then `nr_jobs` will return that number instead.
 // This is useful for runtime tweaking of e.g. threaded or concurrent code.
 pub fn nr_jobs() int {
+	$if cross ? {
+		// A single thread is *more likely* to work consistently everywhere during bootstrapping.
+		// NB: the compiler itself uses runtime.nr_jobs() and sync.pool to process things in parallel
+		// in its cgen stage. Returning 1 here, increases the chances of it working on non linux systems.
+		return 1
+	}
 	mut cpus := nr_cpus() - 1
 	// allow for overrides, for example using `VJOBS=32 ./v test .`
 	vjobs := os.getenv('VJOBS').int()
