@@ -862,6 +862,12 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#define __TARGET_IOS__ 1')
 		g.cheaders.writeln('#include <spawn.h>')
 	}
+	if g.pref.os == .linux {
+		g.cheaders.writeln('#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30')
+		g.cheaders.writeln('#include <sys/syscall.h>')
+		g.cheaders.writeln('#define gettid() syscall(SYS_gettid)')
+		g.cheaders.writeln('#endif')
+	}
 	g.write_builtin_types()
 	g.options_pos_forward = g.type_definitions.len
 	g.write_typedef_types()
