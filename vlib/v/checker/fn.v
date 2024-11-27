@@ -3423,9 +3423,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				} else if left_name == right_name {
 					c.error('`.${method_name}()` cannot use same argument', node.pos)
 				}
-				if node.args[0].expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
-					|| node.args[0].expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
-					c.error('`.${method_name}()` can only use ident, index or selector as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
+				if node.args[0].expr.left !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr]
+					|| node.args[0].expr.right !in [ast.CallExpr, ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
+					c.error('`.${method_name}()` can only use ident, index, selector or call as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
 						node.pos)
 				}
 			} else {
