@@ -16,6 +16,7 @@ pub mut:
 	index            bool            // string[0]
 	range_index      bool            // string[0..1]
 	cast_ptr         bool            // &u8(...)
+	asserts          bool            // assert expr
 	as_cast          bool            // expr as Type
 	anon_fn          bool            // fn () { }
 	auto_str         bool            // auto str fns

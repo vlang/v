@@ -177,9 +177,22 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'new_map_update_init'
 			table.used_features.used_maps++
 		}
+		if table.used_features.asserts {
+			core_fns << panic_deps
+			core_fns << '__print_assert_failure'
+			core_fns << 'isnil'
+		}
+		if pref_.trace_calls || pref_.trace_fns.len > 0 {
+			core_fns << panic_deps
+			core_fns << 'vgettid'
+			core_fns << 'C.gettid'
+			core_fns << 'v.trace_calls.on_c_main'
+			core_fns << 'v.trace_calls.current_time'
+			core_fns << 'v.trace_calls.on_call'
+			// println(all_fns.keys())
+		}
 		all_fn_root_names << core_fns
 	}
-
 	if pref_.is_bare {
 		all_fn_root_names << [
 			'strlen',
@@ -399,17 +412,12 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	// println( all_fns.keys() )
 
 	walker.mark_markused_fn_decls() // tagged with `@[markused]`
-
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 	walker.mark_veb_actions()
 
-	if walker.n_asserts > 0 {
-		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }
-		unsafe { walker.fn_decl(mut all_fns['isnil']) }
-	}
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {
 			mut method_receiver_typename := ''
@@ -506,6 +514,13 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 	return all_fns, all_consts, all_globals
 }
 
+fn mark_all_methods_used(mut table ast.Table, mut all_fn_root_names []string, typ ast.Type) {
+	sym := table.sym(typ)
+	for method in sym.methods {
+		all_fn_root_names << '${int(typ)}.${method.name}'
+	}
+}
+
 fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name string, filter_name string,
 	context_name string) {
 	// handle vweb magic router methods:
@@ -513,7 +528,7 @@ fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name 
 	if result_type_idx != 0 {
 		all_fn_root_names << filter_name
 		typ_vweb_context := table.find_type(context_name).set_nr_muls(1)
-		all_fn_root_names << '${int(typ_vweb_context)}.html'
+		mark_all_methods_used(mut table, mut all_fn_root_names, typ_vweb_context)
 		for vgt in table.used_features.used_veb_types {
 			sym_app := table.sym(vgt)
 			for m in sym_app.methods {

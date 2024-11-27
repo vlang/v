@@ -569,6 +569,7 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .c {
+		w.mark_fn_as_used(node.fkey())
 		return
 	}
 	fkey := node.fkey()
