@@ -40,7 +40,7 @@ pub mut:
 	used_modules     map[string]bool // filled in checker
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
-	comptime_calls map[string]bool // resolved $method() names
+	comptime_calls map[string]bool // resolved name to call on comptime
 }
 
 @[unsafe]

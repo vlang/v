@@ -2169,6 +2169,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		continue_check = false
 		return ast.void_type
 	}
+	if c.pref.skip_unused && mut left_expr is ast.Ident {
+		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
+			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+		}
+	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
 	node.left_type = left_type
@@ -2316,6 +2321,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('.str() method calls should have no arguments', node.pos)
 			}
 			c.fail_if_unreadable(node.left, left_type, 'receiver')
+			if !c.is_builtin_mod {
+				c.table.used_features.auto_str = true
+			}
 			return ast.string_type
 		} else if method_name == 'free' {
 			if !c.is_builtin_mod && !c.inside_unsafe && !method.is_unsafe {
