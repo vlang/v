@@ -189,7 +189,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'v.trace_calls.on_c_main'
 			core_fns << 'v.trace_calls.current_time'
 			core_fns << 'v.trace_calls.on_call'
-			// println(all_fns.keys())
 		}
 		all_fn_root_names << core_fns
 	}
@@ -239,7 +238,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if k.ends_with('.str') || k.ends_with('.auto_str') {
 			if table.used_features.auto_str
 				|| table.used_features.print_types[mfn.receiver.typ.idx()]
-				|| table.used_features.debugger {
+				|| table.used_features.debugger || table.used_features.used_modules.len > 0 {
 				all_fn_root_names << k
 			}
 			continue
@@ -408,8 +407,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_globals: all_globals
 		pref:        pref_
 	)
-	// println( all_fns.keys() )
-
 	walker.mark_markused_fn_decls() // tagged with `@[markused]`
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
