@@ -142,7 +142,5 @@ fn make_error() ?string {
 }
 
 fn test_log_default_fatal_has_noreturn() {
-	_ := make_error() or {
-		log.fatal('error')
-	}
+	_ := make_error() or { fatal('error') }
 }
