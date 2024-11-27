@@ -423,6 +423,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
+			w.or_block(node.or_expr)
 		}
 		ast.LambdaExpr {
 			w.expr(node.func)
