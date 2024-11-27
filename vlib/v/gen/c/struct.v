@@ -475,7 +475,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		} else if final_sym.info is ast.ArrayFixed && field.default_expr !is ast.ArrayInit {
 			old_inside_memset := g.inside_memset
 			g.inside_memset = true
-			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ, true)
+			tmp_var := g.expr_with_var(field.default_expr, field.default_expr_typ, field.default_expr !is ast.CallExpr)
 			g.fixed_array_var_init(tmp_var, false, final_sym.info.elem_type, final_sym.info.size)
 			g.inside_memset = old_inside_memset
 			return true
