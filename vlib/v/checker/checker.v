@@ -2307,6 +2307,15 @@ fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
 	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
+	if c.pref.skip_unused && !c.table.used_features.auto_str && !c.is_builtin_mod
+		&& mut node.expr is ast.InfixExpr {
+		if !c.table.sym(c.unwrap_generic(node.expr.left_type)).has_method('str') {
+			c.table.used_features.auto_str = true
+		}
+		if !c.table.sym(c.unwrap_generic(node.expr.right_type)).has_method('str') {
+			c.table.used_features.auto_str = true
+		}
+	}
 	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.sym(assert_type).name
 		c.error('assert can be used only with `bool` expressions, but found `${atype_name}` instead',
