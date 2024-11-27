@@ -1137,7 +1137,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
 	if res.backend == .c {
-		res.skip_unused = true
+		// res.skip_unused = true
 		if no_skip_unused {
 			res.skip_unused = false
 		}
