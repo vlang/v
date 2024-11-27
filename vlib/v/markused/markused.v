@@ -149,6 +149,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'new_array_from_c_array_noscan'
 			core_fns << '__new_array_with_multi_default'
 			core_fns << '__new_array_with_multi_default_noscan'
+			core_fns << '__new_array_with_array_default'
 		}
 		if table.used_features.option_or_result {
 			core_fns << '_option_ok'
@@ -170,6 +171,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << ref_map_idx_str + '.clone'
 			core_fns << ref_densearray_idx_str + '.clone'
 			core_fns << map_idx_str + '.clone'
+			table.used_features.used_maps++
+		}
+		if table.used_features.map_update {
+			core_fns << 'new_map_update_init'
 			table.used_features.used_maps++
 		}
 		all_fn_root_names << core_fns
