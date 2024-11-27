@@ -136,3 +136,13 @@ fn test_log_time_format() {
 	assert true
 	println(@FN + ' end')
 }
+
+fn make_error() ?string {
+	return 'ok'
+}
+
+fn test_log_default_fatal_has_noreturn() {
+	_ := make_error() or {
+		log.fatal('error')
+	}
+}
