@@ -195,6 +195,13 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
 	mut c_ldflags := '-lm -lpthread'
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
+	mut vc_v_bootstrap_flags := ''
+	// after 85b58b0 2021-09-28, -no-parallel is supported, and can be used to force the cgen stage to be single threaded, which increases the chances of successful bootstraps
+	if vgit_context.commit_v__ts >= 1632778086 {
+		vc_v_bootstrap_flags += '-no-parallel'
+	}
+	scripting.verbose_trace(@FN, 'vc_v_bootstrap_flags: ${vc_v_bootstrap_flags} | vgit_context.commit_v__ts: ${vgit_context.commit_v__ts}')
+
 	if 'windows' == os.user_os() {
 		c_flags = '-std=c99 -I ./thirdparty/stdatomic/win -w'
 		c_ldflags = ''
@@ -213,10 +220,10 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 			c_flags += '-lws2_32'
 		}
 		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv.exe  "${vc_source_file_location}" ${c_ldflags}'
-		command_for_selfbuilding = '.\\cv.exe -o ${vgit_context.vexename} {SOURCE}'
+		command_for_selfbuilding = '.\\cv.exe ${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}'
 	} else {
 		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv "${vc_source_file_location}"  ${c_ldflags}'
-		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
+		command_for_selfbuilding = './cv ${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}'
 	}
 
 	scripting.run(command_for_building_v_from_c_source)
