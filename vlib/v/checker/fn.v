@@ -3965,9 +3965,18 @@ fn (mut c Checker) resolve_return_type(node ast.CallExpr) ast.Type {
 }
 
 fn (mut c Checker) check_must_use_call_result(node &ast.CallExpr, f &ast.Fn, label string) {
-	if node.is_return_used || !f.is_must_use {
+	if node.is_return_used {
 		return
 	}
-	c.warn('return value must be used, ${label} `${f.name}` was tagged with `@[must_use]`',
-		node.pos)
+	if f.return_type == ast.void_type {
+		return
+	}
+	if f.is_must_use {
+		c.warn('return value must be used, ${label} `${f.name}` was tagged with `@[must_use]`',
+			node.pos)
+		return
+	}
+	if c.pref.is_check_return {
+		c.note('return value must be used', node.pos)
+	}
 }
