@@ -13,6 +13,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `x := []string{}` (the type was set in the parser)
 	if node.typ != ast.void_type {
+		if !c.is_builtin_mod && c.mod !in ['builtin', 'strings', 'strconv', 'math.bits'] {
+			c.table.used_features.arr_init = true
+		}
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
 
@@ -59,6 +62,11 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				ast.Alias {
 					if elem_sym.name == 'byte' {
 						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+					}
+				}
+				ast.Map {
+					if c.pref.skip_unused && !c.is_builtin_mod {
+						c.table.used_features.arr_map = true
 					}
 				}
 				else {}
@@ -143,6 +151,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	}
 	// `[1,2,3]`
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
+		if !c.is_builtin_mod && c.mod !in ['builtin', 'strings', 'strconv', 'math.bits'] {
+			c.table.used_features.arr_init = true
+		}
 		mut expected_value_type := ast.void_type
 		mut expecting_interface_array := false
 		mut expecting_sumtype_array := false
@@ -495,6 +506,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	}
 
 	if (node.keys.len > 0 && node.vals.len > 0) || node.has_update_expr {
+		c.table.used_features.map_update = true
 		mut map_type := ast.void_type
 		use_expected_type := c.expected_type != ast.void_type && !c.inside_const
 			&& c.table.sym(c.expected_type).kind == .map && !(c.inside_fn_arg

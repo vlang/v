@@ -190,6 +190,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
 					'use `_` if you do not need the variable', node.pos)
 			}
+			if !c.is_builtin_mod && c.mod != 'strings' {
+				c.table.used_features.used_maps++
+			}
 			if node.key_var.len > 0 {
 				key_type := match sym.kind {
 					.map { sym.map_info().key_type }

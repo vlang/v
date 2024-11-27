@@ -12,10 +12,10 @@ pub struct UsedFeatures {
 pub mut:
 	interfaces       bool            // interface
 	dump             bool            // dump()
-	builtin_types    bool            // uses any builtin type
 	index            bool            // string[0]
 	range_index      bool            // string[0..1]
 	cast_ptr         bool            // &u8(...)
+	asserts          bool            // assert expr
 	as_cast          bool            // expr as Type
 	anon_fn          bool            // fn () { }
 	auto_str         bool            // auto str fns
@@ -24,6 +24,11 @@ pub mut:
 	arr_first        bool            // arr.first()
 	arr_last         bool            // arr.last()
 	arr_pop          bool            // arr.pop()
+	arr_delete       bool            // arr.delete()
+	arr_init         bool            // [1, 2, 3]
+	arr_map          bool            // []map[key]value
+	map_update       bool            // {...foo}
+	interpolation    bool            // '${foo} ${bar}'
 	option_or_result bool            // has panic call
 	print_types      map[int]bool    // print() idx types
 	used_fns         map[string]bool // filled in by markused
@@ -32,6 +37,7 @@ pub mut:
 	used_veb_types   []Type          // veb context types, filled in by checker
 	used_maps        int             // how many times maps were used, filled in by markused
 	used_arrays      int             // how many times arrays were used, filled in by markused
+	used_modules     map[string]bool // filled in checker
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved $method() names

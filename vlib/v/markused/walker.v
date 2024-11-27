@@ -299,6 +299,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_decl(mut node.decl)
 		}
 		ast.ArrayInit {
+			sym := w.table.final_sym(node.elem_type)
+			if sym.info is ast.Struct {
+				w.a_struct_info(sym.name, sym.info)
+			}
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
@@ -419,6 +423,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
+			w.or_block(node.or_expr)
 		}
 		ast.LambdaExpr {
 			w.expr(node.func)
@@ -470,6 +475,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.fn_by_name(method.fkey())
 				}
 			}
+			w.or_block(node.or_block)
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)
@@ -511,7 +517,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.orig)
 		}
 		ast.Comment {}
-		ast.EnumVal {}
+		ast.EnumVal {
+			if e := w.table.enum_decls[node.enum_name] {
+				filtered := e.fields.filter(it.name == node.val)
+				if filtered.len != 0 && filtered[0].expr !is ast.EmptyExpr {
+					w.expr(filtered[0].expr)
+				}
+			}
+		}
 		ast.LockExpr {
 			w.stmts(node.stmts)
 		}
@@ -557,6 +570,7 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .c {
+		w.mark_fn_as_used(node.fkey())
 		return
 	}
 	fkey := node.fkey()
@@ -587,6 +601,17 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 					w.mark_aggregate_call_used(fn_name, types)
 				}
 			}
+		} else if left_sym.info is ast.Interface {
+			for typ in left_sym.info.types {
+				sym := w.table.sym(typ)
+				_, embed_types := w.table.find_method_from_embeds(sym, node.name) or {
+					ast.Fn{}, []ast.Type{}
+				}
+				if embed_types.len != 0 {
+					fn_embed := '${int(embed_types.last())}.${node.name}'
+					w.fn_by_name(fn_embed)
+				}
+			}
 		}
 	}
 	w.expr(node.left)
@@ -609,15 +634,19 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				else {}
 			}
 		}
+	} else if node.is_fn_a_const {
+		const_fn_name := '${node.mod}.${fn_name}'
+		if const_fn_name in w.all_consts {
+			w.mark_const_as_used(const_fn_name)
+		}
 	}
-
 	w.mark_fn_as_used(fn_name)
 	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
 		&& !node.receiver_concrete_type.has_flag(.generic) {
 		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
 		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
 		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
-		w.used_fns[fkey] = true
+		w.mark_fn_as_used(fkey)
 	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {

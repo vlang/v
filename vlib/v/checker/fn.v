@@ -751,8 +751,23 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		c.inside_or_block_value = true
 		c.check_or_expr(node.or_block, typ, c.expected_or_type, node)
 		c.inside_or_block_value = old_inside_or_block_value
+	} else if node.or_block.kind == .propagate_option || node.or_block.kind == .propagate_result {
+		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
+			c.table.used_features.option_or_result = true
+		}
 	}
 	c.expected_or_type = old_expected_or_type
+	if c.pref.skip_unused && !c.is_builtin_mod && c.mod == 'main' {
+		if node.is_method {
+			type_str := c.table.type_to_str(node.left_type)
+			if c.table.sym(node.left_type).is_builtin()
+				&& type_str !in c.table.used_features.used_modules {
+				c.table.used_features.used_modules[type_str] = true
+			}
+		} else if node.name.contains('.') {
+			c.table.used_features.used_modules[node.name.all_before('.')] = true
+		}
+	}
 
 	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
 		&& !c.table.cur_fn.is_test {
@@ -1401,7 +1416,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	// println / eprintln / panic can print anything
 	if node.args.len > 0 && fn_name in print_everything_fns {
 		c.builtin_args(mut node, fn_name, func)
-		if c.pref.skip_unused && !c.is_builtin_mod && node.args[0].expr !is ast.StringLiteral {
+		if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'math.bits'
+			&& node.args[0].expr !is ast.StringLiteral {
 			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
 				c.table.used_features.auto_str = true
 				if node.args[0].typ.is_ptr() {
@@ -2161,9 +2177,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// c.error('cannot call a method using an invalid expression', node.pos)
 		continue_check = false
 		return ast.void_type
-	}
-	if c.pref.skip_unused && !c.is_builtin_mod && c.mod != 'strings' {
-		c.table.used_features.builtin_types = true
 	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
@@ -2949,6 +2962,9 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	}
 	if f.is_variadic {
 		min_required_params--
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			c.table.used_features.arr_init = true
+		}
 	} else {
 		has_decompose := node.args.any(it.expr is ast.ArrayDecompose)
 		if has_decompose {
@@ -3565,7 +3581,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
-		if c.pref.skip_unused {
+		if c.pref.skip_unused && !c.is_builtin_mod {
 			if method_name == 'first' {
 				c.table.used_features.arr_first = true
 			}
@@ -3587,6 +3603,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
+		if c.pref.skip_unused && !c.is_builtin_mod {
+			c.table.used_features.arr_delete = true
+		}
 		c.check_for_mut_receiver(mut node.left)
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
