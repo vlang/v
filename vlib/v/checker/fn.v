@@ -118,6 +118,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	if node.return_type == ast.no_type {
+		c.error('invalid return type in fn `${node.name}`', node.pos)
+		return
+	}
 	c.fn_return_type = node.return_type
 	return_type_unaliased := c.table.unaliased_type(node.return_type)
 	if node.return_type.has_flag(.option) && return_type_unaliased.has_flag(.result) {
