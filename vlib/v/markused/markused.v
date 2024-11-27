@@ -63,6 +63,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'v_fixed_index',
 			charptr_idx_str + '.vstring_literal',
 		]
+		$if windows {
+			core_fns << panic_deps
+		}
 		if table.used_features.used_modules.len > 0 {
 			core_fns << panic_deps
 		}
