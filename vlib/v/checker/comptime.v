@@ -133,10 +133,23 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			// check each arg expression
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
-		if c.pref.skip_unused && node.method_name == 'method' {
-			sym := c.table.sym(c.unwrap_generic(node.left_type))
-			for m in sym.get_methods() {
-				c.table.used_features.comptime_calls['${int(c.unwrap_generic(m.receiver_type))}.${m.name}'] = true
+		if c.pref.skip_unused {
+			c.table.used_features.comptime_calls['${int(c.unwrap_generic(c.comptime.comptime_for_method.receiver_type))}.${c.comptime.comptime_for_method.name}'] = true
+			if c.inside_anon_fn {
+				// $method passed to anon fn, mark all methods as used
+				sym := c.table.sym(c.unwrap_generic(node.left_type))
+				for m in sym.get_methods() {
+					c.table.used_features.comptime_calls['${int(c.unwrap_generic(m.receiver_type))}.${m.name}'] = true
+					if node.args.len > 0 && m.params.len > 0 {
+						last_param := m.params.last().typ
+						if (last_param.is_int() || last_param.is_bool())
+							&& c.table.final_sym(node.args.last().typ).kind == .array {
+							c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
+						}
+					}
+				}
+			} else {
+				m := c.comptime.comptime_for_method
 				if node.args.len > 0 && m.params.len > 0 {
 					last_param := m.params.last().typ
 					if (last_param.is_int() || last_param.is_bool())
@@ -204,10 +217,14 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	} else {
 		c.error('todo: not a string literal', node.method_pos)
 	}
-	left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+	left_type := c.unwrap_generic(node.left_type)
+	left_sym := c.table.sym(left_type)
 	f := left_sym.find_method(method_name) or {
 		c.error('could not find method `${method_name}`', node.method_pos)
 		return ast.void_type
+	}
+	if c.pref.skip_unused {
+		c.table.used_features.comptime_calls['${int(left_type)}.${method_name}'] = true
 	}
 	node.result_type = f.return_type
 	return f.return_type
