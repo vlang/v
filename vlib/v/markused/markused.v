@@ -42,12 +42,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'error',
 			'builtin_init',
 			'fast_string_eq',
-			// TODO: process the _vinit const initializations automatically too
-			'main.vtest_init',
-			'main.vtest_new_metainfo',
-			'main.vtest_new_filemetainfo',
 			'println',
 		]
+
 		$if debug_used_features ? {
 			dump(table.used_features)
 		}
@@ -295,7 +292,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		// testing framework:
 		if pref_.is_test {
-			if k.starts_with('test_') || k.contains('.test_') {
+			if k.starts_with('test_') || k.contains('.test_') || k.contains('.vtest_') {
 				all_fn_root_names << k
 				continue
 			}
@@ -400,6 +397,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_fn_root_names << 'time.unix' // used by json
 		table.used_features.used_maps++ // json needs new_map etc
 	}
+
 	mut walker := Walker.new(
 		table:       table
 		files:       ast_files
