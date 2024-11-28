@@ -1,7 +1,7 @@
 module sim
 
 pub struct SimState {
-mut:
+pub mut:
 	position Vector3D
 	velocity Vector3D
 	accel    Vector3D
@@ -21,7 +21,7 @@ pub fn (mut state SimState) satisfy_rope_constraint(params SimParams) {
 
 pub fn (mut state SimState) increment(delta_t f64, params SimParams) {
 	// 1. add up all forces
-	// 2. get an accelleration
+	// 2. get an acceleration
 	// 3. add to velocity
 	// 4. ensure rope constraint is satisfied
 

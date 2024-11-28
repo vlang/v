@@ -1,0 +1,17 @@
+struct Foo {
+mut:
+	bar int
+}
+
+fn main() {
+	x := Foo{
+		bar: 20
+	}
+
+	mut arr := [&x]
+	arr[0].bar = 30
+
+	mut arr2 := [&Foo{}]
+	arr2 = [&x]
+	arr2[0].bar = 40
+}

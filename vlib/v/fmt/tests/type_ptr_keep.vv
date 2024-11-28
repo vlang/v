@@ -1,9 +1,7 @@
-const (
-	x  = &Test{}
-	y  = []&Test{}
-	xx = &&Test{}
-	yy = []&&Test{}
-)
+const x = &Test{}
+const y = []&Test{}
+const xx = &&Test{}
+const yy = []&&Test{}
 
 fn test_type_ptr() {
 	_ := &Test{}

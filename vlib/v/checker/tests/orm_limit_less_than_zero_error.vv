@@ -2,12 +2,10 @@ module main
 
 import db.sqlite
 
-const (
-	user_limit = -10
-)
+const user_limit = -10
 
 struct User {
-	id       int    [primary; sql: serial]
+	id       int @[primary; sql: serial]
 	username string
 }
 

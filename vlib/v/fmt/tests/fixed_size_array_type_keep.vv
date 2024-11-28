@@ -14,7 +14,7 @@ fn main() {
 }
 
 // NB: secret_key_size is missing here on purpose
-// vfmt should leave it as is, assuming it is comming
+// vfmt should leave it as is, assuming it is coming
 // from another .v file
 
 struct VerifyKey {

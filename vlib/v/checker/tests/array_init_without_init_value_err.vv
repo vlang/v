@@ -1,0 +1,57 @@
+// test sum_types uninitialized.
+type Foo = int | string
+
+fn main_sum_type() {
+	a := []Foo{len: 10}
+	println(a)
+	fixed_a := [10]Foo{}
+	println(fixed_a)
+}
+
+fn main_sum_type_2[T]() {
+	a := []T{len: 10}
+	println(a)
+	fixed_a := [10]T{}
+	println(fixed_a)
+}
+
+// test references uninitialized.
+fn main_ref() {
+	println(*[]&int{len: 1}[0])
+	println([1]&int{})
+	_ = [][1]&int{len: 1}[0][0]
+	_ = []map[int]&int{len: 1}
+}
+
+// test interfaces uninitialized.
+interface MObject {
+	give_string() string
+}
+
+struct LeStruct {
+	le_string string
+}
+
+fn (a LeStruct) give_string() string {
+	return 'V'
+}
+
+fn main_interface() {
+	mut parsed_lines := []MObject{len: 9}
+	println(parsed_lines)
+}
+
+fn main_interface_2[T]() {
+	mut parsed_lines := []T{len: 9}
+	println(parsed_lines)
+}
+
+fn main() {
+	main_sum_type()
+	main_sum_type_2[Foo]()
+
+	main_ref()
+
+	main_interface()
+	main_interface_2[MObject]()
+}

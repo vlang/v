@@ -1,0 +1,5 @@
+type Foo = ?bool
+
+struct Bar {
+        a ?Foo
+}

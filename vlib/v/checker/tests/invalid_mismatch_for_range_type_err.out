@@ -1,0 +1,4 @@
+vlib/v/checker/tests/invalid_mismatch_for_range_type_err.vv:1:10: error: range type can only be an integer type
+    1 | for _ in map[string]string{} .. `9` {
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    2 | }

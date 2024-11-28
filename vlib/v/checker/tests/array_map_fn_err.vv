@@ -1,20 +1,24 @@
 fn main() {
-	a1 := [1,2,3,4].map(fn(a int, b int) int {return a + b})
+	a1 := [1, 2, 3, 4].map(fn (a int, b int) int {
+		return a + b
+	})
 	println(a1)
 
-	a2 := [1,2,3,4].map(fn(a string) string { return a })
+	a2 := [1, 2, 3, 4].map(fn (a string) string {
+		return a
+	})
 	println(a2)
 
-	a3 := [1,2,3,4].map(fn(a string) {})
+	a3 := [1, 2, 3, 4].map(fn (a string) {})
 	println(a3)
 
-	a4 := [1,2,3,4].map(add1)
+	a4 := [1, 2, 3, 4].map(add1)
 	println(a4)
 
-	a5 := [1,2,3,4].map(add2)
+	a5 := [1, 2, 3, 4].map(add2)
 	println(a5)
 
-	a6 := [1,2,3,4].map(do_nothing)
+	a6 := [1, 2, 3, 4].map(do_nothing)
 	println(a6)
 }
 

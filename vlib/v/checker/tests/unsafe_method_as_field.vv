@@ -9,7 +9,7 @@ fn (f &Foo) ref() int {
 	return 1
 }
 
-[heap]
+@[heap]
 struct Bar {
 }
 

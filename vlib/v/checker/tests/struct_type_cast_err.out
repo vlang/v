@@ -1,3 +1,10 @@
+vlib/v/checker/tests/struct_type_cast_err.vv:10:7: warning: byte is deprecated, use u8 instead
+    8 |     _ := u32(foo)
+    9 |     _ := rune(foo)
+   10 |     _ := byte(foo)
+      |          ~~~~~~~~~
+   11 |     _ := i8(foo)
+   12 |     _ := i64(foo)
 vlib/v/checker/tests/struct_type_cast_err.vv:5:7: error: cannot cast struct `Foo` to `string`
     3 | fn main() {
     4 |     foo := Foo{}

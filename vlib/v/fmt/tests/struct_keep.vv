@@ -38,9 +38,16 @@ pub:
 struct KeepMultiLineDefaultExprsIndent {
 	buttons []PeriodButton = [PeriodButton{
 		period: pr.Period.m1
-		text: 'M1'
+		text:   'M1'
 	}, PeriodButton{
 		period: pr.Period.m5
-		text: 'M5'
+		text:   'M5'
 	}]
+}
+
+@[typedef]
+pub struct C.some_t {
+	@type int
+	data  struct {}
+
 }

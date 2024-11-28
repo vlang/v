@@ -1,0 +1,5 @@
+vlib/v/parser/tests/mut_args_warning.vv:1:8: warning: use `mut f Foo` instead of `f mut Foo`
+    1 | fn f(x mut []int) { x[0] = 1 }
+      |        ~~~
+    2 | fn main() {
+    3 |     mut x := [0]

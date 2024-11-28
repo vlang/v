@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_no_branch_cast_rest_casted_err.vv:5:9: error: 345 does not fit the range of `u8`
+    3 |     nb := match name {
+    4 |         'a' { u8(10) }
+    5 |         'b' { 345 }
+      |               ~~~
+    6 |         else { 0 }
+    7 |     }

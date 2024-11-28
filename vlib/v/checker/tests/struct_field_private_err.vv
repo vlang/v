@@ -1,0 +1,11 @@
+import v.checker.tests.amod
+
+_ := amod.Xyz{
+	x: 0
+}
+
+_ := amod.Bcg{
+	x: 0
+}
+
+amod.foo(bar: 'bar')

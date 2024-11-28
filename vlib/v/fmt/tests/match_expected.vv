@@ -48,3 +48,11 @@ fn match_branch_extra_comma() {
 		else {}
 	}
 }
+
+fn match_index_range_expr(var string) string {
+	return match true {
+		var.len < 3 { 'i#' + var }
+		var[1..2].contains('#') { var }
+		else { 'i#' + var }
+	}
+}

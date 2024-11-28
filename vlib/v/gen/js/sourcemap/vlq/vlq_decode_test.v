@@ -23,8 +23,8 @@ fn test_decode_a() {
 		TestData{'D', -1},
 		TestData{'2H', 123},
 		TestData{'qxmvrH', 123456789},
-		TestData{'+/////B', 1073741823} /* 2^30-1 */,
-		// TestData{'hgggggggggggI', 9_223_372_036_854_775_808} /* 2^63 */,
+		TestData{'+/////B', 1073741823}, // 2^30-1
+		// TestData{'hgggggggggggI', 9_223_372_036_854_775_808} // 2^63
 	]
 
 	for _, test_data in decode_values {

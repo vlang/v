@@ -1,4 +1,5 @@
 fn f1(_ string, _ string) {}
+
 fn f2(_ int, _ int) {}
 
 fn main() {

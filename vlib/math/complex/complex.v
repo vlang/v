@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -12,8 +12,9 @@ pub mut:
 	im f64
 }
 
-pub fn complex(re f64, im f64) Complex {
-	return Complex{re, im}
+// complex returns a complex struct with the given `real` and `imaginary` values
+pub fn complex(real f64, imaginary f64) Complex {
+	return Complex{real, imaginary}
 }
 
 // To String method
@@ -30,6 +31,7 @@ pub fn (c Complex) abs() f64 {
 	return math.hypot(c.re, c.im)
 }
 
+// mod returns the modulus value of `c`
 pub fn (c Complex) mod() f64 {
 	return c.abs()
 }

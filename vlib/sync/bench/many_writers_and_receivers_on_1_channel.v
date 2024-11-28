@@ -26,10 +26,10 @@ mut:
 	n_iters   int
 	n_readers int
 	n_writers int
-	//
+
 	pops_wg &sync.WaitGroup
 	pops    []Event
-	//
+
 	pushes_wg &sync.WaitGroup
 	pushes    []Event
 }
@@ -48,13 +48,13 @@ fn do_rec(ch chan int, id int, mut ctx Context) {
 	n_iters := ctx.n_iters
 	base := id * n_iters * ctx.n_writers
 	for {
-		for ch.try_pop(tmp) == .success {
+		for ch.try_pop(mut tmp) == .success {
 			ctx.pops[base + i] = Event{
-				is_set: true
-				id: id
-				gtime: time.sys_mono_now()
-				i: i
-				kind: .pop
+				is_set:  true
+				id:      id
+				gtime:   time.sys_mono_now()
+				i:       i
+				kind:    .pop
 				elapsed: timer_sw_x.elapsed().nanoseconds()
 			}
 			timer_sw_x.restart()
@@ -75,11 +75,11 @@ fn do_send(ch chan int, id int, mut ctx Context) {
 	for i := 0; i < n_iters; i++ {
 		idx := base + i
 		ctx.pushes[idx] = Event{
-			is_set: true
-			id: id
-			gtime: time.sys_mono_now()
-			i: i
-			kind: .push
+			is_set:  true
+			id:      id
+			gtime:   time.sys_mono_now()
+			i:       i
+			kind:    .push
 			elapsed: timer_sw_x.elapsed().nanoseconds()
 		}
 		timer_sw_x.restart()
@@ -90,7 +90,6 @@ fn do_send(ch chan int, id int, mut ctx Context) {
 }
 
 fn main() {
-	//
 	args := os.args[1..]
 	if '-h' in args || '--help' in args {
 		eprintln('Usage:\n many_writers_and_receivers_on_1_channel [-readers 1] [-writers 4] [-chan_cap 100] [-iterations 25000]')
@@ -101,19 +100,19 @@ fn main() {
 	n_writers := cmdline.option(args, '-writers', '4').int()
 	chan_cap := cmdline.option(args, '-chan_cap', '100').int()
 	eprintln('> n_iters, ${n_iters}, n_writers, ${n_writers}, n_readers, ${n_readers}, chan_cap, ${chan_cap}')
-	//
+
 	ch := chan int{cap: chan_cap}
 	max_number_of_pushes := n_writers * (n_iters + 2)
 	max_number_of_pops := max_number_of_pushes * n_readers
 	eprintln('> max_number_of_pushes, ${max_number_of_pushes}, max_number_of_pops (per receiver), ${max_number_of_pops}')
 	mut ctx := &Context{
-		n_iters: n_iters
+		n_iters:   n_iters
 		n_readers: n_readers
 		n_writers: n_writers
 		pushes_wg: sync.new_waitgroup()
-		pops_wg: sync.new_waitgroup()
-		pushes: []Event{len: max_number_of_pushes}
-		pops: []Event{len: max_number_of_pops}
+		pops_wg:   sync.new_waitgroup()
+		pushes:    []Event{len: max_number_of_pushes}
+		pops:      []Event{len: max_number_of_pops}
 	}
 	ctx.pops_wg.add(n_readers)
 	for i := 0; i < n_readers; i++ {

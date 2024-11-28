@@ -1,7 +1,6 @@
 Runs test functions in the given FILEs and DIRECTORYs.
-
 Usage:
-  v [-stats] test FILE|DIRECTORY[...] [-run-only GPATTERN1[,...]]
+  v   [-stats]   test    [-run-only GPATTERN1[,...]]   FILE|DIRECTORY[...]
 
 If '-stats' is given, more statistics about the tests are printed along
 with a report of passes/failures
@@ -50,7 +49,7 @@ You can set the environment variable `VTEST_ONLY` to a list of strings, that
 will have to be contained in the paths of the _test.v files.
 
 Example:
-    `VTEST_ONLY=complex,stats v test . -run-only *sin*`
+    `VTEST_ONLY=complex,stats v test -run-only *sin* .`
 
 This will find all _test.v files that have either `complex` or `stats`
 in their path, then for these test files, V test will find all that contain
@@ -63,3 +62,6 @@ should see something like this:
  Summary for all V _test.v files: 2 passed, 2 total. Runtime: 185 ms, on 2
  parallel jobs.
 ```
+
+See [TESTS.md](https://github.com/vlang/v/blob/master/TESTS.md) for more
+information about how to test V itself.

@@ -1,0 +1,13 @@
+type Fn[T] = fn (string) T
+
+type Fnn = fn (string) string
+
+type Parser[T] = Fn[T] | Fnn
+
+fn f(x string) string {
+	return '>> f ${x}'
+}
+
+fn main() {
+	_ := Parser(f)
+}

@@ -1,0 +1,12 @@
+@[params]
+struct Params {
+mut:
+	a bool
+	x int
+}
+
+fn foo(mut opts Params) bool {
+	return opts.a
+}
+
+foo(a: true)

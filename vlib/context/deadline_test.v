@@ -1,17 +1,15 @@
 import context
 import time
 
-const (
-	// a reasonable duration to block in an example
-	short_duration = 1 * time.millisecond
-)
+// a reasonable duration to block in an example
+const short_duration = 1 * time.millisecond
 
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.
 fn test_with_deadline() {
 	dur := time.now().add(short_duration)
 	mut background := context.background()
-	mut ctx, cancel := context.with_deadline(mut &background, dur)
+	mut ctx, cancel := context.with_deadline(mut background, dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
@@ -35,7 +33,7 @@ fn test_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
 	mut background := context.background()
-	mut ctx, cancel := context.with_timeout(mut &background, short_duration)
+	mut ctx, cancel := context.with_timeout(mut background, short_duration)
 	defer {
 		cancel()
 	}

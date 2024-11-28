@@ -1,16 +1,14 @@
 module edwards25519
 
-const (
-	dalek_scalar  = Scalar{[u8(219), 106, 114, 9, 174, 249, 155, 89, 69, 203, 201, 93, 92, 116,
-		234, 187, 78, 115, 103, 172, 182, 98, 62, 103, 187, 136, 13, 100, 248, 110, 12, 4]!}
-	dsc_basepoint = [u8(0xf4), 0xef, 0x7c, 0xa, 0x34, 0x55, 0x7b, 0x9f, 0x72, 0x3b, 0xb6, 0x1e,
-		0xf9, 0x46, 0x9, 0x91, 0x1c, 0xb9, 0xc0, 0x6c, 0x17, 0x28, 0x2d, 0x8b, 0x43, 0x2b, 0x5,
-		0x18, 0x6a, 0x54, 0x3e, 0x48]
-)
+const dalek_scalar = Scalar{[u8(219), 106, 114, 9, 174, 249, 155, 89, 69, 203, 201, 93, 92, 116,
+	234, 187, 78, 115, 103, 172, 182, 98, 62, 103, 187, 136, 13, 100, 248, 110, 12, 4]!}
+const dsc_basepoint = [u8(0xf4), 0xef, 0x7c, 0xa, 0x34, 0x55, 0x7b, 0x9f, 0x72, 0x3b, 0xb6, 0x1e,
+	0xf9, 0x46, 0x9, 0x91, 0x1c, 0xb9, 0xc0, 0x6c, 0x17, 0x28, 0x2d, 0x8b, 0x43, 0x2b, 0x5, 0x18,
+	0x6a, 0x54, 0x3e, 0x48]
 
 fn dalek_scalar_basepoint() Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.dsc_basepoint) or { panic(err) }
+	p.set_bytes(dsc_basepoint) or { panic(err) }
 	return p
 }
 
@@ -35,7 +33,7 @@ fn test_scalar_mult_small_scalars() {
 fn test_scalar_mult_vs_dalek() {
 	mut p := Point{}
 	mut b := new_generator_point()
-	mut dsc := edwards25519.dalek_scalar
+	mut dsc := dalek_scalar
 	p.scalar_mult(mut dsc, b)
 	mut ds := dalek_scalar_basepoint()
 	assert ds.equal(p) == 1
@@ -45,7 +43,7 @@ fn test_scalar_mult_vs_dalek() {
 
 fn test_scalar_base_mult_vs_dalek() {
 	mut p := Point{}
-	mut dsc := edwards25519.dalek_scalar
+	mut dsc := dalek_scalar
 	p.scalar_base_mult(mut dsc)
 	mut ds := dalek_scalar_basepoint()
 	assert ds.equal(p) == 1
@@ -57,13 +55,13 @@ fn test_vartime_double_basemult_vs_dalek() {
 	mut p := Point{}
 	mut z := Scalar{}
 	b := new_generator_point()
-	p.vartime_double_scalar_base_mult(edwards25519.dalek_scalar, b, z)
+	p.vartime_double_scalar_base_mult(dalek_scalar, b, z)
 
 	mut ds := dalek_scalar_basepoint()
 	assert ds.equal(p) == 1
 	assert check_on_curve(p)
 
-	p.vartime_double_scalar_base_mult(z, b, edwards25519.dalek_scalar)
+	p.vartime_double_scalar_base_mult(z, b, dalek_scalar)
 
 	assert ds.equal(p) == 1
 	assert check_on_curve(p)

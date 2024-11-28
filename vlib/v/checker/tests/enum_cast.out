@@ -18,10 +18,11 @@ vlib/v/checker/tests/enum_cast.vv:21:19: warning: 10 does not represent a value 
    21 |     println(unsafe { Permissions(0b1010) })
       |                      ~~~~~~~~~~~~~~~~~~~
    22 |     println(unsafe { Permissions(-1) })
-   23 | }
+   23 |     println(unsafe { Permissions(0) })
 vlib/v/checker/tests/enum_cast.vv:22:19: warning: -1 does not represent a value of enum Permissions
    20 |     println(unsafe { Permissions(0b101) })
    21 |     println(unsafe { Permissions(0b1010) })
    22 |     println(unsafe { Permissions(-1) })
       |                      ~~~~~~~~~~~~~~~
-   23 | }
+   23 |     println(unsafe { Permissions(0) })
+   24 | }

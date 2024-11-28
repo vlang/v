@@ -1,0 +1,7 @@
+vlib/v/checker/tests/lambda_expression_invalid.vv:3:19: error: lambda expressions are allowed only in places expecting function callbacks
+    1 | fn main() {
+    2 |     x := 5
+    3 |     f := if x == 5 { |x| x - 5 } else { |x| x }
+      |                      ~~~~~~~~~
+    4 |     println(f(x))
+    5 | }

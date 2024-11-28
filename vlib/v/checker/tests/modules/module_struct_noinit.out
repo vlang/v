@@ -1,0 +1,6 @@
+vlib/v/checker/tests/modules/module_struct_noinit/src/main.v:9:9: error: struct `mod.Foo` is declared with a `@[noinit]` attribute, so it cannot be initialized with `mod.Foo{}`
+    7 | 
+    8 | fn default_value[T]() T {
+    9 |     return T{}
+      |            ~~~
+   10 | }

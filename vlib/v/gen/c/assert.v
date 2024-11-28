@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -17,11 +17,17 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	}
 	mut node := original_assert_statement
 	g.writeln('// assert')
+
+	mut save_left := ast.empty_expr
+	mut save_right := ast.empty_expr
+
 	if mut node.expr is ast.InfixExpr {
 		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+			save_left = node.expr.left
 			node.expr.left = subst_expr
 		}
 		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+			save_right = node.expr.right
 			node.expr.right = subst_expr
 		}
 	}
@@ -56,6 +62,15 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	}
+
+	if mut node.expr is ast.InfixExpr {
+		if node.expr.left is ast.CTempVar {
+			node.expr.left = save_left
+		}
+		if node.expr.right is ast.CTempVar {
+			node.expr.right = save_right
+		}
+	}
 }
 
 struct UnsupportedAssertCtempTransform {
@@ -77,9 +92,9 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 		ast.SelectorExpr {
 			if expr.expr is ast.CallExpr {
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
-				if sym.kind == .struct_ {
+				if sym.kind == .struct {
 					if (sym.info as ast.Struct).is_union {
-						return c.unsupported_ctemp_assert_transform
+						return unsupported_ctemp_assert_transform
 					}
 				}
 				return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -87,11 +102,11 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 		}
 		else {}
 	}
-	return c.unsupported_ctemp_assert_transform
+	return unsupported_ctemp_assert_transform
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
-	g.write_v_source_line_info(node.pos)
+	g.write_v_source_line_info_stmt(node)
 	if g.pref.assert_failure_mode == .continues
 		|| g.fn_decl.attrs.any(it.name == 'assert_continues') {
 		return
@@ -106,8 +121,7 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	if g.pref.is_test {
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
 	}
-	g.writeln('\t// TODO')
-	g.writeln('\t// Maybe print all vars in a test function if it fails?')
+	g.writeln2('\t// TODO', '\t// Maybe print all vars in a test function if it fails?')
 	if g.pref.assert_failure_mode != .continues {
 		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 	}
@@ -137,12 +151,22 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 			g.writeln('\t${metaname}.op = ${expr_op_str};')
 			g.writeln('\t${metaname}.llabel = ${expr_left_str};')
 			g.writeln('\t${metaname}.rlabel = ${expr_right_str};')
+			left_type := if g.comptime.is_comptime_expr(node.expr.left) {
+				g.comptime.get_type(node.expr.left)
+			} else {
+				node.expr.left_type
+			}
+			right_type := if g.comptime.is_comptime_expr(node.expr.right) {
+				g.comptime.get_type(node.expr.right)
+			} else {
+				node.expr.right_type
+			}
 			if kind != .pass {
 				g.write('\t${metaname}.lvalue = ')
-				g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
+				g.gen_assert_single_expr(node.expr.left, left_type)
 				g.writeln(';')
 				g.write('\t${metaname}.rvalue = ')
-				g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
+				g.gen_assert_single_expr(node.expr.right, right_type)
 				g.writeln(';')
 			}
 		}
@@ -165,14 +189,24 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt, kind AssertMetainfoKind)
 
 fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
-	unknown_value := '*unknown value*'
+	expr_str := '${expr}'
 	match expr {
-		ast.CastExpr, ast.IfExpr, ast.MatchExpr {
-			g.write(ctoslit(unknown_value))
+		ast.CastExpr {
+			if typ.is_float() || g.table.final_sym(typ).is_float() {
+				g.gen_expr_to_string(expr.expr, typ)
+			} else {
+				g.write(ctoslit(expr_str))
+			}
+		}
+		ast.ParExpr {
+			g.gen_assert_single_expr(expr.expr, typ)
+		}
+		ast.IfExpr, ast.MatchExpr, ast.RangeExpr {
+			g.write(ctoslit(expr_str))
 		}
 		ast.IndexExpr {
 			if expr.index is ast.RangeExpr {
-				g.write(ctoslit(unknown_value))
+				g.write(ctoslit(expr_str))
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}
@@ -182,7 +216,9 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 				// TODO: remove this check;
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
-				g.write(ctoslit(unknown_value))
+				g.write(ctoslit(expr_str))
+			} else if expr.right is ast.Ident {
+				g.write(ctoslit(expr_str))
 			} else {
 				g.gen_expr_to_string(expr, typ)
 			}
@@ -217,5 +253,4 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			}
 		}
 	}
-	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }

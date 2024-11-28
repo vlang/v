@@ -1,0 +1,7 @@
+interface Abc   // interface Abc
+{
+	a int
+// comment
+mut:
+	get_info() string
+}

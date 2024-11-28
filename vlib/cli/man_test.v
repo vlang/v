@@ -2,34 +2,34 @@ module cli
 
 fn test_manpage() {
 	mut cmd := Command{
-		name: 'command'
+		name:        'command'
 		description: 'description'
-		commands: [
+		commands:    [
 			Command{
-				name: 'sub'
+				name:        'sub'
 				description: 'subcommand'
 			},
 			Command{
-				name: 'sub2'
+				name:        'sub2'
 				description: 'another subcommand'
 			},
 		]
-		flags: [
+		flags:       [
 			Flag{
-				flag: .string
-				name: 'str'
+				flag:        .string
+				name:        'str'
 				description: 'str flag'
 			},
 			Flag{
-				flag: .bool
-				name: 'bool'
+				flag:        .bool
+				name:        'bool'
 				description: 'bool flag'
-				abbrev: 'b'
+				abbrev:      'b'
 			},
 			Flag{
-				flag: .string
-				name: 'required'
-				abbrev: 'r'
+				flag:     .string
+				name:     'required'
+				abbrev:   'r'
 				required: true
 			},
 		]

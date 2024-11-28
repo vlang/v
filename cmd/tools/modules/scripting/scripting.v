@@ -4,9 +4,7 @@ import os
 import term
 import time
 
-const (
-	term_colors = term.can_show_color_on_stdout()
-)
+const term_colors = term.can_show_color_on_stdout()
 
 pub fn set_verbose(on bool) {
 	// setting a global here would be the obvious solution,
@@ -20,7 +18,7 @@ pub fn set_verbose(on bool) {
 
 pub fn cprint(omessage string) {
 	mut message := omessage
-	if scripting.term_colors {
+	if term_colors {
 		message = term.cyan(message)
 	}
 	print(message)
@@ -29,7 +27,7 @@ pub fn cprint(omessage string) {
 
 pub fn cprint_strong(omessage string) {
 	mut message := omessage
-	if scripting.term_colors {
+	if term_colors {
 		message = term.bright_green(message)
 	}
 	print(message)
@@ -59,7 +57,7 @@ pub fn verbose_trace_strong(label string, omessage string) {
 	if os.getenv('VERBOSE').len > 0 {
 		slabel := '${time.now().format_ss_milli()} ${label}'
 		mut message := omessage
-		if scripting.term_colors {
+		if term_colors {
 			message = term.bright_green(message)
 		}
 		cprintln('# ${slabel:-43s} : ${message}')
@@ -73,7 +71,7 @@ pub fn verbose_trace_exec_result(x os.Result) {
 		lines := x.output.split_into_lines()
 		for oline in lines {
 			mut line := oline
-			if scripting.term_colors {
+			if term_colors {
 				line = term.bright_green(line)
 			}
 			cprintln('# ${lnum:3d}: ${line}')
@@ -165,7 +163,8 @@ pub fn exit_0_status(cmd string) bool {
 
 pub fn tool_must_exist(toolcmd string) {
 	verbose_trace(modfn(@MOD, @FN), toolcmd)
-	if exit_0_status('type ${toolcmd}') {
+	where_is_cmd := if os.user_os() == 'windows' { 'where' } else { 'type' }
+	if exit_0_status('${where_is_cmd} ${toolcmd}') {
 		return
 	}
 	eprintln('Missing tool: ${toolcmd}')

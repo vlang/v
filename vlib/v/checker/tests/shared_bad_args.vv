@@ -35,10 +35,18 @@ fn a_val(a []int) int {
 }
 
 fn test_shared_as_value() {
-	shared s := St{ a: 5 }
+	shared s := St{
+		a: 5
+	}
 	shared a := [3, 4, 6, 13, -23]
-	shared m := {'qw': 12.75, 'yxcv': -3.125, 'poiu': 88.0625}
-	shared r := Qr{ a: 7 }
+	shared m := {
+		'qw':   12.75
+		'yxcv': -3.125
+		'poiu': 88.0625
+	}
+	shared r := Qr{
+		a: 7
+	}
 	lock s {
 		u := r.s_val(s)
 		println(u)
@@ -49,14 +57,22 @@ fn test_shared_as_value() {
 	}
 	w := m_val(m)
 	x := a_val(a)
-	println('$w $x')
+	println('${w} ${x}')
 }
 
 fn test_shared_as_mut() {
-	shared s := St{ a: 5 }
+	shared s := St{
+		a: 5
+	}
 	shared a := [3, 4, 6, 13, -23]
-	shared m := {'qw': 12.75, 'yxcv': -3.125, 'poiu': 88.0625}
-	shared r := Qr{ a: 7 }
+	shared m := {
+		'qw':   12.75
+		'yxcv': -3.125
+		'poiu': 88.0625
+	}
+	shared r := Qr{
+		a: 7
+	}
 	lock s {
 		r.s_mut(mut s)
 	}
@@ -72,10 +88,16 @@ struct Ab {
 }
 
 fn main() {
-	shared y := St{ a: 5 }
+	shared y := St{
+		a: 5
+	}
 	println(y)
-	println('$y')
-	a := Ab{ s: St{ a: 3 } }
+	println('${y}')
+	a := Ab{
+		s: St{
+			a: 3
+		}
+	}
 	println(a.s)
-	println('$a.s')
+	println('${a.s}')
 }

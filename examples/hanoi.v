@@ -1,7 +1,5 @@
 // hanoi tower
-const (
-	num = 7
-)
+const num = 7
 
 fn main() {
 	hanoi(num, 'A', 'B', 'C')

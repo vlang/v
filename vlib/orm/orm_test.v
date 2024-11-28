@@ -1,28 +1,31 @@
+// vtest flaky: true
+// vtest retry: 3
 // import db.mysql
 // import db.pg
 import time
 import db.sqlite
 
-const (
-	offset_const = 2
-)
+const offset_const = 2
 
 struct Module {
-	id           int       [primary; sql: serial]
+	id           int @[primary; sql: serial]
 	name         string
 	nr_downloads int
 	test_id      u64
-	user         User
+	user         ?User
 	created      time.Time
 }
 
-[table: 'userlist']
+@[table: 'userlist']
 struct User {
-	id             int    [primary; sql: serial]
-	age            int
-	name           string [sql: 'username']
-	is_customer    bool
-	skipped_string string [skip]
+	id              int @[primary; sql: serial]
+	age             int
+	name            string @[sql: 'username']
+	is_customer     bool
+	skipped_string  string   @[skip]
+	skipped_string2 string   @[sql: '-']
+	skipped_array   []string @[skip]
+	skipped_array2  []string @[sql: '-']
 }
 
 struct Foo {
@@ -30,7 +33,7 @@ struct Foo {
 }
 
 struct TestTime {
-	id     int       [primary; sql: serial]
+	id     int @[primary; sql: serial]
 	create time.Time
 }
 
@@ -46,8 +49,11 @@ fn test_use_struct_field_as_limit() {
 	}
 
 	sam := User{
-		age: 29
-		name: 'Sam'
+		age:             29
+		name:            'Sam'
+		skipped_string2: 'this should be ignored'
+		skipped_array:   ['ignored', 'array']
+		skipped_array2:  ['another', 'ignored', 'array']
 	}
 
 	sql db {
@@ -59,6 +65,12 @@ fn test_use_struct_field_as_limit() {
 	}!
 
 	assert users.len == 1
+	assert users[0].name == 'Sam'
+	assert users[0].age == 29
+	assert users[0].skipped_string == ''
+	assert users[0].skipped_string2 == ''
+	assert users[0].skipped_array == [], 'skipped because of the @[skip] tag, used for both sql and json'
+	assert users[0].skipped_array2 == [], "should be skipped, because of the sql specific @[sql: '-'] tag"
 }
 
 fn test_orm() {
@@ -74,18 +86,18 @@ fn test_orm() {
 	name := 'Peter'
 
 	sam := User{
-		age: 29
+		age:  29
 		name: 'Sam'
 	}
 
 	peter := User{
-		age: 31
+		age:  31
 		name: 'Peter'
 	}
 
 	k := User{
-		age: 30
-		name: 'Kate'
+		age:         30
+		name:        'Kate'
 		is_customer: true
 	}
 
@@ -171,7 +183,7 @@ fn test_orm() {
 
 	new_user := User{
 		name: 'New user'
-		age: 30
+		age:  30
 	}
 	sql db {
 		insert new_user into User
@@ -351,7 +363,7 @@ fn test_orm() {
 	}!
 
 	assert data.len == 1
-	assert tnow.unix == data[0].create.unix
+	assert tnow.unix() == data[0].create.unix()
 
 	mod := Module{}
 

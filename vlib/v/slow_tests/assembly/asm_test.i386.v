@@ -74,7 +74,7 @@ fn test_inline_asm() {
 	// assert loops == 1
 	// assert k == 5
 
-	// not marked as mut because we derefernce m to change l
+	// not marked as mut because we dereference m to change l
 	l := 5
 	m := &l
 	asm i386 {
@@ -106,7 +106,7 @@ fn test_inline_asm() {
 	manu.str()
 }
 
-[packed]
+@[packed]
 struct Manu {
 mut:
 	ebx  u32
@@ -118,8 +118,8 @@ mut:
 fn (m Manu) str() string {
 	return unsafe {
 		string{
-			str: &u8(&m)
-			len: 24
+			str:    &u8(&m)
+			len:    24
 			is_lit: 1
 		}
 	}

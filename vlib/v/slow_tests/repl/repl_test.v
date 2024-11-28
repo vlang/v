@@ -43,7 +43,7 @@ fn test_all_v_repl_files() {
 	}
 	mut session := &Session{
 		options: runner.new_options()
-		bmark: benchmark.new_benchmark()
+		bmark:   benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
 	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/slow_tests/repl/nothing.repl') or {
@@ -71,11 +71,12 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := os.join_path(cdir, 'vrepl_tests_${idx}')
+	mut tfolder := os.join_path(cdir, 'vrepl_tests_${idx}')
 	if os.is_dir(tfolder) {
 		os.rmdir_all(tfolder) or { panic(err) }
 	}
 	os.mkdir(tfolder) or { panic(err) }
+	tfolder = os.real_path(tfolder)
 	file := p.get_item[string](idx)
 	session.bmark.step()
 	tls_bench.step()

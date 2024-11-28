@@ -1,0 +1,5 @@
+[vlib/v/slow_tests/inout/comptime_smartcast_variant.vv:14] field_value: foo
+[vlib/v/slow_tests/inout/comptime_smartcast_variant.vv:18] '$field_value is a string': foo is a string
+[vlib/v/slow_tests/inout/comptime_smartcast_variant.vv:14] field_value: 1
+[vlib/v/slow_tests/inout/comptime_smartcast_variant.vv:16] '$field_value is an int': 1 is an int
+[vlib/v/slow_tests/inout/comptime_smartcast_variant.vv:33] v: done

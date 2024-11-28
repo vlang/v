@@ -13,7 +13,7 @@ struct Admin {
 	vweb.Context
 }
 
-['/admin/duplicate']
+@['/admin/duplicate']
 pub fn (mut app App) duplicate() vweb.Result {
 	return app.text('duplicate')
 }
@@ -30,7 +30,6 @@ fn main() {
 	}
 	http_port := os.args[1].int()
 	assert http_port > 0
-	timeout := os.args[2].int()
 	mut app_dup := &App{
 		controllers: [
 			vweb.controller('/admin', &Admin{}),

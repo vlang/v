@@ -1,3 +1,4 @@
+import math
 import math.vec
 
 fn test_vec2_int() {
@@ -72,11 +73,11 @@ fn test_vec2_f64_utils_1() {
 
 fn test_vec2_f64_utils_2() {
 	mut v1 := vec.vec2(4.0, 4.0)
-	assert v1.unit().magnitude() == 1
+	assert math.veryclose(v1.unit().magnitude(), 1)
 	v2 := v1.mul_scalar(0.5)
 	assert v2.x == 2
 	assert v2.y == 2
-	assert v2.unit().magnitude() == 1
+	assert math.veryclose(v2.unit().magnitude(), 1)
 
 	invv2 := v2.inv()
 	assert invv2.x == 0.5

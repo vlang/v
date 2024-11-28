@@ -6,5 +6,5 @@ Option(none)
 Option(none)
 1
 1
-println(NIL)
+Option('')
 Option(none)

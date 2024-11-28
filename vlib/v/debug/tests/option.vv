@@ -1,0 +1,28 @@
+struct Test2 {}
+
+struct Test3 {}
+
+type Test = Test2 | Test3
+
+fn (f Test) test(t ?Test) {
+	$dbg;
+}
+
+fn (f Test) test2(t ?&Test) {
+	$dbg;
+}
+
+fn test_int(a ?int) {
+	$dbg;
+}
+
+fn main() {
+	mut a := ?Test(Test2{})
+	a?.test(a)
+
+	test_int(?int(none))
+	test_int(?int(1))
+
+	b := ?&Test(none)
+	a?.test2(b)
+}

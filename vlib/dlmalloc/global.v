@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module dlmalloc
 
 __global global = new(get_system_allocator())
@@ -7,7 +7,7 @@ __global global = new(get_system_allocator())
 ///
 /// Returns a null pointer if allocation fails. Returns a valid pointer
 /// otherwise.
-[unsafe]
+@[unsafe]
 pub fn malloc(size usize) voidptr {
 	unsafe {
 		return global.malloc(size)
@@ -15,7 +15,7 @@ pub fn malloc(size usize) voidptr {
 }
 
 // free deallocates a `ptr`.
-[unsafe]
+@[unsafe]
 pub fn free(ptr voidptr) {
 	unsafe {
 		global.free_(ptr)
@@ -24,7 +24,7 @@ pub fn free(ptr voidptr) {
 
 // Same as `malloc`, except if the allocation succeeds it's guaranteed to
 // point to `size` bytes of zeros.
-[unsafe]
+@[unsafe]
 pub fn calloc(size usize) voidptr {
 	unsafe {
 		return global.calloc(size)
@@ -38,7 +38,7 @@ pub fn calloc(size usize) voidptr {
 // Returns a null pointer if the memory couldn't be reallocated, but `ptr`
 // is still valid. Returns a valid pointer and frees `ptr` if the request
 // is satisfied.
-[unsafe]
+@[unsafe]
 pub fn realloc(ptr voidptr, oldsize usize, newsize usize) voidptr {
 	unsafe {
 		_ := oldsize
@@ -51,7 +51,7 @@ pub fn realloc(ptr voidptr, oldsize usize, newsize usize) voidptr {
 //
 //
 // Returns a null pointer if allocation fails. Returns a valid pointer otherwise.
-[unsafe]
+@[unsafe]
 pub fn memalign(size usize, align usize) voidptr {
 	unsafe {
 		if align <= malloc_alignment() {

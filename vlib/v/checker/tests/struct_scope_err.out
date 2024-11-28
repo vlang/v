@@ -1,0 +1,26 @@
+vlib/v/checker/tests/struct_scope_err.vv:16:8: error: unknown type `Foobar`
+   14 | 
+   15 | fn x() {
+   16 |     fb := Foobar{7, 8}
+      |           ~~~~~~~~~~~~
+   17 |     println(fb.bar)
+   18 | }
+vlib/v/checker/tests/struct_scope_err.vv:16:8: error: unknown struct: Foobar
+   14 | 
+   15 | fn x() {
+   16 |     fb := Foobar{7, 8}
+      |           ~~~~~~~~~~~~
+   17 |     println(fb.bar)
+   18 | }
+vlib/v/checker/tests/struct_scope_err.vv:17:13: error: `fb` does not return a value
+   15 | fn x() {
+   16 |     fb := Foobar{7, 8}
+   17 |     println(fb.bar)
+      |                ~~~
+   18 | }
+vlib/v/checker/tests/struct_scope_err.vv:17:2: error: `println` can not print void expressions
+   15 | fn x() {
+   16 |     fb := Foobar{7, 8}
+   17 |     println(fb.bar)
+      |     ~~~~~~~~~~~~~~~
+   18 | }

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_init_ptr_non_ptr_elem_err.vv:13:23: error: cannot have non-pointer of type `Chunk` in a pointer array of type `&Chunk`
+   11 |     chunk1 := Chunk{1}
+   12 |     w := World{
+   13 |         chunks: [&Chunk{0}, chunk1]
+      |                             ~~~~~~
+   14 |     }
+   15 |

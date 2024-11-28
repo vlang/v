@@ -1,0 +1,14 @@
+#!/usr/bin/env expect
+
+set timeout 3
+set v_root [exec sh -c "git rev-parse --show-toplevel"]
+# Use input arguments for send and expect.
+set send_ [lindex $argv 0]
+set expect_ [lindex $argv 1]
+
+spawn $v_root/v run $v_root/examples/readline/readline.v
+
+send $send_
+expect $expect_ {} timeout { exit 1 }
+
+expect eof

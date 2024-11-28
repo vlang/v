@@ -1,4 +1,4 @@
-[export]
-fn foo() string{
-	return "foo"
+@[export]
+fn foo() string {
+	return 'foo'
 }

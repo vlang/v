@@ -270,7 +270,7 @@ static inline int atomic_compare_exchange_strong_u32(unsigned* object, unsigned*
                                                  unsigned desired)
 {
 	unsigned old = *expected;
-    *expected = InterlockedCompareExchange(object, desired, old);
+    *expected = InterlockedCompareExchange((void *)object, desired, old);
     return *expected == old;
 }
 
@@ -317,7 +317,7 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short* object, uns
 }
 
 #define atomic_compare_exchange_weak_u16(object, expected, desired) \
-    atomic_compare_exchange_strong_u16(object, expected, desired)
+    atomic_compare_exchange_strong_u16((void*)object, expected, desired)
 
 #define atomic_fetch_add_u16(object, operand) \
     InterlockedExchangeAdd16(object, operand)

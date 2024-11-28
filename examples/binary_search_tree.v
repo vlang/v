@@ -76,7 +76,7 @@ fn (tree Tree[T]) min[T]() T {
 	}
 }
 
-// delete a value in BST (if nonexistant do nothing)
+// delete a value in BST (if nonexistent do nothing)
 fn (tree Tree[T]) delete[T](x T) Tree[T] {
 	return match tree {
 		Empty {

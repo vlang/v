@@ -21,12 +21,12 @@ pub fn (pc PrimeCfg) short() string {
 	return "r: '${pc.r}' a: '${pc.a}' b: '${pc.b}'"
 }
 
-[heap]
+@[heap]
 pub struct PrimeSet {
 pub mut:
-	r string [required]
-	a string [required]
-	b string [required]
+	r string @[required]
+	a string @[required]
+	b string @[required]
 }
 
 pub fn (p PrimeSet) to_primeset() PrimeSet {
@@ -74,14 +74,14 @@ pub fn usage() string {
 // reads the Map[string] []string from disk
 // and returns the parsed content
 fn read_toml_file() map[string][]string {
-	fp := os.join_path(@VROOT, prime.toml_path)
+	fp := os.join_path(@VROOT, toml_path)
 
 	tm_doc := toml.parse_file(fp) or {
 		err_msg := 'expected ${fp}'
 		eprintln(err_msg)
 		panic(err)
 	}
-	// TODO what happens if this goes wrong ?
+	// TODO: what happens if this goes wrong ?
 	tm_primes := tm_doc.value('primes') as map[string]toml.Any
 
 	msg := 'expected a map[string][]string in TOML-data ? corrupt ?'
@@ -120,7 +120,7 @@ pub fn random_list(cfg []string) []string {
 			}
 			mut num := ''
 			for prime_count != 0 {
-				num = primes[prime_size][rand.int_in_range(0, primes[prime_size].len - 1)]
+				num = primes[prime_size][rand.int_in_range(0, primes[prime_size].len - 1) or { 0 }]
 				if num in p_list {
 					continue
 				}
@@ -140,12 +140,12 @@ pub fn random_list(cfg []string) []string {
 	return p_list
 }
 
-pub fn random_set(cfg PrimeCfg) ?[]PrimeSet {
+pub fn random_set(cfg PrimeCfg) ![]PrimeSet {
 	p_lists := [
 		cfg.r.split('.'),
 		cfg.a.split('.'),
 		cfg.b.split('.'),
-	].map(random_list(it.map(it.trim_space().to_lower())))
+	].map(random_list(it.map(it.trim_space().to_lower_ascii())))
 
 	// test for empty lists
 	//

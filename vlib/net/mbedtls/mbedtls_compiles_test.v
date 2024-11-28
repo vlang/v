@@ -1,6 +1,5 @@
-import net.mbedtls
+import net.mbedtls as _
 
 fn test_mbedtls_compiles() {
-	assert mbedtls.is_used == 1
 	assert true
 }

@@ -2,9 +2,7 @@ module some_module
 
 import eventbus
 
-const (
-	eb = eventbus.new()
-)
+const eb = eventbus.new[string]()
 
 pub struct Duration {
 pub:
@@ -22,13 +20,13 @@ pub fn do_work() {
 		println('working...')
 		if i == 5 {
 			event_metadata := &EventMetadata{'Iteration ' + i.str()}
-			some_module.eb.publish('event_foo', duration, event_metadata)
-			some_module.eb.publish('event_bar', duration, event_metadata)
+			eb.publish('event_foo', duration, event_metadata)
+			eb.publish('event_bar', duration, event_metadata)
 		}
 	}
-	some_module.eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})
+	eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})
 }
 
-pub fn get_subscriber() eventbus.Subscriber {
-	return *some_module.eb.subscriber
+pub fn get_subscriber() eventbus.Subscriber[string] {
+	return *eb.subscriber
 }

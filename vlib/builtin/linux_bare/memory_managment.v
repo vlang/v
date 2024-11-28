@@ -2,7 +2,7 @@ module builtin
 
 import dlmalloc
 
-fn mm_alloc(size u64) (&byte, Errno) {
+fn mm_alloc(size u64) (&u8, Errno) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
 	// which happen before these ones would, require malloc
@@ -80,13 +80,13 @@ fn system_page_size(_ voidptr) usize {
 
 fn get_linux_allocator() dlmalloc.Allocator {
 	return dlmalloc.Allocator{
-		alloc: system_alloc
-		remap: system_remap
-		free_part: system_free_part
-		free_: system_free
+		alloc:            system_alloc
+		remap:            system_remap
+		free_part:        system_free_part
+		free_:            system_free
 		can_release_part: system_can_release_part
-		allocates_zeros: system_allocates_zeros
-		page_size: system_page_size
-		data: unsafe { nil }
+		allocates_zeros:  system_allocates_zeros
+		page_size:        system_page_size
+		data:             unsafe { nil }
 	}
 }

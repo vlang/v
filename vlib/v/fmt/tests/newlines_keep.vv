@@ -1,5 +1,5 @@
 // Module with attribute
-[manualfree]
+@[manualfree]
 module websocket
 
 fn C.no_body_function()
@@ -14,12 +14,12 @@ fn main() {}
 fn x() {}
 
 // doc comment above an attributed function
-[inline]
+@[inline]
 fn y_with_attr() {
 }
 
 // doc comment above an attributed struct
-[typedef]
+@[typedef]
 struct FooWithAttr {
 }
 

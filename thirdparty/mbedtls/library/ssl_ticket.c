@@ -21,13 +21,7 @@
 
 #if defined(MBEDTLS_SSL_TICKET_C)
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#include <stdlib.h>
-#define mbedtls_calloc    calloc
-#define mbedtls_free      free
-#endif
 
 #include "ssl_misc.h"
 #include "mbedtls/ssl_ticket.h"
@@ -79,7 +73,7 @@ static int ssl_ticket_gen_key( mbedtls_ssl_ticket_context *ctx,
 #endif
 
 #if defined(MBEDTLS_HAVE_TIME)
-    key->generation_time = (uint32_t) mbedtls_time( NULL );
+    key->generation_time = mbedtls_time( NULL );
 #endif
 
     if( ( ret = ctx->f_rng( ctx->p_rng, key->name, sizeof( key->name ) ) ) != 0 )
@@ -122,15 +116,15 @@ static int ssl_ticket_update_keys( mbedtls_ssl_ticket_context *ctx )
 #else
     if( ctx->ticket_lifetime != 0 )
     {
-        uint32_t current_time = (uint32_t) mbedtls_time( NULL );
-        uint32_t key_time = ctx->keys[ctx->active].generation_time;
+        mbedtls_time_t current_time = mbedtls_time( NULL );
+        mbedtls_time_t key_time = ctx->keys[ctx->active].generation_time;
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
         psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
 #endif
 
         if( current_time >= key_time &&
-            current_time - key_time < ctx->ticket_lifetime )
+            (uint64_t) ( current_time - key_time ) < ctx->ticket_lifetime )
         {
             return( 0 );
         }
@@ -204,7 +198,7 @@ int mbedtls_ssl_ticket_rotate( mbedtls_ssl_ticket_context *ctx,
     ctx->ticket_lifetime = lifetime;
     memcpy( key->name, name, TICKET_KEY_NAME_BYTES );
 #if defined(MBEDTLS_HAVE_TIME)
-    key->generation_time = (uint32_t) mbedtls_time( NULL );
+    key->generation_time = mbedtls_time( NULL );
 #endif
     return 0;
 }

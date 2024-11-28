@@ -1,7 +1,7 @@
 import vweb.assets
 import os
 
-const base_cache_dir = os.join_path(os.vtmp_dir(), 'v', 'assets_test_cache')
+const base_cache_dir = os.join_path(os.vtmp_dir(), 'assets_test_cache')
 
 fn testsuite_begin() {
 	os.mkdir_all(base_cache_dir) or {}

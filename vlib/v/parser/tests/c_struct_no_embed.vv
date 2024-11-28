@@ -2,6 +2,6 @@ struct Foo {
 	x int
 }
 
-struct C.Unknown {
+pub struct C.Unknown {
 	Foo
 }

@@ -108,7 +108,7 @@ fn (mut v Point) bytes_montgomery_generic(mut buf [32]u8) []u8 {
 	mut u := Element{}
 
 	y.multiply(v.y, y.invert(v.z)) // y = Y / Z
-	recip.invert(recip.subtract(fe_one, &y)) // r = 1/(1 - y)
+	recip.invert(recip.subtract(fe_one, y)) // r = 1/(1 - y)
 	u.multiply(u.add(fe_one, y), recip) // u = (1 + y)*r
 
 	return copy_field_element(mut buf, mut u)
@@ -326,7 +326,7 @@ pub fn (mut v Point) vartime_multiscalar_mult(scalars []Scalar, points []Point) 
 	// at each iteration and checking whether there is a nonzero
 	// coefficient to look up a multiple of.
 	//
-	// Skip trying to find the first nonzero coefficent, because
+	// Skip trying to find the first nonzero coefficient, because
 	// searching might be more work than a few extra doublings.
 	// k == i, l == j
 	for k := 255; k >= 0; k-- {

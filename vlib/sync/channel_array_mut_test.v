@@ -1,6 +1,4 @@
-const (
-	num_iterations = 10000
-)
+const num_iterations = 10000
 
 struct St {
 mut:

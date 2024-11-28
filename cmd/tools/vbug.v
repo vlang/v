@@ -16,7 +16,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 	return result.output
 }
 
-// get ouput from `v -g -o vdbg cmd/v && vdbg file.v`
+// get output from `./v -g -o vdbg cmd/v && ./vdbg file.v`
 fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	mut vexe := os.getenv('VEXE')
 	// prepare a V compiler with -g to have better backtraces if possible
@@ -32,7 +32,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	} else {
 		eprintln('unable to compile V in debug mode: ${vdbg_result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
-	//
+
 	mut result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
@@ -114,7 +114,7 @@ fn main() {
 		eprintln('unable to get file "${file_path}" content: ${err}')
 		''
 	}
-	// output from `v -g -o vdbg cmd/v && vdbg file.v`
+	// output from `./v -g -o vdbg cmd/v && ./vdbg file.v`
 	build_output := get_v_build_output(is_verbose, is_yes, file_path)
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
@@ -140,7 +140,7 @@ ${vdoctor_output}
 ```
 
 **What did you do?**
-`v -g -o vdbg cmd/v && vdbg ${file_path}`
+`./v -g -o vdbg cmd/v && ./vdbg ${file_path}`
 {file_content}
 
 **What did you expect to see?**

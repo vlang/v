@@ -8,6 +8,8 @@ fn test_escape_codes() {
 	println(star1)
 	star2 := '\u2605'
 	println(star2)
+	star3 := '\U00002605'
+	println(star3)
 
 	aaa := '\x61\141a'
 	println(aaa)
@@ -33,8 +35,9 @@ fn test_runes() {
 
 	// should all print `★`
 	print(`\u2605`)
+	print(`\U00002605`)
 	print(`\xe2\x98\x85`)
-	println(`\xe2\x98\x85`) 
+	println(`\xe2\x98\x85`)
 }
 
 fn main() {

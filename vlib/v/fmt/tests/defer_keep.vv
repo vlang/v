@@ -1,0 +1,12 @@
+fn foo() {}
+
+fn nested_match() {
+	defer { foo() }
+	defer {
+		foo()
+		bar()
+	}
+	defer {
+		foo()
+	}
+}

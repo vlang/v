@@ -1,0 +1,4 @@
+[vlib/v/slow_tests/inout/dump_fixed_array_of_option.vv:3] a1: [Option('foo'), Option(none)]
+[vlib/v/slow_tests/inout/dump_fixed_array_of_option.vv:6] a2: [Option(22), Option(none)]
+[vlib/v/slow_tests/inout/dump_fixed_array_of_option.vv:9] a3: [Option(22.2), Option(none)]
+[vlib/v/slow_tests/inout/dump_fixed_array_of_option.vv:12] a4: [Option(true), Option(none)]

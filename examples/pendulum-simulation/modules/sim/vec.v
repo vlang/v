@@ -4,12 +4,13 @@ import math
 
 // Vector3D is a 3D vector
 pub struct Vector3D {
+pub:
 	x f64
 	y f64
 	z f64
 }
 
-// vector creates a Vector3D passing x,y,z as parameteres
+// vector creates a Vector3D passing x,y,z as parameters
 pub fn vector(data Vector3D) Vector3D {
 	return Vector3D{
 		...data

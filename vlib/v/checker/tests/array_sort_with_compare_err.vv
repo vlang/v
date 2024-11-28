@@ -6,6 +6,8 @@ fn main() {
 
 	names.sort_with_compare(22)
 	println(names)
+
+	names.sort_with_compare(sort_by_file_base, 22)
 }
 
 fn sort_by_file_base(a string, b string) int {

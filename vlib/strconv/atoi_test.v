@@ -27,6 +27,9 @@ fn test_atoi() {
 }
 
 fn test_parse_int() {
+	// symbols coverage
+	assert strconv.parse_int('1234567890', 10, 32)! == 1234567890
+	assert strconv.parse_int('19aAbBcCdDeEfF', 16, 64)! == 0x19aAbBcCdDeEfF
 	// Different bases
 	assert strconv.parse_int('16', 16, 0)! == 0x16
 	assert strconv.parse_int('16', 8, 0)! == 0o16
@@ -81,6 +84,32 @@ fn test_common_parse_uint2() {
 	result, error = strconv.common_parse_uint2('123a', 10, 8)
 	assert result == 123
 	assert error == 4
+}
+
+fn test_common_parse_uint2_fail() {
+	mut ascii_characters := [' ', '!', '"', '#', '\$', '%', '&', "'", '(', ')', '*', '+', ',',
+		'-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|',
+		'}', '~']
+	mut special_characters := [':', ';', '<', '=', '>', '?', '@', 'X', 'Y', 'Z', '[', '\\', ']',
+		'^', '_', '`']
+
+	num0, err0 := strconv.common_parse_uint2('1Ab', 16, 32)
+	assert num0 == 427
+	assert err0 == 0
+
+	for ch in ascii_characters {
+		// println("ch: [${ch}]")
+		txt_str := '${ch[0]:c}12Ab'
+		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		assert err != 0
+	}
+
+	for ch in special_characters {
+		// println("ch: [${ch}]")
+		txt_str := '${ch[0]:c}12Ab'
+		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		assert err != 0
+	}
 }
 
 fn test_common_parse_uint2_compatibility() {

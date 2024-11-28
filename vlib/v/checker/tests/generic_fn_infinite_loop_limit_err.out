@@ -1,0 +1,28 @@
+vlib/v/checker/tests/generic_fn_infinite_loop_limit_err.vv:6:2: warning: unused variable: `ff1`
+    4 | 
+    5 | fn main() {
+    6 |     ff1 := f1 // <-- missing e.g. `[int]`
+      |     ~~~
+    7 |     // ff1 := f1[int] <-- is a valid usage with generic return types that are not generic structs
+    8 | }
+vlib/v/checker/tests/generic_fn_infinite_loop_limit_err.vv:6:9: error: `f1` is a generic fn, you should pass its concrete types, e.g. f1[int]
+    4 | 
+    5 | fn main() {
+    6 |     ff1 := f1 // <-- missing e.g. `[int]`
+      |            ~~
+    7 |     // ff1 := f1[int] <-- is a valid usage with generic return types that are not generic structs
+    8 | }
+vlib/v/checker/tests/generic_fn_infinite_loop_limit_err.vv:6:9: error: `f1` is a generic fn, you should pass its concrete types, e.g. f1[int]
+    4 | 
+    5 | fn main() {
+    6 |     ff1 := f1 // <-- missing e.g. `[int]`
+      |            ~~
+    7 |     // ff1 := f1[int] <-- is a valid usage with generic return types that are not generic structs
+    8 | }
+vlib/v/checker/tests/generic_fn_infinite_loop_limit_err.vv:6:9: error: cannot assign `f1` as a generic function variable
+    4 | 
+    5 | fn main() {
+    6 |     ff1 := f1 // <-- missing e.g. `[int]`
+      |            ~~
+    7 |     // ff1 := f1[int] <-- is a valid usage with generic return types that are not generic structs
+    8 | }

@@ -5,7 +5,7 @@ pub fn do_test(cb AnonOptionalFun) {
 	cb() or { panic(err) }
 }
 
-fn foo () ! {
+fn foo() ! {
 }
 
 fn main() {

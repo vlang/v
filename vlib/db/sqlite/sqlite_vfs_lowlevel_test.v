@@ -1,18 +1,16 @@
 import db.sqlite
 import rand
 
-const (
-	max_file_name_len = 256
-)
+const max_file_name_len = 256
 
 fn test_vfs_register() {
-	org_default_vfs := sqlite.get_default_vfs()?
+	org_default_vfs := sqlite.get_default_vfs()!
 
 	assert org_default_vfs.zName != 0
 
 	vfs_name := 'sometest'
 	mut vfs_descr := &sqlite.Sqlite3_vfs{
-		zName: vfs_name.str
+		zName:    vfs_name.str
 		iVersion: 2
 	}
 
@@ -22,9 +20,9 @@ fn test_vfs_register() {
 
 	vfs_descr.register_as_nondefault() or { panic('vfs register failed ${err}') }
 
-	sqlite.get_vfs(vfs_name)?
+	sqlite.get_vfs(vfs_name)!
 
-	now_default_vfs := sqlite.get_default_vfs()?
+	now_default_vfs := sqlite.get_default_vfs()!
 
 	assert now_default_vfs.zName == org_default_vfs.zName
 
@@ -37,34 +35,34 @@ fn test_vfs_register() {
 
 // minimal vfs based on example https://www.sqlite.org/src/doc/trunk/src/test_demovfs.c
 fn test_verify_vfs_is_actually_used() {
-	wrapped := sqlite.get_default_vfs()?
+	wrapped := sqlite.get_default_vfs()!
 
 	vfs_name := 'sometest'
 	mut vfs_state := &ExampleVfsState{
 		log: []string{cap: 100}
 	}
 	mut vfs_descr := &sqlite.Sqlite3_vfs{
-		iVersion: 2
-		szOsFile: int(sizeof(ExampleVfsOpenedFile))
-		mxPathname: max_file_name_len
-		zName: vfs_name.str
-		pAppData: vfs_state
-		xOpen: example_vfs_open
-		xDelete: example_vfs_delete
-		xAccess: example_vfs_access
-		xFullPathname: example_vfs_fullpathname
-		xDlOpen: wrapped.xDlOpen
-		xDlError: wrapped.xDlError
-		xDlSym: wrapped.xDlSym
-		xDlClose: wrapped.xDlClose
-		xRandomness: wrapped.xRandomness
-		xSleep: wrapped.xSleep
-		xCurrentTime: wrapped.xCurrentTime
-		xGetLastError: example_vfs_getlasterror
+		iVersion:          2
+		szOsFile:          int(sizeof(ExampleVfsOpenedFile))
+		mxPathname:        max_file_name_len
+		zName:             vfs_name.str
+		pAppData:          vfs_state
+		xOpen:             example_vfs_open
+		xDelete:           example_vfs_delete
+		xAccess:           example_vfs_access
+		xFullPathname:     example_vfs_fullpathname
+		xDlOpen:           wrapped.xDlOpen
+		xDlError:          wrapped.xDlError
+		xDlSym:            wrapped.xDlSym
+		xDlClose:          wrapped.xDlClose
+		xRandomness:       wrapped.xRandomness
+		xSleep:            wrapped.xSleep
+		xCurrentTime:      wrapped.xCurrentTime
+		xGetLastError:     example_vfs_getlasterror
 		xCurrentTimeInt64: wrapped.xCurrentTimeInt64
 	}
 
-	vfs_descr.register_as_nondefault()?
+	vfs_descr.register_as_nondefault()!
 
 	// normally this would be written to disk
 	mut db := sqlite.connect_full('foo.db', [.readwrite, .create], vfs_name)!
@@ -137,7 +135,8 @@ fn example_vfs_access(vfs &sqlite.Sqlite3_vfs, zPath &char, flags int, pResOut &
 	return sqlite.sqlite_ok
 }
 
-fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &char, vfs_opened_file &sqlite.Sqlite3_file, in_flags int, out_flags &int) int {
+fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &char, vfs_opened_file &sqlite.Sqlite3_file,
+	in_flags int, out_flags &int) int {
 	println('open called')
 
 	mut is_temp := false
@@ -156,18 +155,18 @@ fn example_vfs_open(vfs &sqlite.Sqlite3_vfs, file_name_or_null_for_tempfile &cha
 	unsafe {
 		mut outp := to_vfsopenedfile(vfs_opened_file)
 		outp.base.pMethods = &sqlite.Sqlite3_io_methods{
-			iVersion: 1
-			xClose: example_vfsfile_close
-			xRead: example_vfsfile_read
-			xWrite: example_vfsfile_write
-			xTruncate: example_vfsfile_truncate
-			xSync: example_vfsfile_sync
-			xFileSize: example_vfsfile_size
-			xLock: example_vfsfile_lock
-			xUnlock: example_vfsfile_unlock
-			xCheckReservedLock: example_vfsfile_checkreservedlock
-			xFileControl: example_vfsfile_filecontrol
-			xSectorSize: example_vfsfile_sectorsize
+			iVersion:               1
+			xClose:                 example_vfsfile_close
+			xRead:                  example_vfsfile_read
+			xWrite:                 example_vfsfile_write
+			xTruncate:              example_vfsfile_truncate
+			xSync:                  example_vfsfile_sync
+			xFileSize:              example_vfsfile_size
+			xLock:                  example_vfsfile_lock
+			xUnlock:                example_vfsfile_unlock
+			xCheckReservedLock:     example_vfsfile_checkreservedlock
+			xFileControl:           example_vfsfile_filecontrol
+			xSectorSize:            example_vfsfile_sectorsize
 			xDeviceCharacteristics: example_vfsfile_devicecharacteristics
 		}
 
@@ -216,7 +215,7 @@ fn example_vfsfile_read(file &sqlite.Sqlite3_file, output voidptr, amount int, o
 	vfsfile.vfs_state.log << 'read file=${vfsfile.name}'
 
 	unsafe {
-		C.memset(output, 0, amount)
+		vmemset(output, 0, amount)
 	}
 
 	return sqlite.sqlite_ioerr_short_read

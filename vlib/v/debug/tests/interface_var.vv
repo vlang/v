@@ -1,0 +1,22 @@
+interface ITest {
+	a MySum
+}
+
+struct Test {
+	a MySum
+}
+
+type MySum = bool | int
+
+fn interface_var(a ITest) {
+	match a {
+		Test {
+			$dbg;
+		}
+		else {}
+	}
+}
+
+fn main() {
+	interface_var(Test{ a: true })
+}

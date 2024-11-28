@@ -24,6 +24,7 @@
 
 #include <psa/crypto.h>
 #include "psa_crypto_core.h"
+#include "psa_crypto_cipher.h"
 #include "psa_crypto_mac.h"
 #include <mbedtls/md.h>
 

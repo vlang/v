@@ -1,4 +1,4 @@
 struct User {
     name string
-    jobs []string [json:jobss;]
+    jobs []string @[json:jobss;]
 }

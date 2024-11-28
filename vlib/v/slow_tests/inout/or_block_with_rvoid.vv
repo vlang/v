@@ -1,0 +1,65 @@
+struct Encoder {}
+
+struct Writer {}
+
+struct StructTypePointer[T] {
+mut:
+	val &T
+}
+
+pub struct Null {
+	is_null bool = true
+}
+
+pub const null = Null{}
+
+pub fn (e &Encoder) encode_value[T](val T, mut wr Writer) ! {
+	e.encode_struct[T](val, 1, mut wr)!
+}
+
+fn (e &Encoder) encode_struct[U](val U, level int, mut wr Writer) ! {
+	$for field in U.fields {
+		$if field.indirections > 0 {
+			println('aaaaaaaaaaaaaaaaaaaa')
+		} $else {
+			println('bbbbbbbbbbbbbbbbbbbb')
+		}
+	}
+}
+
+fn main() {
+	e := Encoder{}
+
+	mut sb := Writer{}
+	mut string_initialized_with_reference := 'ads'
+
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
+		sb) or {
+		println(err)
+		e.encode_value[Null](null, mut sb) or {}
+	}
+
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
+		sb) or {
+		println(err)
+		e.encode_value[Null](null, mut sb) or {}
+	}
+
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
+		sb) or {
+		println(err)
+		e.encode_value[Null](null, mut sb) or {}
+	}
+
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
+		sb) or {
+		dump(err)
+		e.encode_value[Null](null, mut sb) or {}
+	}
+
+	e.encode_value(StructTypePointer[string]{ val: &string_initialized_with_reference }, mut
+		sb) or {
+		dump(err)
+		e.encode_value[Null](null, mut sb) or {}
+	}
+}

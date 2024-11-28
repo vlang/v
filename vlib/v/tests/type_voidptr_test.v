@@ -1,4 +1,4 @@
-[unsafe]
+@[unsafe]
 fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
 	mut d := unsafe { &u8(dest) }
 	s := unsafe { &u8(src) }

@@ -1,8 +1,6 @@
 import sync
 
-const (
-	num_iterations = 10000
-)
+const num_iterations = 10000
 
 fn get_val_from_chan(ch chan i64) ?i64 {
 	r := <-ch?

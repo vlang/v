@@ -1,0 +1,9 @@
+fn main() {
+	b := i64(100)
+
+	match b {
+		i64 { println('i64') }
+		100 { println(100) }
+		else {}
+	}
+}

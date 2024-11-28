@@ -9,12 +9,12 @@ fn interpreter_wrap(a string) string {
 }
 
 fn interp_test(expression string, expected string) ! {
-	tmpdir := os.join_path(os.vtmp_dir(), 'v', 'interpret_test_${rand.ulid()}')
+	tmpdir := os.join_path(os.vtmp_dir(), 'interpret_test_${rand.ulid()}')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}
 	}
-	//
+
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression))!
@@ -48,6 +48,8 @@ fn test_interpreter() {
 	tests << InterpTest{'println(3-4)', '-1'}
 	tests << InterpTest{'println(3*3)', '9'}
 	tests << InterpTest{'a := 3\nprintln(a*3)', '9'}
+	tests << InterpTest{'arr := [10,20,30]\nprintln(arr[1])', '20'}
+	tests << InterpTest{'fa := [10,20,30]!\nprintln(fa[2])', '30'}
 	for test in tests {
 		interp_test(test.input, test.output)!
 		assert true

@@ -1,8 +1,6 @@
-const (
-	unsorted    = [2, 30, 10, 20, 1]
-	sorted_asc  = [1, 2, 10, 20, 30]
-	sorted_desc = [30, 20, 10, 2, 1]
-)
+const unsorted = [2, 30, 10, 20, 1]
+const sorted_asc = [1, 2, 10, 20, 30]
+const sorted_desc = [30, 20, 10, 2, 1]
 
 fn test_sorting_simple() {
 	mut a := unsorted.clone()

@@ -30,9 +30,9 @@ fn encode_from_buffer(dest &u8, src &u8, src_len int) int {
 		unsafe {
 			val := u32(d[si + 0]) << 16 | u32(d[si + 1]) << 8 | u32(d[si + 2])
 
-			b[di + 0] = etable[val >> 18 & 0x3F]
-			b[di + 1] = etable[val >> 12 & 0x3F]
-			b[di + 2] = etable[val >> 6 & 0x3F]
+			b[di + 0] = etable[(val >> 18) & 0x3F]
+			b[di + 1] = etable[(val >> 12) & 0x3F]
+			b[di + 2] = etable[(val >> 6) & 0x3F]
 			b[di + 3] = etable[val & 0x3F]
 		}
 		si += 3
@@ -51,12 +51,12 @@ fn encode_from_buffer(dest &u8, src &u8, src_len int) int {
 			val |= u32(d[si + 1]) << 8
 		}
 
-		b[di + 0] = etable[val >> 18 & 0x3F]
-		b[di + 1] = etable[val >> 12 & 0x3F]
+		b[di + 0] = etable[(val >> 18) & 0x3F]
+		b[di + 1] = etable[(val >> 12) & 0x3F]
 
 		match remain {
 			2 {
-				b[di + 2] = etable[val >> 6 & 0x3F]
+				b[di + 2] = etable[(val >> 6) & 0x3F]
 				b[di + 3] = u8(`=`)
 			}
 			1 {
@@ -129,7 +129,7 @@ fn decode_from_buffer(dest &u8, src &u8, src_len int) int {
 				u8(index[d[si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]), u8(index[d[si + 5]]),
 				u8(index[d[si + 6]]), u8(index[d[si + 7]]))
 
-			// Reading out the individual bytes from the u64. Watch out with endianess.
+			// Reading out the individual bytes from the u64. Watch out with endianness.
 			$if little_endian {
 				b[n_decoded_bytes + 0] = datablock_64.data_byte[7]
 				b[n_decoded_bytes + 1] = datablock_64.data_byte[6]

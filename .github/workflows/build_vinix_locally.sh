@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
@@ -21,36 +21,36 @@ mkdir -p $BUILD
 
 cd $BUILD
 echo "Clone current Vinix"
-git clone https://github.com/vlang/vinix.git --depth=1
+./v retry -- git clone --depth=1 https://github.com/vlang/vinix.git
 
 cd $BUILD
 echo "Clone current mlibc"
-git clone https://github.com/managarm/mlibc.git --depth=1
+./v retry -- git clone --depth=1 https://github.com/managarm/mlibc.git
 
 cd $BUILD
 echo "Patch mlibc for Vinix"
-cd mlibc 
+cd mlibc
 patch -p3 < ../vinix/patches/mlibc/mlibc.patch
 
 cd $BUILD
 echo "Install mlibc headers"
-mkdir mlibc-build 
-cd mlibc-build 
-meson --cross-file ../vinix/cross_file.txt --prefix=/ -Dheaders_only=true ../mlibc 
-ninja 
-mkdir ../mlibc-headers 
+mkdir mlibc-build
+cd mlibc-build
+meson --cross-file ../vinix/cross_file.txt --prefix=/ -Dheaders_only=true ../mlibc
+ninja
+mkdir ../mlibc-headers
 DESTDIR=`realpath ../mlibc-headers` ninja install
 
 cd $BUILD
 echo "Attempt to build the Vinix kernel (debug)"
-cd vinix/kernel 
-make PROD=false CFLAGS="-D__vinix__ -O2 -g -pipe -I../../mlibc-headers/include" 
+cd vinix/kernel
+make PROD=false CFLAGS="-D__vinix__ -O2 -g -pipe -I../../mlibc-headers/include"
 make clean
 
 cd $BUILD
 echo "Attempt to build the Vinix kernel (prod)"
-cd vinix/kernel 
-make PROD=true  CFLAGS="-D__vinix__ -O2 -g -pipe -I../../mlibc-headers/include" 
+cd vinix/kernel
+make PROD=true  CFLAGS="-D__vinix__ -O2 -g -pipe -I../../mlibc-headers/include"
 make clean
 
 rm -rf $BUILD

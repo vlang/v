@@ -1,0 +1,112 @@
+vlib/v/checker/tests/orm_db_expr_option_error.vv:16:11: error: expected `sqlite.DB`, not `?sqlite.DB`
+   14 |     db_option := connect_option()
+   15 | 
+   16 |     _ := sql db_option {
+      |              ~~~~~~~~~
+   17 |         select from Account
+   18 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `select` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `insert` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `update` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `delete` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `create` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `drop` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:22:11: error: `Account` doesn't implement method `last_id` of interface `orm.Connection`
+   20 |     account := Account{}
+   21 | 
+   22 |     _ := sql account {
+      |              ~~~~~~~
+   23 |         select from Account
+   24 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `select` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `insert` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `update` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `delete` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `create` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `drop` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:26:6: error: `Account` doesn't implement method `last_id` of interface `orm.Connection`
+   24 |     }!
+   25 | 
+   26 |     sql account {
+      |         ~~~~~~~
+   27 |         insert account into Account
+   28 |     }!
+vlib/v/checker/tests/orm_db_expr_option_error.vv:30:6: error: expected `sqlite.DB`, not `?sqlite.DB`
+   28 |     }!
+   29 | 
+   30 |     sql db_option {
+      |         ~~~~~~~~~
+   31 |         insert account into Account
+   32 |     }!

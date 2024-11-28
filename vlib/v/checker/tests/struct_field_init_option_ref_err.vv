@@ -1,0 +1,14 @@
+module main
+
+struct Foo {}
+
+struct Bar {
+	field ?&Foo
+}
+
+fn main() {
+	foo := ?Foo{}
+	_ := Bar{
+		field: foo
+	}
+}

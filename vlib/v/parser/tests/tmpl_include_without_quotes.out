@@ -1,0 +1,7 @@
+vlib/v/parser/tests/tmpl/include.txt:3:10: error: path for @include must be quoted with ' or "
+    1 | some text
+    2 | 
+    3 | @include abc.txt
+      |          ~~~~~~~
+    4 | 
+    5 | some more text

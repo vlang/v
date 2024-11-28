@@ -1,0 +1,7 @@
+vlib/v/checker/tests/like_operator_outside_orm_2_error.vv:3:14: error: only `c`, `r`, `js` are recognized string prefixes, but you tried to use `like`
+    1 | fn main() {
+    2 |     name := 'Luke'
+    3 |     ret := name like 'L%'
+      |                 ~~~~
+    4 |     println(ret)
+    5 | }

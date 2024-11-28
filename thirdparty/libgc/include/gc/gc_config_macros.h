@@ -10,7 +10,7 @@
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
  *
  * Permission is hereby granted to use or copy this program
- * for any purpose,  provided the above notices are retained on all copies.
+ * for any purpose, provided the above notices are retained on all copies.
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
@@ -20,13 +20,46 @@
 /* We separate it only to make gc.h more suitable as documentation.       */
 #if defined(GC_H)
 
-/* Convenient internal macro to test version of GCC.    */
+/* Convenient internal macro to test version of gcc.    */
 #if defined(__GNUC__) && defined(__GNUC_MINOR__)
 # define GC_GNUC_PREREQ(major, minor) \
-            ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((major) << 16) + (minor))
+            ((__GNUC__ << 8) + __GNUC_MINOR__ >= ((major) << 8) + (minor))
 #else
 # define GC_GNUC_PREREQ(major, minor) 0 /* FALSE */
 #endif
+
+/* A macro to define integer types of a pointer size.  There seems to   */
+/* be no way to do this even semi-portably.  The following is probably  */
+/* no better/worse than almost anything else.                           */
+/* The ANSI standard suggests that size_t and ptrdiff_t might be        */
+/* better choices.  But those had incorrect definitions on some older   */
+/* systems; notably "typedef int size_t" is wrong.                      */
+#ifdef _WIN64
+# if defined(__int64) && !defined(CPPCHECK)
+#   define GC_SIGNEDWORD __int64
+# else
+#   define GC_SIGNEDWORD long long
+# endif
+#else
+# define GC_SIGNEDWORD long
+#endif
+#define GC_UNSIGNEDWORD unsigned GC_SIGNEDWORD
+
+/* Size of a pointer in bytes.  */
+#if defined(__SIZEOF_POINTER__)
+# define GC_SIZEOF_PTR __SIZEOF_POINTER__
+#elif defined(__LP64__) || defined (_LP64) || defined(_WIN64) \
+        || defined(__alpha__) || defined(__arch64__) \
+        || defined(__powerpc64__) || defined(__s390x__) \
+        || (defined(__x86_64__) && !defined(__ILP32__))
+# define GC_SIZEOF_PTR 8
+#else
+# define GC_SIZEOF_PTR 4
+#endif
+
+/* The return type of GC_get_version().  A 32-bit unsigned integer  */
+/* or longer.                                                       */
+# define GC_VERSION_VAL_T unsigned
 
 /* Some tests for old macros.  These violate our namespace rules and    */
 /* will disappear shortly.  Use the GC_ names.                          */
@@ -309,7 +342,7 @@
 
 #if defined(__sgi) && !defined(__GNUC__) && _COMPILER_VERSION >= 720
 # define GC_ADD_CALLER
-# define GC_RETURN_ADDR (GC_word)__return_address
+# define GC_RETURN_ADDR (GC_return_addr_t)__return_address
 #endif
 
 #if defined(__linux__) || defined(__GLIBC__)
@@ -328,17 +361,15 @@
 #endif /* GLIBC */
 
 #if defined(_MSC_VER) && _MSC_VER >= 1200 /* version 12.0+ (MSVC 6.0+) */ \
+        && !defined(_M_ARM) && !defined(_M_ARM64) \
         && !defined(_AMD64_) && !defined(_M_X64) && !defined(_WIN32_WCE) \
         && !defined(GC_HAVE_NO_BUILTIN_BACKTRACE) \
         && !defined(GC_HAVE_BUILTIN_BACKTRACE)
 # define GC_HAVE_BUILTIN_BACKTRACE
 #endif
 
-#if defined(GC_HAVE_BUILTIN_BACKTRACE) && !defined(GC_CAN_SAVE_CALL_STACKS)
-# define GC_CAN_SAVE_CALL_STACKS
-#endif
-
-#if defined(__sparc__)
+#if defined(GC_HAVE_BUILTIN_BACKTRACE) && !defined(GC_CAN_SAVE_CALL_STACKS) \
+    || defined(__sparc__)
 # define GC_CAN_SAVE_CALL_STACKS
 #endif
 
@@ -358,19 +389,20 @@
 # if GC_GNUC_PREREQ(2, 95)
     /* gcc knows how to retrieve return address, but we don't know      */
     /* how to generate call stacks.                                     */
-#   define GC_RETURN_ADDR (GC_word)__builtin_return_address(0)
+#   define GC_RETURN_ADDR (GC_return_addr_t)__builtin_return_address(0)
 #   if GC_GNUC_PREREQ(4, 0) && (defined(__i386__) || defined(__amd64__) \
                         || defined(__x86_64__) /* and probably others... */) \
        && !defined(GC_NO_RETURN_ADDR_PARENT)
 #     define GC_HAVE_RETURN_ADDR_PARENT
 #     define GC_RETURN_ADDR_PARENT \
-        (GC_word)__builtin_extract_return_addr(__builtin_return_address(1))
+                (GC_return_addr_t)__builtin_extract_return_addr( \
+                                        __builtin_return_address(1))
             /* Note: a compiler might complain that calling                 */
             /* __builtin_return_address with a nonzero argument is unsafe.  */
 #   endif
 # else
     /* Just pass 0 for gcc compatibility.       */
-#   define GC_RETURN_ADDR 0
+#   define GC_RETURN_ADDR ((GC_return_addr_t)0)
 # endif
 #endif /* !GC_CAN_SAVE_CALL_STACKS */
 
@@ -384,7 +416,7 @@
 # endif
 
 # if (defined(GC_DARWIN_THREADS) || defined(GC_WIN32_PTHREADS) \
-      || defined(GC_OPENBSD_THREADS) || defined(__native_client__)) \
+      || defined(__native_client__)) \
      && !defined(GC_NO_PTHREAD_SIGMASK)
     /* Either there is no pthread_sigmask() or no need to intercept it. */
 #   define GC_NO_PTHREAD_SIGMASK
@@ -449,6 +481,14 @@
 #   define GC_NOEXCEPT noexcept
 # else
 #   define GC_NOEXCEPT throw()
+# endif
+#endif
+
+#ifndef GC_CONSTEXPR
+# if __cplusplus >= 202002L
+#   define GC_CONSTEXPR constexpr
+# else
+#   define GC_CONSTEXPR /* empty */
 # endif
 #endif
 

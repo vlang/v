@@ -1,4 +1,4 @@
-[_naked]
+@[_naked]
 fn naked_fn() {
 	asm amd64 {
 		push rbp

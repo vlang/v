@@ -6,14 +6,12 @@ $if linux {
 	#flag -ldl
 }
 
-pub const (
-	rtld_now      = C.RTLD_NOW
-	rtld_lazy     = C.RTLD_LAZY
-	rtld_global   = C.RTLD_GLOBAL
-	rtld_local    = C.RTLD_LOCAL
-	rtld_nodelete = C.RTLD_NODELETE
-	rtld_noload   = C.RTLD_NOLOAD
-)
+pub const rtld_now = C.RTLD_NOW
+pub const rtld_lazy = C.RTLD_LAZY
+pub const rtld_global = C.RTLD_GLOBAL
+pub const rtld_local = C.RTLD_LOCAL
+pub const rtld_nodelete = C.RTLD_NODELETE
+pub const rtld_noload = C.RTLD_NOLOAD
 
 fn C.dlopen(filename &char, flags int) voidptr
 
@@ -23,7 +21,7 @@ fn C.dlclose(handle voidptr) int
 
 fn C.dlerror() &char
 
-// open loads the dynamic shared object.
+// open loads a given dynamic shared object.
 pub fn open(filename string, flags int) voidptr {
 	return C.dlopen(&char(filename.str), flags)
 }

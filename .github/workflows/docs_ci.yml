@@ -7,17 +7,25 @@ name: Docs CI
 on:
   push:
     paths-ignore:
-      - "**.yml"
+      - '**.yml'
+      - '!**/docs_ci.yml'
+      - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
-      - "**.yml"
+      - '**.yml'
+      - '!**/docs_ci.yml'
+      - 'cmd/tools/vrepl.v'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check-markdown:
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
         run: make
       - name: Check markdown line length & code examples
@@ -29,19 +37,19 @@ jobs:
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     env:
-      MOPTIONS: --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
+      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
         run: make
 
       - name: Checkout previous v
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: vlang/v
-          ref: master   # important
+          ref: master # important
           path: pv
 
       - name: Check against parent commit
         run: |
-          ./v missdoc --diff $MOPTIONS pv/vlib vlib
+          ./v missdoc $MOPTIONS pv/vlib vlib

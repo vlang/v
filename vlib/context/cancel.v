@@ -17,29 +17,16 @@ mut:
 	done() chan int
 }
 
-[deprecated]
-pub fn cancel(mut ctx Context) {
-	match mut ctx {
-		CancelContext {
-			ctx.cancel(true, canceled)
-		}
-		TimerContext {
-			ctx.cancel(true, canceled)
-		}
-		else {}
-	}
-}
-
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement Canceler.
 pub struct CancelContext {
 	id string
 mut:
 	context  Context
-	mutex    &sync.Mutex
+	mutex    &sync.Mutex = sync.new_mutex()
 	done     chan int
 	children map[string]Canceler
-	err      IError
+	err      IError = none
 }
 
 // with_cancel returns a copy of parent with a new done channel. The returned
@@ -60,11 +47,11 @@ pub fn with_cancel(mut parent Context) (Context, CancelFn) {
 // new_cancel_context returns an initialized CancelContext.
 fn new_cancel_context(parent Context) &CancelContext {
 	return &CancelContext{
-		id: rand.uuid_v4()
+		id:      rand.uuid_v4()
 		context: parent
-		mutex: sync.new_mutex()
-		done: chan int{cap: 2}
-		err: none
+		mutex:   sync.new_mutex()
+		done:    chan int{cap: 2}
+		err:     none
 	}
 }
 
@@ -73,14 +60,14 @@ pub fn (ctx &CancelContext) deadline() ?time.Time {
 }
 
 pub fn (mut ctx CancelContext) done() chan int {
-	ctx.mutex.@lock()
+	ctx.mutex.lock()
 	done := ctx.done
 	ctx.mutex.unlock()
 	return done
 }
 
 pub fn (mut ctx CancelContext) err() IError {
-	ctx.mutex.@lock()
+	ctx.mutex.lock()
 	err := ctx.err
 	ctx.mutex.unlock()
 	return err
@@ -102,7 +89,7 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
 		panic('context: internal error: missing cancel error')
 	}
 
-	ctx.mutex.@lock()
+	ctx.mutex.lock()
 	if ctx.err !is none {
 		ctx.mutex.unlock()
 		// already canceled

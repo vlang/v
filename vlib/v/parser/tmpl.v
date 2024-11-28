@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -14,8 +14,8 @@ enum State {
 	// for example for interpolating arbitrary source code (even V source) templates.
 	//
 	html // default, only when the template extension is .html
-	css // <style>
-	js // <script>
+	css  // <style>
+	js   // <script>
 	// span // span.{
 }
 
@@ -75,11 +75,10 @@ fn is_html_open_tag(name string, s string) bool {
 
 fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
 	// HTML, may include `@var`
-	// escaped by cgen, unless it's a `vweb.RawHtml` string
-	trailing_bs := parser.tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
-	round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
-	round2 := [r'$$', r'\@', r'.$', r'.@']
-	mut rline := line.replace_each(round1).replace_each(round2)
+	// escaped by cgen, unless it's a `veb.RawHtml` string
+	trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
+	replace_pairs := ['\\', '\\\\', r"'", "\\'", r'@@', r'@', r'@', r'$', r'$$', r'\@']
+	mut rline := line.replace_each(replace_pairs)
 	comptime_call_str := rline.find_between('\${', '}')
 	if comptime_call_str.contains("\\'") {
 		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
@@ -87,8 +86,129 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	if rline.ends_with('\\') {
 		rline = rline[0..rline.len - 2] + trailing_bs
 	}
-
 	return rline
+}
+
+// struct to track dependecies and cache templates for reuse without io
+struct DependencyCache {
+pub mut:
+	dependencies map[string][]string
+	cache        map[string][]string
+}
+
+// custom error to handle issues when including template files
+struct IncludeError {
+	Error
+pub:
+	calling_file string
+	line_nr      int
+	position     int
+	col          int
+	message      string
+}
+
+fn (err IncludeError) msg() string {
+	return err.message
+}
+
+fn (err IncludeError) line_nr() int {
+	return err.line_nr
+}
+
+fn (err IncludeError) pos() int {
+	return err.position
+}
+
+fn (err IncludeError) calling_file() string {
+	return err.calling_file
+}
+
+fn (err IncludeError) col() int {
+	return err.col
+}
+
+fn (mut p Parser) process_includes(calling_file string, line_number int, line string, mut dc DependencyCache) ![]string {
+	base_path := os.dir(calling_file)
+	mut tline_number := line_number
+	mut file_name := if line.contains('"') {
+		line.split('"')[1]
+	} else if line.contains("'") {
+		line.split("'")[1]
+	} else {
+		position := line.index('@include ') or { 0 }
+		return &IncludeError{
+			calling_file: calling_file
+			line_nr:      tline_number // line_number
+			position:     position + '@include '.len
+			col:          position + '@include '.len
+			message:      'path for @include must be quoted with \' or "'
+		}
+	}
+	mut file_ext := os.file_ext(file_name)
+	if file_ext == '' {
+		file_ext = '.html'
+	}
+	file_name = file_name.replace(file_ext, '')
+	mut file_path := os.real_path(os.join_path_single(base_path, '${file_name}${file_ext}'))
+
+	if !os.exists(file_path) && !file_name.contains('../') {
+		// the calling file is probably original way (relative to calling file) and works from the root folder
+		path_arr := base_path.split_any('/\\')
+		idx := path_arr.index('templates')
+		root_path := path_arr[..idx + 1].join('/')
+		file_name = file_name.rsplit('../')[0]
+		file_path = os.real_path(os.join_path_single(root_path, '${file_name}${file_ext}'))
+	}
+
+	// If file hasnt been called before then add to dependency tree
+	if !dc.dependencies[file_path].contains(calling_file) {
+		dc.dependencies[file_path] << calling_file
+	}
+
+	// Circular import detection
+	for callee in dc.dependencies[file_path] {
+		if dc.dependencies[callee].contains(file_path) {
+			return &IncludeError{
+				calling_file: calling_file
+				line_nr:      tline_number
+				position:     line.index('@include ') or { 0 }
+				message:      'A recursive call is being made on template ${file_name}'
+			}
+		}
+	}
+	mut file_content := []string{}
+	if file_path in dc.cache {
+		file_content = dc.cache[file_path]
+	} else {
+		file_content = os.read_lines(file_path) or {
+			position := line.index('@include ') or { 0 } + '@include '.len
+			return &IncludeError{
+				calling_file: calling_file
+				line_nr:      tline_number // line_number
+				position:     position
+				message:      'Reading file `${file_name}` from path: ${file_path} failed'
+			}
+		}
+	}
+	// no errors detected in calling file - reset tline_number (error reporting)
+	tline_number = 1
+
+	// loop over the imported file
+	for i, l in file_content {
+		if l.contains('@include ') {
+			processed := p.process_includes(file_path, tline_number, l, mut dc) or { return err }
+			file_content.delete(i) // remove the include line
+			for processed_line in processed.reverse() {
+				file_content.insert(i, processed_line)
+				tline_number--
+			}
+		}
+	}
+	// Add template to parser for reloading
+	p.template_paths << file_path
+	// Add the imported template to the cache
+	dc.cache[file_path] = file_content
+	return file_content
 }
 
 // compile_file compiles the content of a file by the given path as a template
@@ -98,25 +218,26 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 		return ''
 	}
 	p.template_paths << template_file
-	basepath := os.dir(template_file)
+	// create a new Dependency tree & cache any templates to avoid further io
+	mut dc := DependencyCache{}
 	lstartlength := lines.len * 30
 	tmpl_str_start := "\tsb_${fn_name}.write_string('"
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
-// === vweb html template ===
-fn vweb_tmpl_${fn_name}() string {
+// === veb html template for file: ${template_file} ===
+fn veb_tmpl_${fn_name}() string {
 	mut sb_${fn_name} := strings.new_builder(${lstartlength})\n
 
 ')
 	source.write_string(tmpl_str_start)
-	//
+
 	mut state := State.simple
 	template_ext := os.file_ext(template_file)
-	if template_ext.to_lower() == '.html' {
+	if template_ext.to_lower_ascii() == '.html' {
 		state = .html
 	}
-	//
+
 	mut in_span := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
@@ -135,104 +256,99 @@ fn vweb_tmpl_${fn_name}() string {
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
 			p.error_with_error(errors.Error{
-				message: "Please use @include 'header' instead of @header (deprecated)"
+				message:   "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
-				pos: token.Pos{
-					len: '@header'.len
-					line_nr: tline_number
-					pos: start_of_line_pos + position
+				pos:       token.Pos{
+					len:       '@header'.len
+					line_nr:   tline_number
+					pos:       start_of_line_pos + position
 					last_line: lines.len
 				}
-				reporter: .parser
+				reporter:  .parser
 			})
 			continue
 		}
 		if line.contains('@footer') {
 			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
-				message: "Please use @include 'footer' instead of @footer (deprecated)"
+				message:   "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
-				pos: token.Pos{
-					len: '@footer'.len
-					line_nr: tline_number
-					pos: start_of_line_pos + position
+				pos:       token.Pos{
+					len:       '@footer'.len
+					line_nr:   tline_number
+					pos:       start_of_line_pos + position
 					last_line: lines.len
 				}
-				reporter: .parser
+				reporter:  .parser
 			})
 			continue
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
-			mut file_name := line.split("'")[1]
-			mut file_ext := os.file_ext(file_name)
-			if file_ext == '' {
-				file_ext = '.html'
+			resolved := p.process_includes(template_file, tline_number, line, mut &dc) or {
+				if err is IncludeError {
+					p.error_with_error(errors.Error{
+						message:   err.msg()
+						file_path: err.calling_file()
+						pos:       token.Pos{
+							len:       '@include '.len
+							line_nr:   err.line_nr()
+							pos:       start_of_line_pos + err.pos()
+							col:       err.col()
+							last_line: lines.len
+						}
+						reporter:  .parser
+					})
+					[]string{}
+				} else {
+					p.error_with_error(errors.Error{
+						message:   'An unknown error has occurred'
+						file_path: template_file
+						pos:       token.Pos{
+							len:       '@include '.len
+							line_nr:   tline_number
+							pos:       start_of_line_pos
+							last_line: lines.len
+						}
+						reporter:  .parser
+					})
+					[]string{}
+				}
 			}
-			file_name = file_name.replace(file_ext, '')
-			// relative path, starting with the current folder
-			mut templates_folder := os.real_path(basepath)
-			if file_name.contains('/') && file_name.starts_with('/') {
-				// an absolute path
-				templates_folder = ''
-			}
-			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
-			$if trace_tmpl ? {
-				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
-			}
-			file_content := os.read_file(file_path) or {
-				position := line.index('@include ') or { 0 } + '@include '.len
-				p.error_with_error(errors.Error{
-					message: 'Reading file ${file_name} from path: ${file_path} failed'
-					details: "Failed to @include '${file_name}'"
-					file_path: template_file
-					pos: token.Pos{
-						len: '@include '.len + file_name.len
-						line_nr: tline_number
-						pos: start_of_line_pos + position
-						last_line: lines.len
-					}
-					reporter: .parser
-				})
-				''
-			}
-			p.template_paths << file_path
-			file_splitted := file_content.split_into_lines().reverse()
-			for f in file_splitted {
+			for resolved_line in resolved.reverse() {
 				tline_number--
-				lines.insert(i, f)
+				lines.insert(i, resolved_line)
 			}
+
 			i--
 			continue
 		}
 		if line.contains('@if ') {
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
-			source.writeln(tmpl_str_start)
+			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@end') {
-			// Remove new line byte
-			source.go_back(1)
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			source.writeln('}')
-			source.writeln(tmpl_str_start)
+			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@else') {
-			// Remove new line byte
-			source.go_back(1)
-			source.writeln(parser.tmpl_str_end)
-			source.writeln(' } else { ')
-			source.writeln(tmpl_str_start)
+			source.writeln(tmpl_str_end)
+			pos := line.index('@else') or { continue }
+			source.writeln('}' + line[pos + 1..] + '{')
+			// source.writeln(' } else { ')
+			source.write_string(tmpl_str_start)
 			continue
 		}
 		if line.contains('@for') {
-			source.writeln(parser.tmpl_str_end)
+			source.writeln(tmpl_str_end)
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
-			source.writeln(tmpl_str_start)
+			source.write_string(tmpl_str_start)
 			continue
 		}
 		if state == .simple {
@@ -240,6 +356,7 @@ fn vweb_tmpl_${fn_name}() string {
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 			continue
 		}
+		// in_write = false
 		// The .simple mode ends here. The rest handles .html/.css/.js state transitions.
 
 		if state != .simple {
@@ -309,17 +426,40 @@ fn vweb_tmpl_${fn_name}() string {
 			}
 			else {}
 		}
-		// by default, just copy 1:1
-		source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+
+		if pos := line.index('%') {
+			// %translation_key => ${tr('translation_key')}
+			mut line_ := line
+			if pos + 1 < line.len && line[pos + 1].is_letter() { //|| line[pos + 1] == '_' {
+				mut end := pos + 1
+				for end < line.len && (line[end].is_letter() || line[end] == `_`) {
+					end++
+				}
+				key := line[pos + 1..end]
+				// println('GOT tr key line="${line}" key="${key}"')
+				// source.writeln('\${tr("${key}")}')
+				line_ = line.replace('%${key}', '\${veb.tr(ctx.lang.str(), "${key}")}')
+				// i += key.len
+			}
+			// println(source.str())
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line_))
+			// exit(0)
+		} else {
+			// by default, just copy 1:1
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+		}
 	}
 
-	source.writeln(parser.tmpl_str_end)
+	source.writeln(tmpl_str_end)
 	source.writeln('\t_tmpl_res_${fn_name} := sb_${fn_name}.str() ')
 	source.writeln('\treturn _tmpl_res_${fn_name}')
 	source.writeln('}')
-	source.writeln('// === end of vweb html template_file: ${template_file} ===')
+	source.writeln('// === end of veb html template_file: ${template_file} ===')
 
-	result := source.str()
+	mut result := source.str()
+	if result.contains('veb.') {
+		result = 'import veb\n' + result
+	}
 	$if trace_tmpl_expansion ? {
 		eprintln('>>>>>>> template expanded to:')
 		eprintln(result)

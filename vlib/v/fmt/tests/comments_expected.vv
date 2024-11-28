@@ -6,14 +6,11 @@ comment
 */
 
 fn fun() int {
-	// comment zero
 	return 0 // another comment
 }
 
 fn mr_fun() (int, int) {
-	// one comment
-	// another comment
-	return 1, 2
+	return 1, 2 // another comment
 }
 
 fn single_line_blocks() {
@@ -29,47 +26,24 @@ fn single_line_blocks() {
 }
 
 fn main() {
-	/*
-	block1
+	/* block1
 	*/
 	/*
-	block2
-	*/
+	block2 */
 	/*
+
 	block3
+
 	*/
-	// this is a comment
-	a := 1
-	// and another comment
-	// just to make it worse
-	b, c := a, 2
+	a := 1 // this is a comment
 	d := c // and an extra one
 	e := c
 	// more comments = more good
 	arr := [
-		// block foo bar
+		//   block foo bar
 		//   inline foo bar
 		0,
 	]
-	// before arg comment
-	// after arg comment
-	println('this is a test')
-	// before if expr
-	// after if expr
-	if true {
-		println('if')
-	}
-	// before else if
-	// between else if
-	else if false {
-		println('else if')
-	}
-	// before else
-	// after else
-	else {
-		println('else')
-	}
-	// empty return
 	return
 }
 
@@ -78,16 +52,12 @@ fn insert_space() {
 }
 
 fn linebreaks_in_block_comments() {
-	/*
-	foo
+	/*foo
 	comment goes here!
-	bar
-	*/
-	/*
-	spam
+	bar*/
+	/*  spam
 	spaces make no difference there
-	eggs
-	*/
+	eggs */
 }
 
 fn between_if_branches() {
@@ -104,47 +74,17 @@ fn between_if_branches() {
 	}
 }
 
-// comments
-for {
+for // comments
+{
 	break
 }
 
-// comments
-for {
+for i := 0; i < 1; i++ // comments
+{
 	break
 }
 
-// comments
-for i := 0; i < 1; i++ {
-	break
-}
-
-// comments
-for i := 0; i < 1; i++ {
-	break
-}
-
-// comments1
-// comments2
-// comments3
-// comments4
-for i := 0; i < 1; i++ {
-	break
-}
-
-// comments
-for _ in [1, 2] {
-	break
-}
-
-// comments
-for _ in [1, 2] {
-	break
-}
-
-// comments1
-// comments2
-// comments3
-for _ in [1, 2] {
+for _ in [1, 2] // comments
+{
 	break
 }

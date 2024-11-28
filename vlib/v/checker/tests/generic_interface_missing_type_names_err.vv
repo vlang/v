@@ -1,19 +1,28 @@
 interface Output[T] {
-  val T
-  name string
+	val  T
+	name string
 }
 
 struct Coil {
-  pub mut: val int
-  pub: name string [required]
+pub mut:
+	val int
+pub:
+	name string @[required]
 }
+
 struct Light {
-  pub mut: val int
-  pub: name string [required]
+pub mut:
+	val int
+pub:
+	name string @[required]
 }
 
 fn main() {
-  mut outs := []Output{}
-  outs << Coil { name: 'outhole' }
-  outs << Light { name: 'shoot again' }
+	mut outs := []Output{}
+	outs << Coil{
+		name: 'outhole'
+	}
+	outs << Light{
+		name: 'shoot again'
+	}
 }

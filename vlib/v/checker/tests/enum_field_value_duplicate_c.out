@@ -1,0 +1,8 @@
+vlib/v/checker/tests/enum_field_value_duplicate_c.vv:6:16: error: enum value `1` already exists
+    4 |     gpu         = (1 << 1)
+    5 |     accelerator = (1 << 2)
+    6 |     default     = (1 << 0)
+      |                   ~~~~~~~~
+    7 |     all         = 0xFFFFFFFF
+    8 | }
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed

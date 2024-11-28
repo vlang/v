@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2003 Hewlett-Packard Development Company, L.P.
+ * Copyright (c) 2009-2021 Ivan Maidanski
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,18 +21,26 @@
  * SOFTWARE.
  */
 
-/* If AO_ASSUME_VISTA is defined, we assume Windows Server 2003, Vista  */
-/* or later.                                                            */
-
 #include "../all_aligned_atomic_load_store.h"
 
-#include "../test_and_set_t_is_char.h"
+#if !defined(AO_ASSUME_VISTA) && _MSC_VER >= 1910
+  /* Visual Studio 2017 (15.0) discontinued support of Windows XP.  */
+  /* We assume Windows Server 2003, Vista or later.                 */
+# define AO_ASSUME_VISTA
+#endif
 
 #if !defined(AO_ASSUME_WINDOWS98) \
     && (defined(AO_ASSUME_VISTA) || _MSC_VER >= 1400)
    /* Visual Studio 2005 (MS VC++ 8.0) discontinued support of Windows 95. */
 # define AO_ASSUME_WINDOWS98
 #endif
+
+#if !defined(AO_USE_PENTIUM4_INSTRS) && _M_IX86_FP >= 2 /* SSE2 */
+  /* "mfence" is a part of SSE2 set (introduced on Intel Pentium 4).    */
+# define AO_USE_PENTIUM4_INSTRS
+#endif
+
+#define AO_T_IS_INT
 
 #ifndef AO_USE_INTERLOCKED_INTRINSICS
   /* _Interlocked primitives (Inc, Dec, Xchg, Add) are always available */
@@ -91,9 +100,12 @@ AO_nop_full(void)
 # define AO_HAVE_short_fetch_and_add_full
 #endif /* !AO_NO_ASM_XADD */
 
-AO_INLINE AO_TS_VAL_t
-AO_test_and_set_full(volatile AO_TS_t *addr)
-{
+#ifndef AO_HAVE_test_and_set_full
+# include "../test_and_set_t_is_char.h"
+
+  AO_INLINE AO_TS_VAL_t
+  AO_test_and_set_full(volatile AO_TS_t *addr)
+  {
     __asm
     {
         mov     eax,0xff                ; /* AO_TS_SET */
@@ -101,8 +113,9 @@ AO_test_and_set_full(volatile AO_TS_t *addr)
         xchg    byte ptr [ebx],al       ;
     }
     /* Ignore possible "missing return value" warning here. */
-}
-#define AO_HAVE_test_and_set_full
+  }
+# define AO_HAVE_test_and_set_full
+#endif
 
 #if defined(_WIN64) && !defined(CPPCHECK)
 # error wrong architecture
@@ -133,8 +146,6 @@ AO_test_and_set_full(volatile AO_TS_t *addr)
   }
 # define AO_HAVE_double_compare_and_swap_full
 #endif /* AO_ASSUME_VISTA */
-
-#define AO_T_IS_INT
 
 /* Real X86 implementations, except for some old WinChips, appear       */
 /* to enforce ordering between memory operations, EXCEPT that a later   */

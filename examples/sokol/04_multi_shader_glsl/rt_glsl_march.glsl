@@ -26,7 +26,9 @@ void main() {
 #pragma sokol @end
 
 #pragma sokol @fs fs_m
-uniform sampler2D tex;
+uniform texture2D tex;
+uniform sampler smp;
+
 uniform fs_params_m {
 	vec2 iResolution;
 	vec2 iMouse;
@@ -38,7 +40,7 @@ in vec4 color;
 in vec2 uv;
 out vec4 frag_color;
 
-// change to 0 to 4 to increment the AntiAliasing, 
+// change to 0 to 4 to increment the AntiAliasing,
 // increase AA will SLOW the rendering!!
 #define AA 1
 
@@ -125,9 +127,9 @@ float sdHexPrism( vec3 p, vec2 h )
 
 float sdOctogonPrism( in vec3 p, in float r, float h )
 {
-	const vec3 k = vec3(-0.9238795325,   // sqrt(2+sqrt(2))/2 
+	const vec3 k = vec3(-0.9238795325,   // sqrt(2+sqrt(2))/2
 											 0.3826834323,   // sqrt(2-sqrt(2))/2
-											 0.4142135623 ); // sqrt(2)-1 
+											 0.4142135623 ); // sqrt(2)-1
 	// reflections
 	p = abs(p);
 	p.xy -= 2.0*min(dot(vec2( k.x,k.y),p.xy),0.0)*vec2( k.x,k.y);
@@ -155,7 +157,7 @@ float sdRoundCone( in vec3 p, in float r1, float r2, float h )
 
 	if( k < 0.0 ) return length(q) - r1;
 	if( k > a*h ) return length(q-vec2(0.0,h)) - r2;
-			
+
 	return dot(q, vec2(a,b) ) - r1;
 }
 
@@ -298,8 +300,8 @@ float sdOctahedron(vec3 p, float s)
 	else if( 3.0*p.y < m ) q = p.yzx;
 	else if( 3.0*p.z < m ) q = p.zxy;
 	else return m*0.57735027;
-	float k = clamp(0.5*(q.z-q.y+s),0.0,s); 
-	return length(vec3(q.x,q.y-s+k,q.z-k)); 
+	float k = clamp(0.5*(q.z-q.y+s),0.0,s);
+	return length(vec3(q.x,q.y-s+k,q.z-k));
 #endif
 
 // bound, not exact
@@ -406,12 +408,12 @@ vec2 map( in vec3 pos )
 		res = opU( res, vec2( sdRoundCone(   pos-vec3( 2.0,0.15, 0.0), vec3(0.1,0.0,0.0), vec3(-0.1,0.35,0.1), 0.15, 0.05), 51.7 ) );
 		res = opU( res, vec2( sdRoundCone(   pos-vec3( 2.0,0.20, 1.0), 0.2, 0.1, 0.3 ), 37.0 ) );
 	}
-    
+
 	return res;
 }
 
 // http://iquilezles.org/www/articles/boxfunctions/boxfunctions.htm
-vec2 iBox( in vec3 ro, in vec3 rd, in vec3 rad ) 
+vec2 iBox( in vec3 ro, in vec3 rd, in vec3 rad )
 {
 	vec3 m = 1.0/rd;
 	vec3 n = m*ro;
@@ -437,8 +439,8 @@ vec2 raycast( in vec3 ro, in vec3 rd )
 		res = vec2( tp1, 1.0 );
 	}
 	//else return res;
-    
-	// raymarch primitives   
+
+	// raymarch primitives
 	vec2 tb = iBox( ro-vec3(0.0,0.4,-0.5), rd, vec3(2.5,0.41,3.0) );
 	if( tb.x<tb.y && tb.y>0.0 && tb.x<tmax)
 	{
@@ -451,8 +453,8 @@ vec2 raycast( in vec3 ro, in vec3 rd )
 		{
 			vec2 h = map( ro+rd*t );
 			if( abs(h.x)<(0.0001*t) )
-			{ 
-				res = vec2(t,h.y); 
+			{
+				res = vec2(t,h.y);
 				break;
 			}
 			t += h.x;
@@ -486,9 +488,9 @@ vec3 calcNormal( in vec3 pos )
 {
 #if 0
 	vec2 e = vec2(1.0,-1.0)*0.5773*0.0005;
-	return normalize( e.xyy*map( pos + e.xyy ).x + 
-		e.yyx*map( pos + e.yyx ).x + 
-		e.yxy*map( pos + e.yxy ).x + 
+	return normalize( e.xyy*map( pos + e.xyy ).x +
+		e.yyx*map( pos + e.yyx ).x +
+		e.yxy*map( pos + e.yxy ).x +
 		e.xxx*map( pos + e.xxx ).x );
 #else
 	// inspired by tdhooper and klems - a way to prevent the compiler from inlining map() 4 times
@@ -500,7 +502,7 @@ vec3 calcNormal( in vec3 pos )
 		//if( n.x+n.y+n.z>100.0 ) break;
 	}
 	return normalize(n);
-#endif    
+#endif
 }
 
 float calcAO( in vec3 pos, in vec3 nor )
@@ -526,11 +528,11 @@ float checkersGradBox( in vec2 p, in vec2 dpdx, in vec2 dpdy )
 	// analytical integral (box filter)
 	vec2 i = 2.0*(abs(fract((p-0.5*w)*0.5)-0.5)-abs(fract((p+0.5*w)*0.5)-0.5))/w;
 	// xor pattern
-	return 0.5 - 0.5*i.x*i.y;                  
+	return 0.5 - 0.5*i.x*i.y;
 }
 
 vec3 render( in vec3 ro, in vec3 rd, in vec3 rdx, in vec3 rdy )
-{ 
+{
 	// background
 	vec3 col = vec3(0.7, 0.7, 0.9) - max(rd.y,0.0)*0.3;
 
@@ -543,11 +545,11 @@ vec3 render( in vec3 ro, in vec3 rd, in vec3 rdx, in vec3 rdy )
 		vec3 pos = ro + t*rd;
 		vec3 nor = (m<1.5) ? vec3(0.0,1.0,0.0) : calcNormal( pos );
 		vec3 ref = reflect( rd, nor );
-        
-		// material        
+
+		// material
 		col = 0.2 + 0.2*sin( m*2.0 + vec3(0.0,1.0,2.0) );
 		float ks = 1.0;
-        
+
 		if( m<1.5 )
 		{
 			// project pixel footprint into the plane
@@ -561,7 +563,7 @@ vec3 render( in vec3 ro, in vec3 rd, in vec3 rdx, in vec3 rdy )
 
 		// lighting
 		float occ = calcAO( pos, nor );
-		
+
 		vec3 lin = vec3(0.0);
 
 		// sun
@@ -601,7 +603,7 @@ vec3 render( in vec3 ro, in vec3 rd, in vec3 rdx, in vec3 rdy )
 						dif *= occ;
 			lin += col*0.25*dif*vec3(1.00,1.00,1.00);
 		}
-        
+
 		col = lin;
 
 		col = mix( col, vec3(0.7,0.7,0.9), 1.0-exp( -0.0001*t*t*t ) );
@@ -624,7 +626,7 @@ vec4 mainImage( vec2 fragCoord )
 	vec2 mo = iMouse.xy/iResolution.xy;
 	float time = 32.0 + iTime*1.5;
 
-	// camera	
+	// camera
 	vec3 ta = vec3( 0.5, -0.5, -0.6 );
 	vec3 ro = ta + vec3( 4.5*cos(0.1*time + 7.0*mo.x), 1.3 + 2.0*mo.y, 4.5*sin(0.1*time + 7.0*mo.x) );
 	// camera-to-world transformation
@@ -638,13 +640,13 @@ vec4 mainImage( vec2 fragCoord )
 		// pixel coordinates
 		vec2 o = vec2(float(m),float(n)) / float(AA) - 0.5;
 		vec2 p = (2.0*(fragCoord+o)-iResolution.xy)/iResolution.y;
-#else    
+#else
 		vec2 p = (2.0*fragCoord-iResolution.xy)/iResolution.y;
 #endif
 
 		// focal length
 		const float fl = 2.5;
-		
+
 		// ray direction
 		vec3 rd = ca * normalize( vec3(p,fl) );
 
@@ -653,13 +655,13 @@ vec4 mainImage( vec2 fragCoord )
 		vec2 py = (2.0*(fragCoord+vec2(0.0,1.0))-iResolution.xy)/iResolution.y;
 		vec3 rdx = ca * normalize( vec3(px,fl) );
 		vec3 rdy = ca * normalize( vec3(py,fl) );
-		
-		// render	
+
+		// render
 		vec3 col = render( ro, rd, rdx, rdy );
 
 		// gain
 		// col = col*3.0/(2.5+col);
-        
+
 		// gamma
 		col = pow( col, vec3(0.4545) );
 
@@ -668,7 +670,7 @@ vec4 mainImage( vec2 fragCoord )
 	}
 	tot /= float(AA*AA);
 #endif
-    
+
 	//fragColor = vec4( tot, 1.0 );
 	return vec4( tot, 1.0 );
 }
@@ -679,14 +681,14 @@ vec4 mainImage( vec2 fragCoord )
 
 void main() {
 	vec4 c = color;
-	vec4 txt = texture(tex, uv);
+	vec4 txt = texture(sampler2D(tex, smp), uv);
 	c = txt * c;
 	vec2 uv1 = uv * iResolution;
 	vec4 col_ray = mainImage(uv1);
-	
+
 	// use this to mix the chessboart texture with the ray marching
 	//frag_color = clamp(c*iMouse.y/512.0,0.0,1.0) *	col_ray	;
-	
+
 	frag_color = c*0.00001 +	col_ray	;
 }
 

@@ -1,5 +1,21 @@
 type MyInt = int
 
+fn test_shift_left_precedence() {
+	x := u32(20)
+	base := u32(1)
+	shift := u32(3)
+	assert x + base << shift == (x + (base << shift)), '<< should have higher precedence than +'
+	assert x - base << shift == (x - (base << shift)), '<< should have higher precedence than -'
+}
+
+fn test_shift_right_precedence() {
+	x := u32(20)
+	base := u32(100)
+	shift := u32(2)
+	assert x + base >> shift == (x + (base >> shift)), '>> should have higher precedence than +'
+	assert x - base >> shift == (x - (base >> shift)), '>> should have higher precedence than -'
+}
+
 fn test_shift_operators() {
 	// check that shift works with all integer types
 	// as the right-hand side operand

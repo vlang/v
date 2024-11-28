@@ -14,6 +14,6 @@ fn main() {
 	f64 := 2.22
 	println(f64)
 
-	map := map[string]string
+	map := map[string]string{}
 	println(map)
 }

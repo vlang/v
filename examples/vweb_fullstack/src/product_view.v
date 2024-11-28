@@ -2,7 +2,7 @@ module main
 
 import vweb
 
-['/products'; get]
+@['/products'; get]
 pub fn (mut app App) products() !vweb.Result {
 	token := app.get_cookie('token') or {
 		app.set_status(400, '')

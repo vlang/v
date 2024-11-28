@@ -19,6 +19,20 @@ vlib/v/checker/tests/unknown_comptime_expr.vv:17:6: error: undefined ident: `huh
       |         ~~~
    18 |     }
    19 |     $if s is int {
+vlib/v/checker/tests/unknown_comptime_expr.vv:17:10: error: `huh` does not return a value
+   15 | fn if_is() {
+   16 |     s := S1{}
+   17 |     $if huh.typ is T {
+      |             ~~~
+   18 |     }
+   19 |     $if s is int {
+vlib/v/checker/tests/unknown_comptime_expr.vv:17:17: error: unknown type `T`
+   15 | fn if_is() {
+   16 |     s := S1{}
+   17 |     $if huh.typ is T {
+      |                    ^
+   18 |     }
+   19 |     $if s is int {
 vlib/v/checker/tests/unknown_comptime_expr.vv:21:13: error: invalid `$if` condition: expected a type
    19 |     $if s is int {
    20 |     }

@@ -1,0 +1,5 @@
+vlib/v/parser/tests/fn_call_unexpected_eof_rpar_multi_line_err.vv:1:15: error: unexpected name `bar`, expecting `)`
+    1 | println('foo' bar
+      |               ~~~
+    2 | println('baz')
+    3 |

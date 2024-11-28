@@ -1,0 +1,7 @@
+import time
+
+fn foo() time.Duration {
+	return ?time.Duration(0)
+}
+
+println(foo())

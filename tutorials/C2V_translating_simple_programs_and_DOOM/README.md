@@ -49,7 +49,7 @@ It will create `primes.v` with the following contents:
 
 
 ```v
-[translated]
+@[translated]
 module main
 
 fn is_prime(x int) bool {

@@ -1,7 +1,7 @@
 // Author: CCS
 // I follow literally code in C, done many years ago
 fn main() {
-	// Adjacency matrix as a map	
+	// Adjacency matrix as a map
 	graph := {
 		'A': ['B', 'C']
 		'B': ['A', 'D', 'E']
@@ -37,7 +37,7 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 			// Expansion of node removed from  queue
 			print('\n Expansion of node ${node} (true/false): ${graph[node]}')
 			// take  all nodes from the node
-			for vertex in graph[node] { // println("\n ...${vertex}")	
+			for vertex in graph[node] { // println("\n ...${vertex}")
 				// not explored yet
 				if visited[vertex] == false {
 					queue << vertex
@@ -79,7 +79,7 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 		for i in array_of_nodes {
 			if current in graph[i] && visited[i] == true {
 				current = i
-				break // the first ocurrence is enough
+				break // the first occurrence is enough
 			}
 		}
 		path << current // update the path tracked

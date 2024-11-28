@@ -4,7 +4,7 @@ module builtin
 // Note: the memory block pointed by s is *reused, not copied*!
 // It will panic, when the pointer `s` is 0.
 // See also `tos_clone`.
-[unsafe]
+@[unsafe]
 pub fn tos(s &u8, len int) string {
 	if s == 0 {
 		panic('tos(): nil string')

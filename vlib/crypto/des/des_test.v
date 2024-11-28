@@ -1,10 +1,8 @@
 import crypto.des
 
-const (
-	key = '123456789012345678901234'.bytes()
-	iv  = 'abcdegfh'.bytes()
-	str = 'aaaaaaaa'
-)
+const key = '123456789012345678901234'.bytes()
+const iv = 'abcdegfh'.bytes()
+const str = 'aaaaaaaa'
 
 fn test_triple_des() {
 	mut src := str.bytes()

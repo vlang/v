@@ -1,0 +1,17 @@
+struct Abc {
+	name ?string
+	age  ?int
+}
+
+fn main() {
+	age := 34
+	name := 'Bilbo'
+	a := Abc{
+		age: &age
+	}
+	b := Abc{
+		name: &name
+	}
+	dump(a)
+	dump(b)
+}

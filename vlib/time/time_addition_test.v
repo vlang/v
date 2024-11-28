@@ -3,8 +3,6 @@ import time
 fn test_add_to_day_in_the_previous_century() {
 	a := time.parse_iso8601('1900-01-01')!
 	aa := a.add_days(180)
-	dump(a.debug())
-	dump(aa.debug())
 	assert aa.ymmdd() == '1900-06-30'
 }
 
@@ -23,6 +21,8 @@ fn test_add_to_day_in_the_recent_past() {
 fn test_add_to_day_in_the_future_1() {
 	a := time.parse_iso8601('3000-11-01')!
 	aa := a.add_days(180)
+	dump(a.debug())
+	dump(aa.debug())
 	assert aa.ymmdd() == '3001-04-30'
 }
 

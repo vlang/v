@@ -1,0 +1,9 @@
+type Fn[T] = fn (string) T
+
+type Fnn = fn (string) string
+
+type Parser = Fn | Fnn
+
+fn main() {
+	println('hello')
+}

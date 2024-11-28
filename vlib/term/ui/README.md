@@ -19,7 +19,7 @@ fn event(e &tui.Event, x voidptr) {
 }
 
 fn frame(x voidptr) {
-	mut app := &App(x)
+	mut app := unsafe { &App(x) }
 
 	app.tui.clear()
 	app.tui.set_bg_color(r: 63, g: 81, b: 181)
@@ -34,12 +34,12 @@ fn frame(x voidptr) {
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
-		user_data: app
-		event_fn: event
-		frame_fn: frame
+		user_data:   app
+		event_fn:    event
+		frame_fn:    frame
 		hide_cursor: true
 	)
-	app.tui.run()?
+	app.tui.run()!
 }
 ```
 

@@ -53,57 +53,57 @@ fn C.cJSON_Delete(voidptr)
 
 fn C.cJSON_Print(voidptr) &u8
 
-[inline]
+@[inline]
 fn create_object() &C.cJSON {
 	return C.cJSON_CreateObject()
 }
 
-[inline]
+@[inline]
 fn create_array() &C.cJSON {
 	return C.cJSON_CreateArray()
 }
 
-[inline]
+@[inline]
 fn create_string(val string) &C.cJSON {
 	return C.cJSON_CreateString(val.str)
 }
 
-[inline]
+@[inline]
 fn create_number(val f64) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 
-[inline]
+@[inline]
 fn create_bool(val bool) &C.cJSON {
 	return C.cJSON_CreateBool(val)
 }
 
-[inline]
+@[inline]
 fn create_true() &C.cJSON {
 	return C.cJSON_CreateTrue()
 }
 
-[inline]
+@[inline]
 fn create_false() &C.cJSON {
 	return C.cJSON_CreateFalse()
 }
 
-[inline]
+@[inline]
 fn create_null() &C.cJSON {
 	return C.cJSON_CreateNull()
 }
 
-[inline]
+@[inline]
 fn delete(b voidptr) {
 	C.cJSON_Delete(b)
 }
 
-[inline]
+@[inline]
 fn add_item_to_object(obj &C.cJSON, key string, item &C.cJSON) {
 	C.cJSON_AddItemToObject(obj, key.str, item)
 }
 
-[inline]
+@[inline]
 fn add_item_to_array(obj &C.cJSON, item &C.cJSON) {
 	C.cJSON_AddItemToArray(obj, item)
 }

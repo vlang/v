@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -9,17 +9,23 @@ module builtin
 
 pub interface JS.Object {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.BigInt {
 	JS.Any
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.Number {
 	JS.Any
 }
 
-[single_impl]
+pub interface JS.RegExp {
+	JS.Any
+}
+
+pub type SplitSeparator = JS.RegExp | JS.String
+
+@[single_impl]
 pub interface JS.String {
 	JS.Any
 	length JS.Number
@@ -32,12 +38,12 @@ pub interface JS.String {
 	endsWith(substr JS.String) JS.Boolean
 	startsWith(substr JS.String) JS.Boolean
 	slice(a JS.Number, b JS.Number) JS.String
-	split(dot JS.String) JS.Array
+	split(delim SplitSeparator) JS.Array
 	indexOf(needle JS.String) JS.Number
 	lastIndexOf(needle JS.String) JS.Number
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.Boolean {
 	JS.Any
 	length JS.Number

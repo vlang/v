@@ -1,0 +1,40 @@
+import strings
+
+fn escape_string(s string) string {
+	mut res := strings.new_builder(s.len * 2)
+	for ch in s {
+		match ch {
+			0 // NUL (null)
+			{
+				res.write_u8(92) // \
+				res.write_u8(48) // 0
+			}
+			10 { // LF (line feed)
+				res.write_u8(92) // \
+				res.write_u8(110) // n
+			}
+			13 { // CR (carriage return)
+				res.write_u8(92) // \
+				res.write_u8(114) // r
+			}
+			26 { // SUB (substitute)
+				res.write_u8(92) // \
+				res.write_u8(90) // Z
+			}
+			34,  // "
+			39,  // '
+			92 // \
+			{
+				res.write_u8(92) // \
+				res.write_u8(ch)
+			}
+			else {
+				res.write_u8(ch)
+			}
+		}
+	}
+	return res.bytestr()
+}
+
+fn main() {
+}

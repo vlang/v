@@ -1,0 +1,33 @@
+vlib/v/checker/tests/lambda_undefined_variables_err.vv:7:2: warning: unused variable: `s2`
+    5 |     f(|x| s1)
+    6 |
+    7 |     s2 := 'abc'
+      |     ~~
+    8 |     f(|x| s2)
+    9 | }
+vlib/v/checker/tests/lambda_undefined_variables_err.vv:5:8: error: undefined ident: `s1`
+    3 |
+    4 | fn main() {
+    5 |     f(|x| s1)
+      |           ~~
+    6 |
+    7 |     s2 := 'abc'
+vlib/v/checker/tests/lambda_undefined_variables_err.vv:5:4: error: `s1` used as value
+    3 |
+    4 | fn main() {
+    5 |     f(|x| s1)
+      |       ~~~~~~
+    6 |
+    7 |     s2 := 'abc'
+vlib/v/checker/tests/lambda_undefined_variables_err.vv:8:8: error: undefined variable `s2`
+    6 |
+    7 |     s2 := 'abc'
+    8 |     f(|x| s2)
+      |           ~~
+    9 | }
+vlib/v/checker/tests/lambda_undefined_variables_err.vv:8:4: error: `s2` used as value
+    6 |
+    7 |     s2 := 'abc'
+    8 |     f(|x| s2)
+      |       ~~~~~~
+    9 | }

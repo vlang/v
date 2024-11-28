@@ -1,17 +1,15 @@
 module math
 
-const (
-	tanh_p = [
-		-9.64399179425052238628e-1,
-		-9.92877231001918586564e+1,
-		-1.61468768441708447952e+3,
-	]
-	tanh_q = [
-		1.12811678491632931402e+2,
-		2.23548839060100448583e+3,
-		4.84406305325125486048e+3,
-	]
-)
+const tanh_p = [
+	-9.64399179425052238628e-1,
+	-9.92877231001918586564e+1,
+	-1.61468768441708447952e+3,
+]
+const tanh_q = [
+	1.12811678491632931402e+2,
+	2.23548839060100448583e+3,
+	4.84406305325125486048e+3,
+]
 
 // tanh returns the hyperbolic tangent of x.
 //
@@ -38,8 +36,8 @@ pub fn tanh(x f64) f64 {
 			return x
 		}
 		s := x * x
-		z = x + x * s * ((math.tanh_p[0] * s + math.tanh_p[1]) * s + math.tanh_p[2]) / (((s +
-			math.tanh_q[0]) * s + math.tanh_q[1]) * s + math.tanh_q[2])
+		z = x + x * s * ((tanh_p[0] * s + tanh_p[1]) * s + tanh_p[2]) / (((s + tanh_q[0]) * s +
+			tanh_q[1]) * s + tanh_q[2])
 	}
 	return z
 }

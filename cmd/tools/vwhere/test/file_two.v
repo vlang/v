@@ -1,10 +1,8 @@
 module test
 
-const (
-	x = 10
-	y = 100
-	z = 1000
-)
+const x = 10
+const y = 100
+const z = 1000
 
 pub enum Public {
 	importable
@@ -13,7 +11,7 @@ pub enum Public {
 
 enum Private {
 	storable
-	donwloadable
+	downloadable
 }
 
 interface Drinker {

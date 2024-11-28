@@ -17,35 +17,34 @@ const do_yaml_conversion = os.getenv('VTEST_TOML_DO_YAML_CONVERSION') == '1'
 // The actual tests and data can be obtained by doing:
 // `git clone --depth 1 https://github.com/iarna/toml-spec-tests.git vlib/toml/tests/testdata/iarna/toml-test`
 // See also the CI toml tests
-const (
-	// Kept for easier handling of future updates to the tests
-	valid_exceptions       = []string{}
-	invalid_exceptions     = []string{}
+// Kept for easier handling of future updates to the tests
+const valid_exceptions = []string{}
+const invalid_exceptions = []string{}
 
-	valid_value_exceptions = [
-		'values/spec-date-time-3.toml',
-		'values/spec-date-time-4.toml',
-		'values/spec-readme-example.toml',
-		'values/spec-date-time-6.toml',
-		'values/spec-date-time-5.toml',
-		'values/spec-date-time-1.toml',
-		'values/spec-date-time-2.toml',
-		'values/qa-table-inline-nested-1000.toml',
-		'values/qa-array-inline-nested-1000.toml',
-	]
+const valid_value_exceptions = [
+	'values/spec-date-time-3.toml',
+	'values/spec-date-time-4.toml',
+	'values/spec-readme-example.toml',
+	'values/spec-date-time-6.toml',
+	'values/spec-date-time-5.toml',
+	'values/spec-date-time-1.toml',
+	'values/spec-date-time-2.toml',
+	'values/qa-table-inline-nested-1000.toml',
+	'values/qa-array-inline-nested-1000.toml',
+]
 
-	yaml_value_exceptions  = [
-		'values/spec-float-5.toml', // YAML: "1e6", V: 1000000
-		'values/spec-float-9.toml', // YAML: "-0e0", V: 0
-		'values/spec-float-6.toml', // YAML: "-2E-2", V: -0.02
-		'values/spec-float-4.toml', // YAML: "5e+22", V: 50000000000000004000000
-	]
+const yaml_value_exceptions = [
+	'values/spec-float-5.toml', // YAML: "1e6", V: 1000000
+	'values/spec-float-9.toml', // YAML: "-0e0", V: 0
+	'values/spec-float-6.toml', // YAML: "-2E-2", V: -0.02
+	'values/spec-float-4.toml', // YAML: "5e+22", V: 50000000000000004000000
+]
 
-	jq                     = os.find_abs_path_of_executable('jq') or { '' }
-	python                 = os.find_abs_path_of_executable('python') or { '' }
-	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'v', 'toml', 'iarna')
-	// From: https://stackoverflow.com/a/38266731/1904615
-	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
+const jq = os.find_abs_path_of_executable('jq') or { '' }
+const python = os.find_abs_path_of_executable('python') or { '' }
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_iarna')
+// From: https://stackoverflow.com/a/38266731/1904615
+const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
   . as $in
   | if type == "object" then
@@ -58,9 +57,8 @@ def sorted_walk(f):
 def normalize: sorted_walk(if type == "array" then sort else . end);
 
 normalize'
-)
 
-fn run(args []string) ?string {
+fn run(args []string) !string {
 	res := os.execute(args.join(' '))
 	if res.exit_code != 0 {
 		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')
@@ -71,14 +69,14 @@ fn run(args []string) ?string {
 // test_iarna_toml_spec_tests run though 'testdata/iarna/toml-test/*' if found.
 fn test_iarna_toml_spec_tests() {
 	this_file := @FILE
-	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna', 'toml-test')
+	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna')
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'values'), '.toml')
 		println('Testing ${valid_test_files.len} valid TOML files...')
 		mut valid := 0
 		mut e := 0
 		for i, valid_test_file in valid_test_files {
-			mut relative := valid_test_file.all_after('toml-test').trim_left(os.path_separator)
+			mut relative := valid_test_file.all_after('iarna').trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
@@ -122,7 +120,7 @@ fn test_iarna_toml_spec_tests() {
 			valid = 0
 			e = 0
 			for i, valid_test_file in valid_test_files {
-				mut relative := valid_test_file.all_after('toml-test').trim_left(os.path_separator)
+				mut relative := valid_test_file.all_after('iarna').trim_left(os.path_separator)
 				$if windows {
 					relative = relative.replace('/', '\\')
 				}
@@ -178,7 +176,7 @@ fn test_iarna_toml_spec_tests() {
 							"'import sys, yaml, json; json.dump(yaml.load(sys.stdin, Loader=yaml.FullLoader), sys.stdout, indent=4)'",
 							'<', iarna_yaml_path, '>', converted_json_path]) or {
 							contents := os.read_file(iarna_yaml_path)!
-							// NOTE there's known errors with the python convertion method.
+							// NOTE there's known errors with the python convention method.
 							// For now we just ignore them as it's a broken tool - not a wrong test-case.
 							// Uncomment this print to see/check them.
 							// eprintln(err.msg() + '\n$contents')
@@ -231,7 +229,7 @@ fn test_iarna_toml_spec_tests() {
 		mut invalid := 0
 		e = 0
 		for i, invalid_test_file in invalid_test_files {
-			mut relative := invalid_test_file.all_after('toml-test').trim_left(os.path_separator)
+			mut relative := invalid_test_file.all_after('iarna').trim_left(os.path_separator)
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
@@ -369,7 +367,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				if skip_value_map {
 					return '-9223372036854775808'

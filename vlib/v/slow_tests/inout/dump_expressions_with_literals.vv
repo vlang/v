@@ -1,0 +1,12 @@
+// Note: dump expressions should not get optimised out by the transformer stage,
+// even though they could normally, when they are composed of literals, i.e.
+// the value of the expression is known at compile time.
+fn main() {
+	dump(2 + 2)
+	dump(2 * 3 + 50 / 5)
+	dump(3.14 + 0.1)
+	dump('abc' + 'a')
+	dump('a' + 'b' + 'c')
+	dump(true || (false && true))
+	dump(2 == 4)
+}

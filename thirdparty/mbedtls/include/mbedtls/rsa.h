@@ -239,7 +239,7 @@ int mbedtls_rsa_import( mbedtls_rsa_context *ctx,
  * \param N        The RSA modulus. This may be \c NULL.
  * \param N_len    The Byte length of \p N; it is ignored if \p N == NULL.
  * \param P        The first prime factor of \p N. This may be \c NULL.
- * \param P_len    The Byte length of \p P; it ns ignored if \p P == NULL.
+ * \param P_len    The Byte length of \p P; it is ignored if \p P == NULL.
  * \param Q        The second prime factor of \p N. This may be \c NULL.
  * \param Q_len    The Byte length of \p Q; it is ignored if \p Q == NULL.
  * \param D        The private exponent. This may be \c NULL.
@@ -479,7 +479,7 @@ int mbedtls_rsa_check_pubkey( const mbedtls_rsa_context *ctx );
  *             the current function does not have access to them,
  *             and therefore cannot check them. See mbedtls_rsa_complete().
  *             If you want to check the consistency of the entire
- *             content of an PKCS1-encoded RSA private key, for example, you
+ *             content of a PKCS1-encoded RSA private key, for example, you
  *             should use mbedtls_rsa_validate_params() before setting
  *             up the RSA context.
  *             Additionally, if the implementation performs empirical checks,

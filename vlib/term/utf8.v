@@ -2,8 +2,8 @@ module term
 
 // utf8_getchar returns an utf8 rune from standard input
 pub fn utf8_getchar() ?rune {
-	c := getchar()
-	if c == C.EOF {
+	c := input_character()
+	if c == -1 {
 		return none
 	}
 	len := utf8_len(u8(~c))
@@ -16,7 +16,7 @@ pub fn utf8_getchar() ?rune {
 	} else {
 		mut uc := c & ((1 << (7 - len)) - 1)
 		for i := 0; i + 1 < len; i++ {
-			c2 := getchar()
+			c2 := input_character()
 			if c2 != -1 && (c2 >> 6) == 2 {
 				uc <<= 6
 				uc |= (c2 & 63)

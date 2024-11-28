@@ -8,7 +8,7 @@ mut:
 	counter u64
 }
 
-// without proper syncronization this would fail
+// without proper synchronization this would fail
 fn test_count_10_times_1_cycle_should_result_10_cycles_with_sync() {
 	desired_iterations := 10 * iterations_per_cycle
 	mut wg := sync.new_waitgroup()

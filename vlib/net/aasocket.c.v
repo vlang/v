@@ -28,16 +28,16 @@ enum Select {
 
 // SocketType are the available sockets
 pub enum SocketType {
-	udp = C.SOCK_DGRAM
-	tcp = C.SOCK_STREAM
+	udp       = C.SOCK_DGRAM
+	tcp       = C.SOCK_STREAM
 	seqpacket = C.SOCK_SEQPACKET
 }
 
 // AddrFamily are the available address families
 pub enum AddrFamily {
-	unix = C.AF_UNIX
-	ip = C.AF_INET
-	ip6 = C.AF_INET6
+	unix   = C.AF_UNIX
+	ip     = C.AF_INET
+	ip6    = C.AF_INET6
 	unspec = C.AF_UNSPEC
 }
 
@@ -53,7 +53,7 @@ fn C.ntohl(net u32) u32
 fn C.ntohs(net u16) u16
 
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-// use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
+// use voidptr for arg 2 because sockaddr is a generic descriptor for any kind of socket operation,
 // it can also take sockaddr_in depending on the type of socket used in arg 1
 fn C.bind(sockfd int, addr &Addr, addrlen u32) int
 
@@ -88,7 +88,8 @@ fn C.getpeername(sockfd int, addr &Addr, addlen &u32) int
 
 fn C.inet_ntop(af AddrFamily, src voidptr, dst &char, dst_size int) &char
 
-fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char, lpdwAddressStringLength &u32) int
+fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char,
+	lpdwAddressStringLength &u32) int
 
 // fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
 fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
@@ -103,15 +104,21 @@ fn C.ioctlsocket(s int, cmd int, argp &u32) int
 
 fn C.fcntl(fd int, cmd int, arg ...voidptr) int
 
-fn C.@select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
+fn C.select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
 
 fn C.FD_ZERO(fdset &C.fd_set)
 
 fn C.FD_SET(fd int, fdset &C.fd_set)
 
-fn C.FD_ISSET(fd int, fdset &C.fd_set) bool
+fn C.FD_ISSET(fd int, fdset &C.fd_set) int
 
 fn C.inet_pton(family AddrFamily, saddr &char, addr voidptr) int
 
-[typedef]
+fn C.photon_socket(domain AddrFamily, typ SocketType, protocol int) int
+fn C.photon_connect(int, &Addr, u32, timeout u64) int
+fn C.photon_accept(int, voidptr, int, timeout u64) int
+fn C.photon_send(int, voidptr, int, int, timeout u64) int
+fn C.photon_recv(int, voidptr, int, int, timeout u64) int
+
+@[typedef]
 pub struct C.fd_set {}

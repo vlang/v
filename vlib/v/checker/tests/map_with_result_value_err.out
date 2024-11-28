@@ -1,0 +1,19 @@
+vlib/v/checker/tests/map_with_result_value_err.vv:2:7: error: cannot use Result type as map value type
+    1 | struct Foo {
+    2 |     map1 map[string]!string
+      |          ~~~~~~~~~~~~~~~~~~
+    3 | }
+    4 |
+vlib/v/checker/tests/map_with_result_value_err.vv:6:7: error: cannot use Result type as map value type
+    4 | 
+    5 | fn main() {
+    6 |     _ := map[string]!string{}
+      |          ~~~~~~~~~~~~~~~~~~~~
+    7 | 
+    8 |     dump(map[string]!string{})
+vlib/v/checker/tests/map_with_result_value_err.vv:8:7: error: cannot use Result type as map value type
+    6 |     _ := map[string]!string{}
+    7 | 
+    8 |     dump(map[string]!string{})
+      |          ~~~~~~~~~~~~~~~~~~~~
+    9 | }

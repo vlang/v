@@ -46,7 +46,7 @@ mut:
 	sun_path   [max_unix_path]char
 }
 
-[_pack: '1']
+@[_pack: '1']
 pub struct Ip6 {
 	port      u16
 	flow_info u32
@@ -54,7 +54,7 @@ pub struct Ip6 {
 	scope_id  u32
 }
 
-[_pack: '1']
+@[_pack: '1']
 pub struct Ip {
 	port u16
 	addr [4]u8
@@ -70,7 +70,7 @@ pub struct Unix {
 	path [max_unix_path]char
 }
 
-[_pack: '1']
+@[_pack: '1']
 pub struct Addr {
 pub:
 	len  u8

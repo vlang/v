@@ -1,0 +1,30 @@
+type SumType = int | string
+
+struct Test {
+	a int
+	b string
+}
+
+fn get_as_sumtype[T, R](struct_ T, name string, typname string) R {
+	$for f2 in T.fields {
+		println('field> ${f2.typ} ${typeof(f2.typ).name}')
+		if f2.name == name {
+			val := struct_.$(f2.name)
+			$for f in R.variants {
+				println('variant> ${f.typ} ${typeof(f.typ).name}')
+				if typeof(f.typ).name == typname {
+					return R(val)
+				}
+			}
+		}
+	}
+	return R{}
+}
+
+fn test_main() {
+	println(get_as_sumtype[Test, SumType](Test{ a: 123 }, 'a', 'int'))
+	println(get_as_sumtype[Test, SumType](Test{ b: 'foo' }, 'b', 'string'))
+
+	assert get_as_sumtype[Test, SumType](Test{ a: 123 }, 'a', 'int') == SumType(123)
+	assert get_as_sumtype[Test, SumType](Test{ b: 'foo' }, 'b', 'string') == SumType('foo')
+}

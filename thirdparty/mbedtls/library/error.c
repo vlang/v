@@ -25,11 +25,7 @@
 
 #if defined(MBEDTLS_ERROR_C)
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#define mbedtls_snprintf snprintf
-#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -114,6 +110,10 @@
 #include "mbedtls/hmac_drbg.h"
 #endif
 
+#if defined(MBEDTLS_LMS_C)
+#include "mbedtls/lms.h"
+#endif
+
 #if defined(MBEDTLS_MD_C)
 #include "mbedtls/md.h"
 #endif
@@ -140,6 +140,10 @@
 
 #if defined(MBEDTLS_PKCS5_C)
 #include "mbedtls/pkcs5.h"
+#endif
+
+#if defined(MBEDTLS_PKCS7_C)
+#include "mbedtls/pkcs7.h"
 #endif
 
 #if defined(MBEDTLS_POLY1305_C)
@@ -336,6 +340,33 @@ const char * mbedtls_high_level_strerr( int error_code )
             return( "PKCS5 - Given private key password does not allow for correct decryption" );
 #endif /* MBEDTLS_PKCS5_C */
 
+#if defined(MBEDTLS_PKCS7_C)
+        case -(MBEDTLS_ERR_PKCS7_INVALID_FORMAT):
+            return( "PKCS7 - The format is invalid, e.g. different type expected" );
+        case -(MBEDTLS_ERR_PKCS7_FEATURE_UNAVAILABLE):
+            return( "PKCS7 - Unavailable feature, e.g. anything other than signed data" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_VERSION):
+            return( "PKCS7 - The PKCS7 version element is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_CONTENT_INFO):
+            return( "PKCS7 - The PKCS7 content info invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_ALG):
+            return( "PKCS7 - The algorithm tag or value is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_CERT):
+            return( "PKCS7 - The certificate tag or value is invalid or cannot be parsed" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_SIGNATURE):
+            return( "PKCS7 - Error parsing the signature" );
+        case -(MBEDTLS_ERR_PKCS7_INVALID_SIGNER_INFO):
+            return( "PKCS7 - Error parsing the signer's info" );
+        case -(MBEDTLS_ERR_PKCS7_BAD_INPUT_DATA):
+            return( "PKCS7 - Input invalid" );
+        case -(MBEDTLS_ERR_PKCS7_ALLOC_FAILED):
+            return( "PKCS7 - Allocation of memory failed" );
+        case -(MBEDTLS_ERR_PKCS7_VERIFY_FAIL):
+            return( "PKCS7 - Verification Failed" );
+        case -(MBEDTLS_ERR_PKCS7_CERT_DATE_INVALID):
+            return( "PKCS7 - The PKCS7 date issued/expired dates are invalid" );
+#endif /* MBEDTLS_PKCS7_C */
+
 #if defined(MBEDTLS_RSA_C)
         case -(MBEDTLS_ERR_RSA_BAD_INPUT_DATA):
             return( "RSA - Bad input parameters to function" );
@@ -394,6 +425,12 @@ const char * mbedtls_high_level_strerr( int error_code )
             return( "SSL - The peer notified us that the connection is going to be closed" );
         case -(MBEDTLS_ERR_SSL_BAD_CERTIFICATE):
             return( "SSL - Processing of the Certificate handshake message failed" );
+        case -(MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET):
+            return( "SSL - * Received NewSessionTicket Post Handshake Message. This error code is experimental and may be changed or removed without notice" );
+        case -(MBEDTLS_ERR_SSL_CANNOT_READ_EARLY_DATA):
+            return( "SSL - Not possible to read early data" );
+        case -(MBEDTLS_ERR_SSL_CANNOT_WRITE_EARLY_DATA):
+            return( "SSL - Not possible to write early data" );
         case -(MBEDTLS_ERR_SSL_ALLOC_FAILED):
             return( "SSL - Memory allocation failed" );
         case -(MBEDTLS_ERR_SSL_HW_ACCEL_FAILED):
@@ -665,6 +702,19 @@ const char * mbedtls_low_level_strerr( int error_code )
             return( "HMAC_DRBG - The entropy source failed" );
 #endif /* MBEDTLS_HMAC_DRBG_C */
 
+#if defined(MBEDTLS_LMS_C)
+        case -(MBEDTLS_ERR_LMS_BAD_INPUT_DATA):
+            return( "LMS - Bad data has been input to an LMS function" );
+        case -(MBEDTLS_ERR_LMS_OUT_OF_PRIVATE_KEYS):
+            return( "LMS - Specified LMS key has utilised all of its private keys" );
+        case -(MBEDTLS_ERR_LMS_VERIFY_FAILED):
+            return( "LMS - LMS signature verification failed" );
+        case -(MBEDTLS_ERR_LMS_ALLOC_FAILED):
+            return( "LMS - LMS failed to allocate space for a private key" );
+        case -(MBEDTLS_ERR_LMS_BUFFER_TOO_SMALL):
+            return( "LMS - Input/output buffer is too small to contain requited data" );
+#endif /* MBEDTLS_LMS_C */
+
 #if defined(MBEDTLS_NET_C)
         case -(MBEDTLS_ERR_NET_SOCKET_FAILED):
             return( "NET - Failed to open a socket" );
@@ -804,7 +854,7 @@ void mbedtls_strerror( int ret, char *buf, size_t buflen )
 #else /* MBEDTLS_ERROR_C */
 
 /*
- * Provide an non-function in case MBEDTLS_ERROR_C is not defined
+ * Provide a dummy implementation when MBEDTLS_ERROR_C is not defined
  */
 void mbedtls_strerror( int ret, char *buf, size_t buflen )
 {

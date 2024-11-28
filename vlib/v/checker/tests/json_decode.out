@@ -12,6 +12,13 @@ vlib/v/checker/tests/json_decode.vv:12:7: error: json.decode expects 2 arguments
       |          ~~~~~~~~~~
    13 |     json.decode(string, '""')! // BAD
    14 |     json.decode(Num, '5')! // BAD
+vlib/v/checker/tests/json_decode.vv:12:17: error: unexpected `!`, the function `json.decode` does not return a Result
+   10 |     json.decode(St, '{a: ""}')! // OK
+   11 |     json.decode(St2, '{a: ""}')! // BAD
+   12 |     json.decode(St)! // BAD
+      |                    ^
+   13 |     json.decode(string, '""')! // BAD
+   14 |     json.decode(Num, '5')! // BAD
 vlib/v/checker/tests/json_decode.vv:13:14: error: json.decode: expected sum type, struct, map or array, found string
    11 |     json.decode(St2, '{a: ""}')! // BAD
    12 |     json.decode(St)! // BAD

@@ -1,0 +1,5 @@
+Outer{
+    Embedded: Embedded{
+        a: &nil
+    }
+}

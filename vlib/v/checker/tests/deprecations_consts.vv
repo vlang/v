@@ -1,0 +1,4 @@
+import deprecated_consts
+fn main() {
+	dump(deprecated_consts.a_deprecated_const)
+}

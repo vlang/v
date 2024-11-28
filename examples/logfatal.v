@@ -1,6 +1,6 @@
 import log
 
-[noreturn]
+@[noreturn]
 fn should_not_return(mut logger log.Log) {
 	logger.fatal('${@FILE_LINE}: yikes!')
 }

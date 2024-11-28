@@ -48,19 +48,7 @@
 #include "mbedtls/pkcs12.h"
 #endif
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#include <stdlib.h>
-#define mbedtls_calloc    calloc
-#define mbedtls_free       free
-#endif
-
-/* Parameter validation macros based on platform_util.h */
-#define PK_VALIDATE_RET( cond )    \
-    MBEDTLS_INTERNAL_VALIDATE_RET( cond, MBEDTLS_ERR_PK_BAD_INPUT_DATA )
-#define PK_VALIDATE( cond )        \
-    MBEDTLS_INTERNAL_VALIDATE( cond )
 
 #if defined(MBEDTLS_FS_IO)
 /*
@@ -74,10 +62,6 @@ int mbedtls_pk_load_file( const char *path, unsigned char **buf, size_t *n )
 {
     FILE *f;
     long size;
-
-    PK_VALIDATE_RET( path != NULL );
-    PK_VALIDATE_RET( buf != NULL );
-    PK_VALIDATE_RET( n != NULL );
 
     if( ( f = fopen( path, "rb" ) ) == NULL )
         return( MBEDTLS_ERR_PK_FILE_IO_ERROR );
@@ -133,9 +117,6 @@ int mbedtls_pk_parse_keyfile( mbedtls_pk_context *ctx,
     size_t n;
     unsigned char *buf;
 
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( path != NULL );
-
     if( ( ret = mbedtls_pk_load_file( path, &buf, &n ) ) != 0 )
         return( ret );
 
@@ -159,9 +140,6 @@ int mbedtls_pk_parse_public_keyfile( mbedtls_pk_context *ctx, const char *path )
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
     size_t n;
     unsigned char *buf;
-
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( path != NULL );
 
     if( ( ret = mbedtls_pk_load_file( path, &buf, &n ) ) != 0 )
         return( ret );
@@ -619,11 +597,6 @@ int mbedtls_pk_parse_subpubkey( unsigned char **p, const unsigned char *end,
     mbedtls_asn1_buf alg_params;
     mbedtls_pk_type_t pk_alg = MBEDTLS_PK_NONE;
     const mbedtls_pk_info_t *pk_info;
-
-    PK_VALIDATE_RET( p != NULL );
-    PK_VALIDATE_RET( *p != NULL );
-    PK_VALIDATE_RET( end != NULL );
-    PK_VALIDATE_RET( pk != NULL );
 
     if( ( ret = mbedtls_asn1_get_tag( p, end, &len,
                     MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE ) ) != 0 )
@@ -1217,10 +1190,8 @@ int mbedtls_pk_parse_key( mbedtls_pk_context *pk,
     mbedtls_pem_context pem;
 #endif
 
-    PK_VALIDATE_RET( pk != NULL );
     if( keylen == 0 )
         return( MBEDTLS_ERR_PK_KEY_INVALID_FORMAT );
-    PK_VALIDATE_RET( key != NULL );
 
 #if defined(MBEDTLS_PEM_PARSE_C)
    mbedtls_pem_init( &pem );
@@ -1436,10 +1407,8 @@ int mbedtls_pk_parse_public_key( mbedtls_pk_context *ctx,
     mbedtls_pem_context pem;
 #endif
 
-    PK_VALIDATE_RET( ctx != NULL );
     if( keylen == 0 )
         return( MBEDTLS_ERR_PK_KEY_INVALID_FORMAT );
-    PK_VALIDATE_RET( key != NULL || keylen == 0 );
 
 #if defined(MBEDTLS_PEM_PARSE_C)
     mbedtls_pem_init( &pem );

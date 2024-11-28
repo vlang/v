@@ -1,5 +1,4 @@
 
-
 <!--
 
 Please title your PR as follows: `module: description` (e.g. `time: fix date format`).
@@ -33,17 +32,3 @@ Applying labels to PRs is not needed.
 Thanks a lot for your contribution!
 
 -->
-
-<!--
-
-ATTENTION! ⚠️
-
-The below commands will be replaced with Copilot AI generated PR description.
-This description will be automatically updated to describe the latest commit of this PR.
-If you decided to remove them - please, provide a detailed description of your changes.
-
--->
-
-copilot:summary
-
-copilot:walkthrough

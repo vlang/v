@@ -8,7 +8,7 @@ module library
 // (Normally, the exported name is a V mangled version based on the module
 // name followed by __, followed by the fn name, i.e. it would have been
 // `library__add_1`, if not for the export: tag).
-[export: 'add_1']
+@[export: 'add_1']
 pub fn add_1(x int, y int) int {
 	return my_private_function(x + y)
 }

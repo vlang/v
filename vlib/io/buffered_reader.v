@@ -11,13 +11,22 @@ mut:
 	mfails int // maximum fails, after which we can assume that the stream has ended
 pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
+	total_read    int  // total number of bytes read
 }
 
 // BufferedReaderConfig are options that can be given to a buffered reader.
 pub struct BufferedReaderConfig {
+pub:
 	reader  Reader
 	cap     int = 128 * 1024 // large for fast reading of big(ish) files
-	retries int = 2 // how many times to retry before assuming the stream ended
+	retries int = 2          // how many times to retry before assuming the stream ended
+}
+
+// BufferedReadLineConfig are options that can be given to the read_line() function.
+@[params]
+pub struct BufferedReadLineConfig {
+pub:
+	delim u8 = `\n` // line delimiter
 }
 
 // new_buffered_reader creates a new BufferedReader.
@@ -28,7 +37,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	// create
 	r := &BufferedReader{
 		reader: o.reader
-		buf: []u8{len: o.cap, cap: o.cap}
+		buf:    []u8{len: o.cap, cap: o.cap}
 		offset: 0
 		mfails: o.retries
 	}
@@ -51,10 +60,11 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	if read == 0 {
 		return NotExpected{
 			cause: 'invalid copy of buffer'
-			code: -1
+			code:  -1
 		}
 	}
 	r.offset += read
+	r.total_read += read
 	return read
 }
 
@@ -105,12 +115,12 @@ pub fn (r BufferedReader) end_of_stream() bool {
 	return r.end_of_stream
 }
 
-// read_line attempts to read a line from the buffered reader
-// it will read until it finds a new line character (\n) or
-// the end of stream.
-pub fn (mut r BufferedReader) read_line() !string {
+// read_line attempts to read a line from the buffered reader.
+// It will read until it finds the specified line delimiter
+// such as (\n, the default or \0) or the end of stream.
+pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 	if r.end_of_stream {
-		return error('none')
+		return Eof{}
 	}
 	mut line := []u8{}
 	for {
@@ -120,7 +130,7 @@ pub fn (mut r BufferedReader) read_line() !string {
 				// We are at the end of the stream
 				if line.len == 0 {
 					// we had nothing so return nothing
-					return error('none')
+					return Eof{}
 				}
 				return line.bytestr()
 			}
@@ -128,11 +138,12 @@ pub fn (mut r BufferedReader) read_line() !string {
 		// try and find a newline character
 		mut i := r.offset
 		for ; i < r.len; i++ {
+			r.total_read++
 			c := r.buf[i]
-			if c == `\n` {
+			if c == config.delim {
 				// great, we hit something
 				// do some checking for whether we hit \r\n or just \n
-				if i != 0 && r.buf[i - 1] == `\r` {
+				if i != 0 && config.delim == `\n` && r.buf[i - 1] == `\r` {
 					x := i - 1
 					line << r.buf[r.offset..x]
 				} else {
@@ -145,5 +156,5 @@ pub fn (mut r BufferedReader) read_line() !string {
 		line << r.buf[r.offset..i]
 		r.offset = i
 	}
-	return error('none')
+	return Eof{}
 }

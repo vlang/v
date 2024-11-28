@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -21,8 +21,7 @@ pub fn (mut v Builder) find_win_cc() ! {
 			if v.pref.is_verbose {
 				println('msvc not found, looking for thirdparty/tcc...')
 			}
-			vpath := os.dir(pref.vexe_path())
-			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
+			thirdparty_tcc := os.join_path(v.pref.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 			tcc_version_res := os.execute('${os.quoted_path(thirdparty_tcc)} -v')
 			if tcc_version_res.exit_code != 0 {
 				if v.pref.is_verbose {

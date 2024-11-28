@@ -4,9 +4,7 @@ import vweb
 import databases
 import os
 
-const (
-	port = 8082
-)
+const port = 8082
 
 struct App {
 	vweb.Context

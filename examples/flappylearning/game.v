@@ -1,17 +1,16 @@
 module main
 
 import gg
-import gx
-import os
 import time
 import math
 import rand
 import neuroevolution
+import os.asset
 
-const (
-	win_width  = 500
-	win_height = 512
-)
+const win_width = 500
+const win_height = 512
+
+const bg_color = gg.Color{0x96, 0xE2, 0x82, 0xFF}
 
 struct Bird {
 mut:
@@ -155,13 +154,13 @@ fn (mut app App) update() {
 		holl_position := math.round(rand.f64() * (app.height - delta_bord * 2.0 - pipe_holl)) +
 			delta_bord
 		app.pipes << Pipe{
-			x: app.width
-			y: 0
+			x:      app.width
+			y:      0
 			height: holl_position
 		}
 		app.pipes << Pipe{
-			x: app.width
-			y: holl_position + pipe_holl
+			x:      app.width
+			y:      holl_position + pipe_holl
 			height: app.height
 		}
 	}
@@ -174,28 +173,22 @@ fn (mut app App) update() {
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-	}
-	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	$if android {
-		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color: gx.white
-		width: win_width
-		height: win_height
+		bg_color:      bg_color
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'flappylearning-v'
-		frame_fn: frame
-		event_fn: on_event
-		user_data: app
-		init_fn: app.init_images_wrapper
-		font_path: font_path
+		window_title:  'flappylearning-v'
+		frame_fn:      frame
+		event_fn:      on_event
+		user_data:     app
+		init_fn:       app.init_images_wrapper
+		font_path:     asset.get_path('../assets', 'fonts/RobotoMono-Regular.ttf')
 	)
 	app.nv = neuroevolution.Generations{
 		population: 50
-		network: [2, 2, 1]
+		network:    [2, 2, 1]
 	}
 	app.start()
 	spawn app.run()
@@ -214,26 +207,15 @@ fn (mut app App) init_images_wrapper() {
 }
 
 fn (mut app App) init_images() ! {
-	$if android {
-		background := os.read_apk_asset('img/background.png')!
-		app.background = app.gg.create_image_from_byte_array(background)!
-		bird := os.read_apk_asset('img/bird.png')!
-		app.bird = app.gg.create_image_from_byte_array(bird)!
-		pipetop := os.read_apk_asset('img/pipetop.png')!
-		app.pipetop = app.gg.create_image_from_byte_array(pipetop)!
-		pipebottom := os.read_apk_asset('img/pipebottom.png')!
-		app.pipebottom = app.gg.create_image_from_byte_array(pipebottom)!
-	} $else {
-		app.background = app.gg.create_image(os.resource_abs_path('assets/img/background.png'))!
-		app.bird = app.gg.create_image(os.resource_abs_path('assets/img/bird.png'))!
-		app.pipetop = app.gg.create_image(os.resource_abs_path('assets/img/pipetop.png'))!
-		app.pipebottom = app.gg.create_image(os.resource_abs_path('assets/img/pipebottom.png'))!
-	}
+	app.bird = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/bird.png')!)!
+	app.pipetop = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipetop.png')!)!
+	app.pipebottom = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipebottom.png')!)!
+	app.background = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/background.png')!)!
 }
 
 fn frame(app &App) {
 	app.gg.begin()
-	app.draw()
+	app.display()
 	app.gg.end()
 }
 
@@ -258,14 +240,14 @@ fn (app &App) display() {
 				app.bird)
 		}
 	}
+	app.gg.draw_rect_filled(0, 510, app.background.width * 3, 5, gg.Color{0x21, 0x19, 0x28, 255})
+	app.gg.draw_rect_filled(0, 513, app.background.width * 3, app.background.height, bg_color)
+	app.gg.draw_rect_filled(550, 0, app.background.width + 50, app.background.height + 20,
+		bg_color)
 	app.gg.draw_text_def(10, 25, 'Score: ${app.score}')
 	app.gg.draw_text_def(10, 50, 'Max Score: ${app.max_score}')
 	app.gg.draw_text_def(10, 75, 'Generation: ${app.generation}')
 	app.gg.draw_text_def(10, 100, 'Alive: ${app.alives} / ${app.nv.population}')
-}
-
-fn (app &App) draw() {
-	app.display()
 }
 
 fn on_event(e &gg.Event, mut app App) {

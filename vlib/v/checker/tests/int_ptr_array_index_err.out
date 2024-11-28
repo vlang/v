@@ -1,0 +1,6 @@
+vlib/v/checker/tests/int_ptr_array_index_err.vv:5:14: error: non-integer index `&int` (array type `[]u8`)
+    3 |         offset += 4
+    4 |     }
+    5 |     return bytes[offset]
+      |                 ~~~~~~~~
+    6 | }

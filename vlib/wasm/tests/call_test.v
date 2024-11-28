@@ -61,11 +61,11 @@ fn test_call() {
 	{
 		fac.local_get(0)
 		fac.eqz(.i64_t)
-		fac.c_if([], [.i64_t])
+		ifs := fac.c_if([], [.i64_t])
 		{
 			fac.i64_const(1)
 		}
-		fac.c_else()
+		fac.c_else(ifs)
 		{
 			{
 				fac.local_get(0)
@@ -78,7 +78,7 @@ fn test_call() {
 			}
 			fac.mul(.i64_t)
 		}
-		fac.c_end_if()
+		fac.c_end(ifs)
 	}
 	m.commit(fac, true)
 

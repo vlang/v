@@ -6,19 +6,14 @@ module context
 
 import time
 
-const (
-	background         = EmptyContext(0)
-	todo               = EmptyContext(1)
+const cancel_context_key = Key('context.CancelContext')
 
-	cancel_context_key = Key('context.CancelContext')
+// canceled is the error returned by Context.err when the context is canceled.
+const canceled = error('context canceled')
 
-	// canceled is the error returned by Context.err when the context is canceled.
-	canceled           = error('context canceled')
-
-	// deadline_exceeded is the error returned by Context.err when the context's
-	// deadline passes.
-	deadline_exceeded  = error('context deadline exceeded')
-)
+// deadline_exceeded is the error returned by Context.err when the context's
+// deadline passes.
+const deadline_exceeded = error('context deadline exceeded')
 
 // Key represents the type for the ValueContext key
 pub type Key = bool | f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8 | voidptr
@@ -68,26 +63,39 @@ pub interface Any {}
 pub interface Context {
 	deadline() ?time.Time
 	value(key Key) ?Any
-	str() string
 mut:
 	done() chan int
 	err() IError
 }
 
-// background returns an empty Context. It is never canceled, has no
-// values, and has no deadline. It is typically used by the main function,
-// initialization, and tests, and as the top-level Context for incoming
-// requests.
-pub fn background() Context {
-	return context.background
-}
-
-// todo returns an empty Context. Code should use todo when
-// it's unclear which Context to use or it is not yet available (because the
-// surrounding function has not yet been extended to accept a Context
-// parameter).
-pub fn todo() Context {
-	return context.todo
+// str returns the `str` method of the corresponding Context struct
+pub fn (ctx &Context) str() string {
+	// since `Context` is an interface we have to manually match every possible
+	// type that implements `Context` if we want to use a `Context` as a field in a struct
+	// since the `Context` interface has to implement its own `str` method.
+	match ctx {
+		BackgroundContext {
+			return ctx.str()
+		}
+		EmptyContext {
+			return ctx.str()
+		}
+		TodoContext {
+			return ctx.str()
+		}
+		CancelContext {
+			return ctx.str()
+		}
+		TimerContext {
+			return ctx.str()
+		}
+		ValueContext {
+			return ctx.str()
+		}
+		else {
+			return context_name(ctx)
+		}
+	}
 }
 
 fn context_name(ctx Context) string {

@@ -2,14 +2,14 @@ type Foo = int_literal | float_literal
 type Fo2 = int_literal
 
 struct Int {
-    i int_literal
-    f float_literal
+	i int_literal
+	f float_literal
 }
 
 fn foo(i int_literal) int_literal {
-    return i
+	return i
 }
 
 fn foo2() int_literal {
-    return 1
-} 
+	return 1
+}

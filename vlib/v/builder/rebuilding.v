@@ -8,6 +8,7 @@ import strings
 import v.util
 import v.pref
 import v.vcache
+import runtime
 
 pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
@@ -34,7 +35,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut new_hashes := map[string]string{}
 	mut old_hashes := map[string]string{}
 	mut sb_new_hashes := strings.new_builder(1024)
-	//
+
 	mut cm := vcache.new_cache_manager(all_files)
 	sold_hashes := cm.load('.hashes', 'all_files') or { ' ' }
 	// eprintln(sold_hashes)
@@ -198,10 +199,10 @@ fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
 			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
 		}
 		b.v_build_module(vexe, imp_path)
-		rebuilded_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
+		rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
 			panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
 		}
-		return rebuilded_o
+		return rebuilt_o
 	}
 	return res
 }
@@ -227,8 +228,8 @@ fn (mut b Builder) handle_usecache(vexe string) {
 		for imp_stmt in ast_file.imports {
 			imp := imp_stmt.mod
 			// strconv is already imported inside builtin, so skip generating its object file
-			// TODO: incase we have other modules with the same name, make sure they are vlib
-			// is this even doign anything?
+			// TODO: in case we have other modules with the same name, make sure they are vlib
+			// is this even doing anything?
 			if util.module_is_builtin(imp) {
 				continue
 			}
@@ -240,7 +241,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 			}
 			// The problem is cmd/v is in module main and imports
 			// the relative module named help, which is built as cmd.v.help not help
-			// currently this got this workign by building into main, see ast.FnDecl in cgen
+			// currently this got this working by building into main, see ast.FnDecl in cgen
 			if imp == 'help' {
 				continue
 			}
@@ -341,9 +342,15 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		}
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()
+		mut sall_v_types := b.table.type_symbols.len.str()
+		mut sall_v_modules := b.table.modules.len.str()
+		mut sall_v_files := b.parsed_files.len.str()
 		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
 		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
-		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes')
+		sall_v_types = util.bold('${sall_v_types:5s}')
+		sall_v_modules = util.bold('${sall_v_modules:5s}')
+		sall_v_files = util.bold('${sall_v_files:5s}')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()
@@ -353,7 +360,8 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		//
 		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
 		svlines_per_second := util.bold(vlines_per_second.str())
-		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s')
+		used_cgen_threads := if b.pref.no_parallel { 1 } else { runtime.nr_jobs() }
+		println('compilation took: ${scompilation_time_ms} ms, compilation speed: ${svlines_per_second} vlines/s, cgen threads: ${used_cgen_threads}')
 	}
 }
 
@@ -361,7 +369,7 @@ pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) 
 	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.${rand.u64()}'
+		uniq = '.${rand.ulid()}'
 	}
 	fname := os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'
 	return os.real_path(os.join_path(vtmp, fname))

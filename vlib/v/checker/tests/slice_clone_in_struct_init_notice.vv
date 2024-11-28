@@ -1,0 +1,12 @@
+struct AA {
+	a []int
+}
+
+fn main() {
+	mut a := []int{len: 10}
+
+	_ := AA{
+		a: a[0..5]
+	}
+	_ := a[0..5]
+}

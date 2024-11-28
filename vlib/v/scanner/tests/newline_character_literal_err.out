@@ -1,0 +1,7 @@
+vlib/v/scanner/tests/newline_character_literal_err.vv:2:7: error: invalid character literal, use `\n` instead
+    1 | fn main() {
+    2 |     a := `
+      |          ^
+    3 | `
+    4 |     println(a)
+Details: use quotes for strings, backticks for characters

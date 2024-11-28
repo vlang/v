@@ -45,7 +45,8 @@ void main() {
 #pragma sokol @end
 
 #pragma sokol @fs fs_i
-uniform sampler2D tex;
+uniform texture2D tex;
+uniform sampler smp;
 
 in vec4 color;
 in vec4 color_inst;
@@ -54,8 +55,8 @@ out vec4 frag_color;
 
 void main() {
 	vec4 c = color;
-	vec4 txt = texture(tex, uv);
-	c = txt * c * color_inst;	
+	vec4 txt = texture(sampler2D(tex, smp), uv);
+	c = txt * c * color_inst;
 	frag_color = c ;
 }
 

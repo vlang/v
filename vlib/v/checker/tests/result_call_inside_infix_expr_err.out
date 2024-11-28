@@ -1,0 +1,13 @@
+vlib/v/checker/tests/result_call_inside_infix_expr_err.vv:53:27: error: wrong return type `IError` in the `or {}` block, expected `StopAfter`
+   51 |     assert parse('10d')! == StopAfter{10 * time.hour * 24, .time}
+   52 |     assert parse('10t')! == StopAfter{10, .tx}
+   53 |     assert parse('10x') or { err } == StopAfter{}
+      |                              ~~~
+   54 |     assert StopAfter{} == parse('10x') or { err }
+   55 | }
+vlib/v/checker/tests/result_call_inside_infix_expr_err.vv:54:42: error: wrong return type `IError` in the `or {}` block, expected `StopAfter`
+   52 |     assert parse('10t')! == StopAfter{10, .tx}
+   53 |     assert parse('10x') or { err } == StopAfter{}
+   54 |     assert StopAfter{} == parse('10x') or { err }
+      |                                             ~~~
+   55 | }

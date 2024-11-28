@@ -1,0 +1,25 @@
+import os
+
+const service_file = '[Unit]'
+const service_path = 'dockerman.service'
+
+fn main() {
+	os.write_file_array(service_path, service_file) or {
+		eprintln('Error: write file service')
+		exit(1)
+	}
+}
+
+// for issue 20172
+// dimension checking error when mut array is passed multiple times as args
+fn foo(mut arr []int) {
+	bar(mut arr)
+}
+
+fn bar(mut arr [][]int) {
+}
+
+fn baz() {
+	mut arr := [1, 2, 3]
+	foo(mut arr)
+}

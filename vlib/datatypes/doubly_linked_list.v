@@ -1,5 +1,10 @@
 module datatypes
 
+pub enum Direction {
+	front
+	back
+}
+
 struct DoublyListNode[T] {
 mut:
 	data T
@@ -77,6 +82,23 @@ pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
 		list.head = new_node
 	}
 	list.len += 1
+}
+
+// push_many adds array of elements to the beginning of the linked list
+pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Direction) {
+	match direction {
+		.front {
+			for i := elements.len - 1; i >= 0; i-- {
+				v := elements[i]
+				list.push_front(v)
+			}
+		}
+		.back {
+			for v in elements {
+				list.push_back(v)
+			}
+		}
+	}
 }
 
 // pop_back removes the last element of the linked list

@@ -9,5 +9,5 @@ pub fn next(mut v []Typ) Typ {
 fn main() {
 	mut v := [Typ{}]
 	last := next(mut v)
-	println('$last')
+	println('${last}')
 }

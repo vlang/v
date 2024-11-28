@@ -1,6 +1,5 @@
 import os
 import term
-import rand
 import v.util.vtest
 import v.util.diff
 
@@ -10,11 +9,13 @@ const vroot = @VMODROOT
 
 const diff_cmd = find_diff_cmd()
 
+const github_job = os.getenv('GITHUB_JOB')
+
 fn find_diff_cmd() string {
 	return diff.find_working_diff_command() or { '' }
 }
 
-[noreturn]
+@[noreturn]
 fn exit_because(msg string) {
 	eprintln('${msg}, tests will not run')
 	exit(0)
@@ -33,6 +34,9 @@ fn test_node_exists() {
 		exit_because('node should be at least version 10, but is currently version: ${version}')
 	}
 	println('Using node version: ${version}')
+	// if github_job != '' && os.user_os() == 'macos' {
+	//	exit_because('program_test.v is flaky on macos')
+	//}
 }
 
 fn test_running_programs_compiled_with_the_js_backend() {
@@ -40,7 +44,7 @@ fn test_running_programs_compiled_with_the_js_backend() {
 	os.chdir(vroot) or {}
 	test_dir := 'vlib/v/gen/js/tests/testdata'
 	main_files := get_main_files_in_dir(test_dir)
-	fails := check_path(test_dir, main_files)?
+	fails := check_path(test_dir, main_files)!
 	assert fails == 0
 }
 
@@ -70,14 +74,16 @@ fn check_path(dir string, tests []string) !int {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected ${program_out} content:')
-			println(expected)
-			println('============')
-			println('found:')
-			println(found)
-			println('============\n')
-			println('diff:')
-			println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+			if diff_ := diff.compare_text(expected, found) {
+				println('diff:')
+				println(diff_)
+			} else {
+				println('expected ${program_out} content:')
+				println(expected)
+				println('============')
+				println('found:')
+				println(found)
+			}
 			println('============\n')
 			nb_fail++
 		} else {

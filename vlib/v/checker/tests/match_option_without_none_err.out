@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_option_without_none_err.vv:16:3: error: `match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`
+   14 |     match p.part {
+   15 |         // Next weird line crashes compiler before sugesting 'unwrap' var?
+   16 |         none, 1 { return '' }
+      |         ~~~~~~~
+   17 |         else { return '${p.part}' }
+   18 |     }

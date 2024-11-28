@@ -1,0 +1,34 @@
+module main
+
+import gg
+import gx
+
+fn main() {
+	mut context := gg.new_context(
+		width: 325
+		height: 275
+		window_title: 'Rounded Rectangles'
+		frame_fn: frame
+	)
+	context.run()
+}
+
+fn frame(mut ctx gg.Context) {
+	ctx.begin()
+	// these should be rounded rectangles
+	ctx.draw_rounded_rect_empty(10, 10, 50, 100, 5, gx.blue)
+	ctx.draw_rounded_rect_empty(25, 25, 50, 100, 15, gx.yellow)
+	ctx.draw_rounded_rect_empty(50, 50, 50, 100, 50, gx.red)
+	ctx.draw_rounded_rect_empty(75, 75, 50, 100, 100, gx.green)
+	ctx.draw_rounded_rect_empty(100, 100, 50, 100, 1000, gx.white)
+	ctx.draw_rounded_rect_empty(110, 10, 100, 50, 5, gx.blue)
+	ctx.draw_rounded_rect_empty(125, 25, 100, 50, 15, gx.yellow)
+	ctx.draw_rounded_rect_empty(150, 50, 100, 50, 50, gx.red)
+	ctx.draw_rounded_rect_empty(175, 75, 100, 50, 100, gx.green)
+	ctx.draw_rounded_rect_empty(200, 100, 100, 50, 1000, gx.white)
+	// this should be a perfect circle
+	ctx.draw_rounded_rect_empty(10, 200, 50, 50, 1000, gx.magenta)
+	// this should be a perfect square
+	ctx.draw_rounded_rect_empty(250, 200, 50, 50, 0, gx.cyan)
+	ctx.end()
+}

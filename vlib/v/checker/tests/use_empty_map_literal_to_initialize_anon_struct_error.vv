@@ -1,0 +1,11 @@
+struct AStructName {
+	foo  int
+	anon struct {
+		bar int
+	}
+}
+
+fn main() {
+	s := AStructName{5, {}}
+	println(s)
+}

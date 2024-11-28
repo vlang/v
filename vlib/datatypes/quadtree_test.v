@@ -11,9 +11,9 @@ fn test_insert() {
 	mut qt := Quadtree{}
 	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
 	mut pt := AABB{
-		x: 100
-		y: 50
-		width: 60
+		x:      100
+		y:      50
+		width:  60
 		height: 100
 	}
 	assert test.particles == []
@@ -25,9 +25,9 @@ fn test_retrieve() {
 	mut qt := Quadtree{}
 	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
 	mut pt := AABB{
-		x: 100
-		y: 50
-		width: 60
+		x:      100
+		y:      50
+		width:  60
 		height: 100
 	}
 	test.insert(pt)
@@ -40,9 +40,9 @@ fn test_clear() {
 	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
 	mut test_clone := qt.create(0, 0, 1340, 640, 8, 4, 0)
 	mut pt := AABB{
-		x: 100
-		y: 50
-		width: 60
+		x:      100
+		y:      50
+		width:  60
 		height: 100
 	}
 	test.split()
@@ -72,9 +72,9 @@ fn test_get_index() {
 	mut qt := Quadtree{}
 	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
 	mut pt := AABB{
-		x: 100
-		y: 50
-		width: 60
+		x:      100
+		y:      50
+		width:  60
 		height: 100
 	}
 	test.particles << pt

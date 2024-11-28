@@ -26,10 +26,10 @@ fn main() {
 	// TODO: add retries here, github requests can fail
 	jq := http.get_text('https://api.github.com/repos/WebAssembly/binaryen/releases/latest')
 	tag := json.decode(JQ, jq)!.tag_name
-        if github_job != '' {
-                dump(jq)
-                dump(tag)
-        }
+	     if github_job != '' {
+	             dump(jq)
+	             dump(tag)
+	     }
 	*/
 	tag := 'version_112'
 

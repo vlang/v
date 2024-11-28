@@ -1,0 +1,3 @@
+import os as vos { execute }
+
+execute('ls')

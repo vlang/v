@@ -1,0 +1,6 @@
+u64: true
+u64 array: 0
+other array: 1
+other array: 0
+other int: false
+unknown type

@@ -5,7 +5,7 @@ import strings
 
 fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.sumtype_fn_definitions {
 		return ptr_styp
 	}
@@ -27,7 +27,7 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 		} else if variant.sym.kind == .sum_type && !typ.is_ptr() {
 			eq_fn := g.gen_sumtype_equality_fn(typ)
 			fn_builder.writeln('\t\treturn ${eq_fn}_sumtype_eq(a,b);')
-		} else if variant.sym.kind == .struct_ && !typ.is_ptr() {
+		} else if variant.sym.kind == .struct && !typ.is_ptr() {
 			eq_fn := g.gen_struct_equality_fn(typ)
 			fn_builder.writeln('\t\treturn ${eq_fn}_struct_eq(a,b);')
 		} else if variant.sym.kind == .array && !typ.is_ptr() {
@@ -57,7 +57,7 @@ fn (mut g JsGen) gen_sumtype_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_struct_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	fn_name := ptr_styp.replace('struct ', '')
 	if fn_name in g.struct_fn_definitions {
 		return fn_name
@@ -90,7 +90,7 @@ fn (mut g JsGen) gen_struct_equality_fn(left_type ast.Type) string {
 			} else if field_type.sym.kind == .sum_type && !field.typ.is_ptr() {
 				eq_fn := g.gen_sumtype_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_sumtype_eq(a.${field_name}, b.${field_name})')
-			} else if field_type.sym.kind == .struct_ && !field.typ.is_ptr() {
+			} else if field_type.sym.kind == .struct && !field.typ.is_ptr() {
 				eq_fn := g.gen_struct_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_struct_eq(a.${field_name}, b.${field_name})')
 			} else if field_type.sym.kind == .array && !field.typ.is_ptr() {
@@ -122,7 +122,7 @@ fn (mut g JsGen) gen_struct_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_alias_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.alias_fn_definitions {
 		return ptr_styp
 	}
@@ -140,7 +140,7 @@ fn (mut g JsGen) gen_alias_equality_fn(left_type ast.Type) string {
 	} else if sym.kind == .sum_type && !left.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_sumtype_eq(a, b);')
-	} else if sym.kind == .struct_ && !left.typ.is_ptr() {
+	} else if sym.kind == .struct && !left.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_struct_eq(a, b);')
 	} else if sym.kind == .array && !left.typ.is_ptr() {
@@ -164,7 +164,7 @@ fn (mut g JsGen) gen_alias_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.array_fn_definitions {
 		return ptr_styp
 	}
@@ -186,7 +186,7 @@ fn (mut g JsGen) gen_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(a.arr.get(new int(i)),b.arr.get(new int(i))).val) {')
-	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
+	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(a.arr.get(new int(i)),b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
@@ -217,7 +217,7 @@ fn (mut g JsGen) gen_array_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.array_fn_definitions {
 		return ptr_styp
 	}
@@ -238,7 +238,7 @@ fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .sum_type && !elem.typ.is_ptr() {
 		eq_fn := g.gen_sumtype_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
-	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
+	} else if elem.sym.kind == .struct && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(a.arr.get(new int(i)), b.arr.get(new int(i))).val) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
@@ -269,7 +269,7 @@ fn (mut g JsGen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 
 fn (mut g JsGen) gen_map_equality_fn(left_type ast.Type) string {
 	left := g.unwrap(left_type)
-	ptr_styp := g.typ(left.typ.set_nr_muls(0))
+	ptr_styp := g.styp(left.typ.set_nr_muls(0))
 	if ptr_styp in g.map_fn_definitions {
 		return ptr_styp
 	}
@@ -295,7 +295,7 @@ fn (mut g JsGen) gen_map_equality_fn(left_type ast.Type) string {
 	} else if kind == .sum_type {
 		eq_fn := g.gen_sumtype_equality_fn(value.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(x,y).val) {')
-	} else if kind == .struct_ {
+	} else if kind == .struct {
 		eq_fn := g.gen_struct_equality_fn(value.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(x,y).val) {')
 	} else if kind == .array {

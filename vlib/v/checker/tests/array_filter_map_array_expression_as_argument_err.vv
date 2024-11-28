@@ -17,7 +17,7 @@ fn (g Graph) pp() {
 	for horizon.len > 0 {
 		current := horizon.first()
 		horizon.delete(0)
-		println('$current.name -> $current.kids.keys()')
+		println('${current.name} -> ${current.kids.keys()}')
 		visited[current.name] = true
 		for k, v in current.kids {
 			_ = visited[k] or {
@@ -25,6 +25,6 @@ fn (g Graph) pp() {
 				true
 			}
 		}
-		println('HORIZON = $horizon')
+		println('HORIZON = ${horizon}')
 	}
 }

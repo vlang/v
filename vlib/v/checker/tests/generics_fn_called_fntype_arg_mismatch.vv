@@ -1,9 +1,9 @@
-pub type FnArrayInit = fn (idx int) T
+pub type FnArrayInit[T] = fn (idx int) T
 
 pub fn new_array[T](len int, initfn FnArrayInit[T]) []T {
 	mut res := []T{len: len}
 	for idx in 0 .. res.len {
-		res[idx] = initfn(idx)
+		res[idx] = initfn[T](idx)
 	}
 	return res
 }

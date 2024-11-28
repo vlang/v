@@ -6,7 +6,7 @@ struct Abc {
 }
 
 fn (s Abc) panic(message string) {
-	println('called ${@METHOD} with message: $message')
+	println('called ${@METHOD} with message: ${message}')
 }
 
 fn (s Abc) abc() &int {
@@ -18,5 +18,5 @@ fn (s Abc) abc() &int {
 
 fn main() {
 	d := h()
-	println('$d')
+	println('${d}')
 }

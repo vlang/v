@@ -127,9 +127,20 @@ with a label named `build`.
             ],
             "group": "build",
             "presentation": {
-                "reveal": "silent"
+                "reveal": "never"
             },
-            "problemMatcher": "$gcc"
+            "problemMatcher": {
+                "owner": "v",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
         }
     ]
 }

@@ -48,16 +48,9 @@
 #include "psa/crypto.h"
 #include "mbedtls/psa_util.h"
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
+#include "hash_info.h"
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#include <stdio.h>
-#include <stdlib.h>
-#define mbedtls_free       free
-#define mbedtls_calloc    calloc
-#define mbedtls_snprintf   snprintf
-#endif
 
 #if defined(MBEDTLS_THREADING_C)
 #include "mbedtls/threading.h"
@@ -81,6 +74,7 @@
 #else
 #include <dirent.h>
 #endif /* __MBED__ */
+#include <errno.h>
 #endif /* !_WIN32 || EFIX64 || EFI32 */
 #endif
 
@@ -691,16 +685,7 @@ static int x509_get_subject_alt_name( unsigned char **p,
          */
         if( ret != 0 && ret != MBEDTLS_ERR_X509_FEATURE_UNAVAILABLE )
         {
-            mbedtls_x509_sequence *seq_cur = subject_alt_name->next;
-            mbedtls_x509_sequence *seq_prv;
-            while( seq_cur != NULL )
-            {
-                seq_prv = seq_cur;
-                seq_cur = seq_cur->next;
-                mbedtls_platform_zeroize( seq_prv,
-                                          sizeof( mbedtls_x509_sequence ) );
-                mbedtls_free( seq_prv );
-            }
+            mbedtls_asn1_sequence_free( subject_alt_name->next );
             subject_alt_name->next = NULL;
             return( ret );
         }
@@ -1657,8 +1642,22 @@ cleanup:
         }
         else if( stat( entry_name, &sb ) == -1 )
         {
-            ret = MBEDTLS_ERR_X509_FILE_IO_ERROR;
-            goto cleanup;
+            if( errno == ENOENT )
+            {
+                /* Broken symbolic link - ignore this entry.
+                    stat(2) will return this error for either (a) a dangling
+                    symlink or (b) a missing file.
+                    Given that we have just obtained the filename from readdir,
+                    assume that it does exist and therefore treat this as a
+                    dangling symlink. */
+                continue;
+            }
+            else
+            {
+                /* Some other file error; report the error. */
+                ret = MBEDTLS_ERR_X509_FILE_IO_ERROR;
+                goto cleanup;
+            }
         }
 
         if( !S_ISREG( sb.st_mode ) )
@@ -1838,6 +1837,7 @@ static int x509_info_subject_alt_name( char **buf, size_t *size,
                                        const char *prefix )
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+    size_t i;
     size_t n = *size;
     char *p = *buf;
     const mbedtls_x509_sequence *cur = subject_alt_name;
@@ -1890,18 +1890,11 @@ static int x509_info_subject_alt_name( char **buf, size_t *size,
                     ret = mbedtls_snprintf( p, n, "\n%s            hardware serial number : ", prefix );
                     MBEDTLS_X509_SAFE_SNPRINTF;
 
-                    if( other_name->value.hardware_module_name.val.len >= n )
+                    for( i = 0; i < other_name->value.hardware_module_name.val.len; i++ )
                     {
-                        *p = '\0';
-                        return( MBEDTLS_ERR_X509_BUFFER_TOO_SMALL );
+                        ret = mbedtls_snprintf( p, n, "%02X", other_name->value.hardware_module_name.val.p[i] );
+                        MBEDTLS_X509_SAFE_SNPRINTF;
                     }
-
-                    memcpy( p, other_name->value.hardware_module_name.val.p,
-                            other_name->value.hardware_module_name.val.len );
-                    p += other_name->value.hardware_module_name.val.len;
-
-                    n -= other_name->value.hardware_module_name.val.len;
-
                 }/* MBEDTLS_OID_ON_HW_MODULE_NAME */
             }
             break;
@@ -2338,11 +2331,10 @@ static int x509_crt_verifycrl( mbedtls_x509_crt *crt, mbedtls_x509_crt *ca,
                                const mbedtls_x509_crt_profile *profile )
 {
     int flags = 0;
+    unsigned char hash[MBEDTLS_HASH_MAX_SIZE];
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
-    unsigned char hash[PSA_HASH_MAX_SIZE];
     psa_algorithm_t psa_algorithm;
 #else
-    unsigned char hash[MBEDTLS_MD_MAX_SIZE];
     const mbedtls_md_info_t *md_info;
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
     size_t hash_length;
@@ -2379,7 +2371,7 @@ static int x509_crt_verifycrl( mbedtls_x509_crt *crt, mbedtls_x509_crt *ca,
             flags |= MBEDTLS_X509_BADCRL_BAD_PK;
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
-        psa_algorithm = mbedtls_psa_translate_md( crl_list->sig_md );
+        psa_algorithm = mbedtls_hash_info_psa_from_md( crl_list->sig_md );
         if( psa_hash_compute( psa_algorithm,
                               crl_list->tbs.p,
                               crl_list->tbs.len,
@@ -2449,8 +2441,8 @@ static int x509_crt_check_signature( const mbedtls_x509_crt *child,
                                      mbedtls_x509_crt_restart_ctx *rs_ctx )
 {
     size_t hash_len;
+    unsigned char hash[MBEDTLS_HASH_MAX_SIZE];
 #if !defined(MBEDTLS_USE_PSA_CRYPTO)
-    unsigned char hash[MBEDTLS_MD_MAX_SIZE];
     const mbedtls_md_info_t *md_info;
     md_info = mbedtls_md_info_from_type( child->sig_md );
     hash_len = mbedtls_md_get_size( md_info );
@@ -2459,8 +2451,7 @@ static int x509_crt_check_signature( const mbedtls_x509_crt *child,
     if( mbedtls_md( md_info, child->tbs.p, child->tbs.len, hash ) != 0 )
         return( -1 );
 #else
-    unsigned char hash[PSA_HASH_MAX_SIZE];
-    psa_algorithm_t hash_alg = mbedtls_psa_translate_md( child->sig_md );
+    psa_algorithm_t hash_alg = mbedtls_hash_info_psa_from_md( child->sig_md );
     psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
 
     status = psa_hash_compute( hash_alg,
@@ -3294,15 +3285,8 @@ void mbedtls_x509_crt_free( mbedtls_x509_crt *crt )
 {
     mbedtls_x509_crt *cert_cur = crt;
     mbedtls_x509_crt *cert_prv;
-    mbedtls_x509_name *name_cur;
-    mbedtls_x509_name *name_prv;
-    mbedtls_x509_sequence *seq_cur;
-    mbedtls_x509_sequence *seq_prv;
 
-    if( crt == NULL )
-        return;
-
-    do
+    while( cert_cur != NULL )
     {
         mbedtls_pk_free( &cert_cur->pk );
 
@@ -3310,53 +3294,11 @@ void mbedtls_x509_crt_free( mbedtls_x509_crt *crt )
         mbedtls_free( cert_cur->sig_opts );
 #endif
 
-        name_cur = cert_cur->issuer.next;
-        while( name_cur != NULL )
-        {
-            name_prv = name_cur;
-            name_cur = name_cur->next;
-            mbedtls_platform_zeroize( name_prv, sizeof( mbedtls_x509_name ) );
-            mbedtls_free( name_prv );
-        }
-
-        name_cur = cert_cur->subject.next;
-        while( name_cur != NULL )
-        {
-            name_prv = name_cur;
-            name_cur = name_cur->next;
-            mbedtls_platform_zeroize( name_prv, sizeof( mbedtls_x509_name ) );
-            mbedtls_free( name_prv );
-        }
-
-        seq_cur = cert_cur->ext_key_usage.next;
-        while( seq_cur != NULL )
-        {
-            seq_prv = seq_cur;
-            seq_cur = seq_cur->next;
-            mbedtls_platform_zeroize( seq_prv,
-                                      sizeof( mbedtls_x509_sequence ) );
-            mbedtls_free( seq_prv );
-        }
-
-        seq_cur = cert_cur->subject_alt_names.next;
-        while( seq_cur != NULL )
-        {
-            seq_prv = seq_cur;
-            seq_cur = seq_cur->next;
-            mbedtls_platform_zeroize( seq_prv,
-                                      sizeof( mbedtls_x509_sequence ) );
-            mbedtls_free( seq_prv );
-        }
-
-        seq_cur = cert_cur->certificate_policies.next;
-        while( seq_cur != NULL )
-        {
-            seq_prv = seq_cur;
-            seq_cur = seq_cur->next;
-            mbedtls_platform_zeroize( seq_prv,
-                                      sizeof( mbedtls_x509_sequence ) );
-            mbedtls_free( seq_prv );
-        }
+        mbedtls_asn1_free_named_data_list_shallow( cert_cur->issuer.next );
+        mbedtls_asn1_free_named_data_list_shallow( cert_cur->subject.next );
+        mbedtls_asn1_sequence_free( cert_cur->ext_key_usage.next );
+        mbedtls_asn1_sequence_free( cert_cur->subject_alt_names.next );
+        mbedtls_asn1_sequence_free( cert_cur->certificate_policies.next );
 
         if( cert_cur->raw.p != NULL && cert_cur->own_buffer )
         {
@@ -3364,13 +3306,6 @@ void mbedtls_x509_crt_free( mbedtls_x509_crt *crt )
             mbedtls_free( cert_cur->raw.p );
         }
 
-        cert_cur = cert_cur->next;
-    }
-    while( cert_cur != NULL );
-
-    cert_cur = crt;
-    do
-    {
         cert_prv = cert_cur;
         cert_cur = cert_cur->next;
 
@@ -3378,7 +3313,6 @@ void mbedtls_x509_crt_free( mbedtls_x509_crt *crt )
         if( cert_prv != crt )
             mbedtls_free( cert_prv );
     }
-    while( cert_cur != NULL );
 }
 
 #if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)

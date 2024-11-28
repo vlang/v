@@ -1,7 +1,6 @@
 module js
 
 import v.ast
-import v.pref
 
 fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 	if !node.is_expr && !node.has_else && node.branches.len == 1 {
@@ -91,18 +90,18 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 				.key_is, .not_is {
 					left := cond.left
 					mut name := ''
-					mut exp_type := ast.Type(0)
+					mut exp_type := ast.no_type
 					got_type := (cond.right as ast.TypeNode).typ
 					// Handle `$if x is Interface {`
 					// mut matches_interface := 'false'
 					if left is ast.TypeNode && cond.right is ast.TypeNode
-						&& g.table.sym(got_type).kind == .interface_ {
+						&& g.table.sym(got_type).kind == .interface {
 						// `$if Foo is Interface {`
 						interface_sym := g.table.sym(got_type)
 						if interface_sym.info is ast.Interface {
 							// q := g.table.sym(interface_sym.info.types[0])
 							checked_type := g.unwrap_generic(left.typ)
-							// TODO PERF this check is run twice (also in the checker)
+							// TODO: PERF this check is run twice (also in the checker)
 							// store the result in a field
 							is_true := g.table.does_type_implement_interface(checked_type,
 								got_type)
@@ -142,7 +141,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					}
 				}
 				.eq, .ne {
-					// TODO Implement `$if method.args.len == 1`
+					// TODO: Implement `$if method.args.len == 1`
 					g.write('1')
 					return true
 				}
@@ -236,6 +235,9 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !str
 		'js' {
 			return 'true'
 		}
+		'native' {
+			return 'false'
+		}
 		// compilers:
 		'gcc' {
 			return 'false'
@@ -284,6 +286,9 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !str
 		'freestanding' {
 			return '_VFREESTANDING'
 		}
+		'autofree' {
+			return '_VAUTOFREE'
+		}
 		// architectures:
 		'amd64' {
 			return '(\$process.arch == "x64")'
@@ -300,10 +305,10 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !str
 		}
 		// endianness:
 		'little_endian' {
-			return '(\$os.endianess == "LE")'
+			return '(\$os.endianness == "LE")'
 		}
 		'big_endian' {
-			return '(\$os.endianess == "BE")'
+			return '(\$os.endianness == "BE")'
 		}
 		else {
 			if is_comptime_option

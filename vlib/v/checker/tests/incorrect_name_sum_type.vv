@@ -1,6 +1,8 @@
-type integer = i8 | i16 | int | i64
-type Integer = i8 | i16 | int | i64
+type integer = i16 | i64 | i8 | int
+type Integer = i16 | i64 | i8 | int
+
+fn (i Integer) type_idx() {
+}
 
 fn (i Integer) type_name() {
 }
-

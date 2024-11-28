@@ -44,7 +44,7 @@ fn do_rec_f64(ch chan f64, sumch chan f64) {
 fn test_select() {
 	ch1 := chan int{cap: 3}
 	ch2 := chan int{}
-	// buffer length of chf1 mus be mutiple of 3 (# select threads)
+	// buffer length of chf1 mus be multiple of 3 (# select threads)
 	chf1 := chan f64{cap: 30}
 	chf2 := chan f64{}
 	chsum1 := chan i64{}

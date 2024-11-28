@@ -1,17 +1,15 @@
 module main
 
-import os
+import os.asset
 import gg
 import gx
 import rand
 import sokol.sgl
 
-const (
-	win_width     = 800
-	win_height    = 600
-	max_stars     = 5000
-	max_v_letters = 5
-)
+const win_width = 800
+const win_height = 600
+const max_stars = 5000
+const max_v_letters = 5
 
 struct Star {
 mut:
@@ -45,19 +43,18 @@ mut:
 
 fn main() {
 	mut app := &App{
-		gg: 0
-		stars: []Star{len: max_stars}
+		stars:     []Star{len: max_stars}
 		v_letters: []VLetter{len: max_v_letters}
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.black
-		width: win_width
-		height: win_height
+		bg_color:      gx.black
+		width:         win_width
+		height:        win_height
 		create_window: true
-		window_title: 'Star Vield'
-		frame_fn: frame
-		init_fn: init_images
-		user_data: app
+		window_title:  'Star Vield'
+		frame_fn:      frame
+		init_fn:       init_images
+		user_data:     app
 	)
 	for i in 0 .. max_stars {
 		app.stars[i].x = rand.f32_in_range(-200.0, 200.0) or { -200.0 }
@@ -81,7 +78,7 @@ fn main() {
 }
 
 fn init_images(mut app App) {
-	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
+	logo_path := asset.get_path('../assets', 'logo.png')
 	app.image = app.gg.create_image(logo_path) or { panic(err) }
 }
 

@@ -1,0 +1,6 @@
+fn main() {
+	mut x := 0
+	~x = 34
+	&x = unsafe { nil }
+	println(x)
+}

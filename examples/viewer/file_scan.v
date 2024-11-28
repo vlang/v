@@ -72,12 +72,12 @@ pub mut:
 * Utility functions
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn modulo(x int, n int) int {
 	return (x % n + n) % n
 }
 
-[inline]
+@[inline]
 fn get_extension(x string) Item_type {
 	// 4 char extension check
 	if x.len > 4 {
@@ -110,7 +110,7 @@ fn get_extension(x string) Item_type {
 	return .file
 }
 
-[inline]
+@[inline]
 fn is_image(x Item_type) bool {
 	if int(x) >= int(Item_type.bmp) {
 		return true
@@ -118,7 +118,7 @@ fn is_image(x Item_type) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn is_container(x Item_type) bool {
 	if x in [.zip, .folder] {
 		return true
@@ -126,7 +126,7 @@ fn is_container(x Item_type) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn (item_list Item_list) is_inside_a_container() bool {
 	if item_list.lst.len <= 0 || item_list.n_item <= 0 {
 		return false
@@ -134,12 +134,12 @@ fn (item_list Item_list) is_inside_a_container() bool {
 	return item_list.lst[item_list.item_index].need_extract
 }
 
-[inline]
+@[inline]
 fn (item_list Item_list) get_file_path() string {
 	if item_list.lst.len <= 0 || item_list.n_item <= 0 {
 		return ''
 	}
-	if item_list.lst[item_list.item_index].path.len > 0 {
+	if item_list.lst[item_list.item_index].path != '' {
 		return '${item_list.lst[item_list.item_index].path}${item_list.path_sep}${item_list.lst[item_list.item_index].name}'
 	}
 	return item_list.lst[item_list.item_index].name
@@ -159,9 +159,9 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	for c, x in lst {
 		pt := '${path}${item_list.path_sep}${x}'
 		mut item := Item{
-			path: path
-			name: x
-			container_index: in_index
+			path:                 path
+			name:                 x
+			container_index:      in_index
 			container_item_index: c
 		}
 		if os.is_dir(pt) {
@@ -189,8 +189,8 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	for x in folder_list {
 		pt := '${path}${item_list.path_sep}${x}'
 		item := Item{
-			path: path
-			name: x
+			path:   path
+			name:   x
 			i_type: .folder
 		}
 		item_list.lst << item
@@ -224,10 +224,10 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 		// scan folder
 		if os.is_dir(x) {
 			mut item := Item{
-				path: x
-				name: x
+				path:            x
+				name:            x
 				container_index: item_list.lst.len
-				i_type: .folder
+				i_type:          .folder
 			}
 			item_list.lst << item
 			item_list.scan_folder(x, item_list.lst.len - 1) or {
@@ -236,8 +236,8 @@ fn (mut item_list Item_list) get_items_list(args []string) {
 			}
 		} else {
 			mut item := Item{
-				path: ''
-				name: x
+				path:            ''
+				name:            x
 				container_index: -1
 			}
 			ext := get_extension(x)
@@ -334,7 +334,7 @@ fn (mut item_list Item_list) go_to_next_container(in_inc int) {
 * Other functions
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn (mut item_list Item_list) rotate(in_inc int) {
 	item_list.lst[item_list.item_index].rotation += in_inc
 	if item_list.lst[item_list.item_index].rotation >= 4 {

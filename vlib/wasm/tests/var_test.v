@@ -4,8 +4,9 @@ import wasm
 
 fn test_globals() {
 	mut m := wasm.Module{}
+	m.enable_debug('vlang')
 
-	vsp := m.new_global('__vsp', .i32_t, true, wasm.constexpr_value(10))
+	vsp := m.new_global('__vsp', false, .i32_t, true, wasm.constexpr_value(10))
 	mut func := m.new_function('vsp', [], [.i32_t])
 	{
 		func.global_get(vsp)
@@ -16,7 +17,7 @@ fn test_globals() {
 	}
 	m.commit(func, true)
 
-	fref := m.new_global('__ref', .funcref_t, true, wasm.constexpr_ref_null(.funcref_t))
+	fref := m.new_global('__ref', true, .funcref_t, true, wasm.constexpr_ref_null(.funcref_t))
 	mut func1 := m.new_function('ref', [], [])
 	{
 		func1.ref_func('vsp')

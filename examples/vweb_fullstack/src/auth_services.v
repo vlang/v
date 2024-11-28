@@ -37,6 +37,9 @@ fn (mut app App) service_auth(username string, password string) !string {
 	users := sql db {
 		select from User where username == username
 	}!
+	if users.len == 0 {
+		return error('user not found')
+	}
 	user := users.first()
 	if user.username != username {
 		return error('user not found')
@@ -59,9 +62,9 @@ fn make_token(user User) string {
 
 	jwt_header := JwtHeader{'HS256', 'JWT'}
 	jwt_payload := JwtPayload{
-		sub: '${user.id}'
+		sub:  '${user.id}'
 		name: '${user.username}'
-		iat: time.now()
+		iat:  time.now()
 	}
 
 	header := base64.url_encode(json.encode(jwt_header).bytes())

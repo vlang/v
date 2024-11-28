@@ -4,10 +4,10 @@ import v.ast
 
 fn (mut g Gen) new_ctemp_var(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
 	return ast.CTempVar{
-		name: g.new_tmp_var()
-		typ: expr_type
+		name:   g.new_tmp_var()
+		typ:    expr_type
 		is_ptr: expr_type.is_ptr()
-		orig: expr
+		orig:   expr
 	}
 }
 
@@ -18,8 +18,16 @@ fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTe
 }
 
 fn (mut g Gen) gen_ctemp_var(tvar ast.CTempVar) {
-	styp := g.typ(tvar.typ)
-	g.write('${styp} ${tvar.name} = ')
-	g.expr(tvar.orig)
-	g.writeln(';')
+	styp := g.styp(tvar.typ)
+	if g.table.final_sym(tvar.typ).kind == .array_fixed {
+		g.writeln('${styp} ${tvar.name};')
+		g.write('memcpy(&${tvar.name}, &')
+		g.expr(tvar.orig)
+		g.writeln(' , sizeof(${styp}));')
+	} else {
+		g.write('${styp} ${tvar.name} = ')
+		g.expr(tvar.orig)
+		g.writeln(';')
+	}
+	g.set_current_pos_as_last_stmt_pos()
 }

@@ -1,0 +1,12 @@
+vlib/v/checker/tests/res_use_outside_defer.vv:2:10: error: `res` can only be used in defer blocks
+    1 | fn test() string {
+    2 |     println($res())
+      |             ~~~~~~
+    3 |     return 'test'
+    4 | }
+vlib/v/checker/tests/res_use_outside_defer.vv:2:2: error: `println` can not print void expressions
+    1 | fn test() string {
+    2 |     println($res())
+      |     ~~~~~~~~~~~~~~~
+    3 |     return 'test'
+    4 | }

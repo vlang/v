@@ -1,17 +1,15 @@
 module builtin
 
-const (
-	mem_prot  = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
-	mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
-	page_size = u64(Linux_mem.page_size)
-)
+const mem_prot = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
+const mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
+const page_size = u64(Linux_mem.page_size)
 
 pub fn mm_pages(size u64) u32 {
 	pages := (size + u64(4) + page_size) / page_size
 	return u32(pages)
 }
 
-pub fn mm_alloc(size u64) (&byte, Errno) {
+pub fn mm_alloc(size u64) (&u8, Errno) {
 	pages := mm_pages(size)
 	n_bytes := u64(pages * u32(Linux_mem.page_size))
 
@@ -24,7 +22,7 @@ pub fn mm_alloc(size u64) (&byte, Errno) {
 	return &u8(0), e
 }
 
-pub fn mm_free(addr &byte) Errno {
+pub fn mm_free(addr &u8) Errno {
 	ap := &int(addr - 4)
 	size := u64(*ap) * u64(Linux_mem.page_size)
 
@@ -40,8 +38,8 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n isize) voidptr {
 	return dest0
 }
 
-[unsafe]
-pub fn malloc(n isize) &byte {
+@[unsafe]
+pub fn malloc(n isize) &u8 {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
@@ -52,7 +50,7 @@ pub fn malloc(n isize) &byte {
 	return ptr
 }
 
-[unsafe]
+@[unsafe]
 pub fn free(ptr voidptr) {
 	assert mm_free(ptr) == .enoerror
 }

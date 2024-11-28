@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_enum_ref.vv:6:3: error: missing `*` dereferencing `t` in match statement
+    4 | fn f(t &SomeType) ?int {
+    5 |     return match
+    6 |         t    // note the missing asterisk
+      |         ^
+    7 |             {
+    8 |                 .a {

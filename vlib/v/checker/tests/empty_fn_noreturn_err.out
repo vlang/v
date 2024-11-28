@@ -1,0 +1,5 @@
+vlib/v/checker/tests/empty_fn_noreturn_err.vv:2:1: error: @[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop
+    1 | @[noreturn]
+    2 | fn f() {
+      | ~~~~~~
+    3 | }

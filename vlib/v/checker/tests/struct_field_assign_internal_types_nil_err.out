@@ -1,0 +1,49 @@
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:15:2: error: cannot assign to field `name`: expected `string`, not `voidptr`
+   13 | 
+   14 | a := &Foo{
+   15 |     name:    unsafe { nil }
+      |     ~~~~~~~~~~~~~~~
+   16 |     bar:     unsafe { nil }
+   17 |     name2:   unsafe { nil }
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:15:11: error: cannot assign `nil` to struct field `name` with type `string`
+   13 | 
+   14 | a := &Foo{
+   15 |     name:    unsafe { nil }
+      |              ~~~~~~~~~~~~
+   16 |     bar:     unsafe { nil }
+   17 |     name2:   unsafe { nil }
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:16:11: error: cannot assign `nil` to struct field `bar` with type `Bar`
+   14 | a := &Foo{
+   15 |     name:    unsafe { nil }
+   16 |     bar:     unsafe { nil }
+      |              ~~~~~~~~~~~~
+   17 |     name2:   unsafe { nil }
+   18 |     arr:     unsafe { nil }
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:17:11: error: cannot assign `nil` to struct field `name2` with type `string`
+   15 |     name:    unsafe { nil }
+   16 |     bar:     unsafe { nil }
+   17 |     name2:   unsafe { nil }
+      |              ~~~~~~~~~~~~
+   18 |     arr:     unsafe { nil }
+   19 |     mp:      unsafe { nil }
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:18:11: error: cannot assign `nil` to struct field `arr` with type `[]int`
+   16 |     bar:     unsafe { nil }
+   17 |     name2:   unsafe { nil }
+   18 |     arr:     unsafe { nil }
+      |              ~~~~~~~~~~~~
+   19 |     mp:      unsafe { nil }
+   20 |     arr_fix: unsafe { nil }
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:19:11: error: cannot assign `nil` to struct field `mp` with type `map[string]string`
+   17 |     name2:   unsafe { nil }
+   18 |     arr:     unsafe { nil }
+   19 |     mp:      unsafe { nil }
+      |              ~~~~~~~~~~~~
+   20 |     arr_fix: unsafe { nil }
+   21 | }
+vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:20:11: error: cannot assign `nil` to struct field `arr_fix` with type `[3]int`
+   18 |     arr:     unsafe { nil }
+   19 |     mp:      unsafe { nil }
+   20 |     arr_fix: unsafe { nil }
+      |              ~~~~~~~~~~~~
+   21 | }
+   22 | println(a)

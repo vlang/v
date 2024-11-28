@@ -1,6 +1,7 @@
 struct Foo {
 	name int = 5
 }
+
 struct Bar {
 	Foo
 	Foo2
@@ -9,6 +10,7 @@ struct Bar {
 struct Foo2 {
 	name string
 }
+
 fn (f Foo2) test() {
 	println(f)
 }

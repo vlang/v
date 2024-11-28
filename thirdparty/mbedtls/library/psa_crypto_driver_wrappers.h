@@ -226,10 +226,6 @@ psa_status_t psa_driver_wrapper_aead_decrypt(
     const uint8_t *ciphertext, size_t ciphertext_length,
     uint8_t *plaintext, size_t plaintext_size, size_t *plaintext_length );
 
-psa_status_t psa_driver_get_tag_len(
-    psa_aead_operation_t *operation,
-    uint8_t *tag_len );
-
 psa_status_t psa_driver_wrapper_aead_encrypt_setup(
     psa_aead_operation_t *operation,
     const psa_key_attributes_t *attributes,
@@ -360,6 +356,20 @@ psa_status_t psa_driver_wrapper_asymmetric_decrypt(
     uint8_t *output,
     size_t output_size,
     size_t *output_length );
+
+/*
+ * Raw Key Agreement
+ */
+psa_status_t psa_driver_wrapper_key_agreement(
+    const psa_key_attributes_t *attributes,
+    const uint8_t *key_buffer,
+    size_t key_buffer_size,
+    psa_algorithm_t alg,
+    const uint8_t *peer_key,
+    size_t peer_key_length,
+    uint8_t *shared_secret,
+    size_t shared_secret_size,
+    size_t *shared_secret_length );
 
 #endif /* PSA_CRYPTO_DRIVER_WRAPPERS_H */
 

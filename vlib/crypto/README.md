@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `crypto` is a module that exposes cryptographic algorithms to V programs.
 
@@ -13,9 +13,10 @@ to create a destination buffer of the correct size to receive the decrypted data
 
 The implementations here are loosely based on [Go's crypto package](https://pkg.go.dev/crypto).
 
-## Examples:
+## Examples
 
-### AES:
+### AES
+
 ```v
 import crypto.aes
 import crypto.rand
@@ -45,7 +46,8 @@ fn main() {
 }
 ```
 
-### JWT:
+### JWT
+
 ```v
 import crypto.hmac
 import crypto.sha256

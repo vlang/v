@@ -1,0 +1,5 @@
+module json
+
+import x.json2 as json
+
+println(json.Any(json.null))

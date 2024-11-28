@@ -1,0 +1,6 @@
+module foo
+
+fn bar() {
+	foo := 'bar'
+	println(foo)
+}

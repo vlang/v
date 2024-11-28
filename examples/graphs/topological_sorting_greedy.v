@@ -11,9 +11,9 @@ fn topog_sort_greedy(graph map[string][]string) []string {
 	mut top_order := []string{} // a vector with sequence of nodes visited
 	mut count := 0
 	/*
-	IDEA ( a greedy algorythm ):
+	IDEA ( a greedy algorithm ):
 
-	 1. choose allways the node with smallest input degree
+	 1. choose always the node with smallest input degree
 	 2. visit it
 	 3. put it in the output vector
 	 4. remove it from graph
@@ -94,7 +94,7 @@ fn remove_node_from_graph(node string, a_map map[string][]string) map[string][]s
 	mut all_nodes := new_graph.keys() // get all nodes of this graph
 	// FOR THE FUTURE with filter
 	// for i in all_nodes {
-	//	   new_graph[i] = new_graph[i].filter(index(it) != node)	
+	//	   new_graph[i] = new_graph[i].filter(index(it) != node)
 	// }
 	// A HELP FROM V discussion	 GITHUB - thread
 	for key in all_nodes {

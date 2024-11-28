@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_type_node_with_non_sum_type_err.vv:5:3: error: matching by type can only be done for sum types, generics, interfaces, `b` is none of those
+    3 |
+    4 |     match b {
+    5 |         i64 { println('i64') }
+      |         ~~~
+    6 |         100 { println(100) }
+    7 |         else {}

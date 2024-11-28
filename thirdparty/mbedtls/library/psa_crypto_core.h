@@ -183,6 +183,24 @@ static inline psa_key_slot_number_t psa_key_slot_get_slot_number(
 }
 #endif
 
+/** Get the description of a key given its identifier and policy constraints
+ *  and lock it.
+ *
+ * The key must have allow all the usage flags set in \p usage. If \p alg is
+ * nonzero, the key must allow operations with this algorithm. If \p alg is
+ * zero, the algorithm is not checked.
+ *
+ * In case of a persistent key, the function loads the description of the key
+ * into a key slot if not already done.
+ *
+ * On success, the returned key slot is locked. It is the responsibility of
+ * the caller to unlock the key slot when it does not access it anymore.
+ */
+psa_status_t psa_get_and_lock_key_slot_with_policy( mbedtls_svc_key_id_t key,
+                                                    psa_key_slot_t **p_slot,
+                                                    psa_key_usage_t usage,
+                                                    psa_algorithm_t alg );
+
 /** Completely wipe a slot in memory, including its policy.
  *
  * Persistent storage is not affected.
@@ -245,22 +263,6 @@ psa_status_t psa_copy_key_material_into_slot( psa_key_slot_t *slot,
  * \return              The corresponding PSA error code
  */
 psa_status_t mbedtls_to_psa_error( int ret );
-
-/** Get Mbed TLS cipher information given the cipher algorithm PSA identifier
- *  as well as the PSA type and size of the key to be used with the cipher
- *  algorithm.
- *
- * \param       alg        PSA cipher algorithm identifier
- * \param       key_type   PSA key type
- * \param       key_bits   Size of the key in bits
- * \param[out]  cipher_id  Mbed TLS cipher algorithm identifier
- *
- * \return  The Mbed TLS cipher information of the cipher algorithm.
- *          \c NULL if the PSA cipher algorithm is not supported.
- */
-const mbedtls_cipher_info_t *mbedtls_cipher_info_from_psa(
-    psa_algorithm_t alg, psa_key_type_t key_type, size_t key_bits,
-    mbedtls_cipher_id_t *cipher_id );
 
 /** Import a key in binary format.
  *
@@ -547,4 +549,62 @@ psa_status_t psa_verify_hash_builtin(
  */
 psa_status_t psa_validate_unstructured_key_bit_size( psa_key_type_t type,
                                                      size_t bits );
+
+/** Perform a key agreement and return the raw shared secret, using
+    built-in raw key agreement functions.
+ *
+ * \note The signature of this function is that of a PSA driver
+ *       key_agreement entry point. This function behaves as a key_agreement
+ *       entry point as defined in the PSA driver interface specification for
+ *       transparent drivers.
+ *
+ * \param[in]  attributes           The attributes of the key to use for the
+ *                                  operation.
+ * \param[in]  key_buffer           The buffer containing the private key
+ *                                  context.
+ * \param[in]  key_buffer_size      Size of the \p key_buffer buffer in
+ *                                  bytes.
+ * \param[in]  alg                  A key agreement algorithm that is
+ *                                  compatible with the type of the key.
+ * \param[in]  peer_key             The buffer containing the key context
+ *                                  of the peer's public key.
+ * \param[in]  peer_key_length      Size of the \p peer_key buffer in
+ *                                  bytes.
+ * \param[out] shared_secret        The buffer to which the shared secret
+ *                                  is to be written.
+ * \param[in]  shared_secret_size   Size of the \p shared_secret buffer in
+ *                                  bytes.
+ * \param[out] shared_secret_length On success, the number of bytes that make
+ *                                  up the returned shared secret.
+ * \retval #PSA_SUCCESS
+ *         Success. Shared secret successfully calculated.
+ * \retval #PSA_ERROR_INVALID_HANDLE
+ * \retval #PSA_ERROR_NOT_PERMITTED
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
+ *         \p alg is not a key agreement algorithm, or
+ *         \p private_key is not compatible with \p alg,
+ *         or \p peer_key is not valid for \p alg or not compatible with
+ *         \p private_key.
+ * \retval #PSA_ERROR_BUFFER_TOO_SMALL
+ *         \p shared_secret_size is too small
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ *         \p alg is not a supported key agreement algorithm.
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_COMMUNICATION_FAILURE
+ * \retval #PSA_ERROR_HARDWARE_FAILURE
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_STORAGE_FAILURE
+ * \retval #PSA_ERROR_BAD_STATE
+ */
+psa_status_t psa_key_agreement_raw_builtin(
+    const psa_key_attributes_t *attributes,
+    const uint8_t *key_buffer,
+    size_t key_buffer_size,
+    psa_algorithm_t alg,
+    const uint8_t *peer_key,
+    size_t peer_key_length,
+    uint8_t *shared_secret,
+    size_t shared_secret_size,
+    size_t *shared_secret_length );
+
 #endif /* PSA_CRYPTO_CORE_H */

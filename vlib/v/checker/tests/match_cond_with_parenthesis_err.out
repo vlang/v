@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_cond_with_parenthesis_err.vv:14:15: error: unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.
+vlib/v/checker/tests/match_cond_with_parenthesis_err.vv:14:15: warning: unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.
    12 | 
    13 | fn bar() bool {
    14 |     return match (foo()) {

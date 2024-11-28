@@ -1,27 +1,27 @@
-[typedef]
+@[typedef]
 struct Foo {
 }
 
-[typedef]
+@[typedef]
 struct Bar {
 	x string
 	y int
 }
 
-[heap]
+@[heap]
 struct Baz {
 	x string
 	y int
 }
 
-[inline]
+@[inline]
 struct Spam {
 	x string
 	y int
 }
 
-[deprecated]
+@[deprecated]
 struct Eggs {
-	y_y int    [json: yY]
-	x   string [deprecated]
+	y_y int    @[json: yY]
+	x   string @[deprecated]
 }

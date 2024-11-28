@@ -11,7 +11,7 @@ fn timed_println(msg string) {
 }
 
 fn timed_println_extended(t time.StopWatch, msg string) {
-	println('${t.elapsed().microseconds():12} | ${msg}')
+	println('${t.elapsed().microseconds():12} µs | ${msg}')
 }
 
 fn f(x big.Integer, y int) big.Integer {

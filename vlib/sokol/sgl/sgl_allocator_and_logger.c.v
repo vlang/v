@@ -2,17 +2,17 @@ module sgl
 
 import sokol.memory
 
-[typedef]
+@[typedef]
 pub struct C.sgl_allocator_t {
 pub mut:
-	alloc     memory.FnAllocatorAlloc
-	free      memory.FnAllocatorFree
+	alloc_fn  memory.FnAllocatorAlloc = unsafe { nil }
+	free_fn   memory.FnAllocatorFree  = unsafe { nil }
 	user_data voidptr
 }
 
-[typedef]
+@[typedef]
 pub struct C.sgl_logger_t {
 pub mut:
-	log_cb    memory.FnLogCb
+	func      memory.FnLogCb = unsafe { nil }
 	user_data voidptr
 }

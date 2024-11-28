@@ -15,5 +15,5 @@ fn main() {
 	C.af(3)
 }
 
-[trusted]
+@[trusted]
 fn C.af() int

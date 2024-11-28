@@ -4,13 +4,13 @@ mut:
 	children []Abc
 }
 
-[manualfree]
+@[manualfree]
 fn main() {
 	mut a := &Abc{}
 	a.name = 'aaa'
 	a.children = [
 		Abc{
-			name: 'xyz'
+			name:     'xyz'
 			children: [
 				Abc{
 					name: 'xx'
@@ -21,7 +21,7 @@ fn main() {
 			]
 		},
 		Abc{
-			name: 'def'
+			name:     'def'
 			children: [
 				Abc{
 					name: 'dd'

@@ -38,7 +38,7 @@ fn (mut v ProjLookupTable) from_p3(q Point) {
 	for i := 0; i < 7; i++ {
 		// Compute (i+1)*Q as Q + i*Q and convert to a ProjCached
 		// This is needlessly complicated because the API has explicit
-		// recievers instead of creating stack objects and relying on RVO
+		// receivers instead of creating stack objects and relying on RVO
 		v.points[i + 1].from_p3(tmp_p3.from_p1(tmp_p1.add(q, v.points[i])))
 	}
 }
@@ -94,7 +94,7 @@ fn (mut v ProjLookupTable) select_into(mut dest ProjectiveCached, x i8) {
 	for j := 1; j <= 8; j++ {
 		// Set dest = j*Q if |x| = j
 		cond := subtle.constant_time_byte_eq(xabs, u8(j))
-		dest.selected(&v.points[j - 1], dest, cond)
+		dest.selected(v.points[j - 1], dest, cond)
 	}
 	// Now dest = |x|*Q, conditionally negate to get x*Q
 	dest.cond_neg(int(xmask & 1))

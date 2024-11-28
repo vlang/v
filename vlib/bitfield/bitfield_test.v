@@ -14,6 +14,33 @@ fn test_bf_set_clear_toggle_get() {
 	assert instance.get_bit(47) == 0
 	instance.toggle_bit(47)
 	assert instance.get_bit(47) == 1
+	instance.set_if(true, 48)
+	assert instance.get_bit(48) == 1
+	instance.set_if(false, 48)
+	assert instance.get_bit(48) == 0
+}
+
+fn test_bf_multiple_flags() {
+	mut instance := bitfield.new(75)
+
+	// 1,3,5,7,9 set
+	instance.set_bits(1, 3, 5, 7, 9)
+	assert instance.all(1, 3, 5, 7, 9)
+	assert instance.all(1, 3, 20) == false
+	assert instance.has(1, 20, 30, 40)
+	assert instance.has(20, 30, 40) == false
+
+	// 1,3 set
+	instance.clear_bits(5, 7, 9)
+	assert instance.all(1, 3, 5, 7, 9) == false
+	assert instance.all(1, 3)
+	assert instance.has(3, 20, 30, 40)
+
+	// 3,5,7 set
+	instance.toggle_bits(1, 5, 7)
+	assert instance.all(3, 5, 7)
+	assert instance.all(1, 3, 5, 7) == false
+	assert instance.has(5, 20, 30, 40)
 }
 
 fn test_bf_insert_extract() {
@@ -260,7 +287,7 @@ fn test_bf_pos() {
 	 * set haystack size to 80
 	 * test different sizes of needle, from 1 to 80
 	 * test different positions of needle, from 0 to where it fits
-	 * all haystacks here contain exactly one instanse of needle,
+	 * all haystacks here contain exactly one instance of needle,
 	 * so search should return non-negative-values
 	*
 	*/
@@ -330,4 +357,18 @@ fn test_bf_printing() {
 	// the following should convert the bitfield input into a string automatically
 	println(input)
 	assert true
+}
+
+fn test_bf_shift() {
+	str := '0001001101111111'
+	bf := bitfield.from_str(str)
+	bf_left := bf.shift_left(4)
+	assert bf_left.str() == '0011011111110000'
+	bf_right := bf.shift_right(4)
+	assert bf_right.str() == '0000000100110111'
+
+	bf_large_left := bf.shift_left(100)
+	bf_large_right := bf.shift_right(100)
+	assert bf_large_left.str() == '0000000000000000'
+	assert bf_large_right.str() == '0000000000000000'
 }

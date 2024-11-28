@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `builtin` is a module that is implicitly imported by every V program.
 

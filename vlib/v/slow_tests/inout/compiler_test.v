@@ -95,16 +95,17 @@ fn test_all() {
 		}
 		if expected != found {
 			println(term.red('FAIL'))
-			println(term.header('expected:', '-'))
-			println(expected)
-			println(term.header('found:', '-'))
-			println(found)
-			if diff_cmd != '' {
+			if diff_ := diff.compare_text(expected, found) {
 				println(term.header('difference:', '-'))
-				println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+				println(diff_)
 			} else {
-				println(term.h_divider('-'))
+				println(err)
+				println(term.header('expected:', '-'))
+				println(expected)
+				println(term.header('found:', '-'))
+				println(found)
 			}
+			println(term.h_divider('-'))
 			total_errors++
 		} else {
 			println(term.green('OK'))

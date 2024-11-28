@@ -2,17 +2,17 @@ module sapp
 
 import sokol.memory
 
-[typedef]
+@[typedef]
 pub struct C.sapp_allocator {
 pub mut:
-	alloc     memory.FnAllocatorAlloc
-	free      memory.FnAllocatorFree
+	alloc_fn  memory.FnAllocatorAlloc = unsafe { nil }
+	free_fn   memory.FnAllocatorFree  = unsafe { nil }
 	user_data voidptr
 }
 
-[typedef]
+@[typedef]
 pub struct C.sapp_logger {
 pub mut:
-	log_cb    memory.FnLogCb
+	func      memory.FnLogCb = unsafe { nil }
 	user_data voidptr
 }

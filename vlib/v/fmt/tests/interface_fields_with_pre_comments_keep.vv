@@ -1,0 +1,14 @@
+module main
+
+fn main() {
+}
+
+pub interface IOperateInfo {
+mut:
+	// title
+	title string
+	// msg
+	msg string
+	// id
+	id string
+}

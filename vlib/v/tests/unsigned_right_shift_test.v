@@ -1,10 +1,8 @@
 const answer_u64 = u64(9223372036854775805)
 
-const (
-	answer_u32 = u32(2147483645)
-	answer_u16 = u16(32765)
-	answer_u8  = u8(125)
-)
+const answer_u32 = u32(2147483645)
+const answer_u16 = u16(32765)
+const answer_u8 = u8(125)
 
 fn test_unsigned_right_shift_expr_isize_usize() {
 	$if x32 {

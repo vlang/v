@@ -9,8 +9,9 @@ import math
 // customisable through setting VJOBS
 const max_parallel_workers = runtime.nr_jobs()
 
-[params]
+@[params]
 pub struct ParserSettings {
+pub:
 	sequential    bool
 	img           bool
 	extra_workers int
@@ -26,7 +27,7 @@ pub:
 pub struct ParallelArgs {
 	SequentialArgs
 pub:
-	workers int = args.max_parallel_workers
+	workers int = max_parallel_workers
 }
 
 pub type SimArgs = ParallelArgs | SequentialArgs
@@ -68,23 +69,23 @@ fn parse_sequential_args() !SequentialArgs {
 	}
 
 	params := sim.sim_params(
-		rope_length: rope_length
-		bearing_mass: bearing_mass
-		magnet_spacing: magnet_spacing
-		magnet_height: magnet_height
+		rope_length:     rope_length
+		bearing_mass:    bearing_mass
+		magnet_spacing:  magnet_spacing
+		magnet_height:   magnet_height
 		magnet_strength: magnet_strength
-		gravity: gravity
+		gravity:         gravity
 	)
 
 	grid := sim.new_grid_settings(
-		width: width
+		width:  width
 		height: height
 	)
 
 	args := SequentialArgs{
-		params: params
+		params:   params
 		filename: filename
-		grid: grid
+		grid:     grid
 	}
 
 	sim.log('${args}')
@@ -100,7 +101,7 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	fp.description('This is a pendulum simulation written in pure V')
 	fp.skip_executable()
 
-	workers := fp.int('workers', 0, args.max_parallel_workers, 'amount of workers to use on simulation. Defaults to ${args.max_parallel_workers}')
+	workers := fp.int('workers', 0, max_parallel_workers, 'amount of workers to use on simulation. Defaults to ${max_parallel_workers}')
 
 	// output parameters
 	width := fp.int('width', `w`, sim.default_width, 'width of the image output. Defaults to ${sim.default_width}')
@@ -121,38 +122,31 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	}
 
 	params := sim.sim_params(
-		rope_length: rope_length
-		bearing_mass: bearing_mass
-		magnet_spacing: magnet_spacing
-		magnet_height: magnet_height
+		rope_length:     rope_length
+		bearing_mass:    bearing_mass
+		magnet_spacing:  magnet_spacing
+		magnet_height:   magnet_height
 		magnet_strength: magnet_strength
-		gravity: gravity
+		gravity:         gravity
 	)
 
 	grid := sim.new_grid_settings(
-		width: width
+		width:  width
 		height: height
 	)
 
 	args := ParallelArgs{
-		params: params
+		params:   params
 		filename: filename
-		grid: grid
-		workers: get_workers(workers, extra_workers)
+		grid:     grid
+		workers:  get_workers(workers, extra_workers)
 	}
-
 	sim.log('${args}')
 
 	return args
 }
 
-[inline]
+@[inline]
 fn get_workers(workers int, extra_workers int) int {
-	result := if workers + extra_workers <= args.max_parallel_workers {
-		workers
-	} else {
-		args.max_parallel_workers - extra_workers
-	}
-
-	return math.max(1, result)
+	return math.max(1, workers + extra_workers)
 }

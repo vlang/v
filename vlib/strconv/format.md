@@ -43,15 +43,15 @@ The syntax for a format specifier is:
 
 The Flags field may be zero or more (in any order) of:
 
-| Character   | Description                                                  |
-| ----------- | ------------------------------------------------------------ |
-| `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.) |
-| `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.) |
+| Character   | Description                                                                                                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.)                                                                                                             |
+| `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.)                                                   |
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
 
 #### Width field
 
-The Width field specifies a *maximum* number of characters to output,
+The Width field specifies a _maximum_ number of characters to output,
 and is typically used to pad fixed-width fields in tabulated output,
 it causes truncation of oversized fields.
 
@@ -64,31 +64,31 @@ with a total width of 5 characters.
 
 The Length field can be omitted or be any of:
 
-| Character | Description                                                  |
-| --------- | ------------------------------------------------------------ |
-| `hh`      | For integer types, causes `printf` to expect an `byte` or `i8` argument. |
+| Character | Description                                                                |
+| --------- | -------------------------------------------------------------------------- |
+| `hh`      | For integer types, causes `printf` to expect an `i8` or `u8` argument.     |
 | `h`       | For integer types, causes `printf` to expect an `int16` or `u16` argument. |
-| `l`       | For integer types, causes `printf` to expect an `i64` or `u64` argument. |
-| `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument. |
-|           |                                                              |
-|           |                                                              |
+| `l`       | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
+| `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
+|           |                                                                            |
+|           |                                                                            |
 
 #### Type field
 
 The Type field can be any of:
 
-| Character | Description                                                  |
-| --------- | ------------------------------------------------------------ |
-| `%`       | Prints a literal `%` character (this type doesn't accept any flags, width, precision, length fields). |
+| Character | Description                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `%`       | Prints a literal `%` character (this type doesn't accept any flags, width, precision, length fields).                       |
 | `d`, `i`  | `int` as a signed `int` `%d` and `%i` are synonymous for output. The size of the argument is specified by the length field. |
-| `u`       | `unsigned int`. The size of the argument is specified by the length field. |
-| `f`, `F`  | `double` in normal notation. `f` and `F` only differs in how the strings are printed: lowercase or uppercase. |
-| `e`, `E`  | `double` in scientific notation.`e` and `E` only differs in how the strings are printed: lowercase or uppercase. |
-| `g`, `G`  | `double` in automatic notation.`g` and `G` only differs in how the strings are printed: lowercase or uppercase. |
-| `x`, `X`  | `unsigned int` as a hexadecimal number. `x` uses lower-case letters and `X` uses upper-case. |
-| `s`       | string                                                       |
-| `p`       | `void *` (pointer to void) in an implementation-defined format. |
-| `c`       | `char` (character).                                          |
+| `u`       | `unsigned int`. The size of the argument is specified by the length field.                                                  |
+| `f`, `F`  | `double` in normal notation. `f` and `F` only differs in how the strings are printed: lowercase or uppercase.               |
+| `e`, `E`  | `double` in scientific notation.`e` and `E` only differs in how the strings are printed: lowercase or uppercase.            |
+| `g`, `G`  | `double` in automatic notation.`g` and `G` only differs in how the strings are printed: lowercase or uppercase.             |
+| `x`, `X`  | `unsigned int` as a hexadecimal number. `x` uses lower-case letters and `X` uses upper-case.                                |
+| `s`       | string                                                                                                                      |
+| `p`       | `void *` (pointer to void) in an implementation-defined format.                                                             |
+| `c`       | `char` (character).                                                                                                         |
 
 ## Examples
 
@@ -99,7 +99,7 @@ import strconv
 
 a0 := u32(10)
 b0 := 200
-c0 := byte(12)
+c0 := u8(12)
 s0 := 'ciAo'
 ch0 := `B`
 f0 := 0.312345
@@ -118,7 +118,7 @@ integer
 ```v
 import strconv
 
-a := byte(12)
+a := u8(12)
 b := i16(13)
 c := 14
 d := i64(15)
@@ -136,7 +136,7 @@ unsigned integer
 ```v
 import strconv
 
-a1 := byte(0xff)
+a1 := u8(0xff)
 b1 := u16(0xffff)
 c1 := u32(0xffffffff)
 d1 := u64(-1)
@@ -154,7 +154,7 @@ hexadecimal
 ```v
 import strconv
 
-a1 := byte(0xff)
+a1 := u8(0xff)
 b1 := i16(0xffff)
 c1 := u32(0xffffffff)
 d1 := u64(-1)
@@ -239,12 +239,12 @@ The format module also has some utility functions:
 ```v oksyntax nofmt
 // calling struct
 struct BF_param {
-  pad_ch       byte       = ` `     // padding char
+  pad_ch       u8         = ` `     // padding char
   len0         int        = -1      // default len for whole the number or string
   len1         int        = 6       // number of decimal digits, if needed
   positive     bool       = true    // mandatory: the sign of the number passed
   sign_flag    bool       = false   // flag for print sign as prefix in padding
-  allign       Align_text = .right  // alignment of the string
+  align        Align_text = .right  // alignment of the string
   rm_tail_zero bool       = false   // remove the tail zeros from floats
 }
 

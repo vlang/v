@@ -1,0 +1,4 @@
+fn main() {
+	_ := none
+	_ = none
+}

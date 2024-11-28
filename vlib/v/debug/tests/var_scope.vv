@@ -1,0 +1,43 @@
+fn main() {
+	x := match true {
+		true {
+			a := 1
+			if a >= 0 {
+				$dbg;
+			}
+			if a == 0 {
+			} else {
+				e := 3
+				$dbg;
+				println(e)
+			}
+			a
+		}
+		false {
+			0
+		}
+	}
+	println(x)
+	$dbg;
+	if true {
+		y := if true {
+			a := 1
+			b := 2
+			$dbg; // this tries to access `x`, which is undeclared at this point
+			z := if a > b {
+				$dbg;
+				-1
+			} else {
+				$dbg;
+				0
+			}
+			$dbg;
+			println(z)
+			1
+		} else {
+			0
+		}
+		$dbg;
+		println(y)
+	}
+}

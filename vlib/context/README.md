@@ -62,7 +62,7 @@ fn main() {
 	}
 
 	mut background := context.background()
-	mut ctx, cancel := context.with_cancel(mut &background)
+	mut ctx, cancel := context.with_cancel(mut background)
 	defer {
 		cancel()
 		time.sleep(2 * time.millisecond) // give a small time window, in which the go thread routine has a chance to return
@@ -93,7 +93,7 @@ const short_duration = 2 * time.millisecond // a reasonable duration to block in
 fn main() {
 	dur := time.now().add(short_duration)
 	mut background := context.background()
-	mut ctx, cancel := context.with_deadline(mut &background, dur)
+	mut ctx, cancel := context.with_deadline(mut background, dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
@@ -131,7 +131,7 @@ fn main() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
 	mut background := context.background()
-	mut ctx, cancel := context.with_timeout(mut &background, short_duration)
+	mut ctx, cancel := context.with_timeout(mut background, short_duration)
 	defer {
 		cancel()
 		eprintln('> defer finishes')

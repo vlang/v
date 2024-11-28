@@ -1,7 +1,6 @@
 import toml
 
-const (
-	toml_table_text = 'inline = {a.b = 42}
+const toml_table_text = 'inline = {a.b = 42}
 
 many.dots.here.dot.dot.dot = {a.b.c = 1, a.b.d = 2}
 
@@ -24,7 +23,6 @@ T = {a.b=1}
 [[arr]]
 t = {a.b=2}
 T = {a.b=2}'
-)
 
 fn test_tables() {
 	mut toml_doc := toml.parse_text(toml_table_text) or { panic(err) }

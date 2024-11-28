@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sys
@@ -9,7 +9,7 @@ module sys
 type SysRNG = WyRandRNG
 
 // In the JS version, we simply return the same int as is normally generated.
-[inline]
+@[inline]
 pub fn (r SysRNG) default_rand() int {
 	return r.int()
 }

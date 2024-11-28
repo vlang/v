@@ -1,0 +1,5 @@
+[vlib/v/slow_tests/inout/interface_field_initialised_struct_update_expr.vv:20] o: Outer{
+    a: Foo(FooImpl{
+        prop: 0
+    })
+}

@@ -26,7 +26,7 @@ vlib/v/checker/tests/struct_field_option_err.vv:16:19: error: last statement in 
       |                      ^
    17 | 
    18 |     _ = f.baz?
-vlib/v/checker/tests/struct_field_option_err.vv:18:11: error: unexpected `?`, the field `baz` is neither an Option, nor a Result
+vlib/v/checker/tests/struct_field_option_err.vv:18:11: error: unexpected `?`, the field `baz` is not an Option
    16 |     _ = f.bar or { _ = 1 }
    17 | 
    18 |     _ = f.baz?

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/struct_ref_fields_init_0_err.vv:6:10: error: assigning `0` to a reference field is only allowed in `unsafe` blocks
+    4 | 
+    5 | fn main() {
+    6 |     _ = Foo{0}
+      |             ^
+    7 |     _ = Foo{
+    8 |         foo: 0
+vlib/v/checker/tests/struct_ref_fields_init_0_err.vv:8:3: error: assigning `0` to a reference field is only allowed in `unsafe` blocks
+    6 |     _ = Foo{0}
+    7 |     _ = Foo{
+    8 |         foo: 0
+      |         ~~~~~~
+    9 |     }
+   10 |

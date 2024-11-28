@@ -1,13 +1,13 @@
 module builtin
 
-fn C.wyhash(&byte, u64, u64, &u64) u64
+fn C.wyhash(&u8, u64, u64, &u64) u64
 
 fn C.wyhash64(u64, u64) u64
 
 // fast_string_eq is intended to be fast when
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
-[inline]
+@[inline]
 fn fast_string_eq(a string, b string) bool {
 	if a.len != b.len {
 		return false
@@ -40,7 +40,7 @@ fn map_hash_int_8(pkey voidptr) u64 {
 
 // Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
-	// TODO alloca?
+	// TODO: alloca?
 	mut tmp_value := unsafe { malloc(d.value_bytes) }
 	mut tmp_key := unsafe { malloc(d.key_bytes) }
 	mut count := 0

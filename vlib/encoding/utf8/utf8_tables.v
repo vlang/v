@@ -1,21 +1,29 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module utf8
 
 // for unicode type fast lookup
-const (
-	p_c      = 1 // a control character.
-	p_p      = 2 // a punctuation character.
-	p_n      = 4 // a numeral.
-	p_s      = 8 // a symbolic character.
-	p_z      = 16 // a spacing character.
-	p_lu     = 32 // an up_prer-case letter.
-	p_ll     = 64 // a lower-case letter.
-	p_pr     = 128 // a printable character according to Go's definition.
-	p_g      = p_pr | p_z // a graphical character according to the Unicode definition.
-	p_lo     = p_lu | p_ll // a letter that is neither up_prer nor lower case.
-	p_l_mask = p_lo
-)
+const p_c = 1 // a control character.
+
+const p_p = 2 // a punctuation character.
+
+const p_n = 4 // a numeral.
+
+const p_s = 8 // a symbolic character.
+
+const p_z = 16 // a spacing character.
+
+const p_lu = 32 // an up_prer-case letter.
+
+const p_ll = 64 // a lower-case letter.
+
+const p_pr = 128 // a printable character according to Go's definition.
+
+const p_g = p_pr | p_z // a graphical character according to the Unicode definition.
+
+const p_lo = p_lu | p_ll // a letter that is neither up_prer nor lower case.
+
+const p_l_mask = p_lo
 
 const props = [
 	p_c
@@ -534,13 +542,11 @@ const props = [
 
 // These tables are based on Go lang's tables: https://cs.opensource.google/go/go/+/refs/tags/go1.17.1:src/unicode/tables.go.
 // There is no need to investigate unicodes' type like letter yourself.
-const (
-	max_latin_1 = rune(0x00ff) // '\u00FF' // `ÿ`
-)
+const max_latin_1 = rune(0x00ff)
 
 // Represents all unicode in unicode category L.
 const letter_table = RangeTable{
-	r16: [
+	r16:          [
 		Range16{0x0041, 0x005a, 1},
 		Range16{0x0061, 0x007a, 1},
 		Range16{0x00aa, 0x00b5, 11},
@@ -901,7 +907,7 @@ const letter_table = RangeTable{
 		Range16{0xffd2, 0xffd7, 1},
 		Range16{0xffda, 0xffdc, 1},
 	]
-	r32: [
+	r32:          [
 		Range32{0x10000, 0x1000b, 1},
 		Range32{0x1000d, 0x10026, 1},
 		Range32{0x10028, 0x1003a, 1},
@@ -1135,7 +1141,7 @@ const letter_table = RangeTable{
 
 // Represents all unicodes in unicode category Z with property white space.
 const white_space_table = RangeTable{
-	r16: [
+	r16:          [
 		Range16{0x0009, 0x000d, 1},
 		Range16{0x0020, 0x0085, 101},
 		Range16{0x00a0, 0x1680, 5600},
@@ -1144,13 +1150,13 @@ const white_space_table = RangeTable{
 		Range16{0x202f, 0x205f, 48},
 		Range16{0x3000, 0x3000, 1},
 	]
-	r32: []
+	r32:          []
 	latin_offset: 2
 }
 
 // Represents all unicodes in unicode category N.
 const number_table = RangeTable{
-	r16: [
+	r16:          [
 		Range16{0x0030, 0x0039, 1},
 		Range16{0x00b2, 0x00b3, 1},
 		Range16{0x00b9, 0x00bc, 3},
@@ -1218,7 +1224,7 @@ const number_table = RangeTable{
 		Range16{0xabf0, 0xabf9, 1},
 		Range16{0xff10, 0xff19, 1},
 	]
-	r32: [
+	r32:          [
 		Range32{0x10107, 0x10133, 1},
 		Range32{0x10140, 0x10178, 1},
 		Range32{0x1018a, 0x1018b, 1},
@@ -1326,7 +1332,7 @@ fn is_excluding_latin(table &RangeTable, r rune) bool {
 const linear_max = 18
 
 fn is_16(ranges []Range16, r u16) bool {
-	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1 {
+	if ranges.len <= linear_max && r <= max_latin_1 {
 		for range in ranges {
 			if r < range.lo {
 				return false
@@ -1357,7 +1363,7 @@ fn is_16(ranges []Range16, r u16) bool {
 }
 
 fn is_32(ranges []Range32, r u32) bool {
-	if ranges.len <= utf8.linear_max && r <= utf8.max_latin_1 {
+	if ranges.len <= linear_max && r <= max_latin_1 {
 		for range in ranges {
 			if r < range.lo {
 				return false

@@ -2,6 +2,15 @@ module vmod
 
 import os
 
+const mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
+
+// used during lookup for v.mod to support @VROOT
+const private_file_cacher = new_mod_file_cacher()
+
+pub fn get_cache() &ModFileCacher {
+	return private_file_cacher
+}
+
 // This file provides a caching mechanism for seeking quickly whether a
 // given folder has a v.mod file in it or in any of its parent folders.
 //
@@ -9,7 +18,7 @@ import os
 // examples/hanoi.v
 // vlib/v.mod
 // vlib/v/tests/project_with_c_code/mod1/v.mod
-// vlib/v/tests/project_with_c_code/mod1/wrapper.v
+// vlib/v/tests/project_with_c_code/mod1/wrapper.c.v
 // -----------------
 // ModFileCacher.get('examples')
 // => ModFileAndFolder{'', 'examples'}
@@ -30,7 +39,7 @@ pub:
 	vmod_folder string
 }
 
-[heap]
+@[heap]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder
@@ -101,12 +110,12 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			// TODO: actually read the v.mod file and parse its contents to see
 			// if its source folder is different
 			res := ModFileAndFolder{
-				vmod_file: os.join_path(cfolder, 'v.mod')
+				vmod_file:   os.join_path(cfolder, 'v.mod')
 				vmod_folder: cfolder
 			}
 			return folders_so_far, res
 		}
-		if mcache.check_for_stop(cfolder, files) {
+		if mcache.check_for_stop(files) {
 			break
 		}
 		cfolder = os.dir(cfolder)
@@ -115,7 +124,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 	}
 	mcache.mark_folders_as_vmod_free(folders_so_far)
 	return [mfolder], ModFileAndFolder{
-		vmod_file: ''
+		vmod_file:   ''
 		vmod_folder: mfolder
 	}
 }
@@ -134,12 +143,8 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 	}
 }
 
-const (
-	mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
-)
-
-fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in vmod.mod_file_stop_paths {
+fn (mcache &ModFileCacher) check_for_stop(files []string) bool {
+	for i in mod_file_stop_paths {
 		if i in files {
 			return true
 		}
@@ -159,13 +164,4 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	}
 	mcache.folder_files[cfolder] = files
 	return files
-}
-
-// used during lookup for v.mod to support @VROOT
-const (
-	private_file_cacher = new_mod_file_cacher()
-)
-
-pub fn get_cache() &ModFileCacher {
-	return vmod.private_file_cacher
 }

@@ -5,7 +5,7 @@ vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `21474
       |             ~~~~~~~~~~
     4 |     blue
     5 | }
-vlib/v/checker/tests/enum_field_value_overflow.vv:7:21: error: `string` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`
+vlib/v/checker/tests/enum_field_value_overflow.vv:7:21: error: `string` is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`
     5 | }
     6 |
     7 | enum ColorString as string {

@@ -1,0 +1,3 @@
+fn main() {
+	$veb.html('index.html')
+}

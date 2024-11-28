@@ -8,7 +8,7 @@ import math.big
 const github_job = os.getenv('GITHUB_JOB')
 
 fn testsuite_begin() {
-	if edwards25519.github_job != '' {
+	if github_job != '' {
 		// ensure that the CI does not run flaky tests:
 		rand.seed([u32(0xffff24), 0xabcd])
 	}
@@ -99,19 +99,17 @@ fn test_scalar_set_canonical_bytes_round_trip() {
 	}
 }
 
-const (
-	sc_error = Scalar{
-		s: [32]u8{init: (u8(-1))}
-	}
-)
+const sc_error = Scalar{
+	s: [32]u8{init: (u8(-1))}
+}
 
 fn test_scalar_set_canonical_bytes_on_noncanonical_value() {
 	mut b := sc_minus_one.s
 	b[31] += 1
 
 	mut s := sc_one
-	out := s.set_canonical_bytes(b[..]) or { edwards25519.sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
-	assert out == edwards25519.sc_error
+	out := s.set_canonical_bytes(b[..]) or { sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
+	assert out == sc_error
 	assert s == sc_one
 }
 
@@ -119,7 +117,7 @@ fn test_scalar_set_uniform_bytes() {
 	// mod, _ := new(big.Integer).SetString("27742317777372353535851937790883648493", 10)
 	mut mod := big.integer_from_string('27742317777372353535851937790883648493')!
 	// mod.Add(mod, new(big.Integer).Lsh(big.NewInt(1), 252))
-	mod = mod + big.integer_from_i64(1).lshift(252)
+	mod = mod + big.integer_from_i64(1).left_shift(252)
 
 	mut sc := generate_scalar(100)!
 	inp := rand.bytes(64)!

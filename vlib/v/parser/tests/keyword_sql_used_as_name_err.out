@@ -1,0 +1,5 @@
+vlib/v/parser/tests/keyword_sql_used_as_name_err.vv:1:8: error: unexpected keyword `sql`, expecting name
+    1 | fn foo(sql string) {
+      |        ~~~
+    2 |     println(sql)
+    3 | }

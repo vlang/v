@@ -1,0 +1,71 @@
+name: Time CI
+
+on:
+  push:
+    paths:
+      - 'vlib/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/time_ci.yml'
+      - '!**.md'
+  pull_request:
+    paths:
+      - 'vlib/**'
+      - 'cmd/tools/builders/**.v'
+      - '**/time_ci.yml'
+      - '!**.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-time-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make
+      - name: Test time functions in a timezone UTC-12
+        run: TZ=Etc/GMT+12 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: TZ=Etc/GMT+3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: TZ=Etc/GMT-3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: TZ=Etc/GMT-12 ./v test vlib/time/
+      - name: Test in a timezone using daylight saving (Europe/Paris)
+        run: TZ=Europe/Paris ./v test vlib/time/
+
+  test-time-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make
+      - name: Test time functions in a timezone UTC-12
+        run: TZ=Etc/GMT+12 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: TZ=Etc/GMT+3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: TZ=Etc/GMT-3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: TZ=Etc/GMT-12 ./v test vlib/time/
+      - name: Test in a timezone using daylight saving (Europe/Paris)
+        run: TZ=Europe/Paris ./v test vlib/time/
+
+  test-time-windows:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: .\make.bat
+      - name: Test time functions in a timezone UTC-12
+        run: tzutil /s "Dateline Standard Time" && ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: tzutil /s "Greenland Standard Time" && ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: tzutil /s "Russian Standard Time" && ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: tzutil /s "New Zealand Standard Time" && ./v test vlib/time/
+      - name: Test in a timezone using daylight saving (Europe/Paris)
+        run: tzutil /s "W. Europe Standard Time" && ./v test vlib/time/

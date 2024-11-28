@@ -1,0 +1,5 @@
+module foo
+
+fn bar(foo string) {
+	println(foo)
+}

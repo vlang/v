@@ -19,7 +19,7 @@ fn main() {
 	n := os.args[1] or { '2' }.int()
 	dump(n)
 	for i in 0 .. n {
-		s.m['$i'] = StructWithMap{}
+		s.m['${i}'] = StructWithMap{}
 	}
 	dump(s.m['abc'])
 	dump(p)

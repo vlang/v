@@ -15,8 +15,10 @@ v:
 	./v1 -no-parallel -o v2 $(VFLAGS) cmd/v
 	./v2 -o v $(VFLAGS) cmd/v
 	rm -rf v1 v2
-	@echo "V has been successfully built"
 	./v run ./cmd/tools/detect_tcc.v
+	@echo "V has been successfully built"
+	./v version
+	./v run .github/problem-matchers/register_all.vsh
 
 check:
 	./v test-all

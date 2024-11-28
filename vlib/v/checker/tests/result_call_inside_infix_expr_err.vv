@@ -1,0 +1,55 @@
+import time
+
+enum StopAfterType {
+	time
+	tx
+}
+
+struct StopAfter {
+	t               f64
+	stop_after_type StopAfterType
+}
+
+pub fn parse(str string) !StopAfter {
+	time_format := [str[str.len - 1]].bytestr()
+	time_string := str[0..str.len - 1]
+	if time_string == '0' {
+		return StopAfter{}
+	}
+	timef64 := time_string.f64()
+	if timef64 == 0 {
+		return error('invalid string "${str}"')
+	}
+
+	match time_format {
+		's' {
+			return StopAfter{timef64 * time.second, .time}
+		}
+		'm' {
+			return StopAfter{timef64 * time.minute, .time}
+		}
+		'h' {
+			return StopAfter{timef64 * time.hour, .time}
+		}
+		'd' {
+			return StopAfter{timef64 * time.hour * 24, .time}
+		}
+		't' {
+			return StopAfter{timef64, .tx}
+		}
+		else {
+			return error('no match for "${time_format}" format')
+		}
+	}
+}
+
+fn main() {
+	assert parse('0s')! == StopAfter{}
+	assert parse('10s')! == StopAfter{10 * time.second, .time}
+	assert parse('10m')! == StopAfter{10 * time.minute, .time}
+	assert parse('10h')! == StopAfter{10 * time.hour, .time}
+	assert parse('10d')! == StopAfter{10 * time.hour * 24, .time}
+	assert parse('10t')! == StopAfter{10, .tx}
+	assert parse('10x') or { err } == StopAfter{}
+	assert StopAfter{} == parse('10x') or { err }
+}

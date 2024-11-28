@@ -1,0 +1,6 @@
+vlib/v/parser/tests/fn_call_unexpected_eof_comma_multi_arg_err.vv:5:14: error: unexpected eof, expecting `,`
+    3 | fn foo(i i64, s string) {}
+    4 | 
+    5 | foo(time.now()
+      |              ^
+    6 |

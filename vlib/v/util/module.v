@@ -5,7 +5,7 @@ module util
 import os
 import v.pref
 
-[if trace_util_qualify ?]
+@[if trace_util_qualify ?]
 fn trace_qualify(callfn string, mod string, file_path string, kind_res string, result string, detail string) {
 	eprintln('> ${callfn:15}: ${mod:-18} | file_path: ${file_path:-71} | => ${kind_res:14}: ${result:-18} ; ${detail}')
 }
@@ -60,10 +60,10 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	//
-	// TODO 2022-01-30: Using os.getwd() here does not seem right *at all* imho.
-	// TODO 2022-01-30: That makes lookup dependent on fragile enviroment factors.
-	// TODO 2022-01-30: The lookup should be relative to the folder, in which the current file is,
-	// TODO 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
+	// TODO: 2022-01-30: Using os.getwd() here does not seem right *at all* imho.
+	// TODO: 2022-01-30: That makes lookup dependent on fragile environment factors.
+	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
+	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
 		trace_qualify(@FN, mod, file_path, 'module_res 2', mod, 'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
@@ -107,8 +107,9 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		}
 	}
 	mut in_vmod_path := false
+	parts := path.split(os.path_separator)
 	for vmod_folder in vmod_folders {
-		if path.contains(vmod_folder + os.path_separator) {
+		if vmod_folder in parts {
 			in_vmod_path = true
 			break
 		}
@@ -152,7 +153,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 				}
 				if last_v_mod > -1 {
 					mod_full_name := try_path_parts[last_v_mod..].join('.')
-					return mod_full_name
+					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
 				}
 			}
 		}
