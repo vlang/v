@@ -6963,7 +6963,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				if sym.info.fields.len > 0 {
 					g.writeln('\t// pointers to common sumtype fields')
 					for field in sym.info.fields {
-						g.type_definitions.writeln('\t${g.styp(field.typ.ref())} ${c_name(field.name)};')
+						g.type_definitions.writeln('\t${g.styp(field.typ)}* ${c_name(field.name)};')
 					}
 				}
 				g.type_definitions.writeln('};')
