@@ -129,15 +129,22 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		if c.inside_anon_fn && 'method' !in c.cur_anon_fn.inherited_vars.map(it.name) {
 			c.error('undefined ident `method` in the anonymous function', node.pos)
 		}
-		if c.pref.skip_unused && node.method_name == 'method' {
-			sym := c.table.sym(c.unwrap_generic(node.left_type))
-			if m := sym.find_method(c.comptime.comptime_for_method.name) {
-				c.table.used_features.comptime_calls['${int(c.unwrap_generic(m.receiver_type))}.${c.comptime.comptime_for_method.name}'] = true
-			}
-		}
 		for i, mut arg in node.args {
 			// check each arg expression
 			node.args[i].typ = c.expr(mut arg.expr)
+		}
+		if c.pref.skip_unused && node.method_name == 'method' {
+			sym := c.table.sym(c.unwrap_generic(node.left_type))
+			for m in sym.get_methods() {
+				c.table.used_features.comptime_calls['${int(c.unwrap_generic(m.receiver_type))}.${m.name}'] = true
+				if node.args.len > 0 && m.params.len > 0 {
+					last_param := m.params.last().typ
+					if (last_param.is_int() || last_param.is_bool())
+						&& c.table.final_sym(node.args.last().typ).kind == .array {
+						c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
+					}
+				}
+			}
 		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
 		return c.comptime.get_type(node)
@@ -283,6 +290,19 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
 				c.table.dumps[int(unwrapped_expr_type.clear_flags(.option, .result, .atomic_f))] = tsym.cname
+				if c.pref.skip_unused {
+					c.table.used_features.dump = true
+					if c.table.used_features.used_maps == 0 {
+						final_sym := c.table.final_sym(unwrapped_expr_type)
+						if final_sym.info is ast.Map {
+							c.table.used_features.used_maps++
+						} else if final_sym.info is ast.SumType {
+							if final_sym.info.variants.any(c.table.final_sym(it).kind == .map) {
+								c.table.used_features.used_maps++
+							}
+						}
+					}
+				}
 				if tsym.kind == .array_fixed {
 					info := tsym.info as ast.ArrayFixed
 					if !info.is_fn_ret {
