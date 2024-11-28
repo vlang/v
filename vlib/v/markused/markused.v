@@ -90,6 +90,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << charptr_idx_str + '.vstring_literal'
 		}
 		if table.used_features.index || pref_.is_shared {
+			core_fns << panic_deps
 			core_fns << string_idx_str + '.at_with_check'
 			core_fns << string_idx_str + '.clone'
 			core_fns << string_idx_str + '.clone_static'
@@ -266,9 +267,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		// if mfn.name == 'before_request' {
-		// all_fn_root_names << k
-		//}
 
 		// sync:
 		if k == 'sync.new_channel_st' {
@@ -426,6 +424,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
 	walker.mark_exported_fns()
+
+	for k, _ in table.used_features.comptime_calls {
+		walker.fn_by_name(k)
+	}
+
 	walker.mark_root_fns(all_fn_root_names)
 	walker.mark_veb_actions()
 
