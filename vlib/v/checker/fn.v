@@ -2179,9 +2179,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		continue_check = false
 		return ast.void_type
 	}
-	if c.pref.skip_unused && mut left_expr is ast.Ident {
-		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
-			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+	if c.pref.skip_unused {
+		if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
+			if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
+				c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+			}
+		} else if left_type.has_flag(.generic) {
+			c.table.used_features.comptime_calls['${int(c.unwrap_generic(left_type))}.${node.name}'] = true
 		}
 	}
 	c.expected_type = left_type
