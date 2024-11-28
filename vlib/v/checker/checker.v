@@ -2177,6 +2177,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.inside_const = false
 		}
 		ast.DeferStmt {
+			c.inside_defer = true
 			if node.idx_in_fn < 0 && c.table.cur_fn != unsafe { nil } {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
@@ -2203,7 +2204,6 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 					node.defer_vars[i] = id
 				}
 			}
-			c.inside_defer = true
 			c.stmts(mut node.stmts)
 			c.inside_defer = false
 		}

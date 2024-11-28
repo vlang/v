@@ -38,3 +38,19 @@ fn test_with_multi_return() {
 	assert test.a == a
 	assert test.b == b
 }
+
+fn f() int {
+	defer {
+		a := $res()
+		assert true
+		println('result is: ${a}')
+	}
+	if true {
+		return 123
+	}
+	return 42
+}
+
+fn test_res_in_defer_blocks_with_many_statements_works() {
+	assert f() == 123
+}
