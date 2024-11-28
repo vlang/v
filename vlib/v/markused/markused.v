@@ -63,6 +63,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'v_fixed_index',
 			charptr_idx_str + '.vstring_literal',
 		]
+		$if windows {
+			if 'no_backtrace' !in pref_.compile_defines {
+				core_fns << panic_deps
+			}
+		}
 		if table.used_features.used_modules.len > 0 {
 			core_fns << panic_deps
 		}
@@ -239,7 +244,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		if k.ends_with('.str') || k.ends_with('.auto_str') {
 			if table.used_features.auto_str
 				|| table.used_features.print_types[mfn.receiver.typ.idx()]
-				|| table.used_features.debugger || table.used_features.used_modules.len > 0 {
+				|| table.used_features.asserts || table.used_features.debugger
+				|| table.used_features.used_modules.len > 0 {
 				all_fn_root_names << k
 			}
 			continue
