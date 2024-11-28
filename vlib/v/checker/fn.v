@@ -868,6 +868,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if c.table.cur_fn != unsafe { nil } {
 			node.left_type, fn_name = c.table.convert_generic_static_type_name(fn_name,
 				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+			c.table.used_features.comptime_calls[fn_name] = true
 		}
 	}
 	if fn_name == 'main' {
