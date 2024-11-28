@@ -95,6 +95,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << string_idx_str + '.clone_static'
 			core_fns << string_idx_str + '.at'
 			core_fns << array_idx_str + '.set'
+			if table.used_features.option_or_result {
+				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+			}
 			core_fns << ref_array_idx_str + '.set'
 			core_fns << map_idx_str + '.get'
 			core_fns << map_idx_str + '.set'
@@ -106,7 +109,9 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << string_idx_str + '.substr_with_check'
 			core_fns << string_idx_str + '.substr_ni'
 			core_fns << array_idx_str + '.slice_ni'
-			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+			if table.used_features.option_or_result {
+				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
+			}
 			core_fns << array_idx_str + '.clone_static_to_depth'
 			core_fns << array_idx_str + '.clone_to_depth'
 		}
