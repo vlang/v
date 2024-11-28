@@ -489,9 +489,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				return
 			}
 			sym := w.table.sym(node.typ)
-			if sym.kind == .struct {
-				info := sym.info as ast.Struct
-				w.a_struct_info(sym.name, info)
+			if sym.info is ast.Struct {
+				w.a_struct_info(sym.name, sym.info)
 			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
@@ -557,13 +556,31 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 		}
 		if ifield.typ != 0 {
 			fsym := w.table.sym(ifield.typ)
-			if fsym.kind == .map {
-				w.features.used_maps++
-			} else if fsym.kind == .array {
-				w.features.used_arrays++
-			} else if fsym.kind == .struct {
-				w.a_struct_info(fsym.name, fsym.struct_info())
+			match fsym.info {
+				ast.Struct {
+					w.a_struct_info(fsym.name, fsym.info)
+				}
+				ast.Alias {
+					value_sym := w.table.final_sym(ifield.typ)
+					if value_sym.info is ast.Struct {
+						w.a_struct_info(value_sym.name, value_sym.info)
+					}
+				}
+				ast.Array, ast.ArrayFixed, ast.Map {
+					w.features.used_maps++
+					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
+					if value_sym.info is ast.Struct {
+						w.a_struct_info(value_sym.name, value_sym.info)
+					}
+				}
+				else {}
 			}
+		}
+	}
+	for embed in info.embeds {
+		sym := w.table.final_sym(embed)
+		if sym.info is ast.Struct {
+			w.a_struct_info(sym.name, sym.info)
 		}
 	}
 }
