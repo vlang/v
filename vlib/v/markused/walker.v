@@ -615,6 +615,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 					w.fn_by_name(fn_embed)
 				}
 			}
+		} else if node.from_embed_types.len != 0 && !node.left_type.has_flag(.generic) {
+			_, embed_types := w.table.find_method_from_embeds(w.table.final_sym(node.left_type),
+				node.name) or { ast.Fn{}, []ast.Type{} }
+			if embed_types.len != 0 {
+				fn_embed := '${int(embed_types.last())}.${node.name}'
+				w.fn_by_name(fn_embed)
+			}
 		}
 	}
 	w.expr(node.left)

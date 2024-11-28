@@ -2314,6 +2314,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if embed_types.len != 0 {
 				is_method_from_embed = true
 				node.from_embed_types = embed_types
+				if c.pref.skip_unused && node.left_type.has_flag(.generic) {
+					c.table.used_features.comptime_calls['${int(method.receiver_type)}.${method.name}'] = true
+				}
 			}
 		}
 		if final_left_sym.kind == .aggregate {
