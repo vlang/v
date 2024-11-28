@@ -1029,11 +1029,10 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				}
 				if node.right is ast.CastExpr && node.right.expr is ast.ArrayInit {
 					g.expr(node.right.expr)
-				} else if elem_sym.kind == .array_fixed
+				} else if elem_sym.info is ast.ArrayFixed
 					&& node.right in [ast.CallExpr, ast.DumpExpr] {
-					info := elem_sym.info as ast.ArrayFixed
-					tmpvar := g.expr_with_var(node.right, array_info.elem_type)
-					g.fixed_array_var_init(tmpvar, false, info.elem_type, info.size)
+					tmpvar := g.expr_with_var(node.right, array_info.elem_type, false)
+					g.fixed_array_var_init(tmpvar, false, elem_sym.info.elem_type, elem_sym.info.size)
 				} else {
 					g.expr_with_cast(node.right, right.typ, array_info.elem_type)
 				}
