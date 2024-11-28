@@ -3193,6 +3193,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.StructInit {
 			if node.unresolved {
 				mut expr_ := c.table.resolve_init(node, c.unwrap_generic(node.typ))
+				if c.pref.skip_unused && c.table.used_features.used_maps == 0
+					&& expr_ is ast.MapInit {
+					c.table.used_features.used_maps++
+				}
 				return c.expr(mut expr_)
 			}
 			mut inited_fields := []string{}
