@@ -3906,6 +3906,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.error('`mut` is not allowed with `=` (use `:=` to declare a variable)',
 				node.pos)
 		}
+		if c.pref.skip_unused && !c.is_builtin_mod && node.language == .v && node.name.contains('.') {
+			c.table.used_features.used_modules[node.name.all_before('.')] = true
+		}
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
 				ast.GlobalField {

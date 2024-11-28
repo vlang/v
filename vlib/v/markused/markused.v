@@ -157,6 +157,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			]
 		}
 		if table.used_features.arr_init {
+			core_fns << panic_deps
 			core_fns << '__new_array'
 			core_fns << 'new_array_from_c_array'
 			core_fns << 'new_array_from_c_array_noscan'
@@ -177,6 +178,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'memdup_uncollectable'
 		}
 		if table.used_features.arr_map {
+			core_fns << panic_deps
 			core_fns << '__new_array_with_map_default'
 			core_fns << 'new_map_noscan_key'
 			core_fns << ref_map_idx_str + '.clone'
@@ -185,6 +187,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			table.used_features.used_maps++
 		}
 		if table.used_features.map_update {
+			core_fns << panic_deps
 			core_fns << 'new_map_update_init'
 			table.used_features.used_maps++
 		}

@@ -8114,7 +8114,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				if !method.params[0].typ.is_ptr() {
 					if method.name !in aliased_method_names {
 						method_call = '${cctype}_${name}'
-						method_fkey = '${int(st)}.${name}'
+						// method_fkey = '${int(st)}.${name}'
 					} else {
 						method_call = '${styp}_${name}'
 					}
