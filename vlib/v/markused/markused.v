@@ -75,6 +75,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.used_modules.len > 0 {
 			core_fns << panic_deps
+			core_fns << string_idx_str + '.clone_static'
 		}
 		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
 			core_fns << panic_deps
@@ -252,7 +253,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
-		if k.ends_with('.str') || k.ends_with('.auto_str') {
+		if k.ends_with('.str') || k.ends_with('.auto_str')
+			|| (k.starts_with('_Atomic_') && k.ends_with('_str')) {
 			if table.used_features.auto_str || table.used_features.dump
 				|| table.used_features.print_types[mfn.receiver.typ.idx()]
 				|| table.used_features.asserts || table.used_features.debugger
