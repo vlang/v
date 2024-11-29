@@ -47,6 +47,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'main.vtest_new_metainfo',
 			'main.vtest_new_filemetainfo',
 			'println',
+			'ptr_str',
 		]
 		$if debug_used_features ? {
 			dump(table.used_features)
@@ -119,9 +120,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
 			core_fns << array_idx_str + '.clone_static_to_depth'
 			core_fns << array_idx_str + '.clone_to_depth'
-		}
-		if table.used_features.cast_ptr {
-			core_fns << 'ptr_str' // TODO: remove this. It is currently needed for the auto str methods for &u8, fn types, etc; See `./v -skip-unused vlib/builtin/int_test.v`
 		}
 		if table.used_features.auto_str || table.used_features.dump {
 			core_fns << string_idx_str + '.repeat'
