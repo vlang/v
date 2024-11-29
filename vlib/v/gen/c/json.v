@@ -1021,7 +1021,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 		s = '${styp} val = ${fn_name}((cJSON *)jsval); '
 	} else if is_array_fixed_val {
 		s = '
-		${result_name}_${styp} val2 = ${fn_name} ((cJSON *)jsval);
+		${result_name}_${styp.replace('*', '_ptr')} val2 = ${fn_name} ((cJSON *)jsval);
 		if(val2.is_error) {
 			${array_free_str}
 			return *(${result_name}_${ret_styp}*)&val2;
@@ -1030,7 +1030,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 		memcpy(&val, (${styp}*)val2.data, sizeof(${styp}));'
 	} else {
 		s = '
-		${result_name}_${styp} val2 = ${fn_name} ((cJSON *)jsval);
+		${result_name}_${styp.replace('*', '_ptr')} val2 = ${fn_name} ((cJSON *)jsval);
 		if(val2.is_error) {
 			${array_free_str}
 			return *(${result_name}_${ret_styp}*)&val2;
