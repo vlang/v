@@ -62,7 +62,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			array_idx_str + '.get',
 			'v_fixed_index',
 			charptr_idx_str + '.vstring_literal',
-			string_idx_str + '.clone_static',
 		]
 		if ast.float_literal_type.idx() in table.used_features.print_types
 			|| ast.f64_type_idx in table.used_features.print_types
@@ -76,6 +75,8 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.used_modules.len > 0 {
 			core_fns << panic_deps
+		}
+		if pref_.autofree {
 			core_fns << string_idx_str + '.clone_static'
 		}
 		if table.used_features.as_cast || table.used_features.auto_str || pref_.is_shared {
