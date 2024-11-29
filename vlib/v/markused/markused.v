@@ -73,6 +73,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			if 'no_backtrace' !in pref_.compile_defines {
 				core_fns << panic_deps
 			}
+		} $else {
+			if 'use_libbacktrace' in pref_.compile_defines {
+				core_fns << 'print_libbacktrace'
+			}
 		}
 		if table.used_features.used_modules.len > 0 {
 			core_fns << panic_deps
