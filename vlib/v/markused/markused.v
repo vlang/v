@@ -62,6 +62,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			array_idx_str + '.get',
 			'v_fixed_index',
 			charptr_idx_str + '.vstring_literal',
+			string_idx_str + '.clone_static',
 		]
 		if ast.float_literal_type.idx() in table.used_features.print_types
 			|| ast.f64_type_idx in table.used_features.print_types
@@ -270,7 +271,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
-		if table.used_features.used_modules.len > 0 && k.ends_with('.free') {
+		if (pref_.autofree || table.used_features.used_modules.len > 0) && k.ends_with('.free') {
 			all_fn_root_names << k
 			continue
 		}
