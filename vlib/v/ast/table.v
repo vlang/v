@@ -25,6 +25,7 @@ pub mut:
 	arr_last         bool            // arr.last()
 	arr_pop          bool            // arr.pop()
 	arr_delete       bool            // arr.delete()
+	arr_reverse      bool            // arr.reverse()
 	arr_init         bool            // [1, 2, 3]
 	arr_map          bool            // []map[key]value
 	map_update       bool            // {...foo}
