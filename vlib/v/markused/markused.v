@@ -381,6 +381,13 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 					all_fn_root_names << interface_implementation_method_name
 				}
 			}
+			for embed_method in table.get_embed_methods(table.sym(itype)) {
+				interface_implementation_method_name := '${int(embed_method.params[0].typ)}.${embed_method.name}'
+				$if trace_skip_unused_interface_methods ? {
+					eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name} (embeded)')
+				}
+				all_fn_root_names << interface_implementation_method_name
+			}
 		}
 	}
 

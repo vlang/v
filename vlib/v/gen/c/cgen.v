@@ -8110,11 +8110,9 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_${name}'
-				mut method_fkey := '${int(method.params[0].typ)}.${name}'
 				if !method.params[0].typ.is_ptr() {
 					if method.name !in aliased_method_names {
 						method_call = '${cctype}_${name}'
-						// method_fkey = '${int(st)}.${name}'
 					} else {
 						method_call = '${styp}_${name}'
 					}
@@ -8147,7 +8145,6 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 					if embed_types.len > 0 && method.name !in method_names {
 						embed_sym := g.table.sym(embed_types.last())
 						method_name := '${embed_sym.cname}_${method.name}'
-						method_fkey = '${int(embed_types.last())}.${name}'
 						methods_wrapper.write_string('${method_name}(${fargs[0]}')
 						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
@@ -8175,11 +8172,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type
 					&& st != ast.nil_type {
-					if g.pref.skip_unused && method_fkey !in g.table.used_features.used_fns {
-						methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) 0,')
-					} else {
-						methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
-					}
+					methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
 				}
 			}
 
