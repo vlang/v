@@ -440,7 +440,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.MapInit {
 			w.exprs(node.keys)
 			w.exprs(node.vals)
-			w.expr(node.update_expr)
+			if node.has_update_expr {
+				w.expr(node.update_expr)
+			}
 			w.features.used_maps++
 		}
 		ast.MatchExpr {
@@ -573,7 +575,14 @@ pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
 						w.a_struct_info(value_sym.name, value_sym.info)
 					}
 				}
-				ast.Array, ast.ArrayFixed, ast.Map {
+				ast.Array, ast.ArrayFixed {
+					w.features.used_arrays++
+					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
+					if value_sym.info is ast.Struct {
+						w.a_struct_info(value_sym.name, value_sym.info)
+					}
+				}
+				ast.Map {
 					w.features.used_maps++
 					value_sym := w.table.final_sym(w.table.value_type(ifield.typ))
 					if value_sym.info is ast.Struct {
