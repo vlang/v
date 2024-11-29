@@ -135,7 +135,7 @@ fn test_simple() {
 	assert filter3.exit_code == 0, filter3.str()
 	assert filter3.output.contains('cmd/tools/vcover/testdata/simple/simple.v'), filter3.str()
 	$if skip_unused ? {
-		assert filter3.output.trim_space().match_glob('*cmd/tools/vcover/testdata/simple/simple.v *|      3 |      3 | 100.00%'), filter3.str()
+		assert filter3.output.trim_space().match_glob('*cmd/tools/vcover/testdata/simple/simple.v *|      5 |      5 | 100.00%'), filter3.str()
 	} $else {
 		assert filter3.output.trim_space().match_glob('*cmd/tools/vcover/testdata/simple/simple.v *|      9 |      9 | 100.00%'), filter3.str()
 	}
