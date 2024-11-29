@@ -126,6 +126,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		}
 		if table.used_features.auto_str_ptr {
 			core_fns << 'isnil'
+			core_fns << panic_deps
 		}
 		if table.used_features.arr_prepend {
 			core_fns << ref_array_idx_str + '.prepend_many'
