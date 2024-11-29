@@ -78,6 +78,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				core_fns << 'print_libbacktrace'
 			}
 		}
+		if 'callstack' in pref_.compile_defines {
+			core_fns << ref_array_idx_str + '.push'
+			core_fns << ref_array_idx_str + '.pop'
+		}
 		if table.used_features.used_modules.len > 0 {
 			core_fns << panic_deps
 		}
