@@ -45,6 +45,7 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl restart systemd-networkd
           sudo systemctl restart systemd-resolved
+          dig distro.ibiblio.org
 
       - name: Install C2V
         run: |
@@ -88,6 +89,7 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl restart systemd-networkd
           sudo systemctl restart systemd-resolved
+          dig distro.ibiblio.org
 
       - name: Install C2V
         run: |
