@@ -41,6 +41,7 @@ pub mut:
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime
+	comptime_for   bool            // uses $for
 }
 
 @[unsafe]

@@ -63,6 +63,11 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			'v_fixed_index',
 			charptr_idx_str + '.vstring_literal',
 		]
+		if ast.float_literal_type.idx() in table.used_features.print_types
+			|| ast.f64_type_idx in table.used_features.print_types
+			|| ast.f32_type_idx in table.used_features.print_types {
+			core_fns << panic_deps
+		}
 		$if windows {
 			if 'no_backtrace' !in pref_.compile_defines {
 				core_fns << panic_deps
@@ -96,9 +101,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << string_idx_str + '.clone_static'
 			core_fns << string_idx_str + '.at'
 			core_fns << array_idx_str + '.set'
-			if table.used_features.option_or_result {
-				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
-			}
+			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
 			core_fns << ref_array_idx_str + '.set'
 			core_fns << map_idx_str + '.get'
 			core_fns << map_idx_str + '.set'
@@ -110,9 +113,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << string_idx_str + '.substr_with_check'
 			core_fns << string_idx_str + '.substr_ni'
 			core_fns << array_idx_str + '.slice_ni'
-			if table.used_features.option_or_result {
-				core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
-			}
+			core_fns << array_idx_str + '.get_with_check' // used for `x := a[i] or {}`
 			core_fns << array_idx_str + '.clone_static_to_depth'
 			core_fns << array_idx_str + '.clone_to_depth'
 		}
@@ -157,7 +158,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				'${builderptr_idx}.write_rune',
 			]
 		}
-		if table.used_features.arr_init {
+		if table.used_features.arr_init || table.used_features.comptime_for {
 			core_fns << panic_deps
 			core_fns << '__new_array'
 			core_fns << 'new_array_from_c_array'
@@ -251,7 +252,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		// auto generated string interpolation functions, may
 		// call .str or .auto_str methods for user types:
 		if k.ends_with('.str') || k.ends_with('.auto_str') {
-			if table.used_features.auto_str
+			if table.used_features.auto_str || table.used_features.dump
 				|| table.used_features.print_types[mfn.receiver.typ.idx()]
 				|| table.used_features.asserts || table.used_features.debugger
 				|| table.used_features.used_modules.len > 0 {
@@ -259,7 +260,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			}
 			continue
 		}
-		if k.ends_with('.init') {
+		if k.ends_with('.init') || k.ends_with('.cleanup') {
 			all_fn_root_names << k
 			continue
 		}
@@ -374,7 +375,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			interface_types := [ptype, ntype]
 			for method in interface_info.methods {
 				for typ in interface_types {
-					interface_implementation_method_name := '${int(typ)}.${method.name}'
+					interface_implementation_method_name := '${int(typ.clear_flags())}.${method.name}'
 					$if trace_skip_unused_interface_methods ? {
 						eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name}')
 					}
@@ -382,7 +383,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 				}
 			}
 			for embed_method in table.get_embed_methods(table.sym(itype)) {
-				interface_implementation_method_name := '${int(embed_method.params[0].typ)}.${embed_method.name}'
+				interface_implementation_method_name := '${int(embed_method.params[0].typ.clear_flags())}.${embed_method.name}'
 				$if trace_skip_unused_interface_methods ? {
 					eprintln('>> isym.name: ${isym.name} | interface_implementation_method_name: ${interface_implementation_method_name} (embeded)')
 				}

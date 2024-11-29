@@ -80,6 +80,12 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	w.used_globals[ckey] = true
 	gfield := w.all_globals[ckey] or { return }
 	w.expr(gfield.expr)
+	if !gfield.has_expr && gfield.typ != 0 {
+		sym := w.table.sym(gfield.typ)
+		if sym.info is ast.Struct {
+			w.a_struct_info(sym.name, sym.info)
+		}
+	}
 }
 
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
@@ -434,6 +440,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.MapInit {
 			w.exprs(node.keys)
 			w.exprs(node.vals)
+			w.expr(node.update_expr)
 			w.features.used_maps++
 		}
 		ast.MatchExpr {
@@ -666,6 +673,8 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		if const_fn_name in w.all_consts {
 			w.mark_const_as_used(const_fn_name)
 		}
+	} else if node.is_fn_var {
+		w.mark_global_as_used(node.name)
 	}
 	w.mark_fn_as_used(fn_name)
 	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0

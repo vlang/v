@@ -348,6 +348,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.type_map['${node.val_var}.typ'] = node.typ
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
+			c.table.used_features.comptime_for = true
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
@@ -365,6 +366,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		}
+		c.table.used_features.comptime_for = true
 	} else if node.kind == .params {
 		if !(sym.kind == .function || sym.name == 'FunctionData') {
 			c.error('iterating over `.params` is supported only for functions, and `${sym.name}` is not a function',
