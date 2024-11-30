@@ -868,6 +868,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if c.table.cur_fn != unsafe { nil } {
 			node.left_type, fn_name = c.table.convert_generic_static_type_name(fn_name,
 				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+			c.table.used_features.comptime_calls[fn_name] = true
 		}
 	}
 	if fn_name == 'main' {
@@ -1420,11 +1421,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			&& node.args[0].expr !is ast.StringLiteral {
 			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
 				c.table.used_features.auto_str = true
-				if node.args[0].typ.is_ptr() {
-					c.table.used_features.auto_str_ptr = true
-				}
 			} else {
 				c.table.used_features.print_types[node.args[0].typ.idx()] = true
+			}
+			if node.args[0].typ.is_ptr() {
+				c.table.used_features.auto_str_ptr = true
 			}
 		}
 		return func.return_type
@@ -2178,9 +2179,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		continue_check = false
 		return ast.void_type
 	}
-	if c.pref.skip_unused && mut left_expr is ast.Ident {
-		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
-			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+	if c.pref.skip_unused {
+		if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
+			if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
+				c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+			}
+		} else if left_type.has_flag(.generic) {
+			c.table.used_features.comptime_calls['${int(c.unwrap_generic(left_type))}.${node.name}'] = true
 		}
 	}
 	c.expected_type = left_type
@@ -2313,6 +2318,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if embed_types.len != 0 {
 				is_method_from_embed = true
 				node.from_embed_types = embed_types
+				if c.pref.skip_unused && node.left_type.has_flag(.generic) {
+					c.table.used_features.comptime_calls['${int(method.receiver_type)}.${method.name}'] = true
+				}
 			}
 		}
 		if final_left_sym.kind == .aggregate {
@@ -3353,6 +3361,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					return ast.void_type
 				}
 			}
+			c.table.used_features.arr_insert = true
 		} else {
 			c.table.used_features.arr_prepend = true
 			if node.args.len != 1 {
@@ -3628,6 +3637,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		node.return_type = ast.void_type
+	} else if method_name == 'reverse' {
+		c.table.used_features.arr_reverse = true
 	}
 	return node.return_type
 }

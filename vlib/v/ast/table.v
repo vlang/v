@@ -21,10 +21,12 @@ pub mut:
 	auto_str         bool            // auto str fns
 	auto_str_ptr     bool            // auto str fns for ptr type
 	arr_prepend      bool            // arr.prepend()
+	arr_insert       bool            // arr.insert()
 	arr_first        bool            // arr.first()
 	arr_last         bool            // arr.last()
 	arr_pop          bool            // arr.pop()
 	arr_delete       bool            // arr.delete()
+	arr_reverse      bool            // arr.reverse()
 	arr_init         bool            // [1, 2, 3]
 	arr_map          bool            // []map[key]value
 	map_update       bool            // {...foo}
@@ -41,6 +43,7 @@ pub mut:
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime
+	comptime_for   bool            // uses $for
 }
 
 @[unsafe]
