@@ -3636,7 +3636,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			for _, mut arg in node.args {
 				arg_typ := c.expr(mut arg.expr)
 				c.check_expected_call_arg(arg_typ, ast.int_type, node.language, arg) or {
-					c.error('${err.msg()} in argument 1 to `.delete()`', arg.pos)
+					c.error('${err.msg()} in argument 1 to `.delete_many()`', arg.pos)
 				}
 			}
 		}
