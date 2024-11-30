@@ -8,7 +8,8 @@ fn (mut t Test[T]) delete_many(start int, end int) {
 }
 
 fn test_main() {
-	mut x := Test[int]{len: 5, init: index}
+	mut x := Test[int]{}
+	x.values = []int{len: 5, init: index}
 	x.delete_many(1, 3)
 	assert x.values.len == 2
 }
