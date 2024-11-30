@@ -12,4 +12,6 @@ fn test_main() {
 	x.values = []int{len: 5, init: index}
 	x.delete_many(1, 3)
 	assert x.values.len == 2
+	assert x.values[0] == 0
+	assert x.values[1] == 4
 }
