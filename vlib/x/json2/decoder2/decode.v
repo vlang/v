@@ -139,7 +139,9 @@ fn check_if_json_match[T](val string) ! {
 			return error('Expected boolean, but got ${value_kind}')
 		}
 	} $else {
-		return error('cannot encode value with ${value_kind} type')
+		if T.indirections == 0 {
+			return error('cannot decode value with ${value_kind} type')
+		}
 	}
 }
 
@@ -684,7 +686,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			}
 		}
 	} $else {
-		return error('cannot encode value with ${typeof(val).name} type')
+		return error('cannot decode value with ${typeof(val).name} type')
 	}
 
 	if decoder.current_node != unsafe { nil } {
