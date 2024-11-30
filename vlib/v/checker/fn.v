@@ -3361,6 +3361,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					return ast.void_type
 				}
 			}
+			c.table.used_features.arr_insert = true
 		} else {
 			c.table.used_features.arr_prepend = true
 			if node.args.len != 1 {
