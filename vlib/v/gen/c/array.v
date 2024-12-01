@@ -880,11 +880,11 @@ fn (mut g Gen) gen_fixed_array_reverse_in_place(node ast.CallExpr) {
 
 // `nums.filter(it % 2 == 0)`
 fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
+	is_return_discarded := node.is_return_discarded
 	past := g.past_tmp_var_new()
 	defer {
 		g.past_tmp_var_done(past)
 	}
-
 	sym := g.table.final_sym(node.return_type)
 	if sym.kind != .array {
 		verror('filter() requires an array')
@@ -893,9 +893,15 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	styp := g.styp(node.return_type)
 	elem_type_str := g.styp(info.elem_type)
 	noscan := g.check_noscan(info.elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
-	g.writeln('${past.tmp_var} = __new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${elem_type_str}));\n')
 
+	has_infix_left_var_name := if is_return_discarded {
+		g.write_prepared_tmp_value(past.tmp_var, node, 'int', '0')
+	} else {
+		g.write_prepared_tmp_value(past.tmp_var, node, styp, '{0}')
+	}
+	if !is_return_discarded {
+		g.writeln('${past.tmp_var} = __new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${elem_type_str}));\n')
+	}
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
 
@@ -956,7 +962,11 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			g.expr(expr)
 		}
 	}
-	g.writeln2(') {', '\tarray_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
+	if !node.is_return_discarded {
+		g.writeln2(') {', '\tarray_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
+	} else {
+		g.writeln2(') {', '\t++${past.tmp_var};')
+	}
 	g.writeln('}')
 	g.indent--
 	g.writeln('}')

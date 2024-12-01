@@ -4207,6 +4207,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_as_cast {
 		g.write(')')
 	}
+	optmized_filter := final_sym.kind == .array && node.field_name == 'len'
+		&& node.expr is ast.CallExpr && node.expr.name == 'filter' && node.expr.is_return_discarded
+	if optmized_filter {
+		return
+	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
 		if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {

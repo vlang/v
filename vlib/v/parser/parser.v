@@ -3432,6 +3432,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	mut left_node := unsafe { left }
 	if mut left_node is ast.CallExpr {
 		left_node.is_return_used = true
+		left_node.is_return_discarded = true
 	}
 	return sel_expr
 }
