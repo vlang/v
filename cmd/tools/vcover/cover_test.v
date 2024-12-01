@@ -45,7 +45,7 @@ fn test_simple() {
 	assert !os.exists(t2), t2
 	assert !os.exists(t3), t3
 
-	r1 := os.execute('${os.quoted_path(vexe)} -coverage ${os.quoted_path(t1)} cmd/tools/vcover/testdata/simple/t1_test.v')
+	r1 := os.execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t1)} cmd/tools/vcover/testdata/simple/t1_test.v')
 	assert r1.exit_code == 0, r1.str()
 	assert r1.output.trim_space() == '10', r1.str()
 	assert os.exists(t1), t1
@@ -72,7 +72,7 @@ fn test_simple() {
 	assert nzeros1.any(it.contains('simple.v:8')), nzeros1.str()
 	assert nzeros1.any(it.contains('simple.v:25')), nzeros1.str()
 
-	r2 := os.execute('${os.quoted_path(vexe)} -coverage ${os.quoted_path(t2)} cmd/tools/vcover/testdata/simple/t2_test.v')
+	r2 := os.execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t2)} cmd/tools/vcover/testdata/simple/t2_test.v')
 	assert r2.exit_code == 0, r2.str()
 	assert r2.output.trim_space() == '24', r2.str()
 	assert os.exists(t2), t2
@@ -97,7 +97,7 @@ fn test_simple() {
 	assert nzeros2.any(it.contains('simple.v:25')), nzeros2.str()
 
 	// Run both tests. The coverage should be combined and == 100%
-	r3 := os.execute('${os.quoted_path(vexe)} -coverage ${os.quoted_path(t3)} test cmd/tools/vcover/testdata/simple/')
+	r3 := os.execute('${os.quoted_path(vexe)} -no-skip-unused -coverage ${os.quoted_path(t3)} test cmd/tools/vcover/testdata/simple/')
 	assert r3.exit_code == 0, r3.str()
 	assert r3.output.trim_space().contains('Summary for all V _test.v files: '), r3.str()
 	assert os.exists(t3), t3

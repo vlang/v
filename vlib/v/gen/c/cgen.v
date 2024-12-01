@@ -6769,7 +6769,9 @@ fn (mut g Gen) write_init_function() {
 		for mod_name in reversed_table_modules {
 			g.writeln2('\t// Cleanups for module ${mod_name} :', g.cleanups[mod_name].str())
 		}
-		g.writeln('\tarray_free(&as_cast_type_indexes);')
+		if g.as_cast_type_names.len > 0 {
+			g.writeln('\tarray_free(&as_cast_type_indexes);')
+		}
 	}
 	for x in cleaning_up_array.reverse() {
 		g.writeln(x)
