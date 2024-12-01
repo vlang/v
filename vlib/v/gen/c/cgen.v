@@ -6119,8 +6119,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, field.expr,
 						field.typ)
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
-						false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
 			}
 			ast.StringLiteral {
@@ -6136,15 +6135,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.CallExpr {
 				if field.expr.return_type.has_flag(.option)
 					|| field.expr.return_type.has_flag(.result) {
+					old_inside_const_opt_or_res := g.inside_const_opt_or_res
 					g.inside_const_opt_or_res = true
 					unwrap_opt_res := field.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_opt_res,
-						unwrap_opt_res)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_opt_res)
+					g.inside_const_opt_or_res = old_inside_const_opt_or_res
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
-						false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
-				g.inside_const_opt_or_res = false
 			}
 			else {
 				// Note: -usecache uses prebuilt modules, each compiled with:
@@ -6184,8 +6182,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 							continue
 						}
 					}
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
-						false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				} else if field.expr is ast.InfixExpr {
 					mut has_unwrap_opt_res := false
 					if field.expr.left is ast.CallExpr {
@@ -6193,11 +6190,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					} else if field.expr.right is ast.CallExpr {
 						has_unwrap_opt_res = field.expr.right.or_block.kind != .absent
 					}
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
-						has_unwrap_opt_res)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, has_unwrap_opt_res)
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
-						true)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, true)
 				}
 			}
 		}
@@ -6359,8 +6354,7 @@ fn (mut g Gen) c_const_name(name string) string {
 	return if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool,
-	surround_cbr bool) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, surround_cbr bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.styp(typ)
@@ -6370,9 +6364,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	if surround_cbr {
 		init.writeln('{')
 	}
-	if unwrap_option {
-		init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
-	} else if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
+	if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
 		init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
 	} else if expr is ast.CallExpr
 		&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed {
