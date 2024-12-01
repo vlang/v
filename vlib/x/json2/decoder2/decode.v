@@ -608,6 +608,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
+		return
 	} $else $if T.unaliased_typ is time.Time {
 		time_info := decoder.current_node.value
 

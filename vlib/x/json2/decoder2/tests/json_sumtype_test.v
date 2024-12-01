@@ -50,15 +50,14 @@ fn test_any_sum_type() {
 
 	assert json.decode[json2.Any]('1.1')! == json2.Any(f64(1.1))
 
-	// Uncomment this when #22693 is fixed
-	// assert json.decode[[]json2.Any]('["1", "2", "3"]')! == [json2.Any('1'), json2.Any('2'), json2.Any('3')]
-	// assert json.decode[json2.Any]('["1", "2", "3"]')! == json2.Any([json2.Any('1'), json2.Any('2'),
-	// 	json2.Any('3')])
+	assert json.decode[[]json2.Any]('["1", "2", "3"]')! == [json2.Any('1'), json2.Any('2'), json2.Any('3')]
+	assert json.decode[json2.Any]('["1", "2", "3"]')! == json2.Any([json2.Any('1'), json2.Any('2'),
+		json2.Any('3')])
 
-	// assert json.decode[[]json2.Any]('[true, false, true]')! == [json2.Any(true), json2.Any(false),
-	// 	json2.Any(true)]
-	// assert json.decode[json2.Any]('[true, false, true]')! == json2.Any([json2.Any(true), json2.Any(false),
-	// 	json2.Any(true)])
+	assert json.decode[[]json2.Any]('[true, false, true]')! == [json2.Any(true), json2.Any(false),
+		json2.Any(true)]
+	assert json.decode[json2.Any]('[true, false, true]')! == json2.Any([json2.Any(true), json2.Any(false),
+		json2.Any(true)])
 
 	assert json.decode[json2.Any]('{"hello": "world"}')! == json2.Any({
 		'hello': json2.Any('world')
@@ -68,11 +67,11 @@ fn test_any_sum_type() {
 		'hello': json2.Any('world')
 	}
 
-	// assert json.decode[json2.Any]('{"hello1": {"hello2": "world"}}')! == json2.Any({
-	// 	'hello1': json2.Any({
-	// 		'hello2': json2.Any('world')
-	// 	})
-	// })
+	assert json.decode[json2.Any]('{"hello1": {"hello2": "world"}}')! == json2.Any({
+		'hello1': json2.Any({
+			'hello2': json2.Any('world')
+		})
+	})
 }
 
 fn test_sum_type_struct() {
