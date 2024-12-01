@@ -322,7 +322,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 				}
 			}
-			if checker.checker_idx < checker_end - 1 {
+			if checker.checker_idx < checker_end - 2 {
 				checker.checker_idx++
 			}
 		}
@@ -748,9 +748,12 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 
 			mut map_value := V{}
 
-			decoder.decode_value(mut map_value)!
-
-			val[key] = map_value
+			$if V is $map {
+				val[key] = map_value.move()
+			} $else {
+				val[key] = map_value
+			}
+			decoder.decode_value(mut val[key])!
 		}
 	}
 }
