@@ -604,6 +604,8 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 
 		if t.has_flag(.option) {
 			typ = 'option_${typ}'
+		} else if g.table.final_sym(t).kind == .enum {
+			typ = 'i64'
 		}
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
