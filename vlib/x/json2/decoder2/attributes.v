@@ -1,7 +1,7 @@
 module decoder2
 
 // attributes is a list of allowed attributes
-pub const attributes = ['required', 'skip', 'omitempty', 'json', 'raw']!
+pub const supported_attributes = ['required', 'skip', 'omitempty', 'json', 'raw']!
 
 struct MutFieldData {
 mut:
