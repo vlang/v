@@ -22,7 +22,6 @@ mut:
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	// attributes_handlers map[string]fn (?string, mut MutFieldData, ValueInfo) ?int = default_attributes_handlers
 	attributes_handlers map[string]fn (string, mut MutFieldData, ValueInfo) AttributeBehavior = unsafe { default_attributes_handlers }
 	values_info         LinkedList // A linked list to store ValueInfo.
 	checker_idx         int        // checker_idx is the current index of the decoder.
