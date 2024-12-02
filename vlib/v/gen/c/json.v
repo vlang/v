@@ -139,7 +139,7 @@ ${enc_fn_dec} {
 \tcJSON *o;')
 		if is_js_prim(sym.name) && utyp.is_ptr() {
 			g.gen_prim_enc_dec(utyp, mut enc, mut dec)
-		} else if sym.kind == .array || sym.kind == .array_fixed {
+		} else if sym.kind in [.array, .array_fixed] {
 			array_size := if sym.kind == .array_fixed {
 				(sym.info as ast.ArrayFixed).size
 			} else {
