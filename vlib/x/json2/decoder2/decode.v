@@ -25,7 +25,7 @@ mut:
 	values_info         LinkedList // A linked list to store ValueInfo.
 	checker_idx         int        // checker_idx is the current index of the decoder.
 	current_node        &Node = unsafe { nil } // The current node in the linked list.
-	attributes_handlers map[string]fn (string, mut MutFieldData, ValueInfo) AttributeBehavior = unsafe { default_attributes_handlers }
+	attributes_handlers map[string]fn (?string, mut MutFieldData) bool = unsafe { default_attributes_handlers }
 }
 
 // new_decoder creates a new JSON decoder.
@@ -635,39 +635,24 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				$for field in T.fields {
 					// create a mutable field from the field data. Then we can modify the field data like name field
 					mut new_field := new_mutable_from_field_data(field)
+					mut skip := false
 
-					mut attribute_callback_response := AttributeBehavior.none_
-					for attribute in field.attrs {
-						attribute_name := attribute[0..attribute.index(':') or { attribute.len }]
+					if field.attrs.len != 0 {
+						attributes := get_attributes(field.attrs, mut new_field)
 
-						mut attribute_arg := '' // ?string{}
-
-						if attribute.index(':') != none {
-							attribute_arg = attribute[attribute.index(':')! + 2..attribute.len]
-						}
-
-						attribute_callback := decoder.attributes_handlers[attribute_name] or {
-							continue
-						}
-
-						attribute_callback_response = attribute_callback(attribute_arg, mut
-							new_field, key_info)
-
-						match attribute_callback_response {
-							.continue_ {
-								continue
+						for attribute in attributes {
+							handler := default_attributes_handlers[attribute.name] or {
+								panic('unknown attribute. This should never happens')
 							}
-							.break_ {
-								unsafe {
-									goto break_decode_value_struct_fields_loop
-								}
+
+							skip = handler(attribute.arg, mut new_field)
+							if skip {
+								break
 							}
-							else {}
 						}
 					}
 
-					if key_info.length - 2 == new_field.name.len
-						&& attribute_callback_response == .none_ {
+					if key_info.length - 2 == new_field.name.len && skip == false {
 						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
 						if unsafe {
 							vmemcmp(decoder.json.str + key_info.position + 1, new_field.name.str,
@@ -683,7 +668,6 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						}
 					}
 				}
-				break_decode_value_struct_fields_loop:
 			}
 		}
 		return
