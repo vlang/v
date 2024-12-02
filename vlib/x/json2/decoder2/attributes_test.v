@@ -32,7 +32,7 @@ fn test_default_attributes() {
 	}
 }
 
-fn do_something_attribute_handler(arg string, mut field json.MutableFieldData, value_info json.ValueInfo) json.AttributeBehavior {
+fn do_something_attribute_handler(arg string, mut field json.MutFieldData, value_info json.ValueInfo) json.AttributeBehavior {
 	println('this do something, like change the field name, print this message, etc')
 
 	// don't decode if the field is int

@@ -9,7 +9,7 @@ pub enum AttributeBehavior {
 	break_
 }
 
-pub struct MutableFieldData {
+pub struct MutFieldData {
 pub mut:
 	name          string // the name of the field f
 	typ           int    // the internal TypeID of the field f,
@@ -32,9 +32,9 @@ pub mut:
 	indirections u8 // 0 for `f int`, 1 for `f &int`, 2 for `f &&int` , TODO
 }
 
-// new_mutable_from_field_data creates a new MutableFieldData from a FieldData
-pub fn new_mutable_from_field_data(field_data FieldData) MutableFieldData {
-	return MutableFieldData{
+// new_mutable_from_field_data creates a new MutFieldData from a FieldData
+pub fn new_mutable_from_field_data(field_data FieldData) MutFieldData {
+	return MutFieldData{
 		name:          field_data.name
 		typ:           field_data.typ
 		unaliased_typ: field_data.unaliased_typ
@@ -58,11 +58,11 @@ const default_attributes_handlers = {
 	'json': json_attribute_handler
 }
 
-fn skip_attribute_handler(arg string, mut field MutableFieldData, value_info ValueInfo) AttributeBehavior {
+fn skip_attribute_handler(arg string, mut field MutFieldData, value_info ValueInfo) AttributeBehavior {
 	return .continue_
 }
 
-fn json_attribute_handler(arg string, mut field MutableFieldData, value_info ValueInfo) AttributeBehavior {
+fn json_attribute_handler(arg string, mut field MutFieldData, value_info ValueInfo) AttributeBehavior {
 	field.name = arg
 	return .none_
 }
