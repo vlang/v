@@ -28,7 +28,7 @@ pub struct Dog {
 
 type Sum = int | string | bool | []string
 
-type SumTypes = Stru | Stru2
+type StructSumTypes = Stru | Stru2
 
 pub struct Stru {
 	val  int
@@ -95,5 +95,5 @@ fn test_sum_type_struct() {
 	assert json.decode[Animal]('{"dog_name": "Rex", "_type": "Dog"}')! == Animal(Dog{'Rex'})
 
 	// struct sumtype in random order
-	assert json.decode[SumTypes]('{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "steak": "leleu"}, "val4": 2147483000, "val5": 2147483000}')! == SumTypes(Stru{1, 'lala', Stru2{2, 'leleu'}, 2147483000, 2147483000})
+	assert json.decode[StructSumTypes]('{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "steak": "leleu"}, "val4": 2147483000, "val5": 2147483000}')! == StructSumTypes(Stru{1, 'lala', Stru2{2, 'leleu'}, 2147483000, 2147483000})
 }
