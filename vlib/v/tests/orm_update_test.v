@@ -5,7 +5,7 @@ struct Person {
 	height Height
 }
 
-enum Height {
+enum Height as u8 {
 	tall
 	small
 }
