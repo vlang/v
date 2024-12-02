@@ -7,15 +7,9 @@ struct StruWithJsonAttribute {
 }
 
 struct StruWithSkipAttribute {
-	a     int
-	name2 string @[skip]
-	b     int
-}
-
-struct StruWithCustomUserAttribute {
-	a    int    @[some_custom_attribute_created_by_user]
-	name string @[some_custom_attribute_created_by_user]
-	b    int    @[some_custom_attribute_created_by_user]
+	a    int
+	name string @[skip]
+	b    int
 }
 
 fn test_default_attributes() {
@@ -25,37 +19,9 @@ fn test_default_attributes() {
 		b:     3
 	}
 
-	assert json.decode[StruWithSkipAttribute]('{"name2": "hola", "a": 2, "b": 3}')! == StruWithSkipAttribute{
-		a:     2
-		name2: ''
-		b:     3
-	}
-}
-
-fn do_something_attribute_handler(arg string, mut field json.MutFieldData, value_info json.ValueInfo) json.AttributeBehavior {
-	println('this do something, like change the field name, print this message, etc')
-
-	// don't decode if the field is int
-	if field.typ == typeof[int]().idx {
-		return .continue_
-	}
-
-	return .none_
-}
-
-fn test_custom_user_attribute() {
-	mut result := StruWithCustomUserAttribute{}
-
-	mut decoder := json.new_decoder[StruWithCustomUserAttribute]('{"name": "hola", "a": 2, "b": 3}',
-		{
-		'some_custom_attribute_created_by_user': do_something_attribute_handler
-	})!
-
-	decoder.decode_value(mut &result)!
-
-	assert result == StruWithCustomUserAttribute{
-		a:    0
-		name: 'hola'
-		b:    0
+	assert json.decode[StruWithSkipAttribute]('{"name": "hola", "a": 2, "b": 3}')! == StruWithSkipAttribute{
+		a:    2
+		name: ''
+		b:    3
 	}
 }

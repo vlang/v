@@ -1,6 +1,6 @@
 module decoder2
 
-pub enum AttributeBehavior {
+enum AttributeBehavior {
 	// do nothing
 	none_
 	// skip the field
@@ -9,8 +9,8 @@ pub enum AttributeBehavior {
 	break_
 }
 
-pub struct MutFieldData {
-pub mut:
+struct MutFieldData {
+mut:
 	name          string // the name of the field f
 	typ           int    // the internal TypeID of the field f,
 	unaliased_typ int    // if f's type was an alias of int, this will be TypeID(int)
@@ -33,7 +33,7 @@ pub mut:
 }
 
 // new_mutable_from_field_data creates a new MutFieldData from a FieldData
-pub fn new_mutable_from_field_data(field_data FieldData) MutFieldData {
+fn new_mutable_from_field_data(field_data FieldData) MutFieldData {
 	return MutFieldData{
 		name:          field_data.name
 		typ:           field_data.typ

@@ -29,10 +29,9 @@ mut:
 }
 
 // new_decoder creates a new JSON decoder.
-pub fn new_decoder[T](json string, attributes_handlers map[string]fn (string, mut MutFieldData, ValueInfo) AttributeBehavior) !Decoder {
+pub fn new_decoder[T](json string) !Decoder {
 	mut decoder := Decoder{
-		json:                json
-		attributes_handlers: attributes_handlers
+		json: json
 	}
 
 	decoder.check_json_format(json)!
