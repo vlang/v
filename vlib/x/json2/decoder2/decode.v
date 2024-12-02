@@ -633,7 +633,9 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				decoder.current_node = decoder.current_node.next
 
 				$for field in T.fields {
+					// create a mutable field from the field data. Then we can modify the field data like name field
 					mut new_field := new_mutable_from_field_data(field)
+
 					mut attribute_callback_response := AttributeBehavior.none_
 					for attribute in field.attrs {
 						attribute_name := attribute[0..attribute.index(':') or { attribute.len }]
@@ -663,8 +665,8 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							else {}
 						}
 					}
-					if attribute_callback_response == .none_
-						&& key_info.length - 2 == new_field.name.len {
+					if key_info.length - 2 == new_field.name.len
+						&& attribute_callback_response == .none_ {
 						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
 						if unsafe {
 							vmemcmp(decoder.json.str + key_info.position + 1, new_field.name.str,
