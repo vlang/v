@@ -105,7 +105,11 @@ fn sync_cache() {
 }
 
 fn main() {
-	scripting.used_tools_must_exist(['git'])
+	if os.user_os() == 'windows' {
+		scripting.used_tools_must_exist(['git', 'wc', 'make', 'robocopy'])
+	} else {
+		scripting.used_tools_must_exist(['git', 'wc', 'make', 'rsync', 'cc'])
+	}
 
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will
