@@ -11,7 +11,7 @@ mut:
 }
 
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
-pub struct ValueInfo {
+struct ValueInfo {
 	position   int       // The position of the value in the JSON string.
 	value_kind ValueKind // The kind of the value.
 mut:
@@ -22,10 +22,10 @@ mut:
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	attributes_handlers map[string]fn (string, mut MutFieldData, ValueInfo) AttributeBehavior = unsafe { default_attributes_handlers }
 	values_info         LinkedList // A linked list to store ValueInfo.
 	checker_idx         int        // checker_idx is the current index of the decoder.
 	current_node        &Node = unsafe { nil } // The current node in the linked list.
+	attributes_handlers map[string]fn (string, mut MutFieldData, ValueInfo) AttributeBehavior = unsafe { default_attributes_handlers }
 }
 
 // new_decoder creates a new JSON decoder.
