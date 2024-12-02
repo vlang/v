@@ -413,7 +413,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				ctyp = 'time__Time'
 				typ = 'time'
 			} else if sym.kind == .enum {
-				typ = 'i64'
+				typ = g.table.sym(g.table.final_type(field.typ)).cname
 			}
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
@@ -605,7 +605,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 		if t.has_flag(.option) {
 			typ = 'option_${typ}'
 		} else if g.table.final_sym(t).kind == .enum {
-			typ = 'i64'
+			typ = g.table.sym(g.table.final_type(t)).cname
 		}
 		g.write('orm__${typ}_to_primitive(')
 		if expr is ast.CallExpr {
