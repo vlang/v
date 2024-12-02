@@ -23,14 +23,14 @@ struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
 	// attributes_handlers map[string]fn (?string, mut MutableFieldData, ValueInfo) ?int = default_attributes_handlers
-	attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop = unsafe { default_attributes_handlers }
+	attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehavior = unsafe { default_attributes_handlers }
 	values_info         LinkedList // A linked list to store ValueInfo.
 	checker_idx         int        // checker_idx is the current index of the decoder.
 	current_node        &Node = unsafe { nil } // The current node in the linked list.
 }
 
 // new_decoder creates a new JSON decoder.
-pub fn new_decoder[T](json string, attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop) !Decoder {
+pub fn new_decoder[T](json string, attributes_handlers map[string]fn (string, mut MutableFieldData, ValueInfo) AttributeBehavior) !Decoder {
 	mut decoder := Decoder{
 		json:                json
 		attributes_handlers: attributes_handlers
@@ -718,7 +718,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 				$for field in T.fields {
 					mut new_field := new_mutable_from_field_data(field)
-					mut attribute_callback_response := AttributeBehaviorOnComptimeForFieldsLoop.none_
+					mut attribute_callback_response := AttributeBehavior.none_
 					for attribute in field.attrs {
 						attribute_name := attribute[0..attribute.index(':') or { attribute.len }]
 

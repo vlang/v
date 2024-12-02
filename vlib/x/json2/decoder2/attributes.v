@@ -1,6 +1,6 @@
 module decoder2
 
-pub enum AttributeBehaviorOnComptimeForFieldsLoop {
+pub enum AttributeBehavior {
 	// do nothing
 	none_
 	// skip the field
@@ -58,11 +58,11 @@ const default_attributes_handlers = {
 	'json': json_attribute_handler
 }
 
-fn skip_attribute_handler(arg string, mut field MutableFieldData, value_info ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop {
+fn skip_attribute_handler(arg string, mut field MutableFieldData, value_info ValueInfo) AttributeBehavior {
 	return .continue_
 }
 
-fn json_attribute_handler(arg string, mut field MutableFieldData, value_info ValueInfo) AttributeBehaviorOnComptimeForFieldsLoop {
+fn json_attribute_handler(arg string, mut field MutableFieldData, value_info ValueInfo) AttributeBehavior {
 	field.name = arg
 	return .none_
 }
