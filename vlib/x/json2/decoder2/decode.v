@@ -218,10 +218,6 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					continue
 				}
 
-				if val[checker.checker_idx] != `"` {
-					checker.checker_idx++
-				}
-
 				// skip whitespace
 				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
 					if checker.checker_idx >= checker_end - 1 {
@@ -234,39 +230,21 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					continue
 				}
 
-				match val[checker.checker_idx] {
-					`"` {
-						// Object key
-						checker.check_json_format(val)!
+				if val[checker.checker_idx] != `"` {
+					return checker.error('Expecting object key')
+				}
 
-						for val[checker.checker_idx] != `:` {
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: key colon not found')
-							}
-							if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
-								return checker.error('invalid value after object key')
-							}
-							checker.checker_idx++
-						}
+				// Object key
+				checker.check_json_format(val)!
+
+				for val[checker.checker_idx] != `:` {
+					if checker.checker_idx >= checker_end - 1 {
+						return checker.error('EOF error: key colon not found')
 					}
-					`[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
-						// skip
+					if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+						return checker.error('invalid value after object key')
 					}
-					`}` {
-						return
-					}
-					`]` {
-						return checker.error('Expecting key. Found closing bracket')
-					}
-					`,` {
-						return checker.error('invalid object key')
-					}
-					`:` {
-						return checker.error('empty object key')
-					}
-					else {
-						return checker.error('`${[val[checker.checker_idx]].bytestr()}` is an invalid object key')
-					}
+					checker.checker_idx++
 				}
 
 				if val[checker.checker_idx] != `:` {
@@ -282,38 +260,31 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 				match val[checker.checker_idx] {
 					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
-						for val[checker.checker_idx] != `}` {
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: object value not closed')
-							}
-							checker.check_json_format(val)!
-							// whitespace
+						checker.check_json_format(val)!
+						// whitespace
+						for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+							checker.checker_idx++
+						}
+						if val[checker.checker_idx] == `}` {
+							break
+						}
+						if checker.checker_idx >= checker_end - 1 {
+							return checker.error('EOF error: braces are not closed')
+						}
+
+						if val[checker.checker_idx] == `,` {
+							checker.checker_idx++
 							for val[checker.checker_idx] in [` `, `\t`, `\n`] {
 								checker.checker_idx++
 							}
+							if val[checker.checker_idx] != `"` {
+								return checker.error('Expecting object key')
+							}
+						} else {
 							if val[checker.checker_idx] == `}` {
 								break
-							}
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: braces are not closed')
-							}
-
-							if val[checker.checker_idx] == `,` {
-								checker.checker_idx++
-								for val[checker.checker_idx] in [` `, `\t`, `\n`] {
-									checker.checker_idx++
-								}
-								if val[checker.checker_idx] != `"` {
-									return checker.error('Expecting object key')
-								} else {
-									break
-								}
 							} else {
-								if val[checker.checker_idx] == `}` {
-									break
-								} else {
-									return
-								}
+								return checker.error('invalid object value')
 							}
 						}
 					}
@@ -321,9 +292,6 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 						return checker.error('invalid object value')
 					}
 				}
-			}
-			if checker.checker_idx < checker_end - 2 {
-				checker.checker_idx++
 			}
 		}
 		.array {
@@ -608,6 +576,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
+		return
 	} $else $if T.unaliased_typ is time.Time {
 		time_info := decoder.current_node.value
 
@@ -667,6 +636,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 			}
 		}
+		return
 	} $else $if T.unaliased_typ is bool {
 		value_info := decoder.current_node.value
 
