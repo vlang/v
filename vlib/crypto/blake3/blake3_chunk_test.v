@@ -51,7 +51,7 @@ const test_cases = [
 		}
 		results: Chunk{
 			chunk_number:   0
-			chaining_value: iv
+			chaining_value: iv.clone()
 			block_words:    [u32(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 			flags:          0x0b
 		}
@@ -69,7 +69,7 @@ const test_cases = [
 		}
 		results: Chunk{
 			chunk_number:   0
-			chaining_value: iv
+			chaining_value: iv.clone()
 			block_words:    [u32(0x00000041), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 			flags:          0x0b
 		}
@@ -87,7 +87,7 @@ const test_cases = [
 		}
 		results: Chunk{
 			chunk_number:   0
-			chaining_value: iv
+			chaining_value: iv.clone()
 			block_words:    [u32(0x00636261), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 			flags:          0x0b
 		}
@@ -105,7 +105,7 @@ const test_cases = [
 		}
 		results: Chunk{
 			chunk_number:   0
-			chaining_value: iv
+			chaining_value: iv.clone()
 			block_words:    [u32(0x44434241), 0x48474645, 0x4c4b4a49, 0x504f4e4d, 0x54535251,
 				0x58575655, 0x61205a59, 0x65646362, 0x69686766, 0x6d6c6b6a, 0x71706f6e, 0x75747372,
 				0x79787776, 0x3130207a, 0x35343332, 0x00383736]
@@ -125,7 +125,7 @@ const test_cases = [
 		}
 		results: Chunk{
 			chunk_number:   0
-			chaining_value: iv
+			chaining_value: iv.clone()
 			block_words:    [u32(0x44434241), 0x48474645, 0x4c4b4a49, 0x504f4e4d, 0x54535251,
 				0x58575655, 0x61205a59, 0x65646362, 0x69686766, 0x6d6c6b6a, 0x71706f6e, 0x75747372,
 				0x79787776, 0x3130207a, 0x35343332, 0x39383736]
@@ -269,7 +269,7 @@ const test_cases = [
 		}
 		results: Chunk{
 			chunk_number:   1
-			chaining_value: iv
+			chaining_value: iv.clone()
 			block_words:    [u32(0x0000004f), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 			flags:          0x0b
 		}

@@ -111,11 +111,13 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		}
 		scope:              p.scope
 		comments:           comments
+		is_return_used:     p.expecting_value
+		is_static_method:   is_static_type_method
 	}
 }
 
 fn (mut p Parser) call_args() []ast.CallArg {
-	prev_inside_call_args := true
+	prev_inside_call_args := p.inside_call_args
 	p.inside_call_args = true
 	defer {
 		p.inside_call_args = prev_inside_call_args
@@ -192,6 +194,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_keep_alive := false
 	mut is_exported := false
 	mut is_unsafe := false
+	mut is_must_use := false
 	mut is_trusted := false
 	mut is_noreturn := false
 	mut is_ctor_new := false
@@ -225,6 +228,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			'unsafe' {
 				is_unsafe = true
+			}
+			'must_use' {
+				is_must_use = true
 			}
 			'trusted' {
 				is_trusted = true
@@ -440,33 +446,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_variadic = true
 	}
 	params << params_t
-	if !are_params_type_only {
-		for k, param in params {
-			if p.scope.known_var(param.name) {
-				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
-				return ast.FnDecl{
-					scope: unsafe { nil }
-				}
-			}
-			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
-			p.scope.register(ast.Var{
-				name:          param.name
-				typ:           param.typ
-				is_mut:        param.is_mut
-				is_auto_deref: param.is_mut
-				is_stack_obj:  is_stack_obj
-				pos:           param.pos
-				is_used:       true
-				is_arg:        true
-				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
-					&& !param.typ.has_flag(.variadic) {
-					.generic_param
-				} else {
-					.no_comptime
-				}
-			})
-		}
-	}
 	// Return type
 	mut return_type_pos := p.tok.pos()
 	mut return_type := ast.void_type
@@ -513,6 +492,33 @@ run them via `v file.v` instead',
 		p.error_with_pos('cannot declare a static function as a receiver method', name_pos)
 	}
 	// Register
+	if !are_params_type_only {
+		for k, param in params {
+			if p.scope.known_var(param.name) {
+				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
+				return ast.FnDecl{
+					scope: unsafe { nil }
+				}
+			}
+			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
+			p.scope.register(ast.Var{
+				name:          param.name
+				typ:           param.typ
+				is_mut:        param.is_mut
+				is_auto_deref: param.is_mut
+				is_stack_obj:  is_stack_obj
+				pos:           param.pos
+				is_used:       is_pub || no_body || (is_method && k == 0) || p.builtin_mod
+				is_arg:        true
+				ct_type_var:   if (!is_method || k > 0) && param.typ.has_flag(.generic)
+					&& !param.typ.has_flag(.variadic) {
+					.generic_param
+				} else {
+					.no_comptime
+				}
+			})
+		}
+	}
 	if is_method {
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
@@ -542,6 +548,7 @@ run them via `v file.v` instead',
 			is_deprecated: is_deprecated
 			is_noreturn:   is_noreturn
 			is_unsafe:     is_unsafe
+			is_must_use:   is_must_use
 			is_main:       is_main
 			is_test:       is_test
 			is_keep_alive: is_keep_alive
@@ -595,6 +602,7 @@ run them via `v file.v` instead',
 			is_noreturn:           is_noreturn
 			is_ctor_new:           is_ctor_new
 			is_unsafe:             is_unsafe
+			is_must_use:           is_must_use
 			is_main:               is_main
 			is_test:               is_test
 			is_keep_alive:         is_keep_alive
@@ -674,6 +682,7 @@ run them via `v file.v` instead',
 		is_test:            is_test
 		is_keep_alive:      is_keep_alive
 		is_unsafe:          is_unsafe
+		is_must_use:        is_must_use
 		is_markused:        is_markused
 		is_file_translated: p.is_translated
 		//
@@ -870,7 +879,10 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	if p.tok.kind == .lcbr {
 		tmp := p.label_names
 		p.label_names = []
+		old_assign_rhs := p.inside_assign_rhs
+		p.inside_assign_rhs = false
 		stmts = p.parse_block_no_scope(false)
+		p.inside_assign_rhs = old_assign_rhs
 		label_names = p.label_names.clone()
 		p.label_names = tmp
 	}
@@ -918,7 +930,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 	}
 	is_generic_type := p.tok.kind == .name && p.tok.lit.len == 1 && p.tok.lit[0].is_capital()
 
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
+	types_only := p.tok.kind in [.question, .not, .amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(param_name) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
@@ -1162,8 +1174,11 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 	p.next()
 	spos := p.tok.pos()
+	old_inside_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = false
 	expr := p.expr(0)
-	call_expr := if expr is ast.CallExpr {
+	p.inside_assign_rhs = old_inside_assign_rhs
+	mut call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
 		p.error_with_pos('expression in `spawn` must be a function call', expr.pos())
@@ -1171,6 +1186,7 @@ fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 			scope: p.scope
 		}
 	}
+	call_expr.is_return_used = true
 	pos := spos.extend(p.prev_tok.pos())
 	p.register_auto_import('sync.threads')
 	p.table.gostmts++
@@ -1183,8 +1199,11 @@ fn (mut p Parser) spawn_expr() ast.SpawnExpr {
 fn (mut p Parser) go_expr() ast.GoExpr {
 	p.next()
 	spos := p.tok.pos()
+	old_inside_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = false
 	expr := p.expr(0)
-	call_expr := if expr is ast.CallExpr {
+	p.inside_assign_rhs = old_inside_assign_rhs
+	mut call_expr := if expr is ast.CallExpr {
 		expr
 	} else {
 		p.error_with_pos('expression in `go` must be a function call', expr.pos())
@@ -1192,6 +1211,7 @@ fn (mut p Parser) go_expr() ast.GoExpr {
 			scope: p.scope
 		}
 	}
+	call_expr.is_return_used = true
 	pos := spos.extend(p.prev_tok.pos())
 	// p.register_auto_import('coroutines')
 	p.table.gostmts++

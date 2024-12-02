@@ -140,8 +140,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op != .key_is {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
-				if node.left.is_mut {
-					c.error('the `mut` keyword is invalid here', node.left.mut_pos)
+				// mut foo != none is allowed for unwrapping option
+				if !(node.op == .ne && node.right is ast.None) {
+					if node.left.is_mut {
+						c.error('the `mut` keyword is invalid here', node.left.mut_pos)
+					}
 				}
 			}
 			else {}
@@ -279,8 +282,15 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 				else {
-					c.error('`${node.op.str()}` can only be used with arrays and maps',
-						node.pos)
+					if mut node.right is ast.RangeExpr {
+						if !left_final_sym.is_number() && left_final_sym.kind != .rune {
+							c.error('`${left_final_sym.name}` is an invalid type for range expression',
+								node.pos)
+						}
+					} else {
+						c.error('`${node.op.str()}` can only be used with arrays and maps',
+							node.pos)
+					}
 				}
 			}
 			if mut node.left is ast.CallExpr {
@@ -509,8 +519,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		.gt, .lt, .ge, .le {
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
+			if left_sym.kind == .alias && !left_sym.has_method_with_generic_parent(node.op.str()) {
+				left_sym = c.table.final_sym(unwrapped_left_type)
+			}
 			unwrapped_right_type := c.unwrap_generic(right_type)
 			right_sym = c.table.sym(unwrapped_right_type)
+			if right_sym.kind == .alias && !right_sym.has_method_with_generic_parent(node.op.str()) {
+				right_sym = c.table.final_sym(unwrapped_right_type)
+			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
 			} else if left_sym.kind == .struct

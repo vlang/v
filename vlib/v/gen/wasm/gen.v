@@ -631,12 +631,13 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 			}
 
 			expr = ast.CallExpr{
-				name:          'str'
-				left:          expr
-				left_type:     typ
-				receiver_type: typ
-				return_type:   ast.string_type
-				is_method:     true
+				name:           'str'
+				left:           expr
+				left_type:      typ
+				receiver_type:  typ
+				return_type:    ast.string_type
+				is_method:      true
+				is_return_used: true
 			}
 		}
 

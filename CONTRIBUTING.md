@@ -123,7 +123,7 @@ accordingly in the steps below.)
    Let's say that the forked repository is at
    `https://github.com/YOUR_GITHUB_USERNAME/v` .
 2. Clone the main v repository https://github.com/vlang/v to a local folder on
-   your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
+   your computer, say named nv/ (`git clone --depth=1 https://github.com/vlang/v nv`)
 3. `cd nv`
    3.1 (optional) Run these commands, which ensure that all your code will be
    automatically formatted, before committing:
@@ -328,6 +328,8 @@ a copy of the compiler rather than replacing it with `v self`.
 | `trace_transformer`               | Prints details about the statements being transformed. Very verbose. Use it for panics in the transformer stage.    |
 |                                   |                                                                                                                     |
 | `trace_gen`                       | Prints all the strings written to the generated C file. Very verbose.                                               |
+| `trace_gen_wanted_value`          | Prints a backtrace, when a specific *wanted* value, is part of what is printed in the generated C file.             |
+|                                   |        Use: `v -g -o vgen -d trace_gen_wanted -d trace_gen_wanted_value="message = _SLIT0" cmd/v && ./vgen bug.v`   |
 | `trace_cgen_stmt`                 | Prints details about the statements that are being processed by cgen.                                               |
 |                                   |        Use it for panics in cgen, to see the closest input V source line, that caused the panic.                    |
 |                                   |        Note: you need `v -no-parallel -d trace_cgen_stmt -o w cmd/v` to make sense of the output of that,           |

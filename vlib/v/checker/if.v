@@ -32,6 +32,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		stmts := node.branches[0].stmts
 		if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
 			node_is_expr = true
+		} else if node.is_expr {
+			node_is_expr = true
 		}
 	}
 	if c.expected_type == ast.void_type && node_is_expr {
@@ -268,6 +270,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									}
 								}
 							}
+						} else if left.expr is ast.TypeOf {
+							skip_state = if left.expr.typ.nr_muls() == right.val.i64() {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
 						}
 					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
 						&& right is ast.StringLiteral {
@@ -416,6 +424,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						continue
 					}
+					if c.expected_expr_type != ast.void_type {
+						c.expected_type = c.expected_expr_type
+					}
 					stmt.typ = c.expr(mut stmt.expr)
 					if c.table.type_kind(c.expected_type) == .multi_return
 						&& c.table.type_kind(stmt.typ) == .multi_return {
@@ -441,6 +452,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							} else {
 								node.typ = stmt.typ
 							}
+							c.expected_expr_type = node.typ
 							continue
 						} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
 							if node.typ == ast.int_literal_type {
@@ -510,8 +522,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 					}
 				} else if !node.is_comptime && stmt !in [ast.Return, ast.BranchStmt] {
+					pos := if node_is_expr { stmt.pos } else { branch.pos }
 					c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
-						branch.pos)
+						pos)
 				}
 			} else if !node.is_comptime {
 				c.error('`${if_kind}` expression requires an expression as the last statement of every branch',
@@ -555,18 +568,19 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 		if node.op == .and {
 			c.smartcast_if_conds(mut node.left, mut scope, control_expr)
 			c.smartcast_if_conds(mut node.right, mut scope, control_expr)
-		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
+		} else if node.left in [ast.Ident, ast.SelectorExpr] && node.op == .ne
+			&& node.right is ast.None {
 			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
-				node.left_type = c.comptime.get_comptime_var_type(node.left)
+				node.left_type = c.comptime.get_type(node.left)
 				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-					scope, true)
+					scope, true, true)
 			} else {
 				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-					scope, false)
+					scope, false, true)
 			}
 		} else if node.op == .key_is {
 			if node.left is ast.Ident && c.comptime.is_comptime_var(node.left) {
-				node.left_type = c.comptime.get_comptime_var_type(node.left)
+				node.left_type = c.comptime.get_type(node.left)
 			} else {
 				node.left_type = c.expr(mut node.left)
 			}
@@ -632,7 +646,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 						}
 						if left_sym.kind in [.interface, .sum_type] {
 							c.smartcast(mut node.left, node.left_type, right_type, mut
-								scope, is_comptime)
+								scope, is_comptime, false)
 						}
 					}
 				}
@@ -650,12 +664,12 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope, co
 			if first_cond.left is ast.Ident && first_cond.op == .eq && first_cond.right is ast.None {
 				if first_cond.left is ast.Ident
 					&& c.comptime.get_ct_type_var(first_cond.left) == .smartcast {
-					first_cond.left_type = c.comptime.get_comptime_var_type(first_cond.left)
+					first_cond.left_type = c.comptime.get_type(first_cond.left)
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
-						scope, true)
+						scope, true, true)
 				} else {
 					c.smartcast(mut first_cond.left, first_cond.left_type, first_cond.left_type.clear_flag(.option), mut
-						scope, false)
+						scope, false, true)
 				}
 			}
 		}

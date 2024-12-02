@@ -56,10 +56,13 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		print_known_topics()
 		exit(fail_code)
 	}
-	println(os.read_file(topic_path) or {
-		eprintln('error: failed reading topic file: ${err}')
+	topic_content := os.read_file(topic_path) or {
+		msg := err.str()
+		eprintln('error: failed reading topic file: ${msg}')
 		exit(fail_code)
-	})
+	}
+	cleaned := topic_content.trim_space()
+	println(cleaned)
 	exit(opts.exit_code)
 }
 
@@ -68,15 +71,16 @@ fn print_topic_unknown(topic string) {
 }
 
 fn print_known_topics() {
-	mut res := 'Known help topics: '
 	topic_paths := os.walk_ext(help_dir(), '.txt')
-	for i, path in topic_paths {
+	mut res := []string{}
+	for path in topic_paths {
 		topic := os.file_name(path).all_before('.txt')
 		if topic != 'default' {
-			res += topic + if i != topic_paths.len - 1 { ', ' } else { '.' }
+			res << topic
 		}
 	}
-	println(res)
+	sorted_topics := res.sorted()
+	println('Known help topics: ${sorted_topics}')
 }
 
 fn get_vexe() string {

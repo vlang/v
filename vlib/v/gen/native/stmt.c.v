@@ -4,6 +4,7 @@
 module native
 
 import v.ast
+import v.util
 
 fn C.strtol(str &char, endptr &&char, base i32) i32
 
@@ -86,7 +87,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 		}
-		ast.Module {}
+		ast.Module {
+			g.is_builtin_mod = util.module_is_builtin(node.name)
+		}
 		ast.Return {
 			g.code_gen.return_stmt(node)
 		}
@@ -97,7 +100,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assert(node)
 		}
 		ast.GlobalDecl {
-			if !g.pref.experimental {
+			if !g.is_builtin_mod && !g.pref.experimental {
 				g.warning('globals are not supported yet', node.pos)
 			}
 		}

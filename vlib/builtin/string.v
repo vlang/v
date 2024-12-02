@@ -134,7 +134,7 @@ pub fn tos2(s &u8) string {
 // It will panic, when the pointer `s` is 0.
 // It is the same as `tos2`, but for &char pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos3(s &char) string {
 	if s == 0 {
 		panic('tos3: nil string')
@@ -151,7 +151,7 @@ pub fn tos3(s &char) string {
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
 // It is the same as `tos5`, but for &u8 pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos4(s &u8) string {
 	if s == 0 {
 		return ''
@@ -168,7 +168,7 @@ pub fn tos4(s &u8) string {
 // It returns '', when given a 0 pointer `s`, it does NOT panic.
 // It is the same as `tos4`, but for &char pointers, avoiding callsite casts.
 // See also `tos_clone`.
-@[unsafe]
+@[markused; unsafe]
 pub fn tos5(s &char) string {
 	if s == 0 {
 		return ''
@@ -305,6 +305,22 @@ pub fn (s string) len_utf8() int {
 		i += ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
 	}
 	return l
+}
+
+// is_pure_ascii returns whether the string contains only ASCII characters.
+// Note that UTF8 encodes such characters in just 1 byte:
+// 1 byte:  0xxxxxxx
+// 2 bytes: 110xxxxx 10xxxxxx
+// 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx
+// 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+@[direct_array_access]
+pub fn (s string) is_pure_ascii() bool {
+	for i in 0 .. s.len {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // clone_static returns an independent copy of a given array.
@@ -639,7 +655,7 @@ pub fn (s string) u8_array() []u8 {
 	if tmps.len == 0 {
 		return []u8{}
 	}
-	tmps = tmps.to_lower()
+	tmps = tmps.to_lower_ascii()
 	if tmps.starts_with('0x') {
 		tmps = tmps[2..]
 		if tmps.len == 0 {
@@ -1378,7 +1394,7 @@ pub fn (s string) index_u8_last(c u8) int {
 }
 
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
-@[inline]
+@[direct_array_access; inline]
 pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if s[i] == c {
@@ -1510,14 +1526,16 @@ pub fn (s string) ends_with(p string) bool {
 	return false
 }
 
-// to_lower returns the string in all lowercase characters.
-// TODO: only works with ASCII
+// to_lower_ascii returns the string in all lowercase characters.
+// It is faster than `s.to_lower()`, but works only when the input
+// string `s` is composed *entirely* from ASCII characters.
+// Use `s.to_lower()` instead, if you are not sure.
 @[direct_array_access]
-pub fn (s string) to_lower() string {
+pub fn (s string) to_lower_ascii() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
-			if s.str[i].is_capital() {
+			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
 			} else {
 				b[i] = s.str[i]
@@ -1528,7 +1546,22 @@ pub fn (s string) to_lower() string {
 	}
 }
 
-// is_lower returns `true` if all characters in the string are lowercase.
+// to_lower returns the string in all lowercase characters.
+// Example: assert 'Hello V'.to_lower() == 'hello v'
+@[direct_array_access]
+pub fn (s string) to_lower() string {
+	if s.is_pure_ascii() {
+		return s.to_lower_ascii()
+	}
+	mut runes := s.runes()
+	for i in 0 .. runes.len {
+		runes[i] = runes[i].to_lower()
+	}
+	return runes.string()
+}
+
+// is_lower returns `true`, if all characters in the string are lowercase.
+// It only works when the input is composed entirely from ASCII characters.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
@@ -1543,10 +1576,12 @@ pub fn (s string) is_lower() bool {
 	return true
 }
 
-// to_upper returns the string in all uppercase characters.
-// Example: assert 'Hello V'.to_upper() == 'HELLO V'
+// to_upper_ascii returns the string in all UPPERCASE characters.
+// It is faster than `s.to_upper()`, but works only when the input
+// string `s` is composed *entirely* from ASCII characters.
+// Use `s.to_upper()` instead, if you are not sure.
 @[direct_array_access]
-pub fn (s string) to_upper() string {
+pub fn (s string) to_upper_ascii() string {
 	unsafe {
 		mut b := malloc_noscan(s.len + 1)
 		for i in 0 .. s.len {
@@ -1561,7 +1596,22 @@ pub fn (s string) to_upper() string {
 	}
 }
 
+// to_upper returns the string in all uppercase characters.
+// Example: assert 'Hello V'.to_upper() == 'HELLO V'
+@[direct_array_access]
+pub fn (s string) to_upper() string {
+	if s.is_pure_ascii() {
+		return s.to_upper_ascii()
+	}
+	mut runes := s.runes()
+	for i in 0 .. runes.len {
+		runes[i] = runes[i].to_upper()
+	}
+	return runes.string()
+}
+
 // is_upper returns `true` if all characters in the string are uppercase.
+// It only works when the input is composed entirely from ASCII characters.
 // See also: [`byte.is_capital`](#byte.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
@@ -1709,7 +1759,7 @@ pub fn (s string) trim(cutset string) string {
 	if s == '' || cutset == '' {
 		return s.clone()
 	}
-	if cutset.len_utf8() == cutset.len {
+	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_both)
 	} else {
 		return s.trim_runes(cutset, .trim_both)
@@ -1825,7 +1875,7 @@ pub fn (s string) trim_left(cutset string) string {
 	if s == '' || cutset == '' {
 		return s.clone()
 	}
-	if cutset.len_utf8() == cutset.len {
+	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_left)
 	} else {
 		return s.trim_runes(cutset, .trim_left)
@@ -1839,7 +1889,7 @@ pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
-	if cutset.len_utf8() == cutset.len {
+	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_right)
 	} else {
 		return s.trim_runes(cutset, .trim_right)
@@ -2712,7 +2762,7 @@ pub fn (s string) camel_to_snake() string {
 		return ''
 	}
 	if s.len == 1 {
-		return s.to_lower()
+		return s.to_lower_ascii()
 	}
 	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
 	// Rather than checking whether the iterator variable is > 1 inside the loop,

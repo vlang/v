@@ -19,7 +19,10 @@ pub fn test_u64toa_large_values() {
 		mut buf := [20]u8{}
 
 		len := unsafe {
-			u64toa(&buf[0], v) or { assert err.msg() == 'Maximum size of 100MB exceeded!' }
+			u64toa(&buf[0], v) or {
+				assert err.msg() == 'Maximum size of 100MB exceeded!'
+				0
+			}
 		}
 
 		if v < 100_000_000 {
@@ -38,7 +41,10 @@ pub fn test_u64toa_edge_cases() {
 
 	// Test zero value
 	len := unsafe {
-		u64toa(&buf[0], 0) or { assert false }
+		u64toa(&buf[0], 0) or {
+			assert false
+			0
+		}
 	}
 
 	assert len == 1

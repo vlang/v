@@ -32,7 +32,9 @@ fn prepare_test_path() ! {
 fn test_new_with_no_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_project'
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_no_arg.expect')} ${vroot} ${project_name}') or {
+	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_no_arg.expect')} ${vroot} ${project_name}'
+	os.execute_opt(cmd) or {
+		dump(cmd)
 		assert false, err.msg()
 	}
 	// Assert mod data set in `new_no_arg.expect`.
@@ -49,7 +51,9 @@ fn test_new_with_no_arg_input() {
 fn test_new_with_name_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_other_project'
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_name_arg.expect')} ${vroot} ${project_name}') or {
+	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_name_arg.expect')} ${vroot} ${project_name}'
+	os.execute_opt(cmd) or {
+		dump(cmd)
 		assert false, err.msg()
 	}
 	// Assert mod data set in `new_with_name_arg.expect`.
@@ -67,7 +71,9 @@ fn test_new_with_model_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_lib'
 	model := '--lib'
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${vroot} ${model} ${project_name}') or {
+	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${vroot} ${model} ${project_name}'
+	os.execute_opt(cmd) or {
+		dump(cmd)
 		assert false, err.msg()
 	}
 	project_path := os.join_path(test_module_path, project_name)

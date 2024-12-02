@@ -16,6 +16,8 @@ fn shrink_tail_zeros(mut a []u32) {
 
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are already allocated but of length 0
+// TODO: the manualfree tag here is a workaround for compilation with -autofree. Remove it, when the -autofree bug is fixed.
+@[manualfree]
 fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
 	// transform back to Integers (on the stack without allocation)
 	a := Integer{
@@ -151,7 +153,8 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	shrink_tail_zeros(mut storage)
 }
 
-@[direct_array_access]
+// TODO: the manualfree tag here is a workaround for compilation with -autofree. Remove it, when the -autofree bug is fixed.
+@[direct_array_access; manualfree]
 fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	if found_multiplication_base_case(operand_a, operand_b, mut storage) {
 		return

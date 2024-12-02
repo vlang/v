@@ -29,7 +29,7 @@ fn main() {
 	}
 	a_as_first := m.keys()
 	a_as_last := m.keys().reverse()
-	mut a_as_middle := a_as_first[1..a_as_first.len / 2]
+	mut a_as_middle := a_as_first[1..a_as_first.len / 2].clone()
 	a_as_middle << key
 	a_as_middle << a_as_first[a_as_first.len / 2..]
 	eprintln('> m.len: ${m.len} | a_as_first.len: ${a_as_first.len} | a_as_last.len: ${a_as_last.len} | a_as_middle.len: ${a_as_middle.len}')

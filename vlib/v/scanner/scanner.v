@@ -10,7 +10,6 @@ import v.pref
 import v.util
 import v.errors
 import v.ast
-import v.mathutil
 
 const single_quote = `'`
 const double_quote = `"`
@@ -26,8 +25,8 @@ pub mut:
 	file_path                   string // '/path/to/file.v'
 	file_base                   string // 'file.v'
 	text                        string // the whole text of the file
-	pos                         int    // current position in the file, first character is s.text[0]
-	line_nr                     int    // current line number
+	pos                         int = -1 // current position in the file, first character is s.text[0]
+	line_nr                     int // current line number
 	last_nl_pos                 int = -1 // for calculating column
 	is_crlf                     bool // special check when computing columns
 	is_inside_string            bool // set to true in a string, *at the start* of an $var or ${expr}
@@ -38,7 +37,6 @@ pub mut:
 	is_nested_enclosed_inter    bool
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
-	is_started                  bool
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
@@ -603,14 +601,14 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 }
 
 fn (mut s Scanner) scan_remaining_text() {
+	is_skip_comments := s.comments_mode == .skip_comments
 	for {
 		t := s.text_scan()
-		if s.comments_mode == .skip_comments && t.kind == .comment {
-			continue
-		}
-		s.all_tokens << t
-		if t.kind == .eof || s.should_abort {
-			break
+		if !(is_skip_comments && t.kind == .comment) {
+			s.all_tokens << t
+			if t.kind == .eof || s.should_abort {
+				break
+			}
 		}
 	}
 }
@@ -623,10 +621,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		if cidx >= s.all_tokens.len || s.should_abort {
 			return s.end_of_file()
 		}
-		if s.all_tokens[cidx].kind == .comment {
-			if !s.should_parse_comment() {
-				continue
-			}
+		if s.all_tokens[cidx].kind == .comment && !s.should_parse_comment() {
+			continue
 		}
 		return s.all_tokens[cidx]
 	}
@@ -664,11 +660,7 @@ pub fn (mut s Scanner) text_scan() token.Token {
 	// That optimization mostly matters for long sections
 	// of comments and string literals.
 	for {
-		if s.is_started {
-			s.pos++
-		} else {
-			s.is_started = true
-		}
+		s.pos++
 		if !s.is_inside_string {
 			s.skip_whitespace()
 		}
@@ -1180,15 +1172,17 @@ pub fn (mut s Scanner) text_scan() token.Token {
 
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
-	end := mathutil.min(s.pos + len, s.text.len)
+	end := int_min(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `${c}`')
 }
 
+@[inline]
 fn (s &Scanner) current_column() int {
 	return s.pos - s.last_nl_pos
 }
 
+@[direct_array_access]
 fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 	mut count := 0
 	for i := p; i >= 0; i-- {
@@ -1839,7 +1833,6 @@ pub fn (mut s Scanner) prepare_for_new_text(text string) {
 	s.is_crlf = false
 	s.is_inside_string = false
 	s.is_nested_string = false
-	s.is_started = false
 	s.is_inter_start = false
 	s.is_inter_end = false
 	s.is_enclosed_inter = false

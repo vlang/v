@@ -3,32 +3,30 @@
 // that can be found in the LICENSE file.
 module time
 
-// unix returns a Time struct calculated from a Unix timestamp (number of seconds since 1970-01-01)
+// unix returns a Time calculated from the given Unix timestamp in seconds since 1970-01-01
 pub fn unix(epoch i64) Time {
-	// Split into day and time
-	mut day_offset := epoch / seconds_per_day
-	if epoch % seconds_per_day < 0 {
-		// Compensate for round towards zero on integers as we want floored instead
-		day_offset--
-	}
-	year, month, day := calculate_date_from_day_offset(day_offset)
-	hr, min, sec := calculate_time_from_second_offset(epoch % seconds_per_day)
-	return Time{
-		year:   year
-		month:  month
-		day:    day
-		hour:   hr
-		minute: min
-		second: sec
-		unix:   epoch
-	}
+	return unix_nanosecond(epoch, 0)
 }
 
-// unix2 returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
-@[deprecated: 'use unix_microsecond(unix_ts, us) instead']
-@[deprecated_after: '2023-09-05']
-pub fn unix2(epoch i64, microsecond int) Time {
-	return unix_nanosecond(epoch, microsecond * 1000)
+// unix_milli returns a Time calculated from the given Unix timestamp in milliseconds since 1970-01-01
+pub fn unix_milli(ms i64) Time {
+	return ts_to_time_impl(ms, 1_000, 1_000_000)
+}
+
+// unix_micro returns a Time calculated from the given Unix timestamp in microseconds since 1970-01-01
+pub fn unix_micro(us i64) Time {
+	return ts_to_time_impl(us, 1_000_000, 1_000)
+}
+
+// unix_nano returns a Time calculated from the given Unix timestamp in nanoseconds since 1970-01-01
+pub fn unix_nano(ns i64) Time {
+	return ts_to_time_impl(ns, 1_000_000_000, 1)
+}
+
+fn ts_to_time_impl(value i64, down i64, up i64) Time {
+	epoch := value / down
+	remainder := (value % down) * up
+	return unix_nanosecond(epoch, int(remainder))
 }
 
 // unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value

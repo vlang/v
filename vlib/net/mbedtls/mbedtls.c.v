@@ -208,3 +208,7 @@ fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, usize) int
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) int
 
 fn C.mbedtls_high_level_strerr(int) &char
+
+fn C.mbedtls_debug_set_threshold(level int)
+
+fn C.mbedtls_ssl_conf_read_timeout(conf &C.mbedtls_ssl_config, timeout u32)

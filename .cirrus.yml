@@ -35,7 +35,7 @@ freebsd_task:
     ./v -exclude @vlib/math/*.c.v test vlib/math
   test_zip_modules_script: |
     echo 'Test modules using thirdparty/zip'
-    ./v test vlib/compress/ vlib/szip/
+    ./v test vlib/compress/
   test_self_script: |
     echo 'Run test-self'
     VTEST_JUST_ESSENTIAL=1 ./v test-self

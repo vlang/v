@@ -80,7 +80,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		mut is_comptime := false
 		if (node.cond is ast.Ident && c.comptime.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
-			ctyp := c.comptime.get_comptime_var_type(node.cond)
+			ctyp := c.comptime.get_type(node.cond)
 			if ctyp != ast.void_type {
 				is_comptime = true
 				typ = ctyp
@@ -190,6 +190,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
 					'use `_` if you do not need the variable', node.pos)
 			}
+			if !c.is_builtin_mod && c.mod != 'strings' {
+				c.table.used_features.used_maps++
+			}
 			if node.key_var.len > 0 {
 				key_type := match sym.kind {
 					.map { sym.map_info().key_type }
@@ -289,7 +292,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 			if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
 				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
 					c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-						node.scope, false)
+						node.scope, false, false)
 				}
 			}
 		}

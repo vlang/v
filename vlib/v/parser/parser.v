@@ -54,6 +54,7 @@ mut:
 	inside_array_lit         bool
 	inside_in_array          bool
 	inside_infix             bool
+	inside_assign_rhs        bool // rhs assignment
 	inside_match             bool // to separate `match A { }` from `Struct{}`
 	inside_select            bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case        bool // to separate `match_expr { }` from `Struct{}`
@@ -90,6 +91,7 @@ mut:
 	returns                  bool
 	is_stmt_ident            bool // true while the beginning of a statement is an ident/selector
 	expecting_type           bool // `is Type`, expecting type
+	expecting_value          bool = true // true where a node value will be used
 	cur_fn_name              string
 	cur_fn_scope             &ast.Scope = unsafe { nil }
 	label_names              []string
@@ -591,6 +593,8 @@ fn (mut p Parser) parse_block() []ast.Stmt {
 fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{cap: 20}
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = false
 	if p.tok.kind != .rcbr {
 		mut count := 0
 		for p.tok.kind !in [.eof, .rcbr] {
@@ -606,13 +610,52 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 			}
 		}
 	}
+	p.inside_assign_rhs = old_assign_rhs
 	if is_top_level {
 		p.top_level_statement_end()
 	}
 	p.check(.rcbr)
+	// on assignment the last callexpr must be marked as return used recursively
+	if p.inside_assign_rhs && stmts.len > 0 {
+		mut last_stmt := stmts.last()
+		p.mark_last_call_return_as_used(mut last_stmt)
+	}
 	return stmts
 }
 
+fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
+	match mut last_stmt {
+		ast.ExprStmt {
+			match mut last_stmt.expr {
+				ast.CallExpr {
+					// last stmt on block is CallExpr
+					last_stmt.expr.is_return_used = true
+				}
+				ast.IfExpr {
+					// last stmt on block is: if .. { foo() } else { bar() }
+					for mut branch in last_stmt.expr.branches {
+						if branch.stmts.len > 0 {
+							mut last_if_stmt := branch.stmts.last()
+							p.mark_last_call_return_as_used(mut last_if_stmt)
+						}
+					}
+				}
+				ast.ConcatExpr {
+					// last stmt on block is: a, b, c := ret1(), ret2(), ret3()
+					for mut expr in last_stmt.expr.vals {
+						if mut expr is ast.CallExpr {
+							expr.is_return_used = true
+						}
+					}
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+}
+
+@[inline]
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
@@ -762,9 +805,6 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				p.attributes()
 				continue
 			}
-			.key_asm {
-				return p.asm_stmt(true)
-			}
 			.key_interface {
 				return p.interface_decl()
 			}
@@ -793,7 +833,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 					comptime_for_stmt := p.comptime_for()
 					return p.other_stmts(comptime_for_stmt)
 				} else if p.peek_tok.kind == .key_if {
-					if_expr := p.if_expr(true)
+					if_expr := p.if_expr(true, false)
 					cur_stmt := ast.ExprStmt{
 						expr: if_expr
 						pos:  if_expr.pos
@@ -824,6 +864,9 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 			.semicolon {
 				return p.semicolon_stmt()
+			}
+			.key_asm {
+				return p.asm_stmt(true)
 			}
 			else {
 				return p.other_stmts(ast.empty_stmt)
@@ -983,37 +1026,12 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 			} else {
 				stmts := p.parse_block()
-				pos.last_line = p.prev_tok.line_nr
+				pos.update_last_line(p.prev_tok.line_nr)
 				return ast.Block{
 					stmts: stmts
 					pos:   pos
 				}
 			}
-		}
-		.key_assert {
-			p.next()
-			mut pos := p.tok.pos()
-			expr := p.expr(0)
-			pos.update_last_line(p.prev_tok.line_nr)
-			mut extra := ast.empty_expr
-			mut extra_pos := p.tok.pos()
-			if p.tok.kind == .comma {
-				p.next()
-				extra_pos = p.tok.pos()
-				extra = p.expr(0)
-				// dump(extra)
-				extra_pos = extra_pos.extend(p.tok.pos())
-			}
-			return ast.AssertStmt{
-				expr:      expr
-				extra:     extra
-				extra_pos: extra_pos
-				pos:       pos.extend(p.tok.pos())
-				is_used:   p.inside_test_file || !p.pref.is_prod
-			}
-		}
-		.key_for {
-			return p.for_stmt()
 		}
 		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
@@ -1056,26 +1074,29 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			} else if p.peek_tok.kind == .name {
 				return p.unexpected(got: 'name `${p.tok.lit}`')
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
-				&& p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
+				&& p.peek_tok.kind in [.rcbr, .eof] && !p.scope.mark_var_as_used(p.tok.lit) {
 				return p.error_with_pos('`${p.tok.lit}` evaluated but not used', p.tok.pos())
 			}
 			return p.parse_multi_expr(is_top_level)
+		}
+		.key_for {
+			return p.for_stmt()
 		}
 		.comment {
 			return p.comment_stmt()
 		}
 		.key_return {
-			if p.inside_defer {
-				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.pos())
-			} else {
+			if !p.inside_defer {
 				return p.return_stmt()
+			} else {
+				return p.error_with_pos('`return` not allowed inside `defer` block', p.tok.pos())
 			}
 		}
 		.dollar {
 			match p.peek_tok.kind {
 				.key_if {
 					mut pos := p.tok.pos()
-					expr := p.if_expr(true)
+					expr := p.if_expr(true, false)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1124,10 +1145,30 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.hash {
 			return p.hash()
 		}
+		.key_assert {
+			p.next()
+			mut pos := p.tok.pos()
+			expr := p.expr(0)
+			pos.update_last_line(p.prev_tok.line_nr)
+			mut extra := ast.empty_expr
+			mut extra_pos := p.tok.pos()
+			if p.tok.kind == .comma {
+				p.next()
+				extra_pos = p.tok.pos()
+				extra = p.expr(0)
+				// dump(extra)
+				extra_pos = extra_pos.extend(p.tok.pos())
+			}
+			return ast.AssertStmt{
+				expr:      expr
+				extra:     extra
+				extra_pos: extra_pos
+				pos:       pos.extend(p.tok.pos())
+				is_used:   p.inside_test_file || !p.pref.is_prod
+			}
+		}
 		.key_defer {
-			if p.inside_defer {
-				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
-			} else {
+			if !p.inside_defer {
 				p.next()
 				spos := p.tok.pos()
 				p.inside_defer = true
@@ -1139,6 +1180,8 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					defer_vars: p.defer_vars.clone()
 					pos:        spos.extend_with_last_line(p.tok.pos(), p.prev_tok.line_nr)
 				}
+			} else {
+				return p.error_with_pos('`defer` blocks cannot be nested', p.tok.pos())
 			}
 		}
 		.key_go, .key_spawn {
@@ -1857,10 +1900,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() []ast.Expr {
+fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 	mut exprs := []ast.Expr{}
 	for {
-		expr := p.expr(0)
+		expr := if expect_value { p.expr(0) } else { p.expr_no_value(0) }
 		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
@@ -2035,13 +2078,13 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 }
 
 fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
-	upcase_language := language.str().to_upper()
+	upcase_language := language.str().to_upper_ascii()
 	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
 		pos)
 }
 
 fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
-	upcase_language := language.str().to_upper()
+	upcase_language := language.str().to_upper_ascii()
 	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
 		pos)
 }
@@ -2228,7 +2271,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left := p.expr_list()
+	left := p.expr_list(p.inside_assign_rhs)
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2351,10 +2394,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			kind:     .blank_ident
 			pos:      pos
 			info:     ast.IdentVar{
-				is_mut:      false
-				is_static:   false
-				is_volatile: false
-				is_option:   is_option
+				is_option: is_option
 			}
 			scope:    p.scope
 		}
@@ -2624,7 +2664,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// get type position before moving to next
 		is_known_var := p.scope.known_var(p.tok.lit)
 		if is_known_var {
-			p.mark_var_as_used(p.tok.lit)
+			p.scope.mark_var_as_used(p.tok.lit)
 			return p.ident(.v)
 		} else {
 			type_pos := p.tok.pos()
@@ -2746,7 +2786,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	known_var := if p.peek_tok.kind.is_assign() {
 		p.scope.known_var(p.tok.lit)
 	} else {
-		p.mark_var_as_used(p.tok.lit)
+		p.scope.mark_var_as_used(p.tok.lit)
 	}
 	// Handle modules
 	mut is_mod_cast := false
@@ -2754,7 +2794,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		|| p.mod.all_after_last('.') == p.tok.lit) {
 		// p.tok.lit has been recognized as a module
 		if language in [.c, .js, .wasm] {
-			mod = language.str().to_upper()
+			mod = language.str().to_upper_ascii()
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
@@ -2879,33 +2919,14 @@ fn (mut p Parser) name_expr() ast.Expr {
 					pos := p.tok.pos()
 					args := p.call_args()
 					p.check(.rpar)
-
-					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{}
-					mut or_pos := p.tok.pos()
-					if p.tok.kind in [.not, .question] {
-						or_kind = if p.tok.kind == .not {
-							.propagate_result
-						} else {
-							.propagate_option
-						}
-						p.next()
-					}
-					if p.tok.kind == .key_orelse {
-						// `foo() or {}``
-						or_kind = .block
-						or_stmts, or_pos = p.or_block(.with_err_var)
-					}
+					or_block := p.gen_or_block()
 					node = ast.CallExpr{
-						left:     node
-						args:     args
-						pos:      pos
-						scope:    p.scope
-						or_block: ast.OrExpr{
-							stmts: or_stmts
-							kind:  or_kind
-							pos:   or_pos
-						}
+						left:           node
+						args:           args
+						pos:            pos
+						scope:          p.scope
+						or_block:       or_block
+						is_return_used: p.expecting_value
 					}
 				}
 			}
@@ -2940,6 +2961,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				'name' { ast.GenericKindField.name }
 				'typ' { ast.GenericKindField.typ }
 				'unaliased_typ' { ast.GenericKindField.unaliased_typ }
+				'indirections' { ast.GenericKindField.indirections }
 				else { ast.GenericKindField.unknown }
 			}
 			pos.extend(p.tok.pos())
@@ -3341,26 +3363,14 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 		args := p.call_args()
 		p.check(.rpar)
-		mut or_stmts := []ast.Stmt{}
-		mut or_kind := ast.OrKind.absent
-		mut or_pos := p.tok.pos()
-		if p.tok.kind == .key_orelse {
-			or_kind = .block
-			or_stmts, or_pos = p.or_block(.with_err_var)
-		}
-		// `foo()?`
-		if p.tok.kind in [.question, .not] {
-			is_not := p.tok.kind == .not
-			p.next()
-			if p.inside_defer {
-				p.error_with_pos('error propagation not allowed inside `defer` blocks',
-					p.prev_tok.pos())
-			}
-			or_kind = if is_not { .propagate_result } else { .propagate_option }
-		}
+		or_block := p.gen_or_block()
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
+		mut left_node := unsafe { left }
+		if mut left_node is ast.CallExpr {
+			left_node.is_return_used = true
+		}
 		mcall_expr := ast.CallExpr{
 			left:              left
 			name:              field_name
@@ -3370,13 +3380,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			is_method:         true
 			concrete_types:    concrete_types
 			concrete_list_pos: concrete_list_pos
-			or_block:          ast.OrExpr{
-				stmts: or_stmts
-				kind:  or_kind
-				pos:   or_pos
-			}
+			or_block:          or_block
 			scope:             p.scope
 			comments:          comments
+			is_return_used:    p.expecting_value
 		}
 		return mcall_expr
 	}
@@ -3422,7 +3429,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		scope:      p.scope
 		next_token: p.tok.kind
 	}
-
+	mut left_node := unsafe { left }
+	if mut left_node is ast.CallExpr {
+		left_node.is_return_used = true
+	}
 	return sel_expr
 }
 
@@ -4024,7 +4034,10 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs := p.expr_list()
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
+	exprs := p.expr_list(true)
+	p.inside_assign_rhs = old_assign_rhs
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs:    exprs
@@ -4186,6 +4199,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
+	already_exists := if _ := p.table.enum_decls[name] { true } else { false }
 	mut enum_type := ast.int_type
 	mut typ_pos := token.Pos{}
 	if p.tok.kind == .key_as {
@@ -4258,8 +4272,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		all_bits_set_value := '0b' + '1'.repeat(fields.len)
-		p.codegen('
+		if !already_exists {
+			// enum already exists, skip method creation to avoid duplicate method errors
+			all_bits_set_value := '0b' + '1'.repeat(fields.len)
+			p.codegen('
 //
 @[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
 @[inline] ${pubfn} (    e &${enum_name}) has(flag_ ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag_))) != 0 }
@@ -4271,6 +4287,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 @[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag_ ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag_))) } }
 //
 ')
+		}
 	}
 	// Add the generic `Enum.from[T](x T) !T {` static method too:
 	mut isb := strings.new_builder(1024)
@@ -4339,10 +4356,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		is_pub: is_pub
 	})
+
 	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
 	}
+
 	if idx == ast.invalid_type_idx {
 		enum_type = idx
 	}
@@ -4360,8 +4379,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		comments:         enum_decl_comments
 	}
 
-	p.table.register_enum_decl(enum_decl)
-
+	if !already_exists {
+		p.table.register_enum_decl(enum_decl)
+	}
 	return enum_decl
 }
 
@@ -4600,27 +4620,6 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 			break
 		}
 	}
-}
-
-// returns true if `varname` is known
-fn (mut p Parser) mark_var_as_used(varname string) bool {
-	if mut obj := p.scope.find(varname) {
-		match mut obj {
-			ast.Var {
-				obj.is_used = true
-				return true
-			}
-			ast.GlobalField {
-				// obj.is_used = true
-				return true
-			}
-			// ast.ConstField {
-			// return true
-			//}
-			else {}
-		}
-	}
-	return false
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {

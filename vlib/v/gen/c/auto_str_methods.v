@@ -420,17 +420,22 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
 				' return ${res};')
 		} else {
-			mut val := '${func_name}(${deref}(${sub_sym.cname}*)x._${sub_sym.cname}'
-			if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
-				val += ', indent_count'
+			if !(sub_sym.kind == .array && g.table.sym(g.table.value_type(typ)).cname == styp) {
+				mut val := '${func_name}(${deref}(${sub_sym.cname}*)x._${sub_sym.cname}'
+				if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
+					val += ', indent_count'
+				}
+				val += ')'
+				res := 'str_intp(2, _MOV((StrIntpData[]){
+					{_SLIT("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
+					{_SLIT(")"), 0, {.d_c = 0 }}
+				}))'
+				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+					' return ${res};\n')
+			} else {
+				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+					' return _SLIT("<circular>");\n')
 			}
-			val += ')'
-			res := 'str_intp(2, _MOV((StrIntpData[]){
-				{_SLIT("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
-				{_SLIT(")"), 0, {.d_c = 0 }}
-			}))'
-			fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-				' return ${res};\n')
 		}
 	}
 	fn_builder.writeln('\treturn _SLIT("unknown interface value");')
@@ -516,6 +521,9 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 		}
 		if i > 0 {
 			fn_str += ', '
+		}
+		if arg.typ.has_flag(.option) {
+			fn_str += '?'
 		}
 		fn_str += util.strip_main_name(g.table.get_type_name(g.unwrap_generic(arg.typ)))
 	}

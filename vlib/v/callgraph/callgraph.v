@@ -94,7 +94,7 @@ fn (mut m Mapper) visit(node &ast.Node) ! {
 				ast.FnDecl {
 					m.is_caller_used = true
 					if m.pref.skip_unused {
-						m.is_caller_used = m.table.used_fns[node.fkey()]
+						m.is_caller_used = m.table.used_features.used_fns[node.fkey()]
 					}
 					m.fn_decl = unsafe { &node }
 					m.caller_name = m.fn_name(node.name, node.receiver.typ, node.is_method)

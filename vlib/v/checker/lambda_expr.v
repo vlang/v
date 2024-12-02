@@ -3,7 +3,6 @@ module checker
 import v.ast
 
 pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) ast.Type {
-	// defer { eprintln('> line: ${@LINE} | exp_typ: $exp_typ | node: ${voidptr(node)} | node.typ: ${node.typ}') }
 	if node.is_checked {
 		return node.typ
 	}
@@ -56,8 +55,6 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				}
 			}
 		}
-		// dump(generic_types)
-		// dump(generic_names)
 
 		mut stmts := []ast.Stmt{}
 		mut has_return := false
@@ -67,6 +64,9 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				expr:    node.expr
 				is_expr: false
 				typ:     return_type
+			}
+			if mut node.expr is ast.CallExpr && node.expr.is_return_used {
+				node.expr.is_return_used = false
 			}
 		} else {
 			stmts << ast.Return{
@@ -119,15 +119,13 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 }
 
 pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident, ptype ast.Type) {
-	if mut v := node.scope.find(pident.name) {
-		if mut v is ast.Var {
-			v.is_arg = true
-			v.typ = ptype
-			v.is_auto_deref = ptype.is_ptr()
-			v.expr = ast.empty_expr
-			if ptype.has_flag(.generic) {
-				v.ct_type_var = .generic_param
-			}
+	if mut v := node.scope.find_var(pident.name) {
+		v.is_arg = true
+		v.typ = ptype
+		v.is_auto_deref = ptype.is_ptr()
+		v.expr = ast.empty_expr
+		if ptype.has_flag(.generic) {
+			v.ct_type_var = .generic_param
 		}
 	}
 	if pident.kind != .blank_ident {

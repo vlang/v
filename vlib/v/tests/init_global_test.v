@@ -134,7 +134,9 @@ fn test_global_shared() {
 	sem.post()
 	t.wait()
 	eprintln('> a: ${a} | b: ${b}')
-	assert (a == 13.75 && b == -35.125) || (a == -35.125 && b == 13.75)
+	c1 := dump(a == 13.75 && b == -35.125)
+	c2 := dump(a == -35.125 && b == 13.75)
+	assert c1 || c2
 }
 
 fn test_global_shared_map() {

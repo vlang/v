@@ -88,6 +88,7 @@ pub struct EmbedFileIndexEntry {
 }
 
 // find_index_entry_by_path is used internally by the V compiler:
+@[markused]
 pub fn find_index_entry_by_path(start voidptr, path string, algo string) &EmbedFileIndexEntry {
 	unsafe {
 		mut x := &EmbedFileIndexEntry(start)

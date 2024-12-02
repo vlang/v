@@ -181,7 +181,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
+fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -192,7 +192,11 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 	sb.write_string('\r\n')
 	if !req.header.contains(.host) {
 		sb.write_string('Host: ')
-		sb.write_string(host_name)
+		if port != 80 && port != 443 && port != 0 {
+			sb.write_string('${host_name}:${port}')
+		} else {
+			sb.write_string(host_name)
+		}
 		sb.write_string('\r\n')
 	}
 	if !req.header.contains(.user_agent) {
@@ -254,8 +258,8 @@ fn (req &Request) build_request_cookies_header() string {
 }
 
 fn (req &Request) http_do(host string, method Method, path string) !Response {
-	host_name, _ := net.split_address(host)!
-	s := req.build_request_headers(method, host_name, path)
+	host_name, port := net.split_address(host)!
+	s := req.build_request_headers(method, host_name, port, path)
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)

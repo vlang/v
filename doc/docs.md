@@ -24,7 +24,7 @@ Anything you can do in other languages, you can do in V.
 The best way to get the latest and greatest V, is to install it from source.
 It is easy, and it takes only a few seconds:
 ```bash
-git clone https://github.com/vlang/v
+git clone --depth=1 https://github.com/vlang/v
 cd v
 make
 ```
@@ -87,6 +87,7 @@ by using any of the following commands in a terminal:
 
 * [Module imports](#module-imports)
     * [Selective imports](#selective-imports)
+    * [Module hierarchy](#module-hierarchy)
     * [Module import aliasing](#module-import-aliasing)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
@@ -1577,6 +1578,54 @@ println('Name: ${name}')
 current_os := user_os()
 println('Your OS is ${current_os}.')
 ```
+### Module hierarchy
+
+> [!NOTE]
+> This section is valid when .v files are not in the project's root directory.
+
+Modules names in .v files, must match the name of their directory.
+ 
+A .v file `./abc/source.v` must start with `module abc`. All .v files in this directory 
+belong to the same module `abc`. They should also start with `module abc`.
+
+If you have `abc/def/`, and .v files in both folders, you can `import abc`, but you will have 
+to `import abc.def` too, to get to the symbols in the subfolder. It is independent.
+
+In `module name` statement, name never repeats directory's hierarchy, but only its directory.
+So in `abc/def/source.v` the first line will be `module def`, and not `module abc.def`.
+
+`import module_name` statements must respect file hierarchy, you cannot `import def`, only
+`abc.def`
+
+Refering to a module symbol such as a function or const, only needs module name as prefix:
+
+```v ignore
+module def
+
+// func is a dummy example function.
+pub fn func() {
+	println('func')
+}
+```
+
+can be called like this:
+
+```v ignore
+module main
+
+import def
+
+fn main() {
+	def.func()
+}
+```
+
+A function, located in `abc/def/source.v`, is called with `def.func()`, not `abc.def.func()`
+
+This always implies a *single prefix*, whatever sub-module depth. This behavior flattens 
+modules/sub-modules hierarchy. Should you have two modules with the same name in different
+directories, then you should use Module import aliasing (see below).
+
 
 ### Module import aliasing
 
@@ -1896,6 +1945,23 @@ typ := match c {
 }
 println(typ)
 // 'lowercase'
+```
+
+A match statement also can match the variant types of a `sumtype`. Note that
+in that case, the match is exhaustive, since all variant types are mentioned 
+explicitly, so there is no need for an `else{}` branch.
+
+```v nofmt
+struct Dog {}
+struct Cat {}
+struct Veasel {}
+type Animal = Dog | Cat | Veasel
+a := Animal(Veasel{})
+match a {
+	Dog { println('Bay') }
+	Cat { println('Meow') }
+	Veasel { println('Vrrrrr-eeee') } // see: https://www.youtube.com/watch?v=qTJEDyj2N0Q
+}
 ```
 
 You can also use ranges as `match` patterns. If the value falls within the range
@@ -3190,7 +3256,7 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-See also [Array methods](#array-methods).
+See also [String interpolation](#string-interpolation).
 
 <a id='custom-print-of-types'></a>
 
@@ -3391,18 +3457,17 @@ The enum type can be any integer type, but can be omitted, if it is `int`: `enum
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
-Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
-with an @.
+Enum fields can re-use reserved keywords:
 
 ```v
 enum Color {
-	@none
+	none
 	red
 	green
 	blue
 }
 
-color := Color.@none
+color := Color.none
 println(color)
 ```
 
@@ -5205,7 +5270,7 @@ import db.sqlite
 // sets a custom table name. Default is struct name (case-sensitive)
 @[table: 'customers']
 struct Customer {
-	id        int @[primary; sql: serial] // a field named `id` of integer type must be the first field
+	id        int @[primary; serial] // a field named `id` of integer type must be the first field
 	name      string
 	nr_orders int
 	country   ?string
@@ -5831,7 +5896,19 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 @[callconv: 'fastcall']
 type FastFn = fn (int) bool
 
-// Windows only:
+// Calls to the following function, will have to use its return value somehow.
+// Ignoring it, will emit warnings.
+@[must_use]
+fn f() int {
+	return 42
+}
+
+fn g() {
+	// just calling `f()` here, will produce a warning
+	println(f()) // this is fine, because the return value was used as an argument
+}
+
+// Windows only (and obsolete; instead of it, use `-subsystem windows` when compiling)
 // Without this attribute all graphical apps will have the following behavior on Windows:
 // If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
 // If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no
@@ -8000,7 +8077,7 @@ instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Appendix I: Keywords
 
-V has 44 reserved keywords (3 are literals):
+V has 45 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -8019,6 +8096,7 @@ for
 go
 goto
 if
+implements
 import
 in
 interface

@@ -8,6 +8,9 @@ const ctr_drbg = C.mbedtls_ctr_drbg_context{}
 
 const entropy = C.mbedtls_entropy_context{}
 
+const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 550)
+const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
+
 fn init() {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -21,6 +24,7 @@ fn init() {
 			C.mbedtls_ctr_drbg_free(&ctr_drbg)
 			panic('Failed to seed ssl context: ${ret}')
 		}
+		// C.mbedtls_debug_set_threshold(5)
 	}
 }
 
@@ -175,6 +179,10 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_net_init(&l.server_fd)
 	C.mbedtls_ssl_init(&l.ssl)
 	C.mbedtls_ssl_config_init(&l.conf)
+	$if trace_mbedtls_timeouts ? {
+		dump(mbedtls_server_read_timeout_ms)
+	}
+	C.mbedtls_ssl_conf_read_timeout(&l.conf, mbedtls_server_read_timeout_ms)
 	l.certs = &SSLCerts{}
 	C.mbedtls_x509_crt_init(&l.certs.client_cert)
 	C.mbedtls_pk_init(&l.certs.client_key)
@@ -363,13 +371,16 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_net_init(&s.server_fd)
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
-
 	mut ret := 0
 	ret = C.mbedtls_ssl_config_defaults(&s.conf, C.MBEDTLS_SSL_IS_CLIENT, C.MBEDTLS_SSL_TRANSPORT_STREAM,
 		C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
 		return error_with_code('Failed to set SSL configuration', ret)
 	}
+	$if trace_mbedtls_timeouts ? {
+		dump(mbedtls_client_read_timeout_ms)
+	}
+	C.mbedtls_ssl_conf_read_timeout(&s.conf, mbedtls_client_read_timeout_ms)
 
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &ctr_drbg)

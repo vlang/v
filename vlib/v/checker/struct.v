@@ -177,8 +177,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			sym := c.table.sym(field.typ)
+			field_name, field_name_len := field.name, field.name.len
 			for j in 0 .. i {
-				if field.name == node.fields[j].name {
+				if field_name_len == node.fields[j].name.len && field_name == node.fields[j].name {
 					c.error('field name `${field.name}` duplicate', field.pos)
 				}
 			}
@@ -733,16 +734,24 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.expr.pos())
 						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
 						mut right := ast.CallExpr{
-							name:          'clone'
-							left:          init_field.expr
-							left_type:     got_type
-							is_method:     true
-							receiver_type: got_type.ref()
-							return_type:   got_type
-							scope:         c.fn_scope
+							name:           'clone'
+							left:           init_field.expr
+							left_type:      got_type
+							is_method:      true
+							receiver_type:  got_type.ref()
+							return_type:    got_type
+							scope:          c.fn_scope
+							is_return_used: true
 						}
 						got_type = c.expr(mut right)
 						node.init_fields[i].expr = right
+					}
+					// disallow `mut a: b`, when b is const array
+					if field_info.is_mut
+						&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField)
+						&& !c.inside_unsafe {
+						c.error('cannot assign a const array to mut struct field, call `clone` method (or use `unsafe`)',
+							init_field.expr.pos())
 					}
 				}
 				if exp_type_sym.kind == .interface {
@@ -793,7 +802,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
 						'assigned')
 				}
-				if field_info.typ in ast.unsigned_integer_type_idxs
+				if c.table.unaliased_type(exp_type) in ast.unsigned_integer_type_idxs
 					&& mut init_field.expr is ast.IntegerLiteral
 					&& (init_field.expr as ast.IntegerLiteral).val[0] == `-` {
 					c.error('cannot assign negative value to unsigned integer type', init_field.expr.pos)

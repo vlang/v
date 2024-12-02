@@ -899,7 +899,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.CharLiteral {
-			if node.val.len_utf8() < node.val.len {
+			if !node.val.is_pure_ascii() {
 				g.write("new rune('${node.val}'.charCodeAt())")
 			} else {
 				g.write("new u8('${node.val}')")
@@ -2510,7 +2510,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						tsym := g.table.sym(typ)
 						if tsym.language == .js && (tsym.name == 'JS.Number'
 							|| tsym.name == 'JS.Boolean' || tsym.name == 'JS.String') {
-							g.write(' === "${tsym.name[3..].to_lower()}"')
+							g.write(' === "${tsym.name[3..].to_lower_ascii()}"')
 						} else {
 							g.write(' instanceof ')
 							g.expr(branch.exprs[sumtype_index])
@@ -2529,7 +2529,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 						tsym := g.table.sym(typ)
 						if tsym.language == .js && (tsym.name == 'Number'
 							|| tsym.name == 'Boolean' || tsym.name == 'String') {
-							g.write(' === ${tsym.name.to_lower()}')
+							g.write(' === ${tsym.name.to_lower_ascii()}')
 						} else {
 							g.write(' instanceof ')
 							g.expr(branch.exprs[sumtype_index])
@@ -3252,13 +3252,17 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 				g.write('new int(')
 				g.write('${int(g.unwrap_generic(it.name_type))}')
 				g.write(')')
-				g.write(')')
 				return
 			}
 			.unaliased_typ {
 				g.write('new int(')
 				g.write('${int(g.table.unaliased_type(g.unwrap_generic(it.name_type)))}')
 				g.write(')')
+				return
+			}
+			.indirections {
+				g.write('new int(')
+				g.write('${int(g.unwrap_generic(it.name_type).nr_muls())}')
 				g.write(')')
 				return
 			}
@@ -3425,10 +3429,16 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 			if i > 0 {
 				repr += ', '
 			}
+			if arg.typ.has_flag(.option) {
+				repr += '?'
+			}
 			repr += g.table.get_type_name(arg.typ)
 		}
 		repr += ')'
 		if fn_info.return_type != ast.void_type {
+			if fn_info.return_type.has_flag(.option) {
+				repr += '?'
+			}
 			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
 		}
 		g.write('"${repr}"')

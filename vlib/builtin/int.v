@@ -616,3 +616,17 @@ pub fn (b u8) repeat(count int) string {
 fn _Atomic__int_str(x int) string {
 	return x.str()
 }
+
+// int_min returns the smallest `int` of input `a` and `b`.
+// Example: assert int_min(2,3) == 2
+@[inline]
+pub fn int_min(a int, b int) int {
+	return if a < b { a } else { b }
+}
+
+// int_max returns the largest `int` of input `a` and `b`.
+// Example: assert int_max(2,3) == 3
+@[inline]
+pub fn int_max(a int, b int) int {
+	return if a > b { a } else { b }
+}

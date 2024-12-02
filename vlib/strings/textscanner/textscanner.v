@@ -7,7 +7,7 @@ pub struct TextScanner {
 pub:
 	input string
 	ilen  int
-mut:
+pub mut:
 	pos int // current position; pos is *always* kept in [0,ilen]
 }
 
@@ -75,6 +75,19 @@ pub fn (ss &TextScanner) peek() int {
 	return -1
 }
 
+// peek_u8 returns the *next* character code from the input text, as a byte/u8.
+// unlike `next()`, `peek_u8()` does not change the state of the scanner.
+// Note: peek_u8 returns `0`, if it can't peek the next character.
+// Note: use `peek()`, instead of `peek_u8()`, if your input itself can
+// legitimately contain bytes with value `0`.
+@[direct_array_access; inline]
+pub fn (ss &TextScanner) peek_u8() u8 {
+	if ss.pos < ss.ilen {
+		return ss.input[ss.pos]
+	}
+	return 0
+}
+
 // peek_n returns the character code from the input text at position + `n`.
 // peek_n returns `-1` if it can't peek `n` characters ahead.
 // ts.peek_n(0) == ts.current() .
@@ -85,6 +98,19 @@ pub fn (ss &TextScanner) peek_n(n int) int {
 		return ss.input[ss.pos + n]
 	}
 	return -1
+}
+
+// peek_n_u8 returns the character code from the input text, at position + `n`,
+// as a byte/u8.
+// Note: peek_n_u8 returns `0`, if it can't peek the next character.
+// Note: use `peek_n()`, instead of `peek_n_u8()`, if your input itself can
+// legitimately contain bytes with value `0`.
+@[direct_array_access; inline]
+pub fn (ss &TextScanner) peek_n_u8(n int) u8 {
+	if ss.pos + n < ss.ilen {
+		return ss.input[ss.pos + n]
+	}
+	return 0
 }
 
 // back goes back one character from the current scanner position.
@@ -151,4 +177,11 @@ pub fn (mut ss TextScanner) reset() {
 // return -1, unless you go back.
 pub fn (mut ss TextScanner) goto_end() {
 	ss.pos = ss.ilen
+}
+
+// skip_whitespace advances the scanner pass any space characters in the input.
+pub fn (mut ss TextScanner) skip_whitespace() {
+	for ss.ilen - ss.pos > 0 && ss.peek_u8().is_space() {
+		ss.next()
+	}
 }

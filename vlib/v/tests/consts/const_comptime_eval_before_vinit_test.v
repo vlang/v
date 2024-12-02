@@ -71,7 +71,7 @@ fn static_storage(idx int, value int) u8 {
 // The _constructor attribute ensures that the function will be called
 // before main by the C compilers that support it.
 // Currently gcc/clang are known to work.
-@[_constructor; unsafe]
+@[_constructor; markused; unsafe]
 fn pre_main() {
 	unsafe {
 		static_storage(0, int(zzz_an_i8_const))

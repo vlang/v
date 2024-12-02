@@ -295,6 +295,7 @@ fn init_os_args(argc int, argv &&u8) []string {
 //     }
 //   }
 // ```
+@[manualfree]
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')

@@ -30,8 +30,12 @@ pub fn set_level(level Level) {
 }
 
 // fatal logs a `fatal` message, using the default Logger instance
+@[noreturn]
 pub fn fatal(s string) {
 	default_logger.fatal(s)
+	// the compiler currently has no way to mark functions in an interface
+	// as @[noreturn], so we need to make sure this is never returning ourselves
+	exit(1)
 }
 
 // error logs an `error` message, using the default Logger instance

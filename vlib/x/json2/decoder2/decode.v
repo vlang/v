@@ -233,10 +233,6 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					continue
 				}
 
-				if val[checker.checker_idx] != `"` {
-					checker.checker_idx++
-				}
-
 				// skip whitespace
 				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
 					if checker.checker_idx >= checker_end - 1 {
@@ -249,39 +245,21 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					continue
 				}
 
-				match val[checker.checker_idx] {
-					`"` {
-						// Object key
-						checker.check_json_format(val)!
+				if val[checker.checker_idx] != `"` {
+					return checker.error('Expecting object key')
+				}
 
-						for val[checker.checker_idx] != `:` {
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: key colon not found')
-							}
-							if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
-								return checker.error('invalid value after object key')
-							}
-							checker.checker_idx++
-						}
+				// Object key
+				checker.check_json_format(val)!
+
+				for val[checker.checker_idx] != `:` {
+					if checker.checker_idx >= checker_end - 1 {
+						return checker.error('EOF error: key colon not found')
 					}
-					`[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
-						// skip
+					if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+						return checker.error('invalid value after object key')
 					}
-					`}` {
-						return
-					}
-					`]` {
-						return checker.error('Expecting key. Found closing bracket')
-					}
-					`,` {
-						return checker.error('invalid object key')
-					}
-					`:` {
-						return checker.error('empty object key')
-					}
-					else {
-						return checker.error('`${[val[checker.checker_idx]].bytestr()}` is an invalid object key')
-					}
+					checker.checker_idx++
 				}
 
 				if val[checker.checker_idx] != `:` {
@@ -297,38 +275,31 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 				match val[checker.checker_idx] {
 					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
-						for val[checker.checker_idx] != `}` {
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: object value not closed')
-							}
-							checker.check_json_format(val)!
-							// whitespace
+						checker.check_json_format(val)!
+						// whitespace
+						for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+							checker.checker_idx++
+						}
+						if val[checker.checker_idx] == `}` {
+							break
+						}
+						if checker.checker_idx >= checker_end - 1 {
+							return checker.error('EOF error: braces are not closed')
+						}
+
+						if val[checker.checker_idx] == `,` {
+							checker.checker_idx++
 							for val[checker.checker_idx] in [` `, `\t`, `\n`] {
 								checker.checker_idx++
 							}
+							if val[checker.checker_idx] != `"` {
+								return checker.error('Expecting object key')
+							}
+						} else {
 							if val[checker.checker_idx] == `}` {
 								break
-							}
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: braces are not closed')
-							}
-
-							if val[checker.checker_idx] == `,` {
-								checker.checker_idx++
-								for val[checker.checker_idx] in [` `, `\t`, `\n`] {
-									checker.checker_idx++
-								}
-								if val[checker.checker_idx] != `"` {
-									return checker.error('Expecting object key')
-								} else {
-									break
-								}
 							} else {
-								if val[checker.checker_idx] == `}` {
-									break
-								} else {
-									return
-								}
+								return checker.error('invalid object value')
 							}
 						}
 					}
@@ -336,9 +307,6 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 						return checker.error('invalid object value')
 					}
 				}
-			}
-			if checker.checker_idx < checker_end - 1 {
-				checker.checker_idx++
 			}
 		}
 		.array {
@@ -623,6 +591,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
+		return
 	} $else $if T.unaliased_typ is time.Time {
 		time_info := decoder.current_node.value
 
@@ -633,66 +602,15 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			val = time.parse_rfc3339(string_time) or { time.Time{} }
 		}
 	} $else $if T.unaliased_typ is $map {
-		map_info := decoder.current_node.value
-
-		if map_info.value_kind == .object {
-			map_position := map_info.position
-			map_end := map_position + map_info.length
-
-			decoder.current_node = decoder.current_node.next
-			for {
-				if decoder.current_node == unsafe { nil } {
-					break
-				}
-
-				key_info := decoder.current_node.value
-
-				if key_info.position >= map_end {
-					break
-				}
-
-				key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
-
-				decoder.current_node = decoder.current_node.next
-
-				value_info := decoder.current_node.value
-
-				if value_info.position + value_info.length >= map_end {
-					break
-				}
-
-				mut map_value := create_map_value(val)
-
-				decoder.decode_value(mut map_value)!
-
-				val[key] = map_value
-			}
-		}
+		decoder.decode_map(mut val)!
+		return
 	} $else $if T.unaliased_typ is $array {
-		array_info := decoder.current_node.value
-
-		if array_info.value_kind == .array {
-			array_position := array_info.position
-			array_end := array_position + array_info.length
-
-			decoder.current_node = decoder.current_node.next
-			for {
-				if decoder.current_node == unsafe { nil } {
-					break
-				}
-				value_info := decoder.current_node.value
-
-				if value_info.position + value_info.length >= array_end {
-					break
-				}
-
-				mut array_element := create_array_element(val)
-
-				decoder.decode_value(mut array_element)!
-
-				val << array_element
-			}
-		}
+		decoder.decode_array(mut val)!
+		// return to avoid the next increment of the current node
+		// this is because the current node is already incremented in the decode_array function
+		// remove this line will cause the current node to be incremented twice
+		// and bug recursive array decoding like `[][]int{}`
+		return
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
@@ -765,6 +683,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				break_decode_value_struct_fields_loop:
 			}
 		}
+		return
 	} $else $if T.unaliased_typ is bool {
 		value_info := decoder.current_node.value
 
@@ -790,6 +709,72 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
+fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
+	array_info := decoder.current_node.value
+
+	if array_info.value_kind == .array {
+		decoder.current_node = decoder.current_node.next
+
+		array_position := array_info.position
+		array_end := array_position + array_info.length
+
+		for {
+			if decoder.current_node == unsafe { nil }
+				|| decoder.current_node.value.position >= array_end {
+				break
+			}
+
+			mut array_element := T{}
+
+			decoder.decode_value(mut array_element)!
+
+			val << array_element
+		}
+	}
+}
+
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+	map_info := decoder.current_node.value
+
+	if map_info.value_kind == .object {
+		map_position := map_info.position
+		map_end := map_position + map_info.length
+
+		decoder.current_node = decoder.current_node.next
+		for {
+			if decoder.current_node == unsafe { nil }
+				|| decoder.current_node.value.position >= map_end {
+				break
+			}
+
+			key_info := decoder.current_node.value
+
+			if key_info.position >= map_end {
+				break
+			}
+
+			key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+
+			decoder.current_node = decoder.current_node.next
+
+			value_info := decoder.current_node.value
+
+			if value_info.position + value_info.length >= map_end {
+				break
+			}
+
+			mut map_value := V{}
+
+			$if V is $map {
+				val[key] = map_value.move()
+			} $else {
+				val[key] = map_value
+			}
+			decoder.decode_value(mut val[key])!
+		}
+	}
+}
+
 // get_value_kind returns the kind of a JSON value.
 fn get_value_kind(value u8) ValueKind {
 	if value == u8(`"`) {
@@ -806,14 +791,6 @@ fn get_value_kind(value u8) ValueKind {
 		return .null
 	}
 	return .unknown
-}
-
-fn create_array_element[T](array []T) T {
-	return T{}
-}
-
-fn create_map_value[K, V](map_ map[K]V) V {
-	return V{}
 }
 
 fn create_value_from_optional[T](val ?T) T {

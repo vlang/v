@@ -176,10 +176,6 @@ fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
-	if node.is_comptime {
-		g.comptime_if(node)
-		return
-	}
 	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
@@ -188,7 +184,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := g.need_tmp_var_in_if(node)
 	needs_conds_order := g.needs_conds_order(node)
-	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+	tmp := if node.typ != ast.void_type && needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
@@ -210,7 +206,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
-		g.writeln('${styp} ${tmp}; /* if prepend */')
+		if tmp != '' {
+			g.writeln('${styp} ${tmp}; /* if prepend */')
+		}
 		if g.infix_left_var_name.len > 0 {
 			g.writeln('if (${g.infix_left_var_name}) {')
 			g.indent++
@@ -249,9 +247,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if cond is ast.IfGuardExpr {
 			if !is_guard {
 				is_guard = true
-				guard_idx = i
 				guard_vars = []string{len: node.branches.len}
 			}
+			guard_idx = i // saves the last if guard index
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
@@ -269,7 +267,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		// if last branch is `else {`
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('{')
-			// define `err` only for simple `if val := opt {...} else {`
+			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
 				cvar_name := guard_vars[guard_idx]
 				g.writeln('\tIError err = ${cvar_name}.err;')
@@ -429,6 +427,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.set_current_pos_as_last_stmt_pos()
 		}
 		g.empty_line = false
-		g.write('${cur_line} ${tmp}')
+		g.write('${cur_line}${tmp}')
 	}
 }

@@ -1,5 +1,7 @@
 module strconv
 
+import strings
+
 /*
 printf/sprintf V implementation
 
@@ -9,17 +11,16 @@ that can be found in the LICENSE file.
 
 This file contains the printf/sprintf functions
 */
-import strings
 
+// Align_text is used to describe the different ways to align a text - left, right and center
 pub enum Align_text {
 	right = 0
 	left
 	center
 }
 
-/*
-Float conversion utility
-*/
+// Float conversion utility
+
 // rounding value
 const dec_round = [
 	f64(0.5),
@@ -44,38 +45,9 @@ const dec_round = [
 	0.00000000000000000005,
 ]!
 
-/*
-const(
-	// rounding value
-	dec_round = [
-		f64(0.44),
-		0.044,
-		0.0044,
-		0.00044,
-		0.000044,
-		0.0000044,
-		0.00000044,
-		0.000000044,
-		0.0000000044,
-		0.00000000044,
-		0.000000000044,
-		0.0000000000044,
-		0.00000000000044,
-		0.000000000000044,
-		0.0000000000000044,
-		0.00000000000000044,
-		0.000000000000000044,
-		0.0000000000000000044,
-		0.00000000000000000044,
-		0.000000000000000000044,
-	]
-)
-*/
-// max float 1.797693134862315708145274237317043567981e+308
+// Single format functions
 
-/*
-Single format functions
-*/
+// BF_param is used for describing the formatting options for a single interpolated value
 pub struct BF_param {
 pub mut:
 	pad_ch       u8   = u8(` `) // padding char
@@ -84,11 +56,10 @@ pub mut:
 	positive     bool = true    // mandatory: the sign of the number passed
 	sign_flag    bool // flag for print sign as prefix in padding
 	align        Align_text = .right // alignment of the string
-	allign       Align_text = .right @[deprecated: 'use align instead'; deprecated_after: '2023-11-30']
 	rm_tail_zero bool // remove the tail zeros from floats
 }
 
-// format_str returns a `string` formatted according to the options set in `p`.
+// format_str returns the `s` formatted, according to the options set in `p`.
 @[manualfree]
 pub fn format_str(s string, p BF_param) string {
 	if p.len0 <= 0 {

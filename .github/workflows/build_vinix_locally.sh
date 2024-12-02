@@ -21,11 +21,11 @@ mkdir -p $BUILD
 
 cd $BUILD
 echo "Clone current Vinix"
-./v retry -- git clone https://github.com/vlang/vinix.git --depth=1
+./v retry -- git clone --depth=1 https://github.com/vlang/vinix.git
 
 cd $BUILD
 echo "Clone current mlibc"
-./v retry -- git clone https://github.com/managarm/mlibc.git --depth=1
+./v retry -- git clone --depth=1 https://github.com/managarm/mlibc.git
 
 cd $BUILD
 echo "Patch mlibc for Vinix"

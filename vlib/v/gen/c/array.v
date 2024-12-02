@@ -135,7 +135,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.set_current_pos_as_last_stmt_pos()
 		return
 	}
-	if g.inside_struct_init && g.inside_cast {
+	if g.inside_struct_init && g.inside_cast && !g.inside_memset {
 		ret_typ_str := g.styp(node.typ)
 		g.write('(${ret_typ_str})')
 	}
@@ -155,6 +155,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				elem_info := elem_sym.array_fixed_info()
 				g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
 					elem_info.elem_type, elem_info.size)
+			} else if elem_sym.kind == .array_fixed && expr is ast.CallExpr
+				&& g.table.final_sym(expr.return_type).kind == .array_fixed {
+				elem_info := elem_sym.array_fixed_info()
+				tmp_var := g.expr_with_var(expr, node.expr_types[i], false)
+				g.fixed_array_var_init(tmp_var, false, elem_info.elem_type, elem_info.size)
 			} else {
 				if expr.is_auto_deref_var() {
 					g.write('*')
@@ -564,7 +569,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			// value.map(Type(it)) when `value` is a comptime var
 			if expr.expr is ast.Ident && node.left is ast.Ident
 				&& g.comptime.is_comptime_var(node.left) {
-				ctyp := g.comptime.get_comptime_var_type(node.left)
+				ctyp := g.comptime.get_type(node.left)
 				if ctyp != ast.void_type {
 					expr.expr_type = g.table.value_type(ctyp)
 				}
@@ -636,7 +641,11 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	} else {
 		g.writeln('${atype} ${past.tmp_var};')
 		g.write('memcpy(&${past.tmp_var}, &')
-		g.expr(node.left)
+		if node.left is ast.ArrayInit {
+			g.fixed_array_init_with_cast(node.left, node.left_type)
+		} else {
+			g.expr(node.left)
+		}
 		g.writeln(', sizeof(${atype}));')
 	}
 
@@ -698,7 +707,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		left_name := infix_expr.left.str()
 		if left_name.len > 1 {
 			compare_fn += '_by' +
-				left_name[1..].replace_each(['.', '_', '[', '_', ']', '_', "'", '_', '"', '_', '(', '', ')', '', ',', ''])
+				left_name[1..].replace_each(['.', '_', '[', '_', ']', '_', "'", '_', '"', '_', '(', '', ')', '', ',', '', '/', '_'])
 		}
 		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
 		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
@@ -794,7 +803,11 @@ fn (mut g Gen) gen_fixed_array_sorted_with_compare(node ast.CallExpr) {
 	atype := g.styp(node.return_type)
 	g.writeln('${atype} ${past.tmp_var};')
 	g.write('memcpy(&${past.tmp_var}, &')
-	g.expr(node.left)
+	if node.left is ast.ArrayInit {
+		g.fixed_array_init_with_cast(node.left, node.left_type)
+	} else {
+		g.expr(node.left)
+	}
 	g.writeln(', sizeof(${atype}));')
 
 	unsafe {
@@ -833,7 +846,11 @@ fn (mut g Gen) gen_fixed_array_reverse(node ast.CallExpr) {
 	atype := g.styp(node.return_type)
 	g.writeln('${atype} ${past.tmp_var};')
 	g.write('memcpy(&${past.tmp_var}, &')
-	g.expr(node.left)
+	if node.left is ast.ArrayInit {
+		g.fixed_array_init_with_cast(node.left, node.left_type)
+	} else {
+		g.expr(node.left)
+	}
 	g.writeln(', sizeof(${atype}));')
 
 	unsafe {
@@ -1629,6 +1646,59 @@ fn (mut g Gen) fixed_array_init_with_cast(expr ast.ArrayInit, typ ast.Type) {
 	} else {
 		g.write('(${g.styp(typ)})')
 		g.expr(expr)
+	}
+}
+
+fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Type, field_name string, is_auto_deref bool, elem_type ast.Type, size int, is_update_embed bool) {
+	elem_sym := g.table.sym(elem_type)
+	if !g.inside_array_fixed_struct {
+		g.write('{')
+		defer {
+			g.write('}')
+		}
+	}
+	for i in 0 .. size {
+		if elem_sym.info is ast.ArrayFixed {
+			init_str := if g.inside_array_fixed_struct {
+				'${expr_str}'
+			} else {
+				'${expr_str}->${c_name(field_name)}[${i}]'
+			}
+			g.fixed_array_update_expr_field(init_str, field_type, field_name, is_auto_deref,
+				elem_sym.info.elem_type, elem_sym.info.size, is_update_embed)
+		} else {
+			g.write(expr_str)
+			if !expr_str.ends_with(']') {
+				if field_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				if is_update_embed {
+					update_sym := g.table.sym(field_type)
+					_, embeds := g.table.find_field_from_embeds(update_sym, field_name) or {
+						ast.StructField{}, []ast.Type{}
+					}
+					for embed in embeds {
+						esym := g.table.sym(embed)
+						ename := esym.embed_name()
+						g.write(ename)
+						if embed.is_ptr() {
+							g.write('->')
+						} else {
+							g.write('.')
+						}
+					}
+				}
+				g.write(c_name(field_name))
+			}
+			if !expr_str.starts_with('(') && !expr_str.starts_with('{') {
+				g.write('[${i}]')
+			}
+		}
+		if i != size - 1 {
+			g.write(', ')
+		}
 	}
 }
 

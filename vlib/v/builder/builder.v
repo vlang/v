@@ -542,7 +542,6 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 		if b.nr_errors > 0 {
 			exit(1)
 		}
-		exit(0)
 	}
 
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {

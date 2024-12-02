@@ -126,6 +126,7 @@ pub mut:
 	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
 	is_coverage        bool     // turn on code coverage stats
+	is_check_return    bool     // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -146,6 +147,7 @@ pub mut:
 	show_c_output          bool   // -show-c-output, print all cc output even if the code was compiled correctly
 	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
+	show_unused_params     bool   // NOTE: temporary until making it a default.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
@@ -334,6 +336,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.use_cache = true
 		res.skip_unused = true
 	} */
+	mut no_skip_unused := false
 
 	mut command, mut command_idx := '', 0
 	for i := 0; i < args.len; i++ {
@@ -437,6 +440,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+				res.compile_defines << 'nofloat'
 			}
 			'-fast-math' {
 				res.fast_math = true
@@ -600,6 +604,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.skip_unused = true
 			}
 			'-no-skip-unused' {
+				no_skip_unused = true
 				res.skip_unused = false
 			}
 			'-compress' {
@@ -949,6 +954,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.parse_line_info(res.line_info)
 				i++
 			}
+			'-check-unused-fn-args' {
+				res.show_unused_params = true
+			}
+			'-check-return' {
+				res.is_check_return = true
+			}
 			'-use-coroutines' {
 				res.use_coroutines = true
 				$if macos || linux {
@@ -1129,6 +1140,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
+	if res.backend == .c {
+		// res.skip_unused = res.build_mode != .build_module
+		if no_skip_unused {
+			res.skip_unused = false
+		}
+	}
+
 	return res, command
 }
 
@@ -1187,7 +1205,7 @@ pub fn cc_from_string(s string) CompilerType {
 	if s == '' {
 		return .gcc
 	}
-	cc := os.file_name(s).to_lower()
+	cc := os.file_name(s).to_lower_ascii()
 	return match true {
 		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
 		cc.contains('gcc') { .gcc }
@@ -1224,11 +1242,10 @@ fn (mut prefs Preferences) parse_define(define string) {
 	prefs.compile_values[dname] = dvalue
 	prefs.compile_defines_all << dname
 	match dvalue {
-		'0' {}
-		'1' {
+		'' {}
+		else {
 			prefs.compile_defines << dname
 		}
-		else {}
 	}
 }
 

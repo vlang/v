@@ -77,7 +77,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	} else {
 		line := if is_expr {
 			g.empty_line = true
-			g.go_before_last_stmt()
+			g.go_before_last_stmt().trim_left('\t')
 		} else {
 			''
 		}
@@ -160,7 +160,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write('${tmp_var}')
+		g.write(tmp_var)
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')

@@ -6,7 +6,7 @@ module parser
 import v.ast
 import v.token
 
-fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
+fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
 	was_inside_ct_if_expr := p.inside_ct_if_expr
 	defer {
@@ -14,7 +14,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	is_expr := p.prev_tok.kind == .key_return
+	is_expr_ := p.prev_tok.kind == .key_return || is_expr
 	mut pos := p.tok.pos()
 	if is_comptime {
 		p.inside_ct_if_expr = true
@@ -206,7 +206,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		post_comments: comments
 		pos:           pos
 		has_else:      has_else
-		is_expr:       is_expr
+		is_expr:       is_expr_
 	}
 }
 
@@ -245,11 +245,12 @@ fn (mut p Parser) is_match_sumtype_type() bool {
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
+	old_inside_match := p.inside_match
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
 	cond := p.expr(0)
-	p.inside_match = false
+	p.inside_match = old_inside_match
 	no_lcbr := p.tok.kind != .lcbr
 	if !no_lcbr {
 		p.check(.lcbr)
@@ -430,7 +431,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs := p.expr_list()
+			exprs := p.expr_list(true)
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}

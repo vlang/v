@@ -181,7 +181,6 @@ fn test_check_json_format() {
 }
 
 fn test_get_value_kind() {
-
 	struct Object_ {
 		byte_      u8
 		value_kind ValueKind

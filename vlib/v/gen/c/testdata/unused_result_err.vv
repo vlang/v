@@ -1,0 +1,7 @@
+module main
+
+fn res() ! {}
+
+fn main() {
+	res() or {}
+}
