@@ -665,6 +665,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							else {}
 						}
 					}
+
 					if key_info.length - 2 == new_field.name.len
 						&& attribute_callback_response == .none_ {
 						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
