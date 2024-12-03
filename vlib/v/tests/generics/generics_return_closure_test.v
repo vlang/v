@@ -8,12 +8,22 @@ fn vectorize[T](op fn (T) T) fn ([]T) []T {
 	}
 }
 
-fn add_one(x f64) f64 {
+fn add_one1(x f64) f64 {
 	return x + 1
 }
 
-fn test_return_generic_closure() {
-	vadd := vectorize[f64](add_one)
-	v := [1.0, 2, 3, 4]
-	assert vadd(v) == [2.0, 3, 4, 5]
+fn add_one2(x int) int {
+	return x + 1
+}
+
+fn test_generic_return_generic_closure() {
+	vadd1 := vectorize[f64](add_one1)
+	v1 := [1.0, 2, 3, 4]
+	println(vadd1(v1))
+	assert vadd1(v1) == [2.0, 3, 4, 5]
+
+	vadd2 := vectorize[int](add_one2)
+	v2 := [1, 2, 3, 4]
+	println(vadd2(v2))
+	assert vadd2(v2) == [2, 3, 4, 5]
 }

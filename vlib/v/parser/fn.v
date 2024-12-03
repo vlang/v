@@ -889,7 +889,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	p.cur_fn_name = keep_fn_name
 	func.name = name
 	idx := p.table.find_or_register_fn_type(func, true, false)
-	typ := ast.new_type(idx)
+	typ := if generic_names.len > 0 { ast.new_type(idx).set_flag(.generic) } else { ast.new_type(idx) }
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
