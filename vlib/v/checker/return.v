@@ -267,11 +267,6 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if c.inside_lambda && exp_type.has_flag(.generic) {
 					continue
 				}
-				// ignore return closure
-				if node.exprs[expr_idxs[i]] is ast.AnonFn
-					&& node.exprs[expr_idxs[i]].inherited_vars.len > 0 {
-					continue
-				}
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					pos)
 			}
