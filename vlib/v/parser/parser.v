@@ -3332,7 +3332,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	is_filter := field_name in ['filter', 'map', 'any', 'all']
+	is_filter := field_name in ['filter', 'map', 'any', 'all', 'count']
 	if is_filter || field_name == 'sort' || field_name == 'sorted' {
 		p.open_scope()
 		defer {
