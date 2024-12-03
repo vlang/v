@@ -807,6 +807,13 @@ pub fn (a array) filter(predicate fn (voidptr) bool) array
 // Example: array.any(it.name == 'Bob') // will yield `true` if any element has `.name == 'Bob'`
 pub fn (a array) any(predicate fn (voidptr) bool) bool
 
+// count counts how many elements in array pass the test.
+// Ignore the function signature. `count` does not take an actual callback. Rather, it
+// takes an `it` expression.
+//
+// Example: array.count(it % 2 == 1) // will return how many elements are odd
+pub fn (a array) count(predicate fn (voidptr) bool) int
+
 // all tests whether all elements in the array pass the test.
 // Ignore the function signature. `all` does not take an actual callback. Rather, it
 // takes an `it` expression.

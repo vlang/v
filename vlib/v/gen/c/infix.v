@@ -1057,7 +1057,7 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 	match node {
 		ast.CallExpr {
 			if node.left_type != 0 && g.table.sym(node.left_type).kind == .array
-				&& node.name in ['all', 'any', 'filter', 'map'] {
+				&& node.name in ['all', 'any', 'filter', 'map', 'count'] {
 				return true
 			}
 		}

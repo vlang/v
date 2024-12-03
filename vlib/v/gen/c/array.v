@@ -558,7 +558,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
@@ -940,7 +940,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
@@ -1439,7 +1439,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
@@ -1457,6 +1457,96 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	}
 	g.writeln2(') {', '\t${past.tmp_var} = true;')
 	g.writeln2('\tbreak;', '}')
+	g.indent--
+	g.writeln('}')
+	if !is_embed_map_filter {
+		g.set_current_pos_as_last_stmt_pos()
+	}
+	if has_infix_left_var_name {
+		g.indent--
+		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
+	}
+}
+
+fn (mut g Gen) gen_array_count(node ast.CallExpr) {
+	past := g.past_tmp_var_new()
+	defer {
+		g.past_tmp_var_done(past)
+	}
+
+	sym := g.table.final_sym(node.left_type)
+	left_is_array := sym.kind == .array
+	elem_type := if left_is_array {
+		(sym.info as ast.Array).elem_type
+	} else {
+		(sym.info as ast.ArrayFixed).elem_type
+	}
+	elem_type_str := g.styp(elem_type)
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'int', '0')
+
+	mut expr := node.args[0].expr
+	var_name := g.get_array_expr_param_name(mut expr)
+
+	mut closure_var := ''
+	if mut expr is ast.AnonFn {
+		if expr.inherited_vars.len > 0 {
+			closure_var = g.new_tmp_var()
+			g.declare_closure_fn(mut expr, closure_var)
+		}
+	}
+	i := g.new_tmp_var()
+	g.writeln('for (int ${i} = 0; ${i} < ${past.tmp_var}_len; ++${i}) {')
+	g.indent++
+
+	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array)
+	g.set_current_pos_as_last_stmt_pos()
+	mut is_embed_map_filter := false
+	match mut expr {
+		ast.AnonFn {
+			g.write('if (')
+			if expr.inherited_vars.len > 0 {
+				g.write_closure_fn(mut expr, var_name, closure_var)
+			} else {
+				g.gen_anon_fn_decl(mut expr)
+				g.write('${expr.decl.name}(${var_name})')
+			}
+		}
+		ast.Ident {
+			g.write('if (')
+			if expr.kind == .function {
+				g.write('${c_name(expr.name)}(${var_name})')
+			} else if expr.kind == .variable {
+				var_info := expr.var_info()
+				sym_t := g.table.sym(var_info.typ)
+				if sym_t.kind == .function {
+					g.write('${c_name(expr.name)}(${var_name})')
+				} else {
+					g.expr(expr)
+				}
+			} else {
+				g.expr(expr)
+			}
+		}
+		ast.CallExpr {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
+				is_embed_map_filter = true
+				g.set_current_pos_as_last_stmt_pos()
+			}
+			g.write('if (')
+			g.expr(expr)
+		}
+		ast.LambdaExpr {
+			g.write('if (')
+			g.expr(expr.expr)
+		}
+		else {
+			g.write('if (')
+			g.expr(expr)
+		}
+	}
+	g.writeln2(') {', '\t++${past.tmp_var};')
+	g.writeln('}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -1532,7 +1622,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
