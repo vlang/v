@@ -33,8 +33,8 @@ pub fn (mut m LocalMessageType) update_text_externally(new_text string) {
 
 fn print_message(mut mdef IMessage) {
 	if mut mdef is Message {
-		mut a := LocalMessageType(*mdef) // works. with -live: Unhandled Exception 0xC0000005
-		mut b := &LocalMessageType(mdef) // works, warning. with -live: Unhandled Exception 0xC0000005
+		mut a := LocalMessageType(*mdef)
+		mut b := &LocalMessageType(mdef)
 		mut c := LocalMessageType(mdef)
 
 		dump(a)
