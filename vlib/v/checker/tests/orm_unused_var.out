@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_unused_var.vv:15:2: warning: unused variable: `x_id`
+   13 | 
+   14 |     x := Test{}
+   15 |     x_id := sql db {
+      |     ~~~~
+   16 |         insert x into Test
+   17 |     } or { panic(err) }
