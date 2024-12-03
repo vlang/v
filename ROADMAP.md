@@ -38,24 +38,25 @@ For a list of all features and fixes, check out the changelog.
 - [x] Parallel parser (not integrated yet)
 - [x] Parallel checker (not integrated yet)
 - [x] Parallel C compilation (not integrated yet)
-- [x] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
+- [x] Parallel cgen
+- [x] -skip-unused on by default
+- [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes
 - [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
 - [x] Implicit Veb contexts passed to requests
-- [ ] Direct C/C++ interop without generating wrappers
+- [x] Direct C/C++ interop without generating wrappers (via -experimental for now)
 - [ ] Make ORM work without installing developer libs (libpq-dev etc)
 
 ## [Version 0.6]
 
-- [ ] Integrate the new parallel parser/checker/cgen
+- [ ] Integrate the new parallel parser/checker/cc
 - [ ] Incremental compilation
 - [ ] Runtime race detector
 - [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
 - [ ] `recover()` from panics
 - [ ] -usecache on by default
-- [ ] -skip-unused on by default
 - [ ] ORM migrations
 - [ ] Allow `$if` everywhere: top level, inside struct definitions, etc
 
