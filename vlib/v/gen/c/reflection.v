@@ -95,7 +95,11 @@ fn (g &Gen) gen_attrs_array(attrs []ast.Attr) string {
 	}
 	mut out := 'new_array_from_c_array(${attrs.len},${attrs.len},sizeof(string),'
 	out += '_MOV((string[${attrs.len}]){'
-	out += attrs.map(if it.has_arg { '_SLIT("${it.name}=${it.arg}")' } else { '_SLIT("${it.name}")' }).join(',')
+	out += attrs.map(if it.has_arg {
+		'_SLIT("${it.name}=${escape_quotes(it.arg)}")'
+	} else {
+		'_SLIT("${it.name}")'
+	}).join(',')
 	out += '}))'
 	return out
 }
