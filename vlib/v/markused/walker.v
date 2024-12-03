@@ -610,6 +610,9 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if w.used_fns[fkey] {
 		return
 	}
+	if node.no_body {
+		return
+	}
 	w.mark_fn_as_used(fkey)
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)

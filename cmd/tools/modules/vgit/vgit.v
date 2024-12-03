@@ -83,14 +83,14 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// Note: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
-		scripting.run('git -C "${local_worktree_path}"  checkout --quiet master')
-		scripting.run('git -C "${local_worktree_path}"  pull     --quiet ')
+		scripting.run('git -C "${local_worktree_path}" checkout --quiet master')
+		scripting.run('git -C "${local_worktree_path}" pull --quiet ')
 	} else {
 		// Clone a fresh local tree.
 		if remote_git_url.starts_with('http') {
 			// cloning an https remote with --filter=blob:none is usually much less bandwidth intensive, at the
 			// expense of doing small network ops later when using checkouts.
-			scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+			scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}" "${local_worktree_path}" ')
 			return
 		}
 		mut is_blobless_clone := false
@@ -112,7 +112,7 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 			// at the expense of a little more space usage, which will make the new tree in local_worktree_path,
 			// exactly 1:1 the same, as the one in remote_git_url, just independent from it .
 			copy_cmd := if os.user_os() == 'windows' { 'robocopy /MIR' } else { 'rsync -a' }
-			scripting.run('${copy_cmd} "${remote_git_url}/"  "${local_worktree_path}/"')
+			scripting.run('${copy_cmd} "${remote_git_url}/" "${local_worktree_path}/"')
 			return
 		}
 		scripting.run('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ')
@@ -121,7 +121,8 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 
 pub struct VGitContext {
 pub:
-	cc          string = 'cc'     // what compiler to use
+	cc          string = 'cc' // what C compiler to use for bootstrapping
+	cc_options  string // what additional C compiler options to use for bootstrapping
 	workdir     string = '/tmp'   // the base working folder
 	commit_v    string = 'master' // the commit-ish that needs to be prepared
 	path_v      string // where is the local working copy v repo
@@ -195,12 +196,16 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
 	mut c_ldflags := '-lm -lpthread'
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
-	mut vc_v_bootstrap_flags := ''
+	mut vc_v_cpermissive_flags := '${vgit_context.cc_options} -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion'
 	// after 85b58b0 2021-09-28, -no-parallel is supported, and can be used to force the cgen stage to be single threaded, which increases the chances of successful bootstraps
+	mut vc_v_bootstrap_flags := ''
 	if vgit_context.commit_v__ts >= 1632778086 {
-		vc_v_bootstrap_flags += '-no-parallel'
+		vc_v_bootstrap_flags += ' -no-parallel'
 	}
-	scripting.verbose_trace(@FN, 'vc_v_bootstrap_flags: ${vc_v_bootstrap_flags} | vgit_context.commit_v__ts: ${vgit_context.commit_v__ts}')
+	vc_v_bootstrap_flags = vc_v_bootstrap_flags.trim_space()
+	scripting.verbose_trace(@FN, 'vc_v_bootstrap_flags: ${vc_v_bootstrap_flags}')
+	scripting.verbose_trace(@FN, 'vc_v_cpermissive_flags: ${vc_v_cpermissive_flags}')
+	scripting.verbose_trace(@FN, 'vgit_context.commit_v__ts: ${vgit_context.commit_v__ts}')
 
 	if 'windows' == os.user_os() {
 		c_flags = '-std=c99 -I ./thirdparty/stdatomic/win -w'
@@ -219,11 +224,11 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		if vgit_context.commit_v__ts >= 1699341818 && !vgit_context.cc.contains('msvc') {
 			c_flags += '-lws2_32'
 		}
-		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv.exe  "${vc_source_file_location}" ${c_ldflags}'
-		command_for_selfbuilding = '.\\cv.exe ${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}'
+		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('.\\cv.exe', '${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}')
 	} else {
-		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv "${vc_source_file_location}"  ${c_ldflags}'
-		command_for_selfbuilding = './cv ${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}'
+		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('./cv', '${vc_v_bootstrap_flags} -o ${vgit_context.vexename} {SOURCE}')
 	}
 
 	scripting.run(command_for_building_v_from_c_source)
@@ -231,6 +236,11 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	scripting.run(build_cmd)
 	// At this point, there exists a file vgit_context.vexepath
 	// which should be a valid working V executable.
+}
+
+fn c(cmd string, params string) string {
+	// compose a command, while reducing the potential whitespaces, due to all the interpolations of optional flags above
+	return '${cmd} ${params.trim_space()}'
 }
 
 pub struct VGitOptions {

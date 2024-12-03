@@ -33,7 +33,8 @@ struct Foo {
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
   creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings, 
-  surround `raw_sql` with backticks (`).
+  surround `raw_sql` with backticks (\`).
+
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 
 ## Usage

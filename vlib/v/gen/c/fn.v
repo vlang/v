@@ -949,6 +949,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	tmp_opt := if gen_or || gen_keep_alive {
 		if g.inside_curry_call && g.last_tmp_call_var.len > 0 {
 			g.last_tmp_call_var.pop()
+		} else if !g.inside_or_block {
+			new_tmp := g.new_tmp_var()
+			g.last_tmp_call_var << new_tmp
+			new_tmp
 		} else {
 			g.new_tmp_var()
 		}
@@ -1031,7 +1035,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					g.write('\n ${cur_line}')
 				}
 			} else {
-				g.write('\n ${cur_line} ${tmp_opt}')
+				if !g.inside_or_block && g.last_tmp_call_var.len > 0 {
+					g.write('\n\t*(${unwrapped_styp}*)${g.last_tmp_call_var.pop()}.data = ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
+				} else {
+					g.write('\n ${cur_line}(*(${unwrapped_styp}*)${tmp_opt}.data)')
+				}
 			}
 		}
 	} else if gen_keep_alive {
@@ -1150,12 +1158,16 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 		'all' {
 			g.gen_array_all(node)
 		}
-		'delete', 'drop', 'delete_last' {
+		'delete', 'drop', 'delete_last', 'delete_many' {
 			g.write('array_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			if node.name != 'delete_last' {
 				g.write(', ')
 				g.expr(node.args[0].expr)
+				if node.name == 'delete_many' {
+					g.write(', ')
+					g.expr(node.args[1].expr)
+				}
 			}
 			g.write(')')
 		}
