@@ -22,10 +22,9 @@ mut:
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	values_info         LinkedList // A linked list to store ValueInfo.
-	checker_idx         int        // checker_idx is the current index of the decoder.
-	current_node        &Node = unsafe { nil } // The current node in the linked list.
-	attributes_handlers map[string]fn (?string, mut MutFieldData) bool = unsafe { default_attributes_handlers }
+	values_info  LinkedList // A linked list to store ValueInfo.
+	checker_idx  int        // checker_idx is the current index of the decoder.
+	current_node &Node = unsafe { nil } // The current node in the linked list.
 }
 
 // new_decoder creates a new JSON decoder.
@@ -633,31 +632,81 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				decoder.current_node = decoder.current_node.next
 
 				$for field in T.fields {
-					// create a mutable field from the field data. Then we can modify the field data like name field
-					mut new_field := new_mutable_from_field_data(field)
-					mut skip := false
-
+					mut field_match_current_key_in_node := false
+					mut is_raw := false
+					mut skip_field := false
 					if field.attrs.len != 0 {
-						attributes := get_attributes(field.attrs, mut new_field)
+						for attr in field.attrs {
+							handler := skip_field_attribute_handlers[attr]
 
-						for attribute in attributes {
-							handler := default_attributes_handlers[attribute.name] or {
-								panic('unknown attribute. This should never happens')
+							if handler != unsafe { nil } && handler(mut decoder) {
+								skip_field = true
+								// breake attribute loop
+								break
 							}
 
-							skip = handler(attribute.arg, mut new_field)
-							if skip {
-								break
+							if attr.starts_with('json:') {
+								if attr.len <= 6 {
+									return error('`json` attribute must have an argument')
+								}
+
+								// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
+								if field_match_current_key_in_node == false {
+									if key_info.length - 2 == attr.len - 6 {
+										field_match_current_key_in_node = unsafe {
+											vmemcmp(decoder.json.str + key_info.position + 1,
+												attr.str + 6, attr.len - 6) == 0
+										}
+									}
+
+									if field_match_current_key_in_node {
+										break
+									}
+								}
+							}
+
+							if attr == 'raw' {
+								is_raw = true
 							}
 						}
 					}
 
-					if key_info.length - 2 == new_field.name.len && skip == false {
-						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
-						if unsafe {
-							vmemcmp(decoder.json.str + key_info.position + 1, new_field.name.str,
-								new_field.name.len) == 0
-						} {
+					if field_match_current_key_in_node == false
+						&& key_info.length - 2 == field.name.len {
+						field_match_current_key_in_node = unsafe {
+							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
+								field.name.len) == 0
+						}
+					}
+
+					if field_match_current_key_in_node == false {
+						skip_field = true
+					}
+
+					if skip_field == false {
+						if is_raw {
+							$if field.typ is $enum {
+								// workaround to avoid the error: enums can only be assigned `int` values
+								return error('`raw` attribute cannot be used with enum fields')
+							} $else $if field.typ is string || field.typ is ?string {
+								position := decoder.current_node.value.position
+								end := position + decoder.current_node.value.length
+
+								val.$(field.name) = decoder.json[position..end]
+								decoder.current_node = decoder.current_node.next
+
+								for {
+									if decoder.current_node == unsafe { nil }
+										|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
+										break
+									}
+
+									decoder.current_node = decoder.current_node.next
+								}
+							} $else {
+								return error('`raw` attribute can only be used with string fields')
+							}
+						} else {
 							$if field.typ is $option {
 								mut unwrapped_val := create_value_from_optional(val.$(field.name))
 								decoder.decode_value(mut unwrapped_val)!
