@@ -242,6 +242,10 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			all_fn_root_names << k
 			continue
 		}
+		if pref_.translated && mfn.attrs.any(it.name == 'c') {
+			all_fn_root_names << k
+			continue
+		}
 		// _noscan functions/methods are selected when the `-gc boehm` is on:
 		if has_noscan && is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
 			all_fn_root_names << k
@@ -497,9 +501,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 	for kcon, con in all_consts {
 		if pref_.is_shared && con.is_pub {
 			walker.mark_const_as_used(kcon)
+			continue
 		}
 		if !pref_.is_shared && con.is_pub && con.name.starts_with('main.') {
 			walker.mark_const_as_used(kcon)
+			continue
+		}
+		if pref_.translated && con.attrs.any(it.name == 'export') {
+			walker.mark_const_as_used(kcon)
+			continue
 		}
 	}
 
@@ -529,7 +539,9 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 			match node {
 				ast.FnDecl {
 					fkey := node.fkey()
-					all_fns[fkey] = node
+					if fkey !in all_fns || !node.no_body {
+						all_fns[fkey] = node
+					}
 				}
 				ast.ConstDecl {
 					for cfield in node.fields {

@@ -371,25 +371,14 @@ pub fn get_lines() []string {
 // get_lines_joined returns a string of the values read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines_joined() string {
-	mut line := ''
-	mut inputstr := ''
-	for {
-		line = get_line()
-		if line.len <= 0 {
-			break
-		}
-		line = line.trim_space()
-		inputstr += line
-	}
-	return inputstr
+	return get_lines().join('')
 }
 
-// get_raw_lines_joined reads *all* input lines from stdin.
-// It returns them as one large string. Note: unlike os.get_lines_joined,
-// empty lines (that contain only `\r\n` or `\n`), will be present in
-// the output.
+// get_raw_lines reads *all* input lines from stdin, as an array of strings.
+// Note: unlike os.get_lines, empty lines (that contain only `\r\n` or `\n`),
+// will be present in the output.
 // Reading is stopped, only on EOF of stdin.
-pub fn get_raw_lines_joined() string {
+pub fn get_raw_lines() []string {
 	mut line := ''
 	mut lines := []string{}
 	for {
@@ -399,8 +388,39 @@ pub fn get_raw_lines_joined() string {
 		}
 		lines << line
 	}
-	res := lines.join('')
-	return res
+	return lines
+}
+
+// get_raw_lines_joined reads *all* input lines from stdin.
+// It returns them as one large string. Note: unlike os.get_lines_joined,
+// empty lines (that contain only `\r\n` or `\n`), will be present in
+// the output.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_raw_lines_joined() string {
+	return get_raw_lines().join('')
+}
+
+// get_trimmed_lines reads *all* input lines from stdin, as an array of strings.
+// The ending new line characters \r and \n, are removed from each line.
+// Note: unlike os.get_lines, empty lines will be present in the output as empty strings ''.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_trimmed_lines() []string {
+	mut lines := []string{}
+	for {
+		mut line := get_raw_line()
+		if line.len <= 0 {
+			break
+		}
+		mut end := line.len
+		if end > 0 && line[end - 1] == `\n` {
+			end--
+		}
+		if end > 0 && line[end - 1] == `\r` {
+			end--
+		}
+		lines << line#[..end]
+	}
+	return lines
 }
 
 // user_os returns the current user's operating system name.
