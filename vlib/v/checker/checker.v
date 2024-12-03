@@ -3614,9 +3614,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('cannot cast `${ft}` ${kind_name} value to `${tt}`, use `${node.expr} as ${tt}` instead',
 			node.pos)
 	}
-	if from_sym.language == .v && from_type.is_ptr() && !to_type.is_ptr() && !to_type.is_int()
-		&& to_type != ast.voidptr_type && !node.expr.is_auto_deref_var()
-		&& final_to_sym.kind != .interface {
+	if from_sym.language == .v && from_type.is_ptr() && !to_type.is_ptr()
+		&& !node.expr.is_auto_deref_var() && final_to_sym.kind == .struct {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast `${ft}` to `${tt}`, you must dereference it first (e.g. ${tt}(*var))',
