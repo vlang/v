@@ -940,7 +940,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
@@ -1439,7 +1439,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
@@ -1483,7 +1483,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 		(sym.info as ast.ArrayFixed).elem_type
 	}
 	elem_type_str := g.styp(elem_type)
-	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'int', 'false')
+	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, 'int', '0')
 
 	mut expr := node.args[0].expr
 	var_name := g.get_array_expr_param_name(mut expr)
@@ -1529,7 +1529,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
@@ -1622,7 +1622,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 			}
 		}
 		ast.CallExpr {
-			if expr.name in ['map', 'filter', 'all', 'any'] {
+			if expr.name in ['map', 'filter', 'all', 'any', 'count'] {
 				is_embed_map_filter = true
 				g.set_current_pos_as_last_stmt_pos()
 			}
