@@ -1747,12 +1747,17 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 			g.write('}')
 		}
 	}
+	embed_field := if is_update_embed {
+		g.get_embed_field_name(field_type, field_name)
+	} else {
+		''
+	}
 	for i in 0 .. size {
 		if elem_sym.info is ast.ArrayFixed {
 			init_str := if g.inside_array_fixed_struct {
 				'${expr_str}'
 			} else {
-				'${expr_str}->${c_name(field_name)}[${i}]'
+				'${expr_str}->${embed_field}${c_name(field_name)}[${i}]'
 			}
 			g.fixed_array_update_expr_field(init_str, field_type, field_name, is_auto_deref,
 				elem_sym.info.elem_type, elem_sym.info.size, is_update_embed)
@@ -1765,26 +1770,11 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 					g.write('.')
 				}
 				if is_update_embed {
-					update_sym := g.table.sym(field_type)
-					_, embeds := g.table.find_field_from_embeds(update_sym, field_name) or {
-						ast.StructField{}, []ast.Type{}
-					}
-					for embed in embeds {
-						esym := g.table.sym(embed)
-						ename := esym.embed_name()
-						g.write(ename)
-						if embed.is_ptr() {
-							g.write('->')
-						} else {
-							g.write('.')
-						}
-					}
+					g.write(embed_field)
 				}
 				g.write(c_name(field_name))
 			}
-			if !expr_str.starts_with('(') && !expr_str.starts_with('{') {
-				g.write('[${i}]')
-			}
+			g.write('[${i}]')
 		}
 		if i != size - 1 {
 			g.write(', ')
