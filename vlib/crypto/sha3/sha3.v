@@ -39,24 +39,37 @@ const hash_pad = u8(0x06)
 // the low order pad bits for an extended output function
 const xof_pad = u8(0x1f)
 
+// the low order pad bits for a Keccak hash function
+const keccak_pad = u8(0x01)
+
 // new512 initializes the digest structure for a sha3 512 bit hash
 pub fn new512() !&Digest {
-	return new_digest(rate_512, size_512)!
+	return new_digest(rate_512, size_512, hash_pad)!
 }
 
 // new384 initializes the digest structure for a sha3 384 bit hash
 pub fn new384() !&Digest {
-	return new_digest(rate_384, size_384)!
+	return new_digest(rate_384, size_384, hash_pad)!
 }
 
 // new256 initializes the digest structure for a sha3 256 bit hash
 pub fn new256() !&Digest {
-	return new_digest(rate_256, size_256)!
+	return new_digest(rate_256, size_256, hash_pad)!
 }
 
 // new224 initializes the digest structure for a sha3 224 bit hash
 pub fn new224() !&Digest {
-	return new_digest(rate_224, size_224)!
+	return new_digest(rate_224, size_224, hash_pad)!
+}
+
+// new256keccak initializes the digest structure for a keccak 256 bit hash
+pub fn new256keccak() !&Digest {
+	return new_digest(rate_256, size_256, keccak_pad)!
+}
+
+// new512keccak initializes the digest structure for a keccak 512 bit hash
+pub fn new512keccak() !&Digest {
+	return new_digest(rate_512, size_512, keccak_pad)!
 }
 
 // new256_xof initializes the digest structure for a sha3 256 bit extended output function
@@ -108,7 +121,7 @@ fn (err XOFSizeError) msg() string {
 
 struct Digest {
 	rate       int // the number of bytes absorbed per permutation
-	suffix     u8  // the domain suffix, 0x06 for hash, 0x1f for extended output
+	suffix     u8  // the domain suffix, 0x06 for hash, 0x01 for keccak, 0x1f for extended output
 	output_len int // the number of bytes to output
 mut:
 	input_buffer []u8  // temporary holding buffer for input bytes
@@ -123,7 +136,9 @@ mut:
 //
 // hash_size - the number if bytes in the generated hash.
 //     Legal values are 224, 256, 384, and 512.
-pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
+//
+// suffix - the domain suffix. 0x06 for FIPS PUB 202 compliant SHA-3, 0x01 for Keccak, 0x1f for extended output.
+pub fn new_digest(absorption_rate int, hash_size int, suffix u8) !&Digest {
 	match hash_size {
 		size_224 {
 			if absorption_rate != rate_224 {
@@ -166,7 +181,7 @@ pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
 
 	d := Digest{
 		rate:       absorption_rate
-		suffix:     hash_pad
+		suffix:     suffix
 		output_len: hash_size
 		s:          State{}
 	}
@@ -341,6 +356,20 @@ pub fn sum256(data []u8) []u8 {
 // sum224 returns the sha3 224 bit checksum of the data.
 pub fn sum224(data []u8) []u8 {
 	mut d := new224() or { panic(err) }
+	d.write(data) or { panic(err) }
+	return d.checksum_internal() or { panic(err) }
+}
+
+// keccak256 returns the keccak 256 bit checksum of the data.
+pub fn keccak256(data []u8) []u8 {
+	mut d := new256keccak() or { panic(err) }
+	d.write(data) or { panic(err) }
+	return d.checksum_internal() or { panic(err) }
+}
+
+// keccak512 returns the keccak 512 bit checksum of the data.
+pub fn keccak512(data []u8) []u8 {
+	mut d := new512keccak() or { panic(err) }
 	d.write(data) or { panic(err) }
 	return d.checksum_internal() or { panic(err) }
 }
