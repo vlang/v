@@ -1155,6 +1155,9 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type, left
 		'any' {
 			g.gen_array_any(node)
 		}
+		'count' {
+			g.gen_array_count(node)
+		}
 		'all' {
 			g.gen_array_all(node)
 		}
@@ -1250,6 +1253,9 @@ fn (mut g Gen) gen_fixed_array_method_call(node ast.CallExpr, left_type ast.Type
 		}
 		'any' {
 			g.gen_array_any(node)
+		}
+		'count' {
+			g.gen_array_count(node)
 		}
 		'all' {
 			g.gen_array_all(node)
