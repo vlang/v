@@ -3118,7 +3118,7 @@ fn (mut c Checker) fn_call_error_have_want(p HaveWantParams) {
 	c.error('expected ${p.nr_params} ${args_plural}, but got ${p.nr_args}', p.pos)
 }
 
-fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
+fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
 	if node.args.len != 1 {
 		c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 		// Finish early so that it doesn't fail later
@@ -3513,7 +3513,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
 		// check fn
-		c.check_map_and_filter(true, elem_typ, node)
+		c.check_predicate_param(true, elem_typ, node)
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {
 			ast.FnType {
@@ -3542,12 +3542,12 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else if node.left.is_auto_deref_var() {
 			node.return_type = node.return_type.deref()
 		}
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 	} else if method_name in ['any', 'all'] {
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
 	} else if method_name == 'count' {
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.int_type
 	} else if method_name == 'clone' {
 		if node.args.len != 0 {
@@ -3718,7 +3718,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
 		c.expr(mut node.args[0].expr)
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
 	} else if method_name == 'count' {
 		if node.args.len != 1 {
@@ -3738,7 +3738,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
 		c.expr(mut node.args[0].expr)
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.int_type
 	} else if method_name == 'wait' {
 		elem_sym := c.table.sym(elem_typ)
@@ -3780,7 +3780,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
 
-		c.check_map_and_filter(true, elem_typ, node)
+		c.check_predicate_param(true, elem_typ, node)
 		arg_type := c.check_expr_option_or_result_call(node.args[0].expr, c.expr(mut node.args[0].expr))
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {

@@ -812,7 +812,7 @@ pub fn (a array) any(predicate fn (voidptr) bool) bool
 // takes an `it` expression.
 //
 // Example: array.count(it % 2 == 1) // will return how many elements are odd
-pub fn (a array) count(predicate fn (voidptr) bool) bool
+pub fn (a array) count(predicate fn (voidptr) bool) int
 
 // all tests whether all elements in the array pass the test.
 // Ignore the function signature. `all` does not take an actual callback. Rather, it
