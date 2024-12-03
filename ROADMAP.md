@@ -38,7 +38,8 @@ For a list of all features and fixes, check out the changelog.
 - [x] Parallel parser (not integrated yet)
 - [x] Parallel checker (not integrated yet)
 - [x] Parallel C compilation (not integrated yet)
-- [x] Improved vweb => veb framework. Separation of global and context (request local) fields. Performance and stability. Based on picoev.
+- [x] Improved vweb => veb framework. Separation of global and context (request local) fields.
+      Performance and stability. Based on picoev.
 - [x] -skip-unused on by default
 - [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
