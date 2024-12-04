@@ -133,13 +133,15 @@ pub:
 }
 
 // new_digest creates an initialized digest structure based on
-// the hash size and whether or not you specify a MAC key.
+// the hash size.
 //
 // absorption_rate is the number of bytes to be absorbed into the
 //     sponge per permutation.
 //
 // hash_size - the number if bytes in the generated hash.
 //     Legal values are 224, 256, 384, and 512.
+//
+// config - the padding setting for hash generation. .sha3 should be used for FIPS PUB 202 compliant SHA3-224, SHA3-256, SHA3-384 and SHA3-512. Use .keccak if you want a legacy Keccak-224, Keccak-256, Keccak-384 or Keccak-512 algorithm. .xof is for extended output functions.
 pub fn new_digest(absorption_rate int, hash_size int, config PaddingConfig) !&Digest {
 	match config.padding {
 		.sha3, .keccak { validate_sha3(absorption_rate, hash_size)! }
