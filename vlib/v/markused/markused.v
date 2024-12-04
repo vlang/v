@@ -531,8 +531,7 @@ fn all_fn_const_and_global(ast_files []&ast.File) (map[string]ast.FnDecl, map[st
 	mut all_consts := map[string]ast.ConstField{}
 	mut all_globals := map[string]ast.GlobalField{}
 	for i in 0 .. ast_files.len {
-		file := ast_files[i]
-		for node in file.stmts {
+		for node in ast_files[i].stmts {
 			match node {
 				ast.FnDecl {
 					fkey := node.fkey()
