@@ -14,7 +14,6 @@ show "Clone vtcc"
 du -s vtcc/
 ## TODO: just `./v vtcc`, later will cause V, to detect the compiler as tcc (which it is), and add `-fwrapv`, which causes the vtcc compiler to panic currently
 show "Compile vtcc"
-#./v -o vtcc/xx vtcc/
 cd vtcc/
 v run make.vsh
 cd ..
@@ -27,18 +26,14 @@ show "Generate the C file, for the current V version"
 ls -la vlang.c
 
 show "Compile the C file with vtcc"
-#export tcclib=thirdparty/tcc/lib/tcc
-#export tccinc=$tcclib/include
 ./vtcc/vtcc -o v_compiled_with_vtcc vlang.c -lpthread
 ls -la v_compiled_with_vtcc
 
 show "Test the resulting V compiler"
 ./v_compiled_with_vtcc version
-./v_compiled_with_vtcc -cc vtcc/vtcc -showcc run examples/hello_world.v
 
-## TODO: this step passes locally, but fails on the main CI:
-## show "Compile and run hello with vtcc"
-## ./v_compiled_with_vtcc -showcc -cc ./vtcc/xx run examples/hello_world.v
+show "Compile and run hello with vtcc"
+./v_compiled_with_vtcc -cc vtcc/vtcc -showcc run examples/hello_world.v
 
 show "Remove the generated temporary files, so the script can be re-run cleanly"
 rm -rf v_compiled_with_vtcc vlang.c vtcc/
