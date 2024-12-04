@@ -33,15 +33,6 @@ pub const xof_rate_128 = 168
 // xof_rate_256 is the capacity, in bytes, of a 256 bit extended output function sponge
 pub const xof_rate_256 = 136
 
-// the low order pad bits for a hash function
-const hash_pad = u8(0x06)
-
-// the low order pad bits for an extended output function
-const xof_pad = u8(0x1f)
-
-// the low order pad bits for a Keccak hash function
-const keccak_pad = u8(0x01)
-
 // new512 initializes the digest structure for a sha3 512 bit hash
 pub fn new512() !&Digest {
 	return new_digest(rate_512, size_512)!
@@ -64,22 +55,22 @@ pub fn new224() !&Digest {
 
 // new256keccak initializes the digest structure for a keccak 256 bit hash
 pub fn new256keccak() !&Digest {
-	return new_keccak_digest(rate_256, size_256)!
+	return new_digest(rate_256, size_256, padding: .keccak)!
 }
 
 // new512keccak initializes the digest structure for a keccak 512 bit hash
 pub fn new512keccak() !&Digest {
-	return new_keccak_digest(rate_512, size_512)!
+	return new_digest(rate_512, size_512, padding: .keccak)!
 }
 
 // new256_xof initializes the digest structure for a sha3 256 bit extended output function
 pub fn new256xof(output_len int) !&Digest {
-	return new_xof_digest(xof_rate_256, output_len)!
+	return new_digest(xof_rate_256, output_len, padding: .xof)!
 }
 
 // new128_xof initializes the digest structure for a sha3 128 bit extended output function
 pub fn new128xof(output_len int) !&Digest {
-	return new_xof_digest(xof_rate_128, output_len)!
+	return new_digest(xof_rate_128, output_len, padding: .xof)!
 }
 
 struct HashSizeError {
@@ -128,7 +119,20 @@ mut:
 	s            State // the state of a kaccak-p[1600, 24] sponge
 }
 
-// new_digest creates an initialized SHA3 digest structure based on
+// the low order pad bits for a hash function
+pub enum Padding as u8 {
+	keccak = 0x01
+	sha3   = 0x06
+	xof    = 0x1f
+}
+
+@[params]
+pub struct PaddingConfig {
+pub:
+	padding Padding = .sha3
+}
+
+// new_digest creates an initialized digest structure based on
 // the hash size and whether or not you specify a MAC key.
 //
 // absorption_rate is the number of bytes to be absorbed into the
@@ -136,39 +140,20 @@ mut:
 //
 // hash_size - the number if bytes in the generated hash.
 //     Legal values are 224, 256, 384, and 512.
-pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
-	validate_sha3(absorption_rate, hash_size)!
+pub fn new_digest(absorption_rate int, hash_size int, config PaddingConfig) !&Digest {
+	match config.padding {
+		.sha3, .keccak { validate_sha3(absorption_rate, hash_size)! }
+		.xof { validate_xof(absorption_rate, hash_size)! }
+	}
 
-	return new_digest_common(absorption_rate, hash_size, hash_pad)
-}
+	d := Digest{
+		rate:       absorption_rate
+		suffix:     u8(config.padding)
+		output_len: hash_size
+		s:          State{}
+	}
 
-// new_keccak_digest creates an initialized Keccak digest structure based on
-// the hash size and whether or not you specify a MAC key.
-//
-// absorption_rate is the number of bytes to be absorbed into the
-//     sponge per permutation.
-//
-// hash_size - the number if bytes in the generated hash.
-//     Legal values are 224, 256, 384, and 512.
-pub fn new_keccak_digest(absorption_rate int, hash_size int) !&Digest {
-	validate_sha3(absorption_rate, hash_size)!
-
-	return new_digest_common(absorption_rate, hash_size, keccak_pad)
-}
-
-// new_xof_digest creates an initialized digest structure based on
-// the absorption rate and how many bytes of output you need
-//
-// absorption_rate is the number of bytes to be absorbed into the
-//     sponge per permutation.  Legal values are xof_rate_128 and
-//     xof_rate_256.
-//
-// hash_size - the number if bytes in the generated hash.
-//     Legal values are positive integers.
-pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
-	validate_xof(absorption_rate, hash_size)!
-
-	return new_digest_common(absorption_rate, hash_size, xof_pad)
+	return &d
 }
 
 fn validate_sha3(absorption_rate int, hash_size int) ! {
@@ -228,17 +213,6 @@ fn validate_xof(absorption_rate int, hash_size int) ! {
 			}
 		}
 	}
-}
-
-fn new_digest_common(absorption_rate int, hash_size int, suffix u8) !&Digest {
-	d := Digest{
-		rate:       absorption_rate
-		suffix:     suffix
-		output_len: hash_size
-		s:          State{}
-	}
-
-	return &d
 }
 
 // write adds bytes to the sponge.
