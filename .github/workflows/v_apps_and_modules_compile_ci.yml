@@ -46,9 +46,9 @@ jobs:
             v retry brew install sassc libgit2
           fi
 
-      ##      - name: Test vtcc
-      ##        if: runner.os == 'Linux'
-      ##        run: .github/workflows/compile_v_with_vtcc.sh
+      - name: Test vtcc
+        if: runner.os == 'Linux'
+        run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
