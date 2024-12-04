@@ -33,7 +33,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		mut core_fns := [
 			'main.main',
 			'init_global_allocator', // needed for linux_bare and wasm_bare
-			'v_realloc', // needed for _STR
 			'memdup',
 			'tos',
 			'tos2',
