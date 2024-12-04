@@ -571,28 +571,29 @@ fn handle_vweb(mut table ast.Table, mut all_fn_root_names []string, result_name 
 	context_name string) {
 	// handle vweb magic router methods:
 	result_type_idx := table.find_type(result_name)
-	if result_type_idx != 0 {
-		all_fn_root_names << filter_name
-		typ_vweb_context := table.find_type(context_name).set_nr_muls(1)
-		mark_all_methods_used(mut table, mut all_fn_root_names, typ_vweb_context)
-		for vgt in table.used_features.used_veb_types {
-			sym_app := table.sym(vgt)
-			pvgt := int(vgt.set_nr_muls(1))
-			for m in sym_app.methods {
-				mut skip := true
-				if m.name == 'before_request' {
-					// TODO: handle expansion of method calls in generic functions in a more universal way
-					skip = false
-				}
-				if m.return_type == result_type_idx {
-					skip = false
-				}
-				if skip {
-					continue
-				}
-				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-				all_fn_root_names << '${pvgt}.${m.name}'
+	if result_type_idx == 0 {
+		return
+	}
+	all_fn_root_names << filter_name
+	typ_vweb_context := table.find_type(context_name).set_nr_muls(1)
+	mark_all_methods_used(mut table, mut all_fn_root_names, typ_vweb_context)
+	for vgt in table.used_features.used_veb_types {
+		sym_app := table.sym(vgt)
+		pvgt := '${int(vgt.set_nr_muls(1))}'
+		for m in sym_app.methods {
+			mut skip := true
+			if m.name == 'before_request' {
+				// TODO: handle expansion of method calls in generic functions in a more universal way
+				skip = false
 			}
+			if m.return_type == result_type_idx {
+				skip = false
+			}
+			if skip {
+				continue
+			}
+			// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+			all_fn_root_names << '${pvgt}.${m.name}'
 		}
 	}
 }
