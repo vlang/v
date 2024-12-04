@@ -103,7 +103,7 @@ fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 	mut buf := unsafe { malloc_noscan(len + 1) }
 	for i in 0 .. len {
 		unsafe {
-			buf[i] = charset[rng.u32() % charset.len]
+			buf[i] = charset[rng.u32() % u32(charset.len)]
 		}
 	}
 	unsafe {
@@ -120,7 +120,7 @@ fn internal_fill_buffer_from_set(mut rng PRNG, charset string, mut buf []u8) {
 	blen := buf.len
 	for i in 0 .. blen {
 		unsafe {
-			buf[i] = charset[rng.u32() % charset.len]
+			buf[i] = charset[rng.u32() % u32(charset.len)]
 		}
 	}
 }

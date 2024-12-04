@@ -945,7 +945,7 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 				if mut field.default_expr is ast.StructInit {
 					idx := c.table.find_type(field.default_expr.typ_str)
 					if idx != 0 {
-						info.fields[i].default_expr_typ = ast.new_type(idx)
+						info.fields[i].default_expr_typ = ast.new_type(int(idx))
 					}
 				} else if field.default_expr.is_nil() {
 					if field.typ.is_any_kind_of_pointer() {
