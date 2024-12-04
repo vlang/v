@@ -1,11 +1,7 @@
 mut numbers := [1,2,3,4,5]
-if 1 in numbers {
-println('yes')
-}
+if 1 in numbers { println('yes') }
 println('hi')
-for number in numbers {
-println(number)
-}
+for number in numbers { println(number) }
 println(numbers)
 ===output===
 yes
