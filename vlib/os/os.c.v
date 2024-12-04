@@ -692,7 +692,7 @@ pub fn executable() string {
 		mib := [C.CTL_KERN, C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]!
 		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
-				pbuf = unsafe { &&u8(malloc(bufsize)) }
+				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
 				defer {
 					unsafe { free(pbuf) }
 				}

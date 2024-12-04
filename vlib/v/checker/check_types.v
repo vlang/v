@@ -735,8 +735,16 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	} else if idx_lo >= ast.i8_type_idx
 		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
-	} else if idx_hi - idx_lo < (ast.u8_type_idx - ast.i8_type_idx) {
-		return type_lo // conversion unsigned -> signed if signed type is larger
+	} else if idx_hi == ast.u8_type_idx && idx_lo > ast.i8_type_idx {
+		return type_lo // conversion unsigned u8 -> signed if signed type is larger
+	} else if idx_hi == ast.u16_type_idx && idx_lo > ast.i16_type_idx {
+		return type_lo // conversion unsigned u16 -> signed if signed type is larger
+	} else if idx_hi == ast.u32_type_idx && idx_lo > ast.int_type_idx {
+		return type_lo // conversion unsigned u32 -> signed if signed type is larger
+	} else if idx_hi == ast.u64_type_idx && idx_lo >= ast.i64_type_idx {
+		return type_lo // conversion unsigned u64 -> signed if signed type is larger
+	} else if idx_hi == ast.usize_type_idx && idx_lo >= ast.isize_type_idx {
+		return type_lo // conversion unsigned usize -> signed if signed type is larger
 	} else if c.pref.translated {
 		return type_hi
 	} else {

@@ -469,7 +469,7 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 			}
 		}
 	}
-	return if enum_decl.is_flag { u64(1) << val } else { val }
+	return if enum_decl.is_flag { i64(u64(1) << u64(val)) } else { val }
 }
 
 pub fn (t &Table) get_enum_field_names(name string) []string {

@@ -383,7 +383,7 @@ pub fn (s string) replace(rep string, with string) string {
 	mut stack_idxs := [replace_stack_buffer_size]int{}
 	mut pidxs := unsafe { &stack_idxs[0] }
 	if pidxs_cap > replace_stack_buffer_size {
-		pidxs = unsafe { &int(malloc(sizeof(int) * pidxs_cap)) }
+		pidxs = unsafe { &int(malloc(int(sizeof(int)) * pidxs_cap)) }
 	}
 	defer {
 		if pidxs_cap > replace_stack_buffer_size {
@@ -1277,7 +1277,7 @@ fn (s string) index_kmp(p string) int {
 	mut stack_prefixes := [kmp_stack_buffer_size]int{}
 	mut p_prefixes := unsafe { &stack_prefixes[0] }
 	if p.len > kmp_stack_buffer_size {
-		p_prefixes = unsafe { &int(vcalloc(p.len * sizeof(int))) }
+		p_prefixes = unsafe { &int(vcalloc(p.len * int(sizeof(int)))) }
 	}
 	defer {
 		if p.len > kmp_stack_buffer_size {
