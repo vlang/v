@@ -3,6 +3,7 @@ import term
 import benchmark
 import v.util.vtest
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn bold(s string) string {

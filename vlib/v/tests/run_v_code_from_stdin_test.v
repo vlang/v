@@ -2,6 +2,8 @@ import os
 
 const vtmp_folder = os.join_path(os.vtmp_dir(), 'run_v_code_tests')
 const vexe = os.getenv('VEXE')
+
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_vexe_is_set() {

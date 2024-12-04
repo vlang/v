@@ -30,6 +30,7 @@ const skip_on_ci_musl = [
 
 const vexe = os.getenv('VEXE')
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const show_cmd = os.getenv('VTEST_SHOW_CMD') != ''

@@ -7,6 +7,7 @@ import term
 import v.util.diff
 import v.util.vtest
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const v_ci_ubuntu_musl = os.getenv('V_CI_UBUNTU_MUSL').len > 0
