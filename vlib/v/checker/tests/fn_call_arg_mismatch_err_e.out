@@ -1,7 +1,6 @@
-vlib/v/checker/tests/fn_call_arg_mismatch_err_d.vv:17:26: error: cannot use `fn (string) f64` as `fn (string) ?Flag` in argument 2 to `parse_option`
-   15 |
-   16 | fn main() {
-   17 |     t := parse_option('45', parse_percent)?
-      |                             ~~~~~~~~~~~~~
-   18 |     println(t)
-   19 | }
+vlib/v/checker/tests/fn_call_arg_mismatch_err_e.vv:8:4: error: cannot use `u32` as `int` in argument 1 to `f`
+    6 |     x := u32(2251797157)
+    7 |     println(x)
+    8 |     f(x)
+      |       ^
+    9 | }
