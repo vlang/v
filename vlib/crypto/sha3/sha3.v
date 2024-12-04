@@ -65,12 +65,12 @@ pub fn new512keccak() !&Digest {
 
 // new256_xof initializes the digest structure for a sha3 256 bit extended output function
 pub fn new256xof(output_len int) !&Digest {
-	return new_digest(xof_rate_256, output_len, padding: .xof)!
+	return new_xof_digest(xof_rate_256, output_len)!
 }
 
 // new128_xof initializes the digest structure for a sha3 128 bit extended output function
 pub fn new128xof(output_len int) !&Digest {
-	return new_digest(xof_rate_128, output_len, padding: .xof)!
+	return new_xof_digest(xof_rate_128, output_len)!
 }
 
 struct HashSizeError {
@@ -154,6 +154,19 @@ pub fn new_digest(absorption_rate int, hash_size int, config PaddingConfig) !&Di
 	}
 
 	return &d
+}
+
+// new_xof_digest creates an initialized digest structure based on
+// the absorption rate and how many bytes of output you need
+//
+// absorption_rate is the number of bytes to be absorbed into the
+//     sponge per permutation.  Legal values are xof_rate_128 and
+//     xof_rate_256.
+//
+// hash_size - the number if bytes in the generated hash.
+//     Legal values are positive integers.
+pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
+	return new_digest(absorption_rate, hash_size, padding: .xof)
 }
 
 fn validate_sha3(absorption_rate int, hash_size int) ! {
