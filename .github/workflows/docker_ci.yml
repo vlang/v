@@ -50,6 +50,8 @@ jobs:
         run: CC=gcc make
       - name: All code is formatted
         run: VJOBS=1 ./v test-cleancode
+      - name: Recompile V with -prod, to speed up the rest
+        run: ./v -prod self
       - name: Run only essential tests
         run: VTEST_JUST_ESSENTIAL=1 ./v test-self
 
@@ -75,5 +77,7 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
         run: ./v test-cleancode
+      - name: Recompile V with -prod, to speed up the rest
+        run: ./v -prod self
       - name: Test V fixed tests
         run: ./v test-self vlib

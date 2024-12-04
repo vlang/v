@@ -55,6 +55,8 @@ jobs:
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Recompile V with -prod, to speed up the rest
+        run: v -prod self
       - name: Test pure V math module
         run: v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -110,6 +112,8 @@ jobs:
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Recompile V with -prod, to speed up the rest
+        run: v -prod self
       - name: Test pure V math module
         run: v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -160,6 +164,8 @@ jobs:
         run: |
           v cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Recompile V with -prod, to speed up the rest
+        run: v -prod self
       - name: Verify `v vlib/v/gen/c/coutput_test.v` works
         run: v vlib/v/gen/c/coutput_test.v
       - name: Make sure running TCC64 instead of TCC32
@@ -200,7 +206,8 @@ jobs:
         #   run: |
         #     v cmd/tools/test_if_v_test_system_works.v
         #     .\cmd\tools\test_if_v_test_system_works.exe
-        #
+        # - name: Recompile V with -prod, to speed up the rest
+        #   run: v -prod self
         # - name: Verify `v vlib/v/gen/c/coutput_test.v` works
         #   run: |
         #     v vlib/v/gen/c/coutput_test.v

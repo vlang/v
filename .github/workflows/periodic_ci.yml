@@ -36,5 +36,7 @@ jobs:
       - name: Build V (Windows)
         if: runner.os == 'Windows'
         run: ./make.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+      - name: Recompile V with -prod, to speed up the rest
+        run: ./v -prod self
       - name: Test
         run: ./v -d network test-self vlib/net

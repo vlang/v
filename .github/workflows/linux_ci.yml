@@ -67,6 +67,8 @@ jobs:
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Recompile V with -prod, to speed up the rest
+        run: v -prod self
       - name: Test pure V math module
         run: v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -161,6 +163,8 @@ jobs:
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Recompile V with -prod, to speed up the rest
+        run: v -prod self
       - name: Test pure V math module
         run: v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -261,6 +265,8 @@ jobs:
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
 
+      - name: Recompile V with -prod, to speed up the rest
+        run: v -prod self
       - name: Test pure V math module
         run: v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
@@ -331,6 +337,8 @@ jobs:
   #   - uses: actions/checkout@v4
   #   - name: Install dependencies for examples and tools
   #     run: v retry -- sudo apt install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #   - name: Recompile V with -prod, to speed up the rest
+  #     run: v -prod self
   #   - name: Recompile V with -cg
   #     run: v -cg -o v cmd/v
   #   # - name: Test v binaries

@@ -17,6 +17,8 @@ ls -lat
 
 ./v test-cleancode
 
+./v -prod self
+
 ./v test-self
 
 ./v build-vbinaries

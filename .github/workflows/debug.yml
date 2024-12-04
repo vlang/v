@@ -28,6 +28,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
         run: ./v test-cleancode
+      - name: Recompile V with -prod, to speed up the rest
+        run: ./v -prod self
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
