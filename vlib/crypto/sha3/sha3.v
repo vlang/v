@@ -44,32 +44,32 @@ const keccak_pad = u8(0x01)
 
 // new512 initializes the digest structure for a sha3 512 bit hash
 pub fn new512() !&Digest {
-	return new_digest(rate_512, size_512, hash_pad)!
+	return new_digest(rate_512, size_512)!
 }
 
 // new384 initializes the digest structure for a sha3 384 bit hash
 pub fn new384() !&Digest {
-	return new_digest(rate_384, size_384, hash_pad)!
+	return new_digest(rate_384, size_384)!
 }
 
 // new256 initializes the digest structure for a sha3 256 bit hash
 pub fn new256() !&Digest {
-	return new_digest(rate_256, size_256, hash_pad)!
+	return new_digest(rate_256, size_256)!
 }
 
 // new224 initializes the digest structure for a sha3 224 bit hash
 pub fn new224() !&Digest {
-	return new_digest(rate_224, size_224, hash_pad)!
+	return new_digest(rate_224, size_224)!
 }
 
 // new256keccak initializes the digest structure for a keccak 256 bit hash
 pub fn new256keccak() !&Digest {
-	return new_digest(rate_256, size_256, keccak_pad)!
+	return new_keccak_digest(rate_256, size_256)!
 }
 
 // new512keccak initializes the digest structure for a keccak 512 bit hash
 pub fn new512keccak() !&Digest {
-	return new_digest(rate_512, size_512, keccak_pad)!
+	return new_keccak_digest(rate_512, size_512)!
 }
 
 // new256_xof initializes the digest structure for a sha3 256 bit extended output function
@@ -128,7 +128,7 @@ mut:
 	s            State // the state of a kaccak-p[1600, 24] sponge
 }
 
-// new_digest creates an initialized digest structure based on
+// new_digest creates an initialized SHA3 digest structure based on
 // the hash size and whether or not you specify a MAC key.
 //
 // absorption_rate is the number of bytes to be absorbed into the
@@ -136,9 +136,42 @@ mut:
 //
 // hash_size - the number if bytes in the generated hash.
 //     Legal values are 224, 256, 384, and 512.
+pub fn new_digest(absorption_rate int, hash_size int) !&Digest {
+	validate_sha3(absorption_rate, hash_size)!
+
+	return new_digest_common(absorption_rate, hash_size, hash_pad)
+}
+
+// new_keccak_digest creates an initialized Keccak digest structure based on
+// the hash size and whether or not you specify a MAC key.
 //
-// suffix - the domain suffix. 0x06 for FIPS PUB 202 compliant SHA-3, 0x01 for Keccak, 0x1f for extended output.
-pub fn new_digest(absorption_rate int, hash_size int, suffix u8) !&Digest {
+// absorption_rate is the number of bytes to be absorbed into the
+//     sponge per permutation.
+//
+// hash_size - the number if bytes in the generated hash.
+//     Legal values are 224, 256, 384, and 512.
+pub fn new_keccak_digest(absorption_rate int, hash_size int) !&Digest {
+	validate_sha3(absorption_rate, hash_size)!
+
+	return new_digest_common(absorption_rate, hash_size, keccak_pad)
+}
+
+// new_xof_digest creates an initialized digest structure based on
+// the absorption rate and how many bytes of output you need
+//
+// absorption_rate is the number of bytes to be absorbed into the
+//     sponge per permutation.  Legal values are xof_rate_128 and
+//     xof_rate_256.
+//
+// hash_size - the number if bytes in the generated hash.
+//     Legal values are positive integers.
+pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
+	validate_xof(absorption_rate, hash_size)!
+
+	return new_digest_common(absorption_rate, hash_size, xof_pad)
+}
+
+fn validate_sha3(absorption_rate int, hash_size int) ! {
 	match hash_size {
 		size_224 {
 			if absorption_rate != rate_224 {
@@ -178,27 +211,9 @@ pub fn new_digest(absorption_rate int, hash_size int, suffix u8) !&Digest {
 			}
 		}
 	}
-
-	d := Digest{
-		rate:       absorption_rate
-		suffix:     suffix
-		output_len: hash_size
-		s:          State{}
-	}
-
-	return &d
 }
 
-// new_xof_digest creates an initialized digest structure based on
-// the absorption rate and how many bytes of output you need
-//
-// absorption_rate is the number of bytes to be absorbed into the
-//     sponge per permutation.  Legal values are xof_rate_128 and
-//     xof_rate_256.
-//
-// hash_size - the number if bytes in the generated hash.
-//     Legal values are positive integers.
-pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
+fn validate_xof(absorption_rate int, hash_size int) ! {
 	match absorption_rate {
 		xof_rate_128, xof_rate_256 {
 			if hash_size < 1 {
@@ -213,10 +228,12 @@ pub fn new_xof_digest(absorption_rate int, hash_size int) !&Digest {
 			}
 		}
 	}
+}
 
+fn new_digest_common(absorption_rate int, hash_size int, suffix u8) !&Digest {
 	d := Digest{
 		rate:       absorption_rate
-		suffix:     xof_pad
+		suffix:     suffix
 		output_len: hash_size
 		s:          State{}
 	}
