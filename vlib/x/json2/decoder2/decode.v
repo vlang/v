@@ -4,27 +4,41 @@ import strconv
 import time
 
 // Node represents a node in a linked list to store ValueInfo.
-struct Node {
-	value ValueInfo
+struct Node[T] {
 mut:
-	next &Node = unsafe { nil } // next is the next node in the linked list.
+	value T
+	next  &Node[T] = unsafe { nil } // next is the next node in the linked list.
 }
 
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
 struct ValueInfo {
-	position   int       // The position of the value in the JSON string.
+	position int // The position of the value in the JSON string.
+pub:
 	value_kind ValueKind // The kind of the value.
 mut:
 	length int // The length of the value in the JSON string.
+}
+
+struct StructFieldInfo {
+	field_name_str    voidptr
+	field_name_length int
+	json_name_ptr     voidptr
+	json_name_length  int
+	is_omitempty      bool
+	is_skip           bool
+	is_required       bool
+	is_raw            bool
+mut:
+	decoded_with_value_info_node &Node[ValueInfo] = unsafe { nil }
 }
 
 // Decoder represents a JSON decoder.
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	values_info  LinkedList // A linked list to store ValueInfo.
-	checker_idx  int        // checker_idx is the current index of the decoder.
-	current_node &Node = unsafe { nil } // The current node in the linked list.
+	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
+	checker_idx  int                   // checker_idx is the current index of the decoder.
+	current_node &Node[ValueInfo] = unsafe { nil } // The current node in the linked list.
 }
 
 // new_decoder creates a new JSON decoder.
@@ -42,16 +56,16 @@ pub fn new_decoder[T](json string) !Decoder {
 }
 
 // LinkedList represents a linked list to store ValueInfo.
-struct LinkedList {
+struct LinkedList[T] {
 mut:
-	head &Node = unsafe { nil } // head is the first node in the linked list.
-	tail &Node = unsafe { nil } // tail is the last node in the linked list.
+	head &Node[T] = unsafe { nil } // head is the first node in the linked list.
+	tail &Node[T] = unsafe { nil } // tail is the last node in the linked list.
 	len  int // len is the length of the linked list.
 }
 
 // push adds a new element to the linked list.
-fn (mut list LinkedList) push(value ValueInfo) {
-	new_node := &Node{
+fn (mut list LinkedList[T]) push(value T) {
+	new_node := &Node[T]{
 		value: value
 	}
 	if list.head == unsafe { nil } {
@@ -65,12 +79,12 @@ fn (mut list LinkedList) push(value ValueInfo) {
 }
 
 // last returns the last element added to the linked list.
-fn (list LinkedList) last() &ValueInfo {
+fn (list LinkedList[T]) last() &T {
 	return &list.tail.value
 }
 
 // str returns a string representation of the linked list.
-fn (list LinkedList) str() string {
+fn (list LinkedList[ValueInfo]) str() string {
 	mut result_buffer := []u8{}
 	mut current := list.head
 	for current != unsafe { nil } {
@@ -83,8 +97,21 @@ fn (list LinkedList) str() string {
 	return result_buffer.bytestr()
 }
 
+fn (list LinkedList[T]) str() string {
+	mut result_buffer := []u8{}
+	mut current := list.head
+	for current != unsafe { nil } {
+		value_as_string := current.value.str()
+		unsafe { result_buffer.push_many(value_as_string.str, value_as_string.len) }
+		result_buffer << u8(` `)
+
+		current = current.next
+	}
+	return result_buffer.bytestr()
+}
+
 @[unsafe]
-fn (list &LinkedList) free() {
+fn (list &LinkedList[T]) free() {
 	mut current := list.head
 	for current != unsafe { nil } {
 		mut next := current.next
@@ -532,6 +559,7 @@ pub fn decode[T](val string) !T {
 }
 
 // decode_value decodes a value from the JSON nodes.
+@[direct_array_access]
 pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
 		mut unwrapped_val := create_value_from_optional(val.$(field.name))
@@ -613,6 +641,36 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
+		// struct field info linked list
+		mut struct_fields_info := LinkedList[StructFieldInfo]{}
+
+		$for field in T.fields {
+			mut json_name_str := field.name.str
+			mut json_name_length := field.name.len
+
+			for attr in field.attrs {
+				if attr.starts_with('json:') {
+					if attr.len <= 6 {
+						return error('`json` attribute must have an argument')
+					}
+					json_name_str = unsafe { attr.str + 6 }
+					json_name_length = attr.len - 6
+					break
+				}
+				continue
+			}
+
+			struct_fields_info.push(StructFieldInfo{
+				field_name_str:    voidptr(field.name.str)
+				field_name_length: field.name.len
+				json_name_ptr:     voidptr(json_name_str)
+				json_name_length:  json_name_length
+				is_omitempty:      field.attrs.contains('omitempty')
+				is_skip:           field.attrs.contains('skip') || field.attrs.contains('json: -')
+				is_required:       field.attrs.contains('required')
+				is_raw:            field.attrs.contains('raw')
+			})
+		}
 		if struct_info.value_kind == .object {
 			struct_position := struct_info.position
 			struct_end := struct_position + struct_info.length
@@ -629,93 +687,114 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					break
 				}
 
-				decoder.current_node = decoder.current_node.next
+				mut current_field_info := struct_fields_info.head
 
-				$for field in T.fields {
-					mut field_match_current_key_in_node := false
-					mut is_raw := false
-					mut skip_field := false
-					if field.attrs.len != 0 {
-						for attr in field.attrs {
-							handler := skip_field_attribute_handlers[attr]
+				// field loop
+				for {
+					if current_field_info == unsafe { nil } {
+						decoder.current_node = decoder.current_node.next
+						break
+					}
 
-							if handler != unsafe { nil } && handler(mut decoder) {
-								skip_field = true
-								// breake attribute loop
-								break
+					if current_field_info.value.is_skip {
+						current_field_info = current_field_info.next
+						continue
+					}
+
+					if current_field_info.value.is_omitempty {
+						match decoder.current_node.next.value.value_kind {
+							.null {
+								current_field_info = current_field_info.next
+								continue
 							}
-
-							if attr.starts_with('json:') {
-								if attr.len <= 6 {
-									return error('`json` attribute must have an argument')
+							.string_ {
+								if decoder.current_node.next.value.length == 2 {
+									current_field_info = current_field_info.next
+									continue
 								}
+							}
+							.number {
+								if decoder.current_node.next.value.length == 1 {
+									if unsafe {
+										vmemcmp(decoder.json.str +
+											decoder.current_node.next.value.position,
+											'0'.str, 1) == 0
+									} {
+										current_field_info = current_field_info.next
+										continue
+									}
+								} else if decoder.current_node.next.value.length == 3 {
+									if unsafe {
+										vmemcmp(decoder.json.str +
+											decoder.current_node.next.value.position,
+											'0.0'.str, 3) == 0
+									} {
+										current_field_info = current_field_info.next
+										continue
+									}
+								}
+							}
+							else {}
+						}
+					}
 
-								// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
-								if field_match_current_key_in_node == false {
-									if key_info.length - 2 == attr.len - 6 {
-										field_match_current_key_in_node = unsafe {
-											vmemcmp(decoder.json.str + key_info.position + 1,
-												attr.str + 6, attr.len - 6) == 0
+					// check if the key matches the field name
+					if key_info.length - 2 == current_field_info.value.json_name_length {
+						if unsafe {
+							vmemcmp(decoder.json.str + key_info.position + 1, current_field_info.value.json_name_ptr,
+								current_field_info.value.json_name_length) == 0
+						} {
+							$for field in T.fields {
+								if field.name.len == current_field_info.value.field_name_length {
+									if unsafe {
+										(&u8(current_field_info.value.field_name_str)).vstring_with_len(field.name.len) == field.name
+									} {
+										// value node
+										decoder.current_node = decoder.current_node.next
+
+										if current_field_info.value.is_raw {
+											$if field.typ is $enum {
+												// workaround to avoid the error: enums can only be assigned `int` values
+												return error('`raw` attribute cannot be used with enum fields')
+											} $else $if field.typ is string || field.typ is ?string {
+												position := decoder.current_node.value.position
+												end := position + decoder.current_node.value.length
+
+												val.$(field.name) = decoder.json[position..end]
+												decoder.current_node = decoder.current_node.next
+
+												for {
+													if decoder.current_node == unsafe { nil }
+														|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
+														break
+													}
+
+													decoder.current_node = decoder.current_node.next
+												}
+											} $else {
+												return error('`raw` attribute can only be used with string fields')
+											}
+										} else {
+											$if field.typ is $option {
+												mut unwrapped_val := create_value_from_optional(val.$(field.name))
+												decoder.decode_value(mut unwrapped_val)!
+												val.$(field.name) = unwrapped_val
+											} $else {
+												decoder.decode_value(mut val.$(field.name))!
+											}
 										}
-									}
-
-									if field_match_current_key_in_node {
+										current_field_info.value.decoded_with_value_info_node = decoder.current_node
 										break
 									}
 								}
 							}
-
-							if attr == 'raw' {
-								is_raw = true
-							}
 						}
 					}
+					current_field_info = current_field_info.next
+				}
 
-					if field_match_current_key_in_node == false
-						&& key_info.length - 2 == field.name.len {
-						field_match_current_key_in_node = unsafe {
-							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
-								field.name.len) == 0
-						}
-					}
-
-					if field_match_current_key_in_node == false {
-						skip_field = true
-					}
-
-					if skip_field == false {
-						if is_raw {
-							$if field.typ is $enum {
-								// workaround to avoid the error: enums can only be assigned `int` values
-								return error('`raw` attribute cannot be used with enum fields')
-							} $else $if field.typ is string || field.typ is ?string {
-								position := decoder.current_node.value.position
-								end := position + decoder.current_node.value.length
-
-								val.$(field.name) = decoder.json[position..end]
-								decoder.current_node = decoder.current_node.next
-
-								for {
-									if decoder.current_node == unsafe { nil }
-										|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-										break
-									}
-
-									decoder.current_node = decoder.current_node.next
-								}
-							} $else {
-								return error('`raw` attribute can only be used with string fields')
-							}
-						} else {
-							$if field.typ is $option {
-								mut unwrapped_val := create_value_from_optional(val.$(field.name))
-								decoder.decode_value(mut unwrapped_val)!
-								val.$(field.name) = unwrapped_val
-							} $else {
-								decoder.decode_value(mut val.$(field.name))!
-							}
-						}
-					}
+				if decoder.current_node == unsafe { nil } {
+					break
 				}
 			}
 		}
