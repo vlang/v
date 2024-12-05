@@ -42,7 +42,13 @@ pub fn (mut rng PRNG) read(mut buf []u8) {
 	read_internal(mut rng, mut buf)
 }
 
-// u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
+// i32n returns a uniformly distributed pseudorandom 32-bit signed positive `i32` in range `[0, max)`.
+@[inline]
+pub fn (mut rng PRNG) i32n(max i32) !i32 {
+	return i32(rng.intn(max)!)
+}
+
+// u32n returns a uniformly distributed pseudorandom 32-bit unsigned positive `u32` in range `[0, max)`.
 @[inline]
 pub fn (mut rng PRNG) u32n(max u32) !u32 {
 	if max == 0 {
@@ -138,6 +144,12 @@ pub fn (mut rng PRNG) i16() i16 {
 	return i16(rng.u16())
 }
 
+// i32 returns a (possibly negative) pseudorandom 32-bit `i32`.
+@[inline]
+pub fn (mut rng PRNG) i32() i32 {
+	return i32(rng.u32())
+}
+
 // int returns a (possibly negative) pseudorandom 32-bit `int`.
 @[inline]
 pub fn (mut rng PRNG) int() int {
@@ -188,6 +200,16 @@ pub fn (mut rng PRNG) int_in_range(min int, max int) !int {
 	}
 	// This supports negative ranges like [-10, -5) because the difference is positive
 	return min + rng.intn(max - min)!
+}
+
+// int_in_range returns a pseudorandom `int` in range `[min, max)`.
+@[inline]
+pub fn (mut rng PRNG) i32_in_range(min i32, max i32) !i32 {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	// This supports negative ranges like [-10, -5) because the difference is positive
+	return min + i32(rng.intn(max - min)!)
 }
 
 // i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
@@ -564,9 +586,19 @@ pub fn i16() i16 {
 	return default_rng.i16()
 }
 
+// i32 returns a uniformly distributed pseudorandom 32-bit signed (possibly negative) `i32`.
+pub fn i32() i32 {
+	return default_rng.i32()
+}
+
 // int returns a uniformly distributed pseudorandom 32-bit signed (possibly negative) `int`.
 pub fn int() int {
 	return default_rng.int()
+}
+
+// i32n returns a uniformly distributed pseudorandom 32-bit signed positive `i32` in range `[0, max)`.
+pub fn i32n(max i32) !i32 {
+	return default_rng.i32n(max)
 }
 
 // intn returns a uniformly distributed pseudorandom 32-bit signed positive `int` in range `[0, max)`.
@@ -578,6 +610,12 @@ pub fn intn(max int) !int {
 // Both `min` and `max` can be negative, but we must have `min < max`.
 pub fn int_in_range(min int, max int) !int {
 	return default_rng.int_in_range(min, max)
+}
+
+// int_in_range returns a uniformly distributed pseudorandom  32-bit signed int in range `[min, max)`.
+// Both `min` and `max` can be negative, but we must have `min < max`.
+pub fn i32_in_range(min i32, max i32) !i32 {
+	return default_rng.i32_in_range(min, max)
 }
 
 // int31 returns a uniformly distributed pseudorandom 31-bit signed positive `int`.

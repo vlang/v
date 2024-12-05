@@ -2451,7 +2451,7 @@ struct SumtypeCastingFn {
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	mut got, exp := got_.idx_type(), exp_.idx_type()
-	i := got | int(u32(exp) << 17) | int(u32(exp_.has_flag(.option)) << 16)
+	i := int(got) | int(u32(exp) << 17) | int(u32(exp_.has_flag(.option)) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
 	cname := if exp == ast.int_type_idx {
@@ -5235,8 +5235,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else {
 			g.expr_with_cast(node.expr, expr_type, node_typ)
 		}
-	} else if !node.typ.has_flag(.option) && sym.kind == .struct && !node.typ.is_ptr()
-		&& !(sym.info as ast.Struct).is_typedef {
+	} else if !node.typ.has_flag(.option) && !node.typ.is_ptr() && sym.info is ast.Struct
+		&& !sym.info.is_typedef {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.styp(node.typ)
 		g.write('*((${styp} *)(&')
@@ -5266,8 +5266,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		mut cast_label := ''
 		// `ast.string_type` is done for MSVC's bug
 		if sym.kind != .alias
-			|| (!(sym.info as ast.Alias).parent_type.has_flag(.option)
-			&& (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type]) {
+			|| (sym.info is ast.Alias && !sym.info.parent_type.has_flag(.option)
+			&& sym.info.parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node.typ.is_ptr() {
 				cast_label = '*(string*)&'
 			} else if !(g.is_cc_msvc && g.styp(node.typ) == g.styp(expr_type)) {
@@ -5277,11 +5277,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
 		} else if node.typ.has_flag(.option) {
-			if sym.kind == .alias {
-				if (sym.info as ast.Alias).parent_type.has_flag(.option) {
+			if sym.info is ast.Alias {
+				if sym.info.parent_type.has_flag(.option) {
 					cur_stmt := g.go_before_last_stmt()
 					g.empty_line = true
-					parent_type := (sym.info as ast.Alias).parent_type
+					parent_type := sym.info.parent_type
 					tmp_var := g.new_tmp_var()
 					tmp_var2 := g.new_tmp_var()
 					g.writeln2('${styp} ${tmp_var};', '${g.styp(parent_type)} ${tmp_var2};')
@@ -5298,10 +5298,16 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			} else {
 				g.expr_with_opt(node.expr, expr_type, node.typ)
 			}
-		} else if sym.kind == .alias && (sym.info as ast.Alias).parent_type.has_flag(.option) {
-			g.expr_with_opt(node.expr, expr_type, (sym.info as ast.Alias).parent_type)
+		} else if sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
+			g.expr_with_opt(node.expr, expr_type, sym.info.parent_type)
 		} else {
 			g.write('(${cast_label}(')
+			if node.expr is ast.Ident {
+				if !node.typ.is_ptr() && node.expr_type.is_ptr() && node.expr.obj is ast.Var
+					&& node.expr.obj.smartcasts.len > 0 {
+					g.write('*'.repeat(node.expr_type.nr_muls()))
+				}
+			}
 			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
 				ptr_cnt := node.typ.nr_muls() - expr_type.nr_muls()
 				if ptr_cnt > 0 {

@@ -30,6 +30,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	mut is_count := false
 	if is_insert {
 		inserted_var = p.check_name()
+		p.scope.mark_var_as_used(inserted_var)
 		into := p.check_name()
 		if into != 'into' {
 			p.error('expecting `into`')
