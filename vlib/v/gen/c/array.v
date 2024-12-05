@@ -100,21 +100,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		g.write('{')
 		if node.has_val {
-			for i in 0 .. node.exprs.len {
-				g.write('0')
-				if i != node.exprs.len - 1 {
-					g.write(', ')
-				}
-				g.prevent_long_lines(i)
-			}
+			g.write_n_equal_elements_for_array(node.exprs.len, '0')
 		} else if node.has_init {
-			for i in 0 .. array_info.size {
-				g.write('0')
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-				g.prevent_long_lines(i)
-			}
+			g.write_n_equal_elements_for_array(array_info.size, '0')
 		} else {
 			g.write('0')
 		}
@@ -152,6 +140,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		defer {
 			g.inside_array_item = tmp_inside_array
 		}
+		g.writeln('/******************************** LINE: ${@LINE} *******************************/')
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
 				elem_info := elem_sym.array_fixed_info()
@@ -174,68 +163,61 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			g.prevent_long_lines(i)
 		}
 	} else if node.has_init {
+		g.writeln('/******************************** LINE: ${@LINE} *******************************/')
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		for i in 0 .. info.size {
-			g.expr_with_init(node)
-			if i != info.size - 1 {
-				g.write(', ')
-			}
-			g.prevent_long_lines(i)
-		}
+		before_expr_pos := g.out.len
+		g.expr_with_init(node)
+		sexpr := g.out.cut_to(before_expr_pos)
+		g.write_n_equal_elements_for_array(info.size, sexpr)
 	} else if is_amp {
 		g.write('0')
 	} else {
 		if elem_sym.kind == .map {
 			// fixed array for map -- [N]map[key_type]value_type
 			map_info := elem_sym.map_info()
-			for i in 0 .. array_info.size {
-				g.expr(ast.MapInit{
-					key_type:   map_info.key_type
-					value_type: map_info.value_type
-				})
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-				g.prevent_long_lines(i)
-			}
+			before_map_expr_pos := g.out.len
+			g.expr(ast.MapInit{
+				key_type:   map_info.key_type
+				value_type: map_info.value_type
+			})
+			smap_expr := g.out.cut_to(before_map_expr_pos)
+			g.write_n_equal_elements_for_array(array_info.size, smap_expr)
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			arr_info := elem_sym.array_fixed_info()
-			for i in 0 .. array_info.size {
-				g.expr(ast.ArrayInit{
-					exprs:     [ast.IntegerLiteral{}]
-					typ:       node.elem_type
-					elem_type: arr_info.elem_type
-				})
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-				g.prevent_long_lines(i)
-			}
+			before_arr_expr_pos := g.out.len
+			g.expr(ast.ArrayInit{
+				exprs:     [ast.IntegerLiteral{}]
+				typ:       node.elem_type
+				elem_type: arr_info.elem_type
+			})
+			sarr_expr := g.out.cut_to(before_arr_expr_pos)
+			g.write_n_equal_elements_for_array(array_info.size, sarr_expr)
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
 			chan_info := elem_sym.chan_info()
-			for i in 0 .. array_info.size {
-				g.expr(ast.ChanInit{
-					typ:       node.elem_type
-					elem_type: chan_info.elem_type
-				})
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-				g.prevent_long_lines(i)
-			}
+			g.writeln('/******************************** LINE: ${@LINE} *******************************/')
+			before_chan_expr_pos := g.out.len
+			g.expr(ast.ChanInit{
+				typ:       node.elem_type
+				elem_type: chan_info.elem_type
+			})
+			schan_expr := g.out.cut_to(before_chan_expr_pos)
+			g.write_n_equal_elements_for_array(array_info.size, schan_expr)
 		} else {
-			for i in 0 .. array_info.size {
+			if g.can_use_c99_init()
+				&& node.elem_type in [ast.int_type, ast.i8_type, ast.i16_type, ast.i32_type, ast.i64_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type] {
+				g.write('0')
+			} else {
+				sgt := g.type_default(node.elem_type)
+				before_expr_pos := g.out.len
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
 				} else {
-					g.write(g.type_default(node.elem_type))
+					g.write(sgt)
 				}
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-				g.prevent_long_lines(i)
+				sexpr := g.out.cut_to(before_expr_pos)
+				g.write_n_equal_elements_for_array(array_info.size, sexpr)
 			}
 		}
 	}
@@ -1760,6 +1742,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 	} else {
 		''
 	}
+	g.writeln('/******************************** LINE: ${@LINE} *******************************/')
 	for i in 0 .. size {
 		if elem_sym.info is ast.ArrayFixed {
 			init_str := if g.inside_array_fixed_struct {
@@ -1799,6 +1782,7 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 			g.write('}')
 		}
 	}
+	g.writeln('/******************************** LINE: ${@LINE} *******************************/')
 	for i in 0 .. size {
 		if elem_sym.info is ast.ArrayFixed {
 			init_str := if g.inside_array_fixed_struct { '${expr_str}' } else { '${expr_str}[${i}]' }
@@ -1834,7 +1818,26 @@ fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 fn (mut g Gen) prevent_long_lines(i int) {
 	// ensure there is a new line at least once per 16 array elements,
 	// to prevent too long lines to cause problems with gcc < gcc-11
-	if i & 0x0F == 0x0F {
+	if i & 0x1F == 0x1F {
 		g.writeln('')
+	}
+}
+
+@[inline]
+fn (mut g Gen) can_use_c99_init() bool {
+	return !g.is_cc_msvc && !g.pref.output_cross_c
+}
+
+fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
+	if g.can_use_c99_init() {
+		g.write(value)
+		return
+	}
+	for i in 0 .. len {
+		g.write(value)
+		if i != len - 1 {
+			g.write(', ')
+		}
+		g.prevent_long_lines(i)
 	}
 }
