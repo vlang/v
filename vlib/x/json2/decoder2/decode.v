@@ -139,9 +139,7 @@ fn check_if_json_match[T](val string) ! {
 			return error('Expected boolean, but got ${value_kind}')
 		}
 	} $else {
-		if T.indirections == 0 {
-			return error('cannot decode value with ${value_kind} type')
-		}
+		return error('cannot decode value with ${value_kind} type')
 	}
 }
 
