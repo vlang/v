@@ -97,7 +97,12 @@ pub fn (mut w Walker) mark_markused_fns() {
 		// @[markused]
 		if func.is_exported || func.is_markused {
 			$if trace_skip_unused_exported_fns ? {
-				println('>>>> walking exported func: ${func.name} ...')
+				if func.is_exported {
+					println('>>>> walking exported func: ${func.name} ...')
+				}
+				if func.is_markused {
+					println('>>>> walking markused func: ${func.name} ...')
+				}
 			}
 			w.fn_decl(mut func)
 			continue
