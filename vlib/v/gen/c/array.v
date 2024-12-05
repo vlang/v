@@ -105,6 +105,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				if i != node.exprs.len - 1 {
 					g.write(', ')
 				}
+				g.prevent_long_lines(i)
 			}
 		} else if node.has_init {
 			for i in 0 .. array_info.size {
@@ -112,6 +113,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				if i != array_info.size - 1 {
 					g.write(', ')
 				}
+				g.prevent_long_lines(i)
 			}
 		} else {
 			g.write('0')
@@ -169,6 +171,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			if i != node.exprs.len - 1 {
 				g.write(', ')
 			}
+			g.prevent_long_lines(i)
 		}
 	} else if node.has_init {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
@@ -177,6 +180,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			if i != info.size - 1 {
 				g.write(', ')
 			}
+			g.prevent_long_lines(i)
 		}
 	} else if is_amp {
 		g.write('0')
@@ -192,6 +196,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				if i != array_info.size - 1 {
 					g.write(', ')
 				}
+				g.prevent_long_lines(i)
 			}
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
@@ -205,6 +210,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				if i != array_info.size - 1 {
 					g.write(', ')
 				}
+				g.prevent_long_lines(i)
 			}
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
@@ -217,6 +223,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				if i != array_info.size - 1 {
 					g.write(', ')
 				}
+				g.prevent_long_lines(i)
 			}
 		} else {
 			for i in 0 .. array_info.size {
@@ -228,6 +235,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				if i != array_info.size - 1 {
 					g.write(', ')
 				}
+				g.prevent_long_lines(i)
 			}
 		}
 	}
@@ -1779,6 +1787,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 		if i != size - 1 {
 			g.write(', ')
 		}
+		g.prevent_long_lines(i)
 	}
 }
 
@@ -1809,6 +1818,7 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 		if i != size - 1 {
 			g.write(', ')
 		}
+		g.prevent_long_lines(i)
 	}
 }
 
@@ -1817,5 +1827,14 @@ fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 		expr.params[0].name
 	} else {
 		'it'
+	}
+}
+
+@[inline]
+fn (mut g Gen) prevent_long_lines(i int) {
+	// ensure there is a new line at least once per 16 array elements,
+	// to prevent too long lines to cause problems with gcc < gcc-11
+	if i & 0x0F == 0x0F {
+		g.writeln('')
 	}
 }
