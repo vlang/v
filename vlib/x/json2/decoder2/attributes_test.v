@@ -31,6 +31,13 @@ struct StruWithRawAttribute {
 	b      int
 }
 
+struct StruWithRequiredAttribute {
+	a                 int
+	name              string  @[required]
+	skip_and_required ?string @[required; skip]
+	b                 int
+}
+
 fn test_skip_and_rename_attributes() {
 	assert json.decode[StruWithJsonAttribute]('{"name": "hola1", "a": 2, "b": 3}')! == StruWithJsonAttribute{
 		a:     2
@@ -70,4 +77,23 @@ fn test_raw_attribute() {
 		object: '{"c": 4, "d": 5}'
 		b:      3
 	}, '`raw` attribute not working'
+}
+
+fn test_required_attribute() {
+	assert json.decode[StruWithRequiredAttribute]('{"name": "hola", "a": 2, "skip_and_required": "hola", "b": 3}')! == StruWithRequiredAttribute{
+		a:                 2
+		name:              'hola'
+		skip_and_required: none
+		b:                 3
+	}, '`required` attribute not working'
+
+	mut has_error := false
+
+	json.decode[StruWithRequiredAttribute]('{"name": "hola", "a": 2, "b": 3}') or {
+		has_error = true
+		assert err.msg() == 'missing required field `skip_and_required`'
+	}
+
+	assert has_error, '`required` attribute not working. It should have failed'
+	has_error = false
 }

@@ -676,6 +676,10 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			struct_end := struct_position + struct_info.length
 
 			decoder.current_node = decoder.current_node.next
+
+			mut current_field_info := struct_fields_info.head
+
+			// json object loop
 			for {
 				if decoder.current_node == unsafe { nil } {
 					break
@@ -687,7 +691,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					break
 				}
 
-				mut current_field_info := struct_fields_info.head
+				current_field_info = struct_fields_info.head
 
 				// field loop
 				for {
@@ -697,8 +701,10 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					}
 
 					if current_field_info.value.is_skip {
-						current_field_info = current_field_info.next
-						continue
+						if current_field_info.value.is_required == false {
+							current_field_info = current_field_info.next
+							continue
+						}
 					}
 
 					if current_field_info.value.is_omitempty {
@@ -752,6 +758,14 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										// value node
 										decoder.current_node = decoder.current_node.next
 
+										if current_field_info.value.is_skip {
+											if current_field_info.value.is_required == false {
+												panic('This should not happen. `skip` field should not be processed here without be a `required` field')
+											}
+											current_field_info.value.decoded_with_value_info_node = decoder.current_node
+											break
+										}
+
 										if current_field_info.value.is_raw {
 											$if field.typ is $enum {
 												// workaround to avoid the error: enums can only be assigned `int` values
@@ -792,10 +806,26 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					}
 					current_field_info = current_field_info.next
 				}
+			}
 
-				if decoder.current_node == unsafe { nil } {
+			// check if all required fields are present
+			current_field_info = struct_fields_info.head
+
+			for {
+				if current_field_info == unsafe { nil } {
 					break
 				}
+
+				if current_field_info.value.is_required == false {
+					current_field_info = current_field_info.next
+					continue
+				}
+				if current_field_info.value.decoded_with_value_info_node == unsafe { nil } {
+					return error('missing required field `${unsafe {
+						tos(current_field_info.value.field_name_str, current_field_info.value.field_name_length)
+					}}`')
+				}
+				current_field_info = current_field_info.next
 			}
 		}
 		return
