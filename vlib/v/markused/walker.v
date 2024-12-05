@@ -32,6 +32,7 @@ pub fn Walker.new(params Walker) &Walker {
 	return new_walker
 }
 
+@[inline]
 pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    fn > |${fkey}|')
@@ -39,10 +40,12 @@ pub fn (mut w Walker) mark_fn_as_used(fkey string) {
 	w.used_fns[fkey] = true
 }
 
+@[inline]
 pub fn (mut w Walker) mark_builtin_array_method_as_used(method_name string) {
 	w.mark_builtin_type_method_as_used('${ast.array_type_idx}.${method_name}', '${int(ast.array_type.ref())}.${method_name}')
 }
 
+@[inline]
 pub fn (mut w Walker) mark_builtin_map_method_as_used(method_name string) {
 	w.mark_builtin_type_method_as_used('${ast.map_type_idx}.${method_name}', '${int(ast.map_type.ref())}.${method_name}')
 }
