@@ -21,10 +21,12 @@ pub mut:
 	auto_str         bool            // auto str fns
 	auto_str_ptr     bool            // auto str fns for ptr type
 	arr_prepend      bool            // arr.prepend()
+	arr_insert       bool            // arr.insert()
 	arr_first        bool            // arr.first()
 	arr_last         bool            // arr.last()
 	arr_pop          bool            // arr.pop()
 	arr_delete       bool            // arr.delete()
+	arr_reverse      bool            // arr.reverse()
 	arr_init         bool            // [1, 2, 3]
 	arr_map          bool            // []map[key]value
 	map_update       bool            // {...foo}
@@ -41,6 +43,7 @@ pub mut:
 	// json             bool            // json is imported
 	debugger       bool            // debugger is used
 	comptime_calls map[string]bool // resolved name to call on comptime
+	comptime_for   bool            // uses $for
 }
 
 @[unsafe]
@@ -466,7 +469,7 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 			}
 		}
 	}
-	return if enum_decl.is_flag { u64(1) << val } else { val }
+	return if enum_decl.is_flag { i64(u64(1) << u64(val)) } else { val }
 }
 
 pub fn (t &Table) get_enum_field_names(name string) []string {

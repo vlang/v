@@ -1,6 +1,4 @@
-for i := 0; i < 4; i++ {
-  println(i)
-}
+for i := 0; i < 4; i++ { println(i) }
 ===output===
 0
 1

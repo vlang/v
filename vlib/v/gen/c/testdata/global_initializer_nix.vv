@@ -1,4 +1,4 @@
-// vtest vflags: -enable-globals
+// vtest vflags: -enable-globals -no-skip-unused
 
 struct Foo {
 	foo int

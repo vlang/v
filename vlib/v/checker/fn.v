@@ -868,6 +868,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if c.table.cur_fn != unsafe { nil } {
 			node.left_type, fn_name = c.table.convert_generic_static_type_name(fn_name,
 				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+			c.table.used_features.comptime_calls[fn_name] = true
 		}
 	}
 	if fn_name == 'main' {
@@ -1420,11 +1421,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			&& node.args[0].expr !is ast.StringLiteral {
 			if !c.table.sym(c.unwrap_generic(node.args[0].typ)).has_method('str') {
 				c.table.used_features.auto_str = true
-				if node.args[0].typ.is_ptr() {
-					c.table.used_features.auto_str_ptr = true
-				}
 			} else {
 				c.table.used_features.print_types[node.args[0].typ.idx()] = true
+			}
+			if node.args[0].typ.is_ptr() {
+				c.table.used_features.auto_str_ptr = true
 			}
 		}
 		return func.return_type
@@ -2178,9 +2179,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		continue_check = false
 		return ast.void_type
 	}
-	if c.pref.skip_unused && mut left_expr is ast.Ident {
-		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
-			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+	if c.pref.skip_unused {
+		if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
+			if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
+				c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+			}
+		} else if left_type.has_flag(.generic) {
+			c.table.used_features.comptime_calls['${int(c.unwrap_generic(left_type))}.${node.name}'] = true
 		}
 	}
 	c.expected_type = left_type
@@ -2313,6 +2318,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if embed_types.len != 0 {
 				is_method_from_embed = true
 				node.from_embed_types = embed_types
+				if c.pref.skip_unused && node.left_type.has_flag(.generic) {
+					c.table.used_features.comptime_calls['${int(method.receiver_type)}.${method.name}'] = true
+				}
 			}
 		}
 		if final_left_sym.kind == .aggregate {
@@ -3110,7 +3118,7 @@ fn (mut c Checker) fn_call_error_have_want(p HaveWantParams) {
 	c.error('expected ${p.nr_params} ${args_plural}, but got ${p.nr_args}', p.pos)
 }
 
-fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
+fn (mut c Checker) check_predicate_param(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
 	if node.args.len != 1 {
 		c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 		// Finish early so that it doesn't fail later
@@ -3319,7 +3327,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.table.sym(unaliased_left_type).info as ast.Array
 	}
 	elem_typ = array_info.elem_type
-	if method_name in ['filter', 'map', 'any', 'all'] {
+	if method_name in ['filter', 'map', 'any', 'all', 'count'] {
 		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
 			if node.args[0].expr.params.len != 1 {
 				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
@@ -3353,6 +3361,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					return ast.void_type
 				}
 			}
+			c.table.used_features.arr_insert = true
 		} else {
 			c.table.used_features.arr_prepend = true
 			if node.args.len != 1 {
@@ -3504,7 +3513,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
 		// check fn
-		c.check_map_and_filter(true, elem_typ, node)
+		c.check_predicate_param(true, elem_typ, node)
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {
 			ast.FnType {
@@ -3533,10 +3542,13 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else if node.left.is_auto_deref_var() {
 			node.return_type = node.return_type.deref()
 		}
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 	} else if method_name in ['any', 'all'] {
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
+	} else if method_name == 'count' {
+		c.check_predicate_param(false, elem_typ, node)
+		node.return_type = ast.int_type
 	} else if method_name == 'clone' {
 		if node.args.len != 0 {
 			c.error('`.clone()` does not have any arguments', node.args[0].pos)
@@ -3628,6 +3640,21 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		node.return_type = ast.void_type
+	} else if method_name == 'delete_many' {
+		if node.args.len != 2 {
+			c.error('`.delete_many()` expected 2 arguments, but got ${node.args.len}',
+				node.pos)
+		} else {
+			for i, mut arg in node.args {
+				arg_typ := c.expr(mut arg.expr)
+				c.check_expected_call_arg(arg_typ, ast.int_type, node.language, arg) or {
+					c.error('${err.msg()} in argument ${i + 1} to `.delete_many()`', arg.pos)
+				}
+			}
+		}
+		node.return_type = ast.void_type
+	} else if method_name == 'reverse' {
+		c.table.used_features.arr_reverse = true
 	}
 	return node.return_type
 }
@@ -3691,8 +3718,28 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
 		c.expr(mut node.args[0].expr)
-		c.check_map_and_filter(false, elem_typ, node)
+		c.check_predicate_param(false, elem_typ, node)
 		node.return_type = ast.bool_type
+	} else if method_name == 'count' {
+		if node.args.len != 1 {
+			c.error('`.${method_name}` expected 1 argument, but got ${node.args.len}',
+				node.pos)
+			return ast.bool_type
+		}
+		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.bool_type
+			}
+			c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
+		c.expr(mut node.args[0].expr)
+		c.check_predicate_param(false, elem_typ, node)
+		node.return_type = ast.int_type
 	} else if method_name == 'wait' {
 		elem_sym := c.table.sym(elem_typ)
 		if elem_sym.kind == .thread {
@@ -3733,7 +3780,7 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
 
-		c.check_map_and_filter(true, elem_typ, node)
+		c.check_predicate_param(true, elem_typ, node)
 		arg_type := c.check_expr_option_or_result_call(node.args[0].expr, c.expr(mut node.args[0].expr))
 		arg_sym := c.table.sym(arg_type)
 		ret_type := match arg_sym.info {

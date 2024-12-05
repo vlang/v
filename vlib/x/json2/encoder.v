@@ -586,7 +586,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	buf << quote_rune
 }
 
-fn hex_digit(n int) u8 {
+fn hex_digit(n u32) u8 {
 	if n < 10 {
 		return `0` + n
 	}

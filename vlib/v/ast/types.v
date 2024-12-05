@@ -398,7 +398,7 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	if flags.len == 0 {
 		return t & 0xffffff
 	} else {
-		mut typ := int(t)
+		mut typ := u32(t)
 		for flag in flags {
 			typ = typ & ~(u32(flag))
 		}

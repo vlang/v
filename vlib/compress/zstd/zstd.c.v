@@ -561,7 +561,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	fout.write(buf_out[..output.pos])!
 	// then, write the array.data to file
 	input.src = array.data
-	input.size = usize(array.len * sizeof(T))
+	input.size = usize(array.len * int(sizeof(T)))
 	input.pos = 0
 	output.dst = buf_out.data
 	output.size = buf_out_size

@@ -20,6 +20,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
 	'vlib/v/checker/tests/vweb_routing_checks.vv',
 	'vlib/v/checker/tests/orm_op_with_option_and_none.vv',
+	'vlib/v/checker/tests/orm_unused_var.vv',
 	'vlib/v/tests/skip_unused/gg_code.vv',
 ]
 
@@ -29,6 +30,7 @@ const skip_on_ci_musl = [
 
 const vexe = os.getenv('VEXE')
 
+@[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 const show_cmd = os.getenv('VTEST_SHOW_CMD') != ''

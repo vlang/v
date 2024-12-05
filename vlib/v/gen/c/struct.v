@@ -311,7 +311,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						is_arr_fixed = true
 						g.fixed_array_update_expr_field(g.expr_string(node.update_expr),
 							node.update_expr_type, field.name, node.update_expr.is_auto_deref_var(),
-							update_expr_sym.info.elem_type, update_expr_sym.info.size)
+							update_expr_sym.info.elem_type, update_expr_sym.info.size,
+							node.is_update_embed)
 					} else {
 						g.write('(')
 						g.expr(node.update_expr)
@@ -325,20 +326,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						g.write('.')
 					}
 					if node.is_update_embed {
-						update_sym := g.table.sym(node.update_expr_type)
-						_, embeds := g.table.find_field_from_embeds(update_sym, field.name) or {
-							ast.StructField{}, []ast.Type{}
-						}
-						for embed in embeds {
-							esym := g.table.sym(embed)
-							ename := esym.embed_name()
-							g.write(ename)
-							if embed.is_ptr() {
-								g.write('->')
-							} else {
-								g.write('.')
-							}
-						}
+						g.write(g.get_embed_field_name(node.update_expr_type, field.name))
 					}
 					g.write(c_name(field.name))
 				}
@@ -399,6 +387,24 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write(', sizeof(${styp}))')
 		}
 	}
+}
+
+fn (mut g Gen) get_embed_field_name(field_type ast.Type, field_name string) string {
+	update_sym := g.table.sym(field_type)
+	_, embeds := g.table.find_field_from_embeds(update_sym, field_name) or {
+		ast.StructField{}, []ast.Type{}
+	}
+	mut s := ''
+	for embed in embeds {
+		esym := g.table.sym(embed)
+		ename := esym.embed_name()
+		if embed.is_ptr() {
+			s += '${ename}->'
+		} else {
+			s += '${ename}.'
+		}
+	}
+	return s
 }
 
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {

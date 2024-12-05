@@ -11,7 +11,7 @@ fn test_main() {
 	mut str := ''
 	if bs := byte_str(num) {
 		str = 'byte: ${bs}'
-	} else if ss := short_str(num) {
+	} else if ss := short_str(int(num)) {
 		str = 'short: ${ss}'
 	} else {
 		str = 'err: ${err}'
