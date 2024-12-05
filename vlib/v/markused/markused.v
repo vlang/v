@@ -441,17 +441,15 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		all_globals: all_globals
 		pref:        pref_
 	)
-	walker.mark_markused_fn_decls() // tagged with `@[markused]`
 	walker.mark_markused_consts() // tagged with `@[markused]`
 	walker.mark_markused_globals() // tagged with `@[markused]`
-	walker.mark_exported_fns()
+	walker.mark_markused_fns() // tagged with `@[markused]`, `@[export]` and veb actions
 
 	for k, _ in table.used_features.comptime_calls {
 		walker.fn_by_name(k)
 	}
 
 	walker.mark_root_fns(all_fn_root_names)
-	walker.mark_veb_actions()
 
 	if table.used_features.used_maps > 0 {
 		for k, mut mfn in all_fns {

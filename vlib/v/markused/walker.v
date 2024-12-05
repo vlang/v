@@ -91,6 +91,32 @@ pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	}
 }
 
+pub fn (mut w Walker) mark_markused_fns() {
+	for _, mut func in w.all_fns {
+		// @[export]
+		// @[markused]
+		if func.is_exported || func.is_markused {
+			$if trace_skip_unused_exported_fns ? {
+				if func.is_exported {
+					println('>>>> walking exported func: ${func.name} ...')
+				}
+				if func.is_markused {
+					println('>>>> walking markused func: ${func.name} ...')
+				}
+			}
+			w.fn_decl(mut func)
+			continue
+		}
+		// veb actions
+		if func.return_type == w.table.veb_res_idx_cache {
+			$if trace_skip_veb_actions ? {
+				println('>>>> walking veb action func: ${func.name} ...')
+			}
+			w.fn_decl(mut func)
+		}
+	}
+}
+
 pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 	for fn_name in all_fn_root_names {
 		if fn_name !in w.used_fns {
@@ -98,41 +124,6 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 				println('>>>> walking root func: ${fn_name} ...')
 			}
 			unsafe { w.fn_decl(mut w.all_fns[fn_name]) }
-		}
-	}
-}
-
-pub fn (mut w Walker) mark_veb_actions() {
-	for _, mut func in w.all_fns {
-		if func.return_type == w.table.veb_res_idx_cache {
-			// if fn_name !in w.used_fns {
-			$if trace_skip_veb_actions ? {
-				println('>>>> walking veb action func: ${func.name} ...')
-			}
-			w.fn_decl(mut func)
-		}
-		//}
-	}
-}
-
-pub fn (mut w Walker) mark_exported_fns() {
-	for _, mut func in w.all_fns {
-		if func.is_exported {
-			$if trace_skip_unused_exported_fns ? {
-				println('>>>> walking exported func: ${func.name} ...')
-			}
-			w.fn_decl(mut func)
-		}
-	}
-}
-
-pub fn (mut w Walker) mark_markused_fn_decls() {
-	for _, mut func in w.all_fns {
-		if func.is_markused {
-			$if trace_skip_unused_markused_fns ? {
-				println('>>>> walking markused func: ${func.name} ...')
-			}
-			w.fn_decl(mut func)
 		}
 	}
 }
