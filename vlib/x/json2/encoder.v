@@ -100,7 +100,7 @@ fn encode_array[T](val []T) string {
 // encode_pretty ...
 pub fn encode_pretty[T](typed_data T) string {
 	encoded := encode(typed_data)
-	raw_decoded := raw_decode(encoded) or { 0 }
+	raw_decoded := decode[Any](encoded) or { 0 }
 	return raw_decoded.prettify_json_str()
 }
 

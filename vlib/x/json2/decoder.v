@@ -60,6 +60,9 @@ fn new_parser(srce string, convert_type bool) Parser {
 
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
+	$if T is Any {
+		return raw_decode(src)!
+	}
 	res := raw_decode(src)!.as_map()
 	return decode_struct[T](T{}, res)
 }
