@@ -777,10 +777,25 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										}
 
 										if current_field_info.value.is_raw {
-											$if field.typ is $enum {
+											$if field.unaliased_typ is $enum {
 												// workaround to avoid the error: enums can only be assigned `int` values
 												return error('`raw` attribute cannot be used with enum fields')
-											} $else $if field.typ is string || field.typ is ?string {
+											} $else $if field.typ is ?string {
+												position := decoder.current_node.value.position
+												end := position + decoder.current_node.value.length
+
+												val.$(field.name) = decoder.json[position..end]
+												decoder.current_node = decoder.current_node.next
+
+												for {
+													if decoder.current_node == unsafe { nil }
+														|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
+														break
+													}
+
+													decoder.current_node = decoder.current_node.next
+												}
+											} $else $if field.typ is string {
 												position := decoder.current_node.value.position
 												end := position + decoder.current_node.value.length
 
