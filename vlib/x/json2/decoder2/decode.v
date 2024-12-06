@@ -87,12 +87,12 @@ fn (mut list LinkedList[T]) push(value T) {
 }
 
 // last returns the last element added to the linked list.
-fn (list LinkedList[T]) last() &T {
+fn (list &LinkedList[T]) last() &T {
 	return &list.tail.value
 }
 
 // str returns a string representation of the linked list.
-fn (list LinkedList[ValueInfo]) str() string {
+fn (list &LinkedList[ValueInfo]) str() string {
 	mut result_buffer := []u8{}
 	mut current := list.head
 	for current != unsafe { nil } {
