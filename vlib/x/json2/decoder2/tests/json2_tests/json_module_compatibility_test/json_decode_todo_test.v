@@ -65,11 +65,14 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
     "dbname": "alex",
     "user": "alex",
 }'
+	// vfmt off
 	json.decode[DbConfig](txt) or {
 		assert err.msg() == '
 
 }
  ^ Expecting object key after `,`'
+
+		// vfmt on
 		return
 	}
 	assert false
@@ -78,9 +81,11 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
 fn test_decode_error_message_should_have_enough_context_in_the_middle() {
 	txt := '{"host": "localhost", "dbname": "alex" "user": "alex", "port": "1234"}'
 	json.decode[DbConfig](txt) or {
+		// vfmt off
 		assert err.msg() == '
 {"host": "localhost", "dbname": "alex" "
                                        ^ invalid value. Unexpected character after string_ end'
+		// vfmt on
 		return
 	}
 	assert false
