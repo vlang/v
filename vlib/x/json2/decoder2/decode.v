@@ -105,7 +105,7 @@ fn (list &LinkedList[ValueInfo]) str() string {
 	return result_buffer.bytestr()
 }
 
-fn (list LinkedList[T]) str() string {
+fn (list &LinkedList[T]) str() string {
 	mut result_buffer := []u8{}
 	mut current := list.head
 	for current != unsafe { nil } {
