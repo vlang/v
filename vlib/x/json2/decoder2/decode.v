@@ -569,7 +569,7 @@ pub fn decode[T](val string) !T {
 }
 
 // decode_value decodes a value from the JSON nodes.
-@[direct_array_access]
+@[direct_array_access; manualfree]
 pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
 		mut unwrapped_val := create_value_from_optional(val.$(field.name))
@@ -833,6 +833,9 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 				current_field_info = current_field_info.next
 			}
+		}
+		unsafe {
+			struct_fields_info.free()
 		}
 		return
 	} $else $if T.unaliased_typ is bool {
