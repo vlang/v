@@ -2,6 +2,7 @@ module decoder2
 
 import strconv
 import time
+import strings
 
 const null_in_string = 'null'
 
@@ -105,17 +106,20 @@ fn (list &LinkedList[ValueInfo]) str() string {
 	return result_buffer.bytestr()
 }
 
+@[manualfree]
 fn (list &LinkedList[T]) str() string {
-	mut result_buffer := []u8{}
+	mut sb := strings.new_builder(128)
+	defer {
+		unsafe { sb.free() }
+	}
 	mut current := list.head
 	for current != unsafe { nil } {
 		value_as_string := current.value.str()
-		unsafe { result_buffer.push_many(value_as_string.str, value_as_string.len) }
-		result_buffer << u8(` `)
-
+		sb.write_string(value_as_string)
+		sb.write_u8(u8(` `))
 		current = current.next
 	}
-	return result_buffer.bytestr()
+	return sb.str()
 }
 
 @[unsafe]
@@ -569,8 +573,8 @@ pub fn decode[T](val string) !T {
 }
 
 // decode_value decodes a value from the JSON nodes.
-@[direct_array_access; manualfree]
-pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
+@[manualfree]
+fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $option {
 		mut unwrapped_val := create_value_from_optional(val.$(field.name))
 		decoder.decode_value(mut unwrapped_val)!
