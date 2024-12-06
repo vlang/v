@@ -425,7 +425,7 @@ fn (mut p Parser) decode_array() !Any {
 	return Any(items)
 }
 
-@[deprecated_after: '2024-12-06']
+@[deprecated_after: '2025-03-18']
 fn (mut p Parser) decode_object() !Any {
 	mut fields := map[string]Any{}
 	p.next_with_err()!
