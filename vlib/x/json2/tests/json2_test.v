@@ -16,12 +16,12 @@ pub mut:
 
 fn test_fast_raw_decode() {
 	s := '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	o := json.decode[json.Any](s) or {
+	o := json.fast_raw_decode(s) or {
 		assert false
 		json.Any('')
 	}
 	str := o.str()
-	assert str == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	assert str == '{"name":"Peter","age":"28","salary":"95000.5","title":"2"}'
 }
 
 fn test_character_unescape() {
@@ -32,7 +32,7 @@ fn test_character_unescape() {
 	"quotes": "\"quotes\"",
 	"slash":"\/dev\/null"
 }'
-	mut obj := json.decode[json.Any](message) or {
+	mut obj := json.raw_decode(message) or {
 		println(err)
 		assert false
 		return
