@@ -68,8 +68,6 @@ pub mut:
 }
 
 // Decodes a JSON string into an `Any` type. Returns an option.
-@[deprecated: 'use `decode[json.Any]` instead']
-@[deprecated_after: '2025-03-18']
 pub fn raw_decode(src string) !Any {
 	mut p := new_parser(src, true)
 	return p.decode()
