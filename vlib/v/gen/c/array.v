@@ -1852,11 +1852,13 @@ fn (mut g Gen) write_c99_elements_for_array(len int, value string) {
 		// `screen_pixels [nb_tiles][nb_tiles]u32 = [nb_tiles][nb_tiles]u32{init: [nb_tiles]u32{init: u32(white)}}`
 		// i.e. when `white` as a constant can be handled by gcc without this error:
 		// `array initialized from non-constant array expression` error, or when `white` is substituted here with its number value.
-		if g.pref.ccompiler_type != .gcc {
-			if !value.contains('){.') {
-				// Currently, it is generating this, which works with clang and tcc, but not gcc: ` [0 ... 679] = ((u32)(_const_main__white)) `
-				g.write(' [0 ... ${len - 1}] = ${value} ')
-				return
+		if len > $d('cgen_c99_cutoff_limit', 64) {
+			if g.pref.ccompiler_type != .gcc {
+				if !value.contains('){.') {
+					// Currently, it is generating this, which works with clang and tcc, but not gcc: ` [0 ... 679] = ((u32)(_const_main__white)) `
+					g.write(' [0 ... ${len - 1}] = ${value} ')
+					return
+				}
 			}
 		}
 	}
