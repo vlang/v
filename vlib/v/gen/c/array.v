@@ -100,9 +100,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		g.write('{')
 		if node.has_val {
-			g.write_n_0_elements_for_array(node.exprs.len)
+			g.write_c99_0_elements_for_array(node.exprs.len)
 		} else if node.has_init {
-			g.write_n_0_elements_for_array(array_info.size)
+			g.write_c99_0_elements_for_array(array_info.size)
 		} else {
 			g.write('0')
 		}
@@ -161,9 +161,18 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 	} else if node.has_init {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		for i in 0 .. info.size {
-			g.expr_with_init(node)
-			g.add_commas_and_prevent_long_lines(i, info.size)
+		if node.elem_type.has_flag(.option) {
+			for i in 0 .. info.size {
+				g.expr_with_init(node)
+				g.add_commas_and_prevent_long_lines(i, info.size)
+			}
+		} else {
+			before_expr_pos := g.out.len
+			{
+				g.expr_with_init(node)
+			}
+			sexpr := g.out.cut_to(before_expr_pos)
+			g.write_c99_elements_for_array(info.size, sexpr)
 		}
 	} else if is_amp {
 		g.write('0')
@@ -172,23 +181,27 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			// fixed array for map -- [N]map[key_type]value_type
 			map_info := elem_sym.map_info()
 			before_map_expr_pos := g.out.len
-			g.expr(ast.MapInit{
-				key_type:   map_info.key_type
-				value_type: map_info.value_type
-			})
+			{
+				g.expr(ast.MapInit{
+					key_type:   map_info.key_type
+					value_type: map_info.value_type
+				})
+			}
 			smap_expr := g.out.cut_to(before_map_expr_pos)
 			g.write_all_n_elements_for_array(array_info.size, smap_expr)
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			arr_info := elem_sym.array_fixed_info()
 			before_arr_expr_pos := g.out.len
-			g.expr(ast.ArrayInit{
-				exprs:     [ast.IntegerLiteral{}]
-				typ:       node.elem_type
-				elem_type: arr_info.elem_type
-			})
+			{
+				g.expr(ast.ArrayInit{
+					exprs:     [ast.IntegerLiteral{}]
+					typ:       node.elem_type
+					elem_type: arr_info.elem_type
+				})
+			}
 			sarr_expr := g.out.cut_to(before_arr_expr_pos)
-			g.write_n_equal_elements_for_array(array_info.size, sarr_expr)
+			g.write_c99_elements_for_array(array_info.size, sarr_expr)
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
 			chan_info := elem_sym.chan_info()
@@ -198,20 +211,18 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				elem_type: chan_info.elem_type
 			})
 			schan_expr := g.out.cut_to(before_chan_expr_pos)
-			g.write_n_equal_elements_for_array(array_info.size, schan_expr)
+			g.write_c99_elements_for_array(array_info.size, schan_expr)
 		} else {
 			std := g.type_default(node.elem_type)
 			if g.can_use_c99_designators() && std == '0' {
 				g.write('0')
-			} else {
+			} else if node.elem_type.has_flag(.option) {
 				for i in 0 .. array_info.size {
-					if node.elem_type.has_flag(.option) {
-						g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
-					} else {
-						g.write(std)
-					}
+					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
 					g.add_commas_and_prevent_long_lines(i, array_info.size)
 				}
+			} else {
+				g.write_c99_elements_for_array(array_info.size, std)
 			}
 		}
 	}
@@ -1827,17 +1838,23 @@ fn (mut g Gen) write_all_n_elements_for_array(len int, value string) {
 	}
 }
 
-fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
+fn (mut g Gen) write_c99_elements_for_array(len int, value string) {
 	if len == 0 {
 		return
 	}
 	if g.can_use_c99_designators() {
-		if value in ['0', '{0}', '((u8)(0))', '{((u8)(0))}'] {
+		if value in ['0', '{0}', '((u8)(0))', '{((u8)(0))}', '((u32)(0))', '{((u32)(0))}'] {
+			// zeros are fine for all compilers
 			g.write('0')
 			return
 		}
+		// TODO remove this check for != gcc, when this works:
+		// `screen_pixels [nb_tiles][nb_tiles]u32 = [nb_tiles][nb_tiles]u32{init: [nb_tiles]u32{init: u32(white)}}`
+		// i.e. when `white` as a constant can be handled by gcc without this error:
+		// `array initialized from non-constant array expression` error, or when `white` is substituted here with its number value.
 		if g.pref.ccompiler_type != .gcc {
 			if !value.contains('){.') {
+				// Currently, it is generating this, which works with clang and tcc, but not gcc: ` [0 ... 679] = ((u32)(_const_main__white)) `
 				g.write(' [0 ... ${len - 1}] = ${value} ')
 				return
 			}
@@ -1847,7 +1864,7 @@ fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
 }
 
 @[inline]
-fn (mut g Gen) write_n_0_elements_for_array(len int) {
+fn (mut g Gen) write_c99_0_elements_for_array(len int) {
 	if g.can_use_c99_designators() {
 		g.write('0')
 		return
