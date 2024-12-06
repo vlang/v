@@ -1837,8 +1837,10 @@ fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
 			return
 		}
 		if g.pref.ccompiler_type != .gcc {
-			g.write(' [0 ... ${len - 1}] = ${value} ')
-			return
+			if !value.contains('){.') {
+				g.write(' [0 ... ${len - 1}] = ${value} ')
+				return
+			}
 		}
 	}
 	for i in 0 .. len {
