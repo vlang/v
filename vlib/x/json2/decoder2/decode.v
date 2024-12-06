@@ -28,14 +28,14 @@ mut:
 }
 
 struct StructFieldInfo {
-	field_name_str    voidptr
-	field_name_length int
-	json_name_ptr     voidptr
-	json_name_length  int
-	is_omitempty      bool
-	is_skip           bool
-	is_required       bool
-	is_raw            bool
+	field_name_str voidptr
+	field_name_len int
+	json_name_ptr  voidptr
+	json_name_len  int
+	is_omitempty   bool
+	is_skip        bool
+	is_required    bool
+	is_raw         bool
 mut:
 	decoded_with_value_info_node &Node[ValueInfo] = unsafe { nil }
 }
@@ -656,7 +656,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		$for field in T.fields {
 			mut json_name_str := field.name.str
-			mut json_name_length := field.name.len
+			mut json_name_len := field.name.len
 
 			for attr in field.attrs {
 				if attr.starts_with('json:') {
@@ -664,21 +664,21 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						return error('`json` attribute must have an argument')
 					}
 					json_name_str = unsafe { attr.str + 6 }
-					json_name_length = attr.len - 6
+					json_name_len = attr.len - 6
 					break
 				}
 				continue
 			}
 
 			struct_fields_info.push(StructFieldInfo{
-				field_name_str:    voidptr(field.name.str)
-				field_name_length: field.name.len
-				json_name_ptr:     voidptr(json_name_str)
-				json_name_length:  json_name_length
-				is_omitempty:      field.attrs.contains('omitempty')
-				is_skip:           field.attrs.contains('skip') || field.attrs.contains('json: -')
-				is_required:       field.attrs.contains('required')
-				is_raw:            field.attrs.contains('raw')
+				field_name_str: voidptr(field.name.str)
+				field_name_len: field.name.len
+				json_name_ptr:  voidptr(json_name_str)
+				json_name_len:  json_name_len
+				is_omitempty:   field.attrs.contains('omitempty')
+				is_skip:        field.attrs.contains('skip') || field.attrs.contains('json: -')
+				is_required:    field.attrs.contains('required')
+				is_raw:         field.attrs.contains('raw')
 			})
 		}
 		if struct_info.value_kind == .object {
@@ -751,13 +751,13 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					}
 
 					// check if the key matches the field name
-					if key_info.length - 2 == current_field_info.value.json_name_length {
+					if key_info.length - 2 == current_field_info.value.json_name_len {
 						if unsafe {
 							vmemcmp(decoder.json.str + key_info.position + 1, current_field_info.value.json_name_ptr,
-								current_field_info.value.json_name_length) == 0
+								current_field_info.value.json_name_len) == 0
 						} {
 							$for field in T.fields {
-								if field.name.len == current_field_info.value.field_name_length {
+								if field.name.len == current_field_info.value.field_name_len {
 									if unsafe {
 										(&u8(current_field_info.value.field_name_str)).vstring_with_len(field.name.len) == field.name
 									} {
@@ -828,7 +828,7 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 				if current_field_info.value.decoded_with_value_info_node == unsafe { nil } {
 					return error('missing required field `${unsafe {
-						tos(current_field_info.value.field_name_str, current_field_info.value.field_name_length)
+						tos(current_field_info.value.field_name_str, current_field_info.value.field_name_len)
 					}}`')
 				}
 				current_field_info = current_field_info.next
@@ -949,7 +949,7 @@ fn create_value_from_optional[T](val ?T) T {
 	return T{}
 }
 
-fn utf8_byte_length(unicode_value u32) int {
+fn utf8_byte_len(unicode_value u32) int {
 	if unicode_value <= 0x7F {
 		return 1
 	} else if unicode_value <= 0x7FF {
@@ -999,7 +999,7 @@ fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
 						idx + 5]
 					unicode_value := u32(strconv.parse_int(hex_str, 16, 32)!)
 					// Determine the number of bytes needed for this Unicode character in UTF-8
-					space_required += utf8_byte_length(unicode_value)
+					space_required += utf8_byte_len(unicode_value)
 					idx += 4 // Skip the next 4 hex digits
 
 					// REVIEW: If the Unicode character is a surrogate pair, we need to skip the next \uXXXX sequence?
@@ -1028,7 +1028,7 @@ fn generate_unicode_escape_sequence(escape_sequence_byte []u8) ![]u8 {
 	}
 
 	unicode_value := u32(strconv.parse_int(escape_sequence_byte.bytestr(), 16, 32)!)
-	mut utf8_bytes := []u8{cap: utf8_byte_length(unicode_value)}
+	mut utf8_bytes := []u8{cap: utf8_byte_len(unicode_value)}
 
 	if unicode_value <= 0x7F {
 		utf8_bytes << u8(unicode_value)
