@@ -1831,13 +1831,15 @@ fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
 	if len == 0 {
 		return
 	}
-	if len == 1 {
-		g.write(value)
-		return
-	}
 	if g.can_use_c99_designators() {
-		g.write(' [0 ... ${len - 1}] = ${value}')
-		return
+		if value in ['0', '{0}', '((u8)(0))', '{((u8)(0))}'] {
+			g.write('0')
+			return
+		}
+		if g.pref.ccompiler_type != .gcc {
+			g.write(' [0 ... ${len - 1}] = ${value} ')
+			return
+		}
 	}
 	for i in 0 .. len {
 		g.write(value)
