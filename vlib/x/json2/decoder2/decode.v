@@ -770,7 +770,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 										if current_field_info.value.is_skip {
 											if current_field_info.value.is_required == false {
-												panic('This should not happen. `skip` field should not be processed here without a `required` field')
+												return error('This should not happen. Please, file a bug. `skip` field should not be processed here without a `required` attribute')
 											}
 											current_field_info.value.decoded_with_value_info_node = decoder.current_node
 											break
