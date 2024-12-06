@@ -157,7 +157,7 @@ fn test_check_json_format() {
 		},
 		{
 			'json':  '{"key": 123, "key2": 456,}'
-			'error': '\n{"key": 123, "key2": 456,}\n                         ^ Expecting object key'
+			'error': '\n{"key": 123, "key2": 456,}\n                         ^ Expecting object key after `,`'
 		},
 		{
 			'json':  '[[1, 2, 3], [4, 5, 6],]'

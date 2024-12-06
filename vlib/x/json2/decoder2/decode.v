@@ -225,6 +225,9 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			checker.checker_idx += 3
 		}
 		.object {
+			if checker_end - checker.checker_idx < 2 {
+				return checker.error('EOF error: expecting a complete object after `{`')
+			}
 			checker.checker_idx++
 			for val[checker.checker_idx] != `}` {
 				// check if the JSON string is an empty object
@@ -292,7 +295,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 								checker.checker_idx++
 							}
 							if val[checker.checker_idx] != `"` {
-								return checker.error('Expecting object key')
+								return checker.error('Expecting object key after `,`')
 							}
 						} else {
 							if val[checker.checker_idx] == `}` {
@@ -520,6 +523,9 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 // decode decodes a JSON string into a specified type.
 pub fn decode[T](val string) !T {
+	if val == '' {
+		return error('empty string')
+	}
 	mut decoder := Decoder{
 		json: val
 	}
