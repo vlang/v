@@ -157,17 +157,14 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				}
 				g.expr(expr)
 			}
-			if i != nelen - 1 {
-				g.write(', ')
-			}
-			g.prevent_long_lines(i, nelen)
+			g.add_commas_and_prevent_long_lines(i, nelen)
 		}
 	} else if node.has_init {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		before_expr_pos := g.out.len
-		g.expr_with_init(node)
-		sexpr := g.out.cut_to(before_expr_pos)
-		g.write_n_equal_elements_for_array(info.size, sexpr)
+		for i in 0 .. info.size {
+			g.expr_with_init(node)
+			g.add_commas_and_prevent_long_lines(i, info.size)
+		}
 	} else if is_amp {
 		g.write('0')
 	} else {
@@ -180,7 +177,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				value_type: map_info.value_type
 			})
 			smap_expr := g.out.cut_to(before_map_expr_pos)
-			g.write_n_equal_elements_for_array(array_info.size, smap_expr)
+			g.write_all_n_elements_for_array(array_info.size, smap_expr)
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			arr_info := elem_sym.array_fixed_info()
@@ -207,15 +204,14 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				&& node.elem_type in [ast.int_type, ast.i8_type, ast.i16_type, ast.i32_type, ast.i64_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type] {
 				g.write('0')
 			} else {
-				sgt := g.type_default(node.elem_type)
-				before_expr_pos := g.out.len
-				if node.elem_type.has_flag(.option) {
-					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
-				} else {
-					g.write(sgt)
+				for i in 0 .. array_info.size {
+					if node.elem_type.has_flag(.option) {
+						g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+					} else {
+						g.write(g.type_default(node.elem_type))
+					}
+					g.add_commas_and_prevent_long_lines(i, array_info.size)
 				}
-				sexpr := g.out.cut_to(before_expr_pos)
-				g.write_n_equal_elements_for_array(array_info.size, sexpr)
 			}
 		}
 	}
@@ -1764,10 +1760,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 			}
 			g.write('[${i}]')
 		}
-		if i != size - 1 {
-			g.write(', ')
-		}
-		g.prevent_long_lines(i, size)
+		g.add_commas_and_prevent_long_lines(i, size)
 	}
 }
 
@@ -1795,10 +1788,7 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 				g.write('[${i}]')
 			}
 		}
-		if i != size - 1 {
-			g.write(', ')
-		}
-		g.prevent_long_lines(i, size)
+		g.add_commas_and_prevent_long_lines(i, size)
 	}
 }
 
@@ -1812,8 +1802,10 @@ fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 
 const wrap_at_array_element = 0x0F
 
-@[inline]
-fn (mut g Gen) prevent_long_lines(i int, len int) {
+fn (mut g Gen) add_commas_and_prevent_long_lines(i int, len int) {
+	if i != len - 1 {
+		g.write(', ')
+	}
 	// ensure there is a new line at least once per 16 array elements,
 	// to prevent too long lines to cause problems with gcc < gcc-11
 	if i & wrap_at_array_element == wrap_at_array_element && len - i > wrap_at_array_element {
@@ -1824,7 +1816,15 @@ fn (mut g Gen) prevent_long_lines(i int, len int) {
 @[inline]
 fn (mut g Gen) can_use_c99_designators() bool {
 	// see https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Designated-Inits.html
+	// TODO: all compilers should get the same code, when they really support C99..
 	return !g.is_cc_msvc && !g.pref.output_cross_c
+}
+
+fn (mut g Gen) write_all_n_elements_for_array(len int, value string) {
+	for i in 0 .. len {
+		g.write(value)
+		g.add_commas_and_prevent_long_lines(i, len)
+	}
 }
 
 fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
@@ -1843,15 +1843,14 @@ fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
 			}
 		}
 	}
-	for i in 0 .. len {
-		g.write(value)
-		if i != len - 1 {
-			g.write(', ')
-		}
-		g.prevent_long_lines(i, len)
-	}
+	g.write_all_n_elements_for_array(len, value)
 }
 
+@[inline]
 fn (mut g Gen) write_n_0_elements_for_array(len int) {
-	g.write_n_equal_elements_for_array(len, '0')
+	if g.can_use_c99_designators() {
+		g.write('0')
+		return
+	}
+	g.write_all_n_elements_for_array(len, '0')
 }
