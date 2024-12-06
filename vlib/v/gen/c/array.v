@@ -100,19 +100,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		g.write('{')
 		if node.has_val {
-			for i in 0 .. node.exprs.len {
-				g.write('0')
-				if i != node.exprs.len - 1 {
-					g.write(', ')
-				}
-			}
+			g.write_c99_0_elements_for_array(node.exprs.len)
 		} else if node.has_init {
-			for i in 0 .. array_info.size {
-				g.write('0')
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-			}
+			g.write_c99_0_elements_for_array(array_info.size)
 		} else {
 			g.write('0')
 		}
@@ -150,6 +140,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		defer {
 			g.inside_array_item = tmp_inside_array
 		}
+		nelen := node.exprs.len
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
 				elem_info := elem_sym.array_fixed_info()
@@ -166,17 +157,22 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				}
 				g.expr(expr)
 			}
-			if i != node.exprs.len - 1 {
-				g.write(', ')
-			}
+			g.add_commas_and_prevent_long_lines(i, nelen)
 		}
 	} else if node.has_init {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		for i in 0 .. info.size {
-			g.expr_with_init(node)
-			if i != info.size - 1 {
-				g.write(', ')
+		if node.elem_type.has_flag(.option) {
+			for i in 0 .. info.size {
+				g.expr_with_init(node)
+				g.add_commas_and_prevent_long_lines(i, info.size)
 			}
+		} else {
+			before_expr_pos := g.out.len
+			{
+				g.expr_with_init(node)
+			}
+			sexpr := g.out.cut_to(before_expr_pos)
+			g.write_c99_elements_for_array(info.size, sexpr)
 		}
 	} else if is_amp {
 		g.write('0')
@@ -184,50 +180,49 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		if elem_sym.kind == .map {
 			// fixed array for map -- [N]map[key_type]value_type
 			map_info := elem_sym.map_info()
-			for i in 0 .. array_info.size {
+			before_map_expr_pos := g.out.len
+			{
 				g.expr(ast.MapInit{
 					key_type:   map_info.key_type
 					value_type: map_info.value_type
 				})
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
 			}
+			smap_expr := g.out.cut_to(before_map_expr_pos)
+			g.write_all_n_elements_for_array(array_info.size, smap_expr)
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			arr_info := elem_sym.array_fixed_info()
-			for i in 0 .. array_info.size {
+			before_arr_expr_pos := g.out.len
+			{
 				g.expr(ast.ArrayInit{
 					exprs:     [ast.IntegerLiteral{}]
 					typ:       node.elem_type
 					elem_type: arr_info.elem_type
 				})
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
 			}
+			sarr_expr := g.out.cut_to(before_arr_expr_pos)
+			g.write_c99_elements_for_array(array_info.size, sarr_expr)
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
 			chan_info := elem_sym.chan_info()
-			for i in 0 .. array_info.size {
-				g.expr(ast.ChanInit{
-					typ:       node.elem_type
-					elem_type: chan_info.elem_type
-				})
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
-			}
+			before_chan_expr_pos := g.out.len
+			g.expr(ast.ChanInit{
+				typ:       node.elem_type
+				elem_type: chan_info.elem_type
+			})
+			schan_expr := g.out.cut_to(before_chan_expr_pos)
+			g.write_c99_elements_for_array(array_info.size, schan_expr)
 		} else {
-			for i in 0 .. array_info.size {
-				if node.elem_type.has_flag(.option) {
+			std := g.type_default(node.elem_type)
+			if g.can_use_c99_designators() && std == '0' {
+				g.write('0')
+			} else if node.elem_type.has_flag(.option) {
+				for i in 0 .. array_info.size {
 					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
-				} else {
-					g.write(g.type_default(node.elem_type))
+					g.add_commas_and_prevent_long_lines(i, array_info.size)
 				}
-				if i != array_info.size - 1 {
-					g.write(', ')
-				}
+			} else {
+				g.write_c99_elements_for_array(array_info.size, std)
 			}
 		}
 	}
@@ -1776,9 +1771,7 @@ fn (mut g Gen) fixed_array_update_expr_field(expr_str string, field_type ast.Typ
 			}
 			g.write('[${i}]')
 		}
-		if i != size - 1 {
-			g.write(', ')
-		}
+		g.add_commas_and_prevent_long_lines(i, size)
 	}
 }
 
@@ -1806,9 +1799,7 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 				g.write('[${i}]')
 			}
 		}
-		if i != size - 1 {
-			g.write(', ')
-		}
+		g.add_commas_and_prevent_long_lines(i, size)
 	}
 }
 
@@ -1818,4 +1809,67 @@ fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 	} else {
 		'it'
 	}
+}
+
+const wrap_at_array_element = 0x0F
+
+fn (mut g Gen) add_commas_and_prevent_long_lines(i int, len int) {
+	if i != len - 1 {
+		g.write(', ')
+	}
+	// ensure there is a new line at least once per 16 array elements,
+	// to prevent too long lines to cause problems with gcc < gcc-11
+	if i & wrap_at_array_element == wrap_at_array_element && len - i > wrap_at_array_element {
+		g.writeln('')
+	}
+}
+
+@[inline]
+fn (mut g Gen) can_use_c99_designators() bool {
+	// see https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Designated-Inits.html
+	// TODO: all compilers should get the same code, when they really support C99..
+	return !g.is_cc_msvc && !g.pref.output_cross_c
+}
+
+fn (mut g Gen) write_all_n_elements_for_array(len int, value string) {
+	for i in 0 .. len {
+		g.write(value)
+		g.add_commas_and_prevent_long_lines(i, len)
+	}
+}
+
+fn (mut g Gen) write_c99_elements_for_array(len int, value string) {
+	if len == 0 {
+		return
+	}
+	if g.can_use_c99_designators() {
+		if value in ['0', '{0}', '((u8)(0))', '{((u8)(0))}', '((u32)(0))', '{((u32)(0))}'] {
+			// zeros are fine for all compilers
+			g.write('0')
+			return
+		}
+		// TODO remove this check for != gcc, when this works:
+		// `screen_pixels [nb_tiles][nb_tiles]u32 = [nb_tiles][nb_tiles]u32{init: [nb_tiles]u32{init: u32(white)}}`
+		// i.e. when `white` as a constant can be handled by gcc without this error:
+		// `array initialized from non-constant array expression` error, or when `white` is substituted here with its number value.
+		if len > $d('cgen_c99_cutoff_limit', 64) {
+			if g.pref.ccompiler_type != .gcc {
+				if !value.contains('){.') {
+					// Currently, it is generating this, which works with clang and tcc, but not gcc: ` [0 ... 679] = ((u32)(_const_main__white)) `
+					g.write(' [0 ... ${len - 1}] = ${value} ')
+					return
+				}
+			}
+		}
+	}
+	g.write_all_n_elements_for_array(len, value)
+}
+
+@[inline]
+fn (mut g Gen) write_c99_0_elements_for_array(len int) {
+	if g.can_use_c99_designators() {
+		g.write('0')
+		return
+	}
+	g.write_all_n_elements_for_array(len, '0')
 }
