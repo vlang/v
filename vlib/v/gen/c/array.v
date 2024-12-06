@@ -100,9 +100,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		g.write('{')
 		if node.has_val {
-			g.write_n_equal_elements_for_array(node.exprs.len, '0')
+			g.write_n_0_elements_for_array(node.exprs.len)
 		} else if node.has_init {
-			g.write_n_equal_elements_for_array(array_info.size, '0')
+			g.write_n_0_elements_for_array(array_info.size)
 		} else {
 			g.write('0')
 		}
@@ -203,7 +203,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			schan_expr := g.out.cut_to(before_chan_expr_pos)
 			g.write_n_equal_elements_for_array(array_info.size, schan_expr)
 		} else {
-			if g.can_use_c99_init()
+			if g.can_use_c99_designators()
 				&& node.elem_type in [ast.int_type, ast.i8_type, ast.i16_type, ast.i32_type, ast.i64_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type] {
 				g.write('0')
 			} else {
@@ -1810,23 +1810,33 @@ fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
 	}
 }
 
+const wrap_at_array_element = 0x0F
+
 @[inline]
 fn (mut g Gen) prevent_long_lines(i int, len int) {
 	// ensure there is a new line at least once per 16 array elements,
 	// to prevent too long lines to cause problems with gcc < gcc-11
-	if i & 0x1F == 0x1F && len - i > 0x1F {
+	if i & wrap_at_array_element == wrap_at_array_element && len - i > wrap_at_array_element {
 		g.writeln('')
 	}
 }
 
 @[inline]
-fn (mut g Gen) can_use_c99_init() bool {
+fn (mut g Gen) can_use_c99_designators() bool {
+	// see https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Designated-Inits.html
 	return !g.is_cc_msvc && !g.pref.output_cross_c
 }
 
 fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
-	if g.can_use_c99_init() {
+	if len == 0 {
+		return
+	}
+	if len == 1 {
 		g.write(value)
+		return
+	}
+	if g.can_use_c99_designators() {
+		g.write(' [0 ... ${len - 1}] = ${value}')
 		return
 	}
 	for i in 0 .. len {
@@ -1836,4 +1846,8 @@ fn (mut g Gen) write_n_equal_elements_for_array(len int, value string) {
 		}
 		g.prevent_long_lines(i, len)
 	}
+}
+
+fn (mut g Gen) write_n_0_elements_for_array(len int) {
+	g.write_n_equal_elements_for_array(len, '0')
 }
