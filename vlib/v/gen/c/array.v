@@ -200,15 +200,15 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			schan_expr := g.out.cut_to(before_chan_expr_pos)
 			g.write_n_equal_elements_for_array(array_info.size, schan_expr)
 		} else {
-			if g.can_use_c99_designators()
-				&& node.elem_type in [ast.int_type, ast.i8_type, ast.i16_type, ast.i32_type, ast.i64_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type] {
+			std := g.type_default(node.elem_type)
+			if g.can_use_c99_designators() && std == '0' {
 				g.write('0')
 			} else {
 				for i in 0 .. array_info.size {
 					if node.elem_type.has_flag(.option) {
 						g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
 					} else {
-						g.write(g.type_default(node.elem_type))
+						g.write(std)
 					}
 					g.add_commas_and_prevent_long_lines(i, array_info.size)
 				}
