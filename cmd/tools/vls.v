@@ -79,7 +79,7 @@ fn (upd VlsUpdater) check_or_create_vls_folder() ! {
 
 fn (upd VlsUpdater) manifest_config() !map[string]json2.Any {
 	manifest_buf := os.read_file(vls_manifest_path) or { '{}' }
-	manifest_contents := json2.raw_decode(manifest_buf)!.as_map()
+	manifest_contents := json2.decode[json2.Any](manifest_buf)!.as_map()
 	return manifest_contents
 }
 
@@ -168,7 +168,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Finding prebuilt executables from GitHub release..')
 	resp := http.get('https://api.github.com/repos/vlang/vls/releases')!
-	releases_json := json2.raw_decode(resp.body)!.arr()
+	releases_json := json2.decode[json2.Any](resp.body)!.arr()
 	if releases_json.len == 0 {
 		return error('Unable to fetch latest VLS release data: No releases found.')
 	}
