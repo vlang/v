@@ -45,14 +45,12 @@ pub struct UnknownTokenError {
 }
 
 // code returns the error code of the UnknownTokenError
-
 @[deprecated_after: '2025-03-18']
 pub fn (err UnknownTokenError) code() int {
 	return 1
 }
 
 // msg returns the error message of the UnknownTokenError
-
 @[deprecated_after: '2025-03-18']
 pub fn (err UnknownTokenError) msg() string {
 	return format_message("unknown token '${err.token.lit}' when decoding ${err.kind}.",
