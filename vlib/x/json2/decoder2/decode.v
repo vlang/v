@@ -3,6 +3,14 @@ module decoder2
 import strconv
 import time
 
+const null_in_string = 'null'
+
+const true_in_string = 'true'
+
+const false_in_string = 'false'
+
+const float_zero_in_string = '0.0'
+
 // Node represents a node in a linked list to store ValueInfo.
 struct Node[T] {
 mut:
@@ -242,7 +250,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, 'null'.str, 4)
+				vmemcmp(checker.json.str + checker.checker_idx, null_in_string.str, null_in_string.len)
 			}
 
 			if is_not_ok != 0 {
@@ -494,7 +502,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					is_not_ok := unsafe {
-						vmemcmp(checker.json.str + checker.checker_idx, 'true'.str, 4)
+						vmemcmp(checker.json.str + checker.checker_idx, true_in_string.str,
+							true_in_string.len)
 					}
 
 					if is_not_ok != 0 {
@@ -509,7 +518,8 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					is_not_ok := unsafe {
-						vmemcmp(checker.json.str + checker.checker_idx, 'false'.str, 5)
+						vmemcmp(checker.json.str + checker.checker_idx, false_in_string.str,
+							false_in_string.len)
 					}
 
 					if is_not_ok != 0 {
@@ -720,23 +730,19 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 								}
 							}
 							.number {
-								if decoder.current_node.next.value.length == 1 {
-									if unsafe {
-										vmemcmp(decoder.json.str +
-											decoder.current_node.next.value.position,
-											'0'.str, 1) == 0
-									} {
+								if decoder.json[decoder.current_node.next.value.position] == `0` {
+									if decoder.current_node.next.value.length == 1 {
 										current_field_info = current_field_info.next
 										continue
-									}
-								} else if decoder.current_node.next.value.length == 3 {
-									if unsafe {
-										vmemcmp(decoder.json.str +
-											decoder.current_node.next.value.position,
-											'0.0'.str, 3) == 0
-									} {
-										current_field_info = current_field_info.next
-										continue
+									} else if decoder.current_node.next.value.length == 3 {
+										if unsafe {
+											vmemcmp(decoder.json.str +
+												decoder.current_node.next.value.position,
+												float_zero_in_string.str, float_zero_in_string.len) == 0
+										} {
+											current_field_info = current_field_info.next
+											continue
+										}
 									}
 								}
 							}
@@ -833,7 +839,8 @@ pub fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		value_info := decoder.current_node.value
 
 		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
+			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
+				true_in_string.len) == 0
 		}
 	} $else $if T.unaliased_typ in [$float, $int, $enum] {
 		value_info := decoder.current_node.value
