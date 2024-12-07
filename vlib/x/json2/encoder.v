@@ -17,7 +17,7 @@ pub:
 }
 
 // byte array versions of the most common tokens/chars to avoid reallocations
-const null_in_bytes = 'null'
+const null_in_string = 'null'
 
 const true_in_string = 'true'
 
@@ -180,7 +180,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 		str_value := val.json_str()
 		unsafe { buf.push_many(str_value.str, str_value.len) }
 	} $else $if T is Null {
-		unsafe { buf.push_many(null_in_bytes.str, null_in_bytes.len) }
+		unsafe { buf.push_many(null_in_string.str, null_in_string.len) }
 	} $else $if T is $struct {
 		e.encode_struct(val, level, mut buf)!
 	} $else $if T is $enum {

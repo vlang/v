@@ -12,6 +12,8 @@ const false_in_string = 'false'
 
 const float_zero_in_string = '0.0'
 
+const whitespace_chars = [` `, `\t`, `\n`]!
+
 // Node represents a node in a linked list to store ValueInfo.
 struct Node[T] {
 mut:
@@ -147,55 +149,6 @@ pub enum ValueKind {
 	null
 }
 
-// check_if_json_match checks if the JSON string matches the expected type T.
-fn check_if_json_match[T](val string) ! {
-	// check if the JSON string is empty
-	if val == '' {
-		return error('empty string')
-	}
-
-	// check if generic type matches the JSON type
-	value_kind := get_value_kind(val[0])
-
-	$if T is $option {
-		// TODO
-	} $else $if T is $sumtype {
-		// TODO
-	} $else $if T is $alias {
-		// TODO
-	} $else $if T is $string {
-		if value_kind != .string_ {
-			return error('Expected string, but got ${value_kind}')
-		}
-	} $else $if T is time.Time {
-		if value_kind != .string_ {
-			return error('Expected string, but got ${value_kind}')
-		}
-	} $else $if T is $map {
-		if value_kind != .object {
-			return error('Expected object, but got ${value_kind}')
-		}
-	} $else $if T is $array {
-		if value_kind != .array {
-			return error('Expected array, but got ${value_kind}')
-		}
-	} $else $if T is $struct {
-		if value_kind != .object {
-			return error('Expected object, but got ${value_kind}')
-		}
-	} $else $if T in [$enum, $int, $float] {
-		if value_kind != .number {
-			return error('Expected number, but got ${value_kind}')
-		}
-	} $else $if T is bool {
-		if value_kind != .boolean {
-			return error('Expected boolean, but got ${value_kind}')
-		}
-	} $else {
-		return error('cannot decode value with ${value_kind} type')
-	}
-}
-
 // error generates an error message with context from the JSON string.
 fn (mut checker Decoder) error(message string) ! {
 	json := if checker.json.len < checker.checker_idx + 5 {
@@ -234,6 +187,14 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		return checker.error('empty string')
 	}
 
+	// skip whitespace
+	for val[checker.checker_idx] in whitespace_chars {
+		if checker.checker_idx >= checker_end - 1 {
+			break
+		}
+		checker.checker_idx++
+	}
+
 	// check if generic type matches the JSON type
 	value_kind := get_value_kind(val[checker.checker_idx])
 	start_idx_position := checker.checker_idx
@@ -264,6 +225,9 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			checker.checker_idx += 3
 		}
 		.object {
+			if checker_end - checker.checker_idx < 2 {
+				return checker.error('EOF error: expecting a complete object after `{`')
+			}
 			checker.checker_idx++
 			for val[checker.checker_idx] != `}` {
 				// check if the JSON string is an empty object
@@ -272,7 +236,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				}
 
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for val[checker.checker_idx] in whitespace_chars {
 					if checker.checker_idx >= checker_end - 1 {
 						break
 					}
@@ -294,7 +258,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					if checker.checker_idx >= checker_end - 1 {
 						return checker.error('EOF error: key colon not found')
 					}
-					if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+					if val[checker.checker_idx] !in whitespace_chars {
 						return checker.error('invalid value after object key')
 					}
 					checker.checker_idx++
@@ -307,7 +271,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				checker.checker_idx++
 
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for val[checker.checker_idx] in whitespace_chars {
 					checker.checker_idx++
 				}
 
@@ -315,7 +279,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					`"`, `[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
 						checker.check_json_format(val)!
 						// whitespace
-						for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+						for val[checker.checker_idx] in whitespace_chars {
 							checker.checker_idx++
 						}
 						if val[checker.checker_idx] == `}` {
@@ -327,11 +291,11 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 						if val[checker.checker_idx] == `,` {
 							checker.checker_idx++
-							for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+							for val[checker.checker_idx] in whitespace_chars {
 								checker.checker_idx++
 							}
 							if val[checker.checker_idx] != `"` {
-								return checker.error('Expecting object key')
+								return checker.error('Expecting object key after `,`')
 							}
 						} else {
 							if val[checker.checker_idx] == `}` {
@@ -360,7 +324,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 			for val[checker.checker_idx] != `]` {
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for val[checker.checker_idx] in whitespace_chars {
 					if checker.checker_idx >= checker_end - 1 {
 						break
 					}
@@ -378,7 +342,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				checker.check_json_format(val)!
 
 				// whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for val[checker.checker_idx] in whitespace_chars {
 					checker.checker_idx++
 				}
 				if val[checker.checker_idx] == `]` {
@@ -390,7 +354,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 				if val[checker.checker_idx] == `,` {
 					checker.checker_idx++
-					for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+					for val[checker.checker_idx] in whitespace_chars {
 						checker.checker_idx++
 					}
 					if val[checker.checker_idx] == `]` {
@@ -548,7 +512,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 	for checker.checker_idx < checker_end - 1 && val[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
 		// get trash characters after the value
-		if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+		if val[checker.checker_idx] !in whitespace_chars {
 			checker.error('invalid value. Unexpected character after ${value_kind} end')!
 		} else {
 			// whitespace
@@ -558,17 +522,23 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 }
 
 // decode decodes a JSON string into a specified type.
+@[manualfree]
 pub fn decode[T](val string) !T {
+	if val == '' {
+		return error('empty string')
+	}
 	mut decoder := Decoder{
 		json: val
 	}
 
 	decoder.check_json_format(val)!
-	check_if_json_match[T](val)!
 
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut &result)!
+	unsafe {
+		decoder.values_info.free()
+	}
 	return result
 }
 
@@ -629,6 +599,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			}
 
 			val = string_buffer.bytestr()
+		} else {
+			return error('Expected string, but got ${string_info.value_kind}')
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
@@ -852,6 +824,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 				current_field_info = current_field_info.next
 			}
+		} else {
+			return error('Expected object, but got ${struct_info.value_kind}')
 		}
 		unsafe {
 			struct_fields_info.free()
@@ -859,6 +833,10 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		return
 	} $else $if T.unaliased_typ is bool {
 		value_info := decoder.current_node.value
+
+		if value_info.value_kind != .boolean {
+			return error('Expected boolean, but got ${value_info.value_kind}')
+		}
 
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, true_in_string.str,
@@ -873,6 +851,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			unsafe {
 				string_buffer_to_generic_number(val, bytes)
 			}
+		} else {
+			return error('Expected number, but got ${value_info.value_kind}')
 		}
 	} $else {
 		return error('cannot decode value with ${typeof(val).name} type')
@@ -904,6 +884,8 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 
 			val << array_element
 		}
+	} else {
+		return error('Expected array, but got ${array_info.value_kind}')
 	}
 }
 
@@ -946,6 +928,8 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			}
 			decoder.decode_value(mut val[key])!
 		}
+	} else {
+		return error('Expected object, but got ${map_info.value_kind}')
 	}
 }
 
