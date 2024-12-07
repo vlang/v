@@ -1840,6 +1840,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		is_free_method = true
 	}
 	mut cast_n := 0
+	old_inside_smartcast := g.inside_smartcast
 
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
@@ -1914,7 +1915,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	is_interface := left_sym.kind == .interface
 		&& g.table.sym(node.receiver_type).kind == .interface
-	old_expect_ascast_ptr := g.expect_ascast_ptr
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
@@ -1923,7 +1923,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !is_range_slice {
 			if !node.left.is_lvalue() {
 				if node.left.is_ascast() {
-					g.expect_ascast_ptr = true
+					g.inside_smartcast = true
 					if node.left is ast.SelectorExpr && !left_type.is_ptr() {
 						g.write('&')
 					}
@@ -2046,7 +2046,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
-	g.expect_ascast_ptr = old_expect_ascast_ptr
+	g.inside_smartcast = old_inside_smartcast
 	g.call_args(node)
 	g.write(')')
 	if node.return_type != 0 && !node.return_type.has_option_or_result()
@@ -2830,6 +2830,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	exp_sym := g.table.sym(expected_type)
 	mut needs_closing := false
+	old_inside_smartcast := g.inside_smartcast
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()
@@ -2911,11 +2912,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 							atype = arg_typ
 						}
 						if arg.expr.is_ascast() {
-							old_expect_ascast_ptr := g.expect_ascast_ptr
-							g.expect_ascast_ptr = true
-							defer {
-								g.expect_ascast_ptr = old_expect_ascast_ptr
-							}
+							g.inside_smartcast = true
 						} else {
 							g.write('ADDR(${g.styp(atype)}, ')
 							needs_closing = true
@@ -2970,6 +2967,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	g.arg_no_auto_deref = false
+	g.inside_smartcast = old_inside_smartcast
 	if needs_closing {
 		g.write(')')
 	}
