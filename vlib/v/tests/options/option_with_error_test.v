@@ -6,11 +6,12 @@ fn result_function() !Struct {
 	return error('This is an error')
 }
 
-fn main() {
+fn test_main() {
 	some_struct := result_function() or {
 		Struct{
 			error: err
 		}
 	}
-	println(some_struct)
+	// some_struct.error?
+	assert some_struct.error or { '${err}' } == 'This is an error'
 }

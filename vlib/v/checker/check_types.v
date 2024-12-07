@@ -162,15 +162,15 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if expected.has_option_or_result() {
 		sym := c.table.sym(got)
-		if expected.has_flag(.option) && got == ast.none_type {
-			// Option allows `none`
+		// Allow error() for Option and Result types
+		// `none` for Option only
+		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
+			&& expected.has_flag(.option))
+			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
+			&& expected.has_flag(.result)) {
+			// IError
 			return true
-		}
-		if expected.has_flag(.result) && (sym.idx == ast.error_type_idx || got == ast.error_type) {
-			// Result allows IError
-			return true
-		}
-		if !c.check_basic(got, expected.clear_option_and_result()) {
+		} else if !c.check_basic(got, expected.clear_option_and_result()) {
 			return false
 		}
 	}
