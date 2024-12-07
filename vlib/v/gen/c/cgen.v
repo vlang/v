@@ -2078,7 +2078,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.write('${g.styp(ret_typ)} ${tmp_var} = ')
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
-	} else if expr is ast.Ident && expr.name == 'err' {
+	} else if expr is ast.Ident && expr_typ == ast.error_type {
 		g.writeln('${g.styp(ret_typ)} ${tmp_var} = {.state=2, .err = ${expr.name}};')
 	} else {
 		mut simple_assign := false
