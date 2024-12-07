@@ -522,6 +522,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 }
 
 // decode decodes a JSON string into a specified type.
+@[manualfree]
 pub fn decode[T](val string) !T {
 	if val == '' {
 		return error('empty string')
@@ -535,6 +536,9 @@ pub fn decode[T](val string) !T {
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut &result)!
+	unsafe {
+		decoder.values_info.free()
+	}
 	return result
 }
 
