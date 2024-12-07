@@ -45,6 +45,23 @@ fn get_current_folder_commit_hash() string {
 	return v_commithash
 }
 
+@[noreturn]
+fn fatal_error(error IError, label string) {
+	eprintln('error: ${label}')
+	eprintln(error)
+	exit(1)
+}
+
+@[noreturn]
+fn co_fail(error IError, commit string) {
+	fatal_error(error, 'git could not checkout `${commit}`')
+}
+
+@[noreturn]
+fn net_fail(error IError, what string) {
+	fatal_error(error, 'git failed at `${what}`')
+}
+
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, u64) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
@@ -55,7 +72,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.verbose_trace(@FN, 'v_timestamp: ${v_timestamp} | v_commithash: ${v_commithash}')
 	check_v_commit_timestamp_before_self_rebuilding(v_timestamp)
 	scripting.chdir(vcdir)
-	scripting.run('git checkout --quiet master')
+	scripting.frun('git checkout --quiet master') or { co_fail(err, 'master') }
 
 	mut vccommit := ''
 	mut partial_hash := v_commithash[0..7]
@@ -73,7 +90,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 		_, vccommit = line_to_timestamp_and_commit(vcbefore)
 	}
 	scripting.verbose_trace(@FN, 'vccommit: ${vccommit}')
-	scripting.run('git checkout --quiet "${vccommit}" ')
+	scripting.frun('git checkout --quiet "${vccommit}" ') or { co_fail(err, vccommit) }
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
 	return v_commithash, vccommit, v_timestamp
@@ -83,14 +100,20 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// Note: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
-		scripting.run('git -C "${local_worktree_path}" checkout --quiet master')
-		scripting.run('git -C "${local_worktree_path}" pull --quiet ')
+		scripting.frun('git -C "${local_worktree_path}" checkout --quiet master') or {
+			co_fail(err, 'master')
+		}
+		scripting.frun('git -C "${local_worktree_path}" pull --quiet ') or {
+			net_fail(err, 'pulling')
+		}
 	} else {
 		// Clone a fresh local tree.
 		if remote_git_url.starts_with('http') {
 			// cloning an https remote with --filter=blob:none is usually much less bandwidth intensive, at the
 			// expense of doing small network ops later when using checkouts.
-			scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}" "${local_worktree_path}" ')
+			scripting.frun('git clone --filter=blob:none --quiet "${remote_git_url}" "${local_worktree_path}" ') or {
+				net_fail(err, 'cloning')
+			}
 			return
 		}
 		mut is_blobless_clone := false
@@ -112,10 +135,14 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 			// at the expense of a little more space usage, which will make the new tree in local_worktree_path,
 			// exactly 1:1 the same, as the one in remote_git_url, just independent from it .
 			copy_cmd := if os.user_os() == 'windows' { 'robocopy /MIR' } else { 'rsync -a' }
-			scripting.run('${copy_cmd} "${remote_git_url}/" "${local_worktree_path}/"')
+			scripting.frun('${copy_cmd} "${remote_git_url}/" "${local_worktree_path}/"') or {
+				fatal_error(err, 'copying to ${local_worktree_path}')
+			}
 			return
 		}
-		scripting.run('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+		scripting.frun('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ') or {
+			net_fail(err, 'cloning')
+		}
 	}
 }
 
@@ -154,7 +181,9 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	clone_or_pull(vgit_context.v_repo_url, vgit_context.path_v)
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
 	scripting.chdir(vgit_context.path_v)
-	scripting.run('git checkout --quiet ${vgit_context.commit_v}')
+	scripting.frun('git checkout --quiet ${vgit_context.commit_v}') or {
+		co_fail(err, vgit_context.commit_v)
+	}
 	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath)
 		&& !vgit_context.show_vccommit {
 		// already compiled, so no need to compile v again
