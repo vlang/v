@@ -2574,7 +2574,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 			|| (expr is ast.Ident && expr.obj.is_simple_define_const()) {
 			// Note: the `_to_sumtype_` family of functions do call memdup internally, making
 			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
-			if expr.is_ascast() {
+			if expr.is_as_cast() {
 				old_inside_smartcast := g.inside_smartcast
 				g.inside_smartcast = true
 				defer {
@@ -4249,7 +4249,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if field_is_opt
 		|| ((node.expr_type.is_ptr() || sym.kind == .chan || alias_to_ptr)
 		&& node.from_embed_types.len == 0)
-		|| (node.expr.is_ascast() && g.inside_smartcast) {
+		|| (node.expr.is_as_cast() && g.inside_smartcast) {
 		g.write('->')
 	} else {
 		g.write('.')
