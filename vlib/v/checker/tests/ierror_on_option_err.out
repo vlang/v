@@ -1,0 +1,7 @@
+vlib/v/checker/tests/ierror_on_option_err.vv:12:4: error: cannot assign to field `error`: expected `?string`, not `IError`
+   10 |     some_struct := result_function() or {
+   11 |         Struct{
+   12 |             error: err
+      |             ~~~~~~~~~~
+   13 |         }
+   14 |     }
