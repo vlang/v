@@ -2149,7 +2149,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 }
 
 @[inline]
-pub fn (expr Expr) is_ascast() bool {
+pub fn (expr Expr) is_as_cast() bool {
 	if expr is ParExpr {
 		return expr.expr.is_ascast()
 	} else if expr is SelectorExpr {
