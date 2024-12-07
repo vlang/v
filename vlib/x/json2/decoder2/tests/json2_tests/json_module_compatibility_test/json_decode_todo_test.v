@@ -77,11 +77,7 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
 fn test_decode_error_message_should_have_enough_context_in_the_middle() {
 	txt := '{"host": "localhost", "dbname": "alex" "user": "alex", "port": "1234"}'
 	json.decode[DbConfig](txt) or {
-		// vfmt off
-		assert err.msg() == '
-{"host": "localhost", "dbname": "alex" "
-                                       ^ invalid value. Unexpected character after string_ end'
-		// vfmt on
+		assert err.msg() == '\n{"host": "localhost", "dbname": "alex" "\n                                       ^ invalid value. Unexpected character after string_ end'
 		return
 	}
 	assert false
