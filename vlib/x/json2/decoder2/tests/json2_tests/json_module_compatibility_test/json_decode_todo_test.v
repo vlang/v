@@ -65,14 +65,10 @@ fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() 
     "dbname": "alex",
     "user": "alex",
 }'
-	// vfmt off
+
 	json.decode[DbConfig](txt) or {
-		assert err.msg() == '
+		assert err.msg() == '\n\n}\n ^ Expecting object key after `,`'
 
-}
- ^ Expecting object key after `,`'
-
-		// vfmt on
 		return
 	}
 	assert false

@@ -57,11 +57,8 @@ fn test_nested_array_object() {
 
 fn test_raw_decode_map_invalid() {
 	json.decode[json2.Any]('{"name","Bob","age":20}') or {
-		// vfmt off
-		assert err.msg() == '
-{"name",
-       ^ invalid value after object key'
-		// vfmt on
+		assert err.msg() == '\n{"name",\n       ^ invalid value after object key'
+
 		return
 	}
 	assert false
@@ -69,11 +66,8 @@ fn test_raw_decode_map_invalid() {
 
 fn test_raw_decode_array_invalid() {
 	json.decode[json2.Any]('["Foo", 1,}') or {
-		// vfmt off
-		assert err.msg() == '
-["Foo", 1,}
-          ^ EOF error: array not closed'
-		// vfmt on
+		assert err.msg() == '\n["Foo", 1,}\n          ^ EOF error: array not closed'
+
 		return
 	}
 	assert false
