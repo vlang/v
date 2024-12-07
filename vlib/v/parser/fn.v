@@ -144,6 +144,8 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
 			expr = p.struct_init('void_type', .short_syntax, false)
+		} else if p.tok.kind == .key_type && p.peek_tok.kind == .colon {
+			expr = p.struct_init('void_type', .short_syntax, false)
 		} else {
 			expr = p.expr(0)
 		}
