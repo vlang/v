@@ -1922,7 +1922,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// TODO: same logic in call_args()
 		if !is_range_slice {
 			if !node.left.is_lvalue() {
-				if node.left.is_smartcast() {
+				if node.left.is_ascast() {
 					g.expect_ascast_ptr = true
 					if node.left is ast.SelectorExpr && !left_type.is_ptr() {
 						g.write('&')
@@ -2910,7 +2910,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 						if arg_typ_sym.kind in [.sum_type, .interface] {
 							atype = arg_typ
 						}
-						if arg.expr.is_smartcast() {
+						if arg.expr.is_ascast() {
 							old_expect_ascast_ptr := g.expect_ascast_ptr
 							g.expect_ascast_ptr = true
 							defer {
