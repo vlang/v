@@ -7748,6 +7748,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write('; ')
 			if sym.info is ast.FnType {
 				g.write('(${styp})__as_cast(')
+			} else if g.inside_smartcast {
+				g.write('(${styp}*)__as_cast(')
 			} else {
 				g.write('*(${styp}*)__as_cast(')
 			}
@@ -7810,6 +7812,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write('; ')
 			if sym.info is ast.FnType {
 				g.write('(${styp})__as_cast(')
+			} else if g.inside_smartcast {
+				g.write('(${styp}*)__as_cast(')
 			} else {
 				g.write('*(${styp}*)__as_cast(')
 			}
@@ -7821,6 +7825,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		} else {
 			if sym.info is ast.FnType {
 				g.write('(${styp})__as_cast(')
+			} else if g.inside_smartcast {
+				g.write('(${styp}*)__as_cast(')
 			} else {
 				g.write('*(${styp}*)__as_cast(')
 			}
