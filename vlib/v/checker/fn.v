@@ -3373,11 +3373,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.check_for_mut_receiver(mut node.left)
 		info := left_sym.info as ast.Array
 		val_arg_n := if method_name == 'insert' { 1 } else { 0 }
-		mut arg_expr := if method_name == 'insert' {
-			node.args[val_arg_n].expr
-		} else {
-			node.args[val_arg_n].expr
-		}
+		mut arg_expr := node.args[val_arg_n].expr
 		arg_type := c.expr(mut arg_expr)
 		arg_sym := c.table.sym(arg_type)
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
@@ -3398,8 +3394,15 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					method.params[i + 1].typ
 				}
 				c.check_expected_call_arg(arg.typ, param_typ, node.language, arg) or {
-					c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
-						node.args[i].pos)
+					if i == val_arg_n {
+						c.check_expected_call_arg(arg.typ, left_type, node.language, arg) or {
+							c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
+								node.args[i].pos)
+						}
+					} else {
+						c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
+							node.args[i].pos)
+					}
 				}
 			}
 		}
