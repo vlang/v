@@ -3373,19 +3373,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.check_for_mut_receiver(mut node.left)
 		info := left_sym.info as ast.Array
 		val_arg_n := if method_name == 'insert' { 1 } else { 0 }
-		mut arg_expr := node.args[val_arg_n].expr
-		arg_type := c.expr(mut arg_expr)
-		arg_sym := c.table.sym(arg_type)
-		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
-		}
-		for i, mut arg in node.args {
-			node.args[i].typ = c.expr(mut arg.expr)
-		}
 		node.receiver_type = ast.array_type.ref()
 		node.return_type = ast.void_type
 		if method := c.table.find_method(left_sym, method_name) {
-			for i, arg in node.args {
+			for i, mut arg in node.args {
+				node.args[i].typ = c.expr(mut arg.expr)
 				param_typ := if i == val_arg_n {
 					c.table.value_type(left_type)
 				} else {
