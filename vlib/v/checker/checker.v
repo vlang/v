@@ -1720,9 +1720,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		node.typ = field.typ
 		if node.or_block.kind == .block {
-			c.expected_or_type = node.typ.clear_option_and_result()
+			unwrapped_typ := c.unwrap_generic(node.typ)
+			c.expected_or_type = unwrapped_typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts, c.expected_or_type)
-			c.check_or_expr(node.or_block, node.typ, c.expected_or_type, node)
+			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
 		return field.typ
