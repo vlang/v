@@ -267,6 +267,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
 			} else {
+				needs_memcpy := !node.val_type.is_ptr()
+					&& g.table.final_sym(node.val_type).kind == .array_fixed
 				// If val is mutable (pointer behind the scenes), we need to generate
 				// `int* val = ((int*)arr.data) + i;`
 				// instead of
@@ -276,10 +278,17 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
 				} else if node.val_is_mut || node.val_is_ref {
 					'((${styp})${cond_var}${op_field}data) + ${i}'
+				} else if val_sym.kind == .array_fixed {
+					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				} else {
 					'((${styp}*)${cond_var}${op_field}data)[${i}]'
 				}
-				g.writeln('\t${styp} ${c_name(node.val_var)} = ${right};')
+				if !needs_memcpy {
+					g.writeln('\t${styp} ${c_name(node.val_var)} = ${right};')
+				} else {
+					g.writeln('\t${styp} ${c_name(node.val_var)} = {0};')
+					g.writeln('\tmemcpy(${c_name(node.val_var)}, ${right}, sizeof(${styp}));')
+				}
 			}
 		}
 	} else if node.kind == .array_fixed {
