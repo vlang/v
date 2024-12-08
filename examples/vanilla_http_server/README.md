@@ -4,7 +4,8 @@ Vanilla is a raw V server.
 
 ## Description
 
-This project is a simple server written in the V programming language. It aims to provide a minimalistic and efficient server implementation.
+This project is a simple server written in the V programming language.
+It aims to provide a minimalistic and efficient server implementation.
 
 ## Features
 
@@ -14,7 +15,8 @@ This project is a simple server written in the V programming language. It aims t
 
 ## Installation
 
-To install Vanilla, you need to have the V compiler installed. You can download it from the [official V website](https://vlang.io).
+To install Vanilla, you need to have the V compiler installed.
+You can download it from the [official V website](https://vlang.io).
 
 ## Usage
 
@@ -30,7 +32,8 @@ This will start the server, and you can access it at `http://localhost:3000`.
 
 ### Main Server
 
-The main server logic is implemented in [src/main.v](v/vanilla/src/main.v). The server is initialized and started in the `main` function:
+The main server logic is implemented in [src/main.v](v/vanilla/src/main.v).
+The server is initialized and started in the `main` function:
 
 ```v ignore
 module main
