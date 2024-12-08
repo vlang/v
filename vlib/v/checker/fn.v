@@ -3378,14 +3378,12 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		arg_sym := c.table.sym(arg_type)
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
-			return ast.void_type
 		}
 		for i, mut arg in node.args {
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		node.receiver_type = ast.array_type.ref()
 		node.return_type = ast.void_type
-		// validate the val param			
 		if method := c.table.find_method(left_sym, method_name) {
 			for i, arg in node.args {
 				param_typ := if i == val_arg_n {
