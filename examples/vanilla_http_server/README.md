@@ -32,7 +32,7 @@ This will start the server, and you can access it at `http://localhost:3000`.
 
 The main server logic is implemented in [src/main.v](v/vanilla/src/main.v). The server is initialized and started in the `main` function:
 
-```v
+```v ignore
 module main
 
 const port = 3000
