@@ -68,14 +68,14 @@ vlib/v/checker/tests/option_fn_err.vv:58:13: error: cannot use Option or Result 
       |                ~~~~~~~~
    59 |     // array builtin methods
    60 |     arr.insert(0, bar(0))
-vlib/v/checker/tests/option_fn_err.vv:60:16: error: cannot use `?int` as `voidptr`, it must be unwrapped first in argument 2 to `[]int.insert`
+vlib/v/checker/tests/option_fn_err.vv:60:16: error: cannot use `?int` as `[]int`, it must be unwrapped first in argument 2 to `[]int.insert`
    58 |     println(arr[bar(0)])
    59 |     // array builtin methods
    60 |     arr.insert(0, bar(0))
       |                   ~~~~~~
    61 |     arr.prepend(bar(0))
    62 |     arr.contains(bar(0))
-vlib/v/checker/tests/option_fn_err.vv:61:14: error: cannot use `?int` as `voidptr`, it must be unwrapped first in argument 1 to `[]int.prepend`
+vlib/v/checker/tests/option_fn_err.vv:61:14: error: cannot use `?int` as `[]int`, it must be unwrapped first in argument 1 to `[]int.prepend`
    59 |     // array builtin methods
    60 |     arr.insert(0, bar(0))
    61 |     arr.prepend(bar(0))
