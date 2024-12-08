@@ -3371,7 +3371,6 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			}
 		}
 		c.check_for_mut_receiver(mut node.left)
-		info := left_sym.info as ast.Array
 		val_arg_n := if method_name == 'insert' { 1 } else { 0 }
 		node.receiver_type = ast.array_type.ref()
 		node.return_type = ast.void_type
