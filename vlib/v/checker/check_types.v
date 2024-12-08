@@ -366,6 +366,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 		if got == ast.void_type {
 			return error('`${arg.expr}` (no value) used as value')
 		}
+		if expected == ast.voidptr_type && got_typ_sym.kind == .array_fixed {
+			return
+		}
 		got_typ_str, expected_typ_str := c.get_string_names_of(got_, exp_type)
 		return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
 	}
