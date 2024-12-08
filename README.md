@@ -319,7 +319,7 @@ https://github.com/vlang/ui
 <!---
 ## JavaScript backend
 
-[examples/hello_v_js.v](examples/hello_v_js.v):
+[examples/js_hello_world.v](examples/js_hello_world.v):
 
 ```v
 fn main() {
@@ -330,7 +330,7 @@ fn main() {
 ```
 
 ```bash
-v -o hi.js examples/hello_v_js.v && node hi.js
+v -o hi.js examples/js_hello_world.v && node hi.js
 Hello from V.js
 Hello from V.js
 Hello from V.js

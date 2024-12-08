@@ -64,7 +64,7 @@ jobs:
       - name: Build option_test.c.v with -autofree
         run: v -autofree vlib/v/tests/options/option_test.c.v
       - name: Test v->js
-        run: v -o hi.js examples/hello_v_js.v && node hi.js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
@@ -119,7 +119,7 @@ jobs:
       # - name: Test
       #   run: v test-all
       - name: Test v->js
-        run: v -o hi.js examples/hello_v_js.v && node hi.js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
@@ -173,7 +173,7 @@ jobs:
       - name: Self tests
         run: v test-self vlib
       - name: Test v->js
-        run: v -o hi.js examples/hello_v_js.v && node hi.js
+        run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         run: v build-vbinaries
       - name: Build examples
@@ -217,7 +217,7 @@ jobs:
         # - name: Self tests
         #   run: v test-self vlib
         # - name: Test v->js
-        #   run: v -o hi.js examples/hello_v_js.v && node hi.js
+        #   run: v -o hi.js examples/js_hello_world.v && node hi.js
         # - name: Test v binaries
         #   run: v build-vbinaries
         # - name: Build examples
