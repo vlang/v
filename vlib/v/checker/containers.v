@@ -169,7 +169,15 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			mut typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			mut typ := ast.void_type
+			if expr is ast.ArrayInit {
+				old_expected_type := c.expected_type
+				c.expected_type = c.table.value_type(c.expected_type)
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+				c.expected_type = old_expected_type
+			} else {
+				typ = c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			}
 			if expr is ast.CallExpr {
 				ret_sym := c.table.sym(typ)
 				if ret_sym.kind == .array_fixed {

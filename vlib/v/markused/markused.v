@@ -27,7 +27,6 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 		ref_map_idx_str := '${int(ast.map_type.ref())}'
 		ref_densearray_idx_str := '${int(table.find_type('DenseArray').ref())}'
 		ref_array_idx_str := '${int(ast.array_type.ref())}'
-		is_gc_none := pref_.gc_mode == .no_gc
 
 		mut include_panic_deps := false
 		mut core_fns := [
@@ -138,9 +137,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			include_panic_deps = true
 		}
 		if table.used_features.arr_insert {
-			if is_gc_none {
-				core_fns << ref_array_idx_str + '.insert_many'
-			}
+			core_fns << ref_array_idx_str + '.insert_many'
 		}
 		if pref_.ccompiler_type != .tinyc && 'no_backtrace' !in pref_.compile_defines {
 			// with backtrace on gcc/clang more code needs be generated

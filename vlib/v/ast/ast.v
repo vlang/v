@@ -2148,6 +2148,17 @@ pub fn (expr Expr) is_blank_ident() bool {
 	return false
 }
 
+@[inline]
+pub fn (expr Expr) is_as_cast() bool {
+	if expr is ParExpr {
+		return expr.expr.is_as_cast()
+	} else if expr is SelectorExpr {
+		return expr.expr.is_as_cast()
+	} else {
+		return expr is AsCast
+	}
+}
+
 __global nested_expr_pos_calls = i64(0)
 // values above 14000 risk stack overflow by default on macos in Expr.pos() calls
 const max_nested_expr_pos_calls = 5000
