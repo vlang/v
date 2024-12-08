@@ -16,7 +16,11 @@ import sync
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-#include <arpa/inet.h>
+$if windows {
+	#include <winsock2.h>
+} $else {
+	#include <arpa/inet.h>
+}
 #include <fcntl.h>
 #include <sys/epoll.h>
 #include <errno.h>
