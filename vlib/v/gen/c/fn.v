@@ -1840,6 +1840,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		is_free_method = true
 	}
 	mut cast_n := 0
+	old_inside_smartcast := g.inside_smartcast
 
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
@@ -1921,8 +1922,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// TODO: same logic in call_args()
 		if !is_range_slice {
 			if !node.left.is_lvalue() {
-				g.write('ADDR(${rec_cc_type}, ')
-				cast_n++
+				if node.left.is_as_cast() {
+					g.inside_smartcast = true
+					if node.left is ast.SelectorExpr && !left_type.is_ptr() {
+						g.write('&')
+					}
+				} else {
+					g.write('ADDR(${rec_cc_type}, ')
+					cast_n++
+				}
 			} else if node.left is ast.Ident && g.table.is_interface_smartcast(node.left.obj) {
 				g.write('ADDR(${rec_cc_type}, ')
 				cast_n++
@@ -2038,6 +2046,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
+	g.inside_smartcast = old_inside_smartcast
 	g.call_args(node)
 	g.write(')')
 	if node.return_type != 0 && !node.return_type.has_option_or_result()
@@ -2821,6 +2830,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	}
 	exp_sym := g.table.sym(expected_type)
 	mut needs_closing := false
+	old_inside_smartcast := g.inside_smartcast
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
 	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()
@@ -2898,11 +2908,15 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					} else if arg.expr.is_literal() {
 						g.write('(voidptr)')
 					} else {
-						needs_closing = true
 						if arg_typ_sym.kind in [.sum_type, .interface] {
 							atype = arg_typ
 						}
-						g.write('ADDR(${g.styp(atype)}, ')
+						if arg.expr.is_as_cast() {
+							g.inside_smartcast = true
+						} else {
+							g.write('ADDR(${g.styp(atype)}, ')
+							needs_closing = true
+						}
 					}
 				}
 			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type {
@@ -2953,6 +2967,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	g.arg_no_auto_deref = false
+	g.inside_smartcast = old_inside_smartcast
 	if needs_closing {
 		g.write(')')
 	}
