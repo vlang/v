@@ -1726,6 +1726,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.check_or_expr(node.or_block, unwrapped_typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
 		}
+		if c.pref.skip_unused && node.or_block.kind != .absent
+			&& !c.table.used_features.option_or_result {
+			c.table.used_features.option_or_result = true
+		}
 		return field.typ
 	}
 	if mut method := c.table.sym(c.unwrap_generic(typ)).find_method_with_generic_parent(field_name) {

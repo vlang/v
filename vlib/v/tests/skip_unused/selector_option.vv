@@ -1,0 +1,11 @@
+module main
+
+struct GameObject {
+	id     int  = 1
+	parent ?int = 2
+}
+
+fn main() {
+	mut gameobject := GameObject{}
+	println('${gameobject.parent?}')
+}
