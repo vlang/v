@@ -3372,23 +3372,22 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		c.check_for_mut_receiver(mut node.left)
 		info := left_sym.info as ast.Array
-		mut arg_expr := if method_name == 'insert' {
-			node.args[1].expr
-		} else {
-			node.args[0].expr
-		}
-		arg_type := c.expr(mut arg_expr)
-		arg_sym := c.table.sym(arg_type)
-		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
-		}
-		for i, mut arg in node.args {
-			node.args[i].typ = c.expr(mut arg.expr)
-		}
+		val_arg_n := if method_name == 'insert' { 1 } else { 0 }
 		node.receiver_type = ast.array_type.ref()
 		node.return_type = ast.void_type
+
 		if method := c.table.find_method(left_sym, method_name) {
-			for i, arg in node.args {
+			for i, mut arg in node.args {
+				node.args[i].typ = c.expr(mut arg.expr)
+				if i == val_arg_n {
+					arg_sym := c.table.sym(node.args[i].typ)
+					if !c.check_types(node.args[i].typ, info.elem_type)
+						&& !c.check_types(left_type, node.args[i].typ) {
+						c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
+							arg.expr.pos())
+						continue
+					}
+				}
 				c.check_expected_call_arg(arg.typ, method.params[i + 1].typ, node.language,
 					arg) or {
 					c.error('${err.msg()} in argument ${i + 1} to `${left_sym.name}.${method_name}`',
