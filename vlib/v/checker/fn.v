@@ -482,8 +482,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			ctx_idx = c.table.find_type('veb.Context')
 		}
 		typ_veb_context := ctx_idx.set_nr_muls(1)
-		// No `ctx` param? Add it
-		if !node.params.any(it.name == 'ctx') && node.params.len >= 1 {
+		// No Context type param? Add it
+		if !node.params.any(c.has_veb_context(it.typ)) && node.params.len >= 1 {
 			params := node.params.clone()
 			ctx_param := ast.Param{
 				name:   'ctx'
@@ -4053,4 +4053,18 @@ fn (mut c Checker) check_must_use_call_result(node &ast.CallExpr, f &ast.Fn, lab
 	if c.pref.is_check_return {
 		c.note('return value must be used', node.pos)
 	}
+}
+
+fn (mut c Checker) has_veb_context(typ ast.Type) bool {
+	sym := c.table.sym(typ)
+	if sym.name == 'veb.Context' {
+		return true
+	} else if sym.info is ast.Struct {
+		for embed in sym.info.embeds {
+			if global_table.sym(embed).name == 'veb.Context' {
+				return true
+			}
+		}
+	}
+	return false
 }
