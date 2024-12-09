@@ -13,6 +13,7 @@ mut:
 	version Slice
 }
 
+@[direct_array_access]
 fn parse_request_line(mut req HttpRequest) ! {
 	mut i := 0
 	// Parse HTTP method
