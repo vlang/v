@@ -1170,13 +1170,32 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 			g.inside_interface_deref = inside_interface_deref_old
 		}
 	}
+	is_ctemp_fixed_ret := node.op in [.eq, .ne] && node.left is ast.CTempVar
+		&& node.left.is_fixed_ret
+	if is_ctemp_fixed_ret {
+		if node.op == .eq {
+			g.write('!')
+		}
+		g.write('memcmp(')
+	}
 	g.expr(node.left)
-	g.write(' ${node.op.str()} ')
+	if !is_ctemp_fixed_ret {
+		g.write(' ${node.op.str()} ')
+	} else {
+		g.write(', ')
+	}
+
+	if is_ctemp_fixed_ret {
+		g.write('(${g.styp(node.right_type)})')
+	}
 	if node.right_type.is_ptr() && node.right.is_auto_deref_var() && !node.left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
+	}
+	if is_ctemp_fixed_ret {
+		g.write(', sizeof(${g.styp(node.right_type)}))')
 	}
 	if needs_cast {
 		g.write(')')

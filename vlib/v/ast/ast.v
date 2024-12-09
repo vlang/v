@@ -2302,7 +2302,8 @@ pub:
 	typ    Type   // the type of the original expression
 	is_ptr bool   // whether the type is a pointer
 pub mut:
-	orig Expr // the original expression, which produced the C temp variable; used by x.str()
+	orig         Expr // the original expression, which produced the C temp variable; used by x.str()
+	is_fixed_ret bool // it is an array fixed returned from call
 }
 
 pub fn (node Node) pos() token.Pos {

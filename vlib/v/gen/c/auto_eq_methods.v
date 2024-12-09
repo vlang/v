@@ -426,13 +426,17 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	elem_info := left_typ.sym.array_fixed_info()
 	elem := g.unwrap(elem_info.elem_type)
 	size := elem_info.size
-	g.definitions.writeln('static bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
+	mut arg_styp := ptr_styp
+	if elem_info.is_fn_ret {
+		arg_styp = ptr_styp[3..] // removes the _v_ prefix for returning fixed array
+	}
+	g.definitions.writeln('static bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b); // auto')
 
 	left := if left_type.has_flag(.option) { 'a.data' } else { 'a' }
 	right := if left_type.has_flag(.option) { 'b.data' } else { 'b' }
 
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static inline bool ${ptr_styp}_arr_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	fn_builder.writeln('static inline bool ${ptr_styp}_arr_eq(${arg_styp} a, ${arg_styp} b) {')
 	fn_builder.writeln('\tfor (int i = 0; i < ${size}; ++i) {')
 	// compare every pair of elements of the two fixed arrays
 	if elem.sym.kind == .string {
