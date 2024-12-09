@@ -9,9 +9,8 @@ fn test_main() {
 	b := Arr{}
 	assert a.u8_array_fixed() == [u8(0), 0, 0, 0]!
 	assert b.u8_array_fixed() == [u8(0), 0, 0, 0]!
-	assert a == b // true
+	assert a == b
 
-	// // this workaround works
 	a_ := a.u8_array_fixed()
 	b_ := b.u8_array_fixed()
 	assert a_ == b_
