@@ -231,7 +231,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 				}
 			}
-			g.expr_with_cast(expr, typ, typ)
+			if temp_var_needed {
+				g.write(tmp_var)
+			} else {
+				g.expr_with_cast(expr, typ, typ)
+			}
 		} else if typ.has_flag(.option) {
 			// only Option fn receive argument
 			g.expr_with_cast(expr, typ, typ)
