@@ -240,7 +240,6 @@ fn handle_client_closure(server &Server, client_fd int) {
 	}
 }
 
-@[manualfree]
 fn process_events(server &Server) {
 	events := [max_connection_size]C.epoll_event{}
 	num_events := C.epoll_wait(server.epoll_fd, &events[0], max_connection_size, -1)
