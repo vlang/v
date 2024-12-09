@@ -9,9 +9,9 @@ import v.pref
 // mark_used walks the AST, starting at main() and marks all used fns transitively
 pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&ast.File) {
 	mut all_fns, all_consts, all_globals := all_fn_const_and_global(ast_files)
-	util.timing_start(@METHOD)
+	util.timing_start('MARKUSED')
 	defer {
-		util.timing_measure(@METHOD)
+		util.timing_measure('MARKUSED')
 	}
 	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := []string{}
