@@ -4061,7 +4061,7 @@ fn (mut c Checker) has_veb_context(typ ast.Type) bool {
 		return true
 	} else if sym.info is ast.Struct {
 		for embed in sym.info.embeds {
-			if global_table.sym(embed).name == 'veb.Context' {
+			if c.table.sym(embed).name == 'veb.Context' {
 				return true
 			}
 		}
