@@ -112,7 +112,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	is_none_check := left_type.has_flag(.option) && node.right is ast.None
+	left_is_option := left_type.has_flag(.option)
+	right_is_option := right_type.has_flag(.option)
+	is_none_check := left_is_option && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
 	} else if (left.typ.is_ptr() && right.typ.is_int())
@@ -367,6 +369,18 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			signed_type:   left.unaliased
 			signed_expr:   node.left
 		)
+	} else if left_is_option && right_is_option {
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
+		if node.op == .eq {
+			g.write('!')
+		}
+		g.write('memcmp(')
+		g.expr(node.left)
+		g.write('.data, ')
+		g.expr(node.right)
+		g.write('.data, sizeof(${g.base_type(left_type)}))')
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else {
 		g.gen_plain_infix_expr(node)
 	}
