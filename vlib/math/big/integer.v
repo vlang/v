@@ -131,7 +131,7 @@ pub fn integer_from_bytes(oinput []u8, config IntegerConfig) Integer {
 	if oinput.len == 0 {
 		return integer_from_int(0)
 	}
-	// pad input
+	// Ignore leading 0 bytes:
 	mut first_non_zero_index := -1
 	for i in 0 .. oinput.len {
 		if oinput[i] != 0 {
@@ -143,6 +143,7 @@ pub fn integer_from_bytes(oinput []u8, config IntegerConfig) Integer {
 		return integer_from_int(0)
 	}
 	input := oinput[first_non_zero_index..]
+	// pad input
 	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3}
 	padded_input << input
 	mut digits := []u32{len: padded_input.len / 4}
