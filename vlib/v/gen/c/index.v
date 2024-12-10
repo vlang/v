@@ -331,7 +331,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	} else if node.left is ast.IndexExpr && node.left.is_setter {
 		past := g.past_tmp_var_new()
 		styp := g.styp(node.left_type)
-		g.write_expr('${styp}* ${past.tmp_var} = &', node.left, ';')
+		g.write_exprln('${styp}* ${past.tmp_var} = &', node.left, ';')
 		g.write('(*')
 		g.past_tmp_var_done(past)
 		g.write(')')
